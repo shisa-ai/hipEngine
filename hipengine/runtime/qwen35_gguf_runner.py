@@ -108,6 +108,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_pack8_gemv import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out,
+    gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_gemv_bf16_bf16_out,
     gguf_q6_k_t16_selected_gemv_bf16_bf16_out,
     register_gguf_t16_selected_gemv_kernels,
@@ -4232,6 +4233,14 @@ _COMPACT_MOE_Q4_DUAL_KEYS = {
     ),
 }
 _COMPACT_MOE_DOWN_KEYS = {
+    # Q4_K_S stores selected down experts as Q4_K.  In decode-repack mode those
+    # tensors use the same single-output compact WMMA ABI as Q5/Q6 T16.
+    "gguf_q4_k_t16_v1": KernelKey(
+        "hip_gfx1100",
+        "moe_linear",
+        "gguf_q4_k_t16_v1",
+        "selected_wmma_prefill_compact_bf16_bf16_out",
+    ),
     "gguf_q5_k": KernelKey(
         "hip_gfx1100",
         "moe_linear",
@@ -5641,6 +5650,8 @@ def _launch_selected_raw_gguf_moe_linear(
         fn = gguf_q6_k_selected_pack8_gemv_bf16_bf16_out
     elif quant_key == "gguf_q6_k":
         fn = gguf_q6_k_selected_gemv_bf16_bf16_out
+    elif quant_key == "gguf_q4_k_t16_v1":
+        fn = gguf_q4_k_t16_selected_gemv_bf16_bf16_out
     elif quant_key == "gguf_q5_k_t16_v1":
         fn = gguf_q5_k_t16_selected_gemv_bf16_bf16_out
     elif quant_key == "gguf_q6_k_t16_v1":

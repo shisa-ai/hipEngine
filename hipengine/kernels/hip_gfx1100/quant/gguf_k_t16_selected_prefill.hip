@@ -1,9 +1,10 @@
-// Compact selected-MoE WMMA prefill for GGUF Q5_K T16 / Q6_K T16 tile layouts.
+// Compact selected-MoE WMMA prefill for GGUF Q4_K/Q5_K/Q6_K T16 tile layouts.
 //
 // P10.B2 / P10.B3: ports the structure of gguf_k_selected_prefill.hip
 // (raw Q5_K/Q6_K selected single-output WMMA prefill) to consume the
 // resident T16 tile layout defined in hipengine/quant/gguf_t16.py:
 //
+//   Q4T16 tiles[E, out_tiles16, blocks_per_row, 2368]
 //   Q5T16 tiles[E, out_tiles16, blocks_per_row, 2880]
 //   Q6T16 tiles[E, out_tiles16, blocks_per_row, 3360]
 //
@@ -34,6 +35,14 @@ constexpr int Q6_GROUPS16 = 16;
 constexpr int K_TILE = 16;
 constexpr int K_TILES_PER_SUBBLOCK = Q4_SUBBLOCK / K_TILE;  // == 2
 constexpr int K_TILES_PER_BLOCK = QK_K / K_TILE;            // == 16
+
+// ---- Q4T16 layout (matches hipengine/quant/gguf_q4_k.py) ----------------
+constexpr int Q4_T16_D_OFFSET = 0;
+constexpr int Q4_T16_DMIN_OFFSET = Q4_T16_D_OFFSET + T16_COLS * 2;
+constexpr int Q4_T16_SCALE_OFFSET = Q4_T16_DMIN_OFFSET + T16_COLS * 2;
+constexpr int Q4_T16_MIN_OFFSET = Q4_T16_SCALE_OFFSET + Q4_SUBBLOCKS * T16_COLS;
+constexpr int Q4_T16_Q_OFFSET = Q4_T16_MIN_OFFSET + Q4_SUBBLOCKS * T16_COLS;
+constexpr int Q4_T16_BLOCK_BYTES = Q4_T16_Q_OFFSET + Q4_SUBBLOCKS * Q4_SUBBLOCK * (T16_COLS / 2);
 
 // ---- Q5T16 layout (matches hipengine/quant/gguf_t16.py) ----------------
 constexpr int Q5_T16_D_OFFSET = 0;
@@ -142,8 +151,10 @@ __device__ inline half16_t load_compact_row_half16<half_t>(
 }
 
 template <int qtype>
-__device__ inline int qtype_block_bytes() {
-  if constexpr (qtype == 5) {
+__host__ __device__ constexpr int qtype_block_bytes() {
+  if constexpr (qtype == 4) {
+    return Q4_T16_BLOCK_BYTES;
+  } else if constexpr (qtype == 5) {
     return Q5_T16_BLOCK_BYTES;
   } else {
     return Q6_T16_BLOCK_BYTES;
@@ -160,6 +171,19 @@ __device__ inline const uint8_t* k_t16_tile_ptr(
     int tile_bytes) {
   const int64_t tile_index = (expert_id * out_tiles + out_tile) * blocks_per_row + block_idx;
   return tiles + tile_index * static_cast<int64_t>(tile_bytes);
+}
+
+// Q4T16 dequant: same 4-bit value and per-subblock scale/min math as GGUF
+// block_q4_K, with columns transposed into the T16 replacement layout.
+__device__ inline uint8_t q4_t16_quant(
+    const uint8_t* __restrict__ tile,
+    int subblock,
+    int lane32,
+    int col) {
+  const uint8_t packed = tile[Q4_T16_Q_OFFSET +
+                              (subblock * Q4_SUBBLOCK + lane32) * (T16_COLS / 2) +
+                              (col >> 1)];
+  return (col & 1) ? (packed >> 4) : (packed & 0x0Fu);
 }
 
 // Q5T16 dequant: ``col`` is the column inside the 16-col tile slab; the kernel
@@ -231,7 +255,7 @@ __global__ void gguf_k_t16_selected_wmma_prefill_compact_kernel(
     int64_t out_features,
     int64_t num_experts,
     int64_t wmma_total_rows) {
-  static_assert(qtype == 5 || qtype == 6, "qtype must be 5 or 6");
+  static_assert(qtype == 4 || qtype == 5 || qtype == 6, "qtype must be 4, 5, or 6");
   const int col_tile = blockIdx.x;
   const int row_tile = blockIdx.y;
   const int tid = threadIdx.x;
@@ -260,7 +284,7 @@ __global__ void gguf_k_t16_selected_wmma_prefill_compact_kernel(
 
   const int64_t blocks_per_row = in_features / QK_K;
   const int64_t out_tiles = out_features / T16_COLS;
-  constexpr int tile_bytes = (qtype == 5) ? Q5_T16_BLOCK_BYTES : Q6_T16_BLOCK_BYTES;
+  constexpr int tile_bytes = qtype_block_bytes<qtype>();
 
   float8_t acc = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
 
@@ -270,7 +294,39 @@ __global__ void gguf_k_t16_selected_wmma_prefill_compact_kernel(
         : tiles;
     const int64_t g_k_base = blk * QK_K;
 
-    if constexpr (qtype == 5) {
+    if constexpr (qtype == 4) {
+      const float d_f = valid_col ? fp16_bytes_to_float(tile + Q4_T16_D_OFFSET + col_in_slab * 2) : 0.0f;
+      const float dmin_f = valid_col ? fp16_bytes_to_float(tile + Q4_T16_DMIN_OFFSET + col_in_slab * 2) : 0.0f;
+#pragma unroll
+      for (int sb = 0; sb < Q4_SUBBLOCKS; ++sb) {
+        const float scale_f = valid_col
+            ? d_f * static_cast<float>(tile[Q4_T16_SCALE_OFFSET + sb * T16_COLS + col_in_slab])
+            : 0.0f;
+        const float min_f = valid_col
+            ? dmin_f * static_cast<float>(tile[Q4_T16_MIN_OFFSET + sb * T16_COLS + col_in_slab])
+            : 0.0f;
+#pragma unroll
+        for (int kt = 0; kt < K_TILES_PER_SUBBLOCK; ++kt) {
+          const int k_off = sb * Q4_SUBBLOCK + kt * K_TILE;
+          const int64_t k_base = g_k_base + k_off;
+          const half16_t a_reg = load_compact_row_half16<scalar_t>(
+              x, compact_row, in_features, k_base, valid_row);
+          half16_t b_reg;
+          if (valid_col) {
+#pragma unroll
+            for (int kk = 0; kk < 16; ++kk) {
+              const int lane32 = kt * K_TILE + kk;
+              const uint8_t q = q4_t16_quant(tile, sb, lane32, col_in_slab);
+              b_reg[kk] = static_cast<half_t>(scale_f * static_cast<float>(q) - min_f);
+            }
+          } else {
+#pragma unroll
+            for (int kk = 0; kk < 16; ++kk) b_reg[kk] = static_cast<half_t>(0.0f);
+          }
+          acc = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_reg, b_reg, acc);
+        }
+      }
+    } else if constexpr (qtype == 5) {
       const float d_f = valid_col ? fp16_bytes_to_float(tile + Q5_T16_D_OFFSET + col_in_slab * 2) : 0.0f;
       const float dmin_f = valid_col ? fp16_bytes_to_float(tile + Q5_T16_DMIN_OFFSET + col_in_slab * 2) : 0.0f;
 #pragma unroll
@@ -437,5 +493,6 @@ extern "C" int hipengine_##NAME##_selected_wmma_prefill_compact_fp16_fp16_out( \
       compact_rows, in_features, out_features, num_experts, wmma_total_rows, stream); \
 }
 
+HIPENGINE_GGUF_K_T16_SELECTED_WMMA_EXPORT(gguf_q4_k_t16, 4)
 HIPENGINE_GGUF_K_T16_SELECTED_WMMA_EXPORT(gguf_q5_k_t16, 5)
 HIPENGINE_GGUF_K_T16_SELECTED_WMMA_EXPORT(gguf_q6_k_t16, 6)

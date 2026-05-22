@@ -1,6 +1,6 @@
-"""Wrappers for compact selected-MoE WMMA prefill on GGUF Q5_K / Q6_K T16 tiles.
+"""Wrappers for compact selected-MoE WMMA prefill on GGUF Q4_K / Q5_K / Q6_K T16 tiles.
 
-P10.B2 / P10.B3: ports the raw-Q5/Q6 selected single-output WMMA prefill
+P10.B2 / P10.B3 / Q4_K_S follow-up: ports selected single-output WMMA prefill
 kernels (``gguf_k_selected_prefill.hip``) to consume the T16 replacement
 layout used by the decode-repack path. The exported callables share the
 ``selected_wmma_prefill_compact_bf16_bf16_out`` ABI used by the raw
@@ -24,6 +24,8 @@ _ENV_LAUNCH_BOUNDS = "HIPENGINE_GGUF_SELECTED_WMMA_LAUNCH_BOUNDS"
 _QK_K = 256
 
 _SYMBOLS = {
+    ("gguf_q4_k_t16", "bf16"): "hipengine_gguf_q4_k_t16_selected_wmma_prefill_compact_bf16_bf16_out",
+    ("gguf_q4_k_t16", "fp16"): "hipengine_gguf_q4_k_t16_selected_wmma_prefill_compact_fp16_fp16_out",
     ("gguf_q5_k_t16", "bf16"): "hipengine_gguf_q5_k_t16_selected_wmma_prefill_compact_bf16_bf16_out",
     ("gguf_q5_k_t16", "fp16"): "hipengine_gguf_q5_k_t16_selected_wmma_prefill_compact_fp16_fp16_out",
     ("gguf_q6_k_t16", "bf16"): "hipengine_gguf_q6_k_t16_selected_wmma_prefill_compact_bf16_bf16_out",
@@ -136,6 +138,8 @@ def _make_wrapper(quant: str, dtype: str):
 
 
 # Public wrapper functions.
+gguf_q4_k_t16_selected_wmma_prefill_compact_bf16_bf16_out = _make_wrapper("gguf_q4_k_t16", "bf16")
+gguf_q4_k_t16_selected_wmma_prefill_compact_fp16_fp16_out = _make_wrapper("gguf_q4_k_t16", "fp16")
 gguf_q5_k_t16_selected_wmma_prefill_compact_bf16_bf16_out = _make_wrapper("gguf_q5_k_t16", "bf16")
 gguf_q5_k_t16_selected_wmma_prefill_compact_fp16_fp16_out = _make_wrapper("gguf_q5_k_t16", "fp16")
 gguf_q6_k_t16_selected_wmma_prefill_compact_bf16_bf16_out = _make_wrapper("gguf_q6_k_t16", "bf16")
@@ -223,53 +227,50 @@ def _check_positive(value: int, name: str) -> None:
 
 
 def register_gguf_k_t16_selected_prefill_kernels(*, replace: bool = True) -> None:
-    """Register P10.B2 / P10.B3 Q5T16 / Q6T16 selected WMMA prefill kernels.
+    """Register Q4T16/Q5T16/Q6T16 selected WMMA prefill kernels.
 
     Each kernel is registered under its native ``gguf_q*_k_t16_v1`` quant key
     using the shared ``selected_wmma_prefill_compact_*`` alias spelling so
     ``_COMPACT_MOE_DOWN_KEYS`` in the runner can route on quant key alone.
     """
 
-    register(
-        KernelKey(
-            "hip_gfx1100",
-            "moe_linear",
+    for quant_key, fn_bf16, fn_fp16 in (
+        (
+            "gguf_q4_k_t16_v1",
+            gguf_q4_k_t16_selected_wmma_prefill_compact_bf16_bf16_out,
+            gguf_q4_k_t16_selected_wmma_prefill_compact_fp16_fp16_out,
+        ),
+        (
             "gguf_q5_k_t16_v1",
-            "selected_wmma_prefill_compact_bf16_bf16_out",
+            gguf_q5_k_t16_selected_wmma_prefill_compact_bf16_bf16_out,
+            gguf_q5_k_t16_selected_wmma_prefill_compact_fp16_fp16_out,
         ),
-        gguf_q5_k_t16_selected_wmma_prefill_compact_bf16_bf16_out,
-        replace=replace,
-    )
-    register(
-        KernelKey(
-            "hip_gfx1100",
-            "moe_linear",
-            "gguf_q5_k_t16_v1",
-            "selected_wmma_prefill_compact_fp16_fp16_out",
-        ),
-        gguf_q5_k_t16_selected_wmma_prefill_compact_fp16_fp16_out,
-        replace=replace,
-    )
-    register(
-        KernelKey(
-            "hip_gfx1100",
-            "moe_linear",
+        (
             "gguf_q6_k_t16_v1",
-            "selected_wmma_prefill_compact_bf16_bf16_out",
+            gguf_q6_k_t16_selected_wmma_prefill_compact_bf16_bf16_out,
+            gguf_q6_k_t16_selected_wmma_prefill_compact_fp16_fp16_out,
         ),
-        gguf_q6_k_t16_selected_wmma_prefill_compact_bf16_bf16_out,
-        replace=replace,
-    )
-    register(
-        KernelKey(
-            "hip_gfx1100",
-            "moe_linear",
-            "gguf_q6_k_t16_v1",
-            "selected_wmma_prefill_compact_fp16_fp16_out",
-        ),
-        gguf_q6_k_t16_selected_wmma_prefill_compact_fp16_fp16_out,
-        replace=replace,
-    )
+    ):
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "moe_linear",
+                quant_key,
+                "selected_wmma_prefill_compact_bf16_bf16_out",
+            ),
+            fn_bf16,
+            replace=replace,
+        )
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "moe_linear",
+                quant_key,
+                "selected_wmma_prefill_compact_fp16_fp16_out",
+            ),
+            fn_fp16,
+            replace=replace,
+        )
 
 
 register_gguf_k_t16_selected_prefill_kernels()
@@ -277,6 +278,8 @@ register_gguf_k_t16_selected_prefill_kernels()
 
 __all__ = [
     "build_gguf_k_t16_selected_prefill",
+    "gguf_q4_k_t16_selected_wmma_prefill_compact_bf16_bf16_out",
+    "gguf_q4_k_t16_selected_wmma_prefill_compact_fp16_fp16_out",
     "gguf_q5_k_t16_selected_wmma_prefill_compact_bf16_bf16_out",
     "gguf_q5_k_t16_selected_wmma_prefill_compact_fp16_fp16_out",
     "gguf_q6_k_t16_selected_wmma_prefill_compact_bf16_bf16_out",

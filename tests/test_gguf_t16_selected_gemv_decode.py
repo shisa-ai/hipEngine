@@ -20,6 +20,10 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_gemv_decode_compact_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_gemv_decode_compact_fp16_fp16_out,
+    gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
+    gguf_q4_k_t16_selected_gemv_fp16_fp16_out,
+    gguf_q4_k_t16_selected_gemv_decode_compact_bf16_bf16_out,
+    gguf_q4_k_t16_selected_gemv_decode_compact_fp16_fp16_out,
     gguf_q5_k_t16_selected_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_gemv_fp16_fp16_out,
     gguf_q5_k_t16_selected_gemv_decode_compact_bf16_bf16_out,
@@ -373,6 +377,10 @@ def test_p9_h3d_registry_keys_resolve() -> None:
             "selected_dual_t16_gemv_decode_bf16_bf16_out",
             "selected_dual_t16_gemv_decode_fp16_fp16_out",
             "selected_dual_t16_silu_gemv_decode_bf16_bf16_out",
+            "selected_t16_gemv_decode_compact_bf16_bf16_out",
+            "selected_t16_gemv_decode_compact_fp16_fp16_out",
+            "selected_t16_gemv_decode_bf16_bf16_out",
+            "selected_t16_gemv_decode_fp16_fp16_out",
         ),
         "gguf_q5_k_t16_v1": (
             "selected_t16_gemv_decode_compact_bf16_bf16_out",
@@ -603,6 +611,15 @@ def test_p9_h3d_q4_t16_dual_fp16_matches_cpu_oracle(t16_selected_library) -> Non
 
 _QUANT_CASES = [
     pytest.param(
+        "Q4_K",
+        make_q4_k_weight,
+        repack_gguf_q4_k_tile16,
+        gguf_q4_k_t16_selected_gemv_decode_compact_bf16_bf16_out,
+        gguf_q4_k_t16_selected_gemv_decode_compact_fp16_fp16_out,
+        GGMLQuantizationType.Q4_K,
+        id="Q4_K",
+    ),
+    pytest.param(
         "Q5_K",
         make_q5_k_weight,
         repack_gguf_q5_k_tile16,
@@ -651,6 +668,7 @@ def test_p9_h3d_qk_t16_bf16_matches_cpu_oracle(
 @pytest.mark.parametrize(
     "_name,builder,repack,fn_direct_bf16,qtype_enum",
     [
+        pytest.param("Q4_K", make_q4_k_weight, repack_gguf_q4_k_tile16, gguf_q4_k_t16_selected_gemv_bf16_bf16_out, GGMLQuantizationType.Q4_K, id="Q4_K"),
         pytest.param("Q5_K", make_q5_k_weight, repack_gguf_q5_k_tile16, gguf_q5_k_t16_selected_gemv_bf16_bf16_out, GGMLQuantizationType.Q5_K, id="Q5_K"),
         pytest.param("Q6_K", make_q6_k_weight, repack_gguf_q6_k_tile16, gguf_q6_k_t16_selected_gemv_bf16_bf16_out, GGMLQuantizationType.Q6_K, id="Q6_K"),
     ],

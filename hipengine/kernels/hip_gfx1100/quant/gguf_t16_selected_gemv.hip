@@ -1,7 +1,8 @@
 // Selected MoE decode-shaped GEMV for GGUF K-family T16 replacement layouts.
 //
 // P9.H3 slice: consumes resident T16 tiles instead of raw row-major GGUF
-// expert bytes.  Q4_K uses the dual gate/up selected ABI; Q5_K/Q6_K use the
+// expert bytes.  Q4_K uses the dual gate/up selected ABI and can also use the
+// single-output down-projection ABI for Q4_K_S; Q5_K/Q6_K use the same
 // single-output selected down-projection ABI.  The compact-MoE scheduler ABI
 // is the same as the P9.B raw pack8 kernels:
 //
@@ -257,7 +258,7 @@ __global__ __launch_bounds__(128, 4) void qk_t16_selected_gemv_kernel(
     int64_t in_features,
     int64_t out_features,
     int64_t num_experts) {
-  static_assert(qtype == 5 || qtype == 6, "qtype must be 5 or 6");
+  static_assert(qtype == 4 || qtype == 5 || qtype == 6, "qtype must be 4, 5, or 6");
   const int64_t out_tile = blockIdx.x;
   const int64_t compact_row = blockIdx.y;
   const int tid = threadIdx.x;
@@ -275,13 +276,24 @@ __global__ __launch_bounds__(128, 4) void qk_t16_selected_gemv_kernel(
   for (int col = 0; col < T16_COLS; ++col) acc[col] = 0.0f;
 
   for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
-    const uint8_t* __restrict__ tile = (qtype == 5)
-        ? expert_tile_ptr<Q5_T16_BLOCK_BYTES>(tiles, expert_id, out_tile, blk, out_tiles, blocks_per_row)
-        : expert_tile_ptr<Q6_T16_BLOCK_BYTES>(tiles, expert_id, out_tile, blk, out_tiles, blocks_per_row);
+    const uint8_t* __restrict__ tile;
+    if constexpr (qtype == 4) {
+      tile = expert_tile_ptr<Q4_T16_BLOCK_BYTES>(tiles, expert_id, out_tile, blk, out_tiles, blocks_per_row);
+    } else if constexpr (qtype == 5) {
+      tile = expert_tile_ptr<Q5_T16_BLOCK_BYTES>(tiles, expert_id, out_tile, blk, out_tiles, blocks_per_row);
+    } else {
+      tile = expert_tile_ptr<Q6_T16_BLOCK_BYTES>(tiles, expert_id, out_tile, blk, out_tiles, blocks_per_row);
+    }
     const int64_t k_base = blk * QK_K;
     for (int k_in_block = tid; k_in_block < QK_K; k_in_block += blockDim.x) {
       const float xv = scalar_to_float<scalar_t>(x_row[k_base + k_in_block]);
-      if constexpr (qtype == 5) {
+      if constexpr (qtype == 4) {
+#pragma unroll
+        for (int col = 0; col < T16_COLS; ++col) {
+          const float wv = t16_q4_weight(tile, k_in_block, col);
+          acc[col] += xv * wv;
+        }
+      } else if constexpr (qtype == 5) {
         const int sb = k_in_block >> 5;
         const int lane32 = k_in_block & 31;
 #pragma unroll
@@ -523,7 +535,7 @@ __global__ __launch_bounds__(128, 4) void qk_t16_selected_direct_gemv_kernel(
     int64_t in_features,
     int64_t out_features,
     int64_t num_experts) {
-  static_assert(qtype == 5 || qtype == 6, "qtype must be 5 or 6");
+  static_assert(qtype == 4 || qtype == 5 || qtype == 6, "qtype must be 4, 5, or 6");
   const int64_t out_tile = blockIdx.x;
   const int64_t row = blockIdx.y;
   const int tid = threadIdx.x;
@@ -541,13 +553,24 @@ __global__ __launch_bounds__(128, 4) void qk_t16_selected_direct_gemv_kernel(
   for (int col = 0; col < T16_COLS; ++col) acc[col] = 0.0f;
 
   for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
-    const uint8_t* __restrict__ tile = (qtype == 5)
-        ? expert_tile_ptr<Q5_T16_BLOCK_BYTES>(tiles, expert_id, out_tile, blk, out_tiles, blocks_per_row)
-        : expert_tile_ptr<Q6_T16_BLOCK_BYTES>(tiles, expert_id, out_tile, blk, out_tiles, blocks_per_row);
+    const uint8_t* __restrict__ tile;
+    if constexpr (qtype == 4) {
+      tile = expert_tile_ptr<Q4_T16_BLOCK_BYTES>(tiles, expert_id, out_tile, blk, out_tiles, blocks_per_row);
+    } else if constexpr (qtype == 5) {
+      tile = expert_tile_ptr<Q5_T16_BLOCK_BYTES>(tiles, expert_id, out_tile, blk, out_tiles, blocks_per_row);
+    } else {
+      tile = expert_tile_ptr<Q6_T16_BLOCK_BYTES>(tiles, expert_id, out_tile, blk, out_tiles, blocks_per_row);
+    }
     const int64_t k_base = blk * QK_K;
     for (int k_in_block = tid; k_in_block < QK_K; k_in_block += blockDim.x) {
       const float xv = scalar_to_float<scalar_t>(x_row[k_base + k_in_block]);
-      if constexpr (qtype == 5) {
+      if constexpr (qtype == 4) {
+#pragma unroll
+        for (int col = 0; col < T16_COLS; ++col) {
+          const float wv = t16_q4_weight(tile, k_in_block, col);
+          acc[col] += xv * wv;
+        }
+      } else if constexpr (qtype == 5) {
         const int sb = k_in_block >> 5;
         const int lane32 = k_in_block & 31;
 #pragma unroll
@@ -769,6 +792,24 @@ extern "C" int hipengine_gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out(
                                                out_features, num_experts, stream);
 }
 
+extern "C" int hipengine_gguf_q4_k_t16_selected_gemv_bf16_bf16_out(
+    const void* x, const void* selected, const void* tiles, void* out,
+    int64_t x_rows, int64_t rows, int64_t num_experts, int64_t in_features,
+    int64_t out_features, hipStream_t stream) {
+  return launch_qk_direct<uint16_t, 4>(x, selected, tiles, out, x_rows, rows,
+                                      in_features, out_features, num_experts,
+                                      stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_selected_gemv_fp16_fp16_out(
+    const void* x, const void* selected, const void* tiles, void* out,
+    int64_t x_rows, int64_t rows, int64_t num_experts, int64_t in_features,
+    int64_t out_features, hipStream_t stream) {
+  return launch_qk_direct<half_t, 4>(x, selected, tiles, out, x_rows, rows,
+                                    in_features, out_features, num_experts,
+                                    stream);
+}
+
 extern "C" int hipengine_gguf_q5_k_t16_selected_gemv_bf16_bf16_out(
     const void* x, const void* selected, const void* tiles, void* out,
     int64_t x_rows, int64_t rows, int64_t num_experts, int64_t in_features,
@@ -821,6 +862,24 @@ extern "C" int hipengine_gguf_q4_k_t16_selected_dual_gemv_decode_compact_fp16_fp
   return launch_q4_dual<half_t>(x, expert_start_compact, tiles_a, tiles_b, out,
                                 compact_rows, in_features, out_features_a,
                                 out_features_b, num_experts, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_selected_gemv_decode_compact_bf16_bf16_out(
+    const void* x, const void* expert_start_compact, const void* tiles, void* out,
+    int64_t compact_rows, int64_t in_features, int64_t out_features,
+    int64_t num_experts, hipStream_t stream) {
+  return launch_qk_single<uint16_t, 4>(x, expert_start_compact, tiles, out,
+                                      compact_rows, in_features, out_features,
+                                      num_experts, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_selected_gemv_decode_compact_fp16_fp16_out(
+    const void* x, const void* expert_start_compact, const void* tiles, void* out,
+    int64_t compact_rows, int64_t in_features, int64_t out_features,
+    int64_t num_experts, hipStream_t stream) {
+  return launch_qk_single<half_t, 4>(x, expert_start_compact, tiles, out,
+                                    compact_rows, in_features, out_features,
+                                    num_experts, stream);
 }
 
 extern "C" int hipengine_gguf_q5_k_t16_selected_gemv_decode_compact_bf16_bf16_out(

@@ -22839,3 +22839,42 @@ Current post-pass 4K/128 local RX 7900 XTX diagnostic from `/tmp/hipengine-gguf-
 - Delta: GGUF is `-1.4%` prefill, `-9.3%` decode, `+2.525 GiB` tracked memory at 4K/128.
 
 Decision: no retained rollup update. The comparison remains local RX 7900 XTX, mixed model/quant, and most probes were rejected diagnostics. Next real lever is the `Q4_K_S` GGUF column; after that, consider an explicit emergency no-T16 residency mode only if the long-context goal outweighs speed.
+
+## 2026-05-22 — Q4_K_S selected Q4_K T16 MoE down support
+
+While setting up the requested latest Q4_K_M vs Q4_K_S GGUF benchmark rerun, the new local `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf` smoke failed because `ffn_down_exps.weight` materializes as `gguf_q4_k_t16_v1`; the runner only supported Q5/Q6 selected single-output T16 down GEMV/WMMA paths.
+
+Implemented Q4_K selected single-output T16 support:
+
+- Extended `gguf_t16_selected_gemv` with compact and direct Q4_K single-output T16 GEMV wrappers/exports and registered `selected_t16_gemv_decode*` variants under `gguf_q4_k_t16_v1`.
+- Extended `gguf_k_t16_selected_prefill` with Q4_K T16 single-output compact WMMA prefill and registered the shared `selected_wmma_prefill_compact_*` variants under `gguf_q4_k_t16_v1`.
+- Routed `_COMPACT_MOE_DOWN_KEYS` and `_launch_selected_raw_gguf_moe_linear()` through the new Q4_K T16 single-output down kernels.
+
+Validation:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+uv run pytest tests/test_gguf_k_t16_selected_wmma_prefill.py tests/test_gguf_t16_selected_gemv_decode.py -q
+# 118 passed
+
+PYTHONPATH=. uv run pytest \
+  tests/test_qwen35_gguf_compact_moe_wmma_resolver.py \
+  tests/test_qwen35_gguf_chunked_prefill.py -q
+# 10 passed
+```
+
+Q4_K_S 512/1 smoke after enabling the Q4 down WMMA path:
+
+```bash
+HIPENGINE_GGUF_AOTRITON_PREFILL=v3 HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 \
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+uv run python scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s \
+  --prompt-length 512 --decode-tokens 1 --warmup-decode-tokens 0 \
+  --warmup-runs 0 --measured-runs 1 --force-bulk-prefill \
+  --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-q4ks-smoke-512-1-after-q4down-wmma.json
+```
+
+Result: finite logits, prefill `1584.116 tok/s`, decode `55.134 tok/s`, tracked peak `20.185406 GiB`. The pre-WMMA fallback smoke was only `724.811 tok/s`, confirming the Q4 down WMMA route is needed before recording Q4_K_S comparison rows.
