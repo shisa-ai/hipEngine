@@ -1,6 +1,6 @@
 # hipEngine Documentation Index
 
-Last updated: 2026-05-18
+Last updated: 2026-05-23
 
 This directory contains the project architecture, validation, benchmarking, and
 optimization notes for hipEngine. If you are new to the repo, start with
@@ -33,6 +33,7 @@ working on.
 | --- | --- |
 | [`KERNELS.md`](KERNELS.md) | Kernel catalog, source-lineage drift workflow, Qwen/PARO path map, JIT cache gotchas, and build profiles. |
 | [`ROOFLINE.md`](ROOFLINE.md) | RDNA3 / W7900 roofline model, occupancy rules, decision tree, and rejected hardware-level approaches. |
+| [`RELAXED.md`](RELAXED.md) | Strict/exact vs opt-in relaxed precision policy, per-kernel savings candidates, and relaxed-mode backlog. |
 | [`MARLIN.md`](MARLIN.md) | Marlin-K / PARO W4 layout plan and porting context. |
 | [`source_lineage.json`](source_lineage.json) | Machine-readable parent-file manifest for `scripts/check_lineage.py`. |
 

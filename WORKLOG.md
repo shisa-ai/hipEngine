@@ -17952,3 +17952,18 @@ Imported the scratch `~/mtpbench` work into hipEngine as an external comparison 
 Retained conclusions: natural prompt suite best setting is `--spec-draft-n-max 2`, with base weighted decode `25.21 tok/s`, MTP `40.17 tok/s`, speedup `1.593x`, draft acceptance `0.745`. Draft max 4 and 6 drop to `1.459x` and `1.245x`. KV cache quantization did not improve absolute single-stream throughput (`f16/f16` MTP weighted `40.04 tok/s`, `q8_0/q8_0` `39.55`, `q4_0/q4_0` `39.54`). Repeated token-id `9707` is an artificial perfect-acceptance case: llama.cpp server base `25.61/25.12 tok/s` -> MTP `48.96/47.95 tok/s` at 512/128 and 4K/128, while hipEngine PARO eager decode measured `32.10/28.69 tok/s`.
 
 Updated `docs/BENCHMARK.md` with the llama.cpp MTP diagnostic protocol and added concise external-baseline rows to `benchmarks/README.md` plus changelog entries.
+
+## 2026-05-23 — relaxed precision planning doc
+
+Reviewed the current strict Qwen3.5/PARO inference path (`LLM.generate` -> generation registry -> `Qwen35ParoOneTokenGenerator` -> resident native prefill/decode runner), `docs/KERNELS.md`, `docs/PLAN.md`, `docs/OPTIMIZE*.md`, `docs/PREFILL.md`, `docs/KVCACHE.md`, `docs/TESTING.md`, and recent worklog entries for exactness, env-gated fusion, INT8 KV, and parked optimization context. Added `docs/RELAXED.md` as a planning/catalog document that keeps strict/exact mode as the default and defines an explicit opt-in relaxed mode with strict fallbacks, registry variants, fixture gates, repeated-run stability checks, and artifact requirements.
+
+The new relaxed-mode catalog maps per-kernel candidate savings to required evidence for RMSNorm, rotary, full/paged attention, KV write/repack, W8A16/AWQ/Marlin linear paths, MoE router/scatter/combine, linear-attention GDN/recurrence, PARO fused helpers, LM-head/argmax, casts/utilities, and compiler/build-profile variants. It also records a backlog for central precision-policy plumbing, compound decode launch reduction, relaxed full-attention prefill, relaxed KV profiles, MoE OOO/router experiments, linear-attention prefill fusion, packed-linear retuning, approximate nonlinear intrinsics, top-k without full logits, and unordered/atomic reductions. No performance claim was made.
+
+Validation:
+
+```bash
+git diff --check
+# passed; no output
+```
+
+Also re-read `docs/RELAXED.md` and `docs/README.md` end-to-end after edits. Updated `docs/README.md` to link the new relaxed precision document.
