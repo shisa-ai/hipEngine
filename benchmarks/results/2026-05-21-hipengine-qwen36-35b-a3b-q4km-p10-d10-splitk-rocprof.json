@@ -7,7 +7,7 @@
   "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
   "quant": "gguf_q4_k_m",
   "backend": "hip_gfx1100",
-  "hardware": "local gfx1100 24 GiB card",
+  "hardware": "local RX 7900 XTX / gfx1100 24 GiB card",
   "commit_under_test": "d55d6d1",
   "raw_trace_root": "/tmp/hipengine-p10-d10-gguf-splitk-rocprof",
   "source_summary": "/tmp/p10_d10_gguf_splitk_rocprof_summary.json",

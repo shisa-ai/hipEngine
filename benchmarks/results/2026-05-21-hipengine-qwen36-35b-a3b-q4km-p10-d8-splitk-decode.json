@@ -7,7 +7,7 @@
   "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
   "quant": "gguf_q4_k_m",
   "backend": "hip_gfx1100",
-  "hardware": "local gfx1100 24 GiB card",
+  "hardware": "local RX 7900 XTX / gfx1100 24 GiB card",
   "commit_under_test": "0801e24+worktree-p10-d8-splitk-decode",
   "change_summary": [
     "Route GGUF full-attention decode through existing split-K gated BF16 attention when active context >= HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT (default 1024).",

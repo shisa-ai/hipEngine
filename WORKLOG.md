@@ -18921,7 +18921,7 @@ Activation/output type matrix: 9 combinations covering `{bf16, fp16, f32}` for b
 
 Python wrapper module `gguf_q8_0_prefill.py` exposes one wrapper per dtype combo and registers under `KernelKey("hip_gfx1100", "linear", "gguf_q8_0", "wmma_prefill_<in>_<out>_out")`. The decode-shaped `prefill_*` aliases in `gguf_k_gemv.py` are untouched; runtime dispatch in `gguf_linear.py` will swap to the WMMA family in task P8.6.
 
-Build & correctness validation on W7900 (gfx1100):
+Build & correctness validation on local RX 7900 XTX/gfx1100 (W7900 not rerun):
 - `build_gguf_q8_0_prefill(load=True)` compiles cleanly via hipcc; loaded `.so` exports all 9 `hipengine_gguf_q8_0_wmma_prefill_<in>_<out>_out` symbols.
 - Inline smoke vs `hipengine.kernels.cpu_reference.gguf_q8_0_gemv` for rows ∈ {8, 16, 17, 32, 33, 48, 64}, in_features ∈ {64, 96, 128, 192, 256, 512}, out_features ∈ {16, 24, 32, 48, 64, 80, 128}:
   - bf16 → f32: `max|d| < 1.2e-6`, `mean|d| ~ 3e-8`, `max_rel < 5e-4`.
@@ -19108,7 +19108,7 @@ Implementation details:
 - Raw Q4_K dequant in the K-loop exactly follows `gguf_q4_k_gemv.hip`: each 144-byte block -> fp16 `d`, fp16 `dmin`, 12 packed scale/min bytes, 128 q4 bytes. Traversal is one 256-K block -> 8 subblocks of 32 -> two 16-wide WMMA K-tiles per subblock. For subblock `sb`, per-output `scale_f = d * scale(sb)`, `min_f = dmin * min(sb)`, q nibble from `qs[(sb >> 1) * 32 + lane32]` low/high by subblock parity, `a_reg[kk] = half(scale_f * q - min_f)`.
 - Dual kernel uses one shared `x` pointer and matching A/B `out_features` (hipENGINE GGUF dense pair ABI), but copies the AWQ dual grid split: first `out_tiles` x-tiles write A/gate, second `out_tiles` x-tiles write B/up.
 
-Validation run on W7900/gfx1100:
+Validation run on local RX 7900 XTX/gfx1100 (W7900 not rerun):
 
 - `uv run python -m py_compile hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_prefill.py` -> OK.
 - Registry/build plan smoke: `wmma_prefill_bf16_bf16_out` and `wmma_prefill_dual_bf16_bf16_out` resolve from the global registry; `plan_gguf_q4_k_prefill_build(compiler_version='test-compiler')` names `gguf_q4_k_prefill.so`; cached HIP build loads from `/home/lhl/.cache/hipengine/build/gguf_q4_k_prefill-47414a803883a1c6/gguf_q4_k_prefill.so`.
@@ -19212,7 +19212,7 @@ python3 /tmp/p8_q4_dense_gguf_tensor_bench.py \
   --json /tmp/p8_q4_bench/gguf-ffn_gate_up-{baseline,wmma}.json
 ```
 
-Results (7-run medians, W7900/gfx1100):
+Results (7-run medians, local RX 7900 XTX/gfx1100; W7900 not rerun):
 
 | Workload | Baseline | WMMA | Speedup | Notes |
 | --- | ---: | ---: | ---: | --- |
@@ -19576,7 +19576,7 @@ Files:
 - `tests/test_qwen35_gguf_gdn_prefill_routing.py`: new no-GPU routing tests for the chain, segments threshold, fused fallback, missing kernels error, and env-var override.
 - `docs/KERNELS.md`: appended P9.A1 catalog note with measured bucket deltas.
 
-Validation on W7900/gfx1100 (RX 7900 XTX local):
+Validation on local RX 7900 XTX/gfx1100 (W7900 not rerun):
 
 - `uv run --with pytest pytest tests/test_qwen35_linear_attn_gdn_plan.py tests/test_qwen35_gguf_gdn_prefill_routing.py tests/test_qwen35_gguf_compact_moe_wmma_routing.py tests/test_qwen35_gguf_runner.py tests/test_gguf_linear_dispatch.py tests/test_gguf_q4_k_selected_wmma_prefill.py tests/test_gguf_k_selected_wmma_prefill.py -q` -> 89 passed.
 - `rocprofv3 --kernel-trace` qwen35moe 512/0 with `--use-wmma-prefill`:
@@ -19601,7 +19601,7 @@ Files:
 - `tests/test_qwen35_gguf_gdn_prefill_correctness.py`: new (7 tests). Builds synthetic small (8 tokens, 1/2/128/128) and Qwen3.6-35B-A3B-shaped (64 tokens, 16/32/128/128) inputs, plus the segment-threshold boundary triplet (rows = 255 / 256 / 257). Computes a CPU oracle via `gdn_prefill_recurrent_segments` + Python prepare and rmsnorm_gate. Compares all three GPU paths to the oracle (final state + BF16 output) and pins the chain-vs-fused drift to the post-task-#17 budget. The kernel-side bug we hit while authoring: rmsnorm_gate applies `SiLU(gate)` (`x * sigmoid(x)`), not bare `sigmoid(gate)`; the CPU oracle was first written with the wrong activation and the test caught it immediately.
 - `docs/KERNELS.md`: appended P9.A2 catalog note with test pointer and E2E gate evidence.
 
-Validation on W7900/gfx1100 (RX 7900 XTX local):
+Validation on local RX 7900 XTX/gfx1100 (W7900 not rerun):
 
 - `uv run --with pytest pytest tests/test_qwen35_gguf_gdn_prefill_correctness.py -q` -> `7 passed` (registry alias + small + Qwen-shape + 255/256/257 boundary + drift budget).
 - `scripts/qwen35_gguf_bulk_parity.py /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build`:
@@ -19626,7 +19626,7 @@ Files:
 - `hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_pack8_gemv.py`: BF16 and FP16 wrappers. Registers `moe_linear / gguf_q4_k / selected_dual_pack8_gemv_decode_compact_{bf16,fp16}_{bf16,fp16}_out` plus shorthand aliases (`selected_dual_pack8_gemv_decode_{bf16,fp16}_{bf16,fp16}_out`).
 - `docs/KERNELS.md`: appended P9.B1 catalog row with the inline GPU smoke results.
 
-Validation on W7900/gfx1100 (RX 7900 XTX local):
+Validation on local RX 7900 XTX/gfx1100 (W7900 not rerun):
 
 - `py_compile` wrapper: OK; registry/build-plan smoke confirms all 4 variants resolve.
 - HIP build via `build_gguf_q4_k_selected_pack8_gemv(load=True)` produces `gguf_q4_k_selected_pack8_gemv.so` with both extern "C" symbols.
@@ -19651,7 +19651,7 @@ Files:
 - `hipengine/kernels/hip_gfx1100/quant/gguf_k_selected_pack8_gemv.py`: BF16 + FP16 wrappers for both Q5_K and Q6_K. Registers 8 `moe_linear` keys (`selected_pack8_gemv_decode_compact_*` + shorthand aliases under each of `gguf_q5_k` and `gguf_q6_k`).
 - `docs/KERNELS.md`: appended P9.B2 catalog row with inline GPU smoke deltas.
 
-Validation on W7900/gfx1100 (RX 7900 XTX local):
+Validation on local RX 7900 XTX/gfx1100 (W7900 not rerun):
 
 - `py_compile` wrapper: OK; registry smoke confirms all 8 variant keys resolve.
 - HIP build via `build_gguf_k_selected_pack8_gemv(load=True)` produces `gguf_k_selected_pack8_gemv.so` with all 4 extern "C" symbols.
@@ -19678,7 +19678,7 @@ Files:
 - `hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_pack8_gemv.py`: BF16 + FP16 wrappers for both single and dual paths. Registers 4 keys under `linear / gguf_q8_0`: `pack8_gemv_decode_{bf16,fp16}_{bf16,fp16}_out` and `pack8_dual_gate_up_gemv_decode_{bf16,fp16}_{bf16,fp16}_out`.
 - `docs/KERNELS.md`: appended P9.B3 catalog row with inline GPU smoke deltas.
 
-Validation on W7900/gfx1100 (RX 7900 XTX local):
+Validation on local RX 7900 XTX/gfx1100 (W7900 not rerun):
 
 - `py_compile` wrapper: OK; registry smoke confirms all 4 variant keys resolve under `(hip_gfx1100, linear, gguf_q8_0, ...)`.
 - HIP build via `build_gguf_q8_0_pack8_gemv(load=True)` produces `gguf_q8_0_pack8_gemv.so` with all 4 extern "C" symbols.
@@ -19704,7 +19704,7 @@ Files:
 - `hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_pack8_gemv.py`: 4 wrappers built via a `_make_launch(symbol)` factory. Registers 4 keys under `linear / gguf_q4_k`: `pack8_gemv_decode_{bf16,fp16}_{bf16,fp16,f32}_out`.
 - `docs/KERNELS.md`: appended P9.B4 catalog row with inline GPU smoke deltas.
 
-Validation on W7900/gfx1100 (RX 7900 XTX local):
+Validation on local RX 7900 XTX/gfx1100 (W7900 not rerun):
 
 - `py_compile` wrapper: OK; registry smoke confirms all 4 variant keys resolve under `(hip_gfx1100, linear, gguf_q4_k, ...)`.
 - HIP build via `build_gguf_q4_k_pack8_gemv(load=True)` produces `gguf_q4_k_pack8_gemv.so` with all 4 extern "C" symbols.
@@ -19760,7 +19760,7 @@ Tolerances:
 - Q8_0: tightened to `atol=5e-4, rtol=5e-3` per the P9 task description (Q8_0 has the smallest block size and the dequant math is the simplest).
 - BF16/F32 and FP16/F32 (lm-head): `atol=5e-3, rtol=5e-3`. The actual measured deltas are <= 7.2e-5 absolute on the largest tested shapes; the looser threshold reflects the F32 accumulation tolerance the sampler is happy with.
 
-Validation on W7900/gfx1100 (RX 7900 XTX local):
+Validation on local RX 7900 XTX/gfx1100 (W7900 not rerun):
 
 - `uv run --with pytest pytest tests/test_gguf_q4_k_selected_dual_pack8_gemv_decode.py tests/test_gguf_k_selected_pack8_gemv_decode.py tests/test_gguf_q8_0_pack8_gemv_decode.py tests/test_gguf_q4_k_pack8_gemv_decode.py tests/test_gguf_q6_k_pack8_gemv_decode.py -q` -> `215 passed`.
 - Full P9 bundle (above + P8.1/P8.4/P8.5 selected/WMMA + GDN + dispatch + compact MoE routing) -> `410 passed`.
@@ -19797,7 +19797,7 @@ Tests:
 - `tests/test_gguf_gemv_decode_dispatch.py`: 13 no-GPU dispatch tests covering default-off, kwarg/session/env opt-in, session-restore via context manager, kwarg overrides session, env-var truthy/falsy parsing, `gguf_gemv_decode_enabled` precedence, prefill-path-unaffected, missing-key fallback, Q6_K opt-in rewrite, Q5_K missing-kernel fallback.
 - `tests/test_qwen35_gguf_compact_moe_gemv_routing.py`: 4 no-GPU compact MoE c=1 routing tests: default-off uses legacy selected GEMV, opt-in routes through compact scheduler + P9.B1/B2 GEMV, missing-registry-kernel falls back, missing-compact-scratch falls back.
 
-Validation on W7900/gfx1100 (RX 7900 XTX local):
+Validation on local RX 7900 XTX/gfx1100 (W7900 not rerun):
 
 - `py_compile` runner + gguf_linear: OK.
 - `uv run --with pytest pytest tests/test_gguf_gemv_decode_dispatch.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_gguf_linear_dispatch.py tests/test_qwen35_gguf_runner.py tests/test_qwen35_gguf_compact_moe_wmma_routing.py tests/test_qwen35_gguf_gdn_prefill_routing.py tests/test_qwen35_gguf_gdn_prefill_correctness.py -q` -> `73 passed`.
@@ -19822,7 +19822,7 @@ Files:
 - Default footprints cover Qwen3.6-35B-A3B-UD-Q4_K_M (hidden=2048, expert_ffn=4096, top_k=8, vocab=151_936). Densities use the GGUF block bytes-per-weight: Q4_K ~0.5625, Q5_K ~0.6875, Q6_K ~0.8203, Q8_0 ~1.0625. Buckets without a meaningful per-dispatch footprint (GDN, router, scheduler, combine, etc.) emit `None` so the missing data is visible rather than guessed.
 - Override or extend the dict via `--config-json` (JSON object mapping bucket -> bytes-per-dispatch or `null`).
 
-Validation on W7900/gfx1100 (RX 7900 XTX local):
+Validation on local RX 7900 XTX/gfx1100 (W7900 not rerun):
 
 - `py_compile` on both files: OK.
 - `uv run --with pytest pytest tests/test_qwen35_gguf_rocprof_summary.py -q` -> `54 passed` (43 parametrised classifier cases + CSV parsing edge cases + per-phase aggregation + footprint-based GB/s override + paired-mode prefix strip + CLI validation).
@@ -20825,7 +20825,7 @@ PYTHONPATH=. python3 scripts/qwen35_gguf_p9_e2e_correctness.py \
 # status=accepted; KL=0, top1=1.0 for all 3 repeats; deterministic tail; finite logits
 ```
 
-Benchmark / profiler evidence (W7900/gfx1100 target, local gfx1100 run, cached builds):
+Benchmark / profiler evidence (local RX 7900 XTX/gfx1100; W7900 target not rerun, cached builds):
 
 ```bash
 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
@@ -20888,7 +20888,7 @@ rocprofv3 --kernel-trace -d /tmp/p9_d1_router_split_unit_rocprof_csv -f csv -- \
 # observed qwen35_router_topk_split_shared_coop_out_kernel<unsigned short>, End-Start=17440 ns
 ```
 
-512/128 graph replay benchmark (W7900/gfx1100 target, cached builds, same command as P9.H3 with the split router default):
+512/128 graph replay benchmark (local RX 7900 XTX/gfx1100, cached builds, same command as P9.H3 with the split router default; W7900 not rerun):
 
 ```bash
 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
@@ -20984,7 +20984,7 @@ rocprofv3 --kernel-trace -d /tmp/p9_d4_q4t16_silu_decode_only_unit_rocprof_csv -
 # observed q4_k_t16_selected_dual_silu_direct_gemv_kernel<unsigned short>, End-Start=24919 ns
 ```
 
-512/128 graph replay benchmark (W7900/gfx1100 target, cached builds, same command as retained D1/H3 runs):
+512/128 graph replay benchmark (local RX 7900 XTX/gfx1100, cached builds, same command as retained D1/H3 runs; W7900 not rerun):
 
 ```bash
 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1 HIPENGINE_GGUF_WMMA_PREFILL=1 \
@@ -22346,7 +22346,7 @@ Completed the requested post-split-K comparison review. Sources:
 - PARO source-lineage target rows: `benchmarks/results/2026-05-13-source-lineage-qwen35-paro-optimal-512-128.json`, `benchmarks/results/2026-05-13-source-lineage-qwen35-paro-optimal-4k-128.json`, and `benchmarks/README.md` source-lineage table.
 - llama.cpp HIP/Vulkan external baselines: `benchmarks/README.md` tok/s rows, plus peak artifacts `benchmarks/results/2026-05-17-llamacpp-hip-qwen36-peak.json` and `benchmarks/results/2026-05-17-llamacpp-vulkan-qwen36-peak.json`.
 
-Caveats: PARO is Qwen3.5-35B-A3B-PARO w4a16 AWQ/PARO on W7900, not same-model GGUF. hipENGINE retained rows are Qwen3.6-35B-A3B UD-Q4_K_M GGUF on the local gfx1100 24 GiB card; W7900 rerun remains unverified. llama.cpp tok/s uses the benchmark README source-of-truth rows; total-time deltas are derived from independent prefill/decode rates.
+Caveats: PARO is Qwen3.5-35B-A3B-PARO w4a16 AWQ/PARO on W7900, not same-model GGUF. hipENGINE retained rows are Qwen3.6-35B-A3B UD-Q4_K_M GGUF on the local RX 7900 XTX / gfx1100 24 GiB card; W7900 rerun remains unverified. llama.cpp tok/s uses the benchmark README source-of-truth rows; total-time deltas are derived from independent prefill/decode rates.
 
 Comparison snapshot:
 - 512/128 vs PARO target: prefill `-20.6%`, decode `-23.0%`, derived total time `+29.3%`, peak `+2.544 GiB`. Short-context still meaningfully behind the parent target.
@@ -22421,3 +22421,41 @@ uv run python scripts/qwen35_gguf_bench.py \
 Result: **fits**. Single-run diagnostic: prefill `1859.328 tok/s`, decode `85.145 tok/s`, tracked peak `23.368930 GiB`, HIP sampled peak `23.874512 GiB`, finite final logits, final token id `220`. Resolved auto chunk policy: linear `1024`, MoE `1024`, full-attn query `4096`, full-attn post/RoPE `1024`; AOTriton path is V3 cache-backed K/V. Compact artifact: `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-long-context-chunked-smoke.json`.
 
 Decision: this overturns the prior 32K preflight OOM estimate for the local RX 7900 XTX after chunked prefill, but it is still a one-run diagnostic. Do not update `benchmarks/README.md` until we run the standard repeated benchmark/correctness gate and the W7900 rerun.
+
+## 2026-05-21 — Hardware provenance audit for local 24 GiB gfx1100 GGUF rows
+
+Reopened task #38 to sweep for local 24 GiB gfx1100 runs that were still labeled as W7900. The active GPU reports RX 7900 XTX/gfx1100, so local 23.984 GiB GGUF artifacts must not claim W7900 unless they refer to an external/source-lineage baseline or a future W7900 rerun.
+
+Corrections made:
+
+- WORKLOG local GGUF P8/P9 validation headers that mixed W7900 wording with RX 7900 XTX/local-run wording now say `local RX 7900 XTX/gfx1100 (W7900 not rerun)`.
+- `docs/GGUF.md` P9.D1 and P10.D11 caveats now explicitly name the local RX 7900 XTX / gfx1100 24 GiB card.
+- GGUF benchmark JSON artifacts with 23.984375 GiB device totals or generic local-24-GiB wording now name `local RX 7900 XTX / gfx1100` instead of W7900/W7900-class phrasing.
+- Preserved W7900 references for source-lineage PARO rows, llama.cpp retained baselines, default project target docs, and future-W7900-rerun caveats.
+
+Verification commands:
+
+```bash
+python3 - <<'PY'
+import json, subprocess
+from pathlib import Path
+for f in subprocess.check_output(['git','diff','--name-only']).decode().splitlines():
+    if f.endswith('.json'):
+        json.loads(Path(f).read_text())
+print('json-ok')
+PY
+
+python3 - <<'PY'
+from pathlib import Path
+needles = [
+    'W7900/gfx1100 ' + '(RX',
+    'W7900-class ' + 'gfx1100',
+    'measured on available ' + 'gfx1100 local GPU',
+]
+for needle in needles:
+    hits = [str(p) for root in ['WORKLOG.md', 'docs', 'benchmarks/results'] for p in ([Path(root)] if Path(root).is_file() else Path(root).rglob('*')) if p.is_file() and needle in p.read_text(errors='ignore')]
+    assert not hits, (needle, hits)
+print('provenance-grep-ok')
+PY
+# no remaining local-24GiB W7900-label matches; remaining W7900 mentions are older evidence/baselines or future-rerun caveats
+```

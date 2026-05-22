@@ -4,7 +4,7 @@
   "task": "P9.D2 bf16 key RoPE cast-fold diagnostic",
   "status": "rejected",
   "reason": "Correctness passed, but graph replay 512/128 median decode regressed versus retained P9.D1 split-router baseline; patch reverted and not retained.",
-  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "hardware": "local RX 7900 XTX / gfx1100 (W7900 not rerun)",
   "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
   "quant": "gguf_q4_k_m",
   "workload": {

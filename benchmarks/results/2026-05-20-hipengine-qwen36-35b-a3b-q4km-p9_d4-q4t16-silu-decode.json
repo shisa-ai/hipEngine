@@ -5,7 +5,7 @@
   "task": "P9.D4/#28",
   "change": "Add a decode-only Q4T16 selected dual GEMV variant that fuses split-kernel-equivalent BF16 round-trip SiLU*up into the gate/up accumulator output, removing the separate selected expert SiLU launch for rows=1 decode while keeping rows>1 bulk prefill on the split path.",
   "hardware": {
-    "gpu": "AMD Radeon Pro W7900-class gfx1100 run environment",
+    "gpu": "local RX 7900 XTX / gfx1100 run environment (W7900 not rerun)",
     "backend": "hip_gfx1100"
   },
   "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",

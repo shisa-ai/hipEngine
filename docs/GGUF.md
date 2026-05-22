@@ -1711,7 +1711,7 @@ individually; together they currently sit around ~30 ms at prefill and
   GGUF split expert/shared cooperative router for `rows=1`, replacing
   expert-router logits + shared-gate logits + select with one launch.
   Correctness: P9.E2 accepted (`KL=0`, top-1 `100%`, deterministic tails).
-  512/128 graph replay on W7900/gfx1100 moved median decode `85.728 ->
+  512/128 graph replay on local RX 7900 XTX/gfx1100 (W7900 not rerun) moved median decode `85.728 ->
   85.817 tok/s` (+0.10%); retained as a small positive D1 reduction, but
   #51 remains below the `95 tok/s` target.
 - **P9.D2** Audit redundant `bf16_to_f32` / `f32_to_bf16` boundary kernels.
@@ -2753,7 +2753,7 @@ Caveats:
 - PARO rows are **source-lineage targets**, not same-model GGUF measurements:
   Qwen3.5-35B-A3B-PARO w4a16 AWQ/PARO on W7900.
 - hipENGINE rows here are current retained Qwen3.6-35B-A3B UD-Q4_K_M GGUF rows
-  on the local gfx1100 24 GiB card; W7900 rerun remains unverified.
+  on the local RX 7900 XTX / gfx1100 24 GiB card; W7900 rerun remains unverified.
 - llama.cpp HIP/Vulkan rows use the `benchmarks/README.md` external baseline
   tok/s values; peak memory is from the retained diagnostic peak artifacts.
 

@@ -7,7 +7,7 @@
   "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
   "quant": "gguf_q4_k_m",
   "backend": "hip_gfx1100",
-  "hardware": "local gfx1100 24 GiB card; W7900 rerun unverified",
+  "hardware": "local RX 7900 XTX / gfx1100 24 GiB card; W7900 rerun unverified",
   "task_ids": ["P10.B1", "P10.B2", "P10.B3", "P10.B4", "P10.X1"],
   "commits": [
     "731241a feat(P10.B1): wire Q4T16 selected dual WMMA prefill into compact MoE dispatch",
@@ -116,6 +116,6 @@
   "notes": [
     "Bench script is shape-driven and checks finite logits, not text coherence. Both pre-P10 (506/98) and post-Wave-1 (1900/98) measurements are kernel-throughput-correct.",
     "All P10 Wave 1 kernels pass kernel-level CPU-oracle correctness (rtol=2e-2, atol=5e-1) per AGENTS.md gate.",
-    "Target hardware is W7900 per docs/PLAN.md; this row was measured on the local gfx1100 24 GiB card. W7900 rerun is part of the formal acceptance once P10.X1 lands."
+    "Target hardware is W7900 per docs/PLAN.md; this row was measured on the local RX 7900 XTX / gfx1100 24 GiB card. W7900 rerun is part of the formal acceptance once P10.X1 lands."
   ]
 }

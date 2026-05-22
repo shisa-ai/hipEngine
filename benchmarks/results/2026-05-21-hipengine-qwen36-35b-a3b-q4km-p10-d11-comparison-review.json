@@ -8,7 +8,7 @@
   "scope": "Compare retained hipENGINE Qwen3.6-35B-A3B UD-Q4_K_M GGUF P10.D8 rows against source-lineage PARO target and llama.cpp HIP/Vulkan external baselines in benchmarks/README.md.",
   "caveats": [
     "PARO source-lineage rows use Qwen3.5-35B-A3B-PARO w4a16 AWQ/PARO on W7900 and are targets, not same-model GGUF measurements.",
-    "hipENGINE rows use local gfx1100 24 GiB card and unsafe-fastpath R&D opt-in with correctness gates; W7900 rerun remains unverified in the rollup.",
+    "hipENGINE rows use local RX 7900 XTX / gfx1100 24 GiB card and unsafe-fastpath R&D opt-in with correctness gates; W7900 rerun remains unverified in the rollup.",
     "llama.cpp tok/s values are the benchmark README source-of-truth PLAN rows; peak memory comes from retained diagnostic peak artifacts.",
     "Total seconds are derived from independent prefill and decode tok/s rows and are for directional comparison only."
   ],

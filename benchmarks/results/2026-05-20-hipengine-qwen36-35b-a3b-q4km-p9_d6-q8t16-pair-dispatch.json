@@ -5,7 +5,7 @@
   "task": "P9.D6/#28",
   "change": "Add a split-output Q8T16 dual GEMV decode kernel and route same-input K/V plus SSM alpha/beta projection pairs through launch_gguf_linear_pair, reducing Q8T16 decode launches without changing output layout.",
   "hardware": {
-    "gpu": "AMD Radeon Pro W7900-class gfx1100 run environment",
+    "gpu": "local RX 7900 XTX / gfx1100 run environment (W7900 not rerun)",
     "backend": "hip_gfx1100"
   },
   "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",

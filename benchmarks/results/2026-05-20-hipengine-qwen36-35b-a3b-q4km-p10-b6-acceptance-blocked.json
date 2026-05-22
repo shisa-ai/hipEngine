@@ -7,7 +7,7 @@
   "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
   "quant": "gguf_q4_k_m",
   "backend": "hip_gfx1100",
-  "hardware": "local gfx1100 24 GiB card; W7900 rerun unverified",
+  "hardware": "local RX 7900 XTX / gfx1100 24 GiB card; W7900 rerun unverified",
   "task_ids": ["P10.B6", "P10.X1"],
   "commit_under_test": "54acd53",
   "wave1_commits": [
@@ -90,7 +90,7 @@
     "P10.X1.d": "Land correctness fix and re-run P10.B5 gate + P10.B6 acceptance. Only after this can Wave 1 promote to benchmarks/README.md."
   },
   "notes": [
-    "Target hardware is W7900 per docs/PLAN.md; this row was measured on the local gfx1100 24 GiB card. W7900 rerun is part of the formal acceptance once P10.X1 lands.",
+    "Target hardware is W7900 per docs/PLAN.md; this row was measured on the local RX 7900 XTX / gfx1100 24 GiB card. W7900 rerun is part of the formal acceptance once P10.X1 lands.",
     "Bench script checks finite_final_logits, not text coherence. finite_final_logits=true for all 3 measured runs, but the argmax tokens are wrong - the kernels do not crash, they produce finite but semantically incorrect values.",
     "All four Wave 1 kernels (P10.B1 wire + P10.B2 + P10.B3 + P10.B4) are individually correct at the CPU-oracle level. The blocker is upstream of these kernels in the T16 GEMV decode reader path on production weight magnitudes.",
     "Compare with the prior diagnostic artifact 2026-05-20-hipengine-qwen36-35b-a3b-q4km-p10-wave1-blocked.json which captured the same Wave 1 numbers from a different bench session; these P10.B6-specific samples are tighter (1900.444/1900.198/1900.231 vs prior 1909.05/1910.63/1885.06)."

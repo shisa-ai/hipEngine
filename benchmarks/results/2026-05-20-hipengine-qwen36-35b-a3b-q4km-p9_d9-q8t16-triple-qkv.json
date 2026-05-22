@@ -5,7 +5,7 @@
   "task": "P9.D9/#28/#51",
   "change": "Add Q8T16 triple split-output GEMV and route full-attention attn_q+attn_k+attn_v through one same-input launch while preserving separate Q/K/V scratch buffers.",
   "hardware": {
-    "gpu": "AMD Radeon Pro W7900-class gfx1100 run environment",
+    "gpu": "local RX 7900 XTX / gfx1100 run environment (W7900 not rerun)",
     "backend": "hip_gfx1100"
   },
   "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",

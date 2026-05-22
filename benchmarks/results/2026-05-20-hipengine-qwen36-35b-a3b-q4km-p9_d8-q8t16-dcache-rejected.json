@@ -5,7 +5,7 @@
   "task": "P9.D8/#28/#51",
   "change": "Prototype shared-memory caching of the per-block Q8_0 T16 d scales inside the single, concatenated-dual, and split-output dual Q8T16 GEMV kernels to reduce redundant fp16 scale loads.",
   "hardware": {
-    "gpu": "AMD Radeon Pro W7900-class gfx1100 run environment",
+    "gpu": "local RX 7900 XTX / gfx1100 run environment (W7900 not rerun)",
     "backend": "hip_gfx1100"
   },
   "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",

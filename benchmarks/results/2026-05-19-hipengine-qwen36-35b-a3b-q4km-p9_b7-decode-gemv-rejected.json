@@ -5,7 +5,7 @@
   "performance_claim": false,
   "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
   "quant": "gguf_q4_k_m",
-  "hardware": "AMD Radeon Pro W7900 / gfx1100 target; measured on available gfx1100 local GPU",
+  "hardware": "local RX 7900 XTX / gfx1100 (W7900 target not rerun)",
   "workload": {
     "prompt_length": 512,
     "decode_tokens": 128,

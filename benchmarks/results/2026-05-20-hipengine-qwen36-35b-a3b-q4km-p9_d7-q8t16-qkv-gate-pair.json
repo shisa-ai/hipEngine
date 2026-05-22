@@ -5,7 +5,7 @@
   "task": "P9.D7/#28",
   "change": "Extend the split-output Q8T16 pair dispatch to linear-attention attn_qkv+attn_gate projections, using unequal output widths while preserving separate scratch buffers.",
   "hardware": {
-    "gpu": "AMD Radeon Pro W7900-class gfx1100 run environment",
+    "gpu": "local RX 7900 XTX / gfx1100 run environment (W7900 not rerun)",
     "backend": "hip_gfx1100"
   },
   "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",

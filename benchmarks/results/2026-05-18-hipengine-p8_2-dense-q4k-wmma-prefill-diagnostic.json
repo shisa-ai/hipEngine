@@ -7,7 +7,7 @@
   "task": "#10 Benchmark P8.2 dense Q4_K WMMA prefill",
   "summary": "Raw dense Q4_K WMMA prefill is fast on Qwen3.5-0.8B-shaped tensors: actual GGUF layer-0 attn_gate 5.236 ms -> 0.378 ms (13.87x) and actual ffn_gate+ffn_up dual 15.604 ms -> 0.540 ms (28.88x). rocprof confirms gguf_q4_k_prefill_wmma_kernel and gguf_q4_k_prefill_dual_wmma_kernel replace the decode-shaped gguf_q4_k_prefill_out_kernel. However, the real Qwen3.5-0.8B-Q4_K_M resident model still materializes all 2D Q4_K tensors as q4_k_pack8, so the full-model 512/0 path does not exercise Q4_K WMMA yet; opt-in only affects Q8_0 raw projections. qwen35moe also does not exercise P8.2 dense Q4_K because its Q4_K tensors are rank-3 selected experts consumed by selected-MoE kernels (P8.4), not gguf_linear dense dispatch.",
   "hardware": {
-    "gpu": "AMD Radeon Pro W7900 / gfx1100",
+    "gpu": "local RX 7900 XTX / gfx1100 (W7900 not rerun)",
     "device_total_gib": 23.984375
   },
   "software": {

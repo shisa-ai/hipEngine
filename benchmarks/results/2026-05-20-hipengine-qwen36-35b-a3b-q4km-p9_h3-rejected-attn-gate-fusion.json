@@ -10,7 +10,7 @@
   "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
   "quant": "gguf_q4_k_m",
   "backend": "hip_gfx1100",
-  "hardware": "local gfx1100 24 GiB card; W7900 rerun unverified",
+  "hardware": "local RX 7900 XTX / gfx1100 24 GiB card; W7900 rerun unverified",
   "change": "Prototype fused qwen35_paged_full_attn_decode_context_bf16_spans + qwen35_full_attn_gate_mul_bf16 into a direct BF16 gated-context attention kernel and routed rows=1 full-attention decode through it.",
   "validation": {
     "plan_test_command": "PYTHONPATH=. python3 -m pytest tests/test_qwen35_paged_attn_decode_plan.py -q --tb=short",

@@ -5,9 +5,9 @@
   "timestamp": "2026-05-18T01:38:20.254620+00:00",
   "run_tag": "hipengine-qwen36-q4km-prefill-q8-wmma-p8_1",
   "task": "#5 (P8.1) Q8_0 batched WMMA prefill GEMM in qwen35moe GGUF 512/0",
-  "summary": "Landed the P8.1 GGUF Q8_0 batched WMMA prefill kernel (gguf_q8_0_prefill_wmma_kernel<scalar_t,out_t,TM,TN>) and wired it behind an opt-in (HIPENGINE_GGUF_WMMA_PREFILL=1, PrefillConfig.use_wmma_prefill, set_wmma_prefill_enabled, use_wmma_prefill= per-call kwarg). On qwen35moe Qwen3.6-35B-A3B-UD-Q4_K_M at 512/0 (W7900/gfx1100), prefill improves from 107.176 tok/s to 172.822 tok/s (+61.25%, wall-clock 4.777s -> 2.963s, saving 1814.6 ms per 512-token prefill). The Q8_0 dense/shared bucket collapses from 1929.2 ms / 251 dispatches (decode-shaped gguf_k_prefill_out_kernel/pack8 family) to 81.1 ms / 250 dispatches (gguf_q8_0_prefill_wmma_kernel), a 95.8% kernel-time reduction on that bucket and a -38.05% total prefill kernel time reduction. Memory is unchanged (no new resident weight repack). Selected MoE bucket (Q4_K/Q5_K/Q6_K, ~2102 ms) is unchanged by P8.1 and is the next lever (P8.2/P8.4/P8.5).",
+  "summary": "Landed the P8.1 GGUF Q8_0 batched WMMA prefill kernel (gguf_q8_0_prefill_wmma_kernel<scalar_t,out_t,TM,TN>) and wired it behind an opt-in (HIPENGINE_GGUF_WMMA_PREFILL=1, PrefillConfig.use_wmma_prefill, set_wmma_prefill_enabled, use_wmma_prefill= per-call kwarg). On qwen35moe Qwen3.6-35B-A3B-UD-Q4_K_M at 512/0 (local RX 7900 XTX/gfx1100; W7900 not rerun), prefill improves from 107.176 tok/s to 172.822 tok/s (+61.25%, wall-clock 4.777s -> 2.963s, saving 1814.6 ms per 512-token prefill). The Q8_0 dense/shared bucket collapses from 1929.2 ms / 251 dispatches (decode-shaped gguf_k_prefill_out_kernel/pack8 family) to 81.1 ms / 250 dispatches (gguf_q8_0_prefill_wmma_kernel), a 95.8% kernel-time reduction on that bucket and a -38.05% total prefill kernel time reduction. Memory is unchanged (no new resident weight repack). Selected MoE bucket (Q4_K/Q5_K/Q6_K, ~2102 ms) is unchanged by P8.1 and is the next lever (P8.2/P8.4/P8.5).",
   "hardware": {
-    "gpu": "AMD Radeon Pro W7900 / gfx1100 (RDNA3)",
+    "gpu": "local RX 7900 XTX / gfx1100 (W7900 not rerun)",
     "device_total_gib": 23.984375
   },
   "software": {

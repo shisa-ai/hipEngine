@@ -10,7 +10,7 @@
   "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
   "quant": "gguf_q4_k_m",
   "backend": "hip_gfx1100",
-  "hardware": "local gfx1100 24 GiB card; W7900 rerun unverified",
+  "hardware": "local RX 7900 XTX / gfx1100 24 GiB card; W7900 rerun unverified",
   "change": "Prototype preloaded Q6T16 dense lm-head per-column d scales into registers once per tile/block.",
   "validation": {
     "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 -m pytest tests/test_gguf_q6_k_t16_gemv_decode.py -q --tb=short",
