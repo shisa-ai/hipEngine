@@ -22899,3 +22899,27 @@ Q4_K_S is not slower in these fastpath runs: vs Q4_K_M it is `+0.8%/+3.3%/+4.4%`
 Against the prior local PARO 4K/128 row, latest Q4_K_S is `2637.148` prefill vs `2710.869` (`-2.7%`), `97.121` decode vs `106.637` (`-8.9%`), and `21.416 GiB` tracked vs `20.047 GiB` (`+1.369 GiB`). Q4_K_S now fits at least `65K/128` locally (`23.102 GiB` tracked, `23.627 GiB` sampled HIP); higher contexts were not probed in this pass. Prior Q4_K_M ceiling remains around `35K` (`35070/1` fit, `36864/1` fail during prefill, `40960/1` allocation fail).
 
 Decision: Q4_K_S is the better local GGUF column after this pass. Next work should probe Q4_K_S max-fit above 65K and only revisit no-T16/emergency residency if long-context headroom outweighs the measured speed loss.
+
+## 2026-05-22 — Dense Q8_0 T16 decode probes rejected for dual Q4_K_M/Q4_K_S gate
+
+Task #2 targeted the largest remaining GGUF decode bucket, dense/shared `Q8_0` T16 GEMV. The new retention rule is dual-column: a decode optimization must be acceptable for both Q4_K_M and Q4_K_S.
+
+Baseline source: `benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-after-memory-decode-pass-review.json` local RX 7900 XTX/gfx1100 4K/128 diagnostics:
+
+- Q4_K_M: prefill `2552.043 tok/s`, decode `96.264 tok/s`, tracked peak `22.572 GiB`.
+- Q4_K_S: prefill `2637.148 tok/s`, decode `97.121 tok/s`, tracked peak `21.416 GiB`.
+
+Rejected probes:
+
+1. `T16_K_VEC=4` scale-amortization loop in `gguf_q8_0_t16_gemv.hip`: grouped four adjacent K lanes per thread to reduce redundant T16 scale loads without the previously rejected lane0 `__shfl` broadcast. Correctness tests passed, but Q4_K_S 4K/128 single-run decode regressed to `89.653 tok/s` (`-7.7%` vs baseline), so the probe was reverted before Q4_K_M measurement.
+2. Scalar `fmaf(xv, d*q, acc)` in the existing one-K-per-thread loop: targeted tests passed. Q4_K_S 4K/128 3-run median decode was `97.658 tok/s` (`+0.55%` vs baseline), but Q4_K_M 4K/128 3-run median decode was `95.876 tok/s` (`-0.40%` vs baseline). Rejected because it does not clear the dual-column gate and the effect is below the threshold worth defending.
+
+Validation after final revert:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+uv run pytest tests/test_gguf_q8_0_t16_gemv_decode.py tests/test_gguf_linear_dispatch.py -q
+# 61 passed
+```
+
+Compact diagnostic artifact: `benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-q8-t16-decode-probes-rejected.json`. No source change retained. Next decode-gap work should move to structural selected-MoE launch reduction/fusion rather than scalar Q8_0 T16 tweaks.
