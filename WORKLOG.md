@@ -22459,3 +22459,37 @@ print('provenance-grep-ok')
 PY
 # no remaining local-24GiB W7900-label matches; remaining W7900 mentions are older evidence/baselines or future-rerun caveats
 ```
+
+## 2026-05-21 — Task #39 GGUF chunked prefill revalidation
+
+Task #39 was missing from the active task store, so replacement task #42 was used. Re-ran the targeted correctness bundle and a narrow 32K smoke after the GGUF chunked-prefill review/provenance fixes. Hardware provenance: current attached GPU is **AMD Radeon RX 7900 XTX / gfx1100**, 23.984375 GiB; W7900 was not rerun.
+
+Correctness:
+
+```bash
+PYTHONPATH=. uv run pytest \
+  tests/test_qwen35_gguf_runner.py \
+  tests/test_qwen35_gguf_full_attention_gpu.py \
+  tests/test_qwen35_gguf_p10_x2_layer_correctness.py \
+  tests/test_qwen35_gguf_chunked_prefill.py -q
+# 11 passed
+```
+
+Narrow 32K smoke command:
+
+```bash
+test -f /tmp/hipengine-hipcc-version.txt || hipcc --version > /tmp/hipengine-hipcc-version.txt
+HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+uv run python scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m \
+  --prompt-length 32768 --decode-tokens 1 --warmup-decode-tokens 0 \
+  --warmup-runs 0 --measured-runs 1 --force-bulk-prefill \
+  --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --json /tmp/hipengine-gguf-task39-32k-1-revalidation.json
+```
+
+Result: **fits**. Single-run diagnostic: prefill `1855.354 tok/s`, decode `50.877 tok/s` for the one-token decode sample, tracked peak `23.368929 GiB`, HIP sampled peak `23.874512 GiB`, finite final logits, final token id `256`. Resolved auto chunk policy: linear `1024`, MoE `1024`, full-attn query `4096`, full-attn post/RoPE `1024`; AOTriton path remains V3 cache-backed K/V.
+
+Compact artifact: `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-task39-32k-smoke.json`. Decision: diagnostic evidence only; no benchmark rollup update because this is a single RX 7900 XTX smoke and W7900/repeated correctness-gated runs remain pending.
