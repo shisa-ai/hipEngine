@@ -46,6 +46,7 @@ single-model tuning targets
 [ParoQuant](https://github.com/shisa-ai/paroquant) format.
 
 - INT8 KV cache support has been added. Qwen 3 MoE's full 256K context window can fit in <24GB tracked memory; see [Memory Usage](#memory-usage).
+- Preliminary Qwen 3.6 Q4_K_M and Q4_K_S GGUF support has been added - it runs a bit slower than our PARO models and Q4_K_M is a fair bit bigger as a quant so Q4_K_S is recommented - it still uses more memory so expect only 64K of context, but GGUF support should give more options for future model loading
 - Current gfx1100 performance snapshots are summarized in [Performance](#performance) and compared against recent llama.cpp Q4_K_M baselines.
 
 
@@ -115,7 +116,7 @@ While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipEngine/b
 
 ### Prefill tok/s
 
-| Workload | hipEngine shisa Qwen3.6 packed PARO | llama.cpp HIP | llama.cpp Vulkan |
+| Workload | hipEngine PARO | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: |
 | 512/128 | **2500.565** | 2436.049 | 1816.927 |
 | 4K/128 | **2899.685** | 2176.905 | 1705.093 |
@@ -124,7 +125,7 @@ While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipEngine/b
 
 ### Decode tok/s
 
-| Workload | hipEngine shisa Qwen3.6 packed PARO | llama.cpp HIP | llama.cpp Vulkan |
+| Workload | hipEngine PARO | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: |
 | 512/128 | 111.516 | 85.487 | **127.515** |
 | 4K/128 | 113.094 | 87.375 | **120.163** |
@@ -133,7 +134,7 @@ While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipEngine/b
 
 ### Peak GiB
 
-| Workload | hipEngine shisa Qwen3.6 packed PARO | llama.cpp HIP | llama.cpp Vulkan |
+| Workload | hipEngine PARO | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: |
 | 512/128 | **18.123** | 21.125 | 20.844 |
 | 4K/128 | **19.455** | 21.197 | 20.969 |
@@ -146,7 +147,7 @@ The gfx1151 backend is a native `--offload-arch=gfx1151` peer backend using the 
 
 ### Prefill tok/s
 
-| Workload | hipEngine shisa Qwen3.6 packed PARO | llama.cpp HIP | llama.cpp Vulkan |
+| Workload | hipEngine PARO | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: |
 | 512/128 | 983.206 | **1058.738** | 638.008 |
 | 4K/128 | **1029.402** | 1004.220 | 595.400 |
@@ -155,7 +156,7 @@ The gfx1151 backend is a native `--offload-arch=gfx1151` peer backend using the 
 
 ### Decode tok/s
 
-| Workload | hipEngine shisa Qwen3.6 packed PARO | llama.cpp HIP | llama.cpp Vulkan |
+| Workload | hipEngine PARO | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: |
 | 512/128 | **62.060** | 50.537 | 57.615 |
 | 4K/128 | **63.605** | 49.379 | 55.027 |
