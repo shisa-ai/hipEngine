@@ -2880,7 +2880,9 @@ Interpretation:
 - The largest structural source is not prefill scratch anymore; chunked prefill
   fixed that. The remaining gap is the larger mixed-quant GGUF payload plus
   resident T16 decode-repack layouts kept for speed.
-- Low-risk cleanup remains worth doing but will not close 128K alone: the GGUF
-  prefill scratch still allocates one-layer `key_cache` / `value_cache` buffers
-  even though full-attention prefill replaces them with the resident KV cache
-  tensors. Expected saving is only about `64 MiB` at 32K and `256 MiB` at 128K.
+- 2026-05-21 follow-up cleanup removed the redundant resident GGUF prefill
+  scratch `key_cache` / `value_cache` buffers and unused `full_key_bf16`
+  allocation. A 32K/1 local RX 7900 XTX diagnostic smoke measured tracked peak
+  `23.368929 -> 23.302035 GiB` (`68.5 MiB` saved). This helps max-fit headroom
+  but does not change the conclusion: 128K still needs larger structural work
+  such as decode-repack residency reduction or a smaller GGUF quant.

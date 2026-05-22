@@ -22689,3 +22689,41 @@ Updated `docs/GGUF.md` with a P10.D12 diagnostic section sourced from `benchmark
 The table columns are structured as `PARO w4_paro`, `GGUF Q4_K_M`, and a placeholder `GGUF Q4_K_S (next)` column for the next local GGUF quant comparison. The section explicitly labels the evidence as single-run diagnostic on local RX 7900 XTX/gfx1100, not a retained rollup row or same-model quality/perf claim.
 
 Validation: re-read the inserted docs section and ran `git diff --check` (clean).
+
+## 2026-05-21 — GGUF resident prefill scratch KV cleanup
+
+Implemented task #61, the low-risk memory cleanup identified in the PARO/GGUF footprint review.
+
+Change:
+
+- `_GGUFFullAttentionPrefillScratch.allocate()` now accepts `allocate_kv_cache`.
+- Resident `Qwen35GGUFResidentSession` bulk prefill passes `allocate_kv_cache=False` because full-attention prefill already replaces scratch `key_cache` / `value_cache` with the resident `_FullStackScratch.full_cache(layer_id)` tensors before dispatch.
+- Removed the unused `full_key_bf16` scratch allocation; cache-backed AOTriton reads BF16 K directly from resident KV cache.
+- Standalone layer helpers keep the default `allocate_kv_cache=True` path so direct full-attention prefill tests/tools still have a scratch-backed cache if they do not provide a resident cache.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_gguf_runner.py
+PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_chunked_prefill.py -q
+PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_runner.py tests/test_qwen35_gguf_full_attention_gpu.py tests/test_qwen35_gguf_p10_x2_layer_correctness.py tests/test_qwen35_gguf_chunked_prefill.py -q
+# 12 passed
+```
+
+Diagnostic 32K/1 memory smoke on local RX 7900 XTX/gfx1100 (W7900 not rerun):
+
+```bash
+HIPENGINE_GGUF_AOTRITON_PREFILL=v3 HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 \
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+uv run python scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m \
+  --prompt-length 32768 --decode-tokens 1 --warmup-decode-tokens 0 \
+  --warmup-runs 0 --measured-runs 1 --force-bulk-prefill \
+  --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/hipengine-gguf-no-prefill-kv-32k-1.json
+```
+
+Result: fits, finite logits, final token id `256`, prefill `1866.188 tok/s`, tracked peak `23.302035 GiB`, HIP sampled peak `23.801270 GiB`. Compared with the previous task #39 32K/1 diagnostic (`23.368929 GiB` tracked peak), this saves `0.066895 GiB` / `68.5 MiB` tracked. Compact artifact: `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-no-prefill-scratch-kv.json`.
+
+Decision: accepted code cleanup and diagnostic artifact only; no benchmark rollup update because throughput is not a retained/repeated row.

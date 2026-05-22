@@ -1181,6 +1181,11 @@ class Qwen35GGUFFullStackRunner:
         use_aotriton = threshold > 0 and rows >= threshold
         paged_attn_library = self._paged_attn_decode_library()
         end = scratch.start + rows
+        if scratch.key_cache is None or scratch.value_cache is None:
+            raise RuntimeError(
+                "GGUF full-attention prefill requires cache-backed key/value buffers; "
+                "resident bulk prefill should replace scratch caches with _FullStackScratch.full_cache(layer_id)"
+            )
 
         if use_aotriton:
             aotriton_library = self._aotriton_prefill_library()
@@ -2802,6 +2807,7 @@ class Qwen35GGUFResidentSession:
             self.runner,
             rows=prefill_rows,
             capacity=prefill_capacity,
+            allocate_kv_cache=False,
             runtime=runtime,
         )
         self._buffers = (
@@ -3572,7 +3578,6 @@ class _GGUFFullAttentionPrefillScratch:
     full_query: object
     full_key: object
     full_query_bf16: object
-    full_key_bf16: object
     full_gate: object
     full_attn_bf16: object
     full_gated: object
@@ -3603,8 +3608,8 @@ class _GGUFFullAttentionPrefillScratch:
     moe_shared_up: object
     moe_shared_intermediate: object
     moe_shared_out: object
-    key_cache: object
-    value_cache: object
+    key_cache: object | None
+    value_cache: object | None
     block_table: object
     positions: object
     context_counts: object
@@ -3639,6 +3644,7 @@ class _GGUFFullAttentionPrefillScratch:
         *,
         rows: int,
         capacity: int | None = None,
+        allocate_kv_cache: bool = True,
         runtime: HipRuntime,
     ):
         if rows <= 0:
@@ -3678,7 +3684,7 @@ class _GGUFFullAttentionPrefillScratch:
         linear_ab_bytes = rows * cfg.ssm_time_step_rank * 2
         recurrent_f32_bytes = rows * cfg.ssm_inner_size * 4
         prefill_scalar_bytes = rows * cfg.ssm_time_step_rank * 4
-        cache_nbytes = max_positions * cfg.head_count_kv * cfg.key_length * 2
+        cache_nbytes = max_positions * cfg.head_count_kv * cfg.key_length * 2 if allocate_kv_cache else 0
         block_table_arr = np.tile(np.arange(blocks, dtype=np.int32), (capacity, 1))
         positions_arr = np.arange(capacity, dtype=np.int64)
         context_arr = positions_arr + np.int64(1)
@@ -3714,7 +3720,6 @@ class _GGUFFullAttentionPrefillScratch:
             "full_query": buf(q_f32_bytes),
             "full_key": buf(kv_f32_bytes),
             "full_query_bf16": buf(rows * runner.q_width * 2),
-            "full_key_bf16": buf(rows * runner.kv_width * 2),
             "full_gate": buf(rows * runner.q_width * 2),
             "full_attn_bf16": buf(rows * runner.q_width * 2),
             "full_gated": buf(rows * runner.q_width * 2),
@@ -3745,8 +3750,8 @@ class _GGUFFullAttentionPrefillScratch:
             "moe_shared_up": buf(rows * moe_shared_ffn * DType.BF16.itemsize),
             "moe_shared_intermediate": buf(rows * moe_shared_ffn * DType.BF16.itemsize),
             "moe_shared_out": buf(hidden_bytes),
-            "key_cache": buf(cache_nbytes),
-            "value_cache": buf(cache_nbytes),
+            "key_cache": buf(cache_nbytes) if allocate_kv_cache else None,
+            "value_cache": buf(cache_nbytes) if allocate_kv_cache else None,
             "block_table": buf(block_table_arr.nbytes),
             "positions": buf(positions_arr.nbytes),
             "context_counts": buf(context_arr.nbytes),
@@ -3814,7 +3819,7 @@ class _GGUFFullAttentionPrefillScratch:
             moe_wmma_total_host=moe_wmma_total_host,
             moe_selected_rows_capacity=moe_selected_rows_capacity,
             moe_wmma_rows_capacity=moe_wmma_rows_capacity,
-            buffers=tuple(fields.values()),
+            buffers=tuple(value for value in fields.values() if value is not None),
         )
 
     def for_chunk(self, start: int, rows: int, total_tokens: int, *, runtime: HipRuntime, stream: int = 0):

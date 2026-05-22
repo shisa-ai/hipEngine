@@ -1,0 +1,44 @@
+{
+  "schema": "hipengine_benchmark_result_v1",
+  "status": "diagnostic_smoke_passed",
+  "performance_claim": false,
+  "label": "p10_no_prefill_scratch_kv_32k_smoke",
+  "date": "2026-05-21",
+  "git_commit_under_test": "working_tree_based_on_0c9874f",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1100",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "device_total_gib": 23.984375,
+    "note": "local RX 7900 XTX / gfx1100 24 GiB; W7900 not rerun"
+  },
+  "change": "_GGUFFullAttentionPrefillScratch.allocate(... allocate_kv_cache=False) for resident GGUF bulk prefill, and removed unused full_key_bf16 scratch allocation. Standalone layer helper retains optional scratch KV allocation for direct tests/tools.",
+  "command": "HIPENGINE_GGUF_AOTRITON_PREFILL=v3 HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. uv run python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 32768 --decode-tokens 1 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/hipengine-gguf-no-prefill-kv-32k-1.json",
+  "baseline": {
+    "artifact": "benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-task39-32k-smoke.json",
+    "tracked_peak_allocated_gib": 23.368929401040077,
+    "hip_used_peak_sampled_gib": 23.87451171875,
+    "prefill_tok_s": 1855.3541881262947
+  },
+  "result": {
+    "prefill_tok_s": 1866.188426972469,
+    "decode_tok_s": 51.9061038864529,
+    "tracked_peak_allocated_gib": 23.302034869790077,
+    "owned_session_peak_gib": 23.302034854888916,
+    "hip_used_peak_sampled_gib": 23.80126953125,
+    "finite_final_logits": true,
+    "final_token_id": 256
+  },
+  "delta": {
+    "tracked_peak_allocated_gib": -0.06689453125,
+    "tracked_peak_saved_mib": 68.5,
+    "hip_used_peak_sampled_gib": -0.0732421875
+  },
+  "validation": {
+    "pytest": "PYTHONPATH=. uv run pytest tests/test_qwen35_gguf_runner.py tests/test_qwen35_gguf_full_attention_gpu.py tests/test_qwen35_gguf_p10_x2_layer_correctness.py tests/test_qwen35_gguf_chunked_prefill.py -q -> 12 passed",
+    "correctness_scope": "finite logits and targeted GGUF correctness tests; diagnostic memory smoke only"
+  },
+  "decision": "accepted code cleanup; no rollup update because this is a one-run memory diagnostic and does not change retained throughput rows"
+}
