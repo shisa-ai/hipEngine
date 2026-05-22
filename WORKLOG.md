@@ -22727,3 +22727,25 @@ uv run python scripts/qwen35_gguf_bench.py \
 Result: fits, finite logits, final token id `256`, prefill `1866.188 tok/s`, tracked peak `23.302035 GiB`, HIP sampled peak `23.801270 GiB`. Compared with the previous task #39 32K/1 diagnostic (`23.368929 GiB` tracked peak), this saves `0.066895 GiB` / `68.5 MiB` tracked. Compact artifact: `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-no-prefill-scratch-kv.json`.
 
 Decision: accepted code cleanup and diagnostic artifact only; no benchmark rollup update because throughput is not a retained/repeated row.
+
+## 2026-05-21 — GGUF decode-repack residency audit
+
+Task #62 audited whether decode-repack residency is an obvious memory/speed lever after the prefill-scratch KV cleanup.
+
+Findings:
+
+- T16 decode-repack is mostly a replacement layout, not a raw+T16 sidecar duplication for the same tensor. `plan_qwen35_gguf_materialization(..., decode_repack=True)` maps selected expert Q4/Q5/Q6, dense layer Q8_0, and lm_head Q6 into `*_t16_v1` tile allocations. The token embedding remains raw Q8_0.
+- Source bytes by repack=true layout: Q4T16 selected `11.250 GiB`, Q5T16 selected `6.359 GiB`, dense layer Q8T16 `1.390 GiB`, Q6T16 selected/lm `1.004 GiB`, raw Q8 token embedding `0.503 GiB`, BF16 dense `0.093 GiB`, F32 dense `0.004 GiB`.
+- Raw/no-repack does save memory, but current safe raw paths lose the fast kernels that make GGUF usable.
+
+512/1 diagnostics on local RX 7900 XTX/gfx1100 (single-run, not retained rows):
+
+| Mode | Tracked peak GiB | Prefill tok/s | Decode tok/s | Notes |
+| --- | ---: | ---: | ---: | --- |
+| T16 decode-repack + WMMA prefill + GEMV decode | `21.341656` | `1545.279` | `53.047` | fast path |
+| raw/no-repack safe mode | `20.884625` | `117.447` | `40.195` | saves `468 MiB`, loses `92.4%` prefill |
+| raw/no-repack + WMMA prefill, no GEMV decode | `20.884625` | `5.608` | `39.980` | not viable |
+
+Commands were captured in compact artifact `benchmarks/results/2026-05-21-hipengine-qwen36-35b-a3b-q4km-p10-decode-repack-residency-audit.json`.
+
+Decision: do **not** add a default no-repack/long-context residency mode now. The ~`0.46 GiB` saving is real but far smaller than the PARO-vs-GGUF payload gap and comes with catastrophic prefill loss in current paths. Keep T16 resident for fast GGUF; revisit only as an explicit emergency max-context mode after `Q4_K_S` or granular kernels are available.

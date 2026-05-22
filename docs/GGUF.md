@@ -2884,5 +2884,10 @@ Interpretation:
   scratch `key_cache` / `value_cache` buffers and unused `full_key_bf16`
   allocation. A 32K/1 local RX 7900 XTX diagnostic smoke measured tracked peak
   `23.368929 -> 23.302035 GiB` (`68.5 MiB` saved). This helps max-fit headroom
-  but does not change the conclusion: 128K still needs larger structural work
-  such as decode-repack residency reduction or a smaller GGUF quant.
+  but does not change the conclusion: 128K still needs larger structural work.
+- Decode-repack residency was audited next. Turning off T16 decode-repack on a
+  512/1 diagnostic saves about `468 MiB` tracked (`21.342 -> 20.885 GiB`),
+  but current raw/no-repack paths lose the fast prefill/decode kernels
+  (`1545 -> 117 tok/s` prefill in safe mode). Keep T16 resident for the fast
+  path; use `Q4_K_S` or a future granular/emergency long-context mode for larger
+  memory movement.
