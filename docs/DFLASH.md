@@ -898,7 +898,7 @@ repeated in the Gate column.
 
 | # | Task | Gate | Expected Δ | Actual Δ | Status |
 | --- | --- | --- | --- | --- | --- |
-| R2.1 | Pull MTP M13.C (C-side per-layer dispatcher) through to the DFlash chain verifier launch path once it lands in MTP. | `kernel_calls/pass` unchanged; host verify wall drops; rocprofv3 shows no in-kernel-time regression. | verify 25→20 ms (−20%); cycle_cost 3.61→2.9; 0.53x→0.65x | _TBD_ | Blocked on MTP M13.C |
+| R2.1 | Pull MTP M13.C (C-side per-layer dispatcher) through to the DFlash chain verifier launch path once it lands in MTP. | `kernel_calls/pass` unchanged; host verify wall drops; rocprofv3 shows no in-kernel-time regression. | verify 25→20 ms (−20%); cycle_cost 3.61→2.9; 0.53x→0.65x | **In progress.** M14.dispatch.0-alpha landed 2026-05-23 (argtypes caching foundation, [artifact](../benchmarks/results/2026-05-23-hipengine-mtp-bench-suite-w7900-m14.dispatch.0-alpha-diagnostic.json)): cycle_cost 3.61→3.64 (+0.7%, parity within ±17% std). cProfile confirms Python-side win is real (−6.6% kernel-launcher tottime) but absorbed into proportional AR speedup. The actual cycle_cost lever is **M14.dispatch.1-beta** (the real C-side dispatcher), still pending. | Partial: foundation landed; real win pending |
 | R2.2 | Land DFlash drafter `propose()` chain on packed PARO target + z-lab drafter, re-measure same-session AR. Build on the existing Phase D3 work; close out the half-built drafter forward and wire to `verify_chain_bulk_and_commit`. | Exact greedy AR equality on quicksort + 3 representative prompts; finite logits across cycles. Retained DFlash row > current best Round-1 (`0.289x`). | New retained DFlash row at >=0.7x AR (acceptance bump from MTP 30% to DFlash ~50–65%). | _TBD_ | Pending R2.1 |
 | R2.3 | Drafter cross-context bucketing matching BeeLlama `cross_bucket()` (<=16→16; <=128→next pow2; >128→128-aligned). Replace the exact `context_tokens` graph key. | Drafter graph cache hit rate >=50% after first 8 cycles on real decode; replay validates exact candidate equality. | Drafter time 68.9 ms/call → ~25–40 ms/call (graph replay amortizes for steady-state cycles). | _TBD_ | Pending R2.2 |
 | R2.4 | Reduced-logits verifier path wired through DFlash chain accept summary. Confirm no full-vocab tensor materializes in steady state. | `HIPENGINE_VERIFY_GPU_ACCEPT=1` returns exact-AR; rocprofv3 shows no full-vocab lm-head kernel and no full-vocab D2H copy in the verifier window. | verify −0.5–1 ms/cycle (small; most groundwork already in MTP M12.6+). | _TBD_ | Pending R2.2 |
@@ -913,6 +913,46 @@ performance claim until the economics artifact shows
 `avg_visible_tokens_per_cycle / cycle_cost_ar_tokens > 1.0` on the same
 prompt/workload, with exact AR equality and accepted-token provenance
 preserved.
+
+### M14.dispatch.1-beta design notes (next session)
+
+Alpha (`hipengine/core/ctypes_cache.py` + 38 wrapper refactors) is committed.
+The **real** cycle_cost lever needs the actual C dispatcher. Design:
+
+1. **New TU** `kernels/hip_gfx1100/dispatch/moe_c1_dispatch.cpp` (plain C++, no
+   HIP includes — it only calls existing `extern "C" hipengine_*` launchers via
+   typed function pointers). Built via the existing `build_hip(sources=[...],
+   family="moe_c1_dispatch", ...)` infra.
+2. **One extern-C entry point** `hipengine_moe_c1_dispatch_fp16(const FnTable*
+   fns, const Args* args)` where:
+   - `FnTable` holds the 13 `void*` function pointers (router, paro_rotate1,
+     gemv_awq_selected_dual, silu_mul_dual_rotate, gemv_awq_selected_pack8,
+     5 shared-expert kernels, combine).
+   - `Args` holds the ~45 `void*` ptrs and ~10 `int64_t` dims + 1 stream.
+   - Inside the function, each `void*` is cast to its typed function-pointer
+     signature and called in sequence with the matching subset of args. The
+     compiler can keep state in registers across the calls.
+3. **Python side**: a `MoeC1DispatchCache` object built once per layer at
+   warmup that pre-resolves all 13 function pointers via `signed_kernel_fn`
+   (so argtypes is set), pre-resolves all 45 weight tensor pointers (cached on
+   the LayerRuntime), and snapshots the dims that are constant for the layer
+   (hidden_size, num_experts, top_k, etc.). At runtime, `run_moe_c1_fp16`
+   just updates the variable ptrs (hidden, residual, scratch, out) and the
+   variable dims (tokens, group_size) in the cached `Args` struct, then makes
+   one ctypes call.
+4. **Two paths**: handle linear-attention vs full-attention shared-expert
+   variants either via two separate entry points
+   (`hipengine_moe_c1_dispatch_fp16_linear` / `_full`) or via a single entry
+   point with a `shared_expert_kind` enum dispatched in-C.
+5. **Gate** with `HIPENGINE_MOE_C1_C_DISPATCH=1` env var (default off) so we
+   can A/B and never have to revert.
+
+Expected savings (per M13.C cProfile attribution): 6–8 ms/pass = ~3–5%
+cycle_cost reduction. Asymmetric across AR/spec (verifier has more launches
+per cycle, so per-launch overhead reduction helps cycle_cost specifically),
+unlike the alpha-level argtypes caching which sped AR and spec proportionally.
+
+LoC budget: ~250–350 LoC total (150 C, 100 Python, 50 build-system, 50 tests).
 
 ### Lessons carried forward (living table)
 
@@ -929,4 +969,5 @@ positive or negative.
 | L6 | **Tree before chain is premature**: tree topology is correctness-free (DDTree exact-AR holds at the kernel level), but tree-before-chain > AR yields nothing. Topology helps 5–15%; drafter quality helps 50–200%. | DFlash 2026-05-19 branching top-K | Tree/DDTree work ordering |
 | L7 | **Drafter quality dominates**: native MTP (replicated single decoder layer) caps acceptance ~30% at B=3. DFlash-class drafters (1-layer cross-attention over hidden ring) reach 60–90%. Drafter quality is the single largest visible/cycle lever. | MTP M11–M13 baseline acceptance | Drafter design choices |
 | L8 | **Warm scratch is necessary, not sufficient**: persistent rings reduce verifier wall ~25–35% but do not unlock break-even alone. Keep as a building block. | DFlash 2026-05-18 warm-scratch | All scratch/cache discipline work |
+| L9 | **Symmetric Python-side optimizations don't move cycle_cost**: argtypes caching, library handle caching, raw-int call sites — all real wins (−6.6% kernel-launcher tottime in M14.dispatch.0-alpha) but they speed AR and spec proportionally so the AR-tok-eq ratio stays flat. To move cycle_cost, the optimization must be asymmetric: reduce per-launch overhead in a path that has *more launches per cycle* in spec than in AR. The verifier's ~1011 launches/cycle vs AR's ~100 launches/decode-token gives ~10x leverage; bundling 13 ctypes calls into 1 (C-side dispatcher) captures it. | M14.dispatch.0-alpha (2026-05-23) | All host-overhead optimizations |
 

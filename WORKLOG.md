@@ -21966,3 +21966,11 @@ The wall-clock improvement is real and consistent with the cProfile attribution 
 
 **Artifacts:**
 - `benchmarks/results/2026-05-23-hipengine-mtp-bench-suite-w7900-m14.dispatch.0-alpha-diagnostic.json` (parity result, status=diagnostic)
+
+## 2026-05-23 docs: DFLASH.md R2.1 result + M14.dispatch.1-beta design notes
+
+Updated `docs/DFLASH.md` Round-2 punchlist row R2.1 with the M14.dispatch.0-alpha measured result (parity, cycle_cost 3.61→3.64 within ±17% std, exact-AR holds). Added new section "M14.dispatch.1-beta design notes (next session)" with the full design for the actual C-side per-MoE-layer dispatcher that lands the projected 6-8 ms/pass = 3-5% cycle_cost reduction. Added lesson L9 to the living lessons table.
+
+L9: Symmetric Python-side optimizations don't move cycle_cost. argtypes caching, library handle caching, raw-int call sites — all real wins but they speed AR and spec proportionally so the AR-tok-eq ratio stays flat. To move cycle_cost the optimization must be asymmetric: reduce per-launch overhead in a path that has more launches per cycle in spec than in AR.
+
+Next session entry point: implement M14.dispatch.1-beta per the design notes in DFLASH.md (new `kernels/hip_gfx1100/dispatch/moe_c1_dispatch.cpp` TU + Python `MoeC1DispatchCache` + `HIPENGINE_MOE_C1_C_DISPATCH=1` env gate).
