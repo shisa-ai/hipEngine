@@ -971,6 +971,14 @@ at ~57 ms verifier wall before any kernel work.
   breaking output. Fix: set `HIPENGINE_COMPILER_VERSION_FILE` env var so
   the JIT cache key stays stable; pre-warm the build cache by running the
   smoke once before rocprofv3.
+- **Do not wrap the prompt-suite/economics parent harness in rocprofv3.**
+  `scripts/mtp-bench.py --mode hipengine-current` runs
+  `mtp_prompt_suite_economics.py`, which shells out to
+  `mtp_verifier_economics.py`, which shells out again to
+  `mtp_chain_e2e_smoke.py`. Profiling the parent propagates profiler/JIT state
+  into nested Python children and can look like an hour-long hang if a cache
+  artifact is missing. Use `scripts/mtp_verifier_rocprof.py` for verifier
+  kernel breakdowns, or pre-warm and profile only the final smoke child.
 - **SDK ROCTX library needs sysdeps on LD_LIBRARY_PATH**: the therock
   `librocprofiler-sdk-roctx.so.1` depends on `librocm_sysdeps_dw.so.1`,
   which lives under `<sdk_core>/lib/rocm_sysdeps/lib`. Without it,

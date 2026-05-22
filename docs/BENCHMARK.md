@@ -284,6 +284,8 @@ rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile -- \
   uv run python scripts/smoke.py --model Qwen3-0.6B --workload c1-short
 ```
 
+Profile the leaf workload, not a benchmark wrapper that spawns children. In particular, do not put `rocprofv3` around the MTP prompt-suite/economics parent harness; use `scripts/mtp_verifier_rocprof.py` or pre-warm and profile the final `mtp_chain_e2e_smoke.py` child directly.
+
 Post-process the CSV to rank kernels by total `DurationNs`. Audit-first discipline (time share → occupancy → iters-per-thread → VGPR) lives in `~/amd-gpu-tuning/AGENTS.md`.
 
 ## Artifact Format

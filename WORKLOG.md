@@ -21623,3 +21623,9 @@ Validation:
 - Quicksort one-run economics: exact, `cycle_cost=3.77`, `mtp/ar=0.629` (still well below break-even).
 
 Conclusion: half-rounded dequant is directionally correct but insufficient for all-sites exactness because the remaining mismatch is likely WMMA accumulation-order/reduction-order sensitivity.  Retain the safe default and treat `HIPENGINE_W4_MULTI_ROW_PACK8_SITES=all` as risky.  Bigger exact W4 wins still need a small-B kernel that preserves the stock prefill/WMMA numeric path, or a verifier-level tolerance/accept strategy we are not willing to introduce for greedy exactness.
+
+## 2026-05-22 MTP rocprof wrapper guardrail
+
+Issue found while preparing next MTP optimization pass: wrapping the prompt-suite parent harness in `rocprofv3` is unsafe. The command used `rocprofv3 --kernel-trace -- python3 scripts/mtp_prompt_suite_economics.py ...`; that parent shells out to `mtp_verifier_economics.py`, which shells out again to `mtp_chain_e2e_smoke.py`. The child logs showed rocprof tool initialization inside both nested Python children. If any JIT artifact is missing/stale, `hipcc`/clang can also run under rocprof and the run can look like a long hang instead of a verifier profile.
+
+Docs updated: `AGENTS.md`, `docs/MTP.md`, and `docs/BENCHMARK.md` now say to profile the MTP leaf workload only: use `scripts/mtp_verifier_rocprof.py`, or pre-warm and profile the final `mtp_chain_e2e_smoke.py` child directly. Do not wrap `scripts/mtp-bench.py --mode hipengine-current` or `scripts/mtp_prompt_suite_economics.py` in rocprofv3.

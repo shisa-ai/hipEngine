@@ -66,6 +66,7 @@ Do not drift these casually. They define what hipEngine is.
 - Write or update the targeted test/fixture before implementation when behavior or math changes. If RED-first is impractical, record why in `WORKLOG.md`.
 - Log non-trivial decisions, measurements, and dependency additions in `WORKLOG.md` as they happen.
 - When profiling Python/ctypes JIT-built kernels with `rocprofv3`, prebuild the `.so` outside the profiler and run the profiled command with a precomputed compiler-version file plus `require_cached`; do not let the profiled process spawn `hipcc`/clang.
+- For MTP profiling, do **not** wrap the prompt-suite/economics parent harness (`scripts/mtp-bench.py --mode hipengine-current` or `scripts/mtp_prompt_suite_economics.py`) in `rocprofv3`; it launches nested Python children and profiler/JIT state propagates into them. Use `scripts/mtp_verifier_rocprof.py` or profile the final `mtp_chain_e2e_smoke.py` child after a non-profiled cache warmup.
 - Do not silently add `import torch`, `flash_attn`, or other CUDA-only deps to hot-path modules.
 - Do not add `if backend == "..."` or `if quant == "..."` branches in engine / dispatch / model code.
 
