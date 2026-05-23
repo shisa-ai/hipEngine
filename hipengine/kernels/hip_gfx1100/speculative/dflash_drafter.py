@@ -25,6 +25,7 @@ _SYMBOL_HEAD_RMS_ROTARY = "hipengine_dflash_head_rmsnorm_rotary_f32"
 _SYMBOL_KEY_RMS_ROTARY = "hipengine_dflash_key_rmsnorm_rotary_f32"
 _SYMBOL_UPDATE_KV_METADATA = "hipengine_dflash_update_kv_metadata_i32"
 _SYMBOL_GQA_ATTENTION = "hipengine_dflash_gqa_attention_f32_bf16"
+_SYMBOL_GQA_ATTENTION_BUCKETED = "hipengine_dflash_gqa_attention_f32_bf16_bucketed"
 _ALLOWED_THREADS = {64, 128, 256}
 
 
@@ -606,6 +607,84 @@ def dflash_gqa_attention_f32_bf16(
         runtime.check(int(err))
 
 
+def dflash_gqa_attention_f32_bf16_bucketed(
+    query_f32_ptr: int,
+    key_f32_ptr: int,
+    value_bf16_ptr: int,
+    out_bf16_ptr: int,
+    live_context_len_i32_ptr: int,
+    batch_size: int,
+    query_len: int,
+    kv_len: int,
+    bucket_context_len: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    scale: float | None = None,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the bucketed DFlash GQA attention kernel.
+
+    The KV layout reserves ``bucket_context_len`` rows for context (only the first
+    ``*live_context_len_i32_ptr`` are valid; trailing rows are masked) followed
+    by ``kv_len - bucket_context_len`` query rows.  ``live_context_len_i32_ptr``
+    is a device-resident int32 scalar so the same captured HIP graph can replay
+    across cycles with different live context lengths.
+
+    Mathematically bit-equivalent to :func:`dflash_gqa_attention_f32_bf16` when
+    ``*live_context_len_i32_ptr == bucket_context_len`` (no rows masked).
+    """
+
+    _check_attention_shape(batch_size, query_len, kv_len, num_q_heads, num_kv_heads, head_dim, threads)
+    if bucket_context_len < 0 or bucket_context_len > kv_len:
+        raise ValueError("bucket_context_len must be in [0, kv_len]")
+    scale_value = float(head_dim ** -0.5 if scale is None else scale)
+    library = library or build_dflash_drafter(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_GQA_ATTENTION_BUCKETED)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_float,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_f32_ptr),
+        ctypes.c_void_p(key_f32_ptr),
+        ctypes.c_void_p(value_bf16_ptr),
+        ctypes.c_void_p(out_bf16_ptr),
+        ctypes.c_void_p(live_context_len_i32_ptr),
+        ctypes.c_int64(batch_size),
+        ctypes.c_int64(query_len),
+        ctypes.c_int64(kv_len),
+        ctypes.c_int64(bucket_context_len),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_float(scale_value),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def register_dflash_drafter_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "dflash_prepare_noise_inputs", "w4_paro", "bf16_i32"),
@@ -675,6 +754,11 @@ def register_dflash_drafter_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "dflash_gqa_attention", "w4_paro", "f32_bf16"),
         dflash_gqa_attention_f32_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "dflash_gqa_attention", "w4_paro", "f32_bf16_bucketed"),
+        dflash_gqa_attention_f32_bf16_bucketed,
         replace=replace,
     )
 

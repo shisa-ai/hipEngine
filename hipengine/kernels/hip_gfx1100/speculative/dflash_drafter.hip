@@ -448,6 +448,123 @@ __global__ void dflash_update_kv_metadata_i32_kernel(
   }
 }
 
+__global__ void dflash_gqa_attention_f32_bf16_bucketed_kernel(
+    const float* __restrict__ query,
+    const float* __restrict__ key,
+    const uint16_t* __restrict__ value,
+    uint16_t* __restrict__ out,
+    const int32_t* __restrict__ live_context_len,
+    int64_t batch_size,
+    int64_t query_len,
+    int64_t kv_len,
+    int64_t bucket_context_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale) {
+  // Bucketed sibling of dflash_gqa_attention_f32_bf16_kernel: kv layout reserves
+  // bucket_context_len rows for context (only the first *live_context_len are
+  // valid; the trailing rows are padded zero/stale data) followed by query_len
+  // rows at [bucket_context_len, kv_len).  We iterate only the valid rows in
+  // TWO compact passes so masked rows cost nothing -- same per-thread work as
+  // the unbucketed kernel when ``*live_context_len == bucket_context_len`` (no
+  // padded rows are reachable in that case).  Bit-equivalent to the unbucketed
+  // kernel when ``*live_context_len == bucket_context_len``.
+  const int64_t q_head = static_cast<int64_t>(blockIdx.x);
+  const int64_t q_row = static_cast<int64_t>(blockIdx.y);
+  const int64_t batch = static_cast<int64_t>(blockIdx.z);
+  if (batch >= batch_size || q_row >= query_len || q_head >= num_q_heads) {
+    return;
+  }
+  extern __shared__ float shared[];
+  float* partial = shared;
+  float* scores = shared + blockDim.x;
+  const int64_t group_size = num_q_heads / num_kv_heads;
+  const int64_t kv_head = q_head / group_size;
+  const int64_t q_base = ((batch * query_len + q_row) * num_q_heads + q_head) * head_dim;
+  const int64_t live = static_cast<int64_t>(live_context_len[0]);
+
+  // Pass 1: valid context rows [0, live).  Score stride is contiguous.
+  int64_t score_idx = 0;
+  for (int64_t kv_row = 0; kv_row < live; ++kv_row) {
+    const int64_t k_base = ((batch * kv_len + kv_row) * num_kv_heads + kv_head) * head_dim;
+    float dot = 0.0f;
+    for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+      dot += query[q_base + dim] * key[k_base + dim];
+    }
+    partial[threadIdx.x] = dot;
+    __syncthreads();
+    for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+      if (threadIdx.x < stride) {
+        partial[threadIdx.x] += partial[threadIdx.x + stride];
+      }
+      __syncthreads();
+    }
+    if (threadIdx.x == 0) {
+      scores[score_idx] = partial[0] * scale;
+    }
+    ++score_idx;
+    __syncthreads();
+  }
+  // Pass 2: query rows [bucket_context_len, kv_len).
+  for (int64_t kv_row = bucket_context_len; kv_row < kv_len; ++kv_row) {
+    const int64_t k_base = ((batch * kv_len + kv_row) * num_kv_heads + kv_head) * head_dim;
+    float dot = 0.0f;
+    for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+      dot += query[q_base + dim] * key[k_base + dim];
+    }
+    partial[threadIdx.x] = dot;
+    __syncthreads();
+    for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+      if (threadIdx.x < stride) {
+        partial[threadIdx.x] += partial[threadIdx.x + stride];
+      }
+      __syncthreads();
+    }
+    if (threadIdx.x == 0) {
+      scores[score_idx] = partial[0] * scale;
+    }
+    ++score_idx;
+    __syncthreads();
+  }
+  const int64_t score_count = score_idx;
+
+  if (threadIdx.x == 0) {
+    float max_score = -3.4028234663852886e+38F;
+    for (int64_t i = 0; i < score_count; ++i) {
+      max_score = fmaxf(max_score, scores[i]);
+    }
+    float denom = 0.0f;
+    for (int64_t i = 0; i < score_count; ++i) {
+      const float prob = expf(scores[i] - max_score);
+      scores[i] = prob;
+      denom += prob;
+    }
+    const float inv_denom = denom > 0.0f ? 1.0f / denom : 0.0f;
+    for (int64_t i = 0; i < score_count; ++i) {
+      scores[i] *= inv_denom;
+    }
+  }
+  __syncthreads();
+
+  const int64_t out_base = ((batch * query_len + q_row) * num_q_heads + q_head) * head_dim;
+  for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+    float acc = 0.0f;
+    int64_t i = 0;
+    for (int64_t kv_row = 0; kv_row < live; ++kv_row) {
+      const int64_t v_base = ((batch * kv_len + kv_row) * num_kv_heads + kv_head) * head_dim;
+      acc += scores[i] * bf16_bits_to_float(value[v_base + dim]);
+      ++i;
+    }
+    for (int64_t kv_row = bucket_context_len; kv_row < kv_len; ++kv_row) {
+      const int64_t v_base = ((batch * kv_len + kv_row) * num_kv_heads + kv_head) * head_dim;
+      acc += scores[i] * bf16_bits_to_float(value[v_base + dim]);
+      ++i;
+    }
+    out[out_base + dim] = float_to_bf16_bits(acc);
+  }
+}
+
 __global__ void dflash_gqa_attention_f32_bf16_kernel(
     const float* __restrict__ query,
     const float* __restrict__ key,
@@ -579,6 +696,19 @@ bool valid_attention_shape(
     int64_t threads) {
   return batch_size > 0 && query_len > 0 && kv_len > 0 && num_q_heads > 0 && num_kv_heads > 0 &&
          head_dim > 0 && (num_q_heads % num_kv_heads) == 0 && valid_threads(threads);
+}
+
+bool valid_bucketed_attention_shape(
+    int64_t batch_size,
+    int64_t query_len,
+    int64_t kv_len,
+    int64_t bucket_context_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t threads) {
+  return bucket_context_len >= 0 && bucket_context_len <= kv_len &&
+         valid_attention_shape(batch_size, query_len, kv_len, num_q_heads, num_kv_heads, head_dim, threads);
 }
 
 }  // namespace
@@ -972,6 +1102,49 @@ extern "C" int hipengine_dflash_update_kv_metadata_i32(
       start,
       count,
       end);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dflash_gqa_attention_f32_bf16_bucketed(
+    const float* query,
+    const float* key,
+    const uint16_t* value,
+    uint16_t* out,
+    const int32_t* live_context_len,
+    int64_t batch_size,
+    int64_t query_len,
+    int64_t kv_len,
+    int64_t bucket_context_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    int64_t threads,
+    hipStream_t stream) {
+  if (!valid_bucketed_attention_shape(
+          batch_size, query_len, kv_len, bucket_context_len, num_q_heads, num_kv_heads, head_dim, threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const size_t smem = static_cast<size_t>(threads + kv_len) * sizeof(float);
+  hipLaunchKernelGGL(
+      dflash_gqa_attention_f32_bf16_bucketed_kernel,
+      dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(query_len), static_cast<unsigned int>(batch_size)),
+      dim3(static_cast<unsigned int>(threads)),
+      smem,
+      stream,
+      query,
+      key,
+      value,
+      out,
+      live_context_len,
+      batch_size,
+      query_len,
+      kv_len,
+      bucket_context_len,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      scale);
   return static_cast<int>(hipGetLastError());
 }
 

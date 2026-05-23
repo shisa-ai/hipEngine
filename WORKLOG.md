@@ -22229,3 +22229,60 @@ Result: exact same-session AR equality still passes, speed remains diagnostic (`
 **Required R2.3 design:** capture at bucket capacity only after the drafter concat/attention path is shape-safe. Likely options: bucketed concat/attention kernels that read live context length from a device scalar and mask padded rows, or a fixed bucket KV layout that writes query K/V at bucket offsets and applies an explicit live-row mask. Only then should the graph cache key switch from exact `context_tokens` to BeeLlama-style `cross_bucket()`.
 
 **Artifact:** `benchmarks/results/2026-05-23-hipengine-dflash-r2.2-w7900-b4-d8-sync-phase-diagnostic.json`.
+
+## 2026-05-23 R2.3 bucketed graph cache landed; architecturally correct, no perf win on W7900
+
+**Scope:** Implement BeeLlama-style `cross_bucket()` bucketing for the DFlash drafter HIP graph cache so consecutive cycles whose live context lengths share a bucket can reuse a captured graph. Required shape-safe kernels because the existing concat/attention paths bake `context_tokens` into kernel launch args.
+
+**Implementation (committed):**
+
+1. New HIP kernel `dflash_gqa_attention_f32_bf16_bucketed` in `hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.hip`. Takes a device-resident `int32_t* live_context_len` pointer and a host-scalar `bucket_context_len` (baked into the captured graph). Iterates two compact passes: context `[0..live)` then query `[bucket_context_len..kv_len)`. Bit-equivalent to the unbucketed kernel when `live == bucket_context_len` (validated below).
+2. Python wrapper `dflash_gqa_attention_f32_bf16_bucketed`, exported through `hipengine.kernels.hip_gfx1100.speculative` and registered under `KernelKey("hip_gfx1100","dflash_gqa_attention","w4_paro","f32_bf16_bucketed")`.
+3. `NativeDFlashChainDrafter` gained:
+   - `bucket_mode: 'exact' | 'cross_bucket'` constructor flag (default `exact`, preserves existing exact-key behavior).
+   - `live_context_len` int32 device tensor + `_write_live_context_len()` to update it via cheap H2D copy each cycle.
+   - `_dflash_cross_bucket(n)` helper (<=16->16; <=128->next pow2; >128->next 128-multiple) and `_bucket_for()` cap by `max_context_tokens`.
+   - `_run_layer` / `_run_propose_kernels` accept an optional `bucket_ctx` and route through the bucketed attention with the bucketed concat lengths when set.
+   - `_run_or_validate_graph_bucket` writes `live_context_len` before both direct and graph runs, captures the bucketed propose, and validates direct-vs-graph bit-equal candidates.
+4. `DFlashDrafterGraphBucket` cache key now includes `bucket_context_tokens` and `bucket_mode`; `graph_summary` exposes `bucket_mode`.
+5. New CLI flag `--drafter-bucket {exact,cross_bucket}` (default `exact`) piped through `run_dflash_tokens` and `run_same_session_pair`; recorded in artifact metadata under `workload.drafter_bucket_mode`.
+
+**Kernel parity smoke (pre-integration):** off-graph synthetic shape, B=4, N=13, BUCKET=32 -> `bit_equal_with_mask=True`, `max_abs_diff_with_mask=0.0`. Live=0 vs query-only unbucketed: `bit_equal=True`. (Compact two-pass form is bit-exact, not just numerically close.)
+
+**E2E smoke (validate mode, W7900, 1-prompt B=4 D=8):** 4 captured_validated propose calls, `validation_failures=0`, `validation_passed=True`, `direct_tokens == graph_tokens` every cycle. Same-session AR exact match preserved. AR `22.4 / 107.8 = 0.208x` (validate adds direct+capture+validate each cycle; not a perf path).
+
+**E2E perf (auto mode, W7900, 4-prompt B=4 D=16):**
+
+```bash
+timeout 3600 python3 scripts/dflash_chain_e2e_bench.py \
+  --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --drafter-model z-lab/Qwen3.6-35B-A3B-DFlash \
+  --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --max-prompts 4 --decode-tokens 16 --draft-budgets 4 \
+  --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched \
+  --drafter-graph auto --drafter-bucket cross_bucket \
+  --hardware-gpu 'AMD Radeon Pro W7900' \
+  --json benchmarks/results/2026-05-23-hipengine-dflash-r2.3-w7900-b4-d16-4prompt-diagnostic.json
+```
+
+R2.3 vs R2.2 (same command except R2.2 had `--drafter-graph off`/no bucket):
+
+| Metric                       | R2.2 (exact, no graph) | R2.3 (cross_bucket + auto) |
+| ---                          | ---                    | ---                        |
+| Aggregate AR ratio           | **0.413x**             | 0.389x (-6%)               |
+| Drafter ms/cycle (mean)      | **23.87 ms**           | 28.23 ms (+18%)            |
+| Verifier ms/cycle (mean)     | 30.95 ms               | 31.03 ms (no delta)        |
+| Validation failures          | n/a                    | **0** (4 buckets, 22 replays) |
+| Cache-hit replays            | n/a                    | **85%** (22/26 cycles)     |
+
+Per-cycle replay math (prompt 1: 9 cycles = 1 capture + 8 replay):
+- Capture cycle: ~48 ms (direct + capture + instantiate + validate-launch).
+- Replay cycle:  ~24.2 ms.
+- R2.2 direct:   ~23.75 ms.
+- Saving per replay: ~0.45 ms = ~3.6 us per kernel launch (124 launches/cycle for noise_prepare + 8 layers x ~15 kernels + final_norm + lm_head + topk).
+
+Verdict: graph capture saves real ctypes/HIP launch overhead, but the absolute saving (~2% of cycle time) doesn't dominate the per-bucket capture cost on the 3-9 cycles/prompt observed. W7900 drafter wall is GPU-kernel-bound (8 decoder layers at `19.6 ms/cycle` synced) not host-launch-bound. Same finding as M14.dispatch.0/1 (C-side ctypes dispatcher gave parity).
+
+**Status:** R2.3 architecturally lands as opt-in (`--drafter-bucket cross_bucket`) with bit-exact validation, but does not produce a retained perf row. Next levers must move kernel-execution time (e.g., better decoder kernels, fusion that respects the L1 cost-model check) or reduce the launch count per cycle by a much larger factor than 1.0->0.0 (graph replay) provides.
+
+**Artifact:** `benchmarks/results/2026-05-23-hipengine-dflash-r2.3-w7900-b4-d16-4prompt-diagnostic.json`.

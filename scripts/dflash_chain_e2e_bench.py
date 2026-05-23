@@ -52,6 +52,7 @@ from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import (
     dflash_dense_bf16_to_bf16,
     dflash_dense_bf16_to_f32,
     dflash_gqa_attention_f32_bf16,
+    dflash_gqa_attention_f32_bf16_bucketed,
     dflash_head_rmsnorm_rotary_f32,
     dflash_key_rmsnorm_rotary_f32,
     dflash_prepare_noise_inputs_bf16_i32,
@@ -85,6 +86,30 @@ class DraftResult:
     topk_values: tuple[tuple[float, ...], ...] = ()
 
 
+def _dflash_cross_bucket(context_tokens: int) -> int:
+    """BeeLlama-style cross_bucket() shape function for graph cache keys.
+
+    - ``<= 16`` rounds up to 16.
+    - ``<= 128`` rounds up to the next power of two.
+    - ``> 128`` rounds up to the next multiple of 128.
+
+    Matches the bucketing in BeeLlama's ``cross_bucket()`` (llama-context.cpp
+    ~line 3649).  Cycle-to-cycle live context lengths land in the same bucket
+    for long stretches, which is what lets a single captured HIP graph replay
+    across many cycles.
+    """
+
+    n = int(context_tokens)
+    if n <= 16:
+        return 16
+    if n <= 128:
+        bucket = 16
+        while bucket < n:
+            bucket *= 2
+        return bucket
+    return ((n + 127) // 128) * 128
+
+
 @dataclass(frozen=True)
 class DFlashDrafterGraphBucket:
     candidate_budget: int
@@ -93,6 +118,8 @@ class DFlashDrafterGraphBucket:
     max_context_tokens: int
     num_layers: int
     hidden_size: int
+    bucket_context_tokens: int
+    bucket_mode: str = "exact"
     draft_top_k: int = 1
     mode: str = "append_only_projected_context_and_kv"
 
@@ -101,6 +128,8 @@ class DFlashDrafterGraphBucket:
             "candidate_budget": self.candidate_budget,
             "block_size": self.block_size,
             "context_tokens": self.context_tokens,
+            "bucket_context_tokens": self.bucket_context_tokens,
+            "bucket_mode": self.bucket_mode,
             "max_context_tokens": self.max_context_tokens,
             "num_layers": self.num_layers,
             "hidden_size": self.hidden_size,
@@ -109,16 +138,21 @@ class DFlashDrafterGraphBucket:
         }
 
     @property
-    def key(self) -> tuple[int, int, int, int, int, int, int, str]:
+    def key(self) -> tuple[int, int, int, int, int, int, int, str, str]:
+        # Cache key drops live ``context_tokens`` when bucketed so cycles with
+        # the same ``bucket_context_tokens`` reuse the captured graph.  In
+        # ``exact`` mode the bucket equals context_tokens, restoring the old
+        # per-cycle key behavior.
         return (
             self.candidate_budget,
             self.block_size,
-            self.context_tokens,
+            self.bucket_context_tokens,
             self.max_context_tokens,
             self.num_layers,
             self.hidden_size,
             self.draft_top_k,
             self.mode,
+            self.bucket_mode,
         )
 
 
@@ -415,6 +449,7 @@ class NativeDFlashChainDrafter:
         graph_mode: str = "off",
         fusion_mode: str = "off",
         draft_top_k: int = 1,
+        bucket_mode: str = "exact",
     ) -> None:
         self.session = session
         self.runtime = session.runtime
@@ -430,8 +465,15 @@ class NativeDFlashChainDrafter:
         if fusion_mode not in {"off", "qkv"}:
             raise ValueError("fusion_mode must be off or qkv")
         self.fusion_mode = fusion_mode
+        if bucket_mode not in {"exact", "cross_bucket"}:
+            raise ValueError("bucket_mode must be exact or cross_bucket")
+        self.bucket_mode = bucket_mode
+        # When bucketed propose runs, this device-resident scalar carries the
+        # live context length so the same captured graph can replay across
+        # cycles with different live counts.
+        self._bucket_live_count_pending: int | None = None
         self._fusion_counts: Counter[str] = Counter()
-        self._graph_cache: dict[tuple[int, int, int, int, int, int, int, str], DFlashDrafterGraphEntry] = {}
+        self._graph_cache: dict[tuple[int, int, int, int, int, int, int, str, str], DFlashDrafterGraphEntry] = {}
         self._graph_status_counts: Counter[str] = Counter()
         self._graph_validation_failures = 0
         self._graph_fallback_reasons: Counter[str] = Counter()
@@ -491,6 +533,7 @@ class NativeDFlashChainDrafter:
             validation_passed = self._graph_validation_failures == 0
         return {
             "mode": self.graph_mode,
+            "bucket_mode": self.bucket_mode,
             "status_counts": dict(sorted(self._graph_status_counts.items())),
             "cache_entries": len(self._graph_cache),
             "validation_failures": self._graph_validation_failures,
@@ -615,7 +658,26 @@ class NativeDFlashChainDrafter:
         phases["context_projection_cached_rows"] = float(self._cached_projected_rows)
         phases["kv_cache_cached_rows"] = float(self._cached_kv_rows)
 
-    def _run_propose_kernels(self, *, context_tokens: int, stream: int = 0, phases: dict[str, float] | None = None) -> None:
+    def _run_propose_kernels(
+        self,
+        *,
+        context_tokens: int,
+        stream: int = 0,
+        phases: dict[str, float] | None = None,
+        bucket_ctx: int | None = None,
+    ) -> None:
+        """Run the DFlash propose forward.
+
+        When ``bucket_ctx`` is ``None`` (default) the kernels run with shape
+        ``context_tokens + block_size`` for K/V (exact path, same as before).
+        When ``bucket_ctx`` is an int ``>= context_tokens`` the kernels run with
+        shape ``bucket_ctx + block_size`` and use the bucketed attention kernel;
+        the live context length is read from ``self.live_context_len`` on the
+        device so a captured HIP graph can replay across cycles whose live
+        counts share the same bucket.  The caller must populate
+        ``self.live_context_len`` (via ``_write_live_context_len``) before any
+        replay path reads it.
+        """
         phase_t = time.perf_counter()
         prepare = (
             dflash_prepare_noise_inputs_bf16_i32
@@ -647,7 +709,14 @@ class NativeDFlashChainDrafter:
         layers_t = time.perf_counter()
         for layer in range(self.config.num_hidden_layers):
             layer_t = time.perf_counter()
-            query_out = self._run_layer(layer, context_tokens=context_tokens, query_in=query_in, query_out=query_out, stream=stream)
+            query_out = self._run_layer(
+                layer,
+                context_tokens=context_tokens,
+                query_in=query_in,
+                query_out=query_out,
+                stream=stream,
+                bucket_ctx=bucket_ctx,
+            )
             query_in, query_out = query_out, query_in
             if phases is not None and self.sync_draft_phases:
                 self.runtime.device_synchronize()
@@ -714,10 +783,21 @@ class NativeDFlashChainDrafter:
         return topk, topk_values
 
     def _bucket_for(self, context_tokens: int) -> DFlashDrafterGraphBucket:
+        ctx = int(context_tokens)
+        if self.bucket_mode == "cross_bucket":
+            bucket_ctx = _dflash_cross_bucket(ctx)
+            # Cap the bucket so we never reserve more KV rows than the
+            # drafter has allocated for context.  ``max_context_tokens`` is the
+            # absolute upper bound of context rows the drafter can hold.
+            bucket_ctx = min(bucket_ctx, self.max_context_tokens)
+        else:
+            bucket_ctx = ctx
         return DFlashDrafterGraphBucket(
             candidate_budget=self.candidate_budget,
             block_size=self.block_size,
-            context_tokens=int(context_tokens),
+            context_tokens=ctx,
+            bucket_context_tokens=int(bucket_ctx),
+            bucket_mode=self.bucket_mode,
             max_context_tokens=self.max_context_tokens,
             num_layers=int(self.config.num_hidden_layers),
             hidden_size=self.hidden,
@@ -759,6 +839,16 @@ class NativeDFlashChainDrafter:
 
     def _run_or_validate_graph_bucket(self, *, context_tokens: int, phases: dict[str, float]) -> dict[str, Any]:
         bucket = self._bucket_for(context_tokens)
+        # ``bucket_arg`` is the bucketed KV context length used by the graphed
+        # kernels; ``None`` falls back to exact (legacy) shape.
+        bucket_arg: int | None = (
+            int(bucket.bucket_context_tokens) if self.bucket_mode == "cross_bucket" else None
+        )
+        if bucket_arg is not None:
+            # The bucketed path always reads the live count from the device
+            # scalar; update it before any kernel that consumes it, including
+            # the direct fallback used for validation.
+            self._write_live_context_len(int(context_tokens))
         entry = self._graph_cache.get(bucket.key)
         if entry is not None and self.graph_mode == "auto":
             launch_t = time.perf_counter()
@@ -788,7 +878,13 @@ class NativeDFlashChainDrafter:
         # every cycle, so this commonly records "captured_validated" without
         # useful cache hits; the artifact makes that visible.
         direct_t = time.perf_counter()
-        self._run_propose_kernels(context_tokens=context_tokens, stream=0, phases=phases)
+        # Direct (validation reference) runs the bucketed propose with the SAME
+        # bucket shape as the graph capture so the cached graph and the direct
+        # path are bit-equivalent.  In exact mode bucket_arg is None and this
+        # reduces to the legacy unbucketed path.
+        self._run_propose_kernels(
+            context_tokens=context_tokens, stream=0, phases=phases, bucket_ctx=bucket_arg
+        )
         self.runtime.device_synchronize()
         direct_tokens_arr, _ = self._read_topk()
         direct_tokens = tuple(int(x) for x in direct_tokens_arr.reshape(-1).tolist())
@@ -806,7 +902,12 @@ class NativeDFlashChainDrafter:
             capture_t = time.perf_counter()
             self.runtime.stream_begin_capture(stream)
             try:
-                self._run_propose_kernels(context_tokens=context_tokens, stream=stream, phases=None)
+                self._run_propose_kernels(
+                    context_tokens=context_tokens,
+                    stream=stream,
+                    phases=None,
+                    bucket_ctx=bucket_arg,
+                )
                 graph = self.runtime.stream_end_capture(stream)
             except Exception:
                 try:
@@ -831,7 +932,12 @@ class NativeDFlashChainDrafter:
                 self._graph_fallback_reasons[reason] += 1
                 # Restore direct fallback outputs before propose() performs its
                 # final readback; validation failure must not perturb the chain.
-                self._run_propose_kernels(context_tokens=context_tokens, stream=0, phases=None)
+                self._run_propose_kernels(
+                    context_tokens=context_tokens,
+                    stream=0,
+                    phases=None,
+                    bucket_ctx=bucket_arg,
+                )
                 self.runtime.device_synchronize()
                 self.runtime.graph_exec_destroy(graph_exec)
                 self.runtime.graph_destroy(graph)
@@ -1112,10 +1218,59 @@ class NativeDFlashChainDrafter:
         self.k_q_rot = self._empty(
             (1, self.block_size, self.kv_features), DType.FP32
         )
+        # R2.3: device-resident live context length scalar.  The bucketed
+        # attention kernel reads this on every launch so a single captured HIP
+        # graph can replay across cycles whose live context lengths share the
+        # same bucket.  Initialized to 0; cycle code writes the value via
+        # ``_write_live_context_len`` before launching kernels that read it.
+        self.live_context_len = self._empty((1,), DType.INT32)
+        zero_i32 = np.zeros((1,), dtype=np.int32)
+        copy_host_to_device(
+            self._buffer_for(self.live_context_len),
+            host_array_ptr(zero_i32),
+            runtime=self.runtime,
+        )
 
-    def _run_layer(self, layer: int, *, context_tokens: int, query_in: Tensor, query_out: Tensor, stream: int = 0) -> Tensor:
+    def _write_live_context_len(self, value: int) -> None:
+        """Update the device-resident live context length scalar.
+
+        Called per cycle from the bucketed propose path before any kernel that
+        reads it; the small H2D copy is intentionally OUTSIDE any captured HIP
+        graph so the value reaching the kernel is the latest live count even
+        when the graph itself is replayed.
+        """
+
+        arr = np.asarray([int(value)], dtype=np.int32)
+        copy_host_to_device(
+            self._buffer_for(self.live_context_len),
+            host_array_ptr(arr),
+            runtime=self.runtime,
+        )
+
+    def _run_layer(
+        self,
+        layer: int,
+        *,
+        context_tokens: int,
+        query_in: Tensor,
+        query_out: Tensor,
+        stream: int = 0,
+        bucket_ctx: int | None = None,
+    ) -> Tensor:
         prefix = f"layers.{layer}"
-        total_kv = context_tokens + self.block_size
+        # When ``bucket_ctx`` is set, concat reserves ``bucket_ctx`` context
+        # rows (padded with zero/stale data beyond ``context_tokens``) and
+        # attention masks those padded rows via the device-resident
+        # ``live_context_len`` scalar.  This is what lets a captured HIP graph
+        # replay across cycles whose live ``context_tokens`` share the same
+        # bucket.
+        if bucket_ctx is not None:
+            if bucket_ctx < context_tokens:
+                raise ValueError("bucket_ctx must be >= context_tokens")
+            kv_context_len = int(bucket_ctx)
+        else:
+            kv_context_len = int(context_tokens)
+        total_kv = kv_context_len + self.block_size
         fp32_bytes = DType.FP32.itemsize
         bf16_bytes = DType.BF16.itemsize
         k_layer_base = self.kv_cache_keys.ptr + layer * self.max_context_tokens * self.kv_features * fp32_bytes
@@ -1176,7 +1331,7 @@ class NativeDFlashChainDrafter:
             self.k_q_rot.ptr,
             self.k_rot.ptr,
             1,
-            context_tokens,
+            kv_context_len,
             self.block_size,
             self.kv_features,
             threads=128,
@@ -1189,7 +1344,7 @@ class NativeDFlashChainDrafter:
             self.v_q.ptr,
             self.v_all.ptr,
             1,
-            context_tokens,
+            kv_context_len,
             self.block_size,
             self.kv_features,
             threads=128,
@@ -1197,7 +1352,42 @@ class NativeDFlashChainDrafter:
             library=self.library,
             runtime=self.runtime,
         )
-        dflash_gqa_attention_f32_bf16(self.q_rot.ptr, self.k_rot.ptr, self.v_all.ptr, self.attn.ptr, 1, self.block_size, total_kv, self.q_heads, self.kv_heads, self.head_dim, threads=128, stream=stream, library=self.library, runtime=self.runtime)
+        if bucket_ctx is not None:
+            dflash_gqa_attention_f32_bf16_bucketed(
+                self.q_rot.ptr,
+                self.k_rot.ptr,
+                self.v_all.ptr,
+                self.attn.ptr,
+                self.live_context_len.ptr,
+                1,
+                self.block_size,
+                total_kv,
+                kv_context_len,
+                self.q_heads,
+                self.kv_heads,
+                self.head_dim,
+                threads=128,
+                stream=stream,
+                library=self.library,
+                runtime=self.runtime,
+            )
+        else:
+            dflash_gqa_attention_f32_bf16(
+                self.q_rot.ptr,
+                self.k_rot.ptr,
+                self.v_all.ptr,
+                self.attn.ptr,
+                1,
+                self.block_size,
+                total_kv,
+                self.q_heads,
+                self.kv_heads,
+                self.head_dim,
+                threads=128,
+                stream=stream,
+                library=self.library,
+                runtime=self.runtime,
+            )
         dflash_dense_bf16_to_bf16(self.attn.ptr, self.weights.tensor(f"{prefix}.self_attn.o_proj.weight").ptr, self.attn_proj.ptr, self.block_size, self.attn_features, self.hidden, threads=128, stream=stream, library=self.library, runtime=self.runtime)
         dflash_add_bf16(query_in.ptr, self.attn_proj.ptr, self.hidden_attn.ptr, self.block_size * self.hidden, threads=256, stream=stream, library=self.library, runtime=self.runtime)
         dflash_rmsnorm_bf16(self.hidden_attn.ptr, self.weights.tensor(f"{prefix}.post_attention_layernorm.weight").ptr, self.post.ptr, self.block_size, self.hidden, threads=128, stream=stream, library=self.library, runtime=self.runtime)
@@ -1296,6 +1486,7 @@ def run_dflash_tokens(
     prefill_config: PrefillConfig,
     drafter_graph_mode: str = "off",
     drafter_fusion_mode: str = "off",
+    drafter_bucket_mode: str = "exact",
 ) -> tuple[list[int], dict[str, Any]]:
     runner = Qwen35ParoNextTokenRunner(model, backend=backend)
     max_sequence = len(prompt_ids) + decode_tokens + candidate_budget + 2
@@ -1319,6 +1510,7 @@ def run_dflash_tokens(
             require_cached_build=require_cached_build,
             graph_mode=drafter_graph_mode,
             fusion_mode=drafter_fusion_mode,
+            bucket_mode=drafter_bucket_mode,
         ) as drafter:
             t0 = time.perf_counter()
             next_result = None
@@ -1460,6 +1652,7 @@ def run_same_session_pair(
     verifier_graph_mode: str = "off",
     drafter_graph_mode: str = "off",
     drafter_fusion_mode: str = "off",
+    drafter_bucket_mode: str = "exact",
     chain_attn_mode: str = "c1_loop",
     tree_mode: str = "chain",
     tree_top_k: int = 1,
@@ -1527,6 +1720,7 @@ def run_same_session_pair(
             sync_draft_phases=sync_draft_phases,
             graph_mode=drafter_graph_mode,
             fusion_mode=drafter_fusion_mode,
+            bucket_mode=drafter_bucket_mode,
             draft_top_k=tree_top_k if tree_mode == "branching_topk" else 1,
         ) as drafter:
             spec_tokens, spec_meta = _run_dflash_chain_on_session(
@@ -2109,6 +2303,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tree-top-k", type=int, default=2, help="Top-K per drafter depth row for --tree-mode branching_topk (1..8; ignored by chain modes)")
     parser.add_argument("--drafter-graph", choices=("off", "auto", "validate"), default="off", help="Prototype HIP graph capture for native DFlash propose(); auto replays cache hits, validate records capture parity without requiring reuse")
     parser.add_argument("--drafter-fusion", choices=("off", "qkv"), default="off", help="Enable prototype DFlash drafter kernel fusions; qkv fuses query-side Q/K/V projections with unfused fallback available")
+    parser.add_argument(
+        "--drafter-bucket",
+        choices=("exact", "cross_bucket"),
+        default="exact",
+        help=(
+            "Bucket shape function used by the drafter HIP graph cache key. 'exact'"
+            " keys on the live context length (each cycle is unique -> no replay)."
+            " 'cross_bucket' rounds the live context length to a BeeLlama-style"
+            " bucket so consecutive cycles can share a captured graph; uses the"
+            " bucketed attention kernel with a device-resident live count."
+        ),
+    )
     parser.add_argument("--hardware-gpu", default=None, help="Human-readable GPU name to record in the benchmark artifact")
     parser.add_argument("--json", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -2147,6 +2353,7 @@ def main(argv: list[str] | None = None) -> int:
                 verifier_graph_mode=args.verifier_graph,
                 drafter_graph_mode=args.drafter_graph,
                 drafter_fusion_mode=args.drafter_fusion,
+                drafter_bucket_mode=args.drafter_bucket,
                 chain_attn_mode=args.full_attn_chain_mode,
                 tree_mode=args.tree_mode,
                 tree_top_k=args.tree_top_k if args.tree_mode == "branching_topk" else 1,
@@ -2198,6 +2405,7 @@ def main(argv: list[str] | None = None) -> int:
             "native_bulk_verifier": args.verifier_mode == "native_bulk_bplus1",
             "drafter_graph_mode": args.drafter_graph,
             "drafter_fusion_mode": args.drafter_fusion,
+            "drafter_bucket_mode": args.drafter_bucket,
             "promotion_blocker": (
                 "native B+1 verifier ran, but full chain must still beat same-session AR before promotion"
                 if args.verifier_mode == "native_bulk_bplus1"
