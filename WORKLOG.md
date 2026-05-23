@@ -22123,3 +22123,41 @@ python3 scripts/mtp-bench.py --mode hipengine-current --max-tokens 64 \
   Result: exact_ar_match=True, same tokens/accepted.
 
 **Next:** Continue DFlash Round-2 from R2.2 (drafter propose chain on packed PARO target + z-lab drafter) with the shared verifier now using default-on C dispatcher plumbing.
+
+## 2026-05-23 docs(dflash): R2.2 preflight blocked by missing z-lab drafter artifact
+
+**Context:** After flipping `HIPENGINE_MOE_C1_C_DISPATCH` default-on, moved to `docs/DFLASH.md` Round-2 R2.2 (DFlash drafter `propose()` chain on packed PARO target + z-lab drafter). GPU was idle before preflight (`rocm-smi`: GPU use 0, VRAM 0, no KFD PIDs).
+
+**What is available locally:**
+
+- `/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16` passes the DFlash packed-target metadata contract:
+  - `validate_dflash_target_metadata(load_weight_index(...))`: `passed=True`
+  - `present=722`, `missing=0`, no dtype/shape/config errors.
+  - This local MTP-BF16 artifact is usable as the packed PARO target for DFlash preflight.
+- The original shisa HF-cache target snapshot also exists at `/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e`, but the `/models/huggingface/...` path baked into `scripts/dflash_chain_e2e_bench.py` is absent on this host.
+
+**Blocker:** z-lab DFlash drafter artifact is not present locally.
+
+Attempted command with explicit valid target:
+
+```bash
+python3 scripts/dflash_chain_e2e_bench.py \
+  --target-model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e \
+  --drafter-model /models/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 \
+  --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --max-prompts 1 --decode-tokens 8 --draft-budgets 4 \
+  --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched \
+  --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/dflash_r2_current_b4_d8_w7900.json
+```
+
+Failed before launching workload:
+
+```text
+hipengine.loading.safetensors.MissingConfigError: config.json not found under /models/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots
+```
+
+`find /home/lhl/.cache/huggingface/hub -maxdepth 4 ... DFlash` finds no z-lab DFlash snapshot. R2.2 is therefore blocked on restoring/staging `z-lab/Qwen3.6-35B-A3B-DFlash` revision `42d3b34d588423cdae7ba8f53a8cf7789346a719` or providing a valid `--drafter-model` path.
+
+**Artifact:** `benchmarks/results/2026-05-23-hipengine-dflash-r2.2-w7900-missing-drafter-blocked.json`
+
+**Docs:** Updated `docs/DFLASH.md` R2.2 row with the local target-pass / drafter-missing blocker and exact next command.

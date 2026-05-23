@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "status": "blocked",
+  "performance_claim": false,
+  "date": "2026-05-23",
+  "hardware": "AMD Radeon Pro W7900 / gfx1100",
+  "backend": "hip_gfx1100",
+  "purpose": "DFlash Round-2 R2.2 preflight after default-on MoE C1 dispatcher: verify whether the packed PARO target + z-lab DFlash drafter artifacts are locally available before running the same-session DFlash E2E benchmark.",
+  "result": "blocked_missing_dflash_drafter_artifact",
+  "target_preflight": {
+    "path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "dflash_target_metadata_passed": true,
+    "present_tensors": 722,
+    "missing_tensors": 0,
+    "notes": "This local MTP-BF16 artifact also satisfies the packed PARO DFlash target metadata contract. The shisa HF-cache snapshot also exists under /home/lhl/.cache/huggingface/hub/.../snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e, but the /models/huggingface path baked into scripts/dflash_chain_e2e_bench.py is absent on this host."
+  },
+  "drafter_preflight": {
+    "expected_model": "z-lab/Qwen3.6-35B-A3B-DFlash",
+    "expected_revision": "42d3b34d588423cdae7ba8f53a8cf7789346a719",
+    "expected_path": "/models/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719",
+    "found": false,
+    "error": "hipengine.loading.safetensors.MissingConfigError: config.json not found under /models/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots"
+  },
+  "commands": {
+    "gpu_idle_check": "rocm-smi --showuse --showmemuse --showpids (3 samples: GPU use 0, VRAM 0, no KFD PIDs)",
+    "target_metadata_check": "python3 - <<'PY' ... validate_dflash_target_metadata(load_weight_index('/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16')) ... PY",
+    "failed_e2e_preflight": "python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e --drafter-model /models/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --max-prompts 1 --decode-tokens 8 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/dflash_r2_current_b4_d8_w7900.json"
+  },
+  "next_action": "Restore or stage the z-lab/Qwen3.6-35B-A3B-DFlash snapshot (revision 42d3b34d588423cdae7ba8f53a8cf7789346a719) under /models or provide a valid --drafter-model path, then rerun the failed_e2e_preflight command with the local packed target."
+}
