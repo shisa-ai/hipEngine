@@ -22495,3 +22495,48 @@ Updated docs:
 - docs/DRAFTER_DENSE_ROOFLINE.md (R3.4 measured-results section)
 - benchmarks/README.md (R3.3 + R3.4 rows, Last updated)
 - benchmarks/CHANGELOG.md (R3.3 + R3.4 entries)
+
+## 2026-05-23 perf(dflash): R3.5 DDTree on gfx1100 — functional, non-promotable
+
+GPU smoke on W7900 to bring up DDTree (already landed gfx1151) on gfx1100 with
+the new WMMA drafter from R3.4.
+
+Commands (4-prompt B=4/8 D=32 same-session DFlash):
+```bash
+python3 scripts/dflash_chain_e2e_bench.py --max-prompts 4 --decode-tokens 32 \
+  --draft-budgets {4,8} \
+  --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched \
+  --tree-mode branching_topk --tree-top-k 2 \
+  --json benchmarks/results/2026-05-23-hipengine-dflash-r3.5-w7900-ddtree-k2-b{4,8}-d32-4prompt-smoke.json
+```
+
+Results (relative to R3.4 chain B=4 baseline, aggregate 0.656x, avg accept 1.68):
+| Mode | Cycles | Draft ms/c | Verify ms/c | Aggregate AR | Avg accept | Notes |
+|---|---:|---:|---:|---:|---:|---|
+| chain B=4 (R3.4)   | 47 | 9.14 | 28.32 | 0.656 | 1.68 | Baseline |
+| tree K=2 B=4       | 48 | 9.18 | 30.48 | 0.625 | 1.60 | -5% aggregate |
+| chain B=8          | 43 | 12.01| 38.38 | 0.542 | 1.93 | B>4 hurts chain |
+| tree K=2 B=8       | 43 | 12.10| 41.78 | 0.501 | 1.91 | Worst |
+
+Per-prompt B=4 K=2 vs chain:
+- code:quicksort_prefix      0.458 -> 0.544  (+0.086) tree helps low-accept
+- code:function_continuation 0.791 -> 0.610  (-0.18)  tree hurts high-accept
+- code:class_continuation    0.905 -> 0.682  (-0.22)  tree hurts high-accept
+- code:json_yaml_continuation 0.647 -> 0.689 (+0.042) modest tree win
+
+All runs pass exact-AR. Tree verifier adds ~2.2 ms/cycle on W7900 and tree
+depth 2 caps the acceptance path on prompts where chain accepts depth >= 3.
+B=8 makes the tree verifier overhead worse (more rows in B+1 batched verifier)
+without unlocking new accept depth.
+
+Conclusion: R3.5 DDTree functions on gfx1100 and is exact-AR, but at K=2/B=4 it
+is a mixed result and at B=8 it's strictly worse. Promoting DDTree requires
+either (a) R3.1 per-prompt routing (currently blocked on the native-bulk -> c=1
+AR handoff) so high-accept prompts stay on chain, or (b) a depth-aware tree
+shape (e.g. K=1 deep + K=2 wide hybrid) that doesn't cap accept depth. Marked
+**functional/non-promotable** in DFLASH.md.
+
+Artifacts:
+- benchmarks/results/2026-05-23-hipengine-dflash-r3.5-w7900-ddtree-k2-b4-d32-4prompt-smoke.json
+- benchmarks/results/2026-05-23-hipengine-dflash-r3.5-w7900-ddtree-k2-b8-d32-4prompt-smoke.json
+- benchmarks/results/2026-05-23-hipengine-dflash-r3.5-w7900-chain-b8-d32-4prompt-control.json
