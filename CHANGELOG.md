@@ -8,6 +8,12 @@ evidence under [`benchmarks/results/`](benchmarks/results/).
 
 ## v0.1.2 - Unreleased
 
+### Added
+
+- Added `docs/ENVS.md` as the canonical environment-variable reference, including
+  TheRock ROCm process setup, cached-build profiling guidance, and safe GGUF
+  benchmark profiles.
+
 ### Fixed
 
 - Fixed the PARO resident prefill workspace-overlap regression that shipped in

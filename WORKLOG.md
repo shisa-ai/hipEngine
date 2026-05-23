@@ -26448,3 +26448,32 @@ Added a package changelog section for `v0.1.2 - Unreleased` marking the v0.1.1 P
 Audited the GGUF resident bulk prefill path for the same failure mode. The root-cause commit `328a1b3` only touched `hipengine/runtime/qwen35_paro_runner.py`; it did not touch GGUF. Current GGUF prefill preallocates token/hidden buffers and `_bulk_prefill_scratch` once during `Qwen35GGUFResidentSession.__post_init__` (`hipengine/runtime/qwen35_gguf_runner.py:2807-2818`) and reuses views via `_bulk_prefill_scratch.for_chunk(...)` inside `_run_bulk_prefill_and_sample` (`:3011-3013`, `:3053-3055`). A source audit of that timed bulk-prefill method found no `malloc(`, no `_release*`, and only one `free(` for the optional expert sidecar diagnostic path, which is not used by the README GGUF Q4_K_S persistent-session rows.
 
 Conclusion: the PARO v0.1.1 regression does not have an analogous active bug in the GGUF persistent path. GGUF keeps decode/full-stack scratch resident through prefill, so there is no similar free/alloc churn to remove for a speed win. A future memory-only GGUF experiment could release resident decode scratch around bulk prefill, but based on the PARO evidence that would need proof it is not a short/mid-context speed regression.
+
+## 2026-05-23 — Env-var reference + optimal-default audit
+
+Completed the environment-variable audit and turned it into `docs/ENVS.md`. Scope covered code reads in `hipengine/` and benchmark-facing script knobs: backend/build/cache (`HIPENGINE_BACKEND`, `HIPENGINE_HIP_ARCH`, compiler-version files), AOTriton discovery, GGUF fast paths/decode-repack, PARO retained vs rejected tuning knobs, shared paged-attention decode knobs, API key, and TheRock ROCm process setup.
+
+Optimal-default audit conclusions:
+
+- No runtime code default changes were needed. Current retained defaults already include GGUF AOTriton `v3`, PARO prefill workspace resident-through-32K / release-for-`>32K`, split decode thresholds, direct selected T16 MoE decode by default, and retained PARO prefill tiling.
+- Left `HIPENGINE_GGUF_DECODE_REPACK`, `HIPENGINE_GGUF_WMMA_PREFILL`, and `HIPENGINE_GGUF_GEMV_DECODE` explicit instead of defaulting them globally: they are correctness-safe in the accepted qwen35moe T16 decode-repack profile, but decode-repack has a load-time/resident-memory tradeoff and the fast paths are still benchmark/profile choices rather than universal user defaults.
+- Left `HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS` default false. Updated benchmark command templates to stop recommending it for current decode-repack profiles; it remains documented only for old unsafe/R&D artifact reproduction.
+- Removed redundant `HIPENGINE_GGUF_AOTRITON_PREFILL=v3` from command templates because `v3` is now the code default.
+
+Files updated:
+
+```text
+docs/ENVS.md
+README.md
+CHANGELOG.md
+benchmarks/README.md
+benchmarks/W7900.md
+```
+
+Validation:
+
+```bash
+python -m pytest -q tests/test_qwen35_gguf_fastpath_safety.py tests/test_aotriton_discovery.py tests/test_build.py tests/test_gfx1151_backend.py tests/test_qwen35_prefill_workspace_policy.py
+# 37 passed
+git diff --check
+```
