@@ -25966,3 +25966,38 @@ Two runs per shape; table uses median (`prefill tok/s / decode tok/s / tracked G
 | 4K/128 | 2396.599 / 111.518 / 18.954 | 2366.866 / 107.184 / 18.954 | prefill -1.24%, decode -3.89% |
 
 Conclusion: no improvement from this ROCm 7.14 nightly for these two PARO shapes; it is a small regression versus the prior ROCm 7.13 same-environment current run, with unchanged tracked memory. Saved compact artifact `benchmarks/results/2026-05-23-rx7900xtx-rocm714-current-head-paro-512-4k-check.json`.
+
+## 2026-05-23 — ROCm 7.13.0a20260423 runtime/library PARO check
+
+After the `therock` env was changed by installing `torch`, `torchaudio`, and `torchvision` from the gfx110X ROCm nightly index, reran latest hipEngine HEAD `7879cfa64ff4` PARO BF16 KV 512/128 and 4K/128 on the RX 7900 XTX.
+
+Important environment caveat: package inspection showed this is a mixed SDK state, not a pure 7.13.0a20260423 devel install:
+
+- `rocm`, `rocm-sdk-core`, and `rocm-sdk-libraries-gfx110X-all`: `7.13.0a20260423`.
+- `torch`, `torchaudio`, `torchvision`: `2.11.0+rocm7.13.0a20260423`, `2.11.0+rocm7.13.0a20260423`, `0.26.0+rocm7.13.0a20260423`.
+- `triton`: `3.6.0+rocm7.13.0a20260423`.
+- `rocm-sdk-devel`: still `7.14.0a20260522`; `rocm-sdk path --root` points at `_rocm_sdk_devel` and `hipcc --version` still prints `HIP version: 7.13.26202-e682406a65` with the same clang line as the prior 7.14 check.
+
+Command template:
+
+```bash
+PY=/home/lhl/miniforge3/envs/therock/bin/python
+ROCM_DEV=$(/home/lhl/miniforge3/envs/therock/bin/rocm-sdk path --root)
+ROCM_BIN=$(/home/lhl/miniforge3/envs/therock/bin/rocm-sdk path --bin)
+ROCM_LIBS=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all
+export PATH=$ROCM_BIN:$PATH
+export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$ROCM_DEV/lib:$ROCM_LIBS/lib:/opt/rocm-6.2.0/lib:$LD_LIBRARY_PATH
+$ROCM_BIN/hipcc --version > /tmp/hipengine-rocm7130423-hipcc-version.txt
+PYTHONPATH=. "$PY" scripts/qwen35_paro_bench.py --model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --prompt-length <512|4096> --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --compiler-version-file /tmp/hipengine-rocm7130423-hipcc-version.txt --attn-aotriton-min-tokens 512 --graph-replay-decode --json /tmp/hipengine-rocm7130423-paro/<out>.json
+```
+
+Two runs per shape; table uses median (`prefill tok/s / decode tok/s / tracked GiB`):
+
+| Workload | ROCm 7.13.20260403 current ref | 7.14.20260522 current ref | 7.13.20260423 libs + 7.14 devel current HEAD | Delta vs 7.13.20260403 | Delta vs 7.14.20260522 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | 1356.121 / 110.496 / 18.075 | 1298.920 / 105.287 / 18.075 | 1297.370 / 106.157 / 18.075 | prefill -4.33%, decode -3.93% | prefill -0.12%, decode +0.83% |
+| 4K/128 | 2396.599 / 111.518 / 18.954 | 2366.866 / 107.184 / 18.954 | 2361.950 / 107.433 / 18.954 | prefill -1.45%, decode -3.66% | prefill -0.21%, decode +0.23% |
+
+Conclusion: this runtime/library reinstall is effectively tied with the ROCm 7.14 check and still slower than the earlier 7.13.0a20260403 same-machine current reference. Because `rocm-sdk-devel` remains 7.14.0a20260522, this is a mixed-env diagnostic; for a pure 7.13.0a20260423 devel comparison, explicitly install `rocm[devel,libraries]==7.13.0a20260423` (or `rocm-sdk-devel==7.13.0a20260423`) and rerun.
+
+Saved compact artifact `benchmarks/results/2026-05-23-rx7900xtx-rocm7130423-current-head-paro-512-4k-check.json`.
