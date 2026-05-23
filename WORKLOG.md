@@ -22389,3 +22389,35 @@ Validation after patch:
 - `python3 -m py_compile scripts/dflash_chain_e2e_bench.py hipengine/benchmark/speculative.py`
 - `PYTHONPATH=. pytest -q tests/test_adaptive_budget.py tests/test_speculative_benchmark.py` -> 10 passed
 - GPU sanity artifact exact: `benchmarks/results/2026-05-23-hipengine-dflash-r3.1-w7900-adaptive-controller-b4-d16-4prompt-sanity-v2.json`
+
+## 2026-05-23 docs/perf(dflash): R3.3 drafter dense roofline with GPU sanity
+
+Used GPU for the planning estimate per user direction. Added `scripts/dflash_dense_microbench.py` and ran it on W7900:
+
+```bash
+PYTHONPATH=. python3 scripts/dflash_dense_microbench.py \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --loops 20 --warmup 5 \
+  --hardware-gpu 'AMD Radeon Pro W7900' \
+  --json benchmarks/results/2026-05-23-hipengine-dflash-r3.3-w7900-dense-microbench.json
+```
+
+Key measurements:
+- BF16 16x2048x2048: 0.182 ms/op, 46.1 GB/s effective weight BW, 5.3% of 864 GB/s.
+- BF16 16x2048x6144: 0.523 ms/op, 48.1 GB/s, 5.6% BW.
+- BF16 16x6144x2048: 0.463 ms/op, 54.3 GB/s, 6.3% BW.
+- BF16/F32 16x2048x512: ~0.081-0.083 ms/op, ~25 GB/s, ~3% BW.
+
+Using the actual z-lab drafter config (`hidden=2048`, `intermediate=6144`, `kv_features=512`, 8 layers), the measured dense op mix is ~2.040 ms/layer = **16.32 ms/cycle**. R2.2 synchronized decoder-layer wall is 19.60 ms/cycle, so dense kernels explain ~83% of decoder wall.
+
+Roofline projection at W7900 864 GB/s:
+- Absolute dense BW floor: 0.893 ms/cycle.
+- At 30% BW: dense ~2.98 ms/cycle; decoder projection 19.6 -> ~6.3 ms; cycle projection 62.1 -> ~48.8 ms.
+- At 50% BW: dense ~1.79 ms/cycle; decoder projection ~5.1 ms; cycle projection ~47.6 ms.
+
+Conclusion: R3.4 WMMA dense kernels are strongly justified and remain the largest measured drafter wall lever. R3.4 alone is still insufficient for prompt-3 break-even (~36 ms target), so verifier/topology work remains required.
+
+Docs/artifacts:
+- New `docs/DRAFTER_DENSE_ROOFLINE.md` with current-kernel analysis, measured table, roofline floor, WMMA signature/tile plan, risks, and R3.4 work order.
+- Updated `docs/DFLASH.md` R3.3 row/status.
+- Artifact: `benchmarks/results/2026-05-23-hipengine-dflash-r3.3-w7900-dense-microbench.json`.
