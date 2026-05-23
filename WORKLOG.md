@@ -22161,3 +22161,46 @@ hipengine.loading.safetensors.MissingConfigError: config.json not found under /m
 **Artifact:** `benchmarks/results/2026-05-23-hipengine-dflash-r2.2-w7900-missing-drafter-blocked.json`
 
 **Docs:** Updated `docs/DFLASH.md` R2.2 row with the local target-pass / drafter-missing blocker and exact next command.
+
+## 2026-05-23 docs(dflash): R2.2 unblocked by z-lab drafter, W7900 result retained
+
+**Context:** User restored/bragged `z-lab/Qwen3.6-35B-A3B-DFlash`. Revalidated the DFlash target/drafter metadata and reran R2.2 on W7900/gfx1100 with the default-on MoE C1 dispatcher.
+
+**Artifact validation:**
+
+```bash
+python3 scripts/dflash_validate_artifacts.py \
+  --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --drafter-model z-lab/Qwen3.6-35B-A3B-DFlash \
+  --json /tmp/dflash_r2_validate_artifacts.json
+```
+
+Result: `passed=True`; target passed with `722/722` tensors; drafter passed with `91/91` tensors; `pair_errors=[]`. HF cache resolved the drafter to `/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719`.
+
+**R2.2 retained diagnostic command:**
+
+```bash
+python3 scripts/dflash_chain_e2e_bench.py \
+  --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --drafter-model z-lab/Qwen3.6-35B-A3B-DFlash \
+  --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --max-prompts 4 --decode-tokens 16 --draft-budgets 4 \
+  --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched \
+  --hardware-gpu 'AMD Radeon Pro W7900' \
+  --json /tmp/dflash_r2_b4_d16_w7900_4prompts.json
+```
+
+Result summary:
+
+- Correctness: exact same-session AR equality and finite logits on all 4 rows.
+- Aggregate AR: `108.171 tok/s`; DFlash: `44.686 tok/s`; speedup `0.413x` AR.
+- This beats Round-1 `0.289x` by ~42.9% but remains below both AR and the R2.2 expected `>=0.7x` target; `performance_claim=false`.
+- Acceptance: hist `{0:8, 1:8, 2:4, 3:3, 4:3}`, avg accepted draft tokens/cycle `1.423`, visible tokens/cycle `2.462`, multi-token accept `38.5%`.
+- Time split: verify `31.07 ms/cycle`, drafter `23.82 ms/cycle`, total `55.09 ms/cycle`; AR is ~`9.24 ms/token`, so cycle cost is ~`5.96` AR-token equivalents.
+- Row spread: quicksort `0.287x`, function `0.456x`, class `0.645x`, json/yaml `0.410x`.
+
+**Retained artifact:** `benchmarks/results/2026-05-23-hipengine-dflash-r2.2-w7900-b4-d16-4prompt-diagnostic.json`.
+
+**Docs/rollup:** Updated `docs/DFLASH.md` with a new R2.2 W7900 result section, marked R2.2 done-for-correctness but not promoted, updated R2.3/R2.4/R2.5 readiness, added lesson L11, and added a benchmark rollup/changelog diagnostic row.
+
+**Next:** Analyze next DFlash Round-2 lever. The R2.2 split says both sides matter: R2.3/R2.5 can reduce the `23.8 ms/cycle` drafter half; R2.4/R2.8 must reduce the `31.1 ms/cycle` target verifier half. DDTree remains premature until chain DFlash is close to AR.
