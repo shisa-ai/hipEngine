@@ -26084,3 +26084,112 @@ Current local RX 7900 XTX setup recorded in the report:
 - Idle thermals about edge/junction/mem `33/41/46 C`.
 
 Also added higher-performance experiment notes: log clocks under load first; try COMPUTE profile without raising cap; optionally test deterministic high SCLK/MCLK DPM states at the existing cap; only then consider stepping power cap toward the default `303 W`, given prior host shutdowns at higher power. Included restore/verification reminders for the known-safe `290 W` local setup.
+
+## 2026-05-23 — TheRock ROCm 7.13 diagnostic for W7900 GGUF prefill gap
+
+User pointed out that the `therock` conda env has ROCm nightly wheels installed
+(`rocm[devel,libraries] == 7.13.0a20260423`) and asked whether the previous
+W7900 runs were actually using them. Short answer: **no**. Previous hipEngine
+bench runs used `/opt/rocm` system ROCm 7.2.3 because this shell had
+`/opt/rocm/bin` before the conda env in `PATH` and `/opt/rocm/lib` first in
+`LD_LIBRARY_PATH`.
+
+### Why `rocm-sdk test` failed
+
+`rocm-sdk path --root` correctly returns the TheRock devel root:
+
+```text
+/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel
+```
+
+But `hipconfig --rocmpath` resolved to `/opt/rocm` because command resolution was:
+
+```text
+hipconfig is /opt/rocm/bin/hipconfig
+hipconfig is /home/lhl/mambaforge/envs/therock/bin/hipconfig
+```
+
+and environment was:
+
+```text
+PATH=... /opt/rocm/bin ... /home/lhl/mambaforge/envs/therock/bin ...
+LD_LIBRARY_PATH=/opt/rocm/lib:/opt/rocm/lib:/opt/rocm/lib
+```
+
+So the failing `rocm_sdk.tests.devel_test.testCLIUsesDevelRootPath` is not a
+broken TheRock install; it is an activation/path-order problem. To force TheRock
+for hipEngine, used a clean env with the SDK root first and no login-shell rc
+files:
+
+```bash
+ROOT=$(/home/lhl/mambaforge/envs/therock/bin/python3.12 -m rocm_sdk path --root)
+env -i \
+  HOME=$HOME USER=$USER LOGNAME=$LOGNAME SHELL=$SHELL TERM=${TERM:-xterm} \
+  PATH="$ROOT/bin:/home/lhl/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin" \
+  LD_LIBRARY_PATH="$ROOT/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib" \
+  HIP_PATH="$ROOT" ROCM_PATH="$ROOT" HIP_LIB_PATH="$ROOT/lib" HIP_INCLUDE_PATH="$ROOT/include" \
+  HSA_OVERRIDE_GFX_VERSION=11.0.0 PYTHONPATH=. \
+  ... bash --noprofile --norc -c '<bench command>'
+```
+
+Validation of the clean env:
+
+```text
+which hipcc -> .../_rocm_sdk_devel/bin/hipcc
+hipcc --version -> HIP version: 7.13.26162-1140233ffe
+AMD clang version 23.0.0git (...43215c73116c...+PATCHED:2506c552...)
+hipconfig --rocmpath -> .../_rocm_sdk_devel
+ctypes.CDLL('libamdhip64.so') maps -> .../_rocm_sdk_devel/lib/libamdhip64.so
+```
+
+### TheRock 7.13 W7900 4K/128 Q4_K_S benchmark
+
+First ran one TheRock persistent session without `--require-cached-build` to
+seed the 7.13 JIT cache. Then reran with `--require-cached-build`.
+
+Common benchmark command inside the clean TheRock env:
+
+```bash
+python scripts/qwen35_gguf_bench.py --persistent-session \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf \
+  --quant gguf_q4_k_s \
+  --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 \
+  --warmup-runs <1|2> --measured-runs 3 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --use-wmma-prefill --use-gemv-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build \
+  --json /tmp/q4ks-persistent-bench/q4ks-4096-128-persistent-therock713-*.json
+```
+
+Results (4K/128, W7900, persistent session):
+
+| Stack | Warmups | Prefill median | Decode median | Tracked peak | Final IDs (measured) | Notes |
+| ----- | ------: | -------------: | ------------: | -----------: | -------------------- | ----- |
+| `/opt/rocm` 7.2.3 | 1 | `1733.901 tok/s` | `101.050 tok/s` | `21.335 GiB` | `[85,85,85]` | clean-GPU rerun from previous entry |
+| TheRock 7.13 | 1 | `2583.242 tok/s` | `100.747 tok/s` | `21.335 GiB` | `[85,85,85]` | first warmup final token was wrong (`318`) |
+| TheRock 7.13 | 2 | `2580.484 tok/s` | `101.174 tok/s` | `21.335 GiB` | `[85,85,85]` | first warmup wrong (`220`), second warmup fixed it; all measured final IDs correct |
+
+TheRock 7.13 vs `/opt/rocm` 7.2.3: +48.8% prefill at 4K/128 (`2580.484` vs
+`1733.901 tok/s`) with decode unchanged. TheRock 7.13 W7900 is now within about
+5.2% of the RX 7900 XTX final-gate reference (`2722.5 tok/s` prefill), so the
+previous W7900/RX 4K GGUF prefill gap is primarily a ROCm 7.2.x compiler/runtime
+issue, not W7900 clocks, chunking, or cold start.
+
+Important caveats before promoting TheRock 7.13 numbers to README:
+
+1. The first TheRock warmup iteration after session load produced a wrong sampled
+   token/final token in repeated runs (examples: `[318,49633,318]`, final `318`;
+   `[318,591,220]`, final `220`). The second warmup and all measured runs were
+   stable (`[27,50557,85]`, final `85`). Treat this as diagnostic until we
+   understand the first-iteration anomaly or add a mandatory discarded warmup for
+   serving.
+2. `hipMemGetInfo` via TheRock 7.13 reports invalid low/negative values on this
+   mixed kernel/userspace setup (`after_close` negative baseline, sampled peak
+   around `8.21 GiB` while hipEngine tracked allocations are `21.335 GiB`). Use
+   hipEngine tracked memory for this diagnostic.
+
+Diagnostic artifact:
+
+```text
+benchmarks/results/2026-05-23-hipengine-qwen36-35b-a3b-q4ks-w7900-therock713-diagnostic.json
+```
