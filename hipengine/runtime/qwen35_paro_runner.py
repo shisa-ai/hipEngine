@@ -1251,8 +1251,10 @@ class Qwen35ParoResidentSession:
                 + "; ".join(native_prefill_plan.blockers)
             )
         metadata = self._materialize_packed_prefill_metadata(slab)
+        minimize_prefill_workspace_overlap = self._should_minimize_prefill_workspace_overlap(slab.rows)
         try:
-            self._release_decode_scratch_for_prefill()
+            if minimize_prefill_workspace_overlap:
+                self._release_decode_scratch_for_prefill()
             prefill_hidden = self._prefill_hidden_view_for_rows(slab.rows)
             embedding_lookup_batch_fp16_i64(
                 self.embedding.tensor.ptr,
@@ -1277,7 +1279,7 @@ class Qwen35ParoResidentSession:
                 "slot_ids": list(slab.physical_slot_ids),
                 "linear_prefix_layers": native_prefill_plan.linear_prefix_layers,
                 "layer_limit": native_prefill_plan.layer_limit,
-                "decode_scratch_released_for_prefill": True,
+                "decode_scratch_released_for_prefill": minimize_prefill_workspace_overlap,
             }
             return results
         finally:
@@ -1327,8 +1329,10 @@ class Qwen35ParoResidentSession:
             token_buf = malloc(token_arr.nbytes, runtime=self.runtime)
             owns_token_buf = True
         copy_host_to_device(token_buf, host_array_ptr(token_arr), token_arr.nbytes, runtime=self.runtime)
+        minimize_prefill_workspace_overlap = self._should_minimize_prefill_workspace_overlap(len(tokens))
         try:
-            self._release_decode_scratch_for_prefill()
+            if minimize_prefill_workspace_overlap:
+                self._release_decode_scratch_for_prefill()
             self._prepare_prefill_context_counts(len(tokens), stream=0)
             prefill_hidden = self._prefill_hidden_view_for_rows(len(tokens))
             embedding_lookup_batch_fp16_i64(
@@ -1361,7 +1365,7 @@ class Qwen35ParoResidentSession:
                 "kv_scale_dtype": self.kv_scale_dtype.value if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else None,
                 "kv_scale_granularity": self.kv_scale_granularity if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else None,
                 "int8_prefill_oracle": self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD,
-                "decode_scratch_released_for_prefill": True,
+                "decode_scratch_released_for_prefill": minimize_prefill_workspace_overlap,
             }
             if not sample:
                 return None
@@ -1390,8 +1394,10 @@ class Qwen35ParoResidentSession:
             token_buf = malloc(token_arr.nbytes, runtime=self.runtime)
             owns_token_buf = True
         copy_host_to_device(token_buf, host_array_ptr(token_arr), token_arr.nbytes, runtime=self.runtime)
+        minimize_prefill_workspace_overlap = self._should_minimize_prefill_workspace_overlap(len(tokens))
         try:
-            self._release_decode_scratch_for_prefill()
+            if minimize_prefill_workspace_overlap:
+                self._release_decode_scratch_for_prefill()
             prefill_hidden = self._prefill_hidden_view_for_rows(len(tokens))
             embedding_lookup_batch_fp16_i64(
                 self.embedding.tensor.ptr,
@@ -1428,7 +1434,7 @@ class Qwen35ParoResidentSession:
                 "full_native": False,
                 "linear_prefix_layers": native_prefill_plan.linear_prefix_layers,
                 "layer_limit": native_prefill_plan.layer_limit,
-                "decode_scratch_released_for_prefill": True,
+                "decode_scratch_released_for_prefill": minimize_prefill_workspace_overlap,
             }
             if not sample:
                 return None
@@ -2226,6 +2232,31 @@ class Qwen35ParoResidentSession:
             else:
                 scratch.clear()
 
+    def _should_minimize_prefill_workspace_overlap(self, tokens: int) -> bool:
+        """Return true only when chunked prefill needs lower scratch overlap.
+
+        Freeing decode/prefill workspaces during the timed prefill path saves
+        memory for chunked long-context runs, but repeated HIP free/alloc churn
+        regresses unchunked short prompts (512/128 on W7900) by ~30%.  Treat
+        the overlap-minimizing path as a chunked-prefill memory tactic rather
+        than the default for prompts that fit in one chunk.
+        """
+
+        tokens = int(tokens)
+        if tokens <= 0:
+            return False
+        config = getattr(self, "prefill_config", None)
+        if config is None:
+            return False
+        chunk_sizes = (
+            int(getattr(config, "linear_chunk_size", 0)),
+            int(getattr(config, "moe_chunk_size", 0)),
+            int(getattr(config, "full_attn_query_chunk_size", 0)),
+            int(getattr(config, "full_attn_post_chunk_size", 0)),
+            int(getattr(config, "full_attn_rope_chunk_size", 0)),
+        )
+        return any(0 < size < tokens for size in chunk_sizes)
+
     def _ensure_linear_prefill_scratch(self, *, tokens: int) -> Qwen35ParoLinearAttentionScratch:
         scratch = getattr(self, "prefill_linear_scratch", None)
         if scratch is not None and scratch.attn_input.shape[0] >= tokens:
@@ -2307,10 +2338,15 @@ class Qwen35ParoResidentSession:
     def _run_native_prefill_layers(self, *, tokens: int, stream: int = 0) -> Tensor:
         hidden = self._prefill_hidden_view_for_rows(tokens)
         use_aotriton_attention = self._prefill_use_aotriton_attention_resolved(tokens)
+        release_workspace_between_layer_types = self._should_minimize_prefill_workspace_overlap(tokens)
         previous_layer_type: str | None = None
         for layer_id, state in enumerate(self.states):
             layer_type = self.config.layer_types[layer_id]
-            if previous_layer_type is not None and layer_type != previous_layer_type:
+            if (
+                release_workspace_between_layer_types
+                and previous_layer_type is not None
+                and layer_type != previous_layer_type
+            ):
                 self._release_prefill_workspace()
             previous_layer_type = layer_type
             if layer_type == "linear_attention":

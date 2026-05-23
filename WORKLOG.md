@@ -26347,3 +26347,50 @@ python3 scripts/resolve_worklog_conflict.py --check WORKLOG.md
 ```
 
 AGENTS.md "Coordination" section updated to point at the driver + recovery script. The script is intentionally conservative: it does not touch any file lacking conflict markers, and never reorders content outside a conflict block.
+
+## 2026-05-23 — PARO 512/128 prefill regression root cause + fix
+
+Root-caused the W7900 PARO 512/128 drop noticed after the TheRock sweep.
+The 2026-05-18 README/source row was written at `f3f450481d44ebd443c53b62b4e46d7fa19b169f` with prefill/decode/peak
+`2500.565 / 111.516 / 18.123 GiB`. Reproduced that commit in isolated worktrees rather than moving the main checkout:
+
+```text
+f3f4504 + /opt/rocm 7.2.3 cached:       2462.514 prefill, 104.593 decode, 18.123 GiB
+f3f4504 + TheRock ROCm 7.13 cached:     2476.934 prefill, 102.724 decode, 18.123 GiB
+current regressed + /opt/rocm 7.2.3:    1734.770 prefill, 104.610 decode, 18.023 GiB
+current regressed + TheRock ROCm 7.13:  1752.975 prefill, 103.046 decode, 18.023 GiB
+```
+
+This ruled out ROCm version as the cause. Narrowed the code window with TheRock 7.13 512/128 runs:
+
+```text
+cf38991 (parent-side before 308ec5d): 2459.468 prefill, 103.242 decode, 18.123 GiB
+308ec5d single prefill buffer:       2482.740 prefill, 103.589 decode, 18.120 GiB
+328a1b3 scratch-overlap release:     1796.026 prefill, 103.375 decode, 18.058 GiB
+328a1b3 patched no layer-release:    2360.426 prefill, 103.249 decode, 18.110 GiB
+```
+
+Root cause: `328a1b3 perf: reduce INT8 KV prefill scratch overlap` freed decode scratch before prefill and, more importantly, called `_release_prefill_workspace()` at every layer-type transition. That memory tactic is good for chunked long-context / INT8 capacity rows, but for unchunked 512-token prefill it put repeated HIP free/alloc churn inside the timed prefill path while saving only ~0.05-0.10 GiB.
+
+Fix retained the overlap-minimizing path only when resolved prefill chunk sizes actually split the prompt. Unchunked prompts keep decode/prefill scratch resident; chunked 4K/32K/128K paths keep the memory-saving release behavior. Validation:
+
+```bash
+python -m py_compile hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_paro_bench.py
+python -m pytest -q tests/test_qwen35_prefill_workspace_policy.py
+# ... [100%]
+```
+
+Fixed W7900 TheRock cached 512/128 row:
+
+```text
+python scripts/qwen35_paro_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e --backend hip_gfx1100 --shared-expert-format packed_paro_w4 --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode --json /tmp/paro-rootcause-20260523/current-fixed-therock713-512-128-cached.json
+=> 2451.220 prefill tok/s, 103.078 decode tok/s, 18.077 GiB tracked peak, generated preview [9707, 9707], decode_scratch_released_for_prefill=false
+```
+
+Updated the W7900 diagnostic rollup row and added root-cause artifact:
+
+```text
+benchmarks/W7900.md
+benchmarks/results/2026-05-23-w7900-hipengine-therock713-paro-gguf-sweep-diagnostic.json
+benchmarks/results/2026-05-23-paro-512-prefill-workspace-overlap-rootcause-diagnostic.json
+```

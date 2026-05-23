@@ -39,14 +39,14 @@
   "results": {
     "hipengine_paro": {
       "512/128": {
-        "prefill_tok_s": 1752.9753314365116,
-        "decode_tok_s": 103.04645467978476,
-        "tracked_peak_gib": 18.023083087988198,
+        "prefill_tok_s": 2451.220285656509,
+        "decode_tok_s": 103.07835884576316,
+        "tracked_peak_gib": 18.077388503588736,
         "generated_preview_token_ids": [
           9707,
           9707
         ],
-        "raw_json": "/tmp/paro-therock713-spot/shisa-packed-512-128-therock713-cached-spot.json",
+        "raw_json": "/tmp/paro-rootcause-20260523/current-fixed-therock713-512-128-cached.json",
         "prefill_chunk_sizes": {
           "linear": 0,
           "moe": 0,
@@ -54,7 +54,22 @@
           "full_attn_post": 0,
           "full_attn_rope": 0
         },
-        "load_seconds": 26.26695595800993
+        "load_seconds": 22.06387126201298,
+        "prefill_execution_detail": {
+          "path": "single_request_native_full",
+          "tokens": 512,
+          "full_native": true,
+          "linear_prefix_layers": 3,
+          "layer_limit": 40,
+          "aotriton_attention": true,
+          "attn_aotriton_min_tokens": 512,
+          "kv_storage_dtype": "bf16",
+          "kv_scale_dtype": null,
+          "kv_scale_granularity": null,
+          "int8_prefill_oracle": false,
+          "decode_scratch_released_for_prefill": false
+        },
+        "refresh_note": "512/128 PARO row refreshed after fixing unchunked prefill workspace-overlap regression; chunked 4K/32K/128K rows are unchanged from the original TheRock sweep."
       },
       "4K/128": {
         "prefill_tok_s": 2660.2011188573524,
@@ -321,5 +336,17 @@
     "gguf_long": "/tmp/w7900-therock713-sweep/q4ks-32768-131072-therock713.log",
     "paro_long": "/tmp/w7900-therock713-sweep/paro-shisa-packed-32768-131072-therock713.log",
     "spot": "benchmarks/results/2026-05-23-hipengine-w7900-therock713-gguf-paro-512-4k-spot-diagnostic.json"
-  }
+  },
+  "refreshes": [
+    {
+      "date": "2026-05-23",
+      "row": "hipengine_paro 512/128",
+      "base_git_head_before_fix": "e8ddf11ae8265f3ae47f6a222ace2ac7f50698ef",
+      "change": "Keep decode/prefill workspaces resident for unchunked prefill; only minimize scratch overlap when resolved chunk sizes actually split the prompt.",
+      "raw_json": "/tmp/paro-rootcause-20260523/current-fixed-therock713-512-128-cached.json",
+      "prefill_tok_s": 2451.220285656509,
+      "decode_tok_s": 103.07835884576316,
+      "tracked_peak_gib": 18.077388503588736
+    }
+  ]
 }
