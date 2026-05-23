@@ -22027,3 +22027,64 @@ Next session entry point: implement M14.dispatch.1-beta per the design notes in 
 - `benchmarks/results/2026-05-23-hipengine-mtp-bench-suite-w7900-m14.dispatch.1-beta-off-baseline.json`
 
 **Next session:** Run `rocprofv3 --kernel-trace` on the verifier hot path with env=on vs env=off; identify which specific kernel(s) regress; if `silu_mul_dual_rotate_out_fp16` or `awq_fusedw4_prefill_*` show longer DurationNs under the dispatcher, the host-side init / barrier-reset hypothesis is confirmed and the fix is to surface those init steps to the Python caller (cache them, batch them). If kernel timings are identical between env-on/off, the issue is somewhere in the Python-side path that cProfile didn't surface — instrument with `roctxRangePush/Pop` markers around each kernel in the C dispatcher to see whether the time disappears between kernels.
+
+## 2026-05-23 perf(mtp): M14.dispatch.1 regression retrace + prewarm fix
+
+**Status:** Regression root-caused and fixed. The C-side MoE C1 dispatcher is still default-off/opt-in, but the prior +20% cycle_cost regression was not a steady-state kernel issue. It was a one-time lazy setup artifact: dispatcher `.so` load + function-pointer table construction happened inside verifier cycle 1 and was then averaged by the economics harness.
+
+**Clean rerun setup:**
+
+- Confirmed GPU idle before heavy runs with repeated `rocm-smi --showuse --showmemuse --showpids` samples (`GPU use=0`, `VRAM=0`, no KFD PIDs). Earlier rocprof attempt while another GPU process was active is discarded/invalid.
+- Correctness smoke default prompt (`scripts/mtp_chain_e2e_smoke.py --decode-tokens 8 --candidate-budget 3 --backend hip_gfx1100 --chain-attn-mode batched --graph-mode off`):
+  - env OFF: exact_ar_match=True, accepted `[0,0,0,0,1,1]`, `mtp_tok_s_diagnostic=0.2402`.
+  - env ON before fix: exact_ar_match=True, same tokens/accepted, `mtp_tok_s_diagnostic=0.2370`.
+
+**Regression reproduction (clean 9-prompt suite, before fix):**
+
+Command shape:
+
+```bash
+python3 scripts/mtp-bench.py --mode hipengine-current --max-tokens 64 \
+  --candidate-budgets 3 --runs 1 --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode off --raw-root /tmp/m14_dispatch_retrace_bench_{off,on}_raw \
+  --out /tmp/m14_dispatch_retrace_bench_{off,on}.json
+```
+
+- env OFF: exact=True, aggregate `cycle_cost=3.707`, `verify_ms=24.925`, `cycle_wall_ms=34.183`, `ar_ms/tok=9.182`, visible/cycle `1.895`.
+- env ON before fix: exact=True, aggregate `cycle_cost=4.403`, `verify_ms=31.444`, `cycle_wall_ms=40.719`, `ar_ms/tok=9.210`, visible/cycle `1.895`.
+- Per-prompt example (`code_python`): OFF `verify=23.47 ms/cycle`, ON `verify=32.19 ms/cycle`.
+
+**Why rocprof did not show it:**
+
+- Long `code_python` `scripts/mtp_verifier_rocprof.py --decode-tokens 64` traces showed OFF host window `24.50 ms/pass`, ON `24.84 ms/pass`, kernel time only `18.05→18.20 ms/pass` (+0.15). This looked like no regression.
+- Reason: the rocprof post-processor skips the first two `mtp_verify_pass_*` windows by default (`--steady-state-skip=2`), so it filtered out the cold cycle where lazy dispatcher setup happens.
+- Direct no-rocprof smoke with the same `code_python` prompt exposed the artifact:
+  - env OFF first cycles: `[64.551, 32.042, 29.338, 31.920, 32.404]` ms; avg verify `23.742 ms/cycle`.
+  - env ON before fix first cycles: `[271.827, 32.120, 29.325, 32.072, 31.660]` ms; avg verify `31.980 ms/cycle`.
+  - Cycles 2–24 are parity. The first-cycle delta is ~207 ms, exactly matching the singleton setup cost previously seen in cProfile (`build_moe_c1_dispatch` + `_build_fns_table`).
+
+**Fix:**
+
+- Added `prewarm_moe_c1_c_dispatch()` in `hipengine/runtime/moe_c1_dispatch.py` to resolve the process-global dispatcher `.so` and `MoeC1Fns` table eagerly.
+- `Qwen35ParoResidentSession._load_kernel_libraries()` now calls that prewarm under `hip_target_arch_environment(self.target_arch)` when `HIPENGINE_MOE_C1_C_DISPATCH=1`.
+- This moves the one-time setup from measured decode/verify into resident build. Default-off path is untouched.
+
+**Post-fix validation:**
+
+- `python3 -m py_compile hipengine/runtime/moe_c1_dispatch.py hipengine/runtime/qwen35_paro_runner.py` passed.
+- Direct `code_python` smoke, env ON post-fix:
+  - exact_ar_match=True, token sequence identical.
+  - first cycles `[63.963, 32.139, 29.194, 31.767, 31.781]` ms.
+  - avg verify `23.635 ms/cycle`; cycle avg `32.797 ms`; `mtp_decode_tok_s=76.40`.
+  - First-cycle outlier fixed: `271.827 → 63.963 ms`.
+- Clean 9-prompt suite env ON post-fix:
+  - exact=True all 9 prompts.
+  - aggregate `cycle_cost=3.696`, `verify_ms=24.810`, `cycle_wall_ms≈34.06`, visible/cycle `1.895`.
+  - Compared to clean OFF baseline: `cycle_cost 3.707→3.696` (-0.3%), `verify_ms 24.925→24.810` (-0.5%); parity within noise, no retained speed win.
+
+**Artifacts:**
+
+- `benchmarks/results/2026-05-23-hipengine-mtp-bench-suite-w7900-m14.dispatch.1-prewarm-off-baseline.json`
+- `benchmarks/results/2026-05-23-hipengine-mtp-bench-suite-w7900-m14.dispatch.1-prewarm-on-diagnostic.json`
+
+**Conclusion:** M14.dispatch.1-beta is safe/correct with prewarm but does not deliver the expected 20% verify reduction. The earlier rejected artifact's performance regression should be interpreted as lazy warmup placement, not GPU kernel slowdown. Next optimization should target actual launch count / graph node count / fused verifier work; the C dispatcher alone is not enough.

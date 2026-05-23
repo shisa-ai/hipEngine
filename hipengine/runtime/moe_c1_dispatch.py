@@ -70,6 +70,21 @@ def moe_c1_c_dispatch_enabled() -> bool:
     return value.strip().lower() in {"1", "on", "yes", "true"}
 
 
+def prewarm_moe_c1_c_dispatch() -> None:
+    """Resolve the dispatcher .so and shared function-pointer table eagerly.
+
+    M14.dispatch.1-beta originally built these singletons lazily from the first
+    verifier-layer call.  That kept steady-state fast but charged ~200 ms of
+    one-time ctypes/build-cache work to verifier cycle 1, which the economics
+    harness then amortized as an apparent +8 ms/cycle regression.  Resident
+    sessions call this during build when the env gate is enabled, moving the
+    one-time setup out of the measured decode/verify window.
+    """
+
+    _get_dispatch_library()
+    _get_fns_table()
+
+
 @dataclass(frozen=True)
 class MoeC1DispatchSupport:
     """Which call patterns the C dispatcher can handle.

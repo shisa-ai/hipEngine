@@ -4352,6 +4352,18 @@ class Qwen35ParoResidentSession:
             }
             if self.prefill_config.attn_aotriton_min_tokens > 0:
                 self.libraries["aotriton"] = build_aotriton_wrap(**build_kwargs)
+            # M14.dispatch.1-beta prewarm: if the optional C-side MoE C1
+            # dispatcher is enabled, resolve its process-global .so handle and
+            # function-pointer table during resident build.  Leaving this lazy
+            # charges ~200 ms to verifier cycle 1 and looks like a steady-state
+            # regression once the economics harness averages over cycles.
+            from hipengine.runtime.moe_c1_dispatch import (
+                moe_c1_c_dispatch_enabled,
+                prewarm_moe_c1_c_dispatch,
+            )
+
+            if moe_c1_c_dispatch_enabled():
+                prewarm_moe_c1_c_dispatch()
         self._emit(
             "load_kernel_libraries_done",
             count=len(self.libraries),
