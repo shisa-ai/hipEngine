@@ -999,6 +999,380 @@ unlike the alpha-level argtypes caching which sped AR and spec proportionally.
 
 LoC budget: ~250–350 LoC total (150 C, 100 Python, 50 build-system, 50 tests).
 
+## Round-3 optimization plan (post-R2.3)
+
+After R2.2 (real z-lab drafter) and R2.3 (bucketed HIP graph cache) the bottleneck shape is fully measured on W7900 / gfx1100:
+
+- **Mean cycle wall ≈ 62 ms** (verifier `36.9 ms` + drafter `25.0 ms`); R2.2 sync-phase artifact.
+- **Mean visible tokens / cycle ≈ 2.42**, per-prompt range `[1.67, 4.00]` (see break-even table below).
+- **Cycle cost @ AR rate ≈ 6.65 AR-tok-equivalents** (vs 107 tok/s AR baseline); break-even needs either `visible/cycle ≥ 6` (impossible at B=4) or `wall ≤ 22–36 ms` (-35% to -73%, prompt-dependent).
+- **Per-replay launch overhead saved by R2.3 graph capture ≈ `~3.6 µs/launch × ~124 launches = ~0.45 ms` ≈ 2% of cycle**. Host-launch overhead is decisively NOT the bottleneck (matches M14.dispatch.0/1 finding for MTP).
+- **Drafter dense GEMVs run at ~3% of W7900 bandwidth limit** (current naive per-output-element kernel; see R3.3 roofline below).
+
+Round-3 splits the remaining work into three parallel tracks plus a regression-guard track:
+
+| Track | What | Win criterion | Carry from R2 |
+| --- | --- | --- | --- |
+| **A** | **Drafter kernel work** — push drafter wall toward bandwidth-bound floor (currently 3% of peak). | Drafter cycle wall ≤ 8 ms on W7900 (-60% from `19.6 ms` decoder layers + small overhead). | New: R3.3 paper → R3.4 kernel |
+| **B** | **Verifier fusion** — cost-model-gated kernel fuses to drop verifier wall. | Verifier wall ≤ 30 ms (-19% from `36.9 ms`); each fuse passes the L1 cost model on paper before code. | R2.4, R2.8 (re-scoped as R3.6, R3.7) |
+| **C** | **Topology / budget** — turn high-acceptance prompts into wins; protect low-acceptance prompts. | At least one retained prompt at ≥ 1.0x AR; suite mean ≥ 0.7x AR. | R2.6 → R3.1; R2.7 → R3.5 |
+| **G** | **Regression guard** (cross-cuts all tracks) — never lose more than 5% to AR per prompt. | Adaptive controller: `dflash_tok_s / ar_tok_s ≥ 0.95` on every retained prompt across 9-prompt suite. | R3.1 |
+
+Final Round-3 win state (all three tracks plus guard): on the 9-prompt suite, **aggregate AR ratio ≥ 1.0x** with no single prompt below `0.95x`, exact greedy AR equality, and an artifact whose `avg_visible_tokens_per_cycle / cycle_cost_ar_tokens > 1.0` (the promotion rule).
+
+### Per-prompt break-even reference (W7900, R2.2 4-prompt B=4 D=16)
+
+Ground truth from [r2.2-w7900](../benchmarks/results/2026-05-23-hipengine-dflash-r2.2-w7900-b4-d16-4prompt-diagnostic.json):
+
+| Prompt | Accept rate | Accepted/cycle | Visible/cycle | Cycle wall (ms) | Cycle cost (AR-tok-eq) | Need wall < (ms) | Wall Δ needed | Archetype |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 1 (quicksort) | 20% | 0.67 | 1.67 | 56.83 | 6.17 | 15.4 | **-73%** | unwinnable → must route to AR |
+| 2 | 42% | 1.67 | 2.67 | 53.23 | 5.83 | 24.3 | -54% | mid → needs both tracks A+B |
+| 3 | **80%** | **3.00** | **4.00** | 56.08 | 6.18 | 36.3 | **-35%** | **achievable** → priority target |
+| 4 | 38% | 1.29 | 2.29 | 53.14 | 5.56 | 21.8 | -59% | mid → needs A+B |
+| **mean** | 40% | 1.42 | 2.42 | 54.82 | 5.94 | 22.1 | -60% |  |
+
+Prompt 3 is the achievable-win archetype that R3.3/R3.4 (drafter wall) + R3.5 (DDTree) target. Prompt 1 is the unwinnable archetype that R3.1 (adaptive controller) must route to AR.
+
+R2.2 sync-phase ground truth (quicksort, synchronized phases): `decoder_layers 19.60 ms` (78% of drafter wall), `lm_head 2.83 ms`, `context_projection 0.02 ms` (cached), `topk_and_readback 0.40 ms`, `final_norm 0.04 ms`, `noise_prepare 0.05 ms`. Source: [sync-phase](../benchmarks/results/2026-05-23-hipengine-dflash-r2.2-w7900-b4-d8-sync-phase-diagnostic.json).
+
+### Round-3 punchlist
+
+Exact-AR equality is mandatory for every row and is NOT repeated in the Gate column. Items are dependency-ordered; Phase-1 rows (R3.1–R3.3, R3.8) need 0 GPU time.
+
+| # | Task | Track | Depends on | LoC est. | Gate | Expected Δ | Actual Δ | Status |
+| --- | --- | --- | --- | ---: | --- | --- | --- | --- |
+| R3.1 | Adaptive budget controller — per-prompt or rolling-window profit signal that switches between DFlash and AR; BeeLlama `tools/server/server-adaptive-dm.h` analog. | C / G | none (data already in R2.2/R2.3 artifacts) | ~180 (Python + tests) | Controller never costs > 5% vs AR on any single prompt in the 9-prompt suite; state transitions logged in artifact. | Aggregate AR ratio cannot regress; low-accept prompts (prompt 1 archetype) route to AR and are no longer drag on the mean. | _TBD_ | **Start here** (no GPU) |
+| R3.2 | Paper L1 cost-model writeup for every verifier-side and drafter-side fuse candidate. NO kernel code; produces a markdown table inside DFLASH.md (or a separate `docs/DFLASH_FUSION_COSTMODEL.md` if it grows). | B (paper) | none | ~250 LoC markdown | Each candidate has explicit `saved_launches × launch_overhead` vs `added_per_block_work × block_count` calculation; each labeled pass/fail; output is the work order for R3.6. | Selects ≥ 1 verifier fuse + ≥ 1 drafter fuse that pass the L1 check. | _TBD_ | Ready in parallel with R3.1 (no GPU) |
+| R3.3 | Drafter dense kernel roofline + WMMA design doc. NO kernel code; produces a roofline analysis and a proposed kernel signature. | A (paper) | none | ~200 LoC markdown | Document captures: (a) per-block work/launches of current `dflash_dense_bf16_to_bf16_kernel`; (b) W7900 BW-bound floor for 16-row × 2048-dim BF16 GEMV (`~9 µs`); (c) measured per-op cost (`~306 µs` → 3% of BW peak); (d) proposed 16×16×16 BF16 WMMA tiling with LDS-staged input; (e) expected delta if kernel reaches 30–50% of BW peak. | Drafter dense roofline at `~25–50 µs/op`, ~5–10× over current. Decoder wall projection `19.6 → 5–8 ms`. Cycle wall projection `62 → ~45 ms` (prompt 3 break-even). | _TBD_ | Ready in parallel with R3.1/R3.2 (no GPU) |
+| R3.4 | Implement R3.3's proposed WMMA dense kernels (`bf16_to_bf16` and `bf16_to_f32`) for the drafter; register against `KernelKey(...)` per AGENTS.md (no `if backend == ...` branches). | A (code) | R3.3 (paper sign-off) | ~430 (HIP + Python + tests) | KL ≤ 0.05 + top-1 ≥ 90% vs `kernels/cpu_reference/`; `rocprofv3 --kernel-trace` shows kernel duration in expected range and BW utilization ≥ 30%; same-session AR exact match on 9-prompt suite. | Drafter decoder `19.6 → 5–8 ms`; cycle wall `62 → ~45 ms`. Combined with R3.1 routing, prompt 3 archetype reaches ≥ 1.0x AR. | _TBD_ | Pending R3.3 |
+| R3.5 | DDTree wiring from chain-drafter row-wise top-K to existing `verify_tree_bulk_and_commit` (already landed gfx1151; bring up gfx1100). Carry-over from R2.7. | C (code) | R3.4 (chain wall drop) AND chain ≥ 1.0x AR on ≥ 1 prompt | ~200 (Python + tests) | DDTree branching_topk path runs on gfx1100 with K=2, exact-AR holds, accept rate per cycle improves ≥ 5% over chain on prompt 3 archetype. | +5–15% over chain on high-accept prompts; combined with R3.4 enables retained promotion. | _TBD_ | **Gated**: do NOT start unless chain crosses 1.0x AR on ≥ 1 prompt |
+| R3.6 | Implement ≥ 1 verifier-side fuse and ≥ 1 drafter-side fuse from R3.2's pass list. Each fuse keeps its unfused fallback per AGENTS.md. | B (code) | R3.2 (cost-model sign-off) | ~360 (HIP + Python + tests) per fuse | Bit-exact vs unfused chain on `kernels/cpu_reference/`; `rocprofv3` shows `saved_launches` matches prediction; 9-prompt cycle_cost reduction ≥ 3%. | Verifier `36.9 → 33–35 ms`. Combined with R3.4 cycle wall `45 → ~40–42 ms`. | _TBD_ | Pending R3.2 |
+| R3.7 | Reduced-logits verifier wire-through for DFlash chain accept (carry-over from R2.4); confirm via rocprof that no full-vocab lm-head kernel and no full-vocab D2H copy run in the verifier window. | B (code) | none (infra exists in MTP M12.6+) | ~50 (Python) | `HIPENGINE_VERIFY_GPU_ACCEPT=1` returns exact-AR; rocprofv3 shows no full-vocab lm-head kernel in verifier window. | -0.5 to -1 ms verifier. Small but free. | _TBD_ | Background; pick up while context-switching to verifier path |
+| R3.8 | BeeLlama v0.2.0 profile read + writeup. Compare their default config and kernels to ours. | reference | none | ~120 LoC markdown | Notes document (`docs/BEELLAMA_PROFILE.md`) captures: their default B, drafter architecture / param count, verifier batching strategy, kernel fusion tricks they call out. Maps each finding back to R3.x items. | Validates whether 4.4x is achievable on similar hardware or reflects a different setup. Does not directly produce a code change. | _TBD_ | Background reading; no GPU |
+
+### R3.1 design notes — Adaptive budget controller
+
+**Goal:** Default DFlash on, but never lose to AR by more than 5% on any prompt. Required to make any future R3.4/R3.6 win promotable across the full 9-prompt suite (not just the prompt 3 archetype).
+
+**Win state:**
+- For every prompt in the 9-prompt suite, `spec_tok_s_with_controller / ar_tok_s ≥ 0.95`.
+- Per-cycle artifact records: `mode_used`, `cycle_wall_ms`, `visible_tokens`, `profit_ms`, `controller_state`.
+- Aggregate AR ratio is ≥ max(R2.2 baseline `0.413x`, R3.4 mean after kernel work).
+
+**Approach (recommended algorithm):**
+
+Reference: BeeLlama `tools/server/server-adaptive-dm.h`.
+
+Per-cycle profit signal:
+
+```
+ar_ms_per_token  = 1000.0 / ar_decode_tok_s_estimate  # rolling avg of recent AR cycles
+cycle_wall_ms    = drafter_ms + verifier_ms
+visible_ar_eq_ms = visible_tokens_this_cycle * ar_ms_per_token
+profit_ms        = visible_ar_eq_ms - cycle_wall_ms   # positive = DFlash winning
+```
+
+State machine:
+
+```
+state ∈ {DFLASH, AR_LOCKED, AR_PROBE}
+
+init: state = DFLASH, profit_window = deque(maxlen=8)
+
+on each cycle:
+  if state == DFLASH:
+    run DFlash cycle; profit_window.append(profit_ms)
+    if len(profit_window) >= 4 and mean(profit_window[-4:]) < -5.0:
+      state = AR_LOCKED; cooldown = 8
+  elif state == AR_LOCKED:
+    run AR cycle; cooldown -= 1
+    if cooldown == 0:
+      state = AR_PROBE; probe_cycles = 2; probe_profit = []
+  elif state == AR_PROBE:
+    run DFlash cycle; probe_profit.append(profit_ms); probe_cycles -= 1
+    if probe_cycles == 0:
+      if mean(probe_profit) > 0.5:
+        state = DFLASH; profit_window.extend(probe_profit)
+      else:
+        state = AR_LOCKED; cooldown = 16
+```
+
+**Integration points (concrete):**
+- New module `hipengine/speculative/adaptive_budget.py` containing `AdaptiveBudgetController` class with `should_use_dflash() -> bool`, `record(cycle_metrics)`, `summary() -> dict`.
+- Call sites: `scripts/dflash_chain_e2e_bench.py:run_dflash_tokens` and `_run_dflash_chain_on_session`, between the budget check and the drafter `propose()` call.
+- New CLI flag `--adaptive-budget {off, on}` (default `off` during validation; flip to `on` after measured pass).
+- Artifact summary key: `spec.adaptive_budget` containing controller state transitions + per-cycle log.
+
+**Grind budget:**
+- ~120 LoC Python (controller + integration).
+- ~60 LoC tests (synthetic profit traces).
+- Effort: 0.5–1 day. **Abort if:** controller still flaps even with cooldown ≥ 16; the right fix is to add hysteresis or per-prompt routing, not more iteration.
+
+**Risk:** Controller flapping on borderline prompts. Mitigated by the cooldown and 4-cycle moving average. Worst case the controller misroutes one or two prompts; the gate (`≥ 0.95x per prompt`) catches this.
+
+**Acceptance bench command:**
+
+```bash
+python3 scripts/dflash_chain_e2e_bench.py \
+  --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --drafter-model z-lab/Qwen3.6-35B-A3B-DFlash \
+  --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --max-prompts 9 --decode-tokens 32 --draft-budgets 4 \
+  --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched \
+  --adaptive-budget on \
+  --hardware-gpu 'AMD Radeon Pro W7900' \
+  --json benchmarks/results/<date>-hipengine-dflash-r3.1-w7900-adaptive-controller.json
+```
+
+### R3.2 design notes — Verifier fusion L1 cost-model template
+
+**Goal:** Produce a written cost-model verdict for every plausible fuse before any kernel work, so R3.6 starts from a paper-approved short list. Required by AGENTS.md L1 ("Check the math before writing the kernel").
+
+**Win state:**
+- A markdown table inside DFLASH.md (or `docs/DFLASH_FUSION_COSTMODEL.md` if it grows past ~200 lines) with one row per candidate fuse.
+- Each row labels pass / fail / inconclusive with explicit numbers.
+- The output is a 1–3-item shortlist for R3.6 to implement.
+
+**Approach — cost model formula:**
+
+```
+LAUNCH_OVERHEAD = 3.6 µs / launch                      # measured (R2.3)
+VERIFIER_LAUNCHES_PER_PASS ≈ 1011                       # MTP M13.B.0 rocprof
+DRAFTER_LAUNCHES_PER_CYCLE ≈ 124                        # 8 layers × ~15 + outer
+W7900_BW = 864 GB/s
+W7900_BF16_WMMA_PEAK ≈ 120 TFLOPS
+
+saved_ms     = saved_launches * LAUNCH_OVERHEAD
+added_ms     = (added_redundant_compute_or_memory_per_block / peak_throughput) * blocks_per_pass
+
+PASS  iff  saved_ms > added_ms
+```
+
+**Template per candidate (coder fills in):**
+
+```
+### Fuse candidate: <name>
+- Phase: drafter | verifier
+- Replaces kernels: A (current ms/pass, current launches/pass), B (...)
+- New fused kernel signature: <sig>
+- Saved launches: <delta>
+- Saved overhead: <delta * 3.6 µs>
+- Per-block added work expression (in terms of tokens, heads, hidden, block_size, etc.):
+- Block count per pass:
+- Added kernel time per pass:
+- Verifier verdict: PASS / FAIL
+- Drafter verdict: PASS / FAIL
+- Notes / risks:
+```
+
+**Candidates to evaluate (initial list; coder may add):**
+
+1. **add + RMSNorm fuse** (drafter and verifier post-attention and post-MLP residual paths).
+2. **RoPE + QKV-cur fuse** (verifier query-side; per-block work scales with `tokens × heads`).
+3. **RoPE + QKV-noise fuse** (drafter query-side; scales with `block_size × heads`).
+4. **SiLU + mul + down-proj fuse** (drafter MLP).
+5. **Final-norm + lm-head fuse** (drafter last row only).
+6. **K rotate + KV write fuse** (drafter; replaces concat + rotary as separate launches).
+7. **Verifier write-through extensions** (M13.B.0 already wrote `next_hidden` through; survey for any remaining write-throughs in router/expert combine paths).
+
+**Grind budget:**
+- ~250 LoC markdown.
+- Effort: 1 day to do the math carefully for all 7 candidates. **Abort if:** the candidate list is exhausted with 0 passing fuses; that's a real finding (record it as L15 and skip R3.6 entirely).
+
+**Risk:** Mis-estimating `added_per_block_work` for fuses that have asymmetric compute (e.g. RMSNorm reduction across hidden). Mitigation: cross-check against rocprofv3 per-kernel time of the existing unfused kernels (the per-kernel time IS the cost; we just need to subtract any redundant work that the fuse introduces).
+
+### R3.3 design notes — Drafter dense kernel roofline
+
+**Goal:** Quantify the gap between current naive drafter dense GEMVs and the W7900 roofline, then specify a WMMA-tiled replacement kernel signature. This is the gate document for R3.4 (the actual kernel rewrite).
+
+**Win state:**
+- A roofline document (in DFLASH.md or `docs/DRAFTER_DENSE_ROOFLINE.md`) with:
+  1. Current kernel analysis (per-block work, launch shape, measured per-op time).
+  2. W7900 BW-bound and FLOPS-bound floors for the relevant shapes.
+  3. Concrete tiling proposal (16×16×16 BF16 WMMA) with LDS strategy.
+  4. Expected drafter wall delta at 30% and 50% of BW peak.
+- A C-style kernel signature (`hipengine_dflash_dense_bf16_to_bf16_wmma(...)`) ready to be implemented in R3.4.
+
+**Approach — current kernel analysis:**
+
+Source: `hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.hip:dflash_dense_bf16_to_bf16_kernel` (and the `_to_f32` sibling).
+
+- Launch shape: `dim3(out_features, rows, 1)` blocks × `dim3(threads)` threads (typically 128).
+- Per block: computes one output element via an `in_features`-length reduction in shared memory.
+- For drafter shape (`rows=16`, `in=2048`, `out=2048`): **32K blocks** of 128 threads each, doing a 2048-element reduction (`128 threads × 16 ops + log2(128) syncthreads`).
+
+**Roofline math (W7900):**
+
+- Peak memory bandwidth: `864 GB/s`.
+- Peak BF16 WMMA throughput: `~120 TFLOPS`.
+- Per-op weight bytes: `out × in × 2 = 2048 × 2048 × 2 = 8 MB`.
+- Per-op input bytes (reused across all output tiles via LDS): `rows × in × 2 = 64 KB`.
+- Per-op FLOPS: `2 × rows × out × in = 2 × 16 × 2048 × 2048 ≈ 134 MFLOPS`.
+- BW-bound floor: `8 MB / 864 GB/s ≈ 9.3 µs`.
+- FLOPS-bound floor: `134 MFLOPS / 120 TFLOPS ≈ 1.1 µs`.
+- **Roof = max(BW, FLOPS) = 9.3 µs** (memory-bound).
+
+**Measured:** drafter decoder `19.6 ms` synced; ~7 dense ops per layer (Q, K, V, O, gate, up, down) × 8 layers = `56` dense ops per cycle. `19.6 ms / 56 ops ≈ 350 µs/op`. At `9.3 / 350 ≈ 2.7% of BW peak`.
+
+**Proposed WMMA kernel signature:**
+
+```c++
+extern "C" int hipengine_dflash_dense_bf16_to_bf16_wmma(
+    const uint16_t* x,       // [rows, in]      BF16, row-major
+    const uint16_t* weight,  // [out, in]       BF16, row-major (weight[o, i])
+    uint16_t* out,           // [rows, out]     BF16, row-major
+    int64_t rows,            // = block_size (16); enforce rows % 16 == 0
+    int64_t in_features,     // = hidden (2048); enforce in % 16 == 0
+    int64_t out_features,    // = hidden / intermediate; enforce out % 16 == 0
+    int64_t stream);
+```
+
+**Tile layout (gfx1100 native 16×16×16 BF16 WMMA):**
+
+- One WMMA call: `D[16×16] = A[16×16] × B^T[16×16] + C[16×16]` (FP32 accumulator, BF16 inputs).
+- For `(rows=16, in=2048, out=2048)`: M=16 (one tile row), K-tile count = `in / 16 = 128`, N-tile count = `out / 16 = 128`.
+- One thread block per output tile: `128` blocks total per dense op.
+- Each block iterates `128` K-tiles, accumulates in registers, writes `16×16` BF16 to `out`.
+
+**LDS strategy:**
+
+- Input `x[16, 2048]` is reused across all output tiles → each block loads its 16×16 input slab per K-tile iteration (`512 B` per K-tile × 128 K-tiles = `64 KB` per block).
+- Weight `weight[out_tile_16, k_tile_16]` is unique per (N-tile, K-tile) → per-block weight read = `16 × 2048 × 2 = 64 KB`. Total weight read across all blocks = `128 × 64 KB = 8 MB` ✓ matches per-op weight size.
+- LDS budget per block: `2 × 16 × 16 × 2 B (double-buffered A + B) = 1 KB`. Plenty of headroom on RDNA3 (64 KB LDS / WG).
+
+**Expected delta (conservative — 30% of BW peak):**
+
+- Per-op: `9.3 µs / 0.3 ≈ 31 µs`.
+- 56 ops per cycle × 31 µs = `1.7 ms` total dense work.
+- Drafter wall: replace ~15–18 ms of dense ops with `~1.7 ms` → decoder layers ~`4–7 ms` total.
+- Total drafter wall: `~5–9 ms` (attention/norm ~2–3 ms remain).
+- Cycle wall: `verifier (37) + drafter (8) ≈ 45 ms`. **Prompt 3 (visible 4.0) within 8 ms of break-even.**
+
+**Stretch (50% of BW peak):**
+
+- Per-op: `~19 µs` → `1.0 ms` total dense.
+- Drafter wall: `~4–6 ms` total.
+- Cycle wall: `~41–43 ms`. **Prompt 3 wins; prompt 2 borderline.**
+
+**Acceptance gate (R3.4 implementation phase):**
+
+- KL ≤ 0.05 + top-1 ≥ 90% vs `kernels/cpu_reference/` BF16 GEMM (AGENTS.md correctness gate).
+- `rocprofv3 --kernel-trace` shows the new kernel name with duration in the `20–60 µs` range AND occupancy/BW utilization ≥ 30%.
+- 9-prompt suite same-session AR exact match on every prompt.
+- New JSON artifact under `benchmarks/results/` with full per-cycle phase breakdown.
+
+**Reference kernels to read before writing R3.4 code:**
+
+- `kernels/hip_gfx1100/linear/` — existing WMMA kernels for the target model.
+- `kernels/hip_gfx1100/quant/` — `gemv_awq_*_dual_pack8` series; closest analog for batched small-row WMMA.
+- `~/amd-gpu-tuning/docs/OPTIMAL.md` — parent workspace's gfx1100 WMMA tile catalog (READ ONLY).
+
+**Grind budget:**
+- ~200 LoC markdown for the roofline doc.
+- Effort: 0.5 day. **Abort if:** the roofline math says the current kernel is already ≥ 30% of BW peak (it isn't, based on the 3% measurement, but verify the assumptions hold for ALL dense shapes, including non-square `(rows=16, in=2048, out=intermediate)` ones).
+
+### R3.4 design notes — Drafter dense WMMA implementation
+
+(Filled in by coder after R3.3 paper sign-off.)
+
+**Must include:**
+- Per AGENTS.md, the kernel registers against `KernelKey("hip_gfx1100", "dflash_dense", "w4_paro", "bf16_to_bf16_wmma")` and `KernelKey("hip_gfx1100", "dflash_dense", "w4_paro", "bf16_to_f32_wmma")`. **No `if backend == ...` branches** in dispatch code.
+- Drafter Python wrappers gated via env flag `HIPENGINE_DFLASH_DRAFTER_DENSE={wmma, naive}`, default `naive` until validated.
+- Unfused fallback (the existing `dflash_dense_bf16_to_*` kernels) remain registered — AGENTS.md L2 invariant.
+- Numerics: BF16 inputs, FP32 accumulator, BF16 output via the standard round-to-even path. Bit-exact to the existing kernel within FP rounding tolerance (KL gate).
+
+**Grind budget:**
+- ~250 LoC HIP (kernel + launcher).
+- ~100 LoC Python (wrapper + registration).
+- ~80 LoC tests (cpu_reference parity + small smoke).
+- Effort: 1–2 days. **Abort if:** after 2 iterations the WMMA kernel cannot reach ≥ 25% of BW peak; record the finding as L15 and revisit kernel design (likely needs a tile-shape variant like 32×16×16 for the `intermediate` outputs).
+
+### R3.5 design notes — DDTree wiring on gfx1100
+
+**Gated**: do NOT start unless R3.4 closes the prompt-3 archetype to ≥ 1.0x AR.
+
+**Goal:** Use existing chain drafter `--draft-top-k` output to compile a balanced breadth-first tree and route through `verify_tree_bulk_and_commit` (already landed on gfx1151 — 2026-05-19 DDTree work). Bring up the gfx1100 path.
+
+**Win state:**
+- gfx1100 DDTree branching_topk path runs at K=2, depth=4 (B=4 effective).
+- Exact-AR holds on the 9-prompt suite.
+- Prompt 3 archetype shows ≥ +5% over chain on AR ratio.
+
+**Approach:**
+- Chain drafter already supports row-wise top-K via `--draft-top-k=K`; metadata flows through `DraftBatch.candidate_tokens` extra dims.
+- The `_build_flat_fan_tree_target_batch` helper in `scripts/dflash_chain_e2e_bench.py` already compiles a depth-1 tree. For depth-D, reuse the breadth-first compiler from the 2026-05-19 work.
+- Route through `verify_tree_bulk_and_commit`.
+
+**Grind budget:** ~150 LoC + ~50 tests; 1 day.
+
+### R3.6 design notes — Verifier fusion implementation (post-R3.2)
+
+(Filled in by coder after R3.2 cost-model sign-off.)
+
+**Per-fuse requirements (AGENTS.md):**
+- Register under `KernelKey(...)` per backend.
+- Carry an unfused fallback.
+- Pass `kernels/cpu_reference/` correctness gate.
+- Be gated behind an env flag during validation; default-on only after suite cycle_cost reduction ≥ 3%.
+
+**Grind budget:** ~360 LoC per fuse (HIP + Python + tests); 1–2 days per fuse. Aim to ship 1–2 in Round-3.
+
+### R3.7 design notes — Reduced-logits verifier wire-through
+
+**Pure plumbing.** Most of the infrastructure exists from MTP M12.6+.
+
+**Steps:**
+1. Confirm `HIPENGINE_VERIFY_GPU_ACCEPT=1` returns exact AR for DFlash chain.
+2. `rocprofv3 --kernel-trace --start <prefill_end> --end <verify_end>` shows NO `lm_head_full_vocab` kernel and NO `hipMemcpy` of `[B+1, vocab_size]` shape.
+3. If a full-vocab kernel is still present in the verifier window: identify call site, replace with reduced-logits accept-summary path.
+
+**Grind budget:** ~50 LoC; 0.5 day.
+
+### R3.8 design notes — BeeLlama v0.2.0 profile read
+
+**Read order:**
+1. BeeLlama v0.2.0 release notes (linked in earlier session).
+2. `tools/server/server-adaptive-dm.h` (profit controller — cross-references R3.1).
+3. `src/models/dflash_draft.cpp` (drafter — cross-references R3.3).
+4. `src/llama-context.cpp:~3649` (`cross_bucket()` — already referenced in L4/L12; sanity-check we match it).
+5. Their published benchmark methodology (model, prompts, B, settings).
+
+**Output:** `docs/BEELLAMA_PROFILE.md` covering:
+- Default `B` and rationale.
+- Drafter architecture / param count vs ours.
+- Verifier batching strategy and any fused kernels.
+- Whether their 4.4x is comparable to our hardware/model/prompt suite or reflects different inputs.
+- Maps each finding back to a Round-3 punchlist row.
+
+**Grind budget:** ~120 LoC markdown; 0.5 day.
+
+### Round-3 LoC budget
+
+| Track | Item | LoC type | Estimate | GPU needed? |
+| --- | --- | --- | ---: | --- |
+| C/G | R3.1 controller + tests | Python | ~180 | minimal (final validation only) |
+| B (paper) | R3.2 fusion cost-model writeup | Markdown | ~250 | no |
+| A (paper) | R3.3 drafter dense roofline writeup | Markdown | ~200 | no |
+| A (code) | R3.4 WMMA drafter dense kernel | HIP + Python + tests | ~430 | yes |
+| C (code) | R3.5 DDTree wiring | Python + tests | ~200 | yes (gated) |
+| B (code) | R3.6 1–2 verifier fuses | HIP + Python + tests | ~360 – ~720 | yes |
+| B (code) | R3.7 reduced-logits wire-through | Python | ~50 | minimal |
+| ref | R3.8 BeeLlama profile notes | Markdown | ~120 | no |
+| **Total** |  |  | **~1,790–2,150** |  |
+
+Phase-1 (paper-only, blocks 0 GPU): **R3.1 + R3.2 + R3.3 + R3.8 ≈ 750 LoC** (mostly markdown + Python).
+Phase-2 (GPU): **R3.4 + R3.5 + R3.6 + R3.7 ≈ 1,040–1,400 LoC** (mostly HIP + Python + tests).
+
+### Round-3 acceptance principles (carry from Round-2)
+
+- Exact greedy AR equality preserved on every retained prompt (same-session control).
+- Each new kernel: correctness gate (KL ≤ 0.05 + top-1 ≥ 90% vs `kernels/cpu_reference/`).
+- Each fuse: bit-exact vs unfused chain via the cpu_reference oracle; unfused fallback registered.
+- Each adaptive-controller transition: logged in artifact.
+- Each paper claim: backed by measured numbers from `benchmarks/results/`, never hand-waved.
+- Promotion rule still applies: no DFlash speed row is accepted as a performance claim until the economics artifact shows `avg_visible_tokens_per_cycle / cycle_cost_ar_tokens > 1.0`.
+
 ### Lessons carried forward (living table)
 
 Update this table whenever a Round-2 row lands with a non-trivial finding,
@@ -1018,4 +1392,6 @@ positive or negative.
 | L10 | **Prewarm before measuring cycles**: lazy ctypes/build-cache setup inside verifier cycle 1 can look like a persistent regression when economics averages over cycles. M14.dispatch.1's apparent `verify_ms 25.0→31.5` regression was just `code_python` cycle 1 `271.8 ms` vs `64.6 ms`; prewarming globals during resident build restored parity (`cycle_cost 3.707→3.696`). Any verifier benchmark must separate first-cycle warmup from steady-state. | M14.dispatch.1 prewarm (2026-05-23) | Benchmark harnesses; optional dispatcher/graph/fusion caches |
 | L11 | **Real DFlash drafter quality is necessary but not sufficient**: restored z-lab DFlash lifts W7900 chain from Round-1 `0.289x` to `0.413x` AR, but acceptance (`1.42` accepted draft tokens/cycle, `2.46` visible tokens/cycle) is still below the ~`5.96` AR-token-equivalent cycle cost. Both sides must move: drafter caching/quality to raise visible tokens, and verifier/fusion work to lower cycle cost. | R2.2 W7900 z-lab drafter rerun (2026-05-23) | R2.3/R2.5 drafter work; R2.4/R2.8 verifier work; DDTree promotion timing |
 | L12 | **Bucketed graph capture is a kernel-shape problem, not a cache-key tweak**: exact-context graph capture misses because `context_tokens` changes every cycle, but simply bucketing the key would be wrong today. The drafter concat/attention kernels place query K/V immediately after `context_tokens` rows and loop over `total_kv=context+block`; replaying a captured graph at a different live context would attend to the wrong/padded rows. | R2.2 sync-phase triage (2026-05-23) | R2.3 design; any context-dependent HIP graph capture |
+| L13 | **Drafter on W7900 is GPU-kernel-bound, not host-launch-bound**: bucketed HIP graph capture (R2.3) saves only `~3.6 µs / launch × ~124 launches/cycle = ~0.45 ms` (~2% of cycle). Cycle wall is dominated by 8 decoder layers' kernel time (`~19.6 ms` synced). Same finding as M14.dispatch.0/1 for MTP. Future drafter wins must move kernel work, not launches. | R2.3 W7900 4-prompt B=4 D=16 (2026-05-23) | Any drafter launch-overhead optimization; HIP graph capture re-eval; ROCm → CUDA portability claims |
+| L14 | **Drafter dense GEMVs run at ~3% of W7900 bandwidth peak**: the naive per-output-element `dflash_dense_bf16_to_bf16_kernel` runs at ~`306–350 µs/op` on `(16 rows × 2048 in × 2048 out)` vs a BW-bound floor of `~9.3 µs`. A 16×16×16 BF16 WMMA-tiled kernel with LDS-staged input should give 5–10× and is the single biggest remaining drafter lever on W7900. | R3.3 roofline analysis (2026-05-23) | All small-batch BF16 GEMV kernels in hipEngine; drafter rewrites; any non-WMMA dense kernel |
 

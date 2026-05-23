@@ -22286,3 +22286,30 @@ Verdict: graph capture saves real ctypes/HIP launch overhead, but the absolute s
 **Status:** R2.3 architecturally lands as opt-in (`--drafter-bucket cross_bucket`) with bit-exact validation, but does not produce a retained perf row. Next levers must move kernel-execution time (e.g., better decoder kernels, fusion that respects the L1 cost-model check) or reduce the launch count per cycle by a much larger factor than 1.0->0.0 (graph replay) provides.
 
 **Artifact:** `benchmarks/results/2026-05-23-hipengine-dflash-r2.3-w7900-b4-d16-4prompt-diagnostic.json`.
+
+## 2026-05-23 docs(dflash): Round-3 optimization plan landed (post-R2.3)
+
+After R2.2 (real z-lab drafter) and R2.3 (bucketed HIP graph cache) the W7900 bottleneck shape is fully measured. Round-3 punchlist captures the next-step plan as a handoff document for a fresh coder.
+
+**Key data points carried into Round-3:**
+- Mean cycle wall ~62 ms (verifier 36.9 ms, drafter 25.0 ms); mean visible/cycle 2.42 vs needed ~5.9.
+- R2.3 measured host-launch overhead at ~3.6 µs/launch × ~124 launches = ~0.45 ms (~2% of cycle). Drafter is GPU-kernel-bound on W7900, not host-launch-bound.
+- Naive drafter dense kernel runs at ~3% of W7900 bandwidth peak (~306 µs/op vs ~9.3 µs BW floor for 16×2048×2048 BF16).
+
+**Round-3 splits work into 4 tracks:**
+- A — Drafter kernel work (push toward BW floor): R3.3 paper → R3.4 WMMA kernel.
+- B — Verifier fusion (cost-model gated): R3.2 paper → R3.6 implementation; plus R3.7 reduced-logits wire-through.
+- C — Topology / budget: R3.5 DDTree on gfx1100 (gated by chain > AR), R3.1 adaptive controller.
+- G — Regression guard: R3.1 adaptive budget controller (`never < 0.95x AR per prompt`).
+
+**Win state (suite-level):** aggregate AR ratio ≥ 1.0x with no single prompt below 0.95x, exact greedy AR equality, and `avg_visible_tokens_per_cycle / cycle_cost_ar_tokens > 1.0`.
+
+**Phase split (LoC budget):**
+- Phase-1 (no GPU): R3.1 + R3.2 + R3.3 + R3.8 ≈ 750 LoC (mostly markdown + Python).
+- Phase-2 (GPU): R3.4 + R3.5 + R3.6 + R3.7 ≈ 1,040–1,400 LoC (mostly HIP + Python + tests).
+
+**Lessons added:**
+- L13: Drafter on W7900 is GPU-kernel-bound, not host-launch-bound (R2.3 measurement).
+- L14: Drafter dense GEMVs at ~3% of W7900 BW peak; 16×16×16 WMMA is the biggest remaining lever.
+
+Plan landed in `docs/DFLASH.md` Round-3 section (lines ~1002–1374). Per-prompt break-even table grounded in r2.2-w7900 artifact. Punchlist has 8 R3.x rows with explicit Track / Depends-on / LoC / Gate / Expected-Δ columns; design-notes sub-sections specify approach, win state, integration points, grind budget, and abort criteria per item.
