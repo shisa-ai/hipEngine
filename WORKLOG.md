@@ -22335,3 +22335,22 @@ Docs:
 - Updated `docs/DFLASH.md` R3.1 punchlist row: host implementation landed default-off; GPU 9-prompt gate pending.
 
 Next when GPU is free: run the acceptance command from DFLASH.md with `--adaptive-budget on` and verify per-prompt `spec_tok_s/ar_tok_s >= 0.95`, exact AR equality, and artifact state transitions.
+
+## 2026-05-23 docs(dflash): R3.2 fusion L1 cost model
+
+No GPU used. Completed the paper-only R3.2 L1 cost-model pass and wrote `docs/DFLASH_FUSION_COSTMODEL.md`.
+
+Constants used:
+- Launch overhead: ~3.6 us/launch (R2.3 graph replay math).
+- DFlash drafter launch count: ~124/cycle.
+- Verifier launch count: ~1011/pass (M13.B.0/M13.D rocprof after write-through).
+- W7900 BW/compute constants from ROOFLINE/R3.3 plan.
+
+Main findings:
+- No local fuse can materially close a ~62 ms DFlash cycle by itself; launch-only savings are sub-ms. R3.6 is polish/enabling work, not the primary wall lever.
+- PASS-small drafter shortlist: C1 `dflash_add_rmsnorm_bf16` for post-attention residual+norm (saves ~8 launches/cycle, ~0.029 ms/cycle, avoids one hidden reread/layer). C2 final-MLP add + next-layer RMSNorm also passes on paper but is API-risk and should wait for R3.4 layer-loop refactor.
+- PASS-small verifier shortlist: C5 full-attn QKV prepare fusion (`split + cast + q/k RMSNorm+RoPE`, 3 launches -> 1 across 10 full-attn layers, saves ~20 launches/pass, ~0.072 ms/pass). C4 combine residual + next input RMSNorm is plausible (~39 launches/pass, ~0.14 ms/pass) but API-heavy.
+- FAIL/do-not-repeat: direct Q/K GEMV+RoPE/RMSNorm, direct DFlash `SiLU+mul+down-proj`, and direct `final_norm+lm_head`; all multiply reduction/activation work by head_dim, out_features, or vocab, repeating the M13.B.1 class of failure.
+- INCONCLUSIVE: staged rotate+GEMV with keyed barrier. M13.B.1/B.2 showed the naive/staged-with-memset versions fail; only revisit with a keyed persistent barrier design.
+
+Updated `docs/DFLASH.md` R3.2 row/status to point to the new cost-model doc. R3.6 should be narrow (one drafter fuse + one verifier fuse) and should not distract from R3.4 dense WMMA.
