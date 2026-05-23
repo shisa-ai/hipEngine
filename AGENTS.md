@@ -144,6 +144,7 @@ Working tree is shared state. Other agents or the human may be editing concurren
 - **High-conflict files:** `AGENTS.md`, `CLAUDE.md`, `docs/PLAN.md`, `docs/BENCHMARK.md`, `docs/TESTING.md`, `docs/KERNELS.md`, `docs/IMPLEMENTATION.md`, `WORKLOG.md`, `pyproject.toml`, `hipengine/kernels/registry.py`, `hipengine/quant/registry.py`, `hipengine/models/registry.py`, `hipengine/dispatch/fusion.py`, `hipengine/core/*`.
 - Same-file contention: stop and coordinate. The designated agent stages and commits their scoped hunks first to unblock others.
 - `WORKLOG.md` appends are expected and not a conflict unless there are actual conflict markers or interleaved garbled lines. Re-read the live tail, append after it, commit with your logical unit.
+- `WORKLOG.md` is configured with git's built-in `merge=union` driver (see `.gitattributes`), so concurrent appends auto-resolve as `common prefix + ours-tail + theirs-tail` with no conflict markers. If markers do appear (e.g. a stash or a rebase started before this was configured), run `python3 scripts/resolve_worklog_conflict.py WORKLOG.md` (add `--sort-by-date` to re-order `## YYYY-MM-DD` sections in each resolved block; `--check` for a pre-commit gate). The script only touches conflict blocks; content outside markers is left exactly as-is.
 - Do not clean up another agent's benchmark outputs, staged files, or local artifacts unless the task explicitly asks for that cleanup.
 
 ## External Reference Repos

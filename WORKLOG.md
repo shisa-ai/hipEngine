@@ -26316,3 +26316,34 @@ Artifacts/docs:
 benchmarks/W7900.md
 benchmarks/results/2026-05-23-w7900-hipengine-therock713-paro-gguf-sweep-diagnostic.json
 ```
+
+## 2026-05-24 — WORKLOG.md auto-merge driver + recovery script
+
+Resolved a `git pull --rebase` conflict where two branches both appended new `## 2026-05-23` sections to `WORKLOG.md`. The conflict had no real disagreement — each side only added new content — so the correct resolution was `common prefix + ours-tail + theirs-tail`. Did the resolution by hand once, then put two preventive measures in place:
+
+1. `.gitattributes`: added `WORKLOG.md merge=union`. Git's built-in union driver concatenates conflicting hunks from both sides instead of emitting `<<<<<<<` / `=======` / `>>>>>>>` markers. For an append-only file this is exactly the right semantics; future concurrent appends auto-resolve.
+2. `scripts/resolve_worklog_conflict.py`: standalone recovery tool for the case where conflict markers are already written into the file (stash, pre-existing rebase, etc.). Walks the file, for each conflict block emits `ours + theirs` in source order, leaves everything outside markers untouched. `--sort-by-date` reorders `## YYYY-MM-DD` sections within each resolved block; `--check` exits non-zero if markers remain (pre-commit gate); `--stdout` for dry-run.
+
+Validation:
+
+```bash
+python3 - <<'PY'
+import sys; sys.path.insert(0, "scripts")
+from resolve_worklog_conflict import resolve
+# basic append-only conflict
+out, n = resolve("a\n<<<<<<< HEAD\nO\n=======\nT\n>>>>>>> x\n")
+assert n == 1 and "O" in out and "T" in out and "<<<<<<<" not in out
+# sort-by-date reorders dated sections within a block (stable, scoped to the block)
+out, _ = resolve("<<<<<<< HEAD\n## 2026-05-24 — o\no1\n=======\n## 2026-05-23 — t\nt1\n>>>>>>> x\n", sort_by_date=True)
+assert out.index("2026-05-23") < out.index("2026-05-24")
+# clean file is a no-op
+out, n = resolve("## 2026-05-23 — fine\nbody\n")
+assert n == 0 and out == "## 2026-05-23 — fine\nbody\n"
+print("ok")
+PY
+# ok
+python3 scripts/resolve_worklog_conflict.py --check WORKLOG.md
+# WORKLOG.md: no conflict markers, nothing to do (exit 0)
+```
+
+AGENTS.md "Coordination" section updated to point at the driver + recovery script. The script is intentionally conservative: it does not touch any file lacking conflict markers, and never reorders content outside a conflict block.

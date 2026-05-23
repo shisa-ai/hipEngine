@@ -1,3 +1,10 @@
+# WORKLOG.md is append-only: when two branches both add new entries, git's
+# built-in union driver concatenates both sides instead of emitting conflict
+# markers. For an append-only file this is the correct semantics (common
+# prefix + ours-tail + theirs-tail). See scripts/resolve_worklog_conflict.py
+# for the recovery path when conflict markers already exist in the file.
+WORKLOG.md merge=union
+
 hipengine/kernels/hip_gfx1100/attention/aotriton_runtime/** -whitespace
 hipengine/kernels/hip_gfx1100/attention/aotriton_runtime/**/*.aks2 filter=lfs diff=lfs merge=lfs -text
 hipengine/kernels/hip_gfx1100/attention/aotriton_runtime/**/*.so* filter=lfs diff=lfs merge=lfs -text
