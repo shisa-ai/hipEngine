@@ -1,0 +1,332 @@
+{
+  "commands": {
+    "benchmark": "python3 scripts/dflash_dense_microbench.py --compiler-version-file /tmp/hipengine-hipcc-version.txt --loops 20 --warmup 5 --hardware-gpu 'AMD Radeon Pro W7900' --json benchmarks/results/2026-05-23-hipengine-dflash-r3.4-w7900-dense-wmma-microbench.json"
+  },
+  "hardware": {
+    "arch": "gfx1100",
+    "backend": "hip_gfx1100",
+    "gpu": "AMD Radeon Pro W7900"
+  },
+  "measurements": {
+    "rows": [
+      {
+        "bytes": {
+          "input": 65536,
+          "output": 65536,
+          "total_nominal": 8519680,
+          "weight": 8388608
+        },
+        "effective_nominal_gb_s_mean": 150.90082194755826,
+        "effective_tflops_mean": 2.377268333450764,
+        "effective_weight_gb_s_mean": 148.57927084067276,
+        "flops": 134217728,
+        "in_features": 2048,
+        "kind": "bf16",
+        "loops": 20,
+        "max_ms": 0.05842102109454572,
+        "mean_ms": 0.056458804465364665,
+        "min_ms": 0.05491101182997227,
+        "out_features": 2048,
+        "rows": 16,
+        "times_ms": [
+          0.05842102109454572,
+          0.05714001599699259,
+          0.057541008573025465,
+          0.05696099833585322,
+          0.055490992963314056,
+          0.05735098966397345,
+          0.056150020100176334,
+          0.05653098924085498,
+          0.056491000577807426,
+          0.05529102054424584,
+          0.05509098991751671,
+          0.057240016758441925,
+          0.05491101182997227,
+          0.05549102206714451,
+          0.05834101466462016,
+          0.05514099029824138,
+          0.05678998422808945,
+          0.05730098928324878,
+          0.055361015256494284,
+          0.05614099791273475
+        ],
+        "warmup": 5
+      },
+      {
+        "bytes": {
+          "input": 65536,
+          "output": 131072,
+          "total_nominal": 8585216,
+          "weight": 8388608
+        },
+        "effective_nominal_gb_s_mean": 152.64832153797417,
+        "effective_tflops_mean": 2.3864409351890923,
+        "effective_weight_gb_s_mean": 149.1525584493183,
+        "flops": 134217728,
+        "in_features": 2048,
+        "kind": "f32",
+        "loops": 20,
+        "max_ms": 0.05748099647462368,
+        "mean_ms": 0.05624179757433012,
+        "min_ms": 0.054979987908154726,
+        "out_features": 2048,
+        "rows": 16,
+        "times_ms": [
+          0.05710098776035011,
+          0.05748099647462368,
+          0.0565109949093312,
+          0.057030993048101664,
+          0.057030003517866135,
+          0.055110984249040484,
+          0.055890996009111404,
+          0.05725101800635457,
+          0.055671000154688954,
+          0.05564000457525253,
+          0.057330995332449675,
+          0.055051001254469156,
+          0.05642100586555898,
+          0.05613098619505763,
+          0.054979987908154726,
+          0.055280979722738266,
+          0.056971010053530335,
+          0.05556101677939296,
+          0.05558997509069741,
+          0.056801014579832554
+        ],
+        "warmup": 5
+      },
+      {
+        "bytes": {
+          "input": 65536,
+          "output": 196608,
+          "total_nominal": 25427968,
+          "weight": 25165824
+        },
+        "effective_nominal_gb_s_mean": 277.9915296928823,
+        "effective_tflops_mean": 4.4020102021470855,
+        "effective_weight_gb_s_mean": 275.1256376341928,
+        "flops": 402653184,
+        "in_features": 2048,
+        "kind": "bf16",
+        "loops": 20,
+        "max_ms": 0.117552001029253,
+        "mean_ms": 0.0914702977752313,
+        "min_ms": 0.05687098018825054,
+        "out_features": 6144,
+        "rows": 16,
+        "times_ms": [
+          0.10874198051169515,
+          0.117552001029253,
+          0.10207100422121584,
+          0.10654202196747065,
+          0.100510980701074,
+          0.10298099368810654,
+          0.09950200910679996,
+          0.10429098620079458,
+          0.10352200479246676,
+          0.10037099127657712,
+          0.10316199040971696,
+          0.1039810013025999,
+          0.07506101974286139,
+          0.0747010053601116,
+          0.07445100345648825,
+          0.07404098869301379,
+          0.0752909982111305,
+          0.087622000137344,
+          0.0581399945076555,
+          0.05687098018825054
+        ],
+        "warmup": 5
+      },
+      {
+        "bytes": {
+          "input": 196608,
+          "output": 65536,
+          "total_nominal": 25427968,
+          "weight": 25165824
+        },
+        "effective_nominal_gb_s_mean": 265.51397693834116,
+        "effective_tflops_mean": 4.204427511106104,
+        "effective_weight_gb_s_mean": 262.7767194441315,
+        "flops": 402653184,
+        "in_features": 6144,
+        "kind": "bf16",
+        "loops": 20,
+        "max_ms": 0.12995197903364897,
+        "mean_ms": 0.09576884913258255,
+        "min_ms": 0.06903099711053073,
+        "out_features": 2048,
+        "rows": 16,
+        "times_ms": [
+          0.10801100870594382,
+          0.10348198702558875,
+          0.09936100104823709,
+          0.10596198262646794,
+          0.10431098053231835,
+          0.09902199963107705,
+          0.1048909907694906,
+          0.09855200187303126,
+          0.1050709979608655,
+          0.10722200386226177,
+          0.09998099994845688,
+          0.12995197903364897,
+          0.08267100201919675,
+          0.07889102562330663,
+          0.07912100409157574,
+          0.08294099825434387,
+          0.07900100899860263,
+          0.07843200000934303,
+          0.09947101352736354,
+          0.06903099711053073
+        ],
+        "warmup": 5
+      },
+      {
+        "bytes": {
+          "input": 65536,
+          "output": 16384,
+          "total_nominal": 2179072,
+          "weight": 2097152
+        },
+        "effective_nominal_gb_s_mean": 46.099238823022056,
+        "effective_tflops_mean": 0.709858955710896,
+        "effective_weight_gb_s_mean": 44.366184731931,
+        "flops": 33554432,
+        "in_features": 2048,
+        "kind": "bf16",
+        "loops": 20,
+        "max_ms": 0.04861102206632495,
+        "mean_ms": 0.04726915358332917,
+        "min_ms": 0.04558099317364395,
+        "out_features": 512,
+        "rows": 16,
+        "times_ms": [
+          0.04861102206632495,
+          0.04797999281436205,
+          0.047590991016477346,
+          0.04739101859740913,
+          0.047289999201893806,
+          0.047281006118282676,
+          0.0474410189781338,
+          0.04737000563181937,
+          0.04765100311487913,
+          0.047021021600812674,
+          0.04722000448964536,
+          0.0465709890704602,
+          0.04729101783595979,
+          0.04713001544587314,
+          0.04727099440060556,
+          0.04724098835140467,
+          0.04749000072479248,
+          0.04558099317364395,
+          0.04732099478133023,
+          0.046639994252473116
+        ],
+        "warmup": 5
+      },
+      {
+        "bytes": {
+          "input": 65536,
+          "output": 32768,
+          "total_nominal": 2195456,
+          "weight": 2097152
+        },
+        "effective_nominal_gb_s_mean": 46.07448068439031,
+        "effective_tflops_mean": 0.7041831077733682,
+        "effective_weight_gb_s_mean": 44.01144423583552,
+        "flops": 33554432,
+        "in_features": 2048,
+        "kind": "f32",
+        "loops": 20,
+        "max_ms": 0.05167099880054593,
+        "mean_ms": 0.04765015182783827,
+        "min_ms": 0.046560977352783084,
+        "out_features": 512,
+        "rows": 16,
+        "times_ms": [
+          0.0486510107293725,
+          0.04805999924428761,
+          0.04791101673617959,
+          0.04816101863980293,
+          0.04718001582659781,
+          0.04745100159198046,
+          0.04679101402871311,
+          0.04759000148624182,
+          0.04706098116002977,
+          0.04750097286887467,
+          0.04667000030167401,
+          0.04775100387632847,
+          0.05167099880054593,
+          0.04795999848283827,
+          0.046560977352783084,
+          0.04753100802190602,
+          0.04749000072479248,
+          0.04707102198153734,
+          0.04697099211625755,
+          0.04697000258602202
+        ],
+        "warmup": 5
+      }
+    ]
+  },
+  "notes": [
+    "Random BF16 bit-pattern inputs; timing only, not a correctness test.",
+    "Effective GB/s uses weight bytes as the primary roofline denominator because weights dominate these small-row GEMV shapes."
+  ],
+  "run_tag": "dflash-dense-microbench",
+  "software": {
+    "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n",
+    "hipengine_branch": "mpt-dflash",
+    "hipengine_commit": "cebf6f7b281c716d9a4b7c7ed7464174a5941a15",
+    "hipengine_dirty": true,
+    "hipengine_status_porcelain": "M hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.hip\n M hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.py\n?? benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-b3-batched-graphauto-rev2.json\n?? benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-b3-batched-graphauto.json\n?? benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-b3-c1loop-graphauto.json\n?? benchmarks/results/2026-05-22-hipengine-mtp-m12.6b-w7900-b3-batched-graphauto.json",
+    "platform": "Linux-7.0.9-1-cachyos-x86_64-with-glibc2.43",
+    "python": "3.12.9"
+  },
+  "status": "diagnostic",
+  "summary": "Native DFlash naive BF16 dense kernel microbench for R3.3 roofline sanity",
+  "timestamp": "2026-05-23T21:08:58.942820+00:00",
+  "workload": {
+    "loops": 20,
+    "rows": 16,
+    "shapes": [
+      [
+        "bf16",
+        16,
+        2048,
+        2048
+      ],
+      [
+        "f32",
+        16,
+        2048,
+        2048
+      ],
+      [
+        "bf16",
+        16,
+        2048,
+        6144
+      ],
+      [
+        "bf16",
+        16,
+        6144,
+        2048
+      ],
+      [
+        "bf16",
+        16,
+        2048,
+        512
+      ],
+      [
+        "f32",
+        16,
+        2048,
+        512
+      ]
+    ],
+    "warmup": 5
+  }
+}

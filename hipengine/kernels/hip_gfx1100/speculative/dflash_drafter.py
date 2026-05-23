@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import os
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
@@ -20,6 +21,8 @@ _SYMBOL_RMSNORM_BF16 = "hipengine_dflash_rmsnorm_bf16"
 _SYMBOL_SILU_MUL_BF16 = "hipengine_dflash_silu_mul_bf16"
 _SYMBOL_DENSE_BF16_TO_BF16 = "hipengine_dflash_dense_bf16_to_bf16"
 _SYMBOL_DENSE_BF16_TO_F32 = "hipengine_dflash_dense_bf16_to_f32"
+_SYMBOL_DENSE_BF16_TO_BF16_WMMA = "hipengine_dflash_dense_bf16_to_bf16_wmma"
+_SYMBOL_DENSE_BF16_TO_F32_WMMA = "hipengine_dflash_dense_bf16_to_f32_wmma"
 _SYMBOL_QKV_PROJ_BF16_MIXED = "hipengine_dflash_qkv_proj_bf16_mixed"
 _SYMBOL_HEAD_RMS_ROTARY = "hipengine_dflash_head_rmsnorm_rotary_f32"
 _SYMBOL_KEY_RMS_ROTARY = "hipengine_dflash_key_rmsnorm_rotary_f32"
@@ -27,6 +30,26 @@ _SYMBOL_UPDATE_KV_METADATA = "hipengine_dflash_update_kv_metadata_i32"
 _SYMBOL_GQA_ATTENTION = "hipengine_dflash_gqa_attention_f32_bf16"
 _SYMBOL_GQA_ATTENTION_BUCKETED = "hipengine_dflash_gqa_attention_f32_bf16_bucketed"
 _ALLOWED_THREADS = {64, 128, 256}
+
+_DFLASH_WMMA_TILE_K = 16
+
+
+def _drafter_dense_use_wmma() -> bool:
+    """Return True when the drafter dense kernels should use the WMMA variant.
+
+    Controlled by ``HIPENGINE_DFLASH_DRAFTER_DENSE`` (``naive`` / ``wmma``).
+    Defaults to ``wmma`` after R3.4 validated exact-AR + per-prompt perf gain on
+    W7900 same-session suite (commit cebf6f7+).  Set ``naive`` to revert.
+    """
+
+    value = os.environ.get("HIPENGINE_DFLASH_DRAFTER_DENSE", "wmma").strip().lower()
+    if value in {"naive", "0", "false", "off"}:
+        return False
+    if value in {"", "wmma", "1", "true", "on"}:
+        return True
+    raise ValueError(
+        "HIPENGINE_DFLASH_DRAFTER_DENSE must be one of: naive, wmma (got " + repr(value) + ")"
+    )
 
 
 def plan_dflash_drafter_build(
@@ -276,8 +299,27 @@ def dflash_dense_bf16_to_bf16(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Project BF16 rows with BF16 weights and write BF16 output rows."""
+    """Project BF16 rows with BF16 weights and write BF16 output rows.
 
+    Honors ``HIPENGINE_DFLASH_DRAFTER_DENSE={naive,wmma}`` (default ``naive``)
+    so the WMMA variant can be A/B tested without touching call sites.  The
+    WMMA variant requires ``in_features % 16 == 0``; otherwise it transparently
+    falls back to the naive kernel.
+    """
+
+    if _drafter_dense_use_wmma() and (in_features % _DFLASH_WMMA_TILE_K) == 0:
+        dflash_dense_bf16_to_bf16_wmma(
+            x_bf16_ptr,
+            weight_bf16_ptr,
+            out_bf16_ptr,
+            rows,
+            in_features,
+            out_features,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+        return
     _launch_dense(_SYMBOL_DENSE_BF16_TO_BF16, x_bf16_ptr, weight_bf16_ptr, out_bf16_ptr, rows, in_features, out_features, threads, stream, library, runtime)
 
 
@@ -294,9 +336,91 @@ def dflash_dense_bf16_to_f32(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Project BF16 rows with BF16 weights and write FP32 output rows."""
+    """Project BF16 rows with BF16 weights and write FP32 output rows.
 
+    Honors ``HIPENGINE_DFLASH_DRAFTER_DENSE={naive,wmma}`` (default ``naive``).
+    WMMA fallback requirements match :func:`dflash_dense_bf16_to_bf16`.
+    """
+
+    if _drafter_dense_use_wmma() and (in_features % _DFLASH_WMMA_TILE_K) == 0:
+        dflash_dense_bf16_to_f32_wmma(
+            x_bf16_ptr,
+            weight_bf16_ptr,
+            out_f32_ptr,
+            rows,
+            in_features,
+            out_features,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+        return
     _launch_dense(_SYMBOL_DENSE_BF16_TO_F32, x_bf16_ptr, weight_bf16_ptr, out_f32_ptr, rows, in_features, out_features, threads, stream, library, runtime)
+
+
+def dflash_dense_bf16_to_bf16_wmma(
+    x_bf16_ptr: int,
+    weight_bf16_ptr: int,
+    out_bf16_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """WMMA-tiled BF16-to-BF16 dense kernel for the DFlash drafter.
+
+    Uses RDNA3's ``v_wmma_f32_16x16x16_bf16`` over wave32 workgroups.  Each
+    workgroup computes one 16x16 output tile.  ``in_features`` must be a
+    multiple of 16; ``rows`` and ``out_features`` may be arbitrary positive
+    values (tiles are padded and stores are bounds-checked).
+    """
+
+    _launch_dense_wmma(
+        _SYMBOL_DENSE_BF16_TO_BF16_WMMA,
+        x_bf16_ptr,
+        weight_bf16_ptr,
+        out_bf16_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream,
+        library,
+        runtime,
+    )
+
+
+def dflash_dense_bf16_to_f32_wmma(
+    x_bf16_ptr: int,
+    weight_bf16_ptr: int,
+    out_f32_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """WMMA-tiled BF16-to-FP32 dense kernel for the DFlash drafter.
+
+    Same shape constraints as :func:`dflash_dense_bf16_to_bf16_wmma`.
+    """
+
+    _launch_dense_wmma(
+        _SYMBOL_DENSE_BF16_TO_F32_WMMA,
+        x_bf16_ptr,
+        weight_bf16_ptr,
+        out_f32_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream,
+        library,
+        runtime,
+    )
 
 
 def dflash_qkv_proj_bf16_mixed(
@@ -732,6 +856,16 @@ def register_dflash_drafter_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "dflash_dense", "w4_paro", "bf16_to_bf16_wmma"),
+        dflash_dense_bf16_to_bf16_wmma,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "dflash_dense", "w4_paro", "bf16_to_f32_wmma"),
+        dflash_dense_bf16_to_f32_wmma,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "dflash_qkv_proj", "w4_paro", "bf16_mixed"),
         dflash_qkv_proj_bf16_mixed,
         replace=replace,
@@ -859,6 +993,56 @@ def _launch_dense(
         ctypes.c_int64(in_features),
         ctypes.c_int64(out_features),
         ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def _check_dense_wmma_shape(rows: int, in_features: int, out_features: int) -> None:
+    for name, value in (("rows", rows), ("in_features", in_features), ("out_features", out_features)):
+        if value <= 0:
+            raise ValueError(f"{name} must be positive")
+    if (in_features % _DFLASH_WMMA_TILE_K) != 0:
+        raise ValueError(
+            "in_features must be a multiple of 16 for the WMMA dense kernel; "
+            f"got in_features={in_features}"
+        )
+
+
+def _launch_dense_wmma(
+    symbol: str,
+    x_ptr: int,
+    weight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_dense_wmma_shape(rows, in_features, out_features)
+    library = library or build_dflash_drafter(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(weight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
         ctypes.c_void_p(stream),
     )
     if int(err) != HIP_SUCCESS:

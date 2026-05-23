@@ -198,6 +198,90 @@ Expected memory behavior:
 - Input tile traffic is replicated per output tile in v1, but input is only `64 KiB` for 2048-wide shapes and is small relative to weights; v2 can improve with persistent/L2-friendly scheduling if needed.
 - LDS footprint per workgroup is tiny: `2 × 16 × 16 × 2 B = 1 KiB` (double-buffering still far below RDNA3 LDS budget).
 
+## R3.4 measured WMMA results (W7900, gfx1100)
+
+Implemented in `hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.hip` as
+`hipengine_dflash_dense_bf16_to_{bf16,f32}_wmma`. Wave32 workgroup, one
+`v_wmma_f32_16x16x16_bf16` instruction per K-tile, no LDS staging in v1
+(weights and inputs are read once per output tile).
+
+```bash
+PYTHONPATH=. python3 scripts/dflash_dense_microbench.py \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --loops 20 --warmup 5 \
+  --hardware-gpu 'AMD Radeon Pro W7900' \
+  --json benchmarks/results/2026-05-23-hipengine-dflash-r3.4-w7900-dense-wmma-microbench.json
+```
+
+Microbench artifacts:
+- naive: [`benchmarks/results/2026-05-23-hipengine-dflash-r3.3-w7900-dense-microbench.json`](../benchmarks/results/2026-05-23-hipengine-dflash-r3.3-w7900-dense-microbench.json)
+- WMMA:  [`benchmarks/results/2026-05-23-hipengine-dflash-r3.4-w7900-dense-wmma-microbench.json`](../benchmarks/results/2026-05-23-hipengine-dflash-r3.4-w7900-dense-wmma-microbench.json)
+
+| Kind | Shape `(rows,in,out)` | Naive ms/op | WMMA ms/op | Speedup | Naive BW % | WMMA BW % |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| BF16→BF16 | `(16,2048,2048)` | `0.182` | `0.056` | `3.2×` | `5.3%` | `17.3%` |
+| BF16→FP32 | `(16,2048,2048)` | `0.184` | `0.056` | `3.3×` | `5.3%` | `17.3%` |
+| BF16→BF16 | `(16,2048,6144)` | `0.523` | `0.091` | `5.7×` | `5.6%` | `32.0%` |
+| BF16→BF16 | `(16,6144,2048)` | `0.463` | `0.096` | `4.8×` | `6.3%` | `30.5%` |
+| BF16→BF16 | `(16,2048,512)` | `0.081` | `0.047` | `1.7×` | `3.0%` | `5.1%` |
+| BF16→FP32 | `(16,2048,512)` | `0.083` | `0.048` | `1.7×` | `2.9%` | `5.0%` |
+
+Bigger shapes (gate/up/down) hit `30–32%` of BW, exceeding R3.3's 30% target. Q/O hit
+`~17%` because the workgroup count is small (`128` for `2048×2048`); a v2 design
+with persistent CTAs or multi-tile per workgroup can lift that further. K/V at
+`out_features=512` is launch-overhead bound (only 32 N-tiles → 32 wave32
+workgroups); v2 should batch K/V or split-K to recover bandwidth there.
+
+Per-cycle dense estimate using actual op mix:
+
+```text
+Q f32 2048x2048:     0.056 ms
+K f32 2048x512:      0.048 ms
+V bf16 2048x512:     0.047 ms
+O bf16 2048x2048:    0.056 ms
+gate bf16 2048x6144: 0.091 ms
+up bf16 2048x6144:   0.091 ms
+down bf16 6144x2048: 0.096 ms
+--------------------------------
+Dense per layer:      ~0.485 ms
+8 layers:            ~3.88 ms (R3.3 naive: 16.32 ms, -76%)
+```
+
+### 9-prompt B=4 D=32 same-session DFlash on W7900
+
+Artifacts:
+- WMMA on:  [`benchmarks/results/2026-05-23-hipengine-dflash-r3.4-w7900-wmma-on-b4-d32-9prompt.json`](../benchmarks/results/2026-05-23-hipengine-dflash-r3.4-w7900-wmma-on-b4-d32-9prompt.json)
+- WMMA off: [`benchmarks/results/2026-05-23-hipengine-dflash-r3.4-w7900-wmma-off-b4-d32-9prompt-control.json`](../benchmarks/results/2026-05-23-hipengine-dflash-r3.4-w7900-wmma-off-b4-d32-9prompt-control.json)
+
+| Metric | WMMA off | WMMA on | Delta |
+| --- | ---: | ---: | ---: |
+| Aggregate AR ratio | `0.446` | `0.636` | `+0.19` (+42% relative) |
+| Drafter wall ms/cycle | `23.50` | `9.09` | `-14.41` (-61%) |
+| Verifier wall ms/cycle | `29.10` | `27.89` | `-1.21` (-4%) |
+| Cycle wall ms | `52.83` | `37.21` | `-15.62` (-29%) |
+| Avg accept length | `1.55` | `1.53` | `-0.02` (within sampling noise) |
+| Exact AR rows | `9 / 9` | `9 / 9` | unchanged |
+
+Per-prompt:
+
+| Prompt | WMMA off | WMMA on | Delta |
+| --- | ---: | ---: | ---: |
+| code:quicksort_prefix | `0.327` | `0.468` | `+0.14` |
+| code:function_continuation | `0.555` | `0.804` | `+0.25` |
+| code:class_continuation | `0.658` | `0.911` | `+0.25` |
+| code:json_yaml_continuation | `0.481` | `0.646` | `+0.17` |
+| code:humaneval_add | `0.511` | `0.722` | `+0.21` |
+| code:humaneval_sort_third | `0.365` | `0.526` | `+0.16` |
+| math:short_gsm8k_style | `0.375` | `0.530` | `+0.16` |
+| instruct:simple_qa_no_template | `0.505` | `0.723` | `+0.22` |
+| instruct:simple_qa_qwen_static_chat | `0.425` | `0.638` | `+0.21` |
+
+Conclusions:
+- R3.4 is the largest single DFlash drafter lever measured to date.
+- Decoder wall projection from R3.3 (`19.6 → ~6.3 ms` at 30% BW) is met or exceeded for big shapes; small-N shapes (`512`) underperform but they're a small share of cycle wall.
+- The WMMA path is **default-on** via `HIPENGINE_DFLASH_DRAFTER_DENSE=wmma`; set `naive` to revert.
+- DFlash still does not break-even vs AR; verifier work (R3.6 / R3.7) and tree topology (R3.5) are still required to push aggregate ≥ 1.0x AR.
+
 ## Implementation constraints
 
 - Keep existing `dflash_dense_bf16_to_{bf16,f32}` kernels registered as fallback.

@@ -22421,3 +22421,77 @@ Docs/artifacts:
 - New `docs/DRAFTER_DENSE_ROOFLINE.md` with current-kernel analysis, measured table, roofline floor, WMMA signature/tile plan, risks, and R3.4 work order.
 - Updated `docs/DFLASH.md` R3.3 row/status.
 - Artifact: `benchmarks/results/2026-05-23-hipengine-dflash-r3.3-w7900-dense-microbench.json`.
+
+## 2026-05-23 perf(dflash): R3.4 WMMA drafter dense kernels — 0.446x → 0.636x AR
+
+GPU work; default-on after exact-AR + measured per-prompt perf gain on the
+9-prompt suite.
+
+Implementation:
+- `hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.hip`: added
+  `dflash_dense_bf16_to_{bf16,f32}_wmma_kernel` using RDNA3 `v_wmma_f32_16x16x16_bf16`
+  in wave32 mode. One workgroup = one wave32 = one 16x16 output tile; no LDS
+  staging in v1. Tail rows / out_features handled by zero-fill on load and
+  bounds-check on store.  C wrappers `hipengine_dflash_dense_bf16_to_{bf16,f32}_wmma`.
+- `hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.py`: new symbols, new
+  Python wrappers `dflash_dense_bf16_to_{bf16,f32}_wmma`, env-var dispatch
+  `HIPENGINE_DFLASH_DRAFTER_DENSE` defaulting to `wmma`. Registered against
+  `KernelKey("hip_gfx1100", "dflash_dense", "w4_paro", "bf16_to_{bf16,f32}_wmma")`
+  per AGENTS.md.
+- `tests/test_dflash_dense_wmma.py`: 16 GPU correctness cases comparing WMMA
+  output to the naive kernel and CPU reference matmul over actual drafter
+  shapes plus tail/edge shapes. All pass.
+
+Implementation note: the RDNA3 WMMA D operand layout maps lane `l`'s `acc[j]`
+to `D[2*j + (l>>4), l & 15]`, NOT `D[l & 15, 2*j + (l>>4)]`. To compute
+`out[m, n] = sum_k x[m, k] * weight[n, k]` we pack `A := weight^T_tile` and
+`B := x^T_tile`, store with row = `lane_lo`, col = `2*j + lane_hi`. (First
+attempt had A/B/store coordinates inconsistent and produced a transposed result
+with full-magnitude error; CPU ref + naive parity test caught it before commit.)
+
+Microbench (`scripts/dflash_dense_microbench.py`, 20 loops, W7900):
+- BF16 16x2048x2048: 0.182 -> 0.056 ms (3.2x), 5.3% -> 17% BW
+- BF16 16x2048x6144: 0.523 -> 0.091 ms (5.7x), 5.6% -> 32% BW
+- BF16 16x6144x2048: 0.463 -> 0.096 ms (4.8x), 6.3% -> 30% BW
+- BF16 16x2048x512:  0.081 -> 0.047 ms (1.7x), 3.0% -> 5.1% BW (small N, low CU util)
+- F32 variants similar.
+Per-cycle dense estimate using z-lab drafter op mix: 16.32 -> 3.88 ms (-76%).
+
+Same-session DFlash 9-prompt B=4 D=32 (W7900):
+```
+HIPENGINE_DFLASH_DRAFTER_DENSE={off,on} python3 scripts/dflash_chain_e2e_bench.py \
+  --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 \
+  --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --max-prompts 9 --decode-tokens 32 --draft-budgets 4 \
+  --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched \
+  --hardware-gpu 'AMD Radeon Pro W7900' --json benchmarks/results/...
+```
+
+| Metric | WMMA off | WMMA on | Delta |
+|---|---:|---:|---|
+| Aggregate AR ratio | 0.446 | 0.636 | +0.19 (+42%) |
+| Drafter ms/cycle | 23.50 | 9.09 | -14.41 (-61%) |
+| Verifier ms/cycle | 29.10 | 27.89 | -1.21 (-4%) |
+| Cycle ms | 52.83 | 37.21 | -15.62 (-29%) |
+| Exact AR rows | 9/9 | 9/9 | unchanged |
+| Avg accept length | 1.55 | 1.53 | sampling noise |
+
+Per-prompt: every prompt improves; delta range +0.14 ... +0.25; best prompt is
+`code:class_continuation` 0.658 -> 0.911 (close to break-even but not yet there).
+DFlash still loses to AR aggregate; R3.6 (verifier fuses) / R3.5 (DDTree) /
+R3.7 (reduced-logits verifier) still required to push >= 1.0x AR.
+
+Validation:
+- `python3 -m py_compile` on both edited files.
+- `pytest tests/test_dflash_drafter.py tests/test_dflash_dense_wmma.py
+  tests/test_speculative_benchmark.py tests/test_adaptive_budget.py` -> 37 passed.
+- Microbench artifact: benchmarks/results/2026-05-23-hipengine-dflash-r3.4-w7900-dense-wmma-microbench.json
+- 9-prompt artifacts: benchmarks/results/2026-05-23-hipengine-dflash-r3.4-w7900-wmma-{on,off}-b4-d32-9prompt*.json
+- 4-prompt sanity (taken first): benchmarks/results/2026-05-23-hipengine-dflash-r3.4-w7900-wmma-{on,off}-b4-d32-4prompt*.json
+
+Updated docs:
+- docs/DFLASH.md (R3.4 row + status)
+- docs/DRAFTER_DENSE_ROOFLINE.md (R3.4 measured-results section)
+- benchmarks/README.md (R3.3 + R3.4 rows, Last updated)
+- benchmarks/CHANGELOG.md (R3.3 + R3.4 entries)
