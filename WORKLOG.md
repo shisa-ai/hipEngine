@@ -26035,3 +26035,36 @@ Two runs per shape; table uses median (`prefill tok/s / decode tok/s / tracked G
 | 4K/128 | 2396.599 / 111.518 / 18.954 | 2366.866 / 107.184 / 18.954 | 2361.950 / 107.433 / 18.954 | 2374.156 / 105.905 / 18.954 | prefill -0.94%, decode -5.03% | prefill +0.52%, decode -1.42% | prefill +0.31%, decode -1.19% |
 
 Conclusion: pure 7.13.0a20260423 devel/libraries recovers a little prefill versus the mixed 7.13-libraries/7.14-devel diagnostic, but does not recover the original 7.13.0a20260403 current-reference performance. It remains close to the 7.14 check and unchanged in tracked memory. Saved compact artifact `benchmarks/results/2026-05-23-rx7900xtx-rocm7130423-pure-current-head-paro-512-4k-check.json`.
+
+## 2026-05-23 — Packed Qwen3.6 PARO spot-check on pure ROCm 7.13.0a20260423
+
+Follow-up to the PARO regression checks: the earlier same-env spot-checks used the z-lab Qwen3.5 PARO checkpoint, but the benchmark rows we normally compare against use `shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed`. Reran latest HEAD `9a0dd6d9e580` on the RX 7900 XTX with pure ROCm SDK package set `7.13.0a20260423`.
+
+Environment:
+
+- `rocm`, `rocm-sdk-core`, `rocm-sdk-devel`, `rocm-sdk-libraries-gfx110X-all`: all `7.13.0a20260423`.
+- `torch`: `2.11.0+rocm7.13.0a20260423` (not used on hipEngine hot path).
+- `hipcc --version`: `HIP version: 7.13.26162-1140233ffe`.
+- Model path tested from HF cache: `/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/176e57c1a5d823bd0f41605420d04e3441465bb4` (`refs/main`) and older snapshot `501ef8635e5cfb5a7497d232358ca8d1afc0c66e` used by prior artifacts. Timings were effectively identical; deltas below use `501ef...` for comparison to older artifacts.
+
+Command template:
+
+```bash
+PY=/home/lhl/miniforge3/envs/therock/bin/python
+ROCM_DEV=$(/home/lhl/miniforge3/envs/therock/bin/rocm-sdk path --root)
+ROCM_BIN=$(/home/lhl/miniforge3/envs/therock/bin/rocm-sdk path --bin)
+ROCM_LIBS=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all
+export PATH=$ROCM_BIN:$PATH
+export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$ROCM_DEV/lib:$ROCM_LIBS/lib:/opt/rocm-6.2.0/lib:$LD_LIBRARY_PATH
+$ROCM_BIN/hipcc --version > /tmp/hipengine-rocm7130423-pure-packed-hipcc-version.txt
+PYTHONPATH=. "$PY" scripts/qwen35_paro_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e --prompt-length <512|4096> --token-id 9707 --decode-tokens 128 --warmup-decode-tokens <1|4> --compiler-version-file /tmp/hipengine-rocm7130423-pure-packed-hipcc-version.txt --attn-aotriton-min-tokens 512 --graph-replay-decode --json /tmp/hipengine-rocm7130423-pure-packed-paro/<out>.json
+```
+
+Two runs per shape; table uses median (`prefill tok/s / decode tok/s / tracked GiB`):
+
+| Workload | Qwen3.5 current pure 7.13 ref | Qwen3.6 packed current pure 7.13 | Delta packed vs Qwen3.5 | 2026-05-21 RX Qwen3.5 ref | Delta packed vs 05-21 RX | 2026-05-18 W7900 Qwen3.6 packed ref | Delta packed warm4 vs W7900 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | 1307.402 / 105.767 / 18.075 | 1390.391 / 100.459 / 18.023 | prefill +6.35%, decode -5.02% | 2101.158 / 107.314 | prefill -33.83%, decode -6.39% | 2500.565 / 111.516 | prefill -44.38%, decode -10.19% |
+| 4K/128 | 2374.156 / 105.905 / 18.954 | 2525.688 / 101.334 / 18.902 | prefill +6.38%, decode -4.32% | 2710.869 / 106.637 | prefill -6.83%, decode -4.97% | 2899.685 / 113.094 | prefill -12.96%, decode -10.53% |
+
+Conclusion: using the packed Qwen3.6 model does recover about +6.3% prefill and ~52 MiB tracked memory versus the current Qwen3.5 spot-check, so the model mismatch was a real factor. It does **not** explain the bigger regression versus the 2026-05-21 RX 7900 XTX diagnostic or the prior W7900 packed rows; decode is still lower, and 512 prefill remains far below the older runs. Saved compact artifact `benchmarks/results/2026-05-23-rx7900xtx-rocm7130423-pure-packed-qwen36-paro-512-4k-check.json`.
