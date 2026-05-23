@@ -46,7 +46,7 @@ single-model tuning targets
 [ParoQuant](https://github.com/shisa-ai/paroquant) format.
 
 - INT8 KV cache support has been added. Qwen 3 MoE's full 256K context window can fit in <24GB tracked memory; see [Memory Usage](#memory-usage).
-- Preliminary Qwen 3.6 Q4_K_M and Q4_K_S GGUF support has been added (W7900 Q4_K_S sweep is in [Performance](#performance) alongside packed PARO and llama.cpp Q4_K_M HIP/Vulkan baselines). GGUF currently runs a bit slower than our PARO models on the prefill side and adds ~1.9 GiB of resident tracked peak across every shape due to a one-time on-load decode-repack into T16 tile layouts. Q4_K_S is recommended on 24 GiB cards because Q4_K_M is a fair bit bigger; on the 48 GiB W7900 Q4_K_S fits all the way to 128K context, on 24 GiB cards expect about 64K. GGUF also has a higher per-session load cost (~60 s vs ~24 s for PARO packed on the same hardware) for the same decode-repack reason. GGUF support gives more options for future model loading.
+- Preliminary Qwen 3.6 [Q4_K_M](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_M.gguf) and [Q4_K_S](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-IQ4_XS.gguf) GGUF support has been added (W7900 Q4_K_S sweep is in [Performance](#performance) alongside packed PARO and llama.cpp Q4_K_M HIP/Vulkan baselines). GGUF currently runs a bit slower than our PARO models on the prefill side and adds ~1.9 GiB of resident tracked peak across every shape due to a one-time on-load decode-repack into T16 tile layouts. Q4_K_S is recommended on 24 GiB cards because Q4_K_M is a fair bit bigger; on the 48 GiB W7900 Q4_K_S fits all the way to 128K context, on 24 GiB cards expect about 64K. GGUF also has a higher per-session load cost (~60 s vs ~24 s for PARO packed on the same hardware) for the same decode-repack reason. GGUF support gives more options for future model loading.
 - Current gfx1100 performance snapshots are summarized in [Performance](#performance) and compared against recent llama.cpp Q4_K_M baselines.
 
 
@@ -107,6 +107,31 @@ See
 [`benchmarks/README.md`](benchmarks/README.md#blocked--diagnostic-benchmark-attempts),
 and [`docs/KVCACHE.md`](docs/KVCACHE.md) for commands, artifacts, and the full
 no-shadow memory audit.
+
+### llama.cpp
+
+When run with `q8_0` kvcache, llama.cpp can also fit in 24GB:
+
+```bash
+--flash-attn on -ctk q8_0 -ctv q8_0 -c 262144 -b 128 -ub 128
+```
+
+Results:
+
+| Model | llama.cpp model buffer | KV cache | Compute buffer | rocm-smi VRAM used | Free VRAM |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Q4_K_M | 20583 MiB | 2720 MiB | 203 MiB | 24017 MiB / 23.45 GiB | ~543 MiB |
+| Q4_K_S | 19399 MiB | 2720 MiB | 203 MiB | 22832 MiB / 22.30 GiB | ~1728 MiB |
+
+With `-ub 512`:
+
+| Model | Compute buffer | rocm-smi VRAM used | Free VRAM |
+| --- | ---: | ---: | ---: |
+| Q4_K_M | 812 MiB | 24540 MiB | ~20 MiB |
+| Q4_K_S | 812 MiB | 23443 MiB | ~1117 MiB |
+
+- Note Q4_K_M is incredibly tight with only 20 MiB of headroom and you may either need to resize down or set `-b 512 -ub 128`.
+- Q4_K_S does not need small `-b`/`-ub`; `-ub 512` fits fine, and can even increase to `-b 2048` (but `-ub` is the more important VRAM knob that controls the physical microbatch / compute buffer size for llama.cpp).
 
 ## Performance
 
@@ -169,6 +194,14 @@ On Strix Halo, `rocm-smi` / sysfs expose only a 512 MiB VRAM aperture, so cross-
 
 See [`benchmarks/README.md`](benchmarks/README.md) for full protocol details,
 correctness status, source-lineage targets, and external comparison baselines.
+
+## GGUF Support
+
+It may be easier or desirable to run GGUF models, as of v0.2.0 hipEngine has introduced `Q4_K_M` and `Q4_K_S` model support (with more forthcoming), however there are a few caveats currently.
+- PARO models take ~24s to load, but GGUFs take about 60s due to decode-repack on load into T16 tile layouts. On-disk caching could be added but would double storage side.
+- There is currently also about 2GB of memory overhead, so effectively, instead of 128K context on a card.
+- While the hope was that there would be enough similarity to PARO that there wouldn't be a lot of custom kernels, in practice, GGUF has enough of its own peculiarities that there is a substantial GGUF-only path. It's currently ~30% slower on prefill and ~10% slower on decode. The goal in future releases will be to bring PARO and GGUF performance to speed parity.
+
 
 ## Architecture at a glance
 
