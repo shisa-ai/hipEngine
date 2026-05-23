@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "date": "2026-05-23",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "purpose": "Same-machine RX 7900 XTX PARO regression spot-check: v0.1.1/pre-GGUF tag vs current tree after GGUF merge.",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "vram_total_gib": 23.984375
+  },
+  "environment": "Both runs used /home/lhl/miniforge3/envs/therock/bin/python and TheRock HIP 7.13.60940-478a7a43c6 LD/PATH setup; single-run diagnostic with graph replay decode and AOTriton threshold 512.",
+  "v0_1_1_commit": "89fe1ae (tag v0.1.1)",
+  "current_commit": "f2b76dd before README procedure update",
+  "model": "Qwen3.5-35B-A3B-PARO z-lab snapshot dca2736e88e9f70855128fc81a8e918043a163cd",
+  "rows": [
+    {
+      "workload": "512/128",
+      "prompt_length": 512,
+      "decode_tokens": 128,
+      "v0_1_1": {
+        "prefill_tok_s": 1364.3989091805024,
+        "decode_tok_s": 107.54243173628493,
+        "tracked_peak_allocated_gib": 18.075381056405604
+      },
+      "current": {
+        "prefill_tok_s": 1356.1209037095364,
+        "decode_tok_s": 110.49566083098972,
+        "tracked_peak_allocated_gib": 18.075381056405604
+      },
+      "delta_pct_current_vs_v0_1_1": {
+        "prefill": -0.60671445977174,
+        "decode": 2.7461059295615486
+      }
+    },
+    {
+      "workload": "4K/128",
+      "prompt_length": 4096,
+      "decode_tokens": 128,
+      "v0_1_1": {
+        "prefill_tok_s": 2411.2220563116202,
+        "decode_tok_s": 111.72162128724572,
+        "tracked_peak_allocated_gib": 18.954074916429818
+      },
+      "current": {
+        "prefill_tok_s": 2396.598623651522,
+        "decode_tok_s": 111.51796378360949,
+        "tracked_peak_allocated_gib": 18.954074916429818
+      },
+      "delta_pct_current_vs_v0_1_1": {
+        "prefill": -0.6064739090213656,
+        "decode": -0.18229014338470018
+      }
+    }
+  ],
+  "conclusion": "No evidence of a GGUF-merge code regression in same-environment 512/128 or 4K/128 PARO: current prefill is -0.61% at both shapes, current decode is +2.75% at 512/128 and -0.18% at 4K/128. The larger gap versus older v0.1.1 W7900 artifacts and 2026-05-21 RX diagnostics is likely run environment, clocks, or measurement protocol, not code from the GGUF merge.",
+  "commands": {
+    "v0_1_1_template": "git worktree add --detach /tmp/hipengine-v0.1.1-paro-check v0.1.1; cd /tmp/hipengine-v0.1.1-paro-check; PYTHONPATH=$PWD $PY scripts/qwen35_paro_bench.py --model $PARO --prompt-length <512|4096> --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --compiler-version-file /tmp/hipengine-v011-hipcc-version.txt --attn-aotriton-min-tokens 512 --graph-replay-decode --json <tmp-json>",
+    "current_template": "cd /home/lhl/hipEngine; PYTHONPATH=. $PY scripts/qwen35_paro_bench.py --model $PARO --prompt-length <512|4096> --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --attn-aotriton-min-tokens 512 --graph-replay-decode --json <tmp-json>"
+  },
+  "artifact_policy_note": "Raw qwen35_paro_bench JSON files were not retained because they are verbose; this compact artifact preserves the measured fields and exact command templates needed for the regression decision."
+}

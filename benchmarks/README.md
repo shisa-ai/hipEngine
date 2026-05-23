@@ -29,6 +29,169 @@ A row is not retained unless it satisfies `docs/BENCHMARK.md`: exact command,
 hardware/software context, workload shape, correctness gate, repeated-run stats
 where applicable, and post-run quality gates.
 
+## README sweep test procedure
+
+Use this procedure for hardware comparison reports such as
+[`7900XTX.md`](7900XTX.md), and for refreshing the hipEngine-vs-llama.cpp sweep
+families represented in this rollup. Unless a row also satisfies the full
+`docs/BENCHMARK.md` correctness/repetition requirements, keep it in the hardware
+report and `WORKLOG.md` as diagnostic rather than promoting it to "current
+fastest".
+
+### 1. Capture environment first
+
+Record the following before running benchmarks:
+
+```bash
+git status -sb
+uname -a
+python3 --version
+rocminfo | grep -E 'Name:|gfx' | head -12
+rocm-smi --showproductname --showdriverversion --showvbios --showpower \
+  --showmeminfo vram --showuse --showtemp --showclocks --showprofile \
+  --showvoltage --showpids
+rocm-smi -P -o -c -l -M --showmemvendor --showmclkrange --showsclkrange \
+  --showbus --showmetrics
+vulkaninfo --summary | head -80
+/opt/rocm/bin/hipcc --version > /tmp/hipengine-hipcc-version.txt
+```
+
+Also record the exact hipEngine commit, llama.cpp HIP/Vulkan commits and
+`llama-bench --version`, GPU VBIOS, VRAM size/vendor, power limit, and any
+undervolt/overdrive settings (`OD_SCLK`, `OD_MCLK`, `OD_VDDGFX_OFFSET`).
+
+For the RX 7900 XTX rerun on 2026-05-23, successful hipEngine JIT runs used the
+TheRock ROCm 7 environment:
+
+```bash
+PY=/home/lhl/miniforge3/envs/therock/bin/python
+ROCM_DEV=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel
+ROCM_LIBS=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all
+export PATH=$ROCM_DEV/bin:$PATH
+export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$ROCM_DEV/lib:$ROCM_LIBS/lib:/opt/rocm-6.2.0/lib:$LD_LIBRARY_PATH
+$ROCM_DEV/bin/hipcc --version > /tmp/hipengine-hipcc-version.txt
+```
+
+### 2. Run the common sweep shapes
+
+Use rows as workload shapes and columns as engines in the hardware report. The
+standard README sweep shapes are `512/128`, `1K/128`, `4K/128`, `32K/128`,
+`64K/128`, and `128K/128`. Include max-context compressed-KV rows (`64K/128`,
+`128K/128`) for hipEngine PARO INT8 KV and llama.cpp `Q8_0` KV when available.
+
+hipEngine PARO BF16 KV:
+
+```bash
+PARO=/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd
+for P in 512 1024 4096 32768 65536 131072; do
+  PYTHONPATH=. "$PY" scripts/qwen35_paro_bench.py \
+    --model "$PARO" --prompt-length "$P" --token-id 9707 \
+    --decode-tokens 128 --warmup-decode-tokens 1 \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --attn-aotriton-min-tokens 512 --graph-replay-decode \
+    --json "benchmarks/results/<date>-<gpu>-hipengine-paro-bf16kv-${P}-128.json"
+done
+```
+
+For max-context PARO INT8 KV, add:
+
+```bash
+--kv-storage int8_per_token_head --kv-scale-dtype fp16 --kv-scale-granularity per_token_head
+```
+
+hipEngine GGUF Q4_K_M:
+
+```bash
+GGUF_M=/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+for P in 512 1024 4096 32768 65536 131072; do
+  HIPENGINE_GGUF_AOTRITON_PREFILL=v3 \
+  HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 \
+  HIPENGINE_GGUF_DECODE_REPACK=1 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  PYTHONPATH=. "$PY" scripts/qwen35_gguf_bench.py \
+    --model "$GGUF_M" --quant gguf_q4_k_m \
+    --prompt-length "$P" --decode-tokens 128 --warmup-decode-tokens 1 \
+    --warmup-runs 0 --measured-runs 1 \
+    --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+    --use-wmma-prefill --use-gemv-decode \
+    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+    --json "benchmarks/results/<date>-<gpu>-hipengine-gguf-q4km-${P}-128.json"
+done
+```
+
+llama.cpp HIP/Vulkan, with peak VRAM sampling:
+
+```bash
+MODEL=/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+python scripts/llamacpp_bench_with_peak.py \
+  --llama-bench /home/lhl/llama.cpp/llama.cpp-hip-therock/build/bin/llama-bench \
+  --model "$MODEL" --backend hip \
+  --workloads 512/128 1K/128 4K/128 32K/128 64K/128 128K/128 \
+  --repetitions 1 --ngl 99 --flash-attn 1 \
+  --cache-type-k f16 --cache-type-v f16 --poll 10 --card-name card1 \
+  --output benchmarks/results/<date>-<gpu>-llamacpp-hip-q4km-f16kv-sweep.json
+
+python scripts/llamacpp_bench_with_peak.py \
+  --llama-bench /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench \
+  --model "$MODEL" --backend vulkan \
+  --workloads 512/128 1K/128 4K/128 32K/128 64K/128 128K/128 \
+  --repetitions 1 --ngl 99 --flash-attn 1 \
+  --cache-type-k f16 --cache-type-v f16 --poll 10 --card-name card1 \
+  --output benchmarks/results/<date>-<gpu>-llamacpp-vulkan-q4km-f16kv-sweep.json
+```
+
+For llama.cpp max-context compressed-KV rows, rerun the wrapper with
+`--workloads 64K/128 128K/128 --cache-type-k q8_0 --cache-type-v q8_0`.
+
+### 3. PARO regression spot-check
+
+When a sweep suggests PARO changed unexpectedly, compare the current tree against
+the v0.1.1/pre-GGUF tag on the same machine and ROCm environment rather than
+mixing W7900 and RX 7900 XTX artifacts:
+
+```bash
+git worktree add --detach /tmp/hipengine-v0.1.1-paro-check v0.1.1
+cd /tmp/hipengine-v0.1.1-paro-check
+PYTHONPATH=$PWD "$PY" scripts/qwen35_paro_bench.py \
+  --model "$PARO" --prompt-length 512 --token-id 9707 \
+  --decode-tokens 128 --warmup-decode-tokens 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --attn-aotriton-min-tokens 512 --graph-replay-decode \
+  --json /home/lhl/hipEngine/benchmarks/results/<date>-<gpu>-v0.1.1-hipengine-paro-bf16kv-512-128.json
+```
+
+Repeat for at least `4096/128`. Compare against the same-shape current-tree
+rerun and retain a compact summary artifact with the measured fields and exact
+commands. The 2026-05-23 RX 7900 XTX check found no GGUF
+merge code regression at those shapes: current prefill was `-0.61%` at both
+512/128 and 4K/128 versus v0.1.1, while decode was `+2.75%` at 512/128 and
+`-0.18%` at 4K/128. Both same-environment runs were much slower than older
+W7900/v0.1.1 artifacts and the 2026-05-21 RX diagnostic, which points to run
+environment / clocks / measurement protocol rather than the GGUF merge itself.
+
+### 4. Report and validation
+
+Create or update a per-hardware report (`benchmarks/7900XTX.md`, etc.) with:
+
+- date, hardware, power/UC/OD settings, kernel/ROCm/Vulkan/llama.cpp metadata;
+- exact command templates and linked JSON artifacts;
+- topline tables with engines as columns and sweep shapes as rows;
+- blocked/OOM rows clearly marked with compact blocked artifacts;
+- a note distinguishing diagnostic single-run rows from accepted performance
+  rows.
+
+Before committing, parse every new JSON and re-read the markdown:
+
+```bash
+python3 - <<'PY'
+import glob, json
+for p in glob.glob('benchmarks/results/<date>-<gpu>-*.json'):
+    json.load(open(p))
+print('json ok')
+PY
+git diff --check
+```
+
 ## Current fastest hipEngine rows
 
 | Model | Quant | Backend | Workload | Prefill tok/s | Decode tok/s | Peak GiB | Correctness | Artifact | Last updated | Notes |

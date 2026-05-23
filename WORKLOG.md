@@ -25918,3 +25918,18 @@ print('md sanity ok')
 PY
 # md sanity ok
 ```
+
+## 2026-05-23 — Benchmark README procedure and PARO v0.1.1 spot-check
+
+Added a `README sweep test procedure` section to `benchmarks/README.md` covering the environment capture, RX 7900 XTX/TheRock ROCm setup, hipEngine PARO BF16/INT8 KV sweep commands, hipEngine GGUF Q4_K_M commands, llama.cpp HIP/Vulkan f16/Q8_0 KV wrapper commands, PARO v0.1.1 regression spot-check workflow, and report/validation requirements.
+
+PARO regression question: checked v0.1.1/pre-GGUF tag on the same RX 7900 XTX and same TheRock ROCm environment rather than comparing only against older W7900 artifacts. Commands used a detached worktree at `/tmp/hipengine-v0.1.1-paro-check`, `PYTHONPATH=$PWD`, `/home/lhl/miniforge3/envs/therock/bin/python`, TheRock HIP `7.13.60940-478a7a43c6`, `--attn-aotriton-min-tokens 512`, graph replay decode, token `9707`, one diagnostic run per shape.
+
+Same-environment PARO result table (`prefill tok/s / decode tok/s / tracked GiB`):
+
+| Workload | v0.1.1 (`89fe1ae`) | current before doc update (`f2b76dd`) | current delta |
+| --- | ---: | ---: | ---: |
+| 512/128 | 1364.399 / 107.542 / 18.075 | 1356.121 / 110.496 / 18.075 | prefill -0.61%, decode +2.75% |
+| 4K/128 | 2411.222 / 111.722 / 18.954 | 2396.599 / 111.518 / 18.954 | prefill -0.61%, decode -0.18% |
+
+Conclusion: no evidence of a GGUF-merge code regression in this same-environment PARO spot-check. The much larger gap vs older W7900/v0.1.1 artifacts and the 2026-05-21 RX diagnostic is likely due to run environment, clocks, or measurement protocol rather than the GGUF merge itself. Saved compact summary artifact `benchmarks/results/2026-05-23-rx7900xtx-paro-v011-current-regression-check.json`; raw verbose rerun JSONs were not retained.
