@@ -25672,3 +25672,184 @@ by warmup.
 - Probe script kept under `/tmp/q4ks-w7900-bench/persistent_session_smoke.py`
   for now; if we keep iterating on cold-start work it should move under
   `scripts/` with a proper CLI surface.
+
+## 2026-05-23 — Persistent GGUF bench harness + clean W7900 rerun
+
+Followed up on the user's request to stop reloading GGUF per measured run and
+then rerun the W7900 Q4_K_S sweep after discovering another agent had been using
+the GPU during earlier work.
+
+### Implementation: `scripts/qwen35_gguf_bench.py --persistent-session`
+
+Added an opt-in `--persistent-session` mode to `scripts/qwen35_gguf_bench.py`.
+Default behavior remains the historical one-session-per-run protocol used by
+existing artifacts. Persistent mode:
+
+1. Creates one `Qwen35GGUFResidentSession`.
+2. Calls `session.reset()` between warmup/measured runs.
+3. Measures the same per-run prefill, warmup decode, graph capture, and decode
+   timing windows.
+4. Closes the session once at process end.
+
+Initial implementation exposed a ROCm/HIP graph caveat: recapturing a decode
+graph every iteration inside one long-lived process caused HIP-reported VRAM to
+rise across iterations (`~34.6 -> 36.2 -> 37.5 -> 39.0 GiB` on 512/128), even
+though tracked hipEngine allocations stayed constant. This was not a persistent
+process leak (`rocm-smi --showpids` was empty and VRAM returned to ~28 MiB after
+process exit), but it would distort `hip_used_peak` and could OOM long-context
+persistent benches. Fixed persistent mode to capture **one reusable decode
+graph** and replay it across warmup/measured iterations. Reusable graph details:
+
+- `record_steps=0` because the generated-token record index buffer is stateful
+  across replays; per-run final-token sanity uses `graph.read_sample()` instead.
+- Before each reused replay, reset the full-attention device position scalar
+  with `session._set_full_attention_position_device(session.position, stream)`;
+  without this reset, reused 512/128 graph runs produced stable but wrong final
+  IDs (`[1076,1076,1076]` instead of `[51515,51515,51515]`).
+- After this fix, persistent 512/128 graph reuse has stable HIP peak, stable
+  final IDs, and no per-iter recapture cost.
+
+Validation:
+
+```bash
+python -m py_compile scripts/qwen35_gguf_bench.py
+# passed
+PYTHONPATH=. python -m pytest \
+  tests/test_qwen35_gguf_decode_graph_policy.py \
+  tests/test_qwen35_gguf_decode_repack_semantics.py -q
+# 7 passed
+```
+
+Runtime smoke on W7900 Q4_K_S 512/128 with `--persistent-session` after graph
+reuse fix:
+
+- load once: `62.20 s`
+- measured prefill samples: `1559.296`, `1557.993`, `1548.322 tok/s`
+- measured decode samples: `93.874`, `93.757`, `93.803 tok/s`
+- final IDs: `[51515,51515,51515]`
+- tracked peak: `20.185 GiB`; sampled HIP peak: `20.720 GiB`
+- graph capture only on warmup (`~0.099 s`); measured runs reuse the graph
+  (`decode_graph_reused=true`, `graph_capture_seconds=0.0`).
+
+### Clean-GPU persistent rerun of Q4_K_S sweep
+
+Before every shape, checked `rocm-smi --showpids --showuse --showmeminfo vram`:
+`No KFD PIDs currently running`, GPU use 0%, VRAM ~28 MiB. Reran the four
+Q4_K_S shapes with persistent mode, same fast paths and same W7900 host:
+
+```bash
+HIPENGINE_GGUF_AOTRITON_PREFILL=v3 \
+HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 \
+HIPENGINE_GGUF_DECODE_REPACK=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+PYTHONPATH=. python scripts/qwen35_gguf_bench.py --persistent-session \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf \
+  --quant gguf_q4_k_s \
+  --prompt-length <512|4096|32768|131072> --decode-tokens 128 \
+  --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --use-wmma-prefill --use-gemv-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/q4ks-persistent-bench/q4ks-<N>-128-persistent-rerun-clear-gpu.json
+```
+
+| Workload | Persistent clean prefill | Persistent clean decode | Tracked peak | Final IDs | Wall time | vs original W7900 per-run |
+| -------- | -----------------------: | ----------------------: | -----------: | --------- | --------: | ------------------------- |
+| 512/128  | `1555.163 tok/s` | `93.816 tok/s` | `20.185 GiB` | `[51515,51515,51515]` | `69.5 s` | prefill `-1.87%`, decode `+0.95%`, wall `3.60x` faster |
+| 4K/128   | `1733.901 tok/s` | `101.050 tok/s` | `21.335 GiB` | `[85,85,85]` | `80.6 s` | prefill `-0.17%`, decode `-0.29%`, wall `3.18x` faster |
+| 32K/128  | `1370.244 tok/s` | `86.909 tok/s` | `22.146 GiB` | `[13883,13883,13883]` | `163.1 s` | prefill `-1.00%`, decode `-0.12%`, wall `2.09x` faster |
+| 128K/128 | `830.850 tok/s` | `58.148 tok/s` | `25.108 GiB` | `[220,220,220]` | `700.7 s` | prefill `-0.06%`, decode `+0.04%`, wall `1.26x` faster |
+
+Conclusion: the other GPU user did not materially affect the retained W7900
+numbers. The clean persistent rerun is within normal run-to-run variance, while
+cutting wall time substantially by avoiding repeated ~60 s load/decode-repack.
+No README table update is needed for this rerun because the retained rows remain
+valid.
+
+### 4K chunk-policy and clock checks
+
+The W7900-vs-RX7900XTX 4K prefill gap first looked suspicious because W7900
+README/persistent rows use the `manual_long_equiv_gt1k` chunk policy above 1K
+(`linear=1024 / moe=1024 / full_attn_query=4096 / full_attn_post=1024 /
+full_attn_rope=1024`), while the RX 7900 XTX final-gate 4K path was below its
+long-context chunk threshold (`chunk_tune_min_tokens=32768`, effectively
+unchunked at 4K). Tested W7900 4K with chunking disabled:
+
+```bash
+... scripts/qwen35_gguf_bench.py --persistent-session \
+  --prompt-length 4096 --decode-tokens 128 ... --no-prefill-chunk-autotune \
+  --json /tmp/q4ks-persistent-bench/q4ks-4096-128-persistent-rerun-clear-gpu-nochunk.json
+```
+
+W7900 no-chunk 4K Q4_K_S:
+
+- prefill samples: `1716.071`, `1711.245`, `1706.603 tok/s`; median `1711.245`
+- decode samples: `101.403`, `101.187`, `100.968 tok/s`; median `101.187`
+- tracked peak: `21.416 GiB`; sampled HIP peak: `22.017 GiB`
+- final IDs: `[85,85,85]`
+
+So chunking is **not** the explanation: no-chunk is slightly slower than the
+chunked W7900 row (`1733.901 tok/s`) and still far below the RX 7900 XTX
+Q4_K_S final-gate (`2722.508 tok/s`).
+
+Clock sampling during a no-chunk 4K run also did not show an underclocked W7900:
+
+- Sampled `/sys/class/drm/card1/device/pp_dpm_{sclk,mclk,fclk}` plus
+  `gpu_busy_percent` / `mem_busy_percent` every 50 ms.
+- Over samples with `gpu_busy >= 90%`, SCLK ranged `0-2972 MHz` (mean
+  `2281.7 MHz`; the `0 MHz` entries are sampler races at transitions), MCLK
+  `96-1124 MHz` (mean `1003.5 MHz`), FCLK `601-2301 MHz` (mean `1738.6 MHz`),
+  GPU busy mean `99.6%`, memory-busy mean `28.6%`, memory-busy max `61%`.
+- Over the whole run, max SCLK was `2984 MHz`, max MCLK `1124 MHz`, max FCLK
+  `2301 MHz`.
+
+This rules out the earlier "low-power state" hypothesis and a simple chunking
+mismatch. The W7900 is boosting correctly for this workload.
+
+### Do we see this in PARO logs?
+
+Available evidence says **no, not generally**.
+
+- W7900 packed PARO 4K/128 current README row (artifact
+  `2026-05-18-hipengine-gfx1100-shisa-qwen36-packed-gt1k-default-diagnostic.json`):
+  `2899.685 tok/s` prefill, `113.094 tok/s` decode.
+- Local RX 7900 XTX PARO 4K/128 row (artifact
+  `2026-05-21-local-rx7900xtx-gguf-vs-paro-memory-comparison.json`):
+  `2710.869 tok/s` prefill, `106.637 tok/s` decode.
+- That makes W7900 PARO **+6.96% prefill / +6.05% decode** vs the existing
+  local RX PARO row. Caveat: these are not a same-commit same-harness cross-host
+  rerun, but they are enough to say we do **not** currently see a broad W7900
+  slowdown in PARO.
+
+For GGUF Q4_K_S 4K/128, the opposite is true:
+
+- W7900 no-chunk persistent: `1711.245 tok/s` prefill, `101.187 tok/s` decode.
+- RX 7900 XTX final-gate: `2722.508 tok/s` prefill, `100.257 tok/s` decode.
+- W7900 GGUF prefill is `-37.14%`, while decode is `+0.93%`.
+
+So the anomaly is currently **GGUF prefill on W7900/this ROCm stack**, not a
+general W7900 issue and not a decode issue. Most likely next suspects are:
+
+1. host/compiler/runtime difference between the W7900 and local RX 7900 XTX
+   environments (this W7900 uses `/tmp/hipengine-hipcc-version.txt` with HIP
+   `7.2.53211-364a905`; the RX final-gate artifact did not record the compiler
+   version text),
+2. GGUF prefill kernel mix sensitivity to W7900 SMU/power policy despite clocks
+   reaching peak boost (many selected-MoE / raw-K / chunk helper kernels, not the
+   packed-PARO kernel mix), or
+3. a benchmark-policy artifact we have not isolated yet (requires a same-commit
+   RX rerun with the persistent harness and clock sampling).
+
+Do we need PARO testing on RX 7900 XTX? For a rigorous publication-grade
+cross-host device claim, yes: rerun packed PARO on RX 7900 XTX at the same commit,
+with the same harness policy and compiler-version capture. But for the narrower
+question "is the W7900 prefill gap visible in existing PARO logs?", the answer is
+no; the existing PARO evidence actually has W7900 slightly faster than the local
+RX row.
+
+### Artifact
+
+Saved compact diagnostic artifact:
+`benchmarks/results/2026-05-23-hipengine-qwen36-35b-a3b-q4ks-persistent-session-w7900-gap-review.json`.
+It includes the persistent-session clean sweep, wall-time speedups, no-chunk
+4K probe, W7900 clock-sampling summary, and PARO-vs-GGUF cross-host evidence.

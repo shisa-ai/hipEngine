@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 """Resident Qwen3.5 GGUF c=1 benchmark harness.
 
-The harness measures the public GGUF resident execution surface directly: a
-single persistent ``Qwen35GGUFResidentSession`` per run, default resident prefill
-(bulk when supported, token-serial fallback for short prompts; qwen35moe uses
-fast fully bulk attention+MoE by default), one optional warmup decode
-token, and one-step HIP graph replay for measured
-decode.  It is intentionally shape-driven so the retained artifacts can compare
-512/128 and 4K/128 against PARO resident diagnostics and llama.cpp GGUF rows.
+The harness measures the public GGUF resident execution surface directly.  By
+default it creates a fresh ``Qwen35GGUFResidentSession`` per warmup/measured
+run, matching historical artifacts.  ``--persistent-session`` creates one
+resident session and resets sequence state between runs, avoiding repeated GGUF
+load/decode-repack work while preserving the same prefill/decode timing window.
+Each run uses default resident prefill (bulk when supported, token-serial
+fallback for short prompts; qwen35moe uses fast fully bulk attention+MoE by
+default), one optional warmup decode token, and one-step HIP graph replay for
+measured decode.  It is intentionally shape-driven so retained artifacts can
+compare 512/128 and 4K/128 against PARO resident diagnostics and llama.cpp GGUF
+rows.
 """
 
 from __future__ import annotations
@@ -44,6 +48,15 @@ def main() -> int:
     parser.add_argument("--warmup-decode-tokens", type=int, default=1)
     parser.add_argument("--warmup-runs", type=int, default=1)
     parser.add_argument("--measured-runs", type=int, default=3)
+    parser.add_argument(
+        "--persistent-session",
+        action="store_true",
+        help=(
+            "Create one Qwen35GGUFResidentSession and call session.reset() between "
+            "warmup/measured runs. This avoids repeated GGUF load/decode-repack "
+            "work while keeping per-run prefill/decode timing separate."
+        ),
+    )
     prefill_group = parser.add_mutually_exclusive_group()
     prefill_group.add_argument(
         "--force-bulk-prefill",
@@ -176,10 +189,8 @@ def main() -> int:
         chunk_tune_memory_budget_gib=args.prefill_chunk_memory_budget_gib,
     )
 
-    runs: list[dict[str, Any]] = []
-    for run_index in range(args.warmup_runs + args.measured_runs):
-        measured = run_index >= args.warmup_runs
-        run = _run_once(
+    if args.persistent_session:
+        runs, persistent_session_load_seconds, persistent_session_memory = _run_persistent_session(
             model=args.model,
             quant=args.quant,
             prompt_tokens=prompt_tokens,
@@ -200,11 +211,45 @@ def main() -> int:
             use_gemv_decode=args.use_gemv_decode,
             prefill_chunk_size=args.prefill_chunk_size,
             prefill_config=prefill_config,
-            measured=measured,
-            run_index=(run_index - args.warmup_runs + 1 if measured else run_index + 1),
+            warmup_runs=args.warmup_runs,
+            measured_runs=args.measured_runs,
         )
-        runs.append(run)
-        label = "measured" if measured else "warmup"
+        session_mode = "persistent"
+    else:
+        runs = []
+        persistent_session_load_seconds = None
+        persistent_session_memory = None
+        for run_index in range(args.warmup_runs + args.measured_runs):
+            measured = run_index >= args.warmup_runs
+            run = _run_once(
+                model=args.model,
+                quant=args.quant,
+                prompt_tokens=prompt_tokens,
+                decode_tokens=args.decode_tokens,
+                warmup_decode_tokens=args.warmup_decode_tokens,
+                max_sequence_length=max_sequence_length,
+                graph_replay_decode=args.graph_replay_decode,
+                graph_steps_per_replay=args.graph_steps_per_replay,
+                use_bulk_prefill=use_bulk_prefill,
+                bulk_attention_mode=args.bulk_prefill_attention_mode,
+                compiler_version=compiler_version,
+                require_cached_build=args.require_cached_build,
+                use_expert_sidecar=args.use_expert_sidecar,
+                expert_sidecar_cache_dir=args.expert_sidecar_cache_dir,
+                require_expert_sidecar=args.require_expert_sidecar,
+                preload_expert_sidecars=args.preload_expert_sidecars,
+                use_wmma_prefill=args.use_wmma_prefill,
+                use_gemv_decode=args.use_gemv_decode,
+                prefill_chunk_size=args.prefill_chunk_size,
+                prefill_config=prefill_config,
+                measured=measured,
+                run_index=(run_index - args.warmup_runs + 1 if measured else run_index + 1),
+            )
+            runs.append(run)
+        session_mode = "per_run"
+
+    for run in runs:
+        label = "measured" if run["measured"] else "warmup"
         print(
             f"{label}_run={run['run_index']} prefill_tok_s={run['throughput']['prefill_tok_s']:.6f} "
             f"decode_tok_s={run['throughput']['decode_tok_s']:.6f} "
@@ -224,6 +269,10 @@ def main() -> int:
             use_bulk_prefill=use_bulk_prefill,
             bulk_attention_mode=args.bulk_prefill_attention_mode,
         ),
+        "session_mode": session_mode,
+        "persistent_session": bool(args.persistent_session),
+        "persistent_session_load_seconds": persistent_session_load_seconds,
+        "persistent_session_memory": persistent_session_memory,
         "prompt_source": "repeated_token_id",
         "token_id": int(args.token_id),
         "prompt_length": int(args.prompt_length),
@@ -273,6 +322,7 @@ def main() -> int:
             "--use-gemv-decode opts rows=1 GGUF decode into the P9 pack8 GEMV decode path, including graph-capture decode.",
             "GGUF prefill chunking uses the same PrefillConfig auto policy as PARO unless --prefill-chunk-size or explicit per-surface chunk flags override it.",
             "Measured decode excludes graph capture time when graph_replay_decode=true.",
+            "--persistent-session creates one resident session and resets sequence state between warmup/measured runs, avoiding repeated GGUF load/decode-repack work. Historical artifacts used the default per-run session mode.",
         ],
     }
     text = json.dumps(output, indent=2, ensure_ascii=False)
@@ -292,6 +342,282 @@ def _mode_name(*, graph_replay_decode: bool, use_bulk_prefill: bool | None, bulk
         prefill = "default_prefill"
     decode = "graph_decode" if graph_replay_decode else "eager_decode"
     return f"resident_{prefill}_{decode}"
+
+
+def _run_persistent_session(
+    *,
+    model: Path,
+    quant: str,
+    prompt_tokens: list[int],
+    decode_tokens: int,
+    warmup_decode_tokens: int,
+    max_sequence_length: int,
+    graph_replay_decode: bool,
+    graph_steps_per_replay: int,
+    use_bulk_prefill: bool | None,
+    bulk_attention_mode: str,
+    compiler_version: str | None,
+    require_cached_build: bool,
+    use_expert_sidecar: bool,
+    expert_sidecar_cache_dir: Path | None,
+    require_expert_sidecar: bool,
+    preload_expert_sidecars: bool,
+    use_wmma_prefill: bool | None,
+    use_gemv_decode: bool | None,
+    prefill_chunk_size: int,
+    prefill_config: PrefillConfig,
+    warmup_runs: int,
+    measured_runs: int,
+) -> tuple[list[dict[str, Any]], float, dict[str, Any]]:
+    """Run warmup/measured iterations inside one resident GGUF session.
+
+    Historical qwen35_gguf_bench artifacts intentionally created a fresh session
+    per run so load/repack behavior was visible in every raw run.  For repeated
+    performance measurements that is unnecessarily expensive: GGUF Q4_K_S on a
+    W7900 spends about 60 seconds in load/decode-repack while a 512/128 timed
+    iteration only spends ~1.7 seconds in prefill+decode.  This path loads once,
+    calls session.reset() before each run, and closes once at the end.
+    """
+
+    runtime = get_hip_runtime()
+    reset_memory_stats()
+    persistent_memory: dict[str, Any] = {"before_load": _memory_snapshot("before_load", runtime)}
+    load_start = time.perf_counter()
+    session = Qwen35GGUFResidentSession(
+        model,
+        runtime=runtime,
+        compiler_version=compiler_version,
+        require_cached_build=require_cached_build,
+        max_sequence_length=max_sequence_length,
+        use_expert_sidecar=use_expert_sidecar,
+        expert_sidecar_cache_dir=expert_sidecar_cache_dir,
+        require_expert_sidecar=require_expert_sidecar,
+        preload_expert_sidecars=preload_expert_sidecars,
+        use_wmma_prefill=use_wmma_prefill,
+        use_gemv_decode=use_gemv_decode,
+        prefill_chunk_size=prefill_chunk_size,
+        prefill_config=prefill_config,
+    )
+    load_seconds = time.perf_counter() - load_start
+    persistent_memory["after_load"] = _memory_snapshot("after_load", runtime, session)
+
+    runs: list[dict[str, Any]] = []
+    # HIP graph capture/instantiate can retain large internal allocations until
+    # process teardown on ROCm 7.2 when repeated inside one long-lived session.
+    # Persistent mode therefore captures one reusable graph (same prompt shape,
+    # same start position after reset+prefill+warmup) and replays it across all
+    # warmup/measured runs. Per-run mode keeps historical recapture behavior.
+    graph_holder: dict[str, Any] = {}
+    try:
+        for raw_run_index in range(int(warmup_runs) + int(measured_runs)):
+            measured = raw_run_index >= int(warmup_runs)
+            run_index = raw_run_index - int(warmup_runs) + 1 if measured else raw_run_index + 1
+            run = _run_existing_session_once(
+                session=session,
+                runtime=runtime,
+                model=model,
+                quant=quant,
+                prompt_tokens=prompt_tokens,
+                decode_tokens=decode_tokens,
+                warmup_decode_tokens=warmup_decode_tokens,
+                graph_replay_decode=graph_replay_decode,
+                graph_steps_per_replay=graph_steps_per_replay,
+                use_bulk_prefill=use_bulk_prefill,
+                bulk_attention_mode=bulk_attention_mode,
+                use_wmma_prefill=use_wmma_prefill,
+                use_gemv_decode=use_gemv_decode,
+                prefill_chunk_size=prefill_chunk_size,
+                measured=measured,
+                run_index=run_index,
+                load_seconds=load_seconds,
+                persistent_session=True,
+                graph_holder=graph_holder,
+            )
+            runs.append(run)
+    finally:
+        persistent_memory["before_close"] = _memory_snapshot("before_close", runtime, session)
+        graph = graph_holder.get("graph")
+        if graph is not None:
+            try:
+                graph.close()
+            finally:
+                graph_holder["graph"] = None
+        persistent_memory["after_graph_close"] = _memory_snapshot("after_graph_close", runtime, session)
+        session.close()
+        persistent_memory["after_close"] = _memory_snapshot("after_close", runtime)
+
+    persistent_summary = _memory_summary(persistent_memory)
+    return runs, load_seconds, {"summary": persistent_summary, "snapshots": persistent_memory}
+
+
+def _run_existing_session_once(
+    *,
+    session: Qwen35GGUFResidentSession,
+    runtime: HipRuntime,
+    model: Path,
+    quant: str,
+    prompt_tokens: list[int],
+    decode_tokens: int,
+    warmup_decode_tokens: int,
+    graph_replay_decode: bool,
+    graph_steps_per_replay: int,
+    use_bulk_prefill: bool | None,
+    bulk_attention_mode: str,
+    use_wmma_prefill: bool | None,
+    use_gemv_decode: bool | None,
+    prefill_chunk_size: int,
+    measured: bool,
+    run_index: int,
+    load_seconds: float,
+    persistent_session: bool,
+    graph_holder: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Run one prefill/decode iteration on an existing resident session."""
+
+    fastpath_safety = session.fastpath_safety.as_dict() if session.fastpath_safety is not None else None
+    memory_snapshots: dict[str, Any] = {
+        "after_load": _memory_snapshot("after_load", runtime, session),
+        "before_reset": _memory_snapshot("before_reset", runtime, session),
+    }
+    session.reset()
+    memory_snapshots["after_reset"] = _memory_snapshot("after_reset", runtime, session)
+
+    generated_token_ids: list[int] = []
+    final = None
+    graph_capture_seconds = 0.0
+    prefill_seconds = 0.0
+    warmup_decode_seconds = 0.0
+    decode_seconds = 0.0
+    try:
+        prefill_start = time.perf_counter()
+        first = session.prefill(
+            prompt_tokens,
+            use_bulk=use_bulk_prefill,
+            bulk_attention_mode=bulk_attention_mode,
+            return_logits=False,
+        )
+        prefill_seconds = time.perf_counter() - prefill_start
+        generated_token_ids.append(first.token_id)
+        next_token = first.token_id
+        memory_snapshots["after_prefill"] = _memory_snapshot("after_prefill", runtime, session)
+
+        warmup_start = time.perf_counter()
+        for _ in range(warmup_decode_tokens):
+            warmup = session.step(next_token, return_logits=False)
+            next_token = warmup.token_id
+            generated_token_ids.append(warmup.token_id)
+        warmup_decode_seconds = time.perf_counter() - warmup_start
+        memory_snapshots["after_warmup_decode"] = _memory_snapshot("after_warmup_decode", runtime, session)
+
+        retained_graph = graph_holder is not None
+        decode_graph_reused = False
+        decode_graph_recorded_tokens = False
+        if graph_replay_decode and decode_tokens:
+            graph = graph_holder.get("graph") if graph_holder is not None else None
+            if graph is None:
+                capture_start = time.perf_counter()
+                graph = session.capture_decode_graph(
+                    position=session.position,
+                    steps_per_replay=graph_steps_per_replay,
+                    max_replay_steps=decode_tokens,
+                    # Reusable graphs avoid generated-token recording because
+                    # the generated index buffer is intentionally stateful across
+                    # replays. Final-token sanity still comes from read_sample().
+                    record_steps=0 if retained_graph else decode_tokens,
+                )
+                graph_capture_seconds = time.perf_counter() - capture_start
+                if graph_holder is not None:
+                    graph_holder["graph"] = graph
+            else:
+                decode_graph_reused = True
+            decode_graph_recorded_tokens = getattr(graph, "generated", None) is not None
+            if decode_graph_reused:
+                # capture_decode_graph() primes the device position scalar before
+                # capture, outside the graph body. A retained graph therefore
+                # needs the same scalar reset before each replay after
+                # session.reset()+prefill()+warmup.
+                stream = runtime.stream_create()
+                try:
+                    session._set_full_attention_position_device(session.position, stream=stream)
+                    runtime.stream_synchronize(stream)
+                finally:
+                    runtime.stream_destroy(stream)
+            try:
+                decode_start = time.perf_counter()
+                graph.replay(decode_tokens)
+                decode_seconds = time.perf_counter() - decode_start
+                if decode_graph_recorded_tokens:
+                    generated_token_ids.extend(graph.read_generated_token_ids(decode_tokens))
+                final = graph.read_sample()
+                if not decode_graph_recorded_tokens and final is not None:
+                    generated_token_ids.append(final.token_id)
+            finally:
+                if not retained_graph:
+                    graph.close()
+        else:
+            decode_graph_reused = False
+            decode_graph_recorded_tokens = False
+            decode_start = time.perf_counter()
+            for step_index in range(decode_tokens):
+                final = session.step(next_token, return_logits=(step_index == decode_tokens - 1))
+                next_token = final.token_id
+                generated_token_ids.append(next_token)
+            decode_seconds = time.perf_counter() - decode_start
+        memory_snapshots["after_decode"] = _memory_snapshot("after_decode", runtime, session)
+        final_token_id = None if final is None else final.token_id
+        final_logit = None if final is None else final.logit
+        finite_logits = None if final is None else bool(np.all(np.isfinite(final.logits)))
+    finally:
+        memory_snapshots["before_close"] = _memory_snapshot("before_close", runtime, session)
+
+    return {
+        "run_index": int(run_index),
+        "measured": bool(measured),
+        "persistent_session": bool(persistent_session),
+        "model": str(model),
+        "quant": quant,
+        "prompt_length": len(prompt_tokens),
+        "decode_tokens": int(decode_tokens),
+        "warmup_decode_tokens": int(warmup_decode_tokens),
+        "use_bulk_prefill": use_bulk_prefill,
+        "bulk_prefill_attention_mode": bulk_attention_mode,
+        "use_wmma_prefill": use_wmma_prefill,
+        "use_gemv_decode": use_gemv_decode,
+        "requested_use_wmma_prefill": use_wmma_prefill,
+        "requested_use_gemv_decode": use_gemv_decode,
+        "requested_prefill_chunk_size": int(prefill_chunk_size),
+        "prefill_chunk_sizes": _prefill_chunk_sizes(session.prefill_config),
+        "prefill_chunk_tuning": session.prefill_chunk_tuning,
+        "effective_use_wmma_prefill": None if fastpath_safety is None else fastpath_safety.get("effective_wmma_prefill"),
+        "effective_use_gemv_decode": None if fastpath_safety is None else fastpath_safety.get("effective_gemv_decode"),
+        "fastpath_safety": fastpath_safety,
+        "decode_graph_reused": bool(decode_graph_reused),
+        "decode_graph_recorded_tokens": bool(decode_graph_recorded_tokens),
+        "timings": {
+            "load_seconds": load_seconds,
+            "load_seconds_is_shared_session": bool(persistent_session),
+            "prefill_seconds": prefill_seconds,
+            "warmup_decode_seconds": warmup_decode_seconds,
+            "graph_capture_seconds": graph_capture_seconds,
+            "decode_seconds_excluding_graph_capture": decode_seconds,
+            "wall_seconds_excluding_load": prefill_seconds + warmup_decode_seconds + graph_capture_seconds + decode_seconds,
+        },
+        "throughput": {
+            "prefill_tok_s": len(prompt_tokens) / prefill_seconds if prefill_seconds else None,
+            "decode_tok_s": decode_tokens / decode_seconds if decode_seconds else None,
+            "decode_ms_per_token": (decode_seconds / decode_tokens) * 1000.0 if decode_tokens else None,
+        },
+        "correctness_sanity": {
+            "finite_final_logits": finite_logits,
+            "final_token_id": final_token_id,
+            "final_logit": final_logit,
+            "generated_preview_token_ids": generated_token_ids[:16],
+            "generated_tail_token_ids": generated_token_ids[-16:],
+            "generated_count_including_prefill_sample_and_warmup": len(generated_token_ids),
+        },
+        "memory": _memory_summary(memory_snapshots),
+        "memory_snapshots": memory_snapshots,
+    }
 
 
 def _run_once(
