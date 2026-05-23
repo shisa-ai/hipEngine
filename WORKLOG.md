@@ -22662,3 +22662,106 @@ Artifacts:
 
 Updated docs:
 - docs/DFLASH.md (R3.6 row updated with C1 status and C5 deferral rationale)
+
+## 2026-05-24 R3.7 reduced-logits verifier fused LM-head + argmax-rows kernel landed default-off (rocprof gate passed, perf neutral)
+
+Implemented the R3.7 fused W8A16 LM-head + argmax-rows kernel
+`hipengine_w8a16_lm_head_argmax_rows_bf16` in
+`hipengine/kernels/hip_gfx1100/linear/lm_head.hip`.  Replaces the unfused
+pair `w8a16_linear_bf16_f32_multi_row` + `argmax_f32_rows_i32` in the
+DFlash chain verifier window so the per-cycle full-vocab `[B+1, 248320]
+FP32 = 4.97 MB` logits buffer is never written to HBM.  Each stage-1 block
+of 256 threads cooperatively processes a `chunk = 1024` vocab tile for one
+verifier row using the SAME 256-way LDS-reduce dot pattern as the unfused
+`w8a16_linear_multi_row_kernel`; thread 0 keeps the running
+`(max_value, min_index_on_tie)` and writes one pair to per-block scratch.
+Stage 2 reuses the unchanged `argmax_rows_stage2_i32_kernel`.
+
+Plumbing:
+- C ABI: `hipengine_w8a16_lm_head_argmax_rows_bf16`
+- Python wrapper: `hipengine.kernels.hip_gfx1100.linear.lm_head.w8a16_lm_head_argmax_rows_bf16`
+- Registry: `KernelKey("hip_gfx1100", "lm_head_argmax", "w8a16", "bf16_rows_i32")`
+- Module-level helper: `_dflash_verify_fused_lm_head_enabled()` reads
+  `HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD` (off/on, default off; same enum
+  shape as `_drafter_dense_use_add_rmsnorm`).
+- Runtime dispatch:
+  `qwen35_paro_runner.py::_sample_verify_rows_from_hidden` early-returns
+  through the fused kernel when the env flag is on; the unfused
+  multi_row + argmax_rows path remains the registered fallback.
+
+Correctness gates:
+- `tests/test_w8a16_lm_head_argmax_rows.py` (6 tests, all pass): GPU parity
+  vs unfused chain on 4 shapes covering rows in {1,3,4,5}, hidden in
+  {1024,2048}, vocab in {2048,4096,8192,16384}.  **Indices AND FP32 top-1
+  values are bit-identical** because the per-vocab-row dot reduction
+  matches the unfused multi_row kernel exactly (256-way LDS reduce over
+  the 8x-unrolled hidden stride).
+- 9-prompt B=4 D=32 same-session DFlash chain bench
+  (`scripts/dflash_chain_e2e_bench.py --max-prompts 9 --decode-tokens 32
+  --draft-budgets 4 --verifier-mode native_bulk_bplus1
+  --full-attn-chain-mode batched`) holds **exact-AR on all 9 prompts**
+  with `avg_accept_length=1.527` identical to the R3.6 baseline.
+
+Rocprof gate (1-prompt 4-token, fused-on, gfx1100/W7900):
+- `rocprofv3 --kernel-trace -d /tmp/dflash_r37_fused_on_rocprof -- python3
+  scripts/dflash_chain_e2e_bench.py ... --max-prompts 1 --decode-tokens 4`
+- `w8a16_linear_multi_row_kernel`: **NOT PRESENT** in trace (eliminated)
+- `argmax_rows_stage1_i32_kernel`: **NOT PRESENT** (replaced by fused
+  stage 1)
+- `w8a16_lm_head_argmax_rows_stage1_kernel` (NEW): 2 calls × 2902.2 µs
+- `argmax_rows_stage2_i32_kernel` (reused): 2 calls × 4.2 µs
+- The full-vocab lm-head kernel and full-vocab D2H copy are gone from the
+  verifier window — Step 2 of the R3.7 spec satisfied.
+
+Perf gate (9-prompt B=4 D=32, same-session A/B):
+| Metric              | fused-OFF | fused-ON | Δ              |
+|---------------------|-----------|----------|----------------|
+| drafter ms/cycle    | 9.111     | 9.108    | -0.003 (noise) |
+| **verifier ms/cycle** | **27.04** | **28.00** | **+0.96 (+3.6%)** |
+| cycle ms            | 36.34     | 37.30    | +0.96 (+2.6%)  |
+| spec tok/s          | 69.26     | 67.52    | -2.5%          |
+| AR / accept length  | identical | identical| preserved      |
+| exact-AR rows       | 9/9       | 9/9      | preserved      |
+
+**Fused kernel is ~1 ms/cycle SLOWER on gfx1100/W7900** despite eliminating
+the 5 MB writeback and one argmax launch.  Cause: GPU occupancy collapse:
+- Unfused `w8a16_linear_multi_row_kernel` grid: `dim3(vocab=248320)` →
+  248K small blocks, each doing 5 cooperative dot products.  Excellent
+  occupancy.
+- Fused stage-1 grid: `dim3(stage1_blocks=243, rows=5)` → only 1215
+  blocks, each doing 1024 cooperative dot products.  Severely
+  under-occupied; long-running blocks can't fill 96 CUs.
+
+Per-call rocprof timing matches the e2e regression: fused 2902 µs/call vs
+unfused (multi_row 1795 + argmax_rows 16) = 1811 µs/call → +1091 µs/call,
+which scales to +0.96 ms/cycle in the e2e bench (1 verifier call per
+cycle).
+
+This matches the R3.2 cost model's prediction (~72 µs/pass theoretical
+saving from writeback elimination — small, easily lost to launch/occupancy
+trade-offs) and the R3.8 BeeLlama profile finding that their fused
+`set_dflash_verify_logits` design wins on RTX 3090 because Ada is
+launch-bound at 248K dispatches in a way RDNA3 isn't.
+
+Decision: land default-off as a future-ready opt-in path.
+- Mirrors the R3.6 C1 protocol: env-flag-gated, unfused fallback retained
+  as the registered default, bit-exact correctness gate, cost-model
+  rationale documented.
+- Rocprof gate satisfaction is in place if a future variant (reduced-logits
+  sampling, larger B verifying ≥16 rows, kernel rewrite that improves
+  per-block work scheduling) makes it a perf win — flipping the env flag
+  to on requires no further plumbing.
+
+Validation:
+- `pytest -q tests/test_w8a16_lm_head_argmax_rows.py` → 6 passed
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/linear/lm_head.py
+  hipengine/runtime/qwen35_paro_runner.py`
+- 9-prompt fused-on/off A/B retained at /tmp/dflash_r37_fused_on_v2.json
+  and /tmp/dflash_r37_fused_off_v2.json
+- Rocprof artifact retained at
+  /tmp/dflash_r37_fused_on_rocprof/epyc/*_results.db
+
+Updated docs:
+- docs/DFLASH.md (R3.7 design-notes section now includes implementation
+  outcome, rocprof gate evidence, perf trade-off table, and decision
+  rationale).

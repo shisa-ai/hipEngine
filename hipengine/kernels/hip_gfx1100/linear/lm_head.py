@@ -16,6 +16,7 @@ _SYMBOL_ROWS_I32 = "hipengine_lm_head_fp16_argmax_bf16_rows_i32"
 _SYMBOL_ARGMAX = "hipengine_argmax_f32"
 _SYMBOL_ARGMAX_ROWS_I32 = "hipengine_argmax_f32_rows_i32"
 _SYMBOL_TOPK_ROWS_I32 = "hipengine_topk_f32_rows_i32"
+_SYMBOL_W8A16_LM_HEAD_ARGMAX_ROWS = "hipengine_w8a16_lm_head_argmax_rows_bf16"
 _ALLOWED_THREADS = {128, 256, 512}
 _MAX_TOPK = 8
 
@@ -312,6 +313,74 @@ def lm_head_argmax_stage1_blocks(vocab_size: int, *, threads: int = 256) -> int:
     return (int(vocab_size) + int(threads) * 4 - 1) // (int(threads) * 4)
 
 
+def w8a16_lm_head_argmax_rows_bf16(
+    hidden_bf16_ptr: int,
+    weight_int8_ptr: int,
+    weight_scale_f32_ptr: int,
+    block_values_f32_ptr: int,
+    block_indices_i32_ptr: int,
+    out_indices_i32_ptr: int,
+    out_values_f32_ptr: int | None,
+    rows: int,
+    hidden_size: int,
+    vocab_size: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """R3.7 fused W8A16 LM-head + argmax-rows.
+
+    Replaces the unfused ``w8a16_linear_bf16_f32_multi_row`` -> ``argmax_f32_rows_i32``
+    pair so the per-cycle ``[rows, vocab_size]`` FP32 logits buffer is never
+    materialized in HBM.  ``hidden_bf16`` is ``[rows, hidden_size]`` in bf16 bits;
+    weight is W8 ``[vocab_size, hidden_size]`` INT8 with FP32 ``[vocab_size]`` scale.
+    Outputs ``out_indices_i32[rows]`` (top-1 token id per row) and optional
+    ``out_values_f32[rows]`` (top-1 logit value per row).  Scratch buffers
+    ``block_values_f32[rows * stage1_blocks]`` / ``block_indices_i32[rows * stage1_blocks]``
+    must be sized via :func:`lm_head_argmax_stage1_blocks`.
+    """
+
+    _check_rows(rows)
+    _check_shape(hidden_size, vocab_size, threads)
+    _check_i32_vocab(vocab_size)
+    library = library or build_lm_head(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_W8A16_LM_HEAD_ARGMAX_ROWS)
+    fn.argtypes = [
+        ctypes.c_void_p,  # hidden bf16
+        ctypes.c_void_p,  # weight int8
+        ctypes.c_void_p,  # weight scale f32
+        ctypes.c_void_p,  # block_values f32 scratch
+        ctypes.c_void_p,  # block_indices i32 scratch
+        ctypes.c_void_p,  # out_indices i32
+        ctypes.c_void_p,  # out_values f32 (nullable)
+        ctypes.c_int64,   # rows
+        ctypes.c_int64,   # hidden_size
+        ctypes.c_int64,   # vocab_size
+        ctypes.c_int64,   # threads
+        ctypes.c_void_p,  # stream
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(hidden_bf16_ptr),
+        ctypes.c_void_p(weight_int8_ptr),
+        ctypes.c_void_p(weight_scale_f32_ptr),
+        ctypes.c_void_p(block_values_f32_ptr),
+        ctypes.c_void_p(block_indices_i32_ptr),
+        ctypes.c_void_p(out_indices_i32_ptr),
+        ctypes.c_void_p(out_values_f32_ptr) if out_values_f32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(hidden_size),
+        ctypes.c_int64(vocab_size),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def register_lm_head_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "lm_head", "w4_paro", "fp16_argmax_bf16"),
@@ -336,6 +405,11 @@ def register_lm_head_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "topk", "w4_paro", "f32_rows_i32"),
         topk_f32_rows_i32,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "lm_head_argmax", "w8a16", "bf16_rows_i32"),
+        w8a16_lm_head_argmax_rows_bf16,
         replace=replace,
     )
 

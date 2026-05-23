@@ -189,6 +189,100 @@ __device__ inline bool better_pair_i32(float value, int32_t index, float best_va
   return value > best_value || (value == best_value && index < best_index);
 }
 
+// R3.7: Fused W8A16 LM-head GEMV + per-block argmax stage 1.
+//
+// Eliminates the [rows x vocab_size] FP32 logits buffer that the unfused path
+// (`hipengine_w8a16_linear_bf16_f32_multi_row` + `argmax_rows_stage1_i32_kernel`)
+// materializes in HBM.  Each block of 256 threads owns a vocab tile of
+// `chunk = blockDim.x * 4` rows for one verifier row; the block iterates over
+// its vocab tile and uses the SAME 256-way cooperative dot-product pattern as
+// `w8a16_linear_multi_row_kernel` (each thread strides across hidden_size with
+// 8x unroll, then LDS reduces 256 partials to one).  Thread 0 keeps the
+// running (max_value, min_index_on_tie) and writes one (value, index) pair to
+// per-block scratch that the unchanged ``argmax_rows_stage2_i32_kernel``
+// finalizes.  The cooperative dot pattern preserves HBM coalescing across
+// threads (consecutive bytes within one vocab row) -- the alternative of
+// each-thread-owns-its-vocab-row was tried first and ran 22 ms/cycle SLOWER
+// because of scattered access across 256 different vocab rows simultaneously.
+//
+// Numerics: bit-exact vs the unfused path.  Per-vocab-row reduction order is
+// identical to ``w8a16_linear_multi_row_kernel`` (256 partial accumulators
+// followed by an 8-step LDS reduce, scale applied at the end), so the FP32
+// per-row logit is bit-equal.  The block-level argmax reduction follows
+// ``argmax_rows_stage1_i32_kernel`` semantics with the same
+// ``better_pair_i32`` tiebreak.
+__global__ void w8a16_lm_head_argmax_rows_stage1_kernel(
+    const uint16_t* __restrict__ hidden,
+    const int8_t* __restrict__ weight,
+    const float* __restrict__ weight_scale,
+    float* __restrict__ block_values,
+    int32_t* __restrict__ block_indices,
+    int64_t rows,
+    int64_t hidden_size,
+    int64_t vocab_size,
+    int64_t stage1_blocks) {
+  extern __shared__ float partial[];
+
+  const int tid = threadIdx.x;
+  const int64_t row = static_cast<int64_t>(blockIdx.y);
+  if (row >= rows) {
+    return;
+  }
+  const int64_t chunk = static_cast<int64_t>(blockDim.x) * 4;
+  const int64_t begin = static_cast<int64_t>(blockIdx.x) * chunk;
+  const int64_t end = min(begin + chunk, vocab_size);
+  const int64_t hidden_row = row * hidden_size;
+  const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
+
+  float best_value = -3.4028234663852886e+38F;
+  int32_t best_index = INT32_MAX;
+
+  for (int64_t v = begin; v < end; ++v) {
+    const int64_t weight_row_off = v * hidden_size;
+    float acc = 0.0f;
+    for (int64_t k = static_cast<int64_t>(tid) * 8; k + 7 < hidden_size; k += vec_stride) {
+      const int64_t h_off = hidden_row + k;
+      const int64_t w_off = weight_row_off + k;
+      acc += bf16_bits_to_float(hidden[h_off + 0]) * static_cast<float>(static_cast<int>(weight[w_off + 0]));
+      acc += bf16_bits_to_float(hidden[h_off + 1]) * static_cast<float>(static_cast<int>(weight[w_off + 1]));
+      acc += bf16_bits_to_float(hidden[h_off + 2]) * static_cast<float>(static_cast<int>(weight[w_off + 2]));
+      acc += bf16_bits_to_float(hidden[h_off + 3]) * static_cast<float>(static_cast<int>(weight[w_off + 3]));
+      acc += bf16_bits_to_float(hidden[h_off + 4]) * static_cast<float>(static_cast<int>(weight[w_off + 4]));
+      acc += bf16_bits_to_float(hidden[h_off + 5]) * static_cast<float>(static_cast<int>(weight[w_off + 5]));
+      acc += bf16_bits_to_float(hidden[h_off + 6]) * static_cast<float>(static_cast<int>(weight[w_off + 6]));
+      acc += bf16_bits_to_float(hidden[h_off + 7]) * static_cast<float>(static_cast<int>(weight[w_off + 7]));
+    }
+    for (int64_t k = (hidden_size & ~7) + tid; k < hidden_size; k += blockDim.x) {
+      acc += bf16_bits_to_float(hidden[hidden_row + k]) *
+          static_cast<float>(static_cast<int>(weight[weight_row_off + k]));
+    }
+    partial[tid] = acc;
+    __syncthreads();
+    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+      if (tid < stride) {
+        partial[tid] += partial[tid + stride];
+      }
+      __syncthreads();
+    }
+    if (tid == 0) {
+      const float logit = partial[0] * weight_scale[v];
+      const int32_t idx = static_cast<int32_t>(v);
+      if (better_pair_i32(logit, idx, best_value, best_index)) {
+        best_value = logit;
+        best_index = idx;
+      }
+    }
+    // Ensure partial[0] is safe to overwrite on the next iteration.
+    __syncthreads();
+  }
+
+  if (tid == 0) {
+    const int64_t off = row * stage1_blocks + static_cast<int64_t>(blockIdx.x);
+    block_values[off] = best_value;
+    block_indices[off] = best_index;
+  }
+}
+
 __global__ void argmax_rows_stage1_i32_kernel(
     const float* __restrict__ logits,
     float* __restrict__ block_values,
@@ -506,6 +600,66 @@ extern "C" int hipengine_argmax_f32_rows_i32(
       dim3(static_cast<unsigned int>(rows)),
       dim3(t),
       argmax_smem,
+      stream,
+      block_values,
+      block_indices,
+      out_indices,
+      out_values,
+      rows,
+      stage1_blocks);
+  return static_cast<int>(hipGetLastError());
+}
+
+// R3.7: Fused W8A16 LM-head + argmax-rows.  Replaces the unfused pair
+//   `hipengine_w8a16_linear_bf16_f32_multi_row` -> `hipengine_argmax_f32_rows_i32`
+// in the DFlash chain verifier window so the per-cycle full-vocab FP32 logits
+// buffer is never written to HBM.  Bit-equivalent to the unfused path because
+// per-vocab-row dot product math, scale order, and tiebreak are preserved.
+extern "C" int hipengine_w8a16_lm_head_argmax_rows_bf16(
+    const uint16_t* hidden,
+    const int8_t* weight,
+    const float* weight_scale,
+    float* block_values,
+    int32_t* block_indices,
+    int32_t* out_indices,
+    float* out_values,
+    int64_t rows,
+    int64_t hidden_size,
+    int64_t vocab_size,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || hidden_size <= 0 || vocab_size <= 0 || vocab_size > INT32_MAX || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const unsigned int t = static_cast<unsigned int>(threads);
+  const int64_t stage1_blocks = (vocab_size + threads * 4 - 1) / (threads * 4);
+  const size_t stage1_smem = static_cast<size_t>(threads) * sizeof(float);
+  const size_t stage2_smem = static_cast<size_t>(threads) * (sizeof(float) + sizeof(int32_t));
+  hipLaunchKernelGGL(
+      w8a16_lm_head_argmax_rows_stage1_kernel,
+      dim3(static_cast<unsigned int>(stage1_blocks), static_cast<unsigned int>(rows)),
+      dim3(t),
+      stage1_smem,
+      stream,
+      hidden,
+      weight,
+      weight_scale,
+      block_values,
+      block_indices,
+      rows,
+      hidden_size,
+      vocab_size,
+      stage1_blocks);
+  hipError_t err = hipGetLastError();
+  if (err != hipSuccess) {
+    return static_cast<int>(err);
+  }
+
+  hipLaunchKernelGGL(
+      argmax_rows_stage2_i32_kernel,
+      dim3(static_cast<unsigned int>(rows)),
+      dim3(t),
+      stage2_smem,
       stream,
       block_values,
       block_indices,

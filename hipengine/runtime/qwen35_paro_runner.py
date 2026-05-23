@@ -34,6 +34,7 @@ from hipengine.kernels.hip_gfx1100.linear.lm_head import (
     argmax_f32_rows_i32,
     lm_head_argmax_stage1_blocks,
     lm_head_fp16_argmax_bf16,
+    w8a16_lm_head_argmax_rows_bf16,
 )
 from hipengine.kernels.hip_gfx1100.speculative import (
     build_dflash_accept,
@@ -101,6 +102,29 @@ def _env_int(name: str, default: int, *aliases: str) -> int:
         if value is not None and value.strip() != "":
             return int(value)
     return default
+
+
+def _dflash_verify_fused_lm_head_enabled() -> bool:
+    """Return True when the DFlash verifier should use the R3.7 fused W8A16
+    LM-head + argmax-rows kernel instead of the unfused
+    ``w8a16_linear_bf16_f32_multi_row -> argmax_f32_rows_i32`` pair.
+
+    Controlled by ``HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD`` (``off`` / ``on``).
+    Defaults to ``off``; flip to ``on`` to opt into the fused path.  When
+    enabled, the per-cycle ``[rows, vocab_size]`` FP32 logits buffer is never
+    materialized in HBM, satisfying the R3.7 rocprof gate (no full-vocab
+    lm-head kernel in the verifier window).  Bit-exact vs the unfused path
+    because the cooperative-per-vocab-row dot product order is preserved.
+    """
+
+    value = os.environ.get("HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD", "off").strip().lower()
+    if value in {"", "off", "0", "false", "naive", "unfused"}:
+        return False
+    if value in {"on", "1", "true", "fused"}:
+        return True
+    raise ValueError(
+        "HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD must be one of: off, on (got " + repr(value) + ")"
+    )
 
 
 def _paged_attn_max_splits() -> int:
@@ -3710,6 +3734,30 @@ class Qwen35ParoResidentSession:
         # stock kernel is already optimal and we keep it.  Env override
         # ``HIPENGINE_W8A16_LM_HEAD_MULTI_ROW`` ("0"/"off" to disable) lets us
         # bisect this path.
+        #
+        # R3.7: when ``HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD=on`` we replace the
+        # full-vocab GEMV + argmax-rows pair with a single fused kernel that
+        # never materializes the [rows, vocab] FP32 logits buffer in HBM.
+        # Bit-exact vs the unfused path (same cooperative-per-vocab-row dot
+        # product reduction).
+        if _dflash_verify_fused_lm_head_enabled():
+            w8a16_lm_head_argmax_rows_bf16(
+                norm_out_bf16.ptr,
+                self.lm_head_weight.tensor.ptr,
+                self.lm_head_scale.tensor.ptr,
+                self.verify_lm_block_values.ptr,
+                self.verify_lm_block_indices.ptr,
+                self.verify_top1_i32.ptr,
+                self.verify_top1_values.ptr,
+                rows,
+                self.config.hidden_size,
+                self.vocab_size,
+                threads=self.lm_head_threads,
+                stream=stream,
+                library=self.libraries["lm_head"],
+                runtime=self.runtime,
+            )
+            return
         if rows > 1 and self._w8a16_lm_head_multi_row_enabled():
             w8a16_linear_bf16_f32_multi_row(
                 norm_out_bf16.ptr,

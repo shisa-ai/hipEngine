@@ -1335,6 +1335,112 @@ extern "C" int hipengine_dflash_dense_bf16_to_bf16_wmma(
 
 **Grind budget:** ~50 LoC; 0.5 day.
 
+#### R3.7 implementation outcome (2026-05-24, gfx1100/W7900)
+
+**Status: rocprof gate PASSED, perf gate FAILED — landed default-off.**
+
+**Step 1 — D2H gate (already passing):** `_verify_gpu_accept_enabled()` is
+default-on (`HIPENGINE_VERIFY_GPU_ACCEPT=1` default).  In the
+`verify_chain_bulk_and_commit` GPU-accept path, `_read_verify_top1` is NOT
+called; only the small `[request_count, ~7]` int32/uint8 accept payload is
+read D2H per cycle.  No full-vocab D2H copy occurs.  This holds for the
+unfused path (R3.6 baseline) and was confirmed via the per-cycle `d2h`
+counters in the bench (`full_logits_readbacks: 0`, `vector_reads: 448`
+of small accept summary tensors).
+
+**Step 2/3 — kernel-window gate (initially failing):** rocprof on the
+unfused R3.6 baseline showed `w8a16_linear_multi_row_kernel` running 2x in
+the 4-token verifier window at **1794.52 µs/call** — this is the
+`lm_head_full_vocab` kernel that materializes the
+`[rows=B+1, vocab=248320] FP32 = 4.97 MB/cycle` logits buffer in HBM.  The
+downstream `argmax_rows_stage1/stage2` kernels add only 13 + 3 µs/cycle.
+
+**Implemented fused path (`HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD=on`):**
+New kernel `hipengine_w8a16_lm_head_argmax_rows_bf16` (in
+`kernels/hip_gfx1100/linear/lm_head.hip`) does the W8A16 GEMV and per-block
+argmax in one launch.  Reuses the unchanged `argmax_rows_stage2_i32_kernel`
+for the cross-block reduction.  Each stage-1 block of 256 threads
+cooperatively processes a `chunk = 1024` vocab tile for one verifier row
+with the SAME 256-way LDS-reduce dot pattern as
+`w8a16_linear_multi_row_kernel`, so per-row logits are bit-exact vs the
+unfused path.  After each row's reduction, thread 0 keeps the running
+`(max_value, min_index_on_tie)` and writes one pair to per-block scratch.
+
+**Numerics gate:** parity test `tests/test_w8a16_lm_head_argmax_rows.py`
+(4 shapes covering rows∈{1,3,4,5}, hidden∈{1024,2048}, vocab∈{2048,4096,8192,16384})
+asserts BIT-EXACT match on both indices and FP32 top-1 values vs the
+unfused `w8a16_linear_bf16_f32_multi_row` → `argmax_f32_rows_i32` chain.
+All 6 tests pass.
+
+**E2E gate:** 9-prompt B=4 D=32 same-session DFlash chain bench (
+`scripts/dflash_chain_e2e_bench.py`, `--full-attn-chain-mode batched`,
+`--verifier-mode native_bulk_bplus1`) holds **exact-AR on all 9 prompts**
+with `avg_accept_length=1.527` identical to the R3.6 baseline.
+
+**Rocprof gate (1-prompt, 4-token, fused-on):**
+
+| Kernel | unfused (R3.6) | fused-on (R3.7) |
+| --- | --- | --- |
+| `w8a16_linear_multi_row_kernel` | 2 calls × 1794.5 µs | **NOT PRESENT** |
+| `argmax_rows_stage1_i32_kernel` | 2 calls × 12.6 µs | **NOT PRESENT** |
+| `argmax_rows_stage2_i32_kernel` | 2 calls × 3.5 µs | 2 calls × 4.2 µs |
+| `w8a16_lm_head_argmax_rows_stage1_kernel` (NEW) | — | 2 calls × **2902.2 µs** |
+
+The full-vocab lm-head kernel is gone from the verifier window.  Step 2 of
+the R3.7 spec is satisfied.
+
+**Perf gate (9-prompt B=4 D=32, same-session A/B):**
+
+| Metric | fused-OFF | fused-ON | Δ |
+| --- | ---: | ---: | ---: |
+| drafter ms/cycle | 9.111 | 9.108 | -0.003 (noise) |
+| **verifier ms/cycle** | **27.04** | **28.00** | **+0.96 (+3.6%)** |
+| cycle ms | 36.34 | 37.30 | +0.96 (+2.6%) |
+| spec tok/s | 69.26 | 67.52 | -2.5% |
+| AR | 0.4464 | 0.4464 | identical |
+| accept length | 1.527 | 1.527 | identical |
+| exact-AR rows | 9/9 | 9/9 | preserved |
+
+**The fused kernel is ~1 ms/cycle SLOWER** than the unfused pair on
+gfx1100/W7900 despite eliminating the 5 MB/cycle full-vocab logits
+writeback and one argmax kernel launch.
+
+**Root cause: GPU occupancy collapse.**
+- Unfused `w8a16_linear_multi_row_kernel` grid: `dim3(vocab=248320)` →
+  248K small blocks, each doing 5 cooperative dot products (one per token).
+  ~2588 active blocks per CU on 96 CUs, excellent occupancy.
+- Fused stage-1 grid: `dim3(stage1_blocks=243, rows=5)` → only **1215
+  blocks**, each doing 1024 cooperative dot products.  ~12 active blocks
+  per CU, GPU under-occupied; long-running blocks can't fill the machine.
+
+The GEMV is bandwidth-bound at the W7900's ~864 GB/s HBM throughput.  The
+writeback we eliminated (5 MB / 864 GB/s ≈ 6 µs theoretical) doesn't
+compensate for the 200x reduction in block-level parallelism.  This
+matches the R3.2 cost model's prediction (`~72 µs/pass theoretical
+saving`) and the BeeLlama profile finding that their fused
+`set_dflash_verify_logits` design wins on RTX 3090 because Ada is
+launch-bound at 248K block dispatches in a way RDNA3 isn't.
+
+**Decision: land default-off.**
+- AGENTS.md compliance: env-flag (`HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD`,
+  default `off`), unfused fallback retained as the registered path,
+  cost-model-approved fuse pattern documented.
+- Bit-exact correctness gate passes (parity tests + 9-prompt e2e).
+- Rocprof gate passes (no `w8a16_linear_multi_row_kernel` in verifier
+  window when on).
+- Future use: if a future variant (e.g., reduced-logits sampling for
+  lm-head pruning, or multi-batch verify with B+1 ≥ 16 changing the
+  optimal grid) finds a perf win, the fused kernel + dispatch is already
+  in place to be flipped to default-on without further plumbing.
+
+**Files:**
+- Kernel: `hipengine/kernels/hip_gfx1100/linear/lm_head.hip`
+- Python wrapper + registry: `hipengine/kernels/hip_gfx1100/linear/lm_head.py`
+- Runtime dispatch: `hipengine/runtime/qwen35_paro_runner.py::_sample_verify_rows_from_hidden` + `_dflash_verify_fused_lm_head_enabled()`
+- Tests: `tests/test_w8a16_lm_head_argmax_rows.py` (6 tests, all pass)
+- Bench artifacts: `/tmp/dflash_r37_fused_on_v2.json`, `/tmp/dflash_r37_fused_off_v2.json`
+- Rocprof DB: `/tmp/dflash_r37_fused_on_rocprof/epyc/*_results.db`
+
 ### R3.8 design notes — BeeLlama v0.2.0 profile read
 
 **Read order:**
