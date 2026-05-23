@@ -1,0 +1,271 @@
+{
+  "artifact_type": "diagnostic",
+  "date": "2026-05-23",
+  "scope": "PARO prefill workspace-overlap threshold sweep",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100"
+  },
+  "software": {
+    "repo_base_commit": "f43c10b6d312bcb44b80dac29c0a86648f38d498",
+    "rocm": "TheRock HIP 7.13.26162-1140233ffe",
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12"
+  },
+  "model": {
+    "name": "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed",
+    "path": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e",
+    "quant": "packed_paro_w4",
+    "kv_cache": "BF16"
+  },
+  "command_template": "env -i ... python scripts/qwen35_paro_bench.py --model <model> --backend hip_gfx1100 --shared-expert-format packed_paro_w4 --token-id 9707 --prompt-length <P> --decode-tokens 128 --warmup-decode-tokens 4 --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --attn-aotriton-min-tokens 512 --graph-replay-decode --json <out>",
+  "comparison_method": {
+    "release_policy": "f43c10b behavior: release decode/prefill workspace during active chunked prefill",
+    "resident_policy": "diagnostic patch forces _should_minimize_prefill_workspace_overlap() false",
+    "runs": "single run per prompt length; generated preview token sanity only, not a KL/top-1 acceptance gate"
+  },
+  "results": [
+    {
+      "prompt_tokens": 4096,
+      "release": {
+        "source_json": "/tmp/paro-overlap-threshold-20260523/current-release-4k-128.json",
+        "prefill_tok_s": 2675.6426184784464,
+        "prefill_seconds": 1.5308471960015595,
+        "warmed_decode_tok_s": 104.06465586679379,
+        "tracked_peak_allocated_gib": 18.901777104474604,
+        "decode_scratch_released_for_prefill": true,
+        "generated_preview_token_ids": [
+          9707,
+          9707
+        ]
+      },
+      "resident": {
+        "source_json": "/tmp/paro-overlap-threshold-20260523/force-resident-4k-128.json",
+        "prefill_tok_s": 2915.621939486945,
+        "prefill_seconds": 1.4048460620106198,
+        "warmed_decode_tok_s": 103.75723620468102,
+        "tracked_peak_allocated_gib": 19.0942826801911,
+        "decode_scratch_released_for_prefill": false,
+        "generated_preview_token_ids": [
+          9707,
+          9707
+        ]
+      },
+      "delta": {
+        "release_vs_resident_prefill_pct": -8.230810646552044,
+        "release_vs_resident_prefill_seconds": 0.1260011339909397,
+        "release_vs_resident_decode_pct": 0.2962874430332052,
+        "tracked_peak_gib_saved_by_release": 0.19250557571649551
+      }
+    },
+    {
+      "prompt_tokens": 8192,
+      "release": {
+        "source_json": "/tmp/paro-overlap-threshold-20260523/current-release-8192-128.json",
+        "prefill_tok_s": 2668.3753693409876,
+        "prefill_seconds": 3.070032835006714,
+        "warmed_decode_tok_s": 103.2459095967851,
+        "tracked_peak_allocated_gib": 18.99832744989544,
+        "decode_scratch_released_for_prefill": true,
+        "generated_preview_token_ids": [
+          9707,
+          9707
+        ]
+      },
+      "resident": {
+        "source_json": "/tmp/paro-overlap-threshold-20260523/force-resident-8192-128.json",
+        "prefill_tok_s": 2776.400346651148,
+        "prefill_seconds": 2.950583121011732,
+        "warmed_decode_tok_s": 103.44125297584907,
+        "tracked_peak_allocated_gib": 19.193293505348265,
+        "decode_scratch_released_for_prefill": false,
+        "generated_preview_token_ids": [
+          9707,
+          9707
+        ]
+      },
+      "delta": {
+        "release_vs_resident_prefill_pct": -3.8908285485722005,
+        "release_vs_resident_prefill_seconds": 0.11944971399498172,
+        "release_vs_resident_decode_pct": -0.18884475336893303,
+        "tracked_peak_gib_saved_by_release": 0.19496605545282364
+      }
+    },
+    {
+      "prompt_tokens": 16384,
+      "release": {
+        "source_json": "/tmp/paro-overlap-threshold-20260523/current-release-16384-128.json",
+        "prefill_tok_s": 2488.6418754650904,
+        "prefill_seconds": 6.583510533004301,
+        "warmed_decode_tok_s": 98.58524140333938,
+        "tracked_peak_allocated_gib": 19.192892984487116,
+        "decode_scratch_released_for_prefill": true,
+        "generated_preview_token_ids": [
+          9707,
+          9707
+        ]
+      },
+      "resident": {
+        "source_json": "/tmp/paro-overlap-threshold-20260523/force-resident-16384-128.json",
+        "prefill_tok_s": 2523.505609550841,
+        "prefill_seconds": 6.492555411008652,
+        "warmed_decode_tok_s": 98.17045174453678,
+        "tracked_peak_allocated_gib": 19.392779999412596,
+        "decode_scratch_released_for_prefill": false,
+        "generated_preview_token_ids": [
+          9707,
+          9707
+        ]
+      },
+      "delta": {
+        "release_vs_resident_prefill_pct": -1.3815596031885313,
+        "release_vs_resident_prefill_seconds": 0.09095512199564837,
+        "release_vs_resident_decode_pct": 0.4225198635960048,
+        "tracked_peak_gib_saved_by_release": 0.1998870149254799
+      }
+    },
+    {
+      "prompt_tokens": 32768,
+      "release": {
+        "source_json": "/tmp/paro-overlap-threshold-20260523/current-release-32k-128.json",
+        "prefill_tok_s": 2130.907680472938,
+        "prefill_seconds": 15.37748458099668,
+        "warmed_decode_tok_s": 91.66522117294517,
+        "tracked_peak_allocated_gib": 19.587883428670466,
+        "decode_scratch_released_for_prefill": true,
+        "generated_preview_token_ids": [
+          9707,
+          9707
+        ]
+      },
+      "resident": {
+        "source_json": "/tmp/paro-overlap-threshold-20260523/force-resident-32k-128.json",
+        "prefill_tok_s": 2128.90552557303,
+        "prefill_seconds": 15.391946521995123,
+        "warmed_decode_tok_s": 91.62414630982613,
+        "tracked_peak_allocated_gib": 19.79761236254126,
+        "decode_scratch_released_for_prefill": false,
+        "generated_preview_token_ids": [
+          9707,
+          9707
+        ]
+      },
+      "delta": {
+        "release_vs_resident_prefill_pct": 0.09404620711710443,
+        "release_vs_resident_prefill_seconds": -0.014461940998444334,
+        "release_vs_resident_decode_pct": 0.04482973623582964,
+        "tracked_peak_gib_saved_by_release": 0.2097289338707924
+      }
+    },
+    {
+      "prompt_tokens": 49152,
+      "release": {
+        "source_json": "/tmp/paro-overlap-threshold-20260523/release-49152-128.json",
+        "prefill_tok_s": 1804.4328652180022,
+        "prefill_seconds": 27.239583665010286,
+        "warmed_decode_tok_s": 83.82454077700679,
+        "tracked_peak_allocated_gib": 19.990686372853816,
+        "decode_scratch_released_for_prefill": true,
+        "generated_preview_token_ids": [
+          9707,
+          9707
+        ]
+      },
+      "resident": {
+        "source_json": "/tmp/paro-overlap-threshold-20260523/resident-49152-128.json",
+        "prefill_tok_s": 1801.1517115465635,
+        "prefill_seconds": 27.289205948007293,
+        "warmed_decode_tok_s": 83.42919016097756,
+        "tracked_peak_allocated_gib": 20.21025722566992,
+        "decode_scratch_released_for_prefill": false,
+        "generated_preview_token_ids": [
+          9707,
+          9707
+        ]
+      },
+      "delta": {
+        "release_vs_resident_prefill_pct": 0.18216975562936888,
+        "release_vs_resident_prefill_seconds": -0.04962228299700655,
+        "release_vs_resident_decode_pct": 0.47387564863856646,
+        "tracked_peak_gib_saved_by_release": 0.2195708528161049
+      }
+    },
+    {
+      "prompt_tokens": 65536,
+      "release": {
+        "source_json": "/tmp/paro-overlap-threshold-20260523/release-65536-128.json",
+        "prefill_tok_s": 1591.1899807000584,
+        "prefill_seconds": 41.18678523300332,
+        "warmed_decode_tok_s": 76.87183510004259,
+        "tracked_peak_allocated_gib": 20.401301817037165,
+        "decode_scratch_released_for_prefill": true,
+        "generated_preview_token_ids": [
+          9707,
+          9707
+        ]
+      },
+      "resident": {
+        "source_json": "/tmp/paro-overlap-threshold-20260523/resident-65536-128.json",
+        "prefill_tok_s": 1572.811334526317,
+        "prefill_seconds": 41.66806187198381,
+        "warmed_decode_tok_s": 76.7206687115113,
+        "tracked_peak_allocated_gib": 20.630714588798583,
+        "decode_scratch_released_for_prefill": false,
+        "generated_preview_token_ids": [
+          9707,
+          9707
+        ]
+      },
+      "delta": {
+        "release_vs_resident_prefill_pct": 1.1685219816448322,
+        "release_vs_resident_prefill_seconds": -0.4812766389804892,
+        "release_vs_resident_decode_pct": 0.19703476399524078,
+        "tracked_peak_gib_saved_by_release": 0.2294127717614174
+      }
+    },
+    {
+      "prompt_tokens": 131072,
+      "release": {
+        "source_json": "/tmp/paro-overlap-threshold-20260523/current-release-131072-128.json",
+        "prefill_tok_s": 1066.0292422544856,
+        "prefill_seconds": 122.95347519998904,
+        "warmed_decode_tok_s": 59.66606567226773,
+        "tracked_peak_allocated_gib": 22.121888593770564,
+        "decode_scratch_released_for_prefill": true,
+        "generated_preview_token_ids": [
+          9707,
+          9707
+        ]
+      },
+      "resident": {
+        "source_json": "/tmp/paro-overlap-threshold-20260523/force-resident-131072-128.json",
+        "prefill_tok_s": 1062.2694856824921,
+        "prefill_seconds": 123.38865209498908,
+        "warmed_decode_tok_s": 59.62883896847369,
+        "tracked_peak_allocated_gib": 22.39066904131323,
+        "decode_scratch_released_for_prefill": false,
+        "generated_preview_token_ids": [
+          9707,
+          9707
+        ]
+      },
+      "delta": {
+        "release_vs_resident_prefill_pct": 0.35393623018153963,
+        "release_vs_resident_prefill_seconds": -0.43517689500004053,
+        "release_vs_resident_decode_pct": 0.062430703729998704,
+        "tracked_peak_gib_saved_by_release": 0.2687804475426674
+      }
+    }
+  ],
+  "decision": {
+    "retained_policy": "keep workspaces resident through 32K and minimize overlap for prompts >32K when resolved prefill chunks actually split the prompt",
+    "implementation": "_PREFILL_OVERLAP_MIN_TOKENS=32768 with tokens <= threshold staying resident",
+    "rationale": "Release saves ~0.19-0.27 GiB. It regresses 4K/8K/16K, is effectively tied at 32K, and is non-negative/positive at 48K/64K/128K, so >32K is the crossover that preserves memory savings without keeping the clearly regressive short/mid cases."
+  },
+  "validation": {
+    "commands": [
+      "python -m py_compile hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_paro_bench.py",
+      "python -m pytest -q tests/test_qwen35_prefill_workspace_policy.py"
+    ],
+    "result": "3 passed"
+  }
+}

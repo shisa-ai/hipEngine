@@ -26394,3 +26394,49 @@ benchmarks/W7900.md
 benchmarks/results/2026-05-23-w7900-hipengine-therock713-paro-gguf-sweep-diagnostic.json
 benchmarks/results/2026-05-23-paro-512-prefill-workspace-overlap-rootcause-diagnostic.json
 ```
+
+## 2026-05-23 — PARO prefill workspace-overlap threshold sweep
+
+Followed up on the `f43c10b` 512/128 root cause: the overlap-minimizing prefill path saves memory, but we only want it if it also helps performance because 128K BF16 and 256K INT8 capacity are already inside the target envelope.
+
+Compared the existing release policy (`f43c10b`: free decode/prefill workspaces during active chunked prefill) against a diagnostic force-resident patch (`_should_minimize_prefill_workspace_overlap() -> False`) on W7900 / TheRock HIP `7.13.26162-1140233ffe`, model `shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed`, command shape:
+
+```bash
+python scripts/qwen35_paro_bench.py \
+  --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e \
+  --backend hip_gfx1100 --shared-expert-format packed_paro_w4 \
+  --token-id 9707 --prompt-length <P> --decode-tokens 128 --warmup-decode-tokens 4 \
+  --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt \
+  --attn-aotriton-min-tokens 512 --graph-replay-decode --json <out>
+```
+
+Single-run generated-token sanity results (`[9707, 9707]` preview in every row), release vs resident:
+
+```text
+prompt   release tok/s   resident tok/s   delta       GiB saved by release
+4K          2675.643        2915.622      -8.231%       0.192506
+8K          2668.375        2776.400      -3.891%       0.194966
+16K         2488.642        2523.506      -1.382%       0.199887
+32K         2130.908        2128.906      +0.094%       0.209729
+48K         1804.433        1801.152      +0.182%       0.219571
+64K         1591.190        1572.811      +1.169%       0.229413
+128K        1066.029        1062.269      +0.354%       0.268780
+```
+
+Decision: keep the memory tactic, but raise the runtime threshold to 64K (`_PREFILL_OVERLAP_MIN_TOKENS=65536`). Below 64K the memory saving is only ~0.19-0.22 GiB and the speed result is negative or noise; at 64K/128K it is at least non-negative and gives a small prefill win while preserving the long-context memory headroom.
+
+Validation after code/test update:
+
+```bash
+python -m py_compile hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_paro_bench.py
+python -m pytest -q tests/test_qwen35_prefill_workspace_policy.py
+# 3 passed
+```
+
+Artifact: `benchmarks/results/2026-05-23-paro-prefill-workspace-overlap-threshold-diagnostic.json`.
+
+### Threshold decision adjustment after review
+
+After reviewing the crossover, adjusted the retained policy from the conservative 64K threshold to `>32K`: keep workspaces resident through 32K, then enable overlap minimization for prompts larger than 32K when chunk sizes actually split the prompt. Rationale: release is effectively tied at 32K (`+0.094%` prefill, `0.209729 GiB` saved) and already non-negative at 48K (`+0.182%`, `0.219571 GiB` saved), so carrying the ~0.2 GiB memory saving for >32K is worthwhile while still avoiding the clear 4K/8K/16K regressions.
+
+Implementation detail: `_PREFILL_OVERLAP_MIN_TOKENS=32768` and `_should_minimize_prefill_workspace_overlap()` returns false for `tokens <= 32768`.

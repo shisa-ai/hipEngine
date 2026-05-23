@@ -84,6 +84,9 @@ from hipengine.runtime.workspace import RuntimeWorkspace
 from hipengine.speculative import DraftBatch, TargetCommitPlan, TargetStateCommitBuffers, TargetVerifyBatch, TargetVerifyBuffers
 
 
+_PREFILL_OVERLAP_MIN_TOKENS = 32768
+
+
 def _env_int(name: str, default: int, *aliases: str) -> int:
     for key in (name, *aliases):
         value = os.environ.get(key)
@@ -2237,13 +2240,16 @@ class Qwen35ParoResidentSession:
 
         Freeing decode/prefill workspaces during the timed prefill path saves
         memory for chunked long-context runs, but repeated HIP free/alloc churn
-        regresses unchunked short prompts (512/128 on W7900) by ~30%.  Treat
-        the overlap-minimizing path as a chunked-prefill memory tactic rather
-        than the default for prompts that fit in one chunk.
+        regresses short and mid prompts (4K/8K/16K on W7900) more than the
+        ~0.2 GiB tracked-memory saving justifies.  The W7900 sweep crossed over
+        around 32K: the release path was tied at 32K and modestly positive by
+        48K+, while still saving memory.  Treat the overlap-minimizing path as a
+        long-context tactic rather than the default for every prompt that
+        happens to use chunked prefill.
         """
 
         tokens = int(tokens)
-        if tokens <= 0:
+        if tokens <= _PREFILL_OVERLAP_MIN_TOKENS:
             return False
         config = getattr(self, "prefill_config", None)
         if config is None:
