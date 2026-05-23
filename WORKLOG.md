@@ -26068,3 +26068,19 @@ Two runs per shape; table uses median (`prefill tok/s / decode tok/s / tracked G
 | 4K/128 | 2374.156 / 105.905 / 18.954 | 2525.688 / 101.334 / 18.902 | prefill +6.38%, decode -4.32% | 2710.869 / 106.637 | prefill -6.83%, decode -4.97% | 2899.685 / 113.094 | prefill -12.96%, decode -10.53% |
 
 Conclusion: using the packed Qwen3.6 model does recover about +6.3% prefill and ~52 MiB tracked memory versus the current Qwen3.5 spot-check, so the model mismatch was a real factor. It does **not** explain the bigger regression versus the 2026-05-21 RX 7900 XTX diagnostic or the prior W7900 packed rows; decode is still lower, and 512 prefill remains far below the older runs. Saved compact artifact `benchmarks/results/2026-05-23-rx7900xtx-rocm7130423-pure-packed-qwen36-paro-512-4k-check.json`.
+
+## 2026-05-23 — RX 7900 XTX card settings documented
+
+Updated `benchmarks/7900XTX.md` with a dedicated card settings/tuning section. Captured settings were read-only; no GPU configuration was changed during inspection.
+
+Current local RX 7900 XTX setup recorded in the report:
+
+- Power cap `290 W`, below default `303 W`; sysfs min/default/max `272/303/402 W`.
+- Performance level `manual`; active profile `BOOTUP_DEFAULT*`, with `COMPUTE` available as profile index 5.
+- OD clocks: `OD_SCLK 500/2500 MHz`, `OD_MCLK 97/1250 MHz`.
+- DPM states at idle: SCLK about `22/500/2371 MHz`, MCLK `96/456/772/1249 MHz`.
+- Local undervolt `OD_VDDGFX_OFFSET=-50 mV`.
+- PCIe sysfs current/max `16.0 GT/s x16`; rocm-smi idle DPM can show downshifted `8.0 GT/s x8`.
+- Idle thermals about edge/junction/mem `33/41/46 C`.
+
+Also added higher-performance experiment notes: log clocks under load first; try COMPUTE profile without raising cap; optionally test deterministic high SCLK/MCLK DPM states at the existing cap; only then consider stepping power cap toward the default `303 W`, given prior host shutdowns at higher power. Included restore/verification reminders for the known-safe `290 W` local setup.
