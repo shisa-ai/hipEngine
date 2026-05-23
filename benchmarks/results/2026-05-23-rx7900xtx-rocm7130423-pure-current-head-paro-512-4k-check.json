@@ -1,0 +1,196 @@
+{
+  "schema": 1,
+  "date": "2026-05-23",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "purpose": "Check latest hipEngine HEAD PARO 512/128 and 4K/128 after installing pure rocm[devel,libraries]==7.13.0a20260423 in the recreated therock env.",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "vram_total_gib": 23.984375
+  },
+  "current_head_commit": "fcf7410745f7",
+  "software": {
+    "python": "/home/lhl/miniforge3/envs/therock/bin/python 3.12.13",
+    "package_versions": {
+      "rocm": "7.13.0a20260423",
+      "rocm-sdk-core": "7.13.0a20260423",
+      "rocm-sdk-devel": "7.13.0a20260423",
+      "rocm-sdk-libraries-gfx110X-all": "7.13.0a20260423",
+      "torch": "2.11.0+rocm7.13.0a20260423",
+      "torchaudio": "2.11.0+rocm7.13.0a20260423",
+      "torchvision": "0.26.0+rocm7.13.0a20260423",
+      "triton": "3.6.0+rocm7.13.0a20260423",
+      "safetensors": "0.7.0",
+      "tokenizers": "0.23.1"
+    },
+    "rocm_sdk_root": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel",
+    "rocm_sdk_libraries_path": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib",
+    "hipcc_version_lines": [
+      "HIP version: 7.13.26162-1140233ffe",
+      "AMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 43215c73116c407735c85a180d174f718798c328+PATCHED:2506c552d8428e2cc1778bef048b20f818e06bb3)",
+      "Target: x86_64-unknown-linux-gnu",
+      "Thread model: posix"
+    ],
+    "environment_note": "Pure 7.13.0a20260423 ROCm SDK package set after rocm-sdk init; safetensors/tokenizers were installed afterward because the recreated env lacked hipEngine runtime Python dependencies."
+  },
+  "model": "Qwen3.5-35B-A3B-PARO z-lab snapshot dca2736e88e9f70855128fc81a8e918043a163cd",
+  "command_template": "PYTHONPATH=. /home/lhl/miniforge3/envs/therock/bin/python scripts/qwen35_paro_bench.py --model $PARO --prompt-length <512|4096> --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --compiler-version-file /tmp/hipengine-rocm7130423-pure-hipcc-version.txt --attn-aotriton-min-tokens 512 --graph-replay-decode --json <tmp-json>",
+  "rows": [
+    {
+      "workload": "512/128",
+      "prompt_length": 512,
+      "decode_tokens": 128,
+      "rocm713_20260423_pure_current_head_runs": [
+        {
+          "run": 1,
+          "prefill_tok_s": 1309.2173286170644,
+          "decode_tok_s": 106.51994741886496,
+          "tracked_peak_allocated_gib": 18.075381056405604,
+          "hip_used_peak_sampled_gib": 18.14295196533203,
+          "generated_preview": [
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 27.13083839416504
+            },
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 27.213092803955078
+            }
+          ]
+        },
+        {
+          "run": 2,
+          "prefill_tok_s": 1305.5874044889906,
+          "decode_tok_s": 105.01492428966301,
+          "tracked_peak_allocated_gib": 18.075381056405604,
+          "hip_used_peak_sampled_gib": 18.14295196533203,
+          "generated_preview": [
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 27.13083839416504
+            },
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 27.213092803955078
+            }
+          ]
+        }
+      ],
+      "rocm713_20260423_pure_current_head_median": {
+        "prefill_tok_s": 1307.4023665530276,
+        "decode_tok_s": 105.767435854264,
+        "tracked_peak_allocated_gib": 18.075381056405604
+      },
+      "rocm713_20260403_current_reference": {
+        "prefill_tok_s": 1356.1209037095364,
+        "decode_tok_s": 110.49566083098972,
+        "tracked_peak_allocated_gib": 18.075381056405604
+      },
+      "rocm713_20260423_mixed_devel714_reference": {
+        "prefill_tok_s": 1297.370431818757,
+        "decode_tok_s": 106.1565768535157,
+        "tracked_peak_allocated_gib": 18.075381056405604
+      },
+      "rocm714_20260522_current_reference": {
+        "prefill_tok_s": 1298.9198066216443,
+        "decode_tok_s": 105.28738492253188,
+        "tracked_peak_allocated_gib": 18.075381056405604
+      },
+      "delta_pct_pure_vs_rocm713_20260403_current": {
+        "prefill": -3.5924921607833005,
+        "decode": -4.279104664533251
+      },
+      "delta_pct_pure_vs_rocm713_20260423_mixed_devel714": {
+        "prefill": 0.773251377419415,
+        "decode": -0.36657267103542557
+      },
+      "delta_pct_pure_vs_rocm714_20260522": {
+        "prefill": 0.6530472388011077,
+        "decode": 0.45594344667723163
+      }
+    },
+    {
+      "workload": "4K/128",
+      "prompt_length": 4096,
+      "decode_tokens": 128,
+      "rocm713_20260423_pure_current_head_runs": [
+        {
+          "run": 1,
+          "prefill_tok_s": 2368.424220629092,
+          "decode_tok_s": 105.46725107433254,
+          "tracked_peak_allocated_gib": 18.954074916429818,
+          "hip_used_peak_sampled_gib": 18.251708984375,
+          "generated_preview": [
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 27.092187881469727
+            },
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 27.152114868164062
+            }
+          ]
+        },
+        {
+          "run": 2,
+          "prefill_tok_s": 2379.888254172198,
+          "decode_tok_s": 106.34321562283209,
+          "tracked_peak_allocated_gib": 18.954074916429818,
+          "hip_used_peak_sampled_gib": 18.251708984375,
+          "generated_preview": [
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 27.092187881469727
+            },
+            {
+              "token_id": 9707,
+              "token_text": ".Q",
+              "logit": 27.152114868164062
+            }
+          ]
+        }
+      ],
+      "rocm713_20260423_pure_current_head_median": {
+        "prefill_tok_s": 2374.156237400645,
+        "decode_tok_s": 105.90523334858231,
+        "tracked_peak_allocated_gib": 18.954074916429818
+      },
+      "rocm713_20260403_current_reference": {
+        "prefill_tok_s": 2396.598623651522,
+        "decode_tok_s": 111.51796378360949,
+        "tracked_peak_allocated_gib": 18.954074916429818
+      },
+      "rocm713_20260423_mixed_devel714_reference": {
+        "prefill_tok_s": 2361.9502435791537,
+        "decode_tok_s": 107.43305977863153,
+        "tracked_peak_allocated_gib": 18.954074916429818
+      },
+      "rocm714_20260522_current_reference": {
+        "prefill_tok_s": 2366.865566413058,
+        "decode_tok_s": 107.18443792819585,
+        "tracked_peak_allocated_gib": 18.954074916429818
+      },
+      "delta_pct_pure_vs_rocm713_20260403_current": {
+        "prefill": -0.9364265684457029,
+        "decode": -5.033028083186819
+      },
+      "delta_pct_pure_vs_rocm713_20260423_mixed_devel714": {
+        "prefill": 0.5167760775093511,
+        "decode": -1.422119441815528
+      },
+      "delta_pct_pure_vs_rocm714_20260522": {
+        "prefill": 0.3080306330467186,
+        "decode": -1.193461107171634
+      }
+    }
+  ],
+  "conclusion": "Pure ROCm 7.13.0a20260423 devel/libraries is slightly faster than the earlier mixed 7.13.20260423-libraries + 7.14-devel diagnostic for prefill (+0.77% at 512/128, +0.52% at 4K/128) but decode is lower at 4K. It remains below the original 7.13.0a20260403 current reference: -3.59% prefill / -4.28% decode at 512/128 and -0.94% prefill / -5.03% decode at 4K/128. It is close to the 7.14 check: +0.65% prefill / +0.46% decode at 512/128, +0.31% prefill / -1.19% decode at 4K/128."
+}
