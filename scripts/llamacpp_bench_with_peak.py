@@ -621,7 +621,7 @@ def main(argv: list[str] | None = None) -> int:
         "status": args.status,
         "performance_claim": False,
         "date": _dt.date.today().isoformat(),
-        "hardware": "AMD Radeon Pro W7900 / gfx1100",
+        "hardware": f"amdgpu {card.card_name} pci {card.pci_id} total {card.vram_total_gib:.3f} GiB",
         "host": socket.gethostname(),
         "tool": "scripts/llamacpp_bench_with_peak.py",
         "tool_version": 1,
@@ -670,8 +670,7 @@ def main(argv: list[str] | None = None) -> int:
             "everything committed through the amdgpu kernel driver.",
             "Per-row peak_vram_gib = max(prefill_peak, decode_peak). Delta is "
             "peak minus pre-run baseline so other processes' VRAM is excluded.",
-            "tok/s comes from llama-bench's --output json avg_ts; --repetitions 1 "
-            "matches the user-requested single-shot sweep.",
+            f"tok/s comes from llama-bench's --output json avg_ts with --repetitions {args.repetitions}.",
         ],
     }
     if args.note:

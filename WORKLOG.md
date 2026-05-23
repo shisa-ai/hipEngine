@@ -26582,3 +26582,6 @@ python -m pytest -q tests/test_hf_cache.py tests/test_llm_generate.py tests/test
 uv run --extra dev python -m pytest -q
 # passed
 ```
+## 2026-05-23 — llama.cpp wrapper metadata fix for RX 7900 XTX 5-run sweep
+
+Before rerunning `benchmarks/7900XTX.md` with `--repetitions 5`, fixed `scripts/llamacpp_bench_with_peak.py` artifact metadata so it no longer hardcodes W7900 or a single-shot `--repetitions 1` note. The artifact now records the selected amdgpu card name/PCI/VRAM in `hardware` and emits a dynamic repetitions note. Validation: `python3 -m py_compile scripts/llamacpp_bench_with_peak.py`.
