@@ -22313,3 +22313,25 @@ After R2.2 (real z-lab drafter) and R2.3 (bucketed HIP graph cache) the W7900 bo
 - L14: Drafter dense GEMVs at ~3% of W7900 BW peak; 16×16×16 WMMA is the biggest remaining lever.
 
 Plan landed in `docs/DFLASH.md` Round-3 section (lines ~1002–1374). Per-prompt break-even table grounded in r2.2-w7900 artifact. Punchlist has 8 R3.x rows with explicit Track / Depends-on / LoC / Gate / Expected-Δ columns; design-notes sub-sections specify approach, win state, integration points, grind budget, and abort criteria per item.
+
+## 2026-05-23 perf(dflash): R3.1 adaptive budget controller host implementation
+
+No GPU used (W7900 reserved by another agent). Cleaned stale TaskList rows (#5/#17 deleted, broad #14 completed) and replaced them with explicit R3.x tasks (#25-#32). Started #25/R3.1.
+
+Implemented host-only adaptive DFlash-vs-AR controller:
+- New `hipengine/speculative/adaptive_budget.py` with `AdaptiveBudgetController`, `AdaptiveBudgetConfig`, `AdaptiveBudgetDecision`.
+- Profit signal: `profit_ms = visible_tokens * (1000 / ar_decode_tok_s_estimate) - cycle_wall_ms`.
+- State machine: `DFLASH -> AR_LOCKED -> AR_PROBE -> DFLASH/AR_LOCKED` with cooldown/probe hysteresis (defaults: demote after mean last-4 < -5 ms, cooldown 8, probe 2 cycles, retry cooldown 16).
+- Integrated into `scripts/dflash_chain_e2e_bench.py` behind `--adaptive-budget {off,on}` (default `off`). Same-session runs pass the AR control tok/s estimate into the controller. Standalone DFlash helper supports the same controller if an AR tok/s estimate is supplied.
+- Artifact rows now record `spec.adaptive_budget` with config, transitions, mode counts, per-cycle log, and profit summary. Workload records `adaptive_budget_mode`.
+- AR fallback cycles run one bare target step on the DFlash slot while continuing to capture hidden rows for the drafter context cache; exact-AR semantics should hold when GPU-validated.
+
+Validation (CPU/host only):
+- `python3 -m py_compile hipengine/speculative/adaptive_budget.py scripts/dflash_chain_e2e_bench.py`
+- `PYTHONPATH=. pytest -q tests/test_adaptive_budget.py tests/test_dflash_topk_tree_compiler.py` -> 8 passed
+- `PYTHONPATH=. python3 scripts/dflash_chain_e2e_bench.py --help >/tmp/dflash_help.txt && grep -n "adaptive-budget" /tmp/dflash_help.txt` -> flag present
+
+Docs:
+- Updated `docs/DFLASH.md` R3.1 punchlist row: host implementation landed default-off; GPU 9-prompt gate pending.
+
+Next when GPU is free: run the acceptance command from DFLASH.md with `--adaptive-budget on` and verify per-prompt `spec_tok_s/ar_tok_s >= 0.95`, exact AR equality, and artifact state transitions.

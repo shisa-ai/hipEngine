@@ -65,7 +65,7 @@ from hipengine.loading import load_weight_index
 from hipengine.loading.dflash import load_dflash_drafter_bf16_weights, validate_dflash_artifact_pair
 from hipengine.runtime import PrefillConfig
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
-from hipengine.speculative import DraftBatch, TargetVerifyBatch
+from hipengine.speculative import AdaptiveBudgetController, DraftBatch, TargetVerifyBatch
 
 DEFAULT_TARGET_PATH = "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e"
 DEFAULT_DRAFTER_PATH = "/models/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719"
@@ -1487,7 +1487,11 @@ def run_dflash_tokens(
     drafter_graph_mode: str = "off",
     drafter_fusion_mode: str = "off",
     drafter_bucket_mode: str = "exact",
+    adaptive_budget_mode: str = "off",
+    ar_decode_tok_s_estimate: float | None = None,
 ) -> tuple[list[int], dict[str, Any]]:
+    if adaptive_budget_mode not in {"off", "on"}:
+        raise ValueError("adaptive_budget_mode must be off or on")
     runner = Qwen35ParoNextTokenRunner(model, backend=backend)
     max_sequence = len(prompt_ids) + decode_tokens + candidate_budget + 2
     max_batch_size = candidate_budget + 2
@@ -1531,6 +1535,10 @@ def run_dflash_tokens(
             # Pre-project the entire prefill context once; the per-cycle
             # propose() path will then only project the newly committed rows.
             drafter.warmup_context(context_tokens)
+            adaptive_budget = AdaptiveBudgetController(
+                enabled=adaptive_budget_mode == "on",
+                ar_decode_tok_s_estimate=ar_decode_tok_s_estimate,
+            )
             generated: list[int] = []
             accepted_lengths: list[int] = []
             draft_seconds_total = 0.0
@@ -1546,10 +1554,19 @@ def run_dflash_tokens(
                 cycles += 1
                 remaining = decode_tokens - len(generated)
                 active_budget = min(candidate_budget, max(0, remaining - 1))
-                if active_budget <= 0:
-                    # No spec budget left for this cycle - one bare AR step on slot 0.
+                decision = adaptive_budget.begin_cycle(
+                    cycle=cycles,
+                    context_tokens=context_tokens,
+                    remaining_tokens=remaining,
+                    active_budget=active_budget,
+                )
+                if active_budget <= 0 or not decision.use_dflash:
+                    # No spec budget left (or adaptive budget locked DFlash out):
+                    # one bare AR step on slot 0.
                     verify_rows_total += 1
-                    t_verify = time.perf_counter()
+                    cycle_context_tokens = context_tokens
+                    t_cycle = time.perf_counter()
+                    t_verify = t_cycle
                     result = _slot_step(
                         session,
                         root_token,
@@ -1562,8 +1579,18 @@ def run_dflash_tokens(
                     generated.append(root_token)
                     root_token = int(result.token_id)
                     context_tokens += 1
+                    adaptive_budget.record_ar_cycle(
+                        decision if active_budget > 0 else None,
+                        cycle=cycles,
+                        cycle_wall_ms=(time.perf_counter() - t_cycle) * 1000.0,
+                        context_tokens=cycle_context_tokens,
+                        forced_reason="no_spec_budget" if active_budget <= 0 else None,
+                        update_state=active_budget > 0,
+                    )
                     continue
                 verify_rows_total += 1 + active_budget
+                cycle_context_tokens = context_tokens
+                t_cycle = time.perf_counter()
                 draft = drafter.propose(root_token=root_token, root_position=context_tokens, context_tokens=context_tokens)
                 candidates = list(draft.candidate_tokens[:active_budget])
                 draft_seconds_total += draft.draft_seconds
@@ -1601,12 +1628,25 @@ def run_dflash_tokens(
                     finite = finite and math.isfinite(float(result.logit))
                     target_top1.append(int(result.token_id))
                     bonus = int(result.token_id)
-                verify_seconds_total += time.perf_counter() - t_verify
+                verify_elapsed = time.perf_counter() - t_verify
+                verify_seconds_total += verify_elapsed
                 accepted_lengths.append(accepted)
                 committed = [root_token, *candidates[:accepted]]
                 t_commit = time.perf_counter()
                 drafter.commit_context_rows(start=context_tokens, count=len(committed))
-                commit_seconds_total += time.perf_counter() - t_commit
+                commit_elapsed = time.perf_counter() - t_commit
+                commit_seconds_total += commit_elapsed
+                adaptive_budget.record_dflash_cycle(
+                    decision,
+                    visible_tokens=len(committed),
+                    cycle_wall_ms=(time.perf_counter() - t_cycle) * 1000.0,
+                    accepted_tokens=accepted,
+                    active_budget=active_budget,
+                    draft_ms=draft.draft_seconds * 1000.0,
+                    verify_ms=verify_elapsed * 1000.0,
+                    commit_ms=commit_elapsed * 1000.0,
+                    context_tokens=cycle_context_tokens,
+                )
                 generated.extend(committed)
                 root_token = int(bonus)
                 context_tokens += len(committed)
@@ -1631,6 +1671,7 @@ def run_dflash_tokens(
                 "verifier_mode": "serial_in_place_single_slot",
                 "native_bulk_verifier": False,
                 "drafter_context_mode": "append_only_projected_context_and_kv",
+                "adaptive_budget": adaptive_budget.summary(),
             }
     return generated[:decode_tokens], metadata
 
@@ -1653,6 +1694,7 @@ def run_same_session_pair(
     drafter_graph_mode: str = "off",
     drafter_fusion_mode: str = "off",
     drafter_bucket_mode: str = "exact",
+    adaptive_budget_mode: str = "off",
     chain_attn_mode: str = "c1_loop",
     tree_mode: str = "chain",
     tree_top_k: int = 1,
@@ -1666,6 +1708,8 @@ def run_same_session_pair(
     state remains independent for exact token comparison.
     """
 
+    if adaptive_budget_mode not in {"off", "on"}:
+        raise ValueError("adaptive_budget_mode must be off or on")
     runner = Qwen35ParoNextTokenRunner(model, backend=backend)
     max_sequence = len(prompt_ids) + decode_tokens + candidate_budget + 2
     max_batch_size = max(4, candidate_budget + 3)
@@ -1733,6 +1777,8 @@ def run_same_session_pair(
                 branch_slot_start=2,
                 verifier_mode=verifier_mode,
                 verifier_graph_mode=verifier_graph_mode,
+                adaptive_budget_mode=adaptive_budget_mode,
+                ar_decode_tok_s_estimate=ar_meta["decode_tok_s"],
                 chain_attn_mode=chain_attn_mode,
                 tree_mode=tree_mode,
                 tree_top_k=tree_top_k,
@@ -1753,10 +1799,14 @@ def _run_dflash_chain_on_session(
     branch_slot_start: int,
     verifier_mode: str = "native_bulk_bplus1",
     verifier_graph_mode: str = "off",
+    adaptive_budget_mode: str = "off",
+    ar_decode_tok_s_estimate: float | None = None,
     chain_attn_mode: str = "c1_loop",
     tree_mode: str = "chain",
     tree_top_k: int = 1,
 ) -> tuple[list[int], dict[str, Any]]:
+    if adaptive_budget_mode not in {"off", "on"}:
+        raise ValueError("adaptive_budget_mode must be off or on")
     t0 = time.perf_counter()
     next_result = None
     for pos, token in enumerate(prompt_ids):
@@ -1777,6 +1827,10 @@ def _run_dflash_chain_on_session(
     # Pre-project the entire prefill context once; per-cycle propose() then
     # only projects the newly committed tail.
     drafter.warmup_context(context_tokens)
+    adaptive_budget = AdaptiveBudgetController(
+        enabled=adaptive_budget_mode == "on",
+        ar_decode_tok_s_estimate=ar_decode_tok_s_estimate,
+    )
     generated: list[int] = []
     accepted_lengths: list[int] = []
     draft_seconds_total = 0.0
@@ -1817,9 +1871,17 @@ def _run_dflash_chain_on_session(
             if tree_mode == "branching_topk" and max_accept_depth > 0
             else min(candidate_budget, max_accept_depth)
         )
-        if active_budget <= 0:
+        decision = adaptive_budget.begin_cycle(
+            cycle=cycles,
+            context_tokens=context_tokens,
+            remaining_tokens=remaining,
+            active_budget=active_budget,
+        )
+        if active_budget <= 0 or not decision.use_dflash:
             verify_rows_total += 1
-            t_verify = time.perf_counter()
+            cycle_context_tokens = context_tokens
+            t_cycle = time.perf_counter()
+            t_verify = t_cycle
             result = _slot_step(
                 session,
                 root_token,
@@ -1834,8 +1896,18 @@ def _run_dflash_chain_on_session(
             generated.append(root_token)
             root_token = int(result.token_id)
             context_tokens += 1
+            adaptive_budget.record_ar_cycle(
+                decision if active_budget > 0 else None,
+                cycle=cycles,
+                cycle_wall_ms=(time.perf_counter() - t_cycle) * 1000.0,
+                context_tokens=cycle_context_tokens,
+                forced_reason="no_spec_budget" if active_budget <= 0 else None,
+                update_state=active_budget > 0,
+            )
             continue
         verify_rows_total += (1 + candidate_budget) if verifier_mode == "native_bulk_bplus1" else (1 + active_budget)
+        cycle_context_tokens = context_tokens
+        t_cycle = time.perf_counter()
         draft = drafter.propose(root_token=root_token, root_position=context_tokens, context_tokens=context_tokens)
         compiled_tree: _CompiledTopKTree | None = None
         if tree_mode == "branching_topk":
@@ -1973,7 +2045,8 @@ def _run_dflash_chain_on_session(
                 bonus = int(result.token_id)
         else:
             raise ValueError(f"unknown verifier_mode {verifier_mode!r}")
-        verify_seconds_total += time.perf_counter() - t_verify
+        verify_elapsed = time.perf_counter() - t_verify
+        verify_seconds_total += verify_elapsed
         accepted_lengths.append(accepted)
         accepted_tokens = (
             list(verify_result.accepted_tokens)
@@ -1983,7 +2056,19 @@ def _run_dflash_chain_on_session(
         committed = [root_token, *accepted_tokens]
         t_commit = time.perf_counter()
         drafter.commit_context_rows(start=context_tokens, count=len(committed))
-        commit_seconds_total += time.perf_counter() - t_commit
+        commit_elapsed = time.perf_counter() - t_commit
+        commit_seconds_total += commit_elapsed
+        adaptive_budget.record_dflash_cycle(
+            decision,
+            visible_tokens=len(committed),
+            cycle_wall_ms=(time.perf_counter() - t_cycle) * 1000.0,
+            accepted_tokens=accepted,
+            active_budget=active_budget,
+            draft_ms=draft.draft_seconds * 1000.0,
+            verify_ms=verify_elapsed * 1000.0,
+            commit_ms=commit_elapsed * 1000.0,
+            context_tokens=cycle_context_tokens,
+        )
         if len(proposal_trace) < 16:
             trace_row = {
                 "cycle": cycles,
@@ -2082,6 +2167,7 @@ def _run_dflash_chain_on_session(
         "verifier_tree_mode": tree_mode,
         "native_bulk_verifier": verifier_mode == "native_bulk_bplus1",
         "drafter_context_mode": "append_only_projected_context_and_kv",
+        "adaptive_budget": adaptive_budget.summary(),
         "draft_phase_timing_mode": "synchronized" if drafter.sync_draft_phases else "enqueue_until_final_sync",
         "base_slot": base_slot,
         "branch_slot_start": branch_slot_start,
@@ -2202,6 +2288,7 @@ def _row_for_artifact(prompt: dict[str, Any], budget: int, ar: tuple[list[int], 
             "draft_native_phase_seconds": phase_seconds,
             "draft_graph": draft_graph,
             "draft_fusion": spec_meta.get("draft_fusion"),
+            "adaptive_budget": spec_meta.get("adaptive_budget"),
             "drafter_context_mode": spec_meta.get("drafter_context_mode"),
             "draft_phase_timing_mode": spec_meta.get("draft_phase_timing_mode"),
             "proposal_trace_sample": spec_meta.get("proposal_trace_sample", []),
@@ -2315,6 +2402,16 @@ def main(argv: list[str] | None = None) -> int:
             " bucketed attention kernel with a device-resident live count."
         ),
     )
+    parser.add_argument(
+        "--adaptive-budget",
+        choices=("off", "on"),
+        default="off",
+        help=(
+            "Enable the host-side DFlash-vs-AR adaptive budget controller. The"
+            " controller uses the same-session AR decode rate as its baseline and"
+            " routes negative-profit cycles to AR after a hysteretic cooldown."
+        ),
+    )
     parser.add_argument("--hardware-gpu", default=None, help="Human-readable GPU name to record in the benchmark artifact")
     parser.add_argument("--json", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -2354,6 +2451,7 @@ def main(argv: list[str] | None = None) -> int:
                 drafter_graph_mode=args.drafter_graph,
                 drafter_fusion_mode=args.drafter_fusion,
                 drafter_bucket_mode=args.drafter_bucket,
+                adaptive_budget_mode=args.adaptive_budget,
                 chain_attn_mode=args.full_attn_chain_mode,
                 tree_mode=args.tree_mode,
                 tree_top_k=args.tree_top_k if args.tree_mode == "branching_topk" else 1,
@@ -2406,6 +2504,7 @@ def main(argv: list[str] | None = None) -> int:
             "drafter_graph_mode": args.drafter_graph,
             "drafter_fusion_mode": args.drafter_fusion,
             "drafter_bucket_mode": args.drafter_bucket,
+            "adaptive_budget_mode": args.adaptive_budget,
             "promotion_blocker": (
                 "native B+1 verifier ran, but full chain must still beat same-session AR before promotion"
                 if args.verifier_mode == "native_bulk_bplus1"

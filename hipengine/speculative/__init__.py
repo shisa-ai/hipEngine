@@ -1,5 +1,10 @@
 """Speculative decoding plugin interfaces."""
 
+from hipengine.speculative.adaptive_budget import (
+    AdaptiveBudgetConfig,
+    AdaptiveBudgetController,
+    AdaptiveBudgetDecision,
+)
 from hipengine.speculative.buffers import (
     TargetVerifyBufferOwner,
     TargetVerifyBufferSpec,
@@ -87,6 +92,9 @@ from hipengine.speculative.ladder import (
 )
 
 __all__ = [
+    "AdaptiveBudgetConfig",
+    "AdaptiveBudgetController",
+    "AdaptiveBudgetDecision",
     "TargetVerifyBufferOwner",
     "TargetVerifyBufferSpec",
     "TargetVerifyScratchHandle",
