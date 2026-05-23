@@ -18,6 +18,7 @@ _SYMBOL_ADD_BF16 = "hipengine_dflash_add_bf16"
 _SYMBOL_CONCAT_F32 = "hipengine_dflash_concat_rows_f32"
 _SYMBOL_CONCAT_BF16 = "hipengine_dflash_concat_rows_bf16"
 _SYMBOL_RMSNORM_BF16 = "hipengine_dflash_rmsnorm_bf16"
+_SYMBOL_ADD_RMSNORM_BF16 = "hipengine_dflash_add_rmsnorm_bf16"
 _SYMBOL_SILU_MUL_BF16 = "hipengine_dflash_silu_mul_bf16"
 _SYMBOL_DENSE_BF16_TO_BF16 = "hipengine_dflash_dense_bf16_to_bf16"
 _SYMBOL_DENSE_BF16_TO_F32 = "hipengine_dflash_dense_bf16_to_f32"
@@ -267,6 +268,99 @@ def dflash_rmsnorm_bf16(
     )
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
+
+
+def dflash_add_rmsnorm_bf16(
+    input_bf16_ptr: int,
+    residual_bf16_ptr: int,
+    weight_bf16_ptr: int,
+    hidden_out_bf16_ptr: int,
+    norm_out_bf16_ptr: int,
+    rows: int,
+    hidden_size: int,
+    *,
+    eps: float = 1.0e-6,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """R3.6 C1: fused DFlash post-attention add + RMSNorm.
+
+    Replaces the unfused chain ``dflash_add_bf16(input, residual -> hidden_out)``
+    followed by ``dflash_rmsnorm_bf16(hidden_out, weight -> norm_out)``.  The
+    fused kernel writes BOTH ``hidden_out`` (the residual sum needed by the MLP
+    residual path) AND ``norm_out`` (the normalized output consumed by the next
+    projection).  The unfused path remains registered as the fallback.
+
+    Numerically equivalent to the unfused chain because the residual sum is
+    rounded to BF16 before the RMS reduction reads it (matching the unfused
+    HBM round-trip).
+
+    Constraint: ``hidden_size <= 4096`` so the per-block scratch fits in LDS.
+    """
+
+    _check_add_rmsnorm_shape(rows, hidden_size, threads)
+    library = library or build_dflash_drafter(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_ADD_RMSNORM_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_float,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(input_bf16_ptr),
+        ctypes.c_void_p(residual_bf16_ptr),
+        ctypes.c_void_p(weight_bf16_ptr),
+        ctypes.c_void_p(hidden_out_bf16_ptr),
+        ctypes.c_void_p(norm_out_bf16_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(hidden_size),
+        ctypes.c_float(float(eps)),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def _check_add_rmsnorm_shape(rows: int, hidden_size: int, threads: int) -> None:
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    if hidden_size <= 0:
+        raise ValueError("hidden_size must be positive")
+    if hidden_size > 4096:
+        raise ValueError("add_rmsnorm fused kernel requires hidden_size <= 4096")
+    if threads not in _ALLOWED_THREADS:
+        raise ValueError("threads must be one of 64, 128, or 256")
+
+
+def _drafter_dense_use_add_rmsnorm() -> bool:
+    """Return True when the drafter post-attention path should fuse add+rmsnorm.
+
+    Controlled by ``HIPENGINE_DFLASH_DRAFTER_ADD_RMSNORM`` (``off`` / ``on``).
+    Defaults to ``off``; flip to ``on`` to opt into the R3.6 C1 fused kernel.
+    Existing unfused path (``dflash_add_bf16`` + ``dflash_rmsnorm_bf16``) remains
+    the registered fallback.
+    """
+
+    value = os.environ.get("HIPENGINE_DFLASH_DRAFTER_ADD_RMSNORM", "off").strip().lower()
+    if value in {"", "off", "0", "false", "naive"}:
+        return False
+    if value in {"on", "1", "true", "fused"}:
+        return True
+    raise ValueError(
+        "HIPENGINE_DFLASH_DRAFTER_ADD_RMSNORM must be one of: off, on (got " + repr(value) + ")"
+    )
 
 
 def dflash_silu_mul_bf16(
@@ -838,6 +932,11 @@ def register_dflash_drafter_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "dflash_rmsnorm", "w4_paro", "bf16"),
         dflash_rmsnorm_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "dflash_add_rmsnorm", "w4_paro", "bf16"),
+        dflash_add_rmsnorm_bf16,
         replace=replace,
     )
     register(

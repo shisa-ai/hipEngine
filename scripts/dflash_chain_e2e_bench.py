@@ -46,7 +46,9 @@ from hipengine.kernels.hip_gfx1100.linear import build_lm_head, topk_f32_rows_i3
 from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import w8a16_linear_bf16_f32_out
 from hipengine.kernels.hip_gfx1100.speculative import build_dflash_drafter
 from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import (
+    _drafter_dense_use_add_rmsnorm,
     dflash_add_bf16,
+    dflash_add_rmsnorm_bf16,
     dflash_concat_rows_bf16,
     dflash_concat_rows_f32,
     dflash_dense_bf16_to_bf16,
@@ -1389,8 +1391,28 @@ class NativeDFlashChainDrafter:
                 runtime=self.runtime,
             )
         dflash_dense_bf16_to_bf16(self.attn.ptr, self.weights.tensor(f"{prefix}.self_attn.o_proj.weight").ptr, self.attn_proj.ptr, self.block_size, self.attn_features, self.hidden, threads=128, stream=stream, library=self.library, runtime=self.runtime)
-        dflash_add_bf16(query_in.ptr, self.attn_proj.ptr, self.hidden_attn.ptr, self.block_size * self.hidden, threads=256, stream=stream, library=self.library, runtime=self.runtime)
-        dflash_rmsnorm_bf16(self.hidden_attn.ptr, self.weights.tensor(f"{prefix}.post_attention_layernorm.weight").ptr, self.post.ptr, self.block_size, self.hidden, threads=128, stream=stream, library=self.library, runtime=self.runtime)
+        if _drafter_dense_use_add_rmsnorm():
+            # R3.6 C1: fused add+rmsnorm; numerically equivalent to the unfused
+            # path because the residual sum is rounded to BF16 before the RMS
+            # reduction reads it.  Writes both ``hidden_attn`` (residual sum,
+            # used by the MLP residual path below) and ``post`` (normalized
+            # input to gate/up).
+            dflash_add_rmsnorm_bf16(
+                query_in.ptr,
+                self.attn_proj.ptr,
+                self.weights.tensor(f"{prefix}.post_attention_layernorm.weight").ptr,
+                self.hidden_attn.ptr,
+                self.post.ptr,
+                self.block_size,
+                self.hidden,
+                threads=256,
+                stream=stream,
+                library=self.library,
+                runtime=self.runtime,
+            )
+        else:
+            dflash_add_bf16(query_in.ptr, self.attn_proj.ptr, self.hidden_attn.ptr, self.block_size * self.hidden, threads=256, stream=stream, library=self.library, runtime=self.runtime)
+            dflash_rmsnorm_bf16(self.hidden_attn.ptr, self.weights.tensor(f"{prefix}.post_attention_layernorm.weight").ptr, self.post.ptr, self.block_size, self.hidden, threads=128, stream=stream, library=self.library, runtime=self.runtime)
         dflash_dense_bf16_to_bf16(self.post.ptr, self.weights.tensor(f"{prefix}.mlp.gate_proj.weight").ptr, self.gate.ptr, self.block_size, self.hidden, self.intermediate, threads=128, stream=stream, library=self.library, runtime=self.runtime)
         dflash_dense_bf16_to_bf16(self.post.ptr, self.weights.tensor(f"{prefix}.mlp.up_proj.weight").ptr, self.up.ptr, self.block_size, self.hidden, self.intermediate, threads=128, stream=stream, library=self.library, runtime=self.runtime)
         dflash_silu_mul_bf16(self.gate.ptr, self.up.ptr, self.act.ptr, self.block_size * self.intermediate, threads=256, stream=stream, library=self.library, runtime=self.runtime)

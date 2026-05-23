@@ -22582,3 +22582,83 @@ implications for R3.1 (controller fix) and R3.7 (streaming argmax kernel).
 Validation: doc-only change. `git diff --check`, no GPU run required.
 
 Task #28 closed.
+
+## 2026-05-23 perf(dflash): R3.6 C1 fused drafter add+rmsnorm (default-off)
+
+GPU work; R3.6 first fuse landed as `dflash_add_rmsnorm_bf16` per the R3.2 cost
+model's drafter starter recommendation. Default-off behind
+`HIPENGINE_DFLASH_DRAFTER_ADD_RMSNORM=on`; the unfused
+`dflash_add_bf16` + `dflash_rmsnorm_bf16` path remains the registered fallback
+per AGENTS.md.
+
+Implementation:
+- `hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.hip`: added
+  `dflash_add_rmsnorm_bf16_kernel` and `hipengine_dflash_add_rmsnorm_bf16`
+  launcher. One workgroup per row; first sweep accumulates
+  `bf16_round(input + residual)` into `hidden_out` and into LDS, second sweep
+  applies the RMS scale and per-element weight to `norm_out`. The residual sum
+  is rounded to BF16 before the RMS reduction so the fused kernel is bit-equal
+  to the unfused chain (matches the unfused HBM round-trip).
+- `hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.py`: new symbol,
+  Python wrapper `dflash_add_rmsnorm_bf16`, `_drafter_dense_use_add_rmsnorm`
+  env-flag (default-off), registration as
+  `KernelKey("hip_gfx1100", "dflash_add_rmsnorm", "w4_paro", "bf16")`.
+- `scripts/dflash_chain_e2e_bench.py`: drafter `_run_layer` now branches on
+  `_drafter_dense_use_add_rmsnorm()`; calls fused kernel when on, falls through
+  to the existing `dflash_add_bf16 + dflash_rmsnorm_bf16` chain otherwise.
+- `tests/test_dflash_add_rmsnorm.py`: GPU correctness — 5 shapes (drafter
+  shape `(16, 2048)` plus 4 edge shapes); asserts BOTH `hidden_out` AND
+  `norm_out` are bit-identical to the unfused chain. Plus env-var dispatch
+  tests. All pass (7 passed).
+
+GPU same-session DFlash measurements (W7900, B=4 D=32):
+
+4-prompt smoke:
+| Mode | Cycles | Draft ms/c | Verify ms/c | Cycle ms | Aggregate AR | Exact | Avg accept |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| fused-off | 47 | 9.11 | 28.40 | 37.74 | 0.6809 | True | 1.681 |
+| fused-on  | 47 | 9.08 | 28.27 | 37.60 | 0.6783 | True | 1.681 |
+
+9-prompt full suite:
+| Mode | Cycles | Draft ms/c | Cycle ms | Aggregate AR | Exact | Avg accept |
+|---|---:|---:|---:|---:|---:|---:|
+| fused-off (R3.4 baseline) | 112 | 9.09 | 37.21 | 0.6359 | 9/9 | 1.527 |
+| fused-on  (R3.6 C1)       | 112 | 9.03 | 37.19 | 0.6398 | 9/9 | 1.527 |
+
+Per-prompt deltas range -0.032 .. +0.037 (sampling noise around zero).
+
+This matches the R3.2 cost-model prediction to the microsecond:
+`8 launches/cycle × 3.6 µs/launch = ~29 µs/cycle = 0.029 ms/cycle saved`.
+Measured drafter delta: -0.06 ms/cycle on 9-prompt = within noise of prediction.
+
+R3.6 acceptance gate ("9-prompt cycle_cost reduction ≥ 3%") is **not met**.
+This was already predicted in `docs/DFLASH_FUSION_COSTMODEL.md`:
+"Combined C1+C5+C4 launch savings are only ~0.24 ms against a ~62 ms cycle.
+R3.6's value is to remove obvious fragmentation and prepare fallback/registration
+patterns; R3.4 dense WMMA and R3.1 routing remain the real Round-3 wall/guard
+levers." C1 has fulfilled that role: it exercises the registration/fallback
+discipline with a real fused kernel and is bit-exact across the suite.
+
+C5 (verifier QKV-prepare fusion) is **deferred**:
+- Cost model predicts ~72 µs/pass = ~0.2% of the 37 ms cycle.
+- Implementation cost is high: a fused split_qgate + fp16_to_f32 + head
+  RMSNorm+RoPE kernel needs three call-site variants (tokens=1, batched FP32
+  output, batched BF16 output) and ~400-600 LoC of HIP + Python + tests.
+- Higher-leverage Round-3 follow-ups exist: R3.7 reduced-logits verifier
+  (BeeLlama-style fused argmax-over-vocab, ~3-5 ms/cycle saving potential per
+  the R3.8 profile) and R3.1 native-bulk → c=1 AR handoff fix to unlock
+  per-prompt routing.
+
+Validation:
+- `python3 -m py_compile scripts/dflash_chain_e2e_bench.py hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.py`
+- `pytest -q tests/test_dflash_add_rmsnorm.py tests/test_dflash_dense_wmma.py
+  tests/test_dflash_drafter.py` -> 27 passed (test_dflash_drafter.py and
+  test_dflash_dense_wmma.py unchanged from earlier).
+- 4-prompt + 9-prompt W7900 same-session DFlash artifacts retained.
+
+Artifacts:
+- benchmarks/results/2026-05-23-hipengine-dflash-r3.6-c1-w7900-fused-{on,off}-b4-d32-4prompt*.json
+- benchmarks/results/2026-05-23-hipengine-dflash-r3.6-c1-w7900-fused-on-b4-d32-9prompt.json
+
+Updated docs:
+- docs/DFLASH.md (R3.6 row updated with C1 status and C5 deferral rationale)

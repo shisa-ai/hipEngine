@@ -156,6 +156,80 @@ __global__ void dflash_rmsnorm_bf16_kernel(
   }
 }
 
+// R3.6 C1: drafter post-attention add+rmsnorm fusion.
+//
+// Replaces the unfused chain ``dflash_add_bf16(query_in, attn_proj -> hidden_attn);
+// dflash_rmsnorm_bf16(hidden_attn, post_norm_weight -> post)``.  Keeps the unfused
+// fallback registered so a flag flip is exact-equivalent.
+//
+// One workgroup per row: 256 threads compute the residual sum (also stored to
+// ``hidden_out``) and the RMSNorm reduction in a single LDS sweep, then a second
+// pass loads ``hidden_out`` from registers (cached values), applies the RMS scale
+// and per-element weight, and writes ``norm_out``.  Numerically equivalent to the
+// unfused chain because both kernels accumulate the per-element sum in FP32 with
+// the same per-element BF16 round at the residual store boundary.
+//
+// Layout assumptions:
+//   input/residual: [rows, hidden_size] BF16 row-major
+//   weight:         [hidden_size]       BF16
+//   hidden_out:     [rows, hidden_size] BF16 row-major (residual sum, used by MLP residual path)
+//   norm_out:       [rows, hidden_size] BF16 row-major (normalized output, MLP input)
+//
+// We require ``hidden_size <= 4096`` so the per-block scratch fits in 32 KiB of
+// LDS at FP32 precision; current drafter has hidden_size=2048.  Use the unfused
+// path for any larger model.
+
+constexpr int64_t kDflashAddRmsNormMaxHidden = 4096;
+
+__global__ void dflash_add_rmsnorm_bf16_kernel(
+    const uint16_t* __restrict__ input,
+    const uint16_t* __restrict__ residual,
+    const uint16_t* __restrict__ weight,
+    uint16_t* __restrict__ hidden_out,
+    uint16_t* __restrict__ norm_out,
+    int64_t rows,
+    int64_t hidden_size,
+    float eps) {
+  const int64_t row = static_cast<int64_t>(blockIdx.x);
+  if (row >= rows) {
+    return;
+  }
+  extern __shared__ float scratch[];
+  // scratch[0..hidden_size)        : per-element residual sum (FP32 cache for second pass)
+  // scratch[hidden_size..hidden_size + blockDim.x) : per-thread reduction tile
+  float * sum_cache = scratch;
+  float * partial = scratch + hidden_size;
+
+  const int64_t base = row * hidden_size;
+  float sumsq = 0.0f;
+  for (int64_t dim = static_cast<int64_t>(threadIdx.x); dim < hidden_size; dim += blockDim.x) {
+    const float a = bf16_bits_to_float(input[base + dim]);
+    const float b = bf16_bits_to_float(residual[base + dim]);
+    // Match unfused order exactly: round the residual sum to BF16 first (so the
+    // RMS reduction sees the same value the unfused dflash_rmsnorm_bf16 would
+    // have read back from HBM), then upcast to FP32 for the reduction.  This
+    // keeps the fused output bit-identical to the unfused chain on every input.
+    const uint16_t s_bits = float_to_bf16_bits(a + b);
+    hidden_out[base + dim] = s_bits;
+    const float s = bf16_bits_to_float(s_bits);
+    sum_cache[dim] = s;
+    sumsq += s * s;
+  }
+  partial[threadIdx.x] = sumsq;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      partial[threadIdx.x] += partial[threadIdx.x + stride];
+    }
+    __syncthreads();
+  }
+  const float inv_rms = rsqrtf((partial[0] / static_cast<float>(hidden_size)) + eps);
+  for (int64_t dim = static_cast<int64_t>(threadIdx.x); dim < hidden_size; dim += blockDim.x) {
+    const float scale = bf16_bits_to_float(weight[dim]);
+    norm_out[base + dim] = float_to_bf16_bits(sum_cache[dim] * inv_rms * scale);
+  }
+}
+
 __global__ void dflash_silu_mul_bf16_kernel(
     const uint16_t* __restrict__ gate,
     const uint16_t* __restrict__ up,
@@ -1028,6 +1102,41 @@ extern "C" int hipengine_dflash_rmsnorm_bf16(
       x,
       weight,
       out,
+      rows,
+      hidden_size,
+      eps);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dflash_add_rmsnorm_bf16(
+    const uint16_t* input,
+    const uint16_t* residual,
+    const uint16_t* weight,
+    uint16_t* hidden_out,
+    uint16_t* norm_out,
+    int64_t rows,
+    int64_t hidden_size,
+    float eps,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || hidden_size <= 0 || hidden_size > kDflashAddRmsNormMaxHidden ||
+      threads != 64 && threads != 128 && threads != 256) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const size_t shared_bytes =
+      static_cast<size_t>(hidden_size) * sizeof(float) +
+      static_cast<size_t>(threads) * sizeof(float);
+  hipLaunchKernelGGL(
+      dflash_add_rmsnorm_bf16_kernel,
+      dim3(static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(threads)),
+      shared_bytes,
+      stream,
+      input,
+      residual,
+      weight,
+      hidden_out,
+      norm_out,
       rows,
       hidden_size,
       eps);
