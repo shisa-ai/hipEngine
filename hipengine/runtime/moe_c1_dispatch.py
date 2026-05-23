@@ -12,7 +12,7 @@ Cache strategy: one ``MoeC1DispatchCache`` per (LayerRuntime, scratch)
 shape.  The shapes that share a scratch are stable across the model's
 lifetime, so a per-layer dict on the ``LayerRuntime`` is enough.
 
-Gate: ``HIPENGINE_MOE_C1_C_DISPATCH={1,on,yes,true}`` (default off).
+Gate: enabled by default; set ``HIPENGINE_MOE_C1_C_DISPATCH={0,off,no,false}`` to disable.
 """
 
 from __future__ import annotations
@@ -64,10 +64,12 @@ def _get_fns_table() -> MoeC1Fns:
 
 
 def moe_c1_c_dispatch_enabled() -> bool:
-    """Master gate.  Default off pending M14.dispatch.1-beta validation."""
+    """Master gate.  Default on after M14.dispatch.1 prewarm validation."""
 
-    value = os.environ.get("HIPENGINE_MOE_C1_C_DISPATCH", "")
-    return value.strip().lower() in {"1", "on", "yes", "true"}
+    value = os.environ.get("HIPENGINE_MOE_C1_C_DISPATCH")
+    if value is None or value.strip() == "":
+        return True
+    return value.strip().lower() not in {"0", "off", "no", "false", "disable", "disabled"}
 
 
 def prewarm_moe_c1_c_dispatch() -> None:

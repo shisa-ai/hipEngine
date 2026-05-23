@@ -6026,12 +6026,13 @@ class Qwen35ParoDecodeState:
         ``next_hidden = scratch.moe_out`` D2D copy in the verifier orchestrator
         (M12.6 layer-output write-through).
 
-        M14.dispatch.1-beta: when ``HIPENGINE_MOE_C1_C_DISPATCH=1`` and the
-        call pattern matches the C dispatcher's contract (paro_w4 shared,
-        tokens>1, no M13.B.1/B.2 fused-rotate, group_size==128), bundle the 6
-        sub-method calls + 11 underlying kernel launches into one extern-C
-        call to cut ~10 ctypes ABI transitions per layer.  Falls back to the
-        Python pipeline below for any unsupported call pattern.
+        M14.dispatch.1-beta: by default (unless
+        ``HIPENGINE_MOE_C1_C_DISPATCH=0``) and when the call pattern matches
+        the C dispatcher's contract (paro_w4 shared, tokens>1, no M13.B.1/B.2
+        fused-rotate, group_size==128), bundle the 6 sub-method calls + 11
+        underlying kernel launches into one extern-C call to cut ~10 ctypes ABI
+        transitions per layer.  Falls back to the Python pipeline below for any
+        unsupported call pattern.
         """
 
         scratch = scratch or self.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
@@ -6075,7 +6076,7 @@ class Qwen35ParoDecodeState:
 
         Preconditions for the C path (any failure -> Python fallback):
 
-        - ``HIPENGINE_MOE_C1_C_DISPATCH`` env enabled.
+        - ``HIPENGINE_MOE_C1_C_DISPATCH`` is not explicitly disabled.
         - paro_w4 shared expert (not legacy w8a16).
         - ``tokens > 1`` (decode tokens=1 uses coop router; C path doesn't).
         - ``group_size == 128`` (cached value; mismatches fall back).

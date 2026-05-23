@@ -22088,3 +22088,38 @@ python3 scripts/mtp-bench.py --mode hipengine-current --max-tokens 64 \
 - `benchmarks/results/2026-05-23-hipengine-mtp-bench-suite-w7900-m14.dispatch.1-prewarm-on-diagnostic.json`
 
 **Conclusion:** M14.dispatch.1-beta is safe/correct with prewarm but does not deliver the expected 20% verify reduction. The earlier rejected artifact's performance regression should be interpreted as lazy warmup placement, not GPU kernel slowdown. Next optimization should target actual launch count / graph node count / fused verifier work; the C dispatcher alone is not enough.
+
+## 2026-05-23 perf(mtp): default MoE C1 C dispatcher on
+
+**Decision:** Flip `HIPENGINE_MOE_C1_C_DISPATCH` from opt-in to default-on now that the M14.dispatch.1 first-cycle warmup artifact is fixed by resident-build prewarm. Explicit opt-out remains `HIPENGINE_MOE_C1_C_DISPATCH=0` (also `off/no/false/disabled`). Rationale: clean W7900 9-prompt suite post-prewarm showed env-on parity/slightly better than env-off (`cycle_cost 3.707→3.696`, `verify_ms 24.925→24.810`, exact all prompts), so default-on is safe and removes an unnecessary DFlash/MTP footgun.
+
+**Implementation:**
+
+- `hipengine/runtime/moe_c1_dispatch.py`: `moe_c1_c_dispatch_enabled()` now returns `True` for unset/blank env and `False` only for explicit off values.
+- `hipengine/runtime/qwen35_paro.py`: docstrings/preconditions updated to describe explicit opt-out.
+- `docs/DFLASH.md`: R2.1 marked done for plumbing/default-on; R2.2 unblocked/ready.
+- `benchmarks/README.md` / `benchmarks/CHANGELOG.md`: M14.dispatch.1 diagnostic row now records default-on + `=0` opt-out.
+
+**Validation:**
+
+- Gate semantics quick check:
+  - unset → True; blank → True; `1/true` → True; `0/off/false/disabled` → False.
+- `python3 -m py_compile hipengine/runtime/moe_c1_dispatch.py hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py` passed.
+- GPU idle before smoke (`rocm-smi`: GPU use 0, VRAM 0, no KFD PIDs).
+- Unset-env smoke (default-on):
+  ```bash
+  unset HIPENGINE_MOE_C1_C_DISPATCH
+  python3 scripts/mtp_chain_e2e_smoke.py --decode-tokens 4 --candidate-budget 3 \
+    --backend hip_gfx1100 --chain-attn-mode batched --graph-mode off \
+    --json /tmp/m14_dispatch_default_on_smoke_unset.json
+  ```
+  Result: exact_ar_match=True, tokens `[180184,148897,205222,318]`, accepted `[0,0,0]`.
+- Explicit-off smoke:
+  ```bash
+  HIPENGINE_MOE_C1_C_DISPATCH=0 python3 scripts/mtp_chain_e2e_smoke.py --decode-tokens 4 \
+    --candidate-budget 3 --backend hip_gfx1100 --chain-attn-mode batched --graph-mode off \
+    --json /tmp/m14_dispatch_default_on_smoke_off.json
+  ```
+  Result: exact_ar_match=True, same tokens/accepted.
+
+**Next:** Continue DFlash Round-2 from R2.2 (drafter propose chain on packed PARO target + z-lab drafter) with the shared verifier now using default-on C dispatcher plumbing.
