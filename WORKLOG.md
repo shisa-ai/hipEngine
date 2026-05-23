@@ -22540,3 +22540,45 @@ Artifacts:
 - benchmarks/results/2026-05-23-hipengine-dflash-r3.5-w7900-ddtree-k2-b4-d32-4prompt-smoke.json
 - benchmarks/results/2026-05-23-hipengine-dflash-r3.5-w7900-ddtree-k2-b8-d32-4prompt-smoke.json
 - benchmarks/results/2026-05-23-hipengine-dflash-r3.5-w7900-chain-b8-d32-4prompt-control.json
+
+## 2026-05-23 docs(dflash): R3.8 BeeLlama v0.2.0 profile
+
+Read-only review of vendored peer at `~/beellama.cpp/` (BeeLlama v0.2.0, llama.cpp b9275 base).
+
+Output: `docs/BEELLAMA_PROFILE.md` (~370 lines markdown, no code change). Sources cited:
+CHANGELOG.md v0.2.0, README.md (RTX 3090 benchmark table), docs/quickstart-qwen36-dflash.md,
+docs/beellama-args.md, tools/server/server-adaptive-dm.h, src/models/dflash_draft.cpp,
+src/llama-context.cpp (`cross_bucket()`, reduced-logits gate), SD-080-benchmark-notes.txt.
+
+Key findings mapped to R3.x:
+
+- Default `B=16` flat DFlash (`spec-draft-n-max=16`, `spec-branch-budget=0`,
+  `spec-dflash-cross-ctx=512..1024`, `spec-draft-temp=0`). Adaptive `profit` controller is
+  default-on with EWMA per-position survival, fixed depth ladder
+  `{0,1,2,3,4,5,6,7,8,10,12,14,16,base}`, hysteresis margins `0.05`, off-dwell `8`,
+  baseline reprobe every `1024` cycles. This validates R3.1's controller design pattern.
+- Drafter is shallower-and-wider: 5 layers @ n_embd=5120 (BeeLlama Qwen3.5-27B per
+  SD-080-benchmark-notes.txt) vs our 8 layers @ n_embd=2048. Per-layer dense work is
+  ~4-5× larger but launch count is ~40% lower; CUDA graph capture wins under fewer launches.
+  Out-of-scope as a hipEngine code change (would require retraining); noted as a Round-4
+  model-side lever.
+- Reduced-logits verifier is real: `set_dflash_verify_logits` makes the GPU emit only a
+  compact `[B+1 × top_k]` `(token_id, log_prob)` tensor when the per-slot sampler is
+  "boring" (no grammar/penalty/dry/xtc/top-n-sigma/logit-bias/n_probs/rejection/tree).
+  This is exactly the R3.7 design we should adopt: replace
+  `w8a16_linear_bf16_f32_*` + `argmax_f32_rows_i32` with a single streaming
+  argmax-over-vocab kernel that never materializes the full FP32 logits buffer.
+- `cross_bucket()` graph cache key matches the R2.3 ladder we already ported. Their R2.3
+  is a perf win on RTX 3090 because flat-attention drafter is launch-bound there;
+  ours isn't (R3.4 measured drafter at `9.09 ms/cycle` GPU-kernel-bound).
+- BeeLlama's published `4.40x` on RTX 3090 is **not directly comparable** to our W7900
+  BF16 numbers: their target is Q5_K_S GGUF (~3× lower memory traffic than our BF16
+  target) and they run adaptive B up to 16. The structural choices (controller, reduced
+  logits) generalize; the headline ratio doesn't.
+
+Updated `docs/DFLASH.md` R3.8 row to reference the new profile and call out the
+implications for R3.1 (controller fix) and R3.7 (streaming argmax kernel).
+
+Validation: doc-only change. `git diff --check`, no GPU run required.
+
+Task #28 closed.
