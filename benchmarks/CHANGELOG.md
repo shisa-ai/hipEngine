@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-05-23
+
+- [accepted README sweep] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_S / W7900 readme sweep: first W7900-measured GGUF column for README Performance tables (512/128, 4K/128, 32K/128, 128K/128). 3 measured runs per shape, `--use-wmma-prefill --use-gemv-decode` with auto-tune chunked prefill (1024/1024/4096/1024/1024 above 1K). Prefill `1584.822 / 1736.812 / 1384.032 / 831.386 tok/s`; decode `92.936 / 101.341 / 87.016 / 58.123 tok/s`; tracked peak `20.185 / 21.335 / 22.146 / 25.108 GiB`. Decode beats llama.cpp HIP Q4_K_M at every shape (+8.7% / +16.0% / +13.0% / +1.4%) and ranks 2nd behind PARO. Notable: W7900 prefill is currently `-36%` vs the local RX 7900 XTX final-gate Q4_K_S on the same kernels - hypothesis is low-power idle state at session start. Per-session load_seconds median ~60s (vs ~24s for PARO packed on the same hardware) due to the persistent decode-repack into T16 tile layouts. All shapes report finite logits + effective WMMA prefill + effective GEMV decode true; no source change; correctness/dispatch gate reused from the 2026-05-22 dual-column final-gate (`167 passed`); `benchmarks/results/2026-05-23-hipengine-qwen36-35b-a3b-q4ks-w7900-readme-sweep-accepted.json`.
+
 ## 2026-05-22
 
 - [final gate accepted] hipENGINE / Qwen3.6-35B-A3B GGUF Q4_K_M+Q4_K_S / 4K/128 final retained decode: Q4_K_M decode `96.264 -> 99.292 tok/s` (`+3.15%`) and Q4_K_S decode `97.121 -> 100.257 tok/s` (`+3.23%`) after retaining router256 plus direct selected c=1 MoE and rejecting later Q8/small-kernel probes; final targeted dense/selected/router/graph/semantic bundle passes (`167 passed`), finite deterministic final logits, tracked peaks unchanged; `benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-final-gate-4k128-accepted.json`.

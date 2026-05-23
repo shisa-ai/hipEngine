@@ -1,0 +1,200 @@
+{
+  "schema": "hipengine_benchmark_v1",
+  "status": "accepted",
+  "performance_claim": true,
+  "label": "qwen36_35b_a3b_gguf_q4ks_w7900_readme_sweep",
+  "date": "2026-05-23",
+  "git_commit_under_test": "175c0bd",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "host": "epyc",
+    "device_total_gib": 47.999,
+    "note": "W7900 (gfx1100) rerun of GGUF UD-Q4_K_S sweep so README Performance tables can include a GGUF column alongside packed PARO and llama.cpp Q4_K_M baselines."
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+  "quant": "gguf_q4_k_s",
+  "backend": "hip_gfx1100",
+  "fastpath": {
+    "decode_repack": true,
+    "allow_unsafe_qwen35moe_fastpaths": true,
+    "aotriton_prefill": "v3",
+    "use_wmma_prefill": true,
+    "use_gemv_decode": true,
+    "effective_use_wmma_prefill_all": "true at every measured run for every shape",
+    "effective_use_gemv_decode_all": "true at every measured run for every shape"
+  },
+  "common_benchmark_command": "HIPENGINE_GGUF_AOTRITON_PREFILL=v3 HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s --prompt-length <N> --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json <raw-json>",
+  "correctness_and_dispatch_gate": {
+    "note": "Reuses the dual-column gate from benchmarks/results/2026-05-22-hipengine-qwen36-35b-a3b-q4km-q4ks-final-gate-4k128-accepted.json (167 passed). No source change introduced in this artifact; runs at the same retained state.",
+    "per_run_signals": {
+      "finite_final_logits_all": true,
+      "effective_fast_paths_all_true": true
+    }
+  },
+  "results": {
+    "512/128": {
+      "raw_json": "/tmp/q4ks-w7900-bench/q4ks-512-128.json",
+      "prefill_tok_s_samples": [
+        1584.8222710307004,
+        1549.041018405367,
+        1595.9811249557902
+      ],
+      "prefill_tok_s_median": 1584.8222710307004,
+      "decode_tok_s_samples": [
+        92.9385241127258,
+        92.83987742211005,
+        92.93641679658063
+      ],
+      "decode_tok_s_median": 92.93641679658063,
+      "tracked_peak_allocated_gib_median": 20.18540693819523,
+      "hip_used_peak_sampled_gib_median": 20.7177734375,
+      "final_token_ids": [
+        51515,
+        51515,
+        51515
+      ],
+      "finite_final_logits_all": true,
+      "effective_use_wmma_prefill_all": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "effective_use_gemv_decode_all": [
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    "4K/128": {
+      "raw_json": "/tmp/q4ks-w7900-bench/q4ks-4096-128.json",
+      "prefill_tok_s_samples": [
+        1740.9864947710541,
+        1736.8117380107483,
+        1735.7039531010237
+      ],
+      "prefill_tok_s_median": 1736.8117380107483,
+      "decode_tok_s_samples": [
+        101.35315536817363,
+        101.34146183923446,
+        101.2541760709753
+      ],
+      "decode_tok_s_median": 101.34146183923446,
+      "tracked_peak_allocated_gib_median": 21.33485896140337,
+      "hip_used_peak_sampled_gib_median": 21.9150390625,
+      "final_token_ids": [
+        85,
+        85,
+        85
+      ],
+      "finite_final_logits_all": true,
+      "effective_use_wmma_prefill_all": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "effective_use_gemv_decode_all": [
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    "32K/128": {
+      "raw_json": "/tmp/q4ks-w7900-bench/q4ks-32768-128.json",
+      "prefill_tok_s_samples": [
+        1390.4106606056496,
+        1384.0324098337894,
+        1380.0756416412328
+      ],
+      "prefill_tok_s_median": 1384.0324098337894,
+      "decode_tok_s_samples": [
+        87.49175223604084,
+        87.01563911229412,
+        86.85140457604892
+      ],
+      "decode_tok_s_median": 87.01563911229412,
+      "tracked_peak_allocated_gib_median": 22.145785816013813,
+      "hip_used_peak_sampled_gib_median": 22.7353515625,
+      "final_token_ids": [
+        13883,
+        13883,
+        13883
+      ],
+      "finite_final_logits_all": true,
+      "effective_use_wmma_prefill_all": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "effective_use_gemv_decode_all": [
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    "128K/128": {
+      "raw_json": "/tmp/q4ks-w7900-bench/q4ks-131072-128.json",
+      "prefill_tok_s_samples": [
+        832.6572724093404,
+        831.2907783725854,
+        831.3860855974989
+      ],
+      "prefill_tok_s_median": 831.3860855974989,
+      "decode_tok_s_samples": [
+        58.2118724156811,
+        58.1233417145926,
+        58.021258432871704
+      ],
+      "decode_tok_s_median": 58.1233417145926,
+      "tracked_peak_allocated_gib_median": 25.107747085392475,
+      "hip_used_peak_sampled_gib_median": 25.7001953125,
+      "final_token_ids": [
+        220,
+        220,
+        220
+      ],
+      "finite_final_logits_all": true,
+      "effective_use_wmma_prefill_all": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "effective_use_gemv_decode_all": [
+        true,
+        true,
+        true,
+        true
+      ]
+    }
+  },
+  "load_timing_comparison": {
+    "note": "GGUF persistent decode-repack layout transform makes load_seconds materially higher than PARO safetensors mmap. Numbers below are medians of load_seconds across all sessions (1 warmup + 3 measured) per shape.",
+    "gguf_q4_k_s_w7900_median_load_seconds_per_shape": {
+      "512/128": 61.03660381800728,
+      "4K/128": 60.351897157001076,
+      "32K/128": 59.98377292702207,
+      "128K/128": 60.341528064978775
+    },
+    "paro_packed_w7900_typical_median_load_seconds": "~19-30s across recent artifacts (see benchmarks/results/2026-05-17-hipengine-qwen35-qwen36-paro-dual-format-diagnostic.json and 2026-05-18-hipengine-gfx1100-qwen36-27b-paro-diagnostic.json)",
+    "gguf_q4_k_m_w7900_prior_median_load_seconds": "~71s (n=4) per benchmarks/results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_h3-t16-512x128-bench.json"
+  },
+  "comparison": {
+    "hipengine_paro_packed_w7900_source": "README Performance tables / benchmarks/results/2026-05-18-hipengine-gfx1100-shisa-qwen36-packed-gt1k-default-diagnostic.json",
+    "llamacpp_hip_q4km_w7900_source": "benchmarks/results/2026-05-17-llamacpp-hip-qwen36-peak.json",
+    "llamacpp_vulkan_q4km_w7900_source": "benchmarks/results/2026-05-17-llamacpp-vulkan-qwen36-peak.json"
+  },
+  "notes": [
+    "Each shape was measured with 1 warmup run + 3 measured runs of qwen35_gguf_bench.py.",
+    "Auto-tune chunked prefill resolves to linear=1024 / moe=1024 / full_attn_query=4096 / full_attn_post=1024 / full_attn_rope=1024 for all shapes above 1K, matching the PARO long-context policy.",
+    "128K/128 tracked allocator peak (25.108 GiB) exceeds the 24 GiB consumer-card budget; this is expected and is why the README status flags Q4_K_S long-context as W7900/48 GiB territory.",
+    "rocm-smi reported a low-power idle state (~14 W) between sessions on this W7900 host; W7900 prefill numbers are noticeably below the same kernels measured on the local RX 7900 XTX in the dual-column final-gate (e.g. 4K Q4_K_S prefill 1737 vs 2722 tok/s). Decode numbers are within 1-3% of the RX 7900 XTX measurement.",
+    "Load timing: GGUF UD-Q4_K_S median load_seconds per session is roughly 60s on W7900, vs ~24s for PARO packed sessions on the same hardware. The dominant cost is the persistent decode-repack pass that produces T16 tiles for the Q4/Q5/Q6/Q8 GEMV decode kernels."
+  ]
+}

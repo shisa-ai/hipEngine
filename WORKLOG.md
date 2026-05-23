@@ -25432,3 +25432,160 @@ print('merge export imports OK')
 PY
 # merge export imports OK
 ```
+
+## 2026-05-23 — Qwen3.6-35B-A3B-UD-Q4_K_S W7900 README sweep
+
+Reran the GGUF UD-Q4_K_S sweep on the W7900/`epyc` host so the README
+Performance tables can include a `hipEngine GGUF Q4_K_S` column alongside the
+existing packed-PARO column and the llama.cpp Q4_K_M HIP/Vulkan baselines (the
+prior dual-column final-gate at `175c0bd` was measured on the local RX 7900
+XTX). No source change is introduced in this entry; this is an evidence
+artifact only.
+
+### Environment
+
+- Host `epyc`, AMD Radeon Pro W7900 (gfx1100), 48 GiB VRAM. `rocm-smi` reported
+  the card in a low-power idle state (~14 W average) between sessions; that
+  observation re-enters below as the most likely explanation for the W7900
+  prefill gap vs RX 7900 XTX on the same kernels.
+- HIP runtime per `/tmp/hipengine-hipcc-version.txt`: `HIP version:
+  7.2.53211-364a905`, `AMD clang version 22.0.0git`.
+- Python: switched the workspace `.venv` to CPython 3.12.9 via `uv venv
+  --python 3.12` after the auto-created 3.10 venv failed to import `tomllib`
+  inside `hipengine/kernels/hip_gfx1100/attention/aotriton.py`. After that the
+  in-place install `uv pip install -e .` resolves into the existing therock
+  conda env at `/home/lhl/mambaforge/envs/therock` and `python` and `uv run`
+  both pick the 3.12 interpreter.
+
+### Commands
+
+Common shape; only `--prompt-length` and `--json` change per workload:
+
+```bash
+HIPENGINE_GGUF_AOTRITON_PREFILL=v3 \
+HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 \
+HIPENGINE_GGUF_DECODE_REPACK=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+PYTHONPATH=. python scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf \
+  --quant gguf_q4_k_s \
+  --prompt-length <512|4096|32768|131072> \
+  --decode-tokens 128 --warmup-decode-tokens 1 \
+  --warmup-runs 1 --measured-runs 3 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --use-wmma-prefill --use-gemv-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/q4ks-w7900-bench/q4ks-<N>-128.json
+```
+
+A short 512/128 warmup run without `--require-cached-build` was run first to
+seed the JIT `.so` cache (`~/.cache/hipengine/build/`); all measured runs
+subsequently honored `--require-cached-build` without rebuilding kernels.
+
+### W7900 sweep results (3 measured runs per shape, prefill/decode medians)
+
+| Workload   | Prefill tok/s   | Decode tok/s    | Tracked peak GiB | HIP sampled peak GiB | Final IDs        | finite logits | eff WMMA prefill | eff GEMV decode |
+| ---------- | --------------: | --------------: | ---------------: | -------------------: | ---------------- | ------------- | ---------------- | --------------- |
+| 512/128    | `1584.822`      | `92.936`        | `20.185`         | `20.718`             | `[51515,51515,51515]` | true     | true (4/4 runs)  | true (4/4 runs) |
+| 4K/128     | `1736.812`      | `101.341`       | `21.335`         | `21.915`             | `[85,85,85]`     | true          | true (4/4 runs)  | true (4/4 runs) |
+| 32K/128    | `1384.032`      | `87.016`        | `22.146`         | `22.735`             | `[13883,13883,13883]` | true     | true (4/4 runs)  | true (4/4 runs) |
+| 128K/128   | `831.386`       | `58.123`        | `25.108`         | `25.700`             | `[220,220,220]`  | true          | true (4/4 runs)  | true (4/4 runs) |
+
+All four shapes report `finite_final_logits_all=true` and matching final token
+IDs across the three measured runs. 4K/128 Q4_K_S `final_token_ids=[85,85,85]`
+matches the RX 7900 XTX dual-column final-gate (`benchmarks/results/2026-05-22-
+hipengine-qwen36-35b-a3b-q4km-q4ks-final-gate-4k128-accepted.json`).
+
+Auto-tune chunked prefill resolves to `linear=1024 / moe=1024 /
+full_attn_query=4096 / full_attn_post=1024 / full_attn_rope=1024` for every
+shape above 1K, matching the W7900 PARO long-context policy documented in the
+README.
+
+### Correctness / dispatch gate
+
+No source change in this entry. Correctness/dispatch coverage is reused from
+the 2026-05-22 dual-column final-gate (`167 passed` across dense/selected/
+router/graph/semantic test bundles), plus per-run signals captured in each
+shape JSON: `finite_final_logits_all=true`, `effective_use_wmma_prefill_all`
+and `effective_use_gemv_decode_all` all `true`, deterministic final token IDs
+across the three measured runs.
+
+### Comparison vs existing README rows on the same W7900 box
+
+llama.cpp Q4_K_M HIP/Vulkan baselines reused from
+`benchmarks/results/2026-05-17-llamacpp-hip-qwen36-peak.json` and the matching
+Vulkan artifact, measured on this same `epyc`/W7900 host.
+
+Decode tok/s, hipEngine GGUF Q4_K_S vs llama.cpp Q4_K_M HIP at every shape:
+
+| Workload | hipEngine GGUF Q4_K_S | llama.cpp HIP Q4_K_M | Delta |
+| -------- | --------------------: | -------------------: | ----- |
+| 512/128  | `92.936`              | `85.487`             | `+8.71%`  |
+| 4K/128   | `101.341`             | `87.375`             | `+15.98%` |
+| 32K/128  | `87.016`              | `76.994`             | `+13.02%` |
+| 128K/128 | `58.123`              | `57.341`             | `+1.36%`  |
+
+Prefill tok/s comparison shows llama.cpp HIP wins at 512/4K/32K (by 35-54%,
+20-25%, ~8% respectively) while hipEngine wins at 128K (`+17.06%` over
+llama.cpp HIP, `+73.0%` over Vulkan). Vulkan still wins decode at every shape
+on this W7900 host. Packed PARO outperforms GGUF Q4_K_S at every shape on both
+prefill and decode; tracked peak is `+1.86-1.88 GiB` higher for GGUF across all
+four shapes because of the persistent decode-repack into T16 tile layouts.
+
+### Notable cross-host observation
+
+On the same retained commit, W7900 prefill is materially lower than the local
+RX 7900 XTX final-gate Q4_K_S row for the same kernels (4K Q4_K_S prefill
+`2722.508 -> 1736.812 tok/s` = `-36.2%`). Decode is within 1-3% across the two
+hosts (4K Q4_K_S `100.257 -> 101.341 tok/s`, `+1.08%`). The W7900 is not a
+slower card in PARO measurements on this same box (PARO 4K/128 prefill
+`2899.685 tok/s` in the rollup), so the regression appears to be specific to
+the GGUF prefill kernels' first few invocations. The most plausible
+explanation is the W7900 cold-start power-state behavior captured in
+`rocm-smi` (the bench tears down and re-creates a fresh
+`Qwen35GGUFResidentSession` per run, paying ~60 s of load + decode-repack
+per session and only ~0.3-7.5 s of measured prefill, so each shape may not
+escape the lowest p-state before the timing window closes). Filed as a
+follow-up rather than a kernel change. Not promoting any source change.
+
+### Load timing (GGUF vs PARO)
+
+The user asked about per-session load cost mid-run. Aggregated from existing
+artifacts and this sweep:
+
+| Format        | Path                                       | Median `load_seconds` per session | Source                                                                                                                                                                |
+| ------------- | ------------------------------------------ | --------------------------------: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PARO packed   | safetensors mmap + `hipMemcpyAsync`        | ~24 s (range ~19-30 s)            | several `benchmarks/results/*paro*diagnostic.json` (e.g. `2026-05-17-hipengine-qwen35-qwen36-paro-dual-format-diagnostic.json`, `2026-05-18-hipengine-gfx1100-qwen36-27b-paro-diagnostic.json`) |
+| GGUF UD-Q4_K_S| mmap + decode-repack to T16 tiles          | ~60 s on W7900 (this sweep)       | per-shape `load_seconds` medians: 512/128 `61.04 s`, 4K/128 `60.35 s`, 32K/128 `59.98 s`, 128K/128 `60.34 s`                                                            |
+| GGUF UD-Q4_K_M| same                                       | ~71 s (n=4)                       | `benchmarks/results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_h3-t16-512x128-bench.json`                                                                              |
+
+So GGUF is ~2.5-3x slower to load than PARO on the same hardware. The dominant
+cost is the persistent decode-repack pass that converts on-disk
+Q4_K/Q5_K/Q6_K/Q8_0 blocks into the T16-tiled layouts our GEMV/WMMA decode
+kernels consume (the same design retained in
+`benchmarks/results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_h2-decode-repack-design.json`).
+A future on-disk cache of the repacked tiles would close most of this gap; not
+in scope for this entry.
+
+### Artifact + rollup
+
+- Compact retained artifact:
+  `benchmarks/results/2026-05-23-hipengine-qwen36-35b-a3b-q4ks-w7900-readme-sweep-accepted.json`
+  (per-shape samples/medians, fast-path effective flags, tracked + sampled
+  peaks, final IDs, raw per-shape JSON pointers, load-seconds medians).
+- `benchmarks/README.md`: `Last updated 2026-05-23`; four W7900 GGUF
+  Q4_K_S rows appended at the top of the "Current fastest hipEngine rows"
+  section (one per workload).
+- `benchmarks/CHANGELOG.md`: dated `2026-05-23` one-liner referencing the
+  accepted artifact, the WMMA prefill + GEMV decode + auto-tune chunked
+  prefill configuration, and the W7900 cold-start power-state caveat.
+- `README.md`: Performance tables now have a `hipEngine GGUF Q4_K_S` column
+  (placed between PARO and llama.cpp HIP), and the Status bullet for GGUF is
+  updated with the W7900 sweep pointer plus the ~1.9 GiB tracked-peak delta
+  and the ~60 s vs ~24 s load-cost gap vs PARO.
+
+### Files staged in this commit
+
+`README.md`, `benchmarks/README.md`, `benchmarks/CHANGELOG.md`,
+`benchmarks/results/2026-05-23-hipengine-qwen36-35b-a3b-q4ks-w7900-readme-sweep-accepted.json`,
+`WORKLOG.md`.
