@@ -26193,3 +26193,62 @@ Diagnostic artifact:
 ```text
 benchmarks/results/2026-05-23-hipengine-qwen36-35b-a3b-q4ks-w7900-therock713-diagnostic.json
 ```
+
+## 2026-05-23 — W7900 TheRock 7.13 512/128 + 4K/128 GGUF/PARO spot
+
+Ran a pre-full-sweep W7900 TheRock 7.13 spot check against the fresh
+`benchmarks/7900XTX.md` RX 7900 XTX rows. Used a clean TheRock env with
+`rocm-sdk path --root` first in `PATH`/`LD_LIBRARY_PATH`; `hipcc` resolved to HIP
+`7.13.26162-1140233ffe` and `libamdhip64.so` resolved to the TheRock devel root.
+GPU was clear before runs.
+
+GGUF command shape inside clean env:
+
+```bash
+python scripts/qwen35_gguf_bench.py --persistent-session \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s \
+  --prompt-length <512|4096> --decode-tokens 128 --warmup-decode-tokens 1 \
+  --warmup-runs 2 --measured-runs 3 --force-bulk-prefill \
+  --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version-713.txt \
+  --json /tmp/q4ks-persistent-bench/q4ks-<P>-128-persistent-therock713-2warm-3run-spot.json
+```
+
+W7900 TheRock GGUF Q4_K_S medians:
+
+| Workload | Prefill | Decode | Tracked peak | Correctness sanity |
+| --- | ---: | ---: | ---: | --- |
+| 512/128 | `2281.321 tok/s` | `92.777 tok/s` | `20.185 GiB` | measured final IDs `[51515,51515,51515]` |
+| 4K/128 | `2576.232 tok/s` | `100.475 tok/s` | `21.335 GiB` | measured final IDs `[85,85,85]`; first discarded warmup still wrong (`236567`), second warmup correct |
+
+PARO command shape inside clean env:
+
+```bash
+python scripts/qwen35_paro_bench.py \
+  --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e \
+  --backend hip_gfx1100 --shared-expert-format packed_paro_w4 \
+  --token-id 9707 --prompt-length <512|4096> --decode-tokens 128 \
+  --warmup-decode-tokens 4 --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build \
+  --attn-aotriton-min-tokens 512 --graph-replay-decode \
+  --json /tmp/paro-therock713-spot/shisa-packed-<P>-128-therock713-cached-spot.json
+```
+
+W7900 TheRock PARO shisa packed single-run spots:
+
+| Workload | Prefill | Decode | Tracked peak | Sanity |
+| --- | ---: | ---: | ---: | --- |
+| 512/128 | `1752.975 tok/s` | `103.046 tok/s` | `18.023 GiB` | preview `[9707,9707]` |
+| 4K/128 | `2660.201 tok/s` | `103.885 tok/s` | `18.902 GiB` | preview `[9707,9707]` |
+
+Comparison notes:
+
+- Fresh RX 7900 XTX Q4_K_S has only a 4K/128 spot (`2500.4/100.17/21.33`). W7900 TheRock Q4_K_S 4K/128 is `+3.0%` prefill and `+0.3%` decode vs that row.
+- Fresh RX 7900 XTX PARO rows are z-lab/Qwen3.5-35B-A3B-PARO, while W7900 spot uses shisa/Qwen3.6 packed PARO because the z-lab checkpoint is not present locally. W7900 shisa PARO is faster on prefill (`+35.0%` at 512, `+12.0%` at 4K) and slower on decode (`-3%`) vs those RX z-lab rows, but this is not an apples-to-apples model comparison.
+- TheRock `hipMemGetInfo` continues to report invalid low/negative process memory on this mixed setup; table uses hipEngine tracked peak.
+
+Diagnostic artifact:
+
+```text
+benchmarks/results/2026-05-23-hipengine-w7900-therock713-gguf-paro-512-4k-spot-diagnostic.json
+```

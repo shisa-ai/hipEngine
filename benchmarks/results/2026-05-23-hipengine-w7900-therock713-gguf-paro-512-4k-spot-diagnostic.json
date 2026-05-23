@@ -1,0 +1,186 @@
+{
+  "schema": "hipengine_benchmark_v1",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "date": "2026-05-23",
+  "label": "w7900_therock713_spot_vs_rx7900xtx_512_4k",
+  "git_commit_under_test": "e76e034",
+  "hardware": {
+    "w7900": "AMD Radeon Pro W7900 gfx1100",
+    "rx7900xtx": "AMD Radeon RX 7900 XTX gfx1100"
+  },
+  "software": {
+    "w7900_rocm": "TheRock HIP 7.13.26162-1140233ffe, clean env with rocm-sdk root first",
+    "rx7900xtx_source": "benchmarks/7900XTX.md fresh run, TheRock HIP 7.13.60940-478a7a43c6"
+  },
+  "model_notes": [
+    "GGUF W7900 spot is Qwen3.6-35B-A3B-UD-Q4_K_S with 2 warmups/3 measured persistent-session medians.",
+    "RX 7900 XTX has a fresh Q4_K_S spot only at 4K/128; 512/128 GGUF comparison uses RX Q4_K_M as a nearby non-apples-to-apples reference.",
+    "PARO W7900 spot uses shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed; RX PARO fresh rows use z-lab/Qwen3.5-35B-A3B-PARO, so PARO deltas are hardware+model combined, not apples-to-apples."
+  ],
+  "w7900_results": {
+    "gguf_q4_k_s": {
+      "512": {
+        "raw_json": "/tmp/q4ks-persistent-bench/q4ks-512-128-persistent-therock713-2warm-3run-spot.json",
+        "prefill_tok_s_samples": [
+          2254.4983603512605,
+          2281.3208891593054,
+          2299.9250709038993
+        ],
+        "prefill_tok_s_median": 2281.3208891593054,
+        "decode_tok_s_samples": [
+          92.68270540397417,
+          92.77665250525543,
+          92.77729276013666
+        ],
+        "decode_tok_s_median": 92.77665250525543,
+        "tracked_peak_gib_median": 20.18540597707033,
+        "final_token_ids_measured": [
+          51515,
+          51515,
+          51515
+        ],
+        "warmup_final_token_ids": [
+          51515,
+          51515
+        ],
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0,
+          "attn_aotriton_min_tokens": 512,
+          "auto_tune": true,
+          "chunk_tune_min_tokens": 1025
+        }
+      },
+      "4096": {
+        "raw_json": "/tmp/q4ks-persistent-bench/q4ks-4096-128-persistent-therock713-2warm-3run-spot.json",
+        "prefill_tok_s_samples": [
+          2581.7072446025236,
+          2576.231935789469,
+          2566.5667068968382
+        ],
+        "prefill_tok_s_median": 2576.231935789469,
+        "decode_tok_s_samples": [
+          100.53542804857213,
+          100.47477699619948,
+          100.36690856396999
+        ],
+        "decode_tok_s_median": 100.47477699619948,
+        "tracked_peak_gib_median": 21.334858000278473,
+        "final_token_ids_measured": [
+          85,
+          85,
+          85
+        ],
+        "warmup_final_token_ids": [
+          236567,
+          85
+        ],
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024,
+          "attn_aotriton_min_tokens": 512,
+          "auto_tune": true,
+          "chunk_tune_min_tokens": 1025
+        }
+      }
+    },
+    "paro_shisa_qwen36_packed_bf16kv": {
+      "512": {
+        "raw_json": "/tmp/paro-therock713-spot/shisa-packed-512-128-therock713-cached-spot.json",
+        "prefill_tok_s": 1752.9753314365116,
+        "decode_tok_s": 103.04645467978476,
+        "tracked_peak_gib": 18.023083087988198,
+        "load_seconds": 26.26695595800993,
+        "generated_preview_token_ids": [
+          9707,
+          9707
+        ],
+        "prefill_chunk_sizes": {
+          "linear": 0,
+          "moe": 0,
+          "full_attn_query": 0,
+          "full_attn_post": 0,
+          "full_attn_rope": 0
+        }
+      },
+      "4096": {
+        "raw_json": "/tmp/paro-therock713-spot/shisa-packed-4096-128-therock713-cached-spot.json",
+        "prefill_tok_s": 2660.2011188573524,
+        "decode_tok_s": 103.88495945205428,
+        "tracked_peak_gib": 18.901777104474604,
+        "load_seconds": 24.60055242900853,
+        "generated_preview_token_ids": [
+          9707,
+          9707
+        ],
+        "prefill_chunk_sizes": {
+          "linear": 1024,
+          "moe": 1024,
+          "full_attn_query": 4096,
+          "full_attn_post": 1024,
+          "full_attn_rope": 1024
+        }
+      }
+    }
+  },
+  "rx7900xtx_references": {
+    "gguf_q4_k_s_4096": {
+      "prefill_tok_s": 2500.3553971180822,
+      "decode_tok_s": 100.16864307105993,
+      "tracked_peak_gib": 21.33485896140337
+    },
+    "gguf_q4_k_m_512": {
+      "prefill_tok_s": 1535.749348601151,
+      "decode_tok_s": 91.01031959503979,
+      "tracked_peak_gib": 21.34165693819523
+    },
+    "gguf_q4_k_m_4096": {
+      "prefill_tok_s": 2425.4159043723885,
+      "decode_tok_s": 99.23188112362747,
+      "tracked_peak_gib": 22.49110896140337
+    },
+    "paro_zlab_qwen35_bf16kv_512": {
+      "prefill_tok_s": 1298.6768132730813,
+      "decode_tok_s": 106.21827382901834,
+      "tracked_peak_gib": 18.075381056405604
+    },
+    "paro_zlab_qwen35_bf16kv_4096": {
+      "prefill_tok_s": 2374.466739002909,
+      "decode_tok_s": 107.44630258276779,
+      "tracked_peak_gib": 18.954074916429818
+    }
+  },
+  "comparisons": {
+    "gguf_q4ks_4096_w7900_vs_rx_q4ks_delta_pct": {
+      "prefill": 3.034630147331945,
+      "decode": 0.30561852068054446,
+      "tracked_peak": -4.504950788481579e-06
+    },
+    "gguf_q4ks_512_w7900_vs_rx_q4km_reference_delta_pct_non_apples_to_apples": {
+      "prefill": 48.54773607667578,
+      "decode": 1.9408050846048301,
+      "tracked_peak": -5.417812517900384
+    },
+    "paro_512_w7900_shisa36_vs_rx_zlab35_delta_pct_model_mismatch": {
+      "prefill": 34.981645434821665,
+      "decode": -2.9861332093753705,
+      "tracked_peak": -0.28933259140820483
+    },
+    "paro_4096_w7900_shisa36_vs_rx_zlab35_delta_pct_model_mismatch": {
+      "prefill": 12.033623177826849,
+      "decode": -3.3145329761069675,
+      "tracked_peak": -0.2759185673043881
+    }
+  },
+  "raw_logs": {
+    "gguf": "/tmp/q4ks-persistent-bench/q4ks-512-4096-therock713-spot.log",
+    "paro": "/tmp/paro-therock713-spot/shisa-packed-512-4096-therock713-cached-spot.log"
+  }
+}
