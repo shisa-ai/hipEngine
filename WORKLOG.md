@@ -22354,3 +22354,38 @@ Main findings:
 - INCONCLUSIVE: staged rotate+GEMV with keyed barrier. M13.B.1/B.2 showed the naive/staged-with-memset versions fail; only revisit with a keyed persistent barrier design.
 
 Updated `docs/DFLASH.md` R3.2 row/status to point to the new cost-model doc. R3.6 should be narrow (one drafter fuse + one verifier fuse) and should not distract from R3.4 dense WMMA.
+
+## 2026-05-23 perf(dflash): R3.1 GPU sanity result — exact, but blocked for performance
+
+User clarified GPU is available; ran GPU validation instead of deferring.
+
+Commands/results (W7900, target `/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16`, drafter `/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719`):
+
+1. Baseline fixed-B control:
+```bash
+python3 scripts/dflash_chain_e2e_bench.py --max-prompts 4 --decode-tokens 16 --draft-budgets 4 \
+  --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --adaptive-budget off \
+  --json benchmarks/results/2026-05-23-hipengine-dflash-r3.1-w7900-adaptive-off-b4-d16-4prompt-control.json
+```
+Result: exact AR passed, aggregate `0.424x` AR.
+
+2. First adaptive attempt (`--adaptive-budget on`) failed exact AR on 3/4 prompts. Debug showed switching from native bulk verifier state to c=1 `_slot_step` AR fallback diverges after more than one fallback token (quicksort mismatch at token 10). Serial verifier control (`--verifier-mode serial_in_place_single_slot`) passed exact, confirming the controller state machine is not the correctness issue; the blocker is native-bulk -> c=1 slot-state compatibility.
+
+3. Patched adaptive fallback for `native_bulk_bplus1` to use a root-only native-bulk verifier pass (`root + one inactive dummy`) instead of c=1 `_slot_step` after demotion. Also fixed normalized artifacts to retain `spec.adaptive_budget`.
+
+4. Re-run adaptive sanity:
+```bash
+python3 scripts/dflash_chain_e2e_bench.py --max-prompts 4 --decode-tokens 16 --draft-budgets 4 \
+  --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --adaptive-budget on \
+  --json benchmarks/results/2026-05-23-hipengine-dflash-r3.1-w7900-adaptive-controller-b4-d16-4prompt-sanity-v2.json
+```
+Result: exact AR passed (`4/4` rows), but aggregate fell to `0.404x` AR vs fixed-B control `0.424x`. Root-only fallback is exact but too slow: steady fallback token wall ~`18.4 ms/token`, first fallback often `50–60 ms` because drafter cache projection/commit catches up. That is ~2x AR token wall (~9.2 ms), so it cannot satisfy the R3.1 `>=0.95x per prompt` guard.
+
+Conclusion: R3.1 remains default-off and is **blocked**, not promotable. Two follow-up tasks created:
+- #34 Fix native-bulk -> c=1 AR handoff for adaptive fallback (true AR-speed fallback).
+- #35 Design pre-DFlash prompt gate so obviously bad prompts route to AR before paying any DFlash cycle.
+
+Validation after patch:
+- `python3 -m py_compile scripts/dflash_chain_e2e_bench.py hipengine/benchmark/speculative.py`
+- `PYTHONPATH=. pytest -q tests/test_adaptive_budget.py tests/test_speculative_benchmark.py` -> 10 passed
+- GPU sanity artifact exact: `benchmarks/results/2026-05-23-hipengine-dflash-r3.1-w7900-adaptive-controller-b4-d16-4prompt-sanity-v2.json`

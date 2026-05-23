@@ -323,6 +323,7 @@ def normalize_speculative_row(raw: Mapping[str, Any], *, row_index: int = 0) -> 
             "draft_native_phase_seconds": _float_dict(spec.get("draft_native_phase_seconds")),
             "draft_graph": _dict_or_none(spec.get("draft_graph")),
             "draft_fusion": _dict_or_none(spec.get("draft_fusion")),
+            "adaptive_budget": _dict_or_none(spec.get("adaptive_budget")),
             "drafter_context_mode": _optional_str(spec.get("drafter_context_mode")),
             "draft_phase_timing_mode": _optional_str(spec.get("draft_phase_timing_mode")),
             "proposal_trace_sample": _json_list(spec.get("proposal_trace_sample")),
