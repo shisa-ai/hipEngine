@@ -25589,3 +25589,86 @@ in scope for this entry.
 `README.md`, `benchmarks/README.md`, `benchmarks/CHANGELOG.md`,
 `benchmarks/results/2026-05-23-hipengine-qwen36-35b-a3b-q4ks-w7900-readme-sweep-accepted.json`,
 `WORKLOG.md`.
+
+## 2026-05-23 — W7900 GGUF cold-start follow-up
+
+Investigated the W7900 cold-start hypothesis raised by the 2026-05-23 README
+sweep (commit `9f3caae`). The user asked specifically about the rocm-smi
+"low-power state" warning and whether we can work around the cold start /
+induce warmup without sudo.
+
+### What the rocm-smi warning actually means
+
+- `rocm-smi --showperflevel` reported `Performance Level: auto` and
+  `--showclkfrq` only exposes two static sclk DPM levels (`0: 500Mhz` and
+  `1: 1760Mhz`, plus `S: 0Mhz *` standby).
+- The "WARNING: AMD GPU device(s) is/are in a low-power state" is a sampler
+  artifact: rocm-smi observed `S/0Mhz` at the moment of the call because the
+  card was idle between benches. ROCm/ROCm#5849 + the PR #2510 fix referenced
+  there just adjust the warning text. RDNA3 (Navi 3x = W7900) has **full**
+  support for performance levels and determinism per
+  https://rocm.docs.amd.com/projects/amdsmi/en/develop/conceptual/perf-determinism.html.
+- Direct sysfs probing during prefill (`/sys/class/drm/card1/device/pp_dpm_sclk`)
+  shows the W7900 SMU boosting to **2920-2977 MHz** under load, far past the
+  static DPM ceiling of 1760 MHz. So the "low-power state" warning is benign.
+
+### Cold-start is real but small, and the bench harness already mitigates it
+
+Ran a persistent-session diagnostic (one `Qwen35GGUFResidentSession`,
+`session.reset()` between iters) at 512/128:
+
+| Run mode                       | iter1 tok/s | iter2-N steady tok/s | iter1 vs steady |
+| ------------------------------ | ----------: | -------------------: | --------------- |
+| 8 iters, no wake-up            | `1416.37`   | mean `1573.30` (n=7) | `-9.98%`        |
+| 1 wake-up prefill + 5 iters    | `1553.41`   | mean `1577.11` (n=4) | `-1.50%`        |
+
+So a single wake-up prefill closes the cold-start gap from ~10% to within
+bench noise. The existing bench harness (`scripts/qwen35_gguf_bench.py`) does
+exactly this implicitly via `--warmup-runs 1`: the warmup_run runs a full
+prefill+decode before the timed measured_run, leaving the GPU warm enough that
+the next session's first prefill begins at near-steady-state even though that
+next session pays ~60 s of model-load work before its first kernel. The
+2026-05-23 sweep measured runs already reflect this: 4K/128 measured samples
+are `[1740.99, 1736.81, 1735.70]` (warmup `1722.64`), and 32K/128 measured are
+`[1390.41, 1384.03, 1380.08]` (warmup `1401.41`) - tight steady-state.
+
+### Cold-start does NOT explain the W7900-vs-RX-7900-XTX 4K prefill gap
+
+At 4K/128 Q4_K_S on the W7900 the bench measured `1736.812 tok/s` (warmup
+`1722.637`, measured median `1736.812`). The RX 7900 XTX final-gate measured
+`2722.508 tok/s` on the same source commit and kernels. The W7900 is `-36%`
+even after the harness's warmup has run. Cold-start cannot explain a
+steady-state gap on a shape whose prefill takes ~2.4 s (more than enough for
+SMU to ramp to peak boost). This is a separate investigation (sustained clock
+sampling on both hosts, HIP/clang version comparison) and is not addressed
+by warmup.
+
+### Workarounds available now
+
+1. **No-sudo (already in effect for our reported numbers):** keep
+   `--warmup-runs 1` in the bench protocol. The first warmup_run prefills the
+   GPU so subsequent measured runs see warm steady-state. Removing
+   `--warmup-runs` would re-introduce the ~10% iter1 cold-start at 512/128.
+   For one-shot serving / single-request benchmarks where there is no warmup
+   budget, add a small in-process wake pulse (e.g. one throwaway prefill, or
+   a 50-100 ms dummy GEMM) before the timed call.
+2. **Sudo (if available):** `sudo bash -c 'echo high >
+   /sys/class/drm/card1/device/power_dpm_force_performance_level'` (or the
+   equivalent `sudo rocm-smi --setperflevel high`) pins DPM to the highest
+   level for the duration of the run; restore with `auto` afterwards. RDNA3
+   supports this fully per the amd-smi perf-level docs. We did not test this
+   on `epyc` because the agent does not have non-interactive sudo.
+3. **(Future) Persistent-session bench harness:** make the bench reuse one
+   session across `--measured-runs`. Cuts total bench wall-clock by roughly
+   `N x load_seconds` (~3 min at 512/128, ~12 min at 128K/128 for N=3), and
+   removes the per-run idle gap entirely. Not implemented in this entry;
+   the current artifacts above already give steady-state numbers via warmup.
+
+### Files
+
+- Diagnostic artifact (compact rollup of both persistent-session probes plus
+  the rocm-smi/sysfs observations):
+  `benchmarks/results/2026-05-23-hipengine-qwen36-35b-a3b-q4ks-w7900-cold-start-diagnostic.json`.
+- Probe script kept under `/tmp/q4ks-w7900-bench/persistent_session_smoke.py`
+  for now; if we keep iterating on cold-start work it should move under
+  `scripts/` with a proper CLI surface.

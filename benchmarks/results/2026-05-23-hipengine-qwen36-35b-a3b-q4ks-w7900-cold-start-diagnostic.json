@@ -1,0 +1,144 @@
+{
+  "schema": "hipengine_benchmark_v1",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "label": "qwen36_35b_a3b_gguf_q4ks_w7900_cold_start_diagnostic",
+  "date": "2026-05-23",
+  "git_commit_under_test": "9f3caae",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "host": "epyc",
+    "device_total_gib": 47.999,
+    "note": "Diagnostic probe of the W7900 cold-start hypothesis raised by the 2026-05-23 README sweep. Persistent Qwen35GGUFResidentSession with N consecutive prefills, sampling /sys/class/drm/card1/device/pp_dpm_sclk before and after each prefill."
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+  "quant": "gguf_q4_k_s",
+  "backend": "hip_gfx1100",
+  "shape": "512 prompt tokens, single prefill per iter",
+  "rocm_smi_baseline": {
+    "showperflevel": "Performance Level: auto",
+    "showclkfrq_supported_sclk": [
+      "S: 0Mhz *",
+      "0: 500Mhz",
+      "1: 1760Mhz"
+    ],
+    "note": "rocm-smi reports only two static DPM sclk levels (500 / 1760 MHz) on this W7900 driver, but pp_dpm_sclk observed up to 2977 MHz under load - the SMU boosts past the static DPM ceiling. The 'low-power state' warning from rocm-smi is the sampler observing the S/standby state at the moment of the read, not a sustained idle. (ROCm/ROCm#5849 + PR #2510 just tones the warning text down.)"
+  },
+  "runs": {
+    "no_wakeup_8iter": {
+      "raw_json": "benchmarks/results/persistent-512-8reset.json",
+      "wakeup_prefills": 0,
+      "reset_between": true,
+      "prefill_tok_s_samples": [
+        1416.3724858563921,
+        1566.7241835337888,
+        1570.78062352995,
+        1569.4645660700085,
+        1575.5225827481781,
+        1564.3567713760278,
+        1574.9304927141243,
+        1587.3379490152017
+      ],
+      "iter1_tok_s": 1416.3724858563921,
+      "iter2_plus_mean_tok_s": 1572.7310241410398,
+      "iter1_vs_iter2plus_pct": 11.039365692712353,
+      "iter_sclk_before_after": [
+        [
+          "1: 2975Mhz *",
+          "1: 2558Mhz *"
+        ],
+        [
+          "1: 2982Mhz *",
+          "1: 2553Mhz *"
+        ],
+        [
+          "1: 2953Mhz *",
+          "1: 2576Mhz *"
+        ],
+        [
+          "1: 2930Mhz *",
+          "1: 2560Mhz *"
+        ],
+        [
+          "1: 2930Mhz *",
+          "1: 2558Mhz *"
+        ],
+        [
+          "1: 2951Mhz *",
+          "1: 2468Mhz *"
+        ],
+        [
+          "1: 2922Mhz *",
+          "1: 2547Mhz *"
+        ],
+        [
+          "1: 2933Mhz *",
+          "1: 2551Mhz *"
+        ]
+      ]
+    },
+    "wakeup1_5iter": {
+      "raw_json": "benchmarks/results/persistent-512-wakeup.json",
+      "wakeup_prefills": 1,
+      "reset_between": true,
+      "prefill_tok_s_samples": [
+        1553.4133285304006,
+        1583.5350801204604,
+        1581.764347859377,
+        1578.4164133657594,
+        1564.7322026763177
+      ],
+      "iter1_tok_s": 1553.4133285304006,
+      "iter2_plus_mean_tok_s": 1577.1120110054785,
+      "iter1_vs_iter2plus_pct": 1.5255876874378282,
+      "iter_sclk_before_after": [
+        [
+          "1: 2367Mhz *",
+          "1: 2504Mhz *"
+        ],
+        [
+          "1: 2915Mhz *",
+          "1: 2473Mhz *"
+        ],
+        [
+          "1: 2929Mhz *",
+          "1: 2559Mhz *"
+        ],
+        [
+          "1: 2929Mhz *",
+          "1: 2557Mhz *"
+        ],
+        [
+          "1: 2977Mhz *",
+          "1: 2537Mhz *"
+        ]
+      ]
+    }
+  },
+  "findings": [
+    "Persistent-session probe at 512/128 confirms a per-session cold-start: iter1 at 1416.37 tok/s vs iter2-8 mean 1573.30 tok/s (-9.98% relative to steady-state; +11.09% from cold to warm).",
+    "Adding a single throwaway wake-up prefill before the timed iters closes the gap: iter1 at 1553.41 tok/s vs iter2-5 mean 1577.11 tok/s (-1.50%); first-vs-steady is within bench noise.",
+    "Observed sclk under load reaches 2920-2977 MHz, well past the rocm-smi --showclkfrq DPM level1 ceiling of 1760 MHz. The W7900 boosts via SMU PMFW even when the static DPM table only exposes 1760 MHz as the highest fixed level.",
+    "The session-per-run bench harness (scripts/qwen35_gguf_bench.py) already mitigates most of the cold-start via `--warmup-runs 1`: the per-run warmup_run prefill+decode appears to leave the GPU warm enough for the next session's prefill to begin at near-steady-state, even though that next session pays ~60 s of model-load work before its first kernel.",
+    "Cold-start is only material at 512/128 in this measurement set: longer shapes (4K/32K/128K) have prefill_seconds >= 2.4s and the warmup_run vs measured_run prefill samples are within 1% (see /tmp/q4ks-w7900-bench/q4ks-*.json), so cold-start is not the explanation for the W7900-vs-RX-7900-XTX 4K prefill gap (1737 vs 2722 tok/s; -36%).",
+    "Setting `power_dpm_force_performance_level=high` requires root on this host (sysfs is 0644 root:root, the `video` group has no write access, and `sudo` is interactive). A no-sudo workaround is a small in-process wake-up prefill at session start, demonstrated by scripts/qwen35_gguf_bench.py's existing `--warmup-runs 1` and explicitly by this diagnostic's `--wakeup-prefills 1` mode."
+  ],
+  "recommendations": [
+    {
+      "id": "A1",
+      "scope": "bench-harness (no-sudo)",
+      "change": "Promote --wakeup-prefills 1 (or a 50-100 ms small-kernel wake pulse) inside qwen35_gguf_bench.py before the timed prefill of the first measured run. The first warmup_run already does this implicitly via a full prefill+decode; nothing additional is required for the current 1 warmup + N measured protocol unless --warmup-runs is reduced to 0."
+    },
+    {
+      "id": "A2",
+      "scope": "sudo-only",
+      "change": "`sudo bash -c 'echo high > /sys/class/drm/card1/device/power_dpm_force_performance_level'` (or `sudo rocm-smi --setperflevel high`) pins DPM to level1 for the duration of the bench. Restore with `auto` afterwards. RDNA3 / Navi 3x supports this fully per rocm.docs.amd.com/projects/amdsmi perf-determinism.html."
+    },
+    {
+      "id": "B1",
+      "scope": "follow-up investigation, NOT cold-start",
+      "change": "The 4K Q4_K_S prefill gap (W7900 1737 vs RX 7900 XTX 2722 tok/s) is steady-state and not addressed by warmup. Diagnose with same-commit cross-host runs that capture pp_dpm_sclk samples during prefill, plus a HIP/clang version comparison between hosts. Filed as a future task; out of scope here."
+    }
+  ]
+}
