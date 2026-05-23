@@ -25933,3 +25933,36 @@ Same-environment PARO result table (`prefill tok/s / decode tok/s / tracked GiB`
 | 4K/128 | 2411.222 / 111.722 / 18.954 | 2396.599 / 111.518 / 18.954 | prefill -0.61%, decode -0.18% |
 
 Conclusion: no evidence of a GGUF-merge code regression in this same-environment PARO spot-check. The much larger gap vs older W7900/v0.1.1 artifacts and the 2026-05-21 RX diagnostic is likely due to run environment, clocks, or measurement protocol rather than the GGUF merge itself. Saved compact summary artifact `benchmarks/results/2026-05-23-rx7900xtx-paro-v011-current-regression-check.json`; raw verbose rerun JSONs were not retained.
+
+## 2026-05-23 — ROCm 7.14 therock latest-HEAD PARO check
+
+After the `therock` env was upgraded with `pip install --index-url https://rocm.nightlies.amd.com/v2/gfx110X-all/ "rocm[libraries,devel]" -U` and `rocm-sdk init`, tested latest hipEngine HEAD `9df2e1ce55e5` on the same RX 7900 XTX with the PARO BF16 KV 512/128 and 4K/128 spot-check.
+
+Environment:
+
+- Python: `/home/lhl/miniforge3/envs/therock/bin/python` 3.12.13.
+- ROCm Python packages: `rocm`, `rocm-sdk-core`, `rocm-sdk-devel`, and `rocm-sdk-libraries-gfx110X-all` all `7.14.0a20260522`.
+- SDK root/bin: `/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel`; hipcc prints `HIP version: 7.13.26202-e682406a65` and clang `23.0.0git` `5c9bfa94a37c59923dee3c55942566db7904b659+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6`.
+- `torch` remains `2.10.0+rocm7.13.0a20260403`, but this benchmark does not use torch on the hipEngine PARO hot path.
+
+Command template:
+
+```bash
+PY=/home/lhl/miniforge3/envs/therock/bin/python
+ROCM_DEV=$(/home/lhl/miniforge3/envs/therock/bin/rocm-sdk path --root)
+ROCM_BIN=$(/home/lhl/miniforge3/envs/therock/bin/rocm-sdk path --bin)
+ROCM_LIBS=/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all
+export PATH=$ROCM_BIN:$PATH
+export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$ROCM_DEV/lib:$ROCM_LIBS/lib:/opt/rocm-6.2.0/lib:$LD_LIBRARY_PATH
+$ROCM_BIN/hipcc --version > /tmp/hipengine-rocm714-hipcc-version.txt
+PYTHONPATH=. "$PY" scripts/qwen35_paro_bench.py --model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --prompt-length <512|4096> --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --compiler-version-file /tmp/hipengine-rocm714-hipcc-version.txt --attn-aotriton-min-tokens 512 --graph-replay-decode --json /tmp/hipengine-rocm714-paro/<out>.json
+```
+
+Two runs per shape; table uses median (`prefill tok/s / decode tok/s / tracked GiB`) and compares against the earlier same-machine ROCm 7.13 current-tree spot-check from `benchmarks/results/2026-05-23-rx7900xtx-paro-v011-current-regression-check.json`:
+
+| Workload | ROCm 7.13 current ref | ROCm 7.14 current HEAD median | Delta vs ROCm 7.13 current |
+| --- | ---: | ---: | ---: |
+| 512/128 | 1356.121 / 110.496 / 18.075 | 1298.920 / 105.287 / 18.075 | prefill -4.22%, decode -4.71% |
+| 4K/128 | 2396.599 / 111.518 / 18.954 | 2366.866 / 107.184 / 18.954 | prefill -1.24%, decode -3.89% |
+
+Conclusion: no improvement from this ROCm 7.14 nightly for these two PARO shapes; it is a small regression versus the prior ROCm 7.13 same-environment current run, with unchanged tracked memory. Saved compact artifact `benchmarks/results/2026-05-23-rx7900xtx-rocm714-current-head-paro-512-4k-check.json`.
