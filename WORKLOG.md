@@ -25853,3 +25853,68 @@ Saved compact diagnostic artifact:
 `benchmarks/results/2026-05-23-hipengine-qwen36-35b-a3b-q4ks-persistent-session-w7900-gap-review.json`.
 It includes the persistent-session clean sweep, wall-time speedups, no-chunk
 4K probe, W7900 clock-sampling summary, and PARO-vs-GGUF cross-host evidence.
+
+## 2026-05-23 — RX 7900 XTX benchmark sweep report
+
+Created `benchmarks/7900XTX.md` and compact JSON artifacts under `benchmarks/results/2026-05-23-rx7900xtx-*` for a local RX 7900 XTX/gfx1100 rerun of the comparison families used in the benchmark rollup: hipEngine PARO, hipEngine GGUF, llama.cpp HIP, and llama.cpp Vulkan.
+
+Environment captured in the report:
+
+- GPU: AMD Radeon RX 7900 XTX, gfx1100, 23.984 GiB VRAM, Samsung, PCI bus `0000:03:00.0`, VBIOS `113-EXT89622-001`.
+- Power/UC/OD: `rocm-smi -P` max graphics package power `290 W`; sysfs OD state `OD_SCLK 500/2500 MHz`, `OD_MCLK 97/1250 MHz`, `OD_VDDGFX_OFFSET -50 mV`; active profile at capture `BOOTUP_DEFAULT*`.
+- Kernel/driver/software: Linux `7.0.0-070000-generic`; successful hipEngine JIT used TheRock HIP `7.13.60940-478a7a43c6` with `/home/lhl/miniforge3/envs/therock/bin/python` 3.12.13; llama.cpp HIP/Vulkan binaries report build `59778f019` / build number `9174`; Vulkan RADV Mesa `26.0.5`.
+
+Main BF16/f16-KV one-shot results (`prefill tok/s / decode tok/s / peak GiB`; hipEngine peak is tracked allocator high-water, llama.cpp peak is whole-card sysfs VRAM sampled at 10 ms):
+
+| Workload | hipEngine PARO BF16 KV | hipEngine GGUF Q4_K_M | llama.cpp HIP f16 KV | llama.cpp Vulkan f16 KV |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | 1298.7 / 106.22 / 18.08 | 1535.7 / 91.01 / 21.34 | 2645.0 / 82.81 / 21.08 | 2826.0 / 112.22 / 20.72 |
+| 1K/128 | 1636.9 / 103.50 / 18.25 | 2084.9 / 96.65 / 21.52 | 2592.5 / 83.04 / 21.09 | 2825.6 / 111.64 / 20.73 |
+| 4K/128 | 2374.5 / 107.45 / 18.95 | 2425.4 / 99.23 / 22.49 | 2452.3 / 82.42 / 21.15 | 2705.3 / 104.18 / 20.84 |
+| 32K/128 | 2046.2 / 94.13 / 19.64 | 1867.2 / 86.77 / 23.30 | 1771.1 / 76.98 / 21.69 | 2074.8 / 98.54 / 21.41 |
+| 64K/128 | 1535.2 / 78.27 / 20.45 | blocked: OOM | 1328.9 / 72.20 / 22.32 | 589.0 / 90.28 / 22.09 |
+| 128K/128 | 1021.7 / 62.14 / 22.17 | blocked: OOM | 892.6 / 58.99 / 23.56 | 1095.9 / 76.83 / 23.47 |
+
+Compressed-KV max-context one-shot results:
+
+| Workload | hipEngine PARO INT8 KV | llama.cpp HIP Q8_0 KV | llama.cpp Vulkan Q8_0 KV |
+| --- | ---: | ---: | ---: |
+| 64K/128 | 1535.7 / 76.44 / 19.96 | 1316.7 / 51.35 / 23.58 | 1314.3 / 89.40 / 21.49 |
+| 128K/128 | 1020.7 / 60.40 / 21.18 | 886.0 / 36.48 / 23.96 | 804.9 / 75.49 / 22.28 |
+
+Additional Q4_K_S spot check for the README GGUF dual-column row: hipEngine GGUF Qwen3.6-35B-A3B UD-Q4_K_S 4K/128 measured `2500.4 / 100.17 / 21.33` tracked GiB (`21.85` sampled HIP GiB).
+
+Key commands:
+
+```bash
+# hipEngine PARO BF16 KV sweep; INT8 rows add --kv-storage int8_per_token_head --kv-scale-dtype fp16 --kv-scale-granularity per_token_head
+PYTHONPATH=. /home/lhl/miniforge3/envs/therock/bin/python scripts/qwen35_paro_bench.py --model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd --prompt-length <P> --token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --attn-aotriton-min-tokens 512 --graph-replay-decode --json benchmarks/results/<out>.json
+
+# hipEngine GGUF Q4_K_M sweep
+HIPENGINE_GGUF_AOTRITON_PREFILL=v3 HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. /home/lhl/miniforge3/envs/therock/bin/python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length <P> --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --json benchmarks/results/<out>.json
+
+# llama.cpp HIP/Vulkan split sweep wrapper
+/home/lhl/miniforge3/envs/therock/bin/python scripts/llamacpp_bench_with_peak.py --llama-bench <llama-bench> --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend <hip|vulkan> --workloads 512/128 1K/128 4K/128 32K/128 64K/128 128K/128 --repetitions 1 --ngl 99 --flash-attn 1 --cache-type-k f16 --cache-type-v f16 --poll 10 --card-name card1 --output benchmarks/results/<out>.json
+```
+
+These are diagnostic hardware rows, not promoted `benchmarks/README.md` fastest rows: each benchmark was a single measurement and the harness-level correctness was finite-logit/generation sanity, not the full KL/top-1 acceptance gate.
+
+Validation:
+
+```bash
+python3 - <<'PY'
+import json, glob
+for p in glob.glob('benchmarks/results/2026-05-23-rx7900xtx-*.json'):
+    json.load(open(p))
+print('json ok', len(glob.glob('benchmarks/results/2026-05-23-rx7900xtx-*.json')))
+PY
+# json ok 19
+python3 - <<'PY'
+from pathlib import Path
+text=Path('benchmarks/7900XTX.md').read_text()
+assert 'Date: 2026-05-23' in text
+assert '128K/128' in text and 'Q8_0 KV' in text
+print('md sanity ok')
+PY
+# md sanity ok
+```

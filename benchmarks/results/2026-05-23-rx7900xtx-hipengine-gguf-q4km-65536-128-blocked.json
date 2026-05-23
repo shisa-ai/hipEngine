@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "status": "blocked",
+  "performance_claim": false,
+  "date": "2026-05-23",
+  "hardware": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "vram_total_gib": 23.984375
+  },
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hipengine_hip_gfx1100",
+  "workload": "64K/128",
+  "prompt_length": 65536,
+  "decode_tokens": 128,
+  "command": "HIPENGINE_GGUF_AOTRITON_PREFILL=v3 HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. /home/lhl/miniforge3/envs/therock/bin/python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 65536 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --json benchmarks/results/2026-05-23-rx7900xtx-hipengine-gguf-q4km-65536-128.json",
+  "blocker": "HIP error 2: out of memory while allocating qwen35 GGUF full-attention prefill scratch recurrent_out during session construction",
+  "notes": [
+    "No JSON was emitted by the benchmark harness before the OOM; this compact blocked artifact preserves the failed shape for benchmarks/7900XTX.md."
+  ]
+}
