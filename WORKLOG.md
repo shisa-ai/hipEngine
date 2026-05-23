@@ -26440,3 +26440,11 @@ Artifact: `benchmarks/results/2026-05-23-paro-prefill-workspace-overlap-threshol
 After reviewing the crossover, adjusted the retained policy from the conservative 64K threshold to `>32K`: keep workspaces resident through 32K, then enable overlap minimization for prompts larger than 32K when chunk sizes actually split the prompt. Rationale: release is effectively tied at 32K (`+0.094%` prefill, `0.209729 GiB` saved) and already non-negative at 48K (`+0.182%`, `0.219571 GiB` saved), so carrying the ~0.2 GiB memory saving for >32K is worthwhile while still avoiding the clear 4K/8K/16K regressions.
 
 Implementation detail: `_PREFILL_OVERLAP_MIN_TOKENS=32768` and `_should_minimize_prefill_workspace_overlap()` returns false for `tokens <= 32768`.
+
+## 2026-05-23 — v0.1.2 changelog note + GGUF overlap audit
+
+Added a package changelog section for `v0.1.2 - Unreleased` marking the v0.1.1 PARO prefill workspace-overlap regression fix: 512/128-class prefill throughput is restored by keeping workspaces resident through 32K and only minimizing overlap for `>32K` prompts when active chunking splits the prompt.
+
+Audited the GGUF resident bulk prefill path for the same failure mode. The root-cause commit `328a1b3` only touched `hipengine/runtime/qwen35_paro_runner.py`; it did not touch GGUF. Current GGUF prefill preallocates token/hidden buffers and `_bulk_prefill_scratch` once during `Qwen35GGUFResidentSession.__post_init__` (`hipengine/runtime/qwen35_gguf_runner.py:2807-2818`) and reuses views via `_bulk_prefill_scratch.for_chunk(...)` inside `_run_bulk_prefill_and_sample` (`:3011-3013`, `:3053-3055`). A source audit of that timed bulk-prefill method found no `malloc(`, no `_release*`, and only one `free(` for the optional expert sidecar diagnostic path, which is not used by the README GGUF Q4_K_S persistent-session rows.
+
+Conclusion: the PARO v0.1.1 regression does not have an analogous active bug in the GGUF persistent path. GGUF keeps decode/full-stack scratch resident through prefill, so there is no similar free/alloc churn to remove for a speed win. A future memory-only GGUF experiment could release resident decode scratch around bulk prefill, but based on the PARO evidence that would need proof it is not a short/mid-context speed regression.

@@ -6,6 +6,16 @@ This changelog is for package/API releases. Performance rollup history remains i
 [`benchmarks/CHANGELOG.md`](benchmarks/CHANGELOG.md), with detailed benchmark
 evidence under [`benchmarks/results/`](benchmarks/results/).
 
+## v0.1.2 - Unreleased
+
+### Fixed
+
+- Fixed the PARO resident prefill workspace-overlap regression that shipped in
+  v0.1.1: short and mid prompts now keep prefill workspaces resident through
+  32K tokens, restoring 512/128-class prefill throughput while retaining the
+  long-context memory-saving path for prompts above 32K when active chunking
+  splits the prompt.
+
 ## v0.1.1 - 2026-05-19
 
 Patch release focused on long-context memory documentation and the INT8 KV cache
