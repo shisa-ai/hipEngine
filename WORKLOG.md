@@ -21974,3 +21974,56 @@ Updated `docs/DFLASH.md` Round-2 punchlist row R2.1 with the M14.dispatch.0-alph
 L9: Symmetric Python-side optimizations don't move cycle_cost. argtypes caching, library handle caching, raw-int call sites — all real wins but they speed AR and spec proportionally so the AR-tok-eq ratio stays flat. To move cycle_cost the optimization must be asymmetric: reduce per-launch overhead in a path that has more launches per cycle in spec than in AR.
 
 Next session entry point: implement M14.dispatch.1-beta per the design notes in DFLASH.md (new `kernels/hip_gfx1100/dispatch/moe_c1_dispatch.cpp` TU + Python `MoeC1DispatchCache` + `HIPENGINE_MOE_C1_C_DISPATCH=1` env gate).
+
+## 2026-05-23 perf(mtp): M14.dispatch.1-beta — C-side MoE C1 dispatcher (default-off, rejected pending investigation)
+
+**Status:** Bit-exact C dispatcher infrastructure landed gated by `HIPENGINE_MOE_C1_C_DISPATCH=1` (default off). With env on, exact_ar_match=True confirmed across smoke + 9-prompt bench suite, but **cycle_cost regresses +20%** (3.61→4.35 at B=3 W7900) due to a verify_ms_per_cycle increase of +6 ms (25.0→31.5). Smoke at 3 tokens shows +18% MTP throughput improvement, **directly contradicting** the bench-suite regression — needs proper rocprofv3 kernel-level investigation to resolve. Infrastructure is kept; default off so no behavior change unless explicitly opted in.
+
+**Implementation:**
+
+- `kernels/hip_gfx1100/dispatch/moe_c1_dispatch.hip` (~400 LoC C++): plain C++ in `.hip` file, no HIP includes. Two extern-C entry points `hipengine_moe_c1_dispatch_{linear,full}_fp16(FnTable*, Args*)` that call 11 (linear) / 10 (full) existing extern-C kernel launchers via typed function pointers reinterpret_cast from `void*`. Numerically identical to the unfused Python chain.
+- `kernels/hip_gfx1100/dispatch/moe_c1.py` (~180 LoC Python): `MoeC1Fns` / `MoeC1Args` ctypes Structures, `build_moe_c1_dispatch()`, `dispatch_{linear,full}_fp16()` wrappers.
+- `runtime/moe_c1_dispatch.py` (~280 LoC): `MoeC1DispatchCache` resolves 12 kernel-launcher function pointers and pre-fills ~50 layer-constant weight/scratch pointers + dims at first call per layer. Process-global singletons for the dispatch library and fns table (resolved once, not 40× as in the first cut).
+- `runtime/qwen35_paro.py`: `run_moe_c1_fp16` calls `_try_moe_c1_c_dispatch` first; on any precondition miss (env off, legacy w8a16 shared, tokens<2, group_size!=128, fused-rotate gates on, etc.) it falls back to the existing Python pipeline.
+
+**Validation:**
+
+- Smoke (`scripts/mtp_chain_e2e_smoke.py --decode-tokens 4 --candidate-budget 3`): exact_ar_match=True with env on and env off. Output tokens identical.
+- 9-prompt bench (`scripts/mtp-bench.py --mode hipengine-current --max-tokens 64`):
+  - env OFF: cycle_cost=3.601 (matches M13.B.0 baseline 3.612 within noise) ✓
+  - env ON: cycle_cost=4.349 (+20.7% vs OFF), verify_ms=31.46 (+25.7% vs OFF), exact_ar_match=True across all 9 prompts ✓ (correctness preserved, performance regresses)
+  - Regression varies by prompt; correlates with `visible_tokens_per_cycle` (higher acceptance → larger regression). Code prompts +27-31%; long_code_review +13%.
+
+**Where the regression is NOT:**
+
+- Not in Python wrapper overhead. cProfile shows `dispatch_linear_fp16` tottime 11.59ms/90calls = 129 µs/call (own); the entire Python dispatcher path is faster than the Python pipeline (~165-275 µs/layer in the 11-wrapper path).
+- Not in warmup cost. After moving library handles + fns table to module-global singletons, `_build_fns_table` is called 1× total (was 40×, 7150ms cumtime → 192ms).
+- Not in argument values. All ctypes args at the C-side kernel-launcher entry points have been audited against the Python wrapper call sites and match (tile_m=16, tile_n=16, threads=128/256, krots from `pairs.shape[0]`, out_packed from qweight.shape).
+
+**Where the regression IS (working hypothesis):**
+
+- Per-call kernel-launch time grows by ~14 µs on average. Across 40 layers × verifier cycles × 11 kernels/layer, that's ~6 ms/cycle.
+- 14 µs/kernel ≈ 1 full launch's worth of overhead — pattern fits "back-to-back hipLaunchKernelGGL calls with no Python gap cause GPU command-queue contention or barrier-reset/scratch-init stalls" (lesson L2 from M13.B.2: "Hidden host overhead: single-kernel fuses with implicit host-side init swallow the dispatch saving").
+- Specifically, `silu_mul_dual_rotate_out_fp16` is called twice per layer (kernels 4 and 8b for full-attn) and `awq_fusedw4_prefill_*` may have internal `hipMemsetAsync` for scratch counters that don't pipeline.
+- Confirming requires rocprofv3 --kernel-trace under both env states; if same kernels show different per-launch DurationNs, the issue is on the GPU side.
+
+**Smoke vs bench contradiction:**
+
+- 3-token smoke: MTP +18% throughput with env on.
+- 64-token bench: MTP cycle_cost +20% (worse) with env on.
+- One explanation: the smoke decode_tokens=3 is dominated by prefill amortization (model load + first-cycle JIT cache miss); the difference in steady-state cycle time gets masked. The bench's 64-token decode produces ~25 verifier cycles per prompt where the regression compounds visibly.
+
+**Files touched (4 commits-worth of work in this session bundled):**
+
+- `hipengine/kernels/hip_gfx1100/dispatch/moe_c1_dispatch.hip` (new)
+- `hipengine/kernels/hip_gfx1100/dispatch/moe_c1.py` (new)
+- `hipengine/kernels/hip_gfx1100/dispatch/__init__.py` (new)
+- `hipengine/runtime/moe_c1_dispatch.py` (new)
+- `hipengine/runtime/qwen35_paro.py`: `run_moe_c1_fp16` + new `_try_moe_c1_c_dispatch` helper + per-layer `_moe_c1_dispatch_cache` field
+
+**Artifacts:**
+
+- `benchmarks/results/2026-05-23-hipengine-mtp-bench-suite-w7900-m14.dispatch.1-beta-on-rejected.json`
+- `benchmarks/results/2026-05-23-hipengine-mtp-bench-suite-w7900-m14.dispatch.1-beta-off-baseline.json`
+
+**Next session:** Run `rocprofv3 --kernel-trace` on the verifier hot path with env=on vs env=off; identify which specific kernel(s) regress; if `silu_mul_dual_rotate_out_fp16` or `awq_fusedw4_prefill_*` show longer DurationNs under the dispatcher, the host-side init / barrier-reset hypothesis is confirmed and the fix is to surface those init steps to the Python caller (cache them, batch them). If kernel timings are identical between env-on/off, the issue is somewhere in the Python-side path that cProfile didn't surface — instrument with `roctxRangePush/Pop` markers around each kernel in the C dispatcher to see whether the time disappears between kernels.

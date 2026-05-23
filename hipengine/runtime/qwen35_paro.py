@@ -154,6 +154,7 @@ from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import (
 )
 from hipengine.kvcache import KVLiveSpans
 from hipengine.loading.qwen35_paro import Qwen35ParoLayerDeviceWeights, normalize_qwen35_weight_name
+from hipengine.runtime.moe_c1_dispatch import moe_c1_c_dispatch_enabled
 from hipengine.runtime.workspace import RuntimeWorkspace
 
 
@@ -311,6 +312,10 @@ class Qwen35ParoDecodeState:
         self.runtime = runtime
         self.workspace = workspace or RuntimeWorkspace(runtime=runtime)
         self._rotate_fuse_ready: set[int] = set()
+        # M14.dispatch.1-beta: lazy per-layer cache for the C-side MoE C1
+        # dispatcher.  Key: layer_kind ('linear_attention' | 'full_attention').
+        # Populated on first matching call from run_moe_c1_fp16.
+        self._moe_c1_dispatch_cache: object | None = None  # MoeC1DispatchCache
         shared_prefix = f"layers.{self.layer_weights.layer_id}.mlp.shared_expert"
         tensors = self.layer_weights.weights.tensors
         if normalize_qwen35_weight_name(f"{shared_prefix}.gate_up_weight_w8a16") in tensors:
@@ -6019,9 +6024,27 @@ class Qwen35ParoDecodeState:
         """Run the per-layer MoE pipeline.  When ``out`` is provided the final
         combine writes directly into it, avoiding the per-layer
         ``next_hidden = scratch.moe_out`` D2D copy in the verifier orchestrator
-        (M12.6 layer-output write-through)."""
+        (M12.6 layer-output write-through).
+
+        M14.dispatch.1-beta: when ``HIPENGINE_MOE_C1_C_DISPATCH=1`` and the
+        call pattern matches the C dispatcher's contract (paro_w4 shared,
+        tokens>1, no M13.B.1/B.2 fused-rotate, group_size==128), bundle the 6
+        sub-method calls + 11 underlying kernel launches into one extern-C
+        call to cut ~10 ctypes ABI transitions per layer.  Falls back to the
+        Python pipeline below for any unsupported call pattern.
+        """
 
         scratch = scratch or self.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        if self._try_moe_c1_c_dispatch(
+            hidden=hidden,
+            residual=residual,
+            out=out,
+            scratch=scratch,
+            tokens=tokens,
+            group_size=group_size,
+            stream=stream,
+        ) is not None:
+            return out or scratch.moe_out
         self.route_moe_topk_shared_fp16(hidden, scratch, tokens=tokens, library=library, stream=stream)
         self.selected_moe_gate_up_pack8_fp16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
         self.activate_rotate_moe_down_fp16(scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
@@ -6036,6 +6059,82 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
+
+    def _try_moe_c1_c_dispatch(
+        self,
+        *,
+        hidden: Tensor,
+        residual: Tensor,
+        out: Tensor | None,
+        scratch: Qwen35ParoMoeScratch,
+        tokens: int,
+        group_size: int,
+        stream: int,
+    ) -> Tensor | None:
+        """Return ``out`` if the C dispatcher was used, else None for fallback.
+
+        Preconditions for the C path (any failure -> Python fallback):
+
+        - ``HIPENGINE_MOE_C1_C_DISPATCH`` env enabled.
+        - paro_w4 shared expert (not legacy w8a16).
+        - ``tokens > 1`` (decode tokens=1 uses coop router; C path doesn't).
+        - ``group_size == 128`` (cached value; mismatches fall back).
+        - M13.B.1 fused-rotate disabled (else selected gate-up flow differs).
+        - M13.B.2 fused-shared-rotate disabled (else shared expert flow differs).
+        - Linear-attn layer-type OR full-attn at tokens<=small_batch_threshold.
+        - Shared-expert krots match (rotate2 fast path).
+        """
+
+        if not moe_c1_c_dispatch_enabled():
+            return None
+        if self._shared_expert_kind != "packed_paro_w4":
+            return None
+        if tokens < 2:
+            return None
+        if group_size != 128:
+            return None
+        if _moe_fused_rotate_enabled():
+            return None
+        if _shared_expert_fused_rotate_enabled():
+            return None
+
+        layer_id = self.layer_weights.layer_id
+        layer_kind = self.config.layer_types[layer_id]
+        if layer_kind not in {"linear_attention", "full_attention"}:
+            return None
+
+        # Shared-expert rotate2 requires gate_krot == up_krot.
+        shared = f"layers.{layer_id}.mlp.shared_expert"
+        gate_pairs = self.tensor(f"{shared}.gate_proj.pairs")
+        up_pairs = self.tensor(f"{shared}.up_proj.pairs")
+        if _rotation_krot(gate_pairs) != _rotation_krot(up_pairs):
+            return None
+
+        # Lazy-construct the per-layer cache on first matching call.
+        cache = self._moe_c1_dispatch_cache
+        if cache is None or cache.layer_kind != layer_kind:
+            from hipengine.runtime.moe_c1_dispatch import MoeC1DispatchCache
+            cache = MoeC1DispatchCache(
+                self,
+                layer_kind=layer_kind,
+                small_batch_threshold=_small_batch_decode_threshold(),
+            )
+            self._moe_c1_dispatch_cache = cache
+
+        if not cache.supports_call(tokens=tokens):
+            return None
+
+        target_out = out if out is not None else scratch.moe_out
+        cache.dispatch(
+            hidden=hidden,
+            residual=residual,
+            out=target_out,
+            scratch=scratch,
+            tokens=tokens,
+            group_size=group_size,
+            stream=stream,
+        )
+        return target_out
 
     def route_moe_topk_shared_bf16(
         self,
