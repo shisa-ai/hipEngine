@@ -26252,3 +26252,67 @@ Diagnostic artifact:
 ```text
 benchmarks/results/2026-05-23-hipengine-w7900-therock713-gguf-paro-512-4k-spot-diagnostic.json
 ```
+
+## 2026-05-23 — W7900.md TheRock 7.13 hipEngine PARO/GGUF sweep
+
+Completed the W7900 TheRock 7.13 hipEngine sweep requested for a
+`benchmarks/W7900.md` hardware document. The GPU work finished; no hang. Existing
+W7900 llama.cpp HIP/Vulkan Q4_K_M rows were reused from
+`benchmarks/results/2026-05-16-hipengine-qwen35-comparison-tables-diagnostic.json`
+and `benchmarks/results/2026-05-17-llamacpp-*-qwen36-peak.json`.
+
+The hipEngine runs used a clean TheRock environment with the `rocm-sdk path
+--root` bin/lib first. `hipcc` resolved to HIP `7.13.26162-1140233ffe`; W7900
+VBIOS is `113-D7070100-138`; host kernel is `7.0.9-1-cachyos`.
+
+Final W7900 TheRock rows (`prefill / decode / tracked peak`):
+
+| Workload | PARO shisa/Qwen3.6 packed BF16 KV | GGUF Q4_K_S |
+| --- | ---: | ---: |
+| 512/128 | `1752.975 / 103.046 / 18.023 GiB` | `2281.321 / 92.777 / 20.185 GiB` |
+| 4K/128 | `2660.201 / 103.885 / 18.902 GiB` | `2576.232 / 100.475 / 21.335 GiB` |
+| 32K/128 | `2092.315 / 90.748 / 19.588 GiB` | `1886.315 / 86.965 / 22.146 GiB` |
+| 128K/128 | `1055.946 / 59.441 / 22.122 GiB` | `995.744 / 58.124 / 25.108 GiB` |
+
+GGUF command shape:
+
+```bash
+python scripts/qwen35_gguf_bench.py --persistent-session \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf --quant gguf_q4_k_s \
+  --prompt-length <P> --decode-tokens 128 --warmup-decode-tokens 1 \
+  --warmup-runs 2 --measured-runs 3 --force-bulk-prefill \
+  --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build \
+  --json <out>
+```
+
+PARO command shape:
+
+```bash
+python scripts/qwen35_paro_bench.py \
+  --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e \
+  --backend hip_gfx1100 --shared-expert-format packed_paro_w4 \
+  --token-id 9707 --prompt-length <P> --decode-tokens 128 --warmup-decode-tokens 4 \
+  --max-layers 40 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt \
+  --require-cached-build --attn-aotriton-min-tokens 512 --graph-replay-decode \
+  --json <out>
+```
+
+Validation / caveats:
+
+- GGUF: 2 discarded warmups + 3 measured persistent-session runs per shape; final
+  measured IDs stable for every shape. The known TheRock first-discarded-warmup
+  anomaly remains at 4K (`236567` first warmup, then `85` second warmup and all
+  measured runs).
+- PARO: single run per shape, generated preview `[9707,9707]` for every shape;
+  no committed shisa KL/top-1 gate in this diagnostic refresh.
+- TheRock `hipMemGetInfo` still reports invalid low/negative used memory on this
+  mixed kernel/userspace setup, so hipEngine memory columns use tracked allocator
+  peak.
+
+Artifacts/docs:
+
+```text
+benchmarks/W7900.md
+benchmarks/results/2026-05-23-w7900-hipengine-therock713-paro-gguf-sweep-diagnostic.json
+```
