@@ -22204,3 +22204,28 @@ Result summary:
 **Docs/rollup:** Updated `docs/DFLASH.md` with a new R2.2 W7900 result section, marked R2.2 done-for-correctness but not promoted, updated R2.3/R2.4/R2.5 readiness, added lesson L11, and added a benchmark rollup/changelog diagnostic row.
 
 **Next:** Analyze next DFlash Round-2 lever. The R2.2 split says both sides matter: R2.3/R2.5 can reduce the `23.8 ms/cycle` drafter half; R2.4/R2.8 must reduce the `31.1 ms/cycle` target verifier half. DDTree remains premature until chain DFlash is close to AR.
+
+## 2026-05-23 docs(dflash): R2.3 triage after synced drafter phase split
+
+**Question:** What is R2.3 status after R2.2 unblocked with the real z-lab DFlash drafter?
+
+**Synced drafter diagnostic:**
+
+```bash
+python3 scripts/dflash_chain_e2e_bench.py \
+  --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --drafter-model z-lab/Qwen3.6-35B-A3B-DFlash \
+  --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --max-prompts 1 --decode-tokens 8 --draft-budgets 4 \
+  --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched \
+  --sync-draft-phases --hardware-gpu 'AMD Radeon Pro W7900' \
+  --json /tmp/dflash_r2_b4_d8_w7900_sync_draft_phases.json
+```
+
+Result: exact same-session AR equality still passes, speed remains diagnostic (`0.301x` AR). Phase split on quicksort: target verify `36.86 ms/cycle`, drafter `25.04 ms/cycle`; drafter decoder layers dominate at `19.60 ms/cycle`, lm-head `2.83 ms/cycle`, top-k/readback `0.40 ms/cycle`. Context/KV cache update is already negligible: context projection `0.022 ms/cycle`, `context_projection_rebuild_rows=0`, `kv_cache_cached_rows=369`.
+
+**R2.3 status:** Not implemented. Ready for design, but a key-only BeeLlama-style bucket change is unsafe in the current code. `NativeDFlashChainDrafter._bucket_for()` currently keys exact `context_tokens`; changing it to `cross_bucket()` without kernel changes would replay a graph with stale launch parameters because `_run_layer()` passes `context_tokens` into `dflash_concat_rows_*` and `dflash_gqa_attention_f32_bf16(total_kv=context_tokens+block_size)`, and query K/V are packed immediately after the live context rows. A replay at a different live context would either copy/query at the wrong offset or attend over padded/stale KV rows.
+
+**Required R2.3 design:** capture at bucket capacity only after the drafter concat/attention path is shape-safe. Likely options: bucketed concat/attention kernels that read live context length from a device scalar and mask padded rows, or a fixed bucket KV layout that writes query K/V at bucket offsets and applies an explicit live-row mask. Only then should the graph cache key switch from exact `context_tokens` to BeeLlama-style `cross_bucket()`.
+
+**Artifact:** `benchmarks/results/2026-05-23-hipengine-dflash-r2.2-w7900-b4-d8-sync-phase-diagnostic.json`.

@@ -1,0 +1,131 @@
+{
+  "command": "python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model z-lab/Qwen3.6-35B-A3B-DFlash --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --max-prompts 1 --decode-tokens 8 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --sync-draft-phases --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/dflash_r2_b4_d8_w7900_sync_draft_phases.json",
+  "correctness_gate": {
+    "all_exact_match_ar": true,
+    "all_finite_logits": true,
+    "correctness_pass_rows": 1,
+    "oracle": "same-session greedy AR equality plus finite AR/draft/verify logits",
+    "passed": true,
+    "rows": 1
+  },
+  "hardware": {
+    "arch": "gfx1100",
+    "backend": "hip_gfx1100",
+    "gpu": "AMD Radeon Pro W7900"
+  },
+  "models": {
+    "drafter": {
+      "dtype": "bf16",
+      "name": "z-lab/Qwen3.6-35B-A3B-DFlash",
+      "path": "z-lab/Qwen3.6-35B-A3B-DFlash",
+      "snapshot_revision": "42d3b34d588423cdae7ba8f53a8cf7789346a719"
+    },
+    "target": {
+      "name": "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed",
+      "path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+      "quant": "w4_paro_packed",
+      "snapshot_revision": "501ef8635e5cfb5a7497d232358ca8d1afc0c66e"
+    }
+  },
+  "performance_claim": false,
+  "purpose": "R2.2 synced drafter phase split to decide next Round-2 DFlash lever",
+  "schema": 1,
+  "status": "diagnostic",
+  "summary": {
+    "acceptance": {
+      "accept_histogram": {
+        "0": 1,
+        "1": 2,
+        "2": 1
+      },
+      "accepted_output_tokens": 4,
+      "avg_accept_length": 1.0,
+      "exact_rate_0_to_n": {
+        "0": 0.25,
+        "1": 0.5,
+        "10": 0.0,
+        "2": 0.25,
+        "3": 0.0,
+        "4": 0.0,
+        "5": 0.0,
+        "6": 0.0,
+        "7": 0.0,
+        "8": 0.0,
+        "9": 0.0
+      },
+      "ge_rate_1_to_n": {
+        "1": 0.75,
+        "10": 0.0,
+        "2": 0.25,
+        "3": 0.0,
+        "4": 0.0,
+        "5": 0.0,
+        "6": 0.0,
+        "7": 0.0,
+        "8": 0.0,
+        "9": 0.0
+      },
+      "multi_token_acceptance_rate": 0.25,
+      "steps": 4
+    },
+    "ar_decode_tok_s": 107.06404271047143,
+    "cache_evidence": {
+      "context_projection_cached_rows": 369.0,
+      "context_projection_rebuild_rows": 0.0,
+      "drafter_context_mode": "append_only_projected_context_and_kv",
+      "kv_cache_cached_rows": 369.0
+    },
+    "cycles": 4,
+    "dflash_decode_tok_s": 32.21038729763205,
+    "draft_native_phase_seconds": {
+      "context_projection": 8.814097964204848e-05,
+      "context_projection_cached_rows": 369.0,
+      "context_projection_rebuild_rows": 0.0,
+      "decoder_layers": 0.07838083698879927,
+      "final_norm": 0.00015598200843669474,
+      "graph_overhead": 0.0,
+      "key_positions_h2d": 0.0,
+      "kv_cache_cached_rows": 369.0,
+      "lm_head": 0.011309170018648729,
+      "noise_prepare": 0.00020923401461914182,
+      "slowest_decoder_layer": 0.00259701200411655,
+      "topk_and_readback": 0.0016078389598987997,
+      "total": 0.10016778600402176
+    },
+    "next_lever_conclusion": "R2.5 context/KV projection caching is already active; remaining drafter-side bottleneck is decoder-layer query path, especially attention/MLP kernels. R2.3 graph bucketing cannot be a key-only change because current concat/attention kernels bake context_tokens into captured launch params and attend over contiguous KV rows.",
+    "phase_ms_per_cycle": {
+      "commit": 0.13869949179934338,
+      "draft_total": 25.04194650100544,
+      "drafter_context_projection": 0.02203524491051212,
+      "drafter_decoder_layers": 19.59520924719982,
+      "drafter_final_norm": 0.038995502109173685,
+      "drafter_lm_head": 2.827292504662182,
+      "drafter_noise_prepare": 0.052308503654785454,
+      "drafter_topk_and_readback": 0.4019597399746999,
+      "spec_total": 62.091771251289174,
+      "target_verify": 36.86439251032425
+    },
+    "phase_split_seconds": {
+      "commit_fraction": 0.0022337821744207956,
+      "commit_seconds": 0.0005547979671973735,
+      "draft_fraction": 0.40330539774198354,
+      "draft_seconds": 0.10016778600402176,
+      "other_fraction": 0.0007526399588603851,
+      "other_seconds": 0.0001869309926405549,
+      "target_verify_fraction": 0.5937081801247353,
+      "target_verify_seconds": 0.147457570041297,
+      "total_seconds": 0.2483670850051567
+    },
+    "speedup_vs_ar": 0.3008515882847539
+  },
+  "timestamp": "2026-05-23T11:14:29.167649+00:00",
+  "workload": {
+    "decode_tokens": 8,
+    "draft_budget": 4,
+    "full_attn_chain_mode": "batched",
+    "prompt_id": "code:quicksort_prefix",
+    "prompt_tokens": 90,
+    "sync_draft_phases": true,
+    "verifier_mode": "native_bulk_bplus1"
+  }
+}
