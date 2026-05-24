@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ctypes
+
 import numpy as np
 import pytest
 
@@ -23,6 +25,18 @@ from hipengine.loading.qwen35_gguf_expert_sidecar import (
 from hipengine.quant.gguf import GGMLQuantizationType, bf16_to_float32, quant_layout
 
 
+def _hip_available() -> bool:
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError:
+        return False
+    return True
+
+
+HIP_AVAILABLE = _hip_available()
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 @pytest.mark.parametrize(
     ("qtype", "kernel", "atol"),
     (
@@ -81,6 +95,7 @@ def test_selected_expert_pack8_kernel_matches_cpu_reference(
     np.testing.assert_allclose(bf16_to_float32(actual), bf16_to_float32(float_array_to_bf16_bits(expected)), rtol=0.0, atol=atol)
 
 
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 def test_q4_dual_selected_expert_pack8_matches_single_kernels() -> None:
     runtime = get_hip_runtime()
     library = build_gguf_expert_pack8_gemv(load=True)

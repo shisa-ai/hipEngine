@@ -26538,3 +26538,20 @@ WHEEL=$(pwd)/dist/hipengine-0.2.0-py3-none-manylinux_2_39_x86_64.whl; (cd /tmp &
 The first full pytest attempt exposed an order-dependent test isolation issue: plan tests call `clear_registry_for_tests()` after collection-time imports, leaving later GGUF registry tests with cached modules but cleared registry entries. Added `tests/conftest.py` to snapshot collection-time kernel registrations and restore the process-global registry after each test, preserving per-test clear semantics while making the suite order-independent. Updated the GGUF decode-repack dispatch expectation for the retained `active_context` fix.
 
 Release is not pushed/tagged/published yet in this entry; next step is commit release metadata, then continue the `docs/PUBLISH.md` push/tag/release/upload checklist from a clean tree.
+
+## 2026-05-25 — v0.2.0 publish workflow HIP guard fix
+
+Investigated the failed `Publish to PyPI` GitHub Actions run for tag `v0.2.0`: OIDC/trusted publishing was not the issue. The workflow triggered correctly, but the build job failed during `uv run --no-sync pytest -q` on GitHub's no-ROCm Ubuntu runner before the publish job. Root cause was `tests/test_gguf_expert_pack8_gemv.py` calling `get_hip_runtime()` in GPU correctness tests without the usual `libamdhip64.so` availability skip guard.
+
+Added the missing HIP availability guard to the expert pack8 GPU tests and added an `AGENTS.md` reminder that new HIP/ROCm tests must guard/skip on no-ROCm CI and publish runners.
+
+Validation:
+
+```bash
+python -m pytest -q tests/test_gguf_expert_pack8_gemv.py tests/test_qwen35_gguf_decode_repack_dispatch.py
+# 8 passed
+uv run --extra dev python -m pytest -q
+# passed
+```
+
+Next: commit, push `main`, move annotated tag `v0.2.0` to the fix commit, force-push the tag per user approval, and watch the publish workflow complete via trusted publishing.

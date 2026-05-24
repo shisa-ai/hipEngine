@@ -64,6 +64,7 @@ Do not drift these casually. They define what hipEngine is.
 
 - Keep changes scoped to one logical unit (one kernel family, one plugin, one doc, one phase milestone).
 - Write or update the targeted test/fixture before implementation when behavior or math changes. If RED-first is impractical, record why in `WORKLOG.md`.
+- When adding tests that call HIP/ROCm runtime, `hipcc`, or GPU kernels, add an explicit HIP-availability guard (for example `ctypes.CDLL("libamdhip64.so")` + `pytest.skip`) so no-ROCm CI/publish runners skip them instead of failing release validation.
 - Log non-trivial decisions, measurements, and dependency additions in `WORKLOG.md` as they happen.
 - When profiling Python/ctypes JIT-built kernels with `rocprofv3`, prebuild the `.so` outside the profiler and run the profiled command with a precomputed compiler-version file plus `require_cached`; do not let the profiled process spawn `hipcc`/clang.
 - Do not silently add `import torch`, `flash_attn`, or other CUDA-only deps to hot-path modules.
