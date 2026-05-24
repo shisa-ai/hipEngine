@@ -74,6 +74,7 @@ DEFAULT_DRAFTER_PATH = "/models/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-D
 DEFAULT_TARGET_REVISION = "501ef8635e5cfb5a7497d232358ca8d1afc0c66e"
 DEFAULT_DRAFTER_REVISION = "42d3b34d588423cdae7ba8f53a8cf7789346a719"
 _ADAPTIVE_AR_GUARD_REASONS = {"remaining_tokens_guard", "probe_amortization_guard"}
+_PROFILE_ROUTE_VALUES = {"ar", "chain", "tree", "spec"}
 
 
 def _hf_snapshot_identity(path: Path, *, default_name: str, default_revision: str) -> tuple[str, str]:
@@ -91,6 +92,47 @@ def _hf_snapshot_identity(path: Path, *, default_name: str, default_revision: st
         return default_name, default_revision
     model_name = raw_name.removeprefix("models--").replace("--", "/")
     return model_name, parts[snapshot_index + 1]
+
+
+def _canonical_profile_route(value: Any) -> str:
+    route = str(value).strip().lower()
+    if route in {"dflash", "dflash_chain"}:
+        route = "chain"
+    if route in {"branching_topk", "ddtree"}:
+        route = "tree"
+    if route not in _PROFILE_ROUTE_VALUES:
+        raise ValueError(f"profile route must be one of {sorted(_PROFILE_ROUTE_VALUES)}, got {value!r}")
+    return route
+
+
+def _load_profile_route_manifest(path: Path | None) -> tuple[str, dict[str, str], dict[str, Any] | None]:
+    if path is None:
+        return "spec", {}, None
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError("--profile-route-manifest must be a JSON object")
+    default = _canonical_profile_route(raw.get("default", "spec"))
+    routes_raw = raw.get("routes", raw)
+    if not isinstance(routes_raw, dict):
+        raise ValueError("profile route manifest 'routes' must be a JSON object")
+    routes: dict[str, str] = {}
+    for key, value in routes_raw.items():
+        if key in {"default", "routes", "notes", "description"}:
+            continue
+        routes[str(key)] = _canonical_profile_route(value)
+    return default, routes, raw
+
+
+def _profile_route_for_prompt(prompt: dict[str, Any], *, default: str, routes: dict[str, str]) -> str:
+    for key in (
+        str(prompt.get("id") or ""),
+        str(prompt.get("prompt_ids_sha256") or ""),
+        str(prompt.get("prompt_text_sha256") or ""),
+        str(prompt.get("benchmark_group") or ""),
+    ):
+        if key and key in routes:
+            return routes[key]
+    return default
 
 
 @dataclass(frozen=True)
@@ -1791,6 +1833,133 @@ def run_dflash_tokens(
     return generated[:decode_tokens], metadata
 
 
+def _run_profile_ar_on_session(
+    *,
+    session: Qwen35ParoResidentSession,
+    prompt_ids: Sequence[int],
+    decode_tokens: int,
+    base_slot: int,
+) -> tuple[list[int], dict[str, Any]]:
+    """Run the routed row as plain AR on a non-control slot.
+
+    This is benchmark plumbing for profile/oracle route diagnostics.  It keeps
+    the same-session AR control intact on slot 0 while measuring the cost of a
+    policy choosing "do not speculate" for this prompt.
+    """
+
+    t0 = time.perf_counter()
+    next_result = None
+    for pos, token in enumerate(prompt_ids):
+        next_result = _slot_step(
+            session,
+            int(token),
+            position=pos,
+            slot=base_slot,
+            drafter=None,
+            capture_row=None,
+            sample=(pos == len(prompt_ids) - 1),
+        )
+    if next_result is None:
+        raise RuntimeError("profile-routed AR prefill produced no token")
+    prefill_seconds = time.perf_counter() - t0
+
+    generated: list[int] = []
+    next_token = int(next_result.token_id)
+    finite = True
+    t1 = time.perf_counter()
+    for offset in range(decode_tokens):
+        generated.append(next_token)
+        result = _slot_step(
+            session,
+            next_token,
+            position=len(prompt_ids) + offset,
+            slot=base_slot,
+            drafter=None,
+            capture_row=None,
+            sample=True,
+        )
+        finite = finite and math.isfinite(float(result.logit))
+        next_token = int(result.token_id)
+    decode_seconds = time.perf_counter() - t1
+    metadata = {
+        "prefill_seconds": prefill_seconds,
+        "decode_seconds": decode_seconds,
+        "draft_seconds": 0.0,
+        "target_verify_seconds": decode_seconds,
+        "commit_seconds": 0.0,
+        "accepted_lengths": [],
+        "target_verify_rows": decode_tokens,
+        "target_forward_calls": decode_tokens,
+        "target_bulk_forward_calls": 0,
+        "target_serial_forward_calls": decode_tokens,
+        "target_bulk_rows": 0,
+        "canonical_commit_replay_rows": 0,
+        "target_forwards_per_draft_call": None,
+        "gpu_accept_match_cpu": True,
+        "verifier_graph": {"mode": "off", "status_counts": {}, "validation_passed": None, "last": None},
+        "draft_calls": 0,
+        "decode_cycles": decode_tokens,
+        "draft_tokens_proposed": 0,
+        "tree_active_nodes_total": 0,
+        "tree_top_k": 0,
+        "draft_top_k": 0,
+        "draft_p_min": 0.0,
+        "drafter_query_mode": None,
+        "drafter_query_rows": 0,
+        "drafter_block_size": 0,
+        "confidence_limited_cycles": 0,
+        "tree_compiler": None,
+        "draft_native_phase_seconds": {},
+        "draft_graph": {"mode": "off", "status_counts": {}, "validation_passed": None, "last": None},
+        "draft_fusion": None,
+        "proposal_trace_sample": [],
+        "proposal_trace_count": 0,
+        "finite_draft_logits": True,
+        "finite_verify_logits": finite,
+        "decode_tok_s": decode_tokens / decode_seconds if decode_seconds > 0 else None,
+        "d2h": {
+            "scalar_reads": decode_tokens,
+            "vector_reads": 0,
+            "scalar_values": decode_tokens,
+            "vector_values": 0,
+            "full_logits_readbacks": 0,
+            "notes": ["profile route selected plain AR; no draft or native-bulk verifier ran"],
+        },
+        "memory": memory_stats(),
+        "backend": session.backend,
+        "target_arch": session.target_arch,
+        "verifier_mode": "profile_route_ar",
+        "verifier_graph_mode": "off",
+        "verifier_chain_attn_mode": None,
+        "verifier_tree_mode": "ar",
+        "verifier_state_strategy": "profile_route_ar",
+        "canonical_commit_mode": None,
+        "native_bulk_verifier": False,
+        "drafter_context_mode": "none",
+        "adaptive_budget": {
+            "mode": "profile_route",
+            "enabled": False,
+            "state": "AR_LOCKED",
+            "config": {},
+            "mode_counts": {"ar": decode_tokens},
+            "decision_counts": {"ar": decode_tokens},
+            "transitions": [],
+            "cycle_log": [],
+            "cycle_log_truncated": False,
+            "profit_ms_mean": None,
+            "profit_ms_min": None,
+            "profit_ms_max": None,
+        },
+        "draft_phase_timing_mode": "none",
+        "base_slot": base_slot,
+        "branch_slot_start": None,
+        "verifier_state_copies_per_cycle": 0.0,
+        "verifier_state_copies_total": 0,
+        "profile_route": "ar",
+    }
+    return generated[:decode_tokens], metadata
+
+
 def run_same_session_pair(
     *,
     model: Path,
@@ -1819,6 +1988,7 @@ def run_same_session_pair(
     tree_mode: str = "chain",
     tree_top_k: int = 1,
     canonical_commit_mode: str = "replay",
+    profile_route: str = "spec",
 ) -> tuple[tuple[list[int], dict[str, Any]], tuple[list[int], dict[str, Any]]]:
     """Run AR control and DFlash chain in one resident target session.
 
@@ -1839,6 +2009,7 @@ def run_same_session_pair(
         raise ValueError("canonical_commit_mode must be replay, bulk_direct, or branch_copy")
     if canonical_commit_mode != "replay" and (verifier_mode != "native_bulk_bplus1" or tree_mode != "chain"):
         raise ValueError("non-replay canonical_commit_mode requires native_bulk_bplus1 chain mode")
+    profile_route = _canonical_profile_route(profile_route)
     if draft_top_k <= 0 or draft_top_k > 8:
         raise ValueError("draft_top_k must be in [1, 8]")
     if draft_p_min < 0.0 or draft_p_min > 1.0:
@@ -1892,6 +2063,18 @@ def run_same_session_pair(
             "same_process_control": True,
             "control_slot": 0,
         }
+        if profile_route == "ar":
+            spec_tokens, spec_meta = _run_profile_ar_on_session(
+                session=session,
+                prompt_ids=prompt_ids,
+                decode_tokens=decode_tokens,
+                base_slot=1,
+            )
+            spec_meta["same_session_control"] = True
+            spec_meta["same_process_control"] = True
+            return (ar_generated, ar_meta), (spec_tokens, spec_meta)
+        routed_tree_mode = "branching_topk" if profile_route == "tree" else ("chain" if profile_route == "chain" else tree_mode)
+        routed_canonical_commit_mode = "replay" if routed_tree_mode != "chain" else canonical_commit_mode
         with NativeDFlashChainDrafter(
             session=session,
             drafter_model=drafter_model,
@@ -1904,7 +2087,7 @@ def run_same_session_pair(
             fusion_mode=drafter_fusion_mode,
             bucket_mode=drafter_bucket_mode,
             query_mode=drafter_query_mode,
-            draft_top_k=tree_top_k if tree_mode == "branching_topk" else draft_top_k,
+            draft_top_k=tree_top_k if routed_tree_mode == "branching_topk" else draft_top_k,
         ) as drafter:
             spec_tokens, spec_meta = _run_dflash_chain_on_session(
                 session=session,
@@ -1921,13 +2104,15 @@ def run_same_session_pair(
                 adaptive_probe_amortization_tokens=adaptive_probe_amortization_tokens,
                 ar_decode_tok_s_estimate=ar_meta["decode_tok_s"],
                 chain_attn_mode=chain_attn_mode,
-                tree_mode=tree_mode,
+                tree_mode=routed_tree_mode,
                 tree_top_k=tree_top_k,
                 draft_p_min=draft_p_min,
-                canonical_commit_mode=canonical_commit_mode,
+                canonical_commit_mode=routed_canonical_commit_mode,
             )
         spec_meta["same_session_control"] = True
         spec_meta["same_process_control"] = True
+        if profile_route != "spec":
+            spec_meta["profile_route"] = routed_tree_mode
         return (ar_generated, ar_meta), (spec_tokens, spec_meta)
 
 
@@ -2535,9 +2720,14 @@ def _row_for_artifact(prompt: dict[str, Any], budget: int, ar: tuple[list[int], 
         graph_status = "not_captured"
         graph_fallback_reason = None
     graph_bucket = graph_last.get("bucket_key") or {"mode": "dflash_drafter_propose", "draft_budget": budget, "verifier": spec_meta["verifier_mode"]}
+    profile_route = str(spec_meta.get("profile_route") or "")
     tree_mode = str(spec_meta.get("verifier_tree_mode") or "chain")
-    proposal_mode = "branching_topk" if tree_mode == "branching_topk" else "chain"
-    verify_mode = "verify_tree" if tree_mode in {"chain_as_tree", "branching_topk"} else "verify_chain"
+    if profile_route == "ar":
+        proposal_mode = "ar"
+        verify_mode = "ar_decode"
+    else:
+        proposal_mode = "branching_topk" if tree_mode == "branching_topk" else "chain"
+        verify_mode = "verify_tree" if tree_mode in {"chain_as_tree", "branching_topk"} else "verify_chain"
     draft_top_k = int(spec_meta.get("draft_top_k") or 1)
 
     return {
@@ -2552,15 +2742,16 @@ def _row_for_artifact(prompt: dict[str, Any], budget: int, ar: tuple[list[int], 
             "representative": bool(prompt.get("representative")),
         },
         "config": {
-            "name": f"full_model_{proposal_mode}_b{budget}",
-            "provider": "dflash",
+            "name": f"full_model_{proposal_mode}_b{0 if profile_route == 'ar' else budget}",
+            "provider": "profile_route" if profile_route else "dflash",
             "proposal_mode": proposal_mode,
             "verify_mode": verify_mode,
-            "draft_budget": budget,
-            "topk": draft_top_k,
+            "draft_budget": 0 if profile_route == "ar" else budget,
+            "topk": 0 if profile_route == "ar" else draft_top_k,
             "draft_p_min": spec_meta.get("draft_p_min"),
             "tree_mode": tree_mode,
             "tree_budget": budget if verify_mode == "verify_tree" else None,
+            "profile_route": profile_route or None,
         },
         "ar": {
             "same_session_control": bool(ar_meta.get("same_session_control", False)),
@@ -2758,6 +2949,16 @@ def main(argv: list[str] | None = None) -> int:
             " copies the bulk-committed branch state back to the canonical slot."
         ),
     )
+    parser.add_argument(
+        "--profile-route-manifest",
+        type=Path,
+        default=None,
+        help=(
+            "Optional JSON manifest for profile/oracle routing diagnostics."
+            " Values may be ar, chain, tree, or spec. Keys match prompt id,"
+            " prompt hash, or benchmark group; default falls back to spec."
+        ),
+    )
     parser.add_argument("--hardware-gpu", default=None, help="Human-readable GPU name to record in the benchmark artifact")
     parser.add_argument("--json", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -2788,13 +2989,16 @@ def main(argv: list[str] | None = None) -> int:
     drafter = Path(args.drafter_model)
     validation = validate_dflash_artifact_pair(target_model=target, drafter_model=drafter, raise_on_error=True)
     prompts = _select_prompts(args.prompt_fixture, groups={x.strip() for x in args.prompt_groups.split(",") if x.strip()}, limit=args.max_prompts)
+    profile_route_default, profile_routes, profile_route_manifest = _load_profile_route_manifest(args.profile_route_manifest)
     budgets = [int(x) for x in args.draft_budgets.split(",") if x.strip()]
     prefill_config = PrefillConfig(auto_tune_chunk_sizes=True)
     rows: list[dict[str, Any]] = []
     commands = {"benchmark": " ".join(shlex.quote(part) for part in ["python3", "scripts/dflash_chain_e2e_bench.py", *(argv if argv is not None else sys.argv[1:])])}
     for prompt in prompts:
         prompt_ids = [int(x) for x in prompt["prompt_ids"]]
+        profile_route = _profile_route_for_prompt(prompt, default=profile_route_default, routes=profile_routes)
         for budget in budgets:
+            tree_top_k_for_row = args.tree_top_k if args.tree_mode == "branching_topk" or profile_route == "tree" else 1
             ar, spec = run_same_session_pair(
                 model=target,
                 drafter_model=drafter,
@@ -2820,8 +3024,9 @@ def main(argv: list[str] | None = None) -> int:
                 adaptive_probe_amortization_tokens=args.adaptive_probe_amortization_tokens,
                 chain_attn_mode=args.full_attn_chain_mode,
                 tree_mode=args.tree_mode,
-                tree_top_k=args.tree_top_k if args.tree_mode == "branching_topk" else 1,
+                tree_top_k=tree_top_k_for_row,
                 canonical_commit_mode=args.canonical_commit_mode,
+                profile_route=profile_route,
             )
             rows.append(_row_for_artifact(prompt, budget, ar, spec))
     if args.tree_mode == "branching_topk":
@@ -2888,6 +3093,10 @@ def main(argv: list[str] | None = None) -> int:
             "adaptive_min_remaining_tokens": args.adaptive_min_remaining_tokens,
             "adaptive_probe_amortization_tokens": args.adaptive_probe_amortization_tokens,
             "canonical_commit_mode": args.canonical_commit_mode,
+            "profile_route_manifest": str(args.profile_route_manifest) if args.profile_route_manifest else None,
+            "profile_route_default": profile_route_default,
+            "profile_routes": profile_routes,
+            "profile_route_manifest_body": profile_route_manifest,
             "promotion_blocker": (
                 "native B+1 verifier ran, but full chain must still beat same-session AR before promotion"
                 if args.verifier_mode == "native_bulk_bplus1"

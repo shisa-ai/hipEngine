@@ -33,9 +33,12 @@ def test_acceptance_summary_matches_parent_metric_shape() -> None:
 
 
 def test_normalize_speculative_row_records_required_dflash_metrics() -> None:
-    row = normalize_speculative_row(schema_fixture_row())
+    raw = schema_fixture_row()
+    raw["config"]["profile_route"] = "chain"
+    row = normalize_speculative_row(raw)
 
     assert row["ar"]["same_session_control"] is True
+    assert row["config"]["profile_route"] == "chain"
     assert row["ar"]["same_process_control"] is True
     assert row["ar"]["decode_tok_s"] == 2.0
     assert row["spec"]["same_session_control"] is True

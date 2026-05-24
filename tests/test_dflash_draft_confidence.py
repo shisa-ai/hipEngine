@@ -3,7 +3,10 @@ from __future__ import annotations
 import pytest
 
 from scripts.dflash_chain_e2e_bench import (
+    _canonical_profile_route,
     _confidence_limited_active_count,
+    _load_profile_route_manifest,
+    _profile_route_for_prompt,
     _top1_probabilities_from_topk,
     _top1_probability_from_topk,
 )
@@ -36,3 +39,25 @@ def test_confidence_limited_active_count_disabled_keeps_budget() -> None:
     probabilities = (0.01, 0.02)
 
     assert _confidence_limited_active_count(probabilities, max_active=4, p_min=0.0) == 4
+
+
+def test_profile_route_manifest_accepts_aliases_and_prompt_ids(tmp_path) -> None:
+    manifest = tmp_path / "routes.json"
+    manifest.write_text(
+        '{"default": "ar", "routes": {"code:class_continuation": "dflash", "math": "branching_topk"}}',
+        encoding="utf-8",
+    )
+
+    default, routes, raw = _load_profile_route_manifest(manifest)
+
+    assert default == "ar"
+    assert raw is not None
+    assert routes == {"code:class_continuation": "chain", "math": "tree"}
+    assert _profile_route_for_prompt({"id": "code:class_continuation"}, default=default, routes=routes) == "chain"
+    assert _profile_route_for_prompt({"benchmark_group": "math"}, default=default, routes=routes) == "tree"
+    assert _profile_route_for_prompt({"id": "unknown"}, default=default, routes=routes) == "ar"
+
+
+def test_profile_route_rejects_unknown_value() -> None:
+    with pytest.raises(ValueError, match="profile route"):
+        _canonical_profile_route("maybe")

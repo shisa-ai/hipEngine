@@ -23598,3 +23598,77 @@ Retained artifact:
 
 Validation:
 - All three benchmark rows passed exact same-session AR equality.
+
+## 2026-05-25 — 27B DFlash B=4 routing/profile diagnostic
+
+Reviewer feedback suggested the next lever was not B=15 row coverage, but
+per-prompt routing plus a focused B=4 cycle reduction.  Ran the full 9-prompt
+Qwen3.6-27B-PARO dense + z-lab DFlash B=4/D64 suite on W7900/gfx1100 with
+`native_bulk_bplus1`, batched full-attn chain mode, and branch-copy canonical
+commit:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branch-copy-9prompt.json
+```
+
+Result: exact `9/9`, aggregate `0.867x` AR (`28.47` vs `32.83 tok/s`).
+Prompt winners: `code:class_continuation` `1.028x`, `code:humaneval_add`
+`1.109x`, `instruct:simple_qa_no_template` `1.048x`.  Static chat is near but
+below AR (`0.979x`).  Cycle split shows commit/state-copy is not the wall:
+target verify `~103-108 ms/cycle`, drafter `~20 ms/cycle`, commit/state-copy
+`~0.12 ms/cycle` (`commit_fraction ~= 0.1%`).
+
+Balanced tree check:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --tree-mode branching_topk --tree-top-k 2 --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branching-topk2-9prompt.json
+```
+
+Result: exact `9/9`, aggregate `0.643x` AR.  Tree is worse than chain on every
+prompt in this branch-copy baseline; offline `{AR,chain,tree}` oracle selects
+tree on `0/9`, chain on `3/9`, AR on `6/9`, for `1.019x` AR.
+
+Existing online adaptive probe check:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --adaptive-budget on --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branch-copy-adaptive-9prompt.json
+```
+
+Result: exact `9/9`, aggregate `0.960x` AR.  The controller avoids the worst
+all-chain losses but one-cycle probes are too expensive/noisy at D64: it misses
+the class and simple-QA winners and charges every loser one DFlash probe.
+
+Added benchmark-only profile routing support:
+`--profile-route-manifest <json>` with route values `{ar,chain,tree,spec}`.
+The manifest can match prompt id/hash/group.  AR-routed rows run plain AR on a
+non-control slot and record profile-route metadata; chain/tree rows use the
+existing DFlash paths.  Narrow validation:
+
+```bash
+python3 -m py_compile hipengine/benchmark/speculative.py scripts/dflash_chain_e2e_bench.py
+PYTHONPATH=. pytest -q tests/test_dflash_draft_confidence.py tests/test_speculative_benchmark.py
+```
+
+Both passed (`12 passed`).  Measured no-probe profile manifest:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --profile-route-manifest /tmp/hipengine-dflash-27b-profile-route-ar-chain.json --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-profile-route-ar-chain-9prompt.json
+```
+
+Result: exact `9/9`, `33.24 tok/s` vs AR `32.76 tok/s`, `1.015x` AR.  This
+confirms routing can barely beat AR when the route is known in advance, but it
+is not a promoted speed claim (`>1.10x` gate not met, route is oracle/profile
+manifest rather than online classifier).
+
+Retained artifact:
+- `benchmarks/results/2026-05-25-hipengine-dflash-27b-routing-profile-diagnostic.json`
+
+Docs/rollup updated:
+- `docs/DFLASH.md` 27B B=4 routing/profile diagnostic.
+- `benchmarks/README.md` and `benchmarks/CHANGELOG.md` retained diagnostic row.
+
+Decision: current balanced tree remains off; online one-cycle probing is a
+safety fallback for this D64 shape.  Next real speed work should target B=4
+target verifier cost and/or profile/history-based route classification.  The
+branch-copy canonical commit path is already low enough that it is not the next
+14% wall.

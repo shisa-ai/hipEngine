@@ -1169,6 +1169,34 @@ Retained diagnostic:
   flag.  A c=1-only Q8 path would not accelerate native bulk DFlash verify, so
   Q8/asym KV stays a dedicated kernel-family port rather than a micro-iteration.
 
+### 27B B=4 routing/profile diagnostic (2026-05-25)
+
+Retained diagnostic:
+[`2026-05-25-hipengine-dflash-27b-routing-profile-diagnostic.json`](../benchmarks/results/2026-05-25-hipengine-dflash-27b-routing-profile-diagnostic.json).
+
+The 9-prompt Qwen3.6-27B B=4/D64 branch-copy baseline confirms the reviewer
+direction on per-prompt routing, but rejects balanced tree promotion:
+
+| Policy | Correctness | AR tok/s | Policy tok/s | vs AR | Key result |
+| --- | --- | ---: | ---: | ---: | --- |
+| chain branch-copy | exact `9/9` | 32.83 | 28.47 | `0.867x` | 3 prompts beat AR: class `1.028x`, HumanEval add `1.109x`, simple QA `1.048x` |
+| branching_topk K=2 | exact `9/9` | 32.92 | 21.16 | `0.643x` | Worse than chain on every prompt; avg accept falls instead of improving |
+| adaptive one-cycle probe | exact `9/9` | 32.64 | 31.35 | `0.960x` | Probe cost/noise misses class/simple-QA winners and charges every loser |
+| profile route `{AR, chain}` | exact `9/9` | 32.76 | 33.24 | `1.015x` | No-probe manifest routes only the 3 measured chain winners to DFlash |
+
+The offline oracle over `{AR, chain, tree}` selects tree on `0/9` prompts,
+chain on `3/9`, and AR on `6/9`, for `1.019x` AR.  The measured profile route
+lands close at `1.015x`, but this is still below the formal `>1.10x` speed
+gate and is not a deployable classifier.
+
+Cycle accounting also narrows the next wall: branch-copy commit/state copy is
+not the 27B B=4 bottleneck.  The chain baseline spends about `103-108 ms` per
+DFlash cycle in target verify and `~20 ms` in the drafter, while commit/state
+copy is ~`0.12 ms/cycle` (`commit_fraction ~= 0.1%`).  The next speed work
+should focus on the B=4 target verifier cost and on profile/history-based
+routing; online one-cycle probing is a safety fallback for this D64 shape, not
+a speed path.
+
 ### R3.1 design notes — Adaptive budget controller
 
 **Goal:** Default DFlash on, but never lose to AR by more than 5% on any prompt. Required to make any future R3.4/R3.6 win promotable across the full 9-prompt suite (not just the prompt 3 archetype).

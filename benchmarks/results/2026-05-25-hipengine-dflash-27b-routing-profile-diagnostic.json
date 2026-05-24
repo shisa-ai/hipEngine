@@ -1,0 +1,1402 @@
+{
+  "aggregate": {
+    "adaptive_probe": {
+      "acceptance": {
+        "accept_histogram": {
+          "0": 6,
+          "2": 1,
+          "3": 1,
+          "4": 16
+        },
+        "accepted_output_tokens": 69,
+        "avg_accept_length": 2.875,
+        "exact_rate_0_to_n": {
+          "0": 0.25,
+          "1": 0.0,
+          "10": 0.0,
+          "2": 0.041666666666666664,
+          "3": 0.041666666666666664,
+          "4": 0.6666666666666666,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "ge_rate_1_to_n": {
+          "1": 0.75,
+          "10": 0.0,
+          "2": 0.75,
+          "3": 0.7083333333333334,
+          "4": 0.6666666666666666,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "multi_token_acceptance_rate": 0.75,
+        "steps": 24
+      },
+      "all_correctness_passed": true,
+      "all_exact_match_ar": true,
+      "ar_decode_tok_s": 32.6415782669127,
+      "decode_tokens": 576,
+      "rows": 9,
+      "spec_decode_tok_s": 31.34613495661283,
+      "speedup_vs_ar": 0.9603130921027491,
+      "target_verify_rows": 603,
+      "target_verify_rows_per_output_token": 1.046875
+    },
+    "chain_branch_copy": {
+      "acceptance": {
+        "accept_histogram": {
+          "0": 33,
+          "1": 15,
+          "2": 23,
+          "3": 9,
+          "4": 81
+        },
+        "accepted_output_tokens": 412,
+        "avg_accept_length": 2.559006211180124,
+        "exact_rate_0_to_n": {
+          "0": 0.20496894409937888,
+          "1": 0.09316770186335403,
+          "10": 0.0,
+          "2": 0.14285714285714285,
+          "3": 0.055900621118012424,
+          "4": 0.5031055900621118,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "ge_rate_1_to_n": {
+          "1": 0.7950310559006211,
+          "10": 0.0,
+          "2": 0.7018633540372671,
+          "3": 0.5590062111801242,
+          "4": 0.5031055900621118,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "multi_token_acceptance_rate": 0.7018633540372671,
+        "steps": 161
+      },
+      "all_correctness_passed": true,
+      "all_exact_match_ar": true,
+      "ar_decode_tok_s": 32.82923987604057,
+      "decode_tokens": 576,
+      "rows": 9,
+      "spec_decode_tok_s": 28.46991010708901,
+      "speedup_vs_ar": 0.8672119797652372,
+      "target_verify_rows": 808,
+      "target_verify_rows_per_output_token": 1.4027777777777777
+    },
+    "profile_route_ar_chain": {
+      "acceptance": {
+        "accept_histogram": {
+          "0": 4,
+          "1": 2,
+          "2": 1,
+          "3": 5,
+          "4": 32
+        },
+        "accepted_output_tokens": 147,
+        "avg_accept_length": 3.340909090909091,
+        "exact_rate_0_to_n": {
+          "0": 0.09090909090909091,
+          "1": 0.045454545454545456,
+          "10": 0.0,
+          "2": 0.022727272727272728,
+          "3": 0.11363636363636363,
+          "4": 0.7272727272727273,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "ge_rate_1_to_n": {
+          "1": 0.9090909090909091,
+          "10": 0.0,
+          "2": 0.8636363636363636,
+          "3": 0.8409090909090909,
+          "4": 0.7272727272727273,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "multi_token_acceptance_rate": 0.8636363636363636,
+        "steps": 44
+      },
+      "all_correctness_passed": true,
+      "all_exact_match_ar": true,
+      "ar_decode_tok_s": 32.76212549898123,
+      "decode_tokens": 576,
+      "rows": 9,
+      "spec_decode_tok_s": 33.23925364418505,
+      "speedup_vs_ar": 1.0145634063094795,
+      "target_verify_rows": 605,
+      "target_verify_rows_per_output_token": 1.0503472222222223
+    },
+    "tree_branching_topk_k2": {
+      "acceptance": {
+        "accept_histogram": {
+          "0": 23,
+          "1": 27,
+          "2": 165
+        },
+        "accepted_output_tokens": 357,
+        "avg_accept_length": 1.6604651162790698,
+        "exact_rate_0_to_n": {
+          "0": 0.10697674418604651,
+          "1": 0.12558139534883722,
+          "10": 0.0,
+          "2": 0.7674418604651163,
+          "3": 0.0,
+          "4": 0.0,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "ge_rate_1_to_n": {
+          "1": 0.8930232558139535,
+          "10": 0.0,
+          "2": 0.7674418604651163,
+          "3": 0.0,
+          "4": 0.0,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "multi_token_acceptance_rate": 0.7674418604651163,
+        "steps": 215
+      },
+      "all_correctness_passed": true,
+      "all_exact_match_ar": true,
+      "ar_decode_tok_s": 32.637858302888056,
+      "decode_tokens": 576,
+      "rows": 9,
+      "spec_decode_tok_s": 20.98053769013506,
+      "speedup_vs_ar": 0.6428282608322536,
+      "target_verify_rows": 1079,
+      "target_verify_rows_per_output_token": 1.8732638888888888
+    }
+  },
+  "commands": {
+    "adaptive_probe": "python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --adaptive-budget on --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branch-copy-adaptive-9prompt.json",
+    "chain_branch_copy": "python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branch-copy-9prompt.json",
+    "profile_route_ar_chain": "python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --profile-route-manifest /tmp/hipengine-dflash-27b-profile-route-ar-chain.json --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-profile-route-ar-chain-9prompt.json",
+    "tree_branching_topk_k2": "python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --tree-mode branching_topk --tree-top-k 2 --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branching-topk2-9prompt.json"
+  },
+  "correctness_gate": {
+    "adaptive_probe": {
+      "all_exact_match_ar": true,
+      "passed": true,
+      "rows": 9
+    },
+    "chain_branch_copy": {
+      "all_exact_match_ar": true,
+      "passed": true,
+      "rows": 9
+    },
+    "profile_route_ar_chain": {
+      "all_exact_match_ar": true,
+      "passed": true,
+      "rows": 9
+    },
+    "tree_branching_topk_k2": {
+      "all_exact_match_ar": true,
+      "passed": true,
+      "rows": 9
+    }
+  },
+  "decision": {
+    "accepted": false,
+    "reason": "diagnostic retained; profile route is exact and beats AR by 1.46%, but speed gate >1.10x is not met and the route is an oracle/profile manifest, not a deployable online classifier."
+  },
+  "hardware": {
+    "arch": "gfx1100",
+    "backend": "hip_gfx1100",
+    "gpu": "AMD Radeon Pro W7900"
+  },
+  "models": {
+    "drafter": {
+      "dtype": "bf16",
+      "name": "z-lab/Qwen3.6-27B-DFlash",
+      "path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106",
+      "snapshot_revision": "0919688658996800f86b895034249700e9481106"
+    },
+    "target": {
+      "name": "z-lab/Qwen3.6-27B-PARO",
+      "path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207",
+      "quant": "w4_paro_packed",
+      "snapshot_revision": "84f86409151d4f2ec86dc0b6a096d5f6daa7f207"
+    }
+  },
+  "next_actions": [
+    "Do not promote balanced branching_topk K=2 for this 27B lane; it loses on every prompt in the 9-prompt branch-copy baseline.",
+    "Treat online one-cycle probing as a safety fallback, not a speed path for D64; probe cost and noise miss route-oracle winners.",
+    "Focus B=4 cycle work on target verifier cost; branch-copy commit/state-copy is sub-0.2% of cycle wall in the chain baseline."
+  ],
+  "oracle_from_chain_tree_ar_rows": {
+    "ar_decode_tok_s": 32.82923987604057,
+    "ar_selected_count": 6,
+    "chain_selected_count": 3,
+    "oracle_decode_tok_s": 33.46768563856776,
+    "routes": [
+      {
+        "chain_speedup_vs_ar": 0.8586383743514373,
+        "chosen": "ar",
+        "prompt_id": "code:quicksort_prefix",
+        "seconds": 1.9431097150081769,
+        "speedup_vs_ar": 1.0,
+        "tok_s": 32.9368946620344,
+        "tree_speedup_vs_ar": 0.6654214041361959
+      },
+      {
+        "chain_speedup_vs_ar": 0.7115306551832257,
+        "chosen": "ar",
+        "prompt_id": "code:function_continuation",
+        "seconds": 1.9378856159746647,
+        "speedup_vs_ar": 1.0,
+        "tok_s": 33.02568504168964,
+        "tree_speedup_vs_ar": 0.621414513643257
+      },
+      {
+        "chain_speedup_vs_ar": 1.0277745554986293,
+        "chosen": "chain",
+        "prompt_id": "code:class_continuation",
+        "seconds": 1.9040583759779108,
+        "speedup_vs_ar": 1.0277745554986293,
+        "tok_s": 33.61241483320072,
+        "tree_speedup_vs_ar": 0.6691205388871472
+      },
+      {
+        "chain_speedup_vs_ar": 0.9194154516807408,
+        "chosen": "ar",
+        "prompt_id": "code:json_yaml_continuation",
+        "seconds": 1.9419404850341377,
+        "speedup_vs_ar": 1.0,
+        "tok_s": 32.95672575613198,
+        "tree_speedup_vs_ar": 0.6637136862137616
+      },
+      {
+        "chain_speedup_vs_ar": 1.1088565985548982,
+        "chosen": "chain",
+        "prompt_id": "code:humaneval_add",
+        "seconds": 1.763304940017406,
+        "speedup_vs_ar": 1.1088565985548982,
+        "tok_s": 36.29548046259556,
+        "tree_speedup_vs_ar": 0.7046137071128792
+      },
+      {
+        "chain_speedup_vs_ar": 0.5848953876928804,
+        "chosen": "ar",
+        "prompt_id": "code:humaneval_sort_third",
+        "seconds": 1.9600839980412272,
+        "speedup_vs_ar": 1.0,
+        "tok_s": 32.65166190018243,
+        "tree_speedup_vs_ar": 0.46694869719845006
+      },
+      {
+        "chain_speedup_vs_ar": 0.8618458120581931,
+        "chosen": "ar",
+        "prompt_id": "math:short_gsm8k_style",
+        "seconds": 1.9519478030269968,
+        "speedup_vs_ar": 1.0,
+        "tok_s": 32.78776199893847,
+        "tree_speedup_vs_ar": 0.6723875414496362
+      },
+      {
+        "chain_speedup_vs_ar": 1.04834797967484,
+        "chosen": "chain",
+        "prompt_id": "instruct:simple_qa_no_template",
+        "seconds": 1.858847869967576,
+        "speedup_vs_ar": 1.04834797967484,
+        "tok_s": 34.42992890059172,
+        "tree_speedup_vs_ar": 0.7007894914875122
+      },
+      {
+        "chain_speedup_vs_ar": 0.9791544314797309,
+        "chosen": "ar",
+        "prompt_id": "instruct:simple_qa_qwen_static_chat",
+        "seconds": 1.9494525570189578,
+        "speedup_vs_ar": 1.0,
+        "tok_s": 32.829729438436196,
+        "tree_speedup_vs_ar": 0.7090885894514884
+      }
+    ],
+    "speedup_vs_ar": 1.0194474731957819,
+    "tree_selected_count": 0
+  },
+  "performance_claim": false,
+  "rows": {
+    "adaptive_probe": [
+      {
+        "ar_decode_tok_s": 32.723636274181935,
+        "avg_accept_length": 4.0,
+        "decision_counts": {
+          "ar": 58,
+          "dflash": 2
+        },
+        "draft_calls": 1,
+        "mode_counts": {
+          "ar": 59,
+          "dflash": 1
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 3.8708451320417225,
+          "draft": 21.72341599361971,
+          "target_verify": 1981.5546809113584
+        },
+        "phase_seconds": {
+          "commit": 0.0038708451320417225,
+          "draft": 0.02172341599361971,
+          "target_verify": 1.9815546809113584
+        },
+        "prompt_id": "code:quicksort_prefix",
+        "proposal_mode": "chain",
+        "route": null,
+        "spec_decode_tok_s": 31.87604366110624,
+        "speedup_vs_ar": 0.9740984588028678,
+        "target_verify_rows_per_output_token": 1.0
+      },
+      {
+        "ar_decode_tok_s": 32.65108719951438,
+        "avg_accept_length": 0.0,
+        "decision_counts": {
+          "ar": 62,
+          "dflash": 2
+        },
+        "draft_calls": 1,
+        "mode_counts": {
+          "ar": 63,
+          "dflash": 1
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 3.9870559121482074,
+          "draft": 21.239979017991573,
+          "target_verify": 2103.682505141478
+        },
+        "phase_seconds": {
+          "commit": 0.003987055912148207,
+          "draft": 0.021239979017991573,
+          "target_verify": 2.103682505141478
+        },
+        "prompt_id": "code:function_continuation",
+        "proposal_mode": "chain",
+        "route": null,
+        "spec_decode_tok_s": 30.052531143875008,
+        "speedup_vs_ar": 0.9204144094877791,
+        "target_verify_rows_per_output_token": 1.0625
+      },
+      {
+        "ar_decode_tok_s": 32.56501906998886,
+        "avg_accept_length": 4.0,
+        "decision_counts": {
+          "ar": 58,
+          "dflash": 2
+        },
+        "draft_calls": 1,
+        "mode_counts": {
+          "ar": 59,
+          "dflash": 1
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 4.106665030121803,
+          "draft": 21.176028007175773,
+          "target_verify": 1982.0530267897993
+        },
+        "phase_seconds": {
+          "commit": 0.004106665030121803,
+          "draft": 0.021176028007175773,
+          "target_verify": 1.9820530267897993
+        },
+        "prompt_id": "code:class_continuation",
+        "proposal_mode": "chain",
+        "route": null,
+        "spec_decode_tok_s": 31.87312153388531,
+        "speedup_vs_ar": 0.9787533508082241,
+        "target_verify_rows_per_output_token": 1.0
+      },
+      {
+        "ar_decode_tok_s": 32.488378116450605,
+        "avg_accept_length": 2.0,
+        "decision_counts": {
+          "ar": 60,
+          "dflash": 2
+        },
+        "draft_calls": 1,
+        "mode_counts": {
+          "ar": 61,
+          "dflash": 1
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 3.9095261017791927,
+          "draft": 21.08379697892815,
+          "target_verify": 2039.6184482960962
+        },
+        "phase_seconds": {
+          "commit": 0.003909526101779193,
+          "draft": 0.02108379697892815,
+          "target_verify": 2.039618448296096
+        },
+        "prompt_id": "code:json_yaml_continuation",
+        "proposal_mode": "chain",
+        "route": null,
+        "spec_decode_tok_s": 30.989414447477618,
+        "speedup_vs_ar": 0.9538615420074177,
+        "target_verify_rows_per_output_token": 1.03125
+      },
+      {
+        "ar_decode_tok_s": 32.679606686033345,
+        "avg_accept_length": 3.6153846153846154,
+        "decision_counts": {
+          "ar": 4,
+          "dflash": 13
+        },
+        "draft_calls": 13,
+        "mode_counts": {
+          "ar": 4,
+          "dflash": 13
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 0.1445120030369323,
+          "draft": 20.365410533626207,
+          "target_verify": 114.88328909035772
+        },
+        "phase_seconds": {
+          "commit": 0.00187865603948012,
+          "draft": 0.2647503369371407,
+          "target_verify": 1.4934827581746504
+        },
+        "prompt_id": "code:humaneval_add",
+        "proposal_mode": "chain",
+        "route": null,
+        "spec_decode_tok_s": 36.34545339405406,
+        "speedup_vs_ar": 1.1121753619387174,
+        "target_verify_rows_per_output_token": 1.078125
+      },
+      {
+        "ar_decode_tok_s": 32.47396037445639,
+        "avg_accept_length": 0.0,
+        "decision_counts": {
+          "ar": 62,
+          "dflash": 2
+        },
+        "draft_calls": 1,
+        "mode_counts": {
+          "ar": 63,
+          "dflash": 1
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 3.895206027664244,
+          "draft": 24.47029302129522,
+          "target_verify": 2110.604755813256
+        },
+        "phase_seconds": {
+          "commit": 0.003895206027664244,
+          "draft": 0.02447029302129522,
+          "target_verify": 2.110604755813256
+        },
+        "prompt_id": "code:humaneval_sort_third",
+        "proposal_mode": "chain",
+        "route": null,
+        "spec_decode_tok_s": 29.912138128319036,
+        "speedup_vs_ar": 0.9211114931287392,
+        "target_verify_rows_per_output_token": 1.0625
+      },
+      {
+        "ar_decode_tok_s": 32.70262268317542,
+        "avg_accept_length": 0.0,
+        "decision_counts": {
+          "ar": 62,
+          "dflash": 2
+        },
+        "draft_calls": 1,
+        "mode_counts": {
+          "ar": 63,
+          "dflash": 1
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 3.9613088010810316,
+          "draft": 20.380296977236867,
+          "target_verify": 2098.364481003955
+        },
+        "phase_seconds": {
+          "commit": 0.0039613088010810316,
+          "draft": 0.020380296977236867,
+          "target_verify": 2.098364481003955
+        },
+        "prompt_id": "math:short_gsm8k_style",
+        "proposal_mode": "chain",
+        "route": null,
+        "spec_decode_tok_s": 30.140566256971567,
+        "speedup_vs_ar": 0.9216559341119158,
+        "target_verify_rows_per_output_token": 1.0625
+      },
+      {
+        "ar_decode_tok_s": 32.785667691745616,
+        "avg_accept_length": 0.0,
+        "decision_counts": {
+          "ar": 62,
+          "dflash": 2
+        },
+        "draft_calls": 1,
+        "mode_counts": {
+          "ar": 63,
+          "dflash": 1
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 4.23323007998988,
+          "draft": 19.89195100031793,
+          "target_verify": 2094.400772009976
+        },
+        "phase_seconds": {
+          "commit": 0.00423323007998988,
+          "draft": 0.01989195100031793,
+          "target_verify": 2.094400772009976
+        },
+        "prompt_id": "instruct:simple_qa_no_template",
+        "proposal_mode": "chain",
+        "route": null,
+        "spec_decode_tok_s": 30.19991918487662,
+        "speedup_vs_ar": 0.921131741736039,
+        "target_verify_rows_per_output_token": 1.0625
+      },
+      {
+        "ar_decode_tok_s": 32.707125250739736,
+        "avg_accept_length": 3.0,
+        "decision_counts": {
+          "ar": 47,
+          "dflash": 5
+        },
+        "draft_calls": 4,
+        "mode_counts": {
+          "ar": 48,
+          "dflash": 4
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 1.11223547719419,
+          "draft": 19.875648256856948,
+          "target_verify": 484.2979967506835
+        },
+        "phase_seconds": {
+          "commit": 0.00444894190877676,
+          "draft": 0.07950259302742779,
+          "target_verify": 1.937191987002734
+        },
+        "prompt_id": "instruct:simple_qa_qwen_static_chat",
+        "proposal_mode": "chain",
+        "route": null,
+        "spec_decode_tok_s": 31.654468698870744,
+        "speedup_vs_ar": 0.9678156810236576,
+        "target_verify_rows_per_output_token": 1.0625
+      }
+    ],
+    "chain_branch_copy": [
+      {
+        "ar_decode_tok_s": 32.9368946620344,
+        "avg_accept_length": 2.5,
+        "decision_counts": {
+          "dflash": 19
+        },
+        "draft_calls": 18,
+        "mode_counts": {
+          "ar": 1,
+          "dflash": 18
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 0.11584549146290454,
+          "draft": 20.538758881027913,
+          "target_verify": 105.01620456084817
+        },
+        "phase_seconds": {
+          "commit": 0.002085218846332282,
+          "draft": 0.36969765985850245,
+          "target_verify": 1.8902916820952669
+        },
+        "prompt_id": "code:quicksort_prefix",
+        "proposal_mode": "chain",
+        "route": null,
+        "spec_decode_tok_s": 28.280881688793748,
+        "speedup_vs_ar": 0.8586383743514373,
+        "target_verify_rows_per_output_token": 1.421875
+      },
+      {
+        "ar_decode_tok_s": 33.02568504168964,
+        "avg_accept_length": 1.9090909090909092,
+        "decision_counts": {
+          "dflash": 22
+        },
+        "draft_calls": 22,
+        "mode_counts": {
+          "dflash": 22
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 0.12004532089287584,
+          "draft": 20.347412818492476,
+          "target_verify": 103.28042235976847
+        },
+        "phase_seconds": {
+          "commit": 0.0026409970596432686,
+          "draft": 0.44764308200683445,
+          "target_verify": 2.2721692919149064
+        },
+        "prompt_id": "code:function_continuation",
+        "proposal_mode": "chain",
+        "route": null,
+        "spec_decode_tok_s": 23.498787315588284,
+        "speedup_vs_ar": 0.7115306551832257,
+        "target_verify_rows_per_output_token": 1.71875
+      },
+      {
+        "ar_decode_tok_s": 32.70407372256215,
+        "avg_accept_length": 3.2,
+        "decision_counts": {
+          "dflash": 16
+        },
+        "draft_calls": 15,
+        "mode_counts": {
+          "ar": 1,
+          "dflash": 15
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 0.12224819899226229,
+          "draft": 20.461738323016714,
+          "target_verify": 106.29775554019336
+        },
+        "phase_seconds": {
+          "commit": 0.0018337229848839343,
+          "draft": 0.3069260748452507,
+          "target_verify": 1.5944663331029005
+        },
+        "prompt_id": "code:class_continuation",
+        "proposal_mode": "chain",
+        "route": null,
+        "spec_decode_tok_s": 33.61241483320072,
+        "speedup_vs_ar": 1.0277745554986293,
+        "target_verify_rows_per_output_token": 1.1875
+      },
+      {
+        "ar_decode_tok_s": 32.95672575613198,
+        "avg_accept_length": 2.764705882352941,
+        "decision_counts": {
+          "dflash": 17
+        },
+        "draft_calls": 17,
+        "mode_counts": {
+          "dflash": 17
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 0.11580099817365408,
+          "draft": 20.44011599740342,
+          "target_verify": 103.63524588619305
+        },
+        "phase_seconds": {
+          "commit": 0.0019686169689521194,
+          "draft": 0.34748197195585817,
+          "target_verify": 1.7617991800652817
+        },
+        "prompt_id": "code:json_yaml_continuation",
+        "proposal_mode": "chain",
+        "route": null,
+        "spec_decode_tok_s": 30.30092289699239,
+        "speedup_vs_ar": 0.9194154516807408,
+        "target_verify_rows_per_output_token": 1.328125
+      },
+      {
+        "ar_decode_tok_s": 32.732348357666034,
+        "avg_accept_length": 3.5714285714285716,
+        "decision_counts": {
+          "dflash": 14
+        },
+        "draft_calls": 14,
+        "mode_counts": {
+          "dflash": 14
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 0.1189551382724728,
+          "draft": 20.42658407091429,
+          "target_verify": 105.35056585545784
+        },
+        "phase_seconds": {
+          "commit": 0.001665371935814619,
+          "draft": 0.2859721769928001,
+          "target_verify": 1.4749079219764099
+        },
+        "prompt_id": "code:humaneval_add",
+        "proposal_mode": "chain",
+        "route": null,
+        "spec_decode_tok_s": 36.29548046259556,
+        "speedup_vs_ar": 1.1088565985548982,
+        "target_verify_rows_per_output_token": 1.09375
+      },
+      {
+        "ar_decode_tok_s": 32.65166190018243,
+        "avg_accept_length": 1.4230769230769231,
+        "decision_counts": {
+          "dflash": 27
+        },
+        "draft_calls": 26,
+        "mode_counts": {
+          "ar": 1,
+          "dflash": 26
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 0.118179963185237,
+          "draft": 20.929227583110332,
+          "target_verify": 107.79527838726958
+        },
+        "phase_seconds": {
+          "commit": 0.003072679042816162,
+          "draft": 0.5441599171608686,
+          "target_verify": 2.802677238069009
+        },
+        "prompt_id": "code:humaneval_sort_third",
+        "proposal_mode": "chain",
+        "route": null,
+        "spec_decode_tok_s": 19.097806445924057,
+        "speedup_vs_ar": 0.5848953876928804,
+        "target_verify_rows_per_output_token": 2.046875
+      },
+      {
+        "ar_decode_tok_s": 32.78776199893847,
+        "avg_accept_length": 2.5555555555555554,
+        "decision_counts": {
+          "dflash": 18
+        },
+        "draft_calls": 18,
+        "mode_counts": {
+          "dflash": 18
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 0.1230067767513295,
+          "draft": 20.21536915627722,
+          "target_verify": 105.43358144221
+        },
+        "phase_seconds": {
+          "commit": 0.002214121981523931,
+          "draft": 0.36387664481299,
+          "target_verify": 1.89780446595978
+        },
+        "prompt_id": "math:short_gsm8k_style",
+        "proposal_mode": "chain",
+        "route": null,
+        "spec_decode_tok_s": 28.25799536554589,
+        "speedup_vs_ar": 0.8618458120581931,
+        "target_verify_rows_per_output_token": 1.40625
+      },
+      {
+        "ar_decode_tok_s": 32.842080652714806,
+        "avg_accept_length": 3.2666666666666666,
+        "decision_counts": {
+          "dflash": 15
+        },
+        "draft_calls": 15,
+        "mode_counts": {
+          "dflash": 15
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 0.11416740405062835,
+          "draft": 20.056381127020966,
+          "target_verify": 103.70115134476994
+        },
+        "phase_seconds": {
+          "commit": 0.0017125110607594252,
+          "draft": 0.3008457169053145,
+          "target_verify": 1.5555172701715492
+        },
+        "prompt_id": "instruct:simple_qa_no_template",
+        "proposal_mode": "chain",
+        "route": null,
+        "spec_decode_tok_s": 34.42992890059172,
+        "speedup_vs_ar": 1.04834797967484,
+        "target_verify_rows_per_output_token": 1.171875
+      },
+      {
+        "ar_decode_tok_s": 32.829729438436196,
+        "avg_accept_length": 3.0,
+        "decision_counts": {
+          "dflash": 16
+        },
+        "draft_calls": 16,
+        "mode_counts": {
+          "dflash": 16
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 0.12204980157548562,
+          "draft": 20.144327681919094,
+          "target_verify": 104.11028199450811
+        },
+        "phase_seconds": {
+          "commit": 0.0019527968252077699,
+          "draft": 0.3223092429107055,
+          "target_verify": 1.6657645119121298
+        },
+        "prompt_id": "instruct:simple_qa_qwen_static_chat",
+        "proposal_mode": "chain",
+        "route": null,
+        "spec_decode_tok_s": 32.14537506392538,
+        "speedup_vs_ar": 0.9791544314797309,
+        "target_verify_rows_per_output_token": 1.25
+      }
+    ],
+    "profile_route_ar_chain": [
+      {
+        "ar_decode_tok_s": 32.90275157734573,
+        "avg_accept_length": null,
+        "decision_counts": {
+          "ar": 64
+        },
+        "draft_calls": 0,
+        "mode_counts": {
+          "ar": 64
+        },
+        "per_dflash_cycle_ms": {
+          "commit": null,
+          "draft": null,
+          "target_verify": null
+        },
+        "phase_seconds": {
+          "commit": 0.0,
+          "draft": 0.0,
+          "target_verify": 1.9513130990089849
+        },
+        "prompt_id": "code:quicksort_prefix",
+        "proposal_mode": "ar",
+        "route": "ar",
+        "spec_decode_tok_s": 32.79842688111085,
+        "speedup_vs_ar": 0.9968293017685879,
+        "target_verify_rows_per_output_token": 1.0
+      },
+      {
+        "ar_decode_tok_s": 32.88147296381963,
+        "avg_accept_length": null,
+        "decision_counts": {
+          "ar": 64
+        },
+        "draft_calls": 0,
+        "mode_counts": {
+          "ar": 64
+        },
+        "per_dflash_cycle_ms": {
+          "commit": null,
+          "draft": null,
+          "target_verify": null
+        },
+        "phase_seconds": {
+          "commit": 0.0,
+          "draft": 0.0,
+          "target_verify": 1.9590314379893243
+        },
+        "prompt_id": "code:function_continuation",
+        "proposal_mode": "ar",
+        "route": "ar",
+        "spec_decode_tok_s": 32.66920517910992,
+        "speedup_vs_ar": 0.9935444563282407,
+        "target_verify_rows_per_output_token": 1.0
+      },
+      {
+        "ar_decode_tok_s": 32.86791175336072,
+        "avg_accept_length": 3.2,
+        "decision_counts": {
+          "dflash": 16
+        },
+        "draft_calls": 15,
+        "mode_counts": {
+          "ar": 1,
+          "dflash": 15
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 0.1211950594248871,
+          "draft": 20.391536538954824,
+          "target_verify": 107.07645340201755
+        },
+        "phase_seconds": {
+          "commit": 0.0018179258913733065,
+          "draft": 0.30587304808432236,
+          "target_verify": 1.6061468010302633
+        },
+        "prompt_id": "code:class_continuation",
+        "proposal_mode": "chain",
+        "route": "chain",
+        "spec_decode_tok_s": 33.424813810683034,
+        "speedup_vs_ar": 1.0169436397876834,
+        "target_verify_rows_per_output_token": 1.1875
+      },
+      {
+        "ar_decode_tok_s": 32.638788615625195,
+        "avg_accept_length": null,
+        "decision_counts": {
+          "ar": 64
+        },
+        "draft_calls": 0,
+        "mode_counts": {
+          "ar": 64
+        },
+        "per_dflash_cycle_ms": {
+          "commit": null,
+          "draft": null,
+          "target_verify": null
+        },
+        "phase_seconds": {
+          "commit": 0.0,
+          "draft": 0.0,
+          "target_verify": 1.9606283850152977
+        },
+        "prompt_id": "code:json_yaml_continuation",
+        "proposal_mode": "ar",
+        "route": "ar",
+        "spec_decode_tok_s": 32.64259585811344,
+        "speedup_vs_ar": 1.0001166477877925,
+        "target_verify_rows_per_output_token": 1.0
+      },
+      {
+        "ar_decode_tok_s": 32.63727024719086,
+        "avg_accept_length": 3.5714285714285716,
+        "decision_counts": {
+          "dflash": 14
+        },
+        "draft_calls": 14,
+        "mode_counts": {
+          "dflash": 14
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 0.11747229395301215,
+          "draft": 20.372519007651135,
+          "target_verify": 105.40048108668998
+        },
+        "phase_seconds": {
+          "commit": 0.00164461211534217,
+          "draft": 0.2852152661071159,
+          "target_verify": 1.4756067352136597
+        },
+        "prompt_id": "code:humaneval_add",
+        "proposal_mode": "chain",
+        "route": "chain",
+        "spec_decode_tok_s": 36.296802154002485,
+        "speedup_vs_ar": 1.1121273893035404,
+        "target_verify_rows_per_output_token": 1.09375
+      },
+      {
+        "ar_decode_tok_s": 32.62916317631236,
+        "avg_accept_length": null,
+        "decision_counts": {
+          "ar": 64
+        },
+        "draft_calls": 0,
+        "mode_counts": {
+          "ar": 64
+        },
+        "per_dflash_cycle_ms": {
+          "commit": null,
+          "draft": null,
+          "target_verify": null
+        },
+        "phase_seconds": {
+          "commit": 0.0,
+          "draft": 0.0,
+          "target_verify": 1.9731840519816615
+        },
+        "prompt_id": "code:humaneval_sort_third",
+        "proposal_mode": "ar",
+        "route": "ar",
+        "spec_decode_tok_s": 32.43488610995261,
+        "speedup_vs_ar": 0.9940459071748187,
+        "target_verify_rows_per_output_token": 1.0
+      },
+      {
+        "ar_decode_tok_s": 32.63898223309525,
+        "avg_accept_length": null,
+        "decision_counts": {
+          "ar": 64
+        },
+        "draft_calls": 0,
+        "mode_counts": {
+          "ar": 64
+        },
+        "per_dflash_cycle_ms": {
+          "commit": null,
+          "draft": null,
+          "target_verify": null
+        },
+        "phase_seconds": {
+          "commit": 0.0,
+          "draft": 0.0,
+          "target_verify": 1.9676376690040343
+        },
+        "prompt_id": "math:short_gsm8k_style",
+        "proposal_mode": "ar",
+        "route": "ar",
+        "spec_decode_tok_s": 32.52631366444366,
+        "speedup_vs_ar": 0.9965480367050985,
+        "target_verify_rows_per_output_token": 1.0
+      },
+      {
+        "ar_decode_tok_s": 32.78084982511232,
+        "avg_accept_length": 3.2666666666666666,
+        "decision_counts": {
+          "dflash": 15
+        },
+        "draft_calls": 15,
+        "mode_counts": {
+          "dflash": 15
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 0.12517360349496207,
+          "draft": 20.171118597500026,
+          "target_verify": 105.62059878914927
+        },
+        "phase_seconds": {
+          "commit": 0.0018776040524244308,
+          "draft": 0.3025667789625004,
+          "target_verify": 1.5843089818372391
+        },
+        "prompt_id": "instruct:simple_qa_no_template",
+        "proposal_mode": "chain",
+        "route": "chain",
+        "spec_decode_tok_s": 33.8689803419344,
+        "speedup_vs_ar": 1.0331940911424604,
+        "target_verify_rows_per_output_token": 1.171875
+      },
+      {
+        "ar_decode_tok_s": 32.88573927273419,
+        "avg_accept_length": null,
+        "decision_counts": {
+          "ar": 64
+        },
+        "draft_calls": 0,
+        "mode_counts": {
+          "ar": 64
+        },
+        "per_dflash_cycle_ms": {
+          "commit": null,
+          "draft": null,
+          "target_verify": null
+        },
+        "phase_seconds": {
+          "commit": 0.0,
+          "draft": 0.0,
+          "target_verify": 1.949493744992651
+        },
+        "prompt_id": "instruct:simple_qa_qwen_static_chat",
+        "proposal_mode": "ar",
+        "route": "ar",
+        "spec_decode_tok_s": 32.82903582757648,
+        "speedup_vs_ar": 0.9982757436380723,
+        "target_verify_rows_per_output_token": 1.0
+      }
+    ],
+    "tree_branching_topk_k2": [
+      {
+        "ar_decode_tok_s": 32.66790040161867,
+        "avg_accept_length": 1.7391304347826086,
+        "decision_counts": {
+          "dflash": 24
+        },
+        "draft_calls": 23,
+        "mode_counts": {
+          "ar": 1,
+          "dflash": 23
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 0.1169406940512683,
+          "draft": 20.42873916418656,
+          "target_verify": 107.36099056616102
+        },
+        "phase_seconds": {
+          "commit": 0.002689635963179171,
+          "draft": 0.4698610007762909,
+          "target_verify": 2.4693027830217034
+        },
+        "prompt_id": "code:quicksort_prefix",
+        "proposal_mode": "branching_topk",
+        "route": null,
+        "spec_decode_tok_s": 21.73792015542649,
+        "speedup_vs_ar": 0.6654214041361959,
+        "target_verify_rows_per_output_token": 1.8125
+      },
+      {
+        "ar_decode_tok_s": 32.592208859939305,
+        "avg_accept_length": 1.56,
+        "decision_counts": {
+          "dflash": 25
+        },
+        "draft_calls": 25,
+        "mode_counts": {
+          "dflash": 25
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 0.11948172468692064,
+          "draft": 20.2978084073402,
+          "target_verify": 105.88454795302823
+        },
+        "phase_seconds": {
+          "commit": 0.002987043117173016,
+          "draft": 0.507445210183505,
+          "target_verify": 2.647113698825706
+        },
+        "prompt_id": "code:function_continuation",
+        "proposal_mode": "branching_topk",
+        "route": null,
+        "spec_decode_tok_s": 20.253271617258633,
+        "speedup_vs_ar": 0.621414513643257,
+        "target_verify_rows_per_output_token": 1.953125
+      },
+      {
+        "ar_decode_tok_s": 32.7972964720644,
+        "avg_accept_length": 1.7826086956521738,
+        "decision_counts": {
+          "dflash": 23
+        },
+        "draft_calls": 23,
+        "mode_counts": {
+          "dflash": 23
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 0.11625621245121179,
+          "draft": 20.351084133954313,
+          "target_verify": 106.23446295452912
+        },
+        "phase_seconds": {
+          "commit": 0.002673892886377871,
+          "draft": 0.4680749350809492,
+          "target_verify": 2.4433926479541697
+        },
+        "prompt_id": "code:class_continuation",
+        "proposal_mode": "branching_topk",
+        "route": null,
+        "spec_decode_tok_s": 21.945344689429263,
+        "speedup_vs_ar": 0.6691205388871472,
+        "target_verify_rows_per_output_token": 1.796875
+      },
+      {
+        "ar_decode_tok_s": 32.735580424979474,
+        "avg_accept_length": 1.7391304347826086,
+        "decision_counts": {
+          "dflash": 24
+        },
+        "draft_calls": 23,
+        "mode_counts": {
+          "ar": 1,
+          "dflash": 23
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 0.1205173017376143,
+          "draft": 20.33459068701157,
+          "target_verify": 107.51330890976216
+        },
+        "phase_seconds": {
+          "commit": 0.002771897939965129,
+          "draft": 0.46769558580126613,
+          "target_verify": 2.47280610492453
+        },
+        "prompt_id": "code:json_yaml_continuation",
+        "proposal_mode": "branching_topk",
+        "route": null,
+        "spec_decode_tok_s": 21.727052754210185,
+        "speedup_vs_ar": 0.6637136862137616,
+        "target_verify_rows_per_output_token": 1.8125
+      },
+      {
+        "ar_decode_tok_s": 32.519569537047154,
+        "avg_accept_length": 1.9090909090909092,
+        "decision_counts": {
+          "dflash": 22
+        },
+        "draft_calls": 22,
+        "mode_counts": {
+          "dflash": 22
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 0.12105353843336078,
+          "draft": 20.352827088738028,
+          "target_verify": 106.38314040525901
+        },
+        "phase_seconds": {
+          "commit": 0.002663177845533937,
+          "draft": 0.44776219595223665,
+          "target_verify": 2.3404290889156982
+        },
+        "prompt_id": "code:humaneval_add",
+        "proposal_mode": "branching_topk",
+        "route": null,
+        "spec_decode_tok_s": 22.91373444521385,
+        "speedup_vs_ar": 0.7046137071128792,
+        "target_verify_rows_per_output_token": 1.71875
+      },
+      {
+        "ar_decode_tok_s": 32.533512268587224,
+        "avg_accept_length": 0.96875,
+        "decision_counts": {
+          "dflash": 33
+        },
+        "draft_calls": 32,
+        "mode_counts": {
+          "ar": 1,
+          "dflash": 32
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 0.12414581033226568,
+          "draft": 20.836074527323944,
+          "target_verify": 110.58833113020228
+        },
+        "phase_seconds": {
+          "commit": 0.003972665930632502,
+          "draft": 0.6667543848743662,
+          "target_verify": 3.538826596166473
+        },
+        "prompt_id": "code:humaneval_sort_third",
+        "proposal_mode": "branching_topk",
+        "route": null,
+        "spec_decode_tok_s": 15.191481169106595,
+        "speedup_vs_ar": 0.46694869719845006,
+        "target_verify_rows_per_output_token": 2.515625
+      },
+      {
+        "ar_decode_tok_s": 32.48509289110836,
+        "avg_accept_length": 1.7826086956521738,
+        "decision_counts": {
+          "dflash": 23
+        },
+        "draft_calls": 23,
+        "mode_counts": {
+          "dflash": 23
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 0.12864730239886304,
+          "draft": 20.10152391512352,
+          "target_verify": 107.0548236552302
+        },
+        "phase_seconds": {
+          "commit": 0.00295888795517385,
+          "draft": 0.4623350500478409,
+          "target_verify": 2.4622609440702945
+        },
+        "prompt_id": "math:short_gsm8k_style",
+        "proposal_mode": "branching_topk",
+        "route": null,
+        "spec_decode_tok_s": 21.842571742815405,
+        "speedup_vs_ar": 0.6723875414496362,
+        "target_verify_rows_per_output_token": 1.796875
+      },
+      {
+        "ar_decode_tok_s": 32.755318113175115,
+        "avg_accept_length": 1.8636363636363635,
+        "decision_counts": {
+          "dflash": 23
+        },
+        "draft_calls": 22,
+        "mode_counts": {
+          "ar": 1,
+          "dflash": 22
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 0.1189811287490143,
+          "draft": 19.986784368732266,
+          "target_verify": 106.52374240453355
+        },
+        "phase_seconds": {
+          "commit": 0.0026175848324783146,
+          "draft": 0.43970925611210987,
+          "target_verify": 2.343522332899738
+        },
+        "prompt_id": "instruct:simple_qa_no_template",
+        "proposal_mode": "branching_topk",
+        "route": null,
+        "spec_decode_tok_s": 22.954582724043686,
+        "speedup_vs_ar": 0.7007894914875122,
+        "target_verify_rows_per_output_token": 1.734375
+      },
+      {
+        "ar_decode_tok_s": 32.65732027242673,
+        "avg_accept_length": 1.9090909090909092,
+        "decision_counts": {
+          "dflash": 22
+        },
+        "draft_calls": 22,
+        "mode_counts": {
+          "dflash": 22
+        },
+        "per_dflash_cycle_ms": {
+          "commit": 0.11747695547951893,
+          "draft": 20.085179135838356,
+          "target_verify": 105.32467227841897
+        },
+        "phase_seconds": {
+          "commit": 0.0025844930205494165,
+          "draft": 0.4418739409884438,
+          "target_verify": 2.3171427901252173
+        },
+        "prompt_id": "instruct:simple_qa_qwen_static_chat",
+        "proposal_mode": "branching_topk",
+        "route": null,
+        "spec_decode_tok_s": 23.15693316724057,
+        "speedup_vs_ar": 0.7090885894514884,
+        "target_verify_rows_per_output_token": 1.71875
+      }
+    ]
+  },
+  "run_tag": "dflash-27b-b4-profile-routing-diagnostic",
+  "schema": 1,
+  "software": {
+    "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n",
+    "hipengine_branch": "mpt-dflash",
+    "hipengine_commit": "780490d62b55c59f74c7c4b97b1a0f5813ee6690",
+    "hipengine_dirty": true,
+    "hipengine_status_porcelain": "M hipengine/benchmark/speculative.py\n M scripts/dflash_chain_e2e_bench.py\n M tests/test_dflash_draft_confidence.py\n M tests/test_speculative_benchmark.py\n?? .handoff/\n?? benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-b3-batched-graphauto-rev2.json\n?? benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-b3-batched-graphauto.json\n?? benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-b3-c1loop-graphauto.json\n?? benchmarks/results/2026-05-22-hipengine-mtp-m12.6b-w7900-b3-batched-graphauto.json",
+    "platform": "Linux-7.0.9-1-cachyos-x86_64-with-glibc2.43",
+    "python": "3.12.9"
+  },
+  "source_artifacts": {
+    "adaptive_probe": "/tmp/hipengine-dflash-27b-b4-d64-branch-copy-adaptive-9prompt.json",
+    "chain_branch_copy": "/tmp/hipengine-dflash-27b-b4-d64-branch-copy-9prompt.json",
+    "profile_route_ar_chain": "/tmp/hipengine-dflash-27b-b4-d64-profile-route-ar-chain-9prompt.json",
+    "tree_branching_topk_k2": "/tmp/hipengine-dflash-27b-b4-d64-branching-topk2-9prompt.json"
+  },
+  "status": "diagnostic",
+  "summary": "Qwen3.6-27B DFlash B=4/D64 9-prompt routing diagnostic: chain has prompt winners, current tree loses, profile/no-probe routing barely beats AR, online probing remains below AR.",
+  "timestamp": "2026-05-24T21:50:09.858691+00:00",
+  "workload": {
+    "drafter_model": {
+      "dtype": "bf16",
+      "name": "z-lab/Qwen3.6-27B-DFlash",
+      "path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106",
+      "snapshot_revision": "0919688658996800f86b895034249700e9481106"
+    },
+    "notes": [
+      "branch_copy chain uses native_bulk_bplus1 + batched full-attn verifier + branch-slot copy commit",
+      "tree row is balanced branching_topk K=2 with replay commit because tree and branch_copy are incompatible",
+      "profile route defaults to AR and routes only measured chain winners to chain; no online DFlash probe is charged on AR-routed prompts"
+    ],
+    "profile_route_manifest": {
+      "default": "ar",
+      "description": "No-probe DFlash routing diagnostic from 2026-05-25 W7900 27B B4 D64 branch-copy chain rows: route only measured chain winners to DFlash.",
+      "routes": {
+        "code:class_continuation": "chain",
+        "code:humaneval_add": "chain",
+        "instruct:simple_qa_no_template": "chain"
+      }
+    },
+    "shape": "Qwen3.6-27B-PARO dense + z-lab DFlash, W7900/gfx1100, B=4, D64, 9 stable prompts",
+    "target_model": {
+      "name": "z-lab/Qwen3.6-27B-PARO",
+      "path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207",
+      "quant": "w4_paro_packed",
+      "snapshot_revision": "84f86409151d4f2ec86dc0b6a096d5f6daa7f207"
+    }
+  }
+}

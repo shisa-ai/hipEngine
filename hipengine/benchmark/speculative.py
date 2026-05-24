@@ -298,6 +298,7 @@ def normalize_speculative_row(raw: Mapping[str, Any], *, row_index: int = 0) -> 
             "topk": _optional_int(config.get("topk", config.get("ddtree_topk"))),
             "tree_budget": _optional_int(config.get("tree_budget", config.get("ddtree_budget"))),
             "tree_mode": _optional_str(config.get("tree_mode")),
+            "profile_route": _optional_str(config.get("profile_route")),
         },
         "ar": {
             "same_session_control": _optional_bool(ar.get("same_session_control", ar.get("same_session_control_reused_for_prompt", True))),
