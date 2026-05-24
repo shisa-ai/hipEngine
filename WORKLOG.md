@@ -23017,3 +23017,28 @@ Documentation/rollup:
   `benchmarks/results/2026-05-24-hipengine-dflash-r3.1-w7900-adaptive-canonical-b4-d160-4prompt-diagnostic.json`
   and
   `benchmarks/results/2026-05-24-hipengine-dflash-r3.1-w7900-adaptive-horizon-b4-d32-9prompt-guard.json`.
+
+## 2026-05-24 — R3.7 closeout doc/rollup sync
+
+Finished the R3.7 handoff audit before returning to R3.1 economics.  The code
+and artifacts were already in-tree: `HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD=on`
+uses the fused W8A16 LM-head + argmax-rows kernel, passes exactness, and the
+rocprof gate shows no full-vocab verifier LM-head kernel/full-vocab D2H copy.
+The missing piece was documentation consistency.
+
+Updates:
+- `docs/DFLASH.md` Round-3 punchlist now marks R3.7 as done/default-off:
+  fused-on `0.621x` AR vs fused-off `0.637x` AR; verifier
+  `27.04 -> 28.00 ms/cycle`; exact 9-prompt D32, identical
+  `avg_accept_length=1.527`; promotion rejected on gfx1100 due stage-1 grid
+  occupancy collapse.
+- `docs/BEELLAMA_PROFILE.md` now reflects current R3.1/R3.7 status instead of
+  the pre-handoff blocker: native bulk -> c=1 canonical commit is fixed, but
+  failed/negative-profit probes still cost too much; R3.7 reduced-logits fuse
+  is available but slower on W7900.
+- `benchmarks/README.md` and `benchmarks/CHANGELOG.md` now include the retained
+  R3.7 fused-on/off artifacts:
+  `benchmarks/results/2026-05-24-hipengine-dflash-r3.7-w7900-fused-{off,on}-b4-d32-9prompt.json`.
+
+No new GPU measurement was run for this doc-only closeout; it records existing
+R3.7 evidence from the retained artifacts and prior WORKLOG entry.
