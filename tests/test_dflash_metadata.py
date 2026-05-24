@@ -14,6 +14,10 @@ from hipengine.loading.dflash import (
     validate_dflash_drafter_metadata,
     validate_dflash_target_metadata,
 )
+from hipengine.loading.qwen35_paro import (
+    runtime_full_attention_dense_c1_tensor_names,
+    runtime_linear_attention_dense_c1_tensor_names,
+)
 from hipengine.loading.safetensors import TensorInfo, WeightIndex, load_weight_index, read_tensor_storage_bytes
 
 
@@ -104,6 +108,16 @@ def test_dflash_target_metadata_validation_passes_fake_packed_manifest() -> None
     assert len(result.present) == 2 + 4 * 3 * 6
 
 
+def test_dflash_target_metadata_validation_accepts_dense_paro_manifest() -> None:
+    result = validate_dflash_target_metadata(_dense_target_index())
+
+    assert result.passed is True
+    assert result.config.shared_expert_format == "dense_paro_w4"
+    assert result.config.num_experts == 0
+    assert "layers.0.mlp.gate_proj.qweight" in result.present
+    assert "layers.3.self_attn.q_proj.qweight" in result.present
+
+
 def test_dflash_defaults_do_not_reference_old_quark_mtp_artifact() -> None:
     assert DFLASH_PACKED_TARGET_MODEL == "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed"
     assert DFLASH_DRAFTER_MODEL == "z-lab/Qwen3.6-35B-A3B-DFlash"
@@ -167,6 +181,26 @@ def _target_config() -> dict:
     }
 
 
+def _dense_target_config() -> dict:
+    cfg = _target_config()
+    cfg["architectures"] = ["Qwen3_5ForConditionalGeneration"]
+    cfg["model_type"] = "qwen3_5"
+    removed_dense_fields = {
+        "num_experts",
+        "num_experts_per_tok",
+        "moe_intermediate_size",
+        "shared_expert_intermediate_size",
+    }
+    cfg["text_config"] = {
+        key: value
+        for key, value in cfg["text_config"].items()
+        if key not in removed_dense_fields
+    }
+    cfg["text_config"]["model_type"] = "qwen3_5_text"
+    cfg["text_config"]["intermediate_size"] = 32
+    return cfg
+
+
 def _draft_index() -> WeightIndex:
     tensors = {
         "fc.weight": _tensor("fc.weight", "BF16", (16, 32)),
@@ -213,6 +247,28 @@ def _target_index() -> WeightIndex:
                 }
             )
     return WeightIndex(Path("/fake/target"), _target_config(), tensors, (Path("fake.safetensors"),))
+
+
+def _dense_target_index() -> WeightIndex:
+    tensors = {
+        "model.language_model.embed_tokens.weight": _tensor("model.language_model.embed_tokens.weight", "F16", (100, 16)),
+        "lm_head.weight": _tensor("lm_head.weight", "F16", (100, 16)),
+    }
+    layer_types = _dense_target_config()["text_config"]["layer_types"]
+    for layer, layer_type in enumerate(layer_types):
+        names = (
+            runtime_full_attention_dense_c1_tensor_names(layer_id=layer)
+            if layer_type == "full_attention"
+            else runtime_linear_attention_dense_c1_tensor_names(layer_id=layer)
+        )
+        for name in names:
+            if name.endswith(".qweight") or name.endswith(".qzeros"):
+                tensors[f"model.language_model.{name}"] = _tensor(f"model.language_model.{name}", "I32", (1, 1))
+            elif name.endswith(".pairs"):
+                tensors[f"model.language_model.{name}"] = _tensor(f"model.language_model.{name}", "I16", (1, 1))
+            else:
+                tensors[f"model.language_model.{name}"] = _tensor(f"model.language_model.{name}", "F16", (1,))
+    return WeightIndex(Path("/fake/dense-target"), _dense_target_config(), tensors, (Path("fake.safetensors"),))
 
 
 def _tensor(name: str, dtype: str, shape: tuple[int, ...]) -> TensorInfo:

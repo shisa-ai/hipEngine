@@ -76,6 +76,23 @@ DEFAULT_DRAFTER_REVISION = "42d3b34d588423cdae7ba8f53a8cf7789346a719"
 _ADAPTIVE_AR_GUARD_REASONS = {"remaining_tokens_guard", "probe_amortization_guard"}
 
 
+def _hf_snapshot_identity(path: Path, *, default_name: str, default_revision: str) -> tuple[str, str]:
+    """Infer a Hugging Face model id/revision from a local snapshot path."""
+
+    parts = path.resolve().parts
+    try:
+        snapshot_index = parts.index("snapshots")
+    except ValueError:
+        return default_name, default_revision
+    if snapshot_index <= 0 or snapshot_index + 1 >= len(parts):
+        return default_name, default_revision
+    raw_name = parts[snapshot_index - 1]
+    if not raw_name.startswith("models--"):
+        return default_name, default_revision
+    model_name = raw_name.removeprefix("models--").replace("--", "/")
+    return model_name, parts[snapshot_index + 1]
+
+
 @dataclass(frozen=True)
 class DraftResult:
     candidate_tokens: tuple[int, ...]
@@ -2819,17 +2836,27 @@ def main(argv: list[str] | None = None) -> int:
         run_tag = "dflash-chain-full-model-e2e"
         artifact_summary = "Full-model hipEngine DFlash chain E2E run with same-session AR control, native drafter, and serial/native target verifier"
         workload_shape = "full_model_dflash_chain_e2e"
+    target_name, target_revision = _hf_snapshot_identity(
+        target,
+        default_name=DEFAULT_TARGET_MODEL,
+        default_revision=DEFAULT_TARGET_REVISION,
+    )
+    drafter_name, drafter_revision = _hf_snapshot_identity(
+        drafter,
+        default_name=DEFAULT_DFLASH_DRAFTER,
+        default_revision=DEFAULT_DRAFTER_REVISION,
+    )
     artifact = build_speculative_artifact(
         run_tag=run_tag,
         summary=artifact_summary,
         rows=rows,
         models=SpeculativeBenchmarkModels(
-            target_name=DEFAULT_TARGET_MODEL,
+            target_name=target_name,
             target_path=str(target),
-            target_revision=DEFAULT_TARGET_REVISION,
-            drafter_name=DEFAULT_DFLASH_DRAFTER,
+            target_revision=target_revision,
+            drafter_name=drafter_name,
             drafter_path=str(drafter),
-            drafter_revision=DEFAULT_DRAFTER_REVISION,
+            drafter_revision=drafter_revision,
         ),
         status="diagnostic",
         timestamp=datetime.now(timezone.utc).isoformat(),

@@ -23282,3 +23282,112 @@ Docs/rollup updated:
 - `docs/MTP.md` prompt-rendering diagnostic section.
 - `benchmarks/README.md` and `benchmarks/CHANGELOG.md` with the retained
   diagnostic row.
+
+## 2026-05-25 — Qwen3.6-27B PARO/DFLASH lane diagnostic
+
+User asked to move from the current 35B A3B MTP/DFlash lane to seeing how the
+Qwen3.6-27B PARO/DFLASH pair stacks up.
+
+Artifact validation:
+- Target: `/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207`
+- Drafter: `/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106`
+- The 27B target is dense PARO (`num_experts=0`, `dense_paro_w4`), not the
+  35B A3B shared-expert target family.  Added dense PARO DFlash target metadata
+  validation and benchmark Hugging Face snapshot identity inference so retained
+  artifacts are not mislabeled as the 35B defaults.
+- Validation command:
+```bash
+python3 scripts/dflash_validate_artifacts.py \
+  --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 \
+  --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 \
+  --json /tmp/hipengine-27b-dflash-validate.json
+```
+Result: passed; target present tensors `2850`, drafter present tensors `58`,
+pair errors none.
+
+ROCm/hardware:
+- `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"` -> `hip OK`.
+- `rocminfo | grep -E 'Name:|gfx'` -> W7900/gfx1100.
+
+Main B=4 D64 four-prompt direct-bulk diagnostic:
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py \
+  --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 \
+  --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 \
+  --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --max-prompts 4 --decode-tokens 64 --draft-budgets 4 \
+  --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched \
+  --canonical-commit-mode bulk_direct --hardware-gpu 'AMD Radeon Pro W7900' \
+  --json /tmp/hipengine-dflash-27b-b4-d64-bulk-direct-4prompt.json
+```
+Result: exact `4/4`, AR `32.685 tok/s`, DFlash `27.434 tok/s`, `0.839x`
+AR.  Acceptance avg `2.528`, multi-token accept `0.722`, rows/output `1.414`.
+Per-prompt ratios: quicksort `0.856x`, function `0.694x`, class `0.990x`,
+json/yaml `0.872x`.
+
+Safe replay comparator:
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py \
+  --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 \
+  --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 \
+  --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --max-prompts 4 --decode-tokens 64 --draft-budgets 4 \
+  --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched \
+  --canonical-commit-mode replay --hardware-gpu 'AMD Radeon Pro W7900' \
+  --json /tmp/hipengine-dflash-27b-b4-d64-safe-replay-4prompt.json
+```
+Result: exact `4/4`, AR `32.602 tok/s`, DFlash `14.694 tok/s`, `0.451x`
+AR.  Same acceptance as direct-bulk, but rows/output `2.406` and 63-64 replay
+rows per prompt.
+
+Budget sweep, direct-bulk D64 one prompt:
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py \
+  --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 \
+  --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 \
+  --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --max-prompts 1 --decode-tokens 64 \
+  --draft-budgets 1,2,4,8,12,15 --verifier-mode native_bulk_bplus1 \
+  --full-attn-chain-mode batched --canonical-commit-mode bulk_direct \
+  --hardware-gpu 'AMD Radeon Pro W7900' \
+  --json /tmp/hipengine-dflash-27b-budget-sweep-d64-bulk-direct-1prompt.json
+```
+Result: exact `6/6`; B1/B2/B4/B8/B12/B15 ratios
+`0.556/0.686/0.823/0.706/0.644/0.582x`.  B=4 remains best; larger budgets
+increase accepted/cycle only slowly (`2.50 -> 2.71 -> 2.94`) while rows/output
+rises (`1.42 -> 2.41 -> 3.27 -> 4.02`).
+
+D160 direct-bulk horizon check:
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py \
+  --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 \
+  --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 \
+  --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --max-prompts 1 --decode-tokens 160 --draft-budgets 4 \
+  --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched \
+  --canonical-commit-mode bulk_direct --hardware-gpu 'AMD Radeon Pro W7900' \
+  --json /tmp/hipengine-dflash-27b-b4-d160-bulk-direct-1prompt.json
+```
+Result: exact `1/1`, AR `32.712 tok/s`, DFlash `23.827 tok/s`, `0.728x`
+AR.  Avg accept `2.137`, rows/output `1.594`.
+
+Conclusion: Qwen3.6-27B dense PARO/DFLASH is materially better than the 35B
+A3B DFlash lane but still does not match AR in the correctness-preserving safe
+replay path.  Direct-bulk is close enough to be architecturally interesting
+(class prompt reached `0.990x` at D64), but remains diagnostic until canonical
+state equivalence is proven broadly or replaced by a lower-cost exact commit.
+B=4 remains the measured optimum; the 8-24 speculative-token range does not
+carry over to this lane/runtime.
+
+Retained artifact:
+- `benchmarks/results/2026-05-25-hipengine-dflash-qwen36-27b-w7900-diagnostic.json`
+
+Validation:
+- `python3 -m py_compile hipengine/loading/dflash.py scripts/dflash_chain_e2e_bench.py tests/test_dflash_metadata.py` -> pass.
+- `PYTHONPATH=. pytest -q tests/test_dflash_metadata.py` -> `8 passed, 1 skipped`.
+- `git diff --check` -> pass.
+
+Docs/rollup updated:
+- `docs/DFLASH.md` 27B lane check.
+- `benchmarks/README.md` and `benchmarks/CHANGELOG.md` with the retained
+  diagnostic row.

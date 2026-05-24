@@ -1051,6 +1051,37 @@ Exact-AR equality is mandatory for every row and is NOT repeated in the Gate col
 | R3.7 | Reduced-logits verifier wire-through for DFlash chain accept (carry-over from R2.4); confirm via rocprof that no full-vocab lm-head kernel and no full-vocab D2H copy run in the verifier window. | B (code) | none (infra exists in MTP M12.6+) | ~50 (Python) | `HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD=on` returns exact-AR; rocprofv3 shows no full-vocab lm-head kernel in verifier window. | -0.5 to -1 ms verifier. Small but free. | Fused W8A16 LM-head + argmax rows landed behind `HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD=on`. Correctness: 6-shape parity test is bit-exact vs unfused LM-head + `argmax_f32_rows_i32`; 9-prompt B=4 D=32 chain bench remains exact with identical `avg_accept_length=1.527`. Rocprof gate passes: no `w8a16_linear_multi_row_kernel`, no `argmax_rows_stage1_i32_kernel`, no full-vocab D2H in the verifier window. Perf A/B is negative on W7900: fused-on `0.621x` AR vs fused-off `0.637x` AR, verifier `27.04 → 28.00 ms/cycle`, because stage-1 grid occupancy collapses from ~248K vocab blocks to `243 × 5` long-running blocks. | **Done / default-off**; architectural gate closed, speed promotion rejected on gfx1100. Future use needs a different work schedule, larger verifier row count, or true reduced-vocab sampling. |
 | R3.8 | BeeLlama v0.2.0 profile read + writeup. Compare their default config and kernels to ours. | reference | none | ~120 LoC markdown | Notes document (`docs/BEELLAMA_PROFILE.md`) captures: their default B, drafter architecture / param count, verifier batching strategy, kernel fusion tricks they call out. Maps each finding back to R3.x items. | Validates whether 4.4x is achievable on similar hardware or reflects a different setup. Does not directly produce a code change. | Done in [`docs/BEELLAMA_PROFILE.md`](BEELLAMA_PROFILE.md). Default `B=16` flat DFlash with greedy drafter and adaptive `profit` controller (per-context-bucket EWMA over depth ladder `{0..8,10,12,14,16}` with hysteresis + baseline reprobe). Drafter is shallow-and-wide (5 layers @ `n_embd=5120` for Qwen3.5-27B). Reduced-logits verifier path (`set_dflash_verify_logits`) is real and has a long sampler/grammar blocklist. `4.40x` headline is RTX 3090 + Q5/Q4 GGUF target (~3× lower target memory traffic than our BF16 target) + adaptive B up to 16, so not directly comparable to W7900 BF16 R3.4 numbers. Confirms R3.1 + R3.7 are the right next levers. | **Done (paper)**; informs R3.1 controller fix priority and R3.7 streaming argmax-over-vocab kernel design |
 
+### Qwen3.6-27B PARO/DFLASH lane check (2026-05-25)
+
+The z-lab Qwen3.6-27B lane is dense PARO (`num_experts=0`,
+`dense_paro_w4`), not the 35B A3B shared-expert target family.  The DFlash
+metadata gate now accepts dense PARO target runtime tensors and the benchmark
+artifact labels local Hugging Face snapshot paths by model id/revision instead
+of inheriting the 35B defaults.
+
+Measured on W7900/gfx1100 with the local 27B target snapshot
+`84f86409151d4f2ec86dc0b6a096d5f6daa7f207` and DFlash snapshot
+`0919688658996800f86b895034249700e9481106`:
+
+| Mode | Shape | Correctness | AR tok/s | DFlash tok/s | vs AR | Key economics |
+| --- | --- | --- | ---: | ---: | ---: | --- |
+| safe replay | B=4, D64, 4 prompts | exact `4/4` | 32.60 | 14.69 | `0.451x` | avg accept `2.53`, rows/output `2.41`, 63-64 replay rows per prompt |
+| direct bulk | B=4, D64, 4 prompts | exact `4/4` | 32.69 | 27.43 | `0.839x` | avg accept `2.53`, rows/output `1.41` |
+| direct bulk | B=4, D160, 1 prompt | exact `1/1` | 32.71 | 23.83 | `0.728x` | avg accept `2.14`, rows/output `1.59` |
+| direct bulk budget sweep | B={1,2,4,8,12,15}, D64, 1 prompt | exact `6/6` | 32.75 | 21.45 aggregate | `0.655x` aggregate | B4 is best: `0.823x`; B8/B12/B15 regress to `0.706/0.644/0.582x` |
+
+Interpretation: 27B dense PARO/DFLASH is a materially better speculation lane
+than the current 35B A3B DFlash path.  It also confirms the budget conclusion:
+B=4 remains the measured optimum; the 8-24-token range pays too many verifier
+rows before acceptance catches up.  The remaining blocker is not drafter
+quality on the best prompts, it is exact commit cost.  Safe replay is still far
+below AR, while direct bulk is close enough to be architecturally interesting
+but remains diagnostic until canonical-state equivalence is proven broadly or
+replaced with a lower-cost exact commit.
+
+Artifact:
+[`2026-05-25-hipengine-dflash-qwen36-27b-w7900-diagnostic.json`](../benchmarks/results/2026-05-25-hipengine-dflash-qwen36-27b-w7900-diagnostic.json).
+
 ### R3.1 design notes — Adaptive budget controller
 
 **Goal:** Default DFlash on, but never lose to AR by more than 5% on any prompt. Required to make any future R3.4/R3.6 win promotable across the full 9-prompt suite (not just the prompt 3 archetype).

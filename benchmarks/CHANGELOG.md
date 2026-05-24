@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-05-25
+
+- [diagnostic retained] hipEngine / Qwen3.6-27B-PARO dense + z-lab Qwen3.6-27B-DFlash / W7900/gfx1100 B=4 D64 four-prompt: 35B safe replay reference `0.343x` (D32 4-prompt B4 mean) -> 27B safe replay `0.451x` AR (+31.5% relative, exact `4/4`), and 35B direct-bulk reference `0.524x` -> 27B direct-bulk `0.839x` AR (+60.1% relative, exact `4/4`) after adding dense PARO DFlash target validation and benchmark model-identity inference; D64 direct budget sweep B1/B2/B4/B8/B12/B15 = `0.556/0.686/0.823/0.706/0.644/0.582x`, so B=4 remains best; D160 direct-bulk one-prompt exact at `0.728x`; artifact `benchmarks/results/2026-05-25-hipengine-dflash-qwen36-27b-w7900-diagnostic.json`.
+
 ## 2026-05-24
 
 - [diagnostic retained] hipEngine / Qwen3.6-35B-A3B-PARO-MTP-BF16 / MTP W7900/gfx1100 B=3 prompt-rendering sweep: raw code prompts exact `2/2`, MTP/AR `0.498x`, acceptance `0.504`; Qwen chat-template `thinking_on` stays exact but slower on code_python D64 (`0.410x`, acceptance `0.359`) and code_cpp D32 (`0.496x`, acceptance `0.543`), while `thinking_off` is worse on both exact comparable rows (code_python D64 `0.352x`, acceptance `0.267`; code_cpp D32 `0.312x`, acceptance `0.211`) and code_cpp D64 fails exact-AR with a special-token tail. Added `--prompt-render {raw,qwen_chat_thinking_off,qwen_chat_thinking_on}` to the MTP prompt-suite harness; artifact `benchmarks/results/2026-05-24-hipengine-mtp-thinking-render-w7900-diagnostic.json`.

@@ -10,7 +10,12 @@ from hipengine.core.hip import HipRuntime
 from hipengine.core.device import Device
 from hipengine.core.tensor import Tensor
 from hipengine.loading.materialize import DeviceTensorAllocation, DeviceWeightMap, load_tensor_info_to_device
-from hipengine.loading.qwen35_paro import qwen35_paro_config_from_hf, normalize_qwen35_weight_name
+from hipengine.loading.qwen35_paro import (
+    normalize_qwen35_weight_name,
+    qwen35_paro_config_from_hf,
+    runtime_full_attention_dense_c1_tensor_names,
+    runtime_linear_attention_dense_c1_tensor_names,
+)
 from hipengine.loading.safetensors import MissingTensorError, TensorInfo, WeightIndex, load_weight_index
 
 DFLASH_DRAFTER_MODEL = "z-lab/Qwen3.6-35B-A3B-DFlash"
@@ -21,7 +26,7 @@ DFLASH_PACKED_TARGET_MODEL = "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed"
 class TensorRequirement:
     name: str
     dtype: str | tuple[str, ...]
-    shape: tuple[int | None, ...]
+    shape: tuple[int | None, ...] | None
     description: str = ""
 
 
@@ -271,7 +276,7 @@ def validate_dflash_target_metadata(
             num_experts=qwen.num_experts,
             num_experts_per_tok=qwen.num_experts_per_tok,
             quant_method=qwen.quant_method,
-            shared_expert_format="packed_paro_w4",
+            shared_expert_format="dense_paro_w4" if qwen.num_experts <= 0 else "packed_paro_w4",
             layer_types=qwen.layer_types,
         )
     except Exception as exc:
@@ -479,6 +484,20 @@ def dflash_target_tensor_requirements(config: DFlashTargetConfig) -> tuple[Tenso
         TensorRequirement("embed_tokens.weight", ("F16", "BF16"), (config.vocab_size, config.hidden_size), "token embedding"),
         TensorRequirement("lm_head.weight", ("F16", "BF16"), (config.vocab_size, config.hidden_size), "LM head"),
     ]
+    if config.num_experts <= 0:
+        for layer, layer_type in enumerate(config.layer_types):
+            if layer_type == "full_attention":
+                names = runtime_full_attention_dense_c1_tensor_names(layer_id=layer)
+            elif layer_type == "linear_attention":
+                names = runtime_linear_attention_dense_c1_tensor_names(layer_id=layer)
+            else:
+                reqs.append(TensorRequirement(f"layers.{layer}", "F16", (), f"unsupported dense PARO layer_type {layer_type!r}"))
+                continue
+            reqs.extend(
+                TensorRequirement(name, ("F16", "BF16", "I32", "I16"), None, "dense PARO runtime tensor")
+                for name in names
+            )
+        return tuple(reqs)
     for layer in range(config.num_hidden_layers):
         shared = f"layers.{layer}.mlp.shared_expert"
         for proj in ("gate_proj", "up_proj", "down_proj"):
@@ -571,7 +590,9 @@ def _normalized_tensor_map(index: WeightIndex) -> dict[str, TensorInfo]:
     return out
 
 
-def _shape_matches(actual: tuple[int, ...], expected: tuple[int | None, ...]) -> bool:
+def _shape_matches(actual: tuple[int, ...], expected: tuple[int | None, ...] | None) -> bool:
+    if expected is None:
+        return True
     if len(actual) != len(expected):
         return False
     return all(exp is None or int(act) == int(exp) for act, exp in zip(actual, expected, strict=True))
@@ -581,7 +602,9 @@ def _fmt_expected(values: Sequence[str]) -> str:
     return values[0] if len(values) == 1 else "{" + ", ".join(values) + "}"
 
 
-def _fmt_shape(shape: Sequence[int | None]) -> str:
+def _fmt_shape(shape: Sequence[int | None] | None) -> str:
+    if shape is None:
+        return "(*)"
     return "(" + ", ".join("*" if value is None else str(value) for value in shape) + ")"
 
 
