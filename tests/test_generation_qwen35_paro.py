@@ -85,14 +85,52 @@ def test_qwen35_paro_generator_runs_multi_token_resident_decode_graph(monkeypatc
 
     assert out == ["ABC"]
     assert calls == [
-        ("init", runner, 6),
+        ("init", runner, 4096),
         ("prefill_native", (10, 11), True),
         ("capture_decode_graph", 2, 1, 2, 2),
         ("graph_enter",),
         ("graph_replay", 2),
         ("graph_read", 2),
         ("graph_close",),
-        ("close",),
+    ]
+
+
+def test_qwen35_paro_generator_reuses_resident_session(monkeypatch) -> None:
+    calls = []
+
+    class FakeSession:
+        tokenizer = SimpleNamespace(token_to_id=lambda token: None)
+
+        def __init__(self, runner, *, max_sequence_length, **kwargs):
+            calls.append(("init", runner, max_sequence_length))
+
+        def reset(self):
+            calls.append(("reset",))
+
+        def close(self):
+            calls.append(("close",))
+
+        def prefill_native(self, token_ids, *, sample: bool = True):
+            calls.append(("prefill_native", tuple(token_ids), sample))
+            return _result(100, "A") if sample else None
+
+    monkeypatch.setattr(qwen35, "_select_token", lambda model, prompt, token_id: (11, [10, 11]))
+    monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
+    generator = qwen35.Qwen35ParoOneTokenGenerator(
+        model_path="/tmp/model",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+    runner = object()
+    generator._runner = runner
+
+    assert generator.generate(_request(max_tokens=1)) == ["A"]
+    assert generator.generate(_request(max_tokens=1)) == ["A"]
+    assert calls == [
+        ("init", runner, 4096),
+        ("prefill_native", (10, 11), True),
+        ("reset",),
+        ("prefill_native", (10, 11), True),
     ]
 
 

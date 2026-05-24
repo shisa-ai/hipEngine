@@ -26585,3 +26585,33 @@ uv run --extra dev python -m pytest -q
 ## 2026-05-23 — llama.cpp wrapper metadata fix for RX 7900 XTX 5-run sweep
 
 Before rerunning `benchmarks/7900XTX.md` with `--repetitions 5`, fixed `scripts/llamacpp_bench_with_peak.py` artifact metadata so it no longer hardcodes W7900 or a single-shot `--repetitions 1` note. The artifact now records the selected amdgpu card name/PCI/VRAM in `hardware` and emits a dynamic repetitions note. Validation: `python3 -m py_compile scripts/llamacpp_bench_with_peak.py`.
+
+## 2026-05-24 — server resident-session reuse smoke
+
+Debugged the local OpenAI-compatible PARO server after LAN chat showed short `<think>` replies and apparent reloads. Root causes:
+
+- `LLM.generate()` re-resolved the generation factory and constructed a new text generator on every call, discarding generator-local caches.
+- `Qwen35ParoOneTokenGenerator` then constructed `Qwen35ParoResidentSession` inside each prompt call and closed it immediately, so resident layer weights/KV buffers were materialized and freed per request.
+- The OpenAI chat server default `max_tokens` was 16; clients that omit `max_tokens` saw very short replies. The Qwen/PARO model config advertises `max_position_embeddings=262144`, but the runtime session capacity was allocated as `len(prompt_ids) + max_tokens + 1` per request.
+- `stream=true` only returned an SSE wrapper around the completed response; it did not yield tokens while generation was running.
+
+Fixes made in-tree:
+
+- Cache the resolved text generator on `hipengine.LLM` so server `app.state.hipengine_llm` keeps its backend/model/quant generator across requests.
+- Cache/reuse `Qwen35ParoResidentSession` inside the PARO generator when the existing session capacity and KV policy cover the next request; reset it between prompts instead of closing it. Session capacity now floors/buckets at 4096 tokens by default (`HIPENGINE_SESSION_MIN_TOKENS`, `HIPENGINE_SESSION_BUCKET_TOKENS`) so normal chat history growth does not force reallocation every turn.
+- Add a single-prompt streaming path using resident `step()` per token, and route chat `stream=true` through it. Chat default `max_tokens` is now 256.
+
+Validation:
+
+```bash
+uv run --extra dev python -m pytest -q tests/test_llm_generate.py tests/test_generation_qwen35_paro.py tests/test_server_api.py
+# 17 passed
+```
+
+Restarted the running LAN server from the local checkout with TheRock ROCm library paths:
+
+```bash
+uv run --extra server hipengine-server --model shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed --quant w4_paro --served-model-name qwen-paro --host 0.0.0.0 --port 8000
+```
+
+Smoke evidence on the running server after restart from the local checkout: first streamed `max_tokens=4` request sent the role chunk immediately, then took 30.25s to warm/materialize and yielded token chunks (`<think>`, newline, `Here`, `'s`); VRAM reached 19.54GB. A second chat-history request reused the resident 4096-token session, yielded the first content chunk at 0.46s, completed at 0.49s, and VRAM stayed resident at 19.55GB. Server PID 9305, wrapper PID recorded in `/tmp/hipengine-server-8000.pid`, log `/tmp/hipengine-server-8000.log`.

@@ -12,7 +12,7 @@ import asyncio
 import json
 import time
 import uuid
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -113,7 +113,7 @@ class ChatMessage(_OpenAIBaseModel):
 class ChatCompletionRequest(_OpenAIBaseModel):
     model: str | None = None
     messages: list[ChatMessage]
-    max_tokens: int | None = Field(default=16, ge=0)
+    max_tokens: int | None = Field(default=256, ge=0)
     temperature: float | None = Field(default=0.0, ge=0.0)
     top_p: float | None = Field(default=1.0, ge=0.0, le=1.0)
     n: int | None = Field(default=1, ge=1)
@@ -195,12 +195,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             },
         )
 
-    async def generate(
-        prompts: Sequence[str],
-        request: CompletionRequest | ChatCompletionRequest,
-    ) -> _GeneratedBatch:
-        _validate_generation_request(request)
-        sampling = SamplingParams(
+    def sampling_params(request: CompletionRequest | ChatCompletionRequest) -> SamplingParams:
+        return SamplingParams(
             max_tokens=int(request.max_tokens if request.max_tokens is not None else 16),
             temperature=float(request.temperature if request.temperature is not None else 0.0),
             top_p=float(request.top_p if request.top_p is not None else 1.0),
@@ -209,6 +205,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             kv_scale_dtype=request.kv_scale_dtype or "fp16",
             kv_scale_granularity=request.kv_scale_granularity or "per_token_head",
         )
+
+    async def generate(
+        prompts: Sequence[str],
+        request: CompletionRequest | ChatCompletionRequest,
+    ) -> _GeneratedBatch:
+        _validate_generation_request(request)
+        sampling = sampling_params(request)
         engine = get_llm()
         try:
             async with generation_lock:
@@ -300,6 +303,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     ) -> dict[str, Any] | StreamingResponse:
         _validate_model(config, request.model)
         prompt = render_chat_prompt(request.messages)
+        if request.stream:
+            return StreamingResponse(
+                stream_chat_completion(prompt, request),
+                media_type="text/event-stream",
+            )
         batch = await generate((prompt,), request)
         text, finish_reason = _apply_stop(batch.outputs[0], request.stop)
         response_id = f"chatcmpl-{uuid.uuid4().hex}"
@@ -318,12 +326,62 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             ],
             "usage": batch.usage,
         }
-        if request.stream:
-            return StreamingResponse(
-                _chat_stream(response_id, created, config.model_id, text, finish_reason),
-                media_type="text/event-stream",
-            )
         return response
+
+    async def stream_chat_completion(
+        prompt: str,
+        request: ChatCompletionRequest,
+    ) -> AsyncIterator[str]:
+        _validate_generation_request(request)
+        sampling = sampling_params(request)
+        engine = get_llm()
+        response_id = f"chatcmpl-{uuid.uuid4().hex}"
+        created = int(time.time())
+        full_text: list[str] = []
+        sentinel = object()
+
+        def next_or_done(iterator):
+            try:
+                return next(iterator)
+            except StopIteration:
+                return sentinel
+
+        try:
+            async with generation_lock:
+                streamer = getattr(engine, "stream", None)
+                if not callable(streamer):
+                    text = (await run_in_threadpool(engine.generate, (prompt,), sampling))[0]
+                    iterator = iter((text,))
+                else:
+                    iterator = await run_in_threadpool(streamer, prompt, sampling)
+                yield _chat_stream_role(response_id, created, config.model_id)
+                while True:
+                    token = await run_in_threadpool(next_or_done, iterator)
+                    if token is sentinel:
+                        break
+                    text = str(token)
+                    if not text:
+                        continue
+                    full_text.append(text)
+                    yield _chat_stream_delta(response_id, created, config.model_id, text)
+        except NotImplementedError as exc:
+            yield _chat_stream_error(response_id, created, config.model_id, str(exc))
+            return
+        except ValueError as exc:
+            yield _chat_stream_error(response_id, created, config.model_id, str(exc))
+            return
+        except Exception as exc:  # pragma: no cover - real runtime failures
+            message = f"generation failed: {exc}"
+            yield _chat_stream_error(response_id, created, config.model_id, message)
+            return
+
+        text, finish_reason = _apply_stop("".join(full_text), request.stop)
+        if text != "".join(full_text):
+            # Stop strings can split across yielded chunks; current streaming keeps
+            # transport simple and reports the stop after generation completes.
+            finish_reason = "stop"
+        yield _chat_stream_done(response_id, created, config.model_id, finish_reason)
+        yield "data: [DONE]\n\n"
 
     return app
 
@@ -543,18 +601,39 @@ def _chat_stream(
     text: str,
     finish_reason: str,
 ) -> Iterator[str]:
-    yield _sse(
+    yield _chat_stream_role(response_id, created, model)
+    if text:
+        yield _chat_stream_delta(response_id, created, model, text)
+    yield _chat_stream_done(response_id, created, model, finish_reason)
+    yield "data: [DONE]\n\n"
+
+
+def _chat_stream_role(response_id: str, created: int, model: str) -> str:
+    return _sse(
         {
             "id": response_id,
             "object": "chat.completion.chunk",
             "created": created,
             "model": model,
-            "choices": [
-                {"index": 0, "delta": {"role": "assistant", "content": text}, "finish_reason": None}
-            ],
+            "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}],
         }
     )
-    yield _sse(
+
+
+def _chat_stream_delta(response_id: str, created: int, model: str, text: str) -> str:
+    return _sse(
+        {
+            "id": response_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": model,
+            "choices": [{"index": 0, "delta": {"content": text}, "finish_reason": None}],
+        }
+    )
+
+
+def _chat_stream_done(response_id: str, created: int, model: str, finish_reason: str) -> str:
+    return _sse(
         {
             "id": response_id,
             "object": "chat.completion.chunk",
@@ -563,7 +642,25 @@ def _chat_stream(
             "choices": [{"index": 0, "delta": {}, "finish_reason": finish_reason}],
         }
     )
-    yield "data: [DONE]\n\n"
+
+
+def _chat_stream_error(response_id: str, created: int, model: str, message: str) -> str:
+    return _sse(
+        {
+            "id": response_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": model,
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"content": ""},
+                    "finish_reason": "error",
+                }
+            ],
+            "error": {"message": message, "type": "server_error"},
+        }
+    )
 
 
 def _sse(payload: dict[str, Any]) -> str:

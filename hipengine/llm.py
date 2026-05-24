@@ -6,7 +6,7 @@ through a registry at call time so backend/quant choices do not become engine br
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -41,6 +41,7 @@ class LLM:
         self._resolved_backend: str | None = None
         self._weight_index: Any | None = None
         self._model_plugin: Any | None = None
+        self._text_generator: Any | None = None
 
     def generate(
         self,
@@ -50,13 +51,31 @@ class LLM:
         prompt_tuple = _normalize_prompts(prompts)
         if not prompt_tuple:
             return []
-        params = sampling_params or SamplingParams()
+        generator = self._get_text_generator()
+        request = _generation_request(prompt_tuple, sampling_params or SamplingParams())
+        return generator.generate(request)
 
-        from hipengine.generation import (
-            GenerationRequest,
-            register_builtin_generators,
-            resolve_text_generator,
-        )
+    def stream(
+        self,
+        prompt: str,
+        sampling_params: SamplingParams | None = None,
+    ) -> Iterator[str]:
+        """Yield generated text chunks for a single prompt when supported."""
+
+        generator = self._get_text_generator()
+        request = _generation_request((str(prompt),), sampling_params or SamplingParams())
+        streamer = getattr(generator, "stream", None)
+        if callable(streamer):
+            yield from streamer(request)
+            return
+        for text in generator.generate(request):
+            yield text
+
+    def _get_text_generator(self) -> Any:
+        if self._text_generator is not None:
+            return self._text_generator
+
+        from hipengine.generation import register_builtin_generators, resolve_text_generator
 
         register_builtin_generators()
         weight_index, model_plugin = self._load_model_metadata()
@@ -66,23 +85,12 @@ class LLM:
             backend=backend,
             quant=self.quant,
         )
-        generator = factory(
+        self._text_generator = factory(
             model_path=self.model,
             weight_index=weight_index,
             model_plugin=model_plugin,
         )
-        return generator.generate(
-            GenerationRequest(
-                prompts=prompt_tuple,
-                max_tokens=params.max_tokens,
-                temperature=params.temperature,
-                top_p=params.top_p,
-                ignore_eos=params.ignore_eos,
-                kv_storage=params.kv_storage,
-                kv_scale_dtype=params.kv_scale_dtype,
-                kv_scale_granularity=params.kv_scale_granularity,
-            )
-        )
+        return self._text_generator
 
     def _resolve_backend(self) -> str:
         if self._resolved_backend is not None:
@@ -114,6 +122,21 @@ class LLM:
         self._weight_index = index
         self._model_plugin = plugin
         return index, plugin
+
+
+def _generation_request(prompt_tuple: tuple[str, ...], params: SamplingParams):
+    from hipengine.generation import GenerationRequest
+
+    return GenerationRequest(
+        prompts=prompt_tuple,
+        max_tokens=params.max_tokens,
+        temperature=params.temperature,
+        top_p=params.top_p,
+        ignore_eos=params.ignore_eos,
+        kv_storage=params.kv_storage,
+        kv_scale_dtype=params.kv_scale_dtype,
+        kv_scale_granularity=params.kv_scale_granularity,
+    )
 
 
 def _looks_like_gguf_path(path: Path) -> bool:

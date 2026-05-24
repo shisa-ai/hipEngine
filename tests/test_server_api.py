@@ -144,6 +144,7 @@ def test_streaming_chat_completion_returns_sse_done_marker() -> None:
     assert response.headers["content-type"].startswith("text/event-stream")
     assert '"object":"chat.completion.chunk"' in response.text
     assert "data: [DONE]" in response.text
+    assert fake.calls[0][1].max_tokens == 256
 
 
 def test_server_rejects_wrong_model_and_unsupported_options() -> None:
