@@ -23093,3 +23093,93 @@ declining to speculate when there is not enough remaining horizon to amortize a
 failed probe.  It is not a DFlash speed promotion; profitable longer-horizon
 probing still needs lower target-verifier/canonical-commit cost or a workload
 where DFlash cycles are positive-profit.
+
+## 2026-05-24 — R3.1 DFlash budget sweep and lower-cost commit diagnostics
+
+User asked whether the latest DFlash path had swept the speculative budget,
+given other testing suggesting 8-24 speculative tokens might be optimal.  Fresh
+answer for the current W7900/gfx1100 z-lab drafter: **B=4 is the measured
+optimum**, and current native chain cannot sweep past B=15 because the drafter
+`block_size=16` includes the root row.
+
+Implementation/diagnostic plumbing:
+- Added `--canonical-commit-mode {replay,bulk_direct,branch_copy}` to
+  `scripts/dflash_chain_e2e_bench.py`.  `replay` is the default exact path:
+  verify native bulk on a branch slot, then replay accepted tokens through c=1
+  on the canonical slot.  `bulk_direct` and `branch_copy` are explicit
+  diagnostics for the lower-cost canonical-commit problem; non-replay modes are
+  restricted to native chain bulk verification.
+- Added `--drafter-query-mode {block,budget_prefix}`.  Default `block` preserves
+  the z-lab full query block.  `budget_prefix` runs only root+B query rows; it
+  is diagnostic because the drafter query block attention is non-causal, so
+  proposals can change even though target verification still preserves exact AR.
+- Normalized artifacts now include `canonical_commit_mode`,
+  `drafter_query_mode`, `drafter_query_rows`, and `drafter_block_size`.
+
+Safe canonical replay budget sweep:
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt timeout 2400 python3 scripts/dflash_chain_e2e_bench.py \
+  --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 \
+  --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --max-prompts 4 --decode-tokens 32 \
+  --draft-budgets 1,2,4,8,12,15 --verifier-mode native_bulk_bplus1 \
+  --full-attn-chain-mode batched --canonical-commit-mode replay \
+  --hardware-gpu 'AMD Radeon Pro W7900' \
+  --json /tmp/dflash_budget_sweep_safe_replay_d32_4prompt.json
+```
+Result: exact AR `24/24`, aggregate `0.291x` AR.  Per-budget mean speed
+B1/B2/B4/B8/B12/B15 = `0.292/0.321/0.343/0.307/0.271/0.273x`; B=4 is best
+(quicksort alone prefers B=2).  Acceptance saturates after B=4
+(`avg_accept 1.89 -> 2.11`) while rows/output rises
+(`2.84 -> 4.09 -> 6.50`).  Conclusion: larger B is paying verifier rows without
+earning enough extra accepted tokens on this model/runtime.
+
+Lower-cost direct-bulk diagnostic sweep:
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt timeout 2400 python3 scripts/dflash_chain_e2e_bench.py \
+  --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 \
+  --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --max-prompts 4 --decode-tokens 32 \
+  --draft-budgets 1,2,4,8,12,15 --verifier-mode native_bulk_bplus1 \
+  --full-attn-chain-mode batched --canonical-commit-mode bulk_direct \
+  --hardware-gpu 'AMD Radeon Pro W7900' \
+  --json /tmp/dflash_budget_sweep_bulk_direct_d32_4prompt.json
+```
+Result: exact AR `24/24` on D32, aggregate `0.417x` AR.  Per-budget mean speed
+B1/B2/B4/B8/B12/B15 = `0.417/0.481/0.524/0.456/0.384/0.395x`; B=4 remains the
+best budget.  This confirms lower-cost commit is material (`0.291 -> 0.417x`
+aggregate on the same sweep), but it is not promotable: earlier D160 direct-bulk
+failed exactness on class/json rows, so direct bulk remains a diagnostic target
+for the canonical-state drift investigation.
+
+Drafter query-prefix diagnostic:
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt timeout 900 python3 scripts/dflash_chain_e2e_bench.py \
+  --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 \
+  --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --max-prompts 4 --decode-tokens 32 --draft-budgets 4 \
+  --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched \
+  --canonical-commit-mode replay --drafter-query-mode budget_prefix \
+  --hardware-gpu 'AMD Radeon Pro W7900' \
+  --json /tmp/dflash_budget_prefix_b4_d32_4prompt.json
+```
+Result: exact AR `4/4`, aggregate `0.340x` AR, neutral vs B=4 safe replay
+(`0.343x` subset mean).  Drafter wall improves only `8.91 -> 8.56 ms/cycle`
+because the default WMMA dense kernels still use one 16-row tile at B=4; this is
+not a broad lever.
+
+Retained artifacts:
+- `benchmarks/results/2026-05-24-hipengine-dflash-r3.1-w7900-budget-sweep-safe-replay-d32-4prompt.json`
+- `benchmarks/results/2026-05-24-hipengine-dflash-r3.1-w7900-budget-sweep-bulk-direct-d32-4prompt.json`
+- `benchmarks/results/2026-05-24-hipengine-dflash-r3.1-w7900-drafter-budget-prefix-b4-d32-4prompt.json`
+
+Validation:
+- `python3 -m py_compile scripts/dflash_chain_e2e_bench.py hipengine/benchmark/speculative.py` -> pass.
+- `PYTHONPATH=. pytest -q tests/test_dflash_draft_confidence.py tests/test_speculative_benchmark.py` -> `10 passed`.
+
+Docs/rollup updated:
+- `docs/DFLASH.md` R3.1 design notes with the budget-sweep conclusion.
+- `benchmarks/README.md` and `benchmarks/CHANGELOG.md` with retained rows.

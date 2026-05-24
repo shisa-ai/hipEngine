@@ -1104,6 +1104,22 @@ cycles, then `remaining_tokens_guard`), preserving exactness with
 `0.991–1.004x`.  The D32 9-prompt guard remains exact with `draft_calls=0`,
 rows/output `1.0`, aggregate `0.991x` AR, row min `0.955x`.
 
+**Budget sweep addendum (2026-05-24):** the current z-lab drafter config has
+`block_size=16`, so the native chain can sweep at most `B=15` today (root row
+plus draft rows), not B=24.  A W7900 D32 4-prompt sweep over
+`B={1,2,4,8,12,15}` with the safe canonical replay path stayed exact on all
+24 rows and found B=4 is the best current budget: mean AR ratios
+`0.292/0.321/0.343/0.307/0.271/0.273x` for B1/B2/B4/B8/B12/B15.  Acceptance
+saturates after B=4 (`avg_accept 1.89 -> 2.11`) while verifier rows/output
+keeps rising (`2.84 -> 4.09 -> 6.50`), so the 8-24-token optimum seen in other
+testing does not carry over to this runtime/model shape.  A short-window
+`bulk_direct` diagnostic was exact and improved aggregate speed
+`0.291x -> 0.417x` AR with the same B=4 optimum, but prior D160 `bulk_direct`
+failed exactness on longer class/json rows; direct bulk remains diagnostic
+until canonical bulk state is fixed.  `--drafter-query-mode budget_prefix`
+reduced B=4 drafter wall only `8.91 -> 8.56 ms/cycle` because WMMA dense still
+uses one 16-row tile, and it is neutral overall.
+
 **Win state:**
 - For every prompt in the 9-prompt suite, `spec_tok_s_with_controller / ar_tok_s ≥ 0.95`.
 - Per-cycle artifact records: `mode_used`, `cycle_wall_ms`, `visible_tokens`, `profit_ms`, `controller_state`.

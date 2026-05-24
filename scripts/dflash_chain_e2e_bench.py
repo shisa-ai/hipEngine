@@ -158,6 +158,7 @@ def _confidence_limited_active_count(
 class DFlashDrafterGraphBucket:
     candidate_budget: int
     block_size: int
+    query_rows: int
     context_tokens: int
     max_context_tokens: int
     num_layers: int
@@ -171,6 +172,7 @@ class DFlashDrafterGraphBucket:
         return {
             "candidate_budget": self.candidate_budget,
             "block_size": self.block_size,
+            "query_rows": self.query_rows,
             "context_tokens": self.context_tokens,
             "bucket_context_tokens": self.bucket_context_tokens,
             "bucket_mode": self.bucket_mode,
@@ -182,7 +184,7 @@ class DFlashDrafterGraphBucket:
         }
 
     @property
-    def key(self) -> tuple[int, int, int, int, int, int, int, str, str]:
+    def key(self) -> tuple[int, int, int, int, int, int, int, int, str, str]:
         # Cache key drops live ``context_tokens`` when bucketed so cycles with
         # the same ``bucket_context_tokens`` reuse the captured graph.  In
         # ``exact`` mode the bucket equals context_tokens, restoring the old
@@ -190,6 +192,7 @@ class DFlashDrafterGraphBucket:
         return (
             self.candidate_budget,
             self.block_size,
+            self.query_rows,
             self.bucket_context_tokens,
             self.max_context_tokens,
             self.num_layers,
@@ -494,6 +497,7 @@ class NativeDFlashChainDrafter:
         fusion_mode: str = "off",
         draft_top_k: int = 1,
         bucket_mode: str = "exact",
+        query_mode: str = "block",
     ) -> None:
         self.session = session
         self.runtime = session.runtime
@@ -512,12 +516,15 @@ class NativeDFlashChainDrafter:
         if bucket_mode not in {"exact", "cross_bucket"}:
             raise ValueError("bucket_mode must be exact or cross_bucket")
         self.bucket_mode = bucket_mode
+        if query_mode not in {"block", "budget_prefix"}:
+            raise ValueError("query_mode must be block or budget_prefix")
+        self.query_mode = query_mode
         # When bucketed propose runs, this device-resident scalar carries the
         # live context length so the same captured graph can replay across
         # cycles with different live counts.
         self._bucket_live_count_pending: int | None = None
         self._fusion_counts: Counter[str] = Counter()
-        self._graph_cache: dict[tuple[int, int, int, int, int, int, int, str, str], DFlashDrafterGraphEntry] = {}
+        self._graph_cache: dict[tuple[int, int, int, int, int, int, int, int, str, str], DFlashDrafterGraphEntry] = {}
         self._graph_status_counts: Counter[str] = Counter()
         self._graph_validation_failures = 0
         self._graph_fallback_reasons: Counter[str] = Counter()
@@ -555,6 +562,9 @@ class NativeDFlashChainDrafter:
         self.kv_features = self.kv_heads * self.head_dim
         self.vocab_size = int(self.config.vocab_size)
         self.block_size = int(self.config.block_size)
+        self.query_rows = self.block_size if self.query_mode == "block" else self.candidate_budget + 1
+        if self.query_rows <= self.candidate_budget or self.query_rows > self.block_size:
+            raise ValueError("query_rows must fit candidate_budget + root within block_size")
         self.buffers: list[DeviceBuffer] = []
         with hip_target_arch_environment(session.target_arch):
             self.library = build_dflash_drafter(load=True, compiler_version=compiler_version, require_cached=require_cached_build)
@@ -578,6 +588,8 @@ class NativeDFlashChainDrafter:
         return {
             "mode": self.graph_mode,
             "bucket_mode": self.bucket_mode,
+            "query_mode": self.query_mode,
+            "query_rows": int(self.query_rows),
             "status_counts": dict(sorted(self._graph_status_counts.items())),
             "cache_entries": len(self._graph_cache),
             "validation_failures": self._graph_validation_failures,
@@ -715,9 +727,9 @@ class NativeDFlashChainDrafter:
         """Run the DFlash propose forward.
 
         When ``bucket_ctx`` is ``None`` (default) the kernels run with shape
-        ``context_tokens + block_size`` for K/V (exact path, same as before).
+        ``context_tokens + query_rows`` for K/V (exact path, same as before).
         When ``bucket_ctx`` is an int ``>= context_tokens`` the kernels run with
-        shape ``bucket_ctx + block_size`` and use the bucketed attention kernel;
+        shape ``bucket_ctx + query_rows`` and use the bucketed attention kernel;
         the live context length is read from ``self.live_context_len`` on the
         device so a captured HIP graph can replay across cycles whose live
         counts share the same bucket.  The caller must populate
@@ -725,6 +737,7 @@ class NativeDFlashChainDrafter:
         replay path reads it.
         """
         phase_t = time.perf_counter()
+        query_rows = int(self.query_rows)
         prepare = (
             dflash_prepare_noise_inputs_bf16_i32
             if self.session.embedding.tensor.dtype == DType.BF16
@@ -738,7 +751,7 @@ class NativeDFlashChainDrafter:
             self.query_positions.ptr,
             self.query_hidden_a.ptr,
             1,
-            self.block_size,
+            query_rows,
             self.hidden,
             self.session.vocab_size,
             self.config.mask_token_id,
@@ -778,7 +791,7 @@ class NativeDFlashChainDrafter:
             query_in.ptr,
             self.weights.tensor("norm.weight").ptr,
             self.final_norm.ptr,
-            self.block_size,
+            query_rows,
             self.hidden,
             threads=128,
             stream=stream,
@@ -841,6 +854,7 @@ class NativeDFlashChainDrafter:
         return DFlashDrafterGraphBucket(
             candidate_budget=self.candidate_budget,
             block_size=self.block_size,
+            query_rows=self.query_rows,
             context_tokens=ctx,
             bucket_context_tokens=int(bucket_ctx),
             bucket_mode=self.bucket_mode,
@@ -1316,12 +1330,13 @@ class NativeDFlashChainDrafter:
             kv_context_len = int(bucket_ctx)
         else:
             kv_context_len = int(context_tokens)
-        total_kv = kv_context_len + self.block_size
+        query_rows = int(self.query_rows)
+        total_kv = kv_context_len + query_rows
         fp32_bytes = DType.FP32.itemsize
         bf16_bytes = DType.BF16.itemsize
         k_layer_base = self.kv_cache_keys.ptr + layer * self.max_context_tokens * self.kv_features * fp32_bytes
         v_layer_base = self.kv_cache_values.ptr + layer * self.max_context_tokens * self.kv_features * bf16_bytes
-        dflash_rmsnorm_bf16(query_in.ptr, self.weights.tensor(f"{prefix}.input_layernorm.weight").ptr, self.norm.ptr, self.block_size, self.hidden, threads=128, stream=stream, library=self.library, runtime=self.runtime)
+        dflash_rmsnorm_bf16(query_in.ptr, self.weights.tensor(f"{prefix}.input_layernorm.weight").ptr, self.norm.ptr, query_rows, self.hidden, threads=128, stream=stream, library=self.library, runtime=self.runtime)
         if self.fusion_mode == "qkv":
             self._fusion_counts["qkv"] += 1
             dflash_qkv_proj_bf16_mixed(
@@ -1332,7 +1347,7 @@ class NativeDFlashChainDrafter:
                 self.q_raw.ptr,
                 self.k_q.ptr,
                 self.v_q.ptr,
-                self.block_size,
+                query_rows,
                 self.hidden,
                 self.attn_features,
                 self.kv_features,
@@ -1343,9 +1358,9 @@ class NativeDFlashChainDrafter:
             )
         else:
             self._fusion_counts["qkv_unfused"] += 1
-            dflash_dense_bf16_to_f32(self.norm.ptr, self.weights.tensor(f"{prefix}.self_attn.q_proj.weight").ptr, self.q_raw.ptr, self.block_size, self.hidden, self.attn_features, threads=128, stream=stream, library=self.library, runtime=self.runtime)
-            dflash_dense_bf16_to_f32(self.norm.ptr, self.weights.tensor(f"{prefix}.self_attn.k_proj.weight").ptr, self.k_q.ptr, self.block_size, self.hidden, self.kv_features, threads=128, stream=stream, library=self.library, runtime=self.runtime)
-            dflash_dense_bf16_to_bf16(self.norm.ptr, self.weights.tensor(f"{prefix}.self_attn.v_proj.weight").ptr, self.v_q.ptr, self.block_size, self.hidden, self.kv_features, threads=128, stream=stream, library=self.library, runtime=self.runtime)
+            dflash_dense_bf16_to_f32(self.norm.ptr, self.weights.tensor(f"{prefix}.self_attn.q_proj.weight").ptr, self.q_raw.ptr, query_rows, self.hidden, self.attn_features, threads=128, stream=stream, library=self.library, runtime=self.runtime)
+            dflash_dense_bf16_to_f32(self.norm.ptr, self.weights.tensor(f"{prefix}.self_attn.k_proj.weight").ptr, self.k_q.ptr, query_rows, self.hidden, self.kv_features, threads=128, stream=stream, library=self.library, runtime=self.runtime)
+            dflash_dense_bf16_to_bf16(self.norm.ptr, self.weights.tensor(f"{prefix}.self_attn.v_proj.weight").ptr, self.v_q.ptr, query_rows, self.hidden, self.kv_features, threads=128, stream=stream, library=self.library, runtime=self.runtime)
         # Q-rotary + K_q-rotary on the query rows only.  Cached K_ctx_rotated is
         # concatenated below; no context-side rotary is recomputed.
         dflash_head_rmsnorm_rotary_f32(
@@ -1360,8 +1375,8 @@ class NativeDFlashChainDrafter:
             self.q_rot.ptr,
             self.k_q_rot.ptr,
             1,
-            self.block_size,
-            self.block_size,
+            query_rows,
+            query_rows,
             self.q_heads,
             self.kv_heads,
             self.head_dim,
@@ -1378,7 +1393,7 @@ class NativeDFlashChainDrafter:
             self.k_rot.ptr,
             1,
             kv_context_len,
-            self.block_size,
+            query_rows,
             self.kv_features,
             threads=128,
             stream=stream,
@@ -1391,7 +1406,7 @@ class NativeDFlashChainDrafter:
             self.v_all.ptr,
             1,
             kv_context_len,
-            self.block_size,
+            query_rows,
             self.kv_features,
             threads=128,
             stream=stream,
@@ -1406,7 +1421,7 @@ class NativeDFlashChainDrafter:
                 self.attn.ptr,
                 self.live_context_len.ptr,
                 1,
-                self.block_size,
+                query_rows,
                 total_kv,
                 kv_context_len,
                 self.q_heads,
@@ -1424,7 +1439,7 @@ class NativeDFlashChainDrafter:
                 self.v_all.ptr,
                 self.attn.ptr,
                 1,
-                self.block_size,
+                query_rows,
                 total_kv,
                 self.q_heads,
                 self.kv_heads,
@@ -1434,7 +1449,7 @@ class NativeDFlashChainDrafter:
                 library=self.library,
                 runtime=self.runtime,
             )
-        dflash_dense_bf16_to_bf16(self.attn.ptr, self.weights.tensor(f"{prefix}.self_attn.o_proj.weight").ptr, self.attn_proj.ptr, self.block_size, self.attn_features, self.hidden, threads=128, stream=stream, library=self.library, runtime=self.runtime)
+        dflash_dense_bf16_to_bf16(self.attn.ptr, self.weights.tensor(f"{prefix}.self_attn.o_proj.weight").ptr, self.attn_proj.ptr, query_rows, self.attn_features, self.hidden, threads=128, stream=stream, library=self.library, runtime=self.runtime)
         if _drafter_dense_use_add_rmsnorm():
             # R3.6 C1: fused add+rmsnorm; numerically equivalent to the unfused
             # path because the residual sum is rounded to BF16 before the RMS
@@ -1447,7 +1462,7 @@ class NativeDFlashChainDrafter:
                 self.weights.tensor(f"{prefix}.post_attention_layernorm.weight").ptr,
                 self.hidden_attn.ptr,
                 self.post.ptr,
-                self.block_size,
+                query_rows,
                 self.hidden,
                 threads=256,
                 stream=stream,
@@ -1455,13 +1470,13 @@ class NativeDFlashChainDrafter:
                 runtime=self.runtime,
             )
         else:
-            dflash_add_bf16(query_in.ptr, self.attn_proj.ptr, self.hidden_attn.ptr, self.block_size * self.hidden, threads=256, stream=stream, library=self.library, runtime=self.runtime)
-            dflash_rmsnorm_bf16(self.hidden_attn.ptr, self.weights.tensor(f"{prefix}.post_attention_layernorm.weight").ptr, self.post.ptr, self.block_size, self.hidden, threads=128, stream=stream, library=self.library, runtime=self.runtime)
-        dflash_dense_bf16_to_bf16(self.post.ptr, self.weights.tensor(f"{prefix}.mlp.gate_proj.weight").ptr, self.gate.ptr, self.block_size, self.hidden, self.intermediate, threads=128, stream=stream, library=self.library, runtime=self.runtime)
-        dflash_dense_bf16_to_bf16(self.post.ptr, self.weights.tensor(f"{prefix}.mlp.up_proj.weight").ptr, self.up.ptr, self.block_size, self.hidden, self.intermediate, threads=128, stream=stream, library=self.library, runtime=self.runtime)
-        dflash_silu_mul_bf16(self.gate.ptr, self.up.ptr, self.act.ptr, self.block_size * self.intermediate, threads=256, stream=stream, library=self.library, runtime=self.runtime)
-        dflash_dense_bf16_to_bf16(self.act.ptr, self.weights.tensor(f"{prefix}.mlp.down_proj.weight").ptr, self.mlp.ptr, self.block_size, self.intermediate, self.hidden, threads=128, stream=stream, library=self.library, runtime=self.runtime)
-        dflash_add_bf16(self.hidden_attn.ptr, self.mlp.ptr, query_out.ptr, self.block_size * self.hidden, threads=256, stream=stream, library=self.library, runtime=self.runtime)
+            dflash_add_bf16(query_in.ptr, self.attn_proj.ptr, self.hidden_attn.ptr, query_rows * self.hidden, threads=256, stream=stream, library=self.library, runtime=self.runtime)
+            dflash_rmsnorm_bf16(self.hidden_attn.ptr, self.weights.tensor(f"{prefix}.post_attention_layernorm.weight").ptr, self.post.ptr, query_rows, self.hidden, threads=128, stream=stream, library=self.library, runtime=self.runtime)
+        dflash_dense_bf16_to_bf16(self.post.ptr, self.weights.tensor(f"{prefix}.mlp.gate_proj.weight").ptr, self.gate.ptr, query_rows, self.hidden, self.intermediate, threads=128, stream=stream, library=self.library, runtime=self.runtime)
+        dflash_dense_bf16_to_bf16(self.post.ptr, self.weights.tensor(f"{prefix}.mlp.up_proj.weight").ptr, self.up.ptr, query_rows, self.hidden, self.intermediate, threads=128, stream=stream, library=self.library, runtime=self.runtime)
+        dflash_silu_mul_bf16(self.gate.ptr, self.up.ptr, self.act.ptr, query_rows * self.intermediate, threads=256, stream=stream, library=self.library, runtime=self.runtime)
+        dflash_dense_bf16_to_bf16(self.act.ptr, self.weights.tensor(f"{prefix}.mlp.down_proj.weight").ptr, self.mlp.ptr, query_rows, self.intermediate, self.hidden, threads=128, stream=stream, library=self.library, runtime=self.runtime)
+        dflash_add_bf16(self.hidden_attn.ptr, self.mlp.ptr, query_out.ptr, query_rows * self.hidden, threads=256, stream=stream, library=self.library, runtime=self.runtime)
         return query_out
 
 
@@ -1553,6 +1568,7 @@ def run_dflash_tokens(
     drafter_graph_mode: str = "off",
     drafter_fusion_mode: str = "off",
     drafter_bucket_mode: str = "exact",
+    drafter_query_mode: str = "block",
     adaptive_budget_mode: str = "off",
     adaptive_min_remaining_tokens: int = 0,
     adaptive_probe_amortization_tokens: int = 64,
@@ -1587,6 +1603,7 @@ def run_dflash_tokens(
             graph_mode=drafter_graph_mode,
             fusion_mode=drafter_fusion_mode,
             bucket_mode=drafter_bucket_mode,
+            query_mode=drafter_query_mode,
         ) as drafter:
             t0 = time.perf_counter()
             next_result = None
@@ -1775,6 +1792,7 @@ def run_same_session_pair(
     drafter_graph_mode: str = "off",
     drafter_fusion_mode: str = "off",
     drafter_bucket_mode: str = "exact",
+    drafter_query_mode: str = "block",
     draft_top_k: int = 1,
     draft_p_min: float = 0.0,
     adaptive_budget_mode: str = "off",
@@ -1783,6 +1801,7 @@ def run_same_session_pair(
     chain_attn_mode: str = "c1_loop",
     tree_mode: str = "chain",
     tree_top_k: int = 1,
+    canonical_commit_mode: str = "replay",
 ) -> tuple[tuple[list[int], dict[str, Any]], tuple[list[int], dict[str, Any]]]:
     """Run AR control and DFlash chain in one resident target session.
 
@@ -1799,6 +1818,10 @@ def run_same_session_pair(
         raise ValueError("adaptive_min_remaining_tokens must be non-negative")
     if adaptive_probe_amortization_tokens < 0:
         raise ValueError("adaptive_probe_amortization_tokens must be non-negative")
+    if canonical_commit_mode not in {"replay", "bulk_direct", "branch_copy"}:
+        raise ValueError("canonical_commit_mode must be replay, bulk_direct, or branch_copy")
+    if canonical_commit_mode != "replay" and (verifier_mode != "native_bulk_bplus1" or tree_mode != "chain"):
+        raise ValueError("non-replay canonical_commit_mode requires native_bulk_bplus1 chain mode")
     if draft_top_k <= 0 or draft_top_k > 8:
         raise ValueError("draft_top_k must be in [1, 8]")
     if draft_p_min < 0.0 or draft_p_min > 1.0:
@@ -1863,6 +1886,7 @@ def run_same_session_pair(
             graph_mode=drafter_graph_mode,
             fusion_mode=drafter_fusion_mode,
             bucket_mode=drafter_bucket_mode,
+            query_mode=drafter_query_mode,
             draft_top_k=tree_top_k if tree_mode == "branching_topk" else draft_top_k,
         ) as drafter:
             spec_tokens, spec_meta = _run_dflash_chain_on_session(
@@ -1883,6 +1907,7 @@ def run_same_session_pair(
                 tree_mode=tree_mode,
                 tree_top_k=tree_top_k,
                 draft_p_min=draft_p_min,
+                canonical_commit_mode=canonical_commit_mode,
             )
         spec_meta["same_session_control"] = True
         spec_meta["same_process_control"] = True
@@ -1908,6 +1933,7 @@ def _run_dflash_chain_on_session(
     tree_mode: str = "chain",
     tree_top_k: int = 1,
     draft_p_min: float = 0.0,
+    canonical_commit_mode: str = "replay",
 ) -> tuple[list[int], dict[str, Any]]:
     if adaptive_budget_mode not in {"off", "on"}:
         raise ValueError("adaptive_budget_mode must be off or on")
@@ -1915,6 +1941,10 @@ def _run_dflash_chain_on_session(
         raise ValueError("adaptive_min_remaining_tokens must be non-negative")
     if adaptive_probe_amortization_tokens < 0:
         raise ValueError("adaptive_probe_amortization_tokens must be non-negative")
+    if canonical_commit_mode not in {"replay", "bulk_direct", "branch_copy"}:
+        raise ValueError("canonical_commit_mode must be replay, bulk_direct, or branch_copy")
+    if canonical_commit_mode != "replay" and (verifier_mode != "native_bulk_bplus1" or tree_mode != "chain"):
+        raise ValueError("non-replay canonical_commit_mode requires native_bulk_bplus1 chain mode")
     if draft_p_min < 0.0 or draft_p_min > 1.0:
         raise ValueError("draft_p_min must be in [0, 1]")
     if draft_p_min > 0.0 and tree_mode != "chain":
@@ -2102,7 +2132,8 @@ def _run_dflash_chain_on_session(
             verify_seconds_total += verify_elapsed
         elif verifier_mode == "native_bulk_bplus1":
             verifier_slot = base_slot
-            if tree_mode == "chain":
+            use_branch_slot = tree_mode == "chain" and canonical_commit_mode in {"replay", "branch_copy"}
+            if use_branch_slot:
                 verifier_slot = branch_slot_start
                 session.copy_slot_state(base_slot, verifier_slot)
                 state_copies += 1
@@ -2210,7 +2241,12 @@ def _run_dflash_chain_on_session(
         else:
             raise ValueError(f"unknown verifier_mode {verifier_mode!r}")
         if active_budget > 0:
-            if verify_result is not None and verifier_mode == "native_bulk_bplus1" and tree_mode == "chain":
+            if (
+                verify_result is not None
+                and verifier_mode == "native_bulk_bplus1"
+                and tree_mode == "chain"
+                and canonical_commit_mode == "replay"
+            ):
                 target_top1 = []
                 accepted = 0
                 accepted_tokens = []
@@ -2238,6 +2274,15 @@ def _run_dflash_chain_on_session(
                             break
                         accepted += 1
                         accepted_tokens.append(next_candidate)
+            elif (
+                verify_result is not None
+                and verifier_mode == "native_bulk_bplus1"
+                and tree_mode == "chain"
+                and canonical_commit_mode == "branch_copy"
+                and verifier_slot != base_slot
+            ):
+                session.copy_slot_state(verifier_slot, base_slot)
+                state_copies += 1
             verify_elapsed = time.perf_counter() - t_verify
             verify_seconds_total += verify_elapsed
         accepted_lengths.append(accepted)
@@ -2337,6 +2382,9 @@ def _run_dflash_chain_on_session(
         "tree_top_k": int(tree_top_k),
         "draft_top_k": int(drafter.draft_top_k),
         "draft_p_min": float(draft_p_min),
+        "drafter_query_mode": drafter.query_mode,
+        "drafter_query_rows": int(drafter.query_rows),
+        "drafter_block_size": int(drafter.block_size),
         "confidence_limited_cycles": int(confidence_limited_cycles),
         "tree_compiler": "balanced_breadth_first_depth_topk" if tree_mode == "branching_topk" else None,
         "draft_native_phase_seconds": draft_phase_seconds,
@@ -2367,10 +2415,19 @@ def _run_dflash_chain_on_session(
         "verifier_chain_attn_mode": chain_attn_mode,
         "verifier_tree_mode": tree_mode,
         "verifier_state_strategy": (
-            "branch_slot_bulk_verify_plus_c1_canonical_commit"
+            (
+                "branch_slot_bulk_verify_plus_c1_canonical_commit"
+                if canonical_commit_mode == "replay"
+                else (
+                    "direct_bulk_canonical_commit"
+                    if canonical_commit_mode == "bulk_direct"
+                    else "branch_slot_bulk_verify_plus_branch_copy_commit"
+                )
+            )
             if verifier_mode == "native_bulk_bplus1" and tree_mode == "chain"
             else "in_place_verifier_commit"
         ),
+        "canonical_commit_mode": canonical_commit_mode if verifier_mode == "native_bulk_bplus1" and tree_mode == "chain" else None,
         "native_bulk_verifier": verifier_mode == "native_bulk_bplus1",
         "drafter_context_mode": "append_only_projected_context_and_kv",
         "adaptive_budget": adaptive_budget.summary(),
@@ -2527,6 +2584,9 @@ def _row_for_artifact(prompt: dict[str, Any], budget: int, ar: tuple[list[int], 
             "tree_top_k": spec_meta.get("tree_top_k"),
             "draft_top_k": spec_meta.get("draft_top_k"),
             "draft_p_min": spec_meta.get("draft_p_min"),
+            "drafter_query_mode": spec_meta.get("drafter_query_mode"),
+            "drafter_query_rows": spec_meta.get("drafter_query_rows"),
+            "drafter_block_size": spec_meta.get("drafter_block_size"),
             "tree_compiler": spec_meta.get("tree_compiler"),
             "accepted_draft_tokens": sum(int(x) for x in spec_meta["accepted_lengths"]),
             "accepted_lengths": spec_meta["accepted_lengths"],
@@ -2545,6 +2605,7 @@ def _row_for_artifact(prompt: dict[str, Any], budget: int, ar: tuple[list[int], 
             "verifier_mode": spec_meta["verifier_mode"],
             "verifier_tree_mode": spec_meta.get("verifier_tree_mode"),
             "verifier_state_strategy": spec_meta.get("verifier_state_strategy"),
+            "canonical_commit_mode": spec_meta.get("canonical_commit_mode"),
             "verifier_state_copies_per_cycle": spec_meta.get("verifier_state_copies_per_cycle"),
             "verifier_state_copies_total": spec_meta.get("verifier_state_copies_total"),
             "native_bulk_verifier": spec_meta["native_bulk_verifier"],
@@ -2627,6 +2688,17 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--drafter-query-mode",
+        choices=("block", "budget_prefix"),
+        default="block",
+        help=(
+            "DFlash drafter query sequence length. 'block' preserves the z-lab"
+            " full block_size contract. 'budget_prefix' is a speed diagnostic"
+            " that runs only root+B query rows; proposals can differ because"
+            " the drafter query-block attention is non-causal."
+        ),
+    )
+    parser.add_argument(
         "--adaptive-budget",
         choices=("off", "on"),
         default="off",
@@ -2657,6 +2729,18 @@ def main(argv: list[str] | None = None) -> int:
             " the normal remaining-token horizon."
         ),
     )
+    parser.add_argument(
+        "--canonical-commit-mode",
+        choices=("replay", "bulk_direct", "branch_copy"),
+        default="replay",
+        help=(
+            "Native chain verifier commit strategy. 'replay' is the exact"
+            " default: verify on a branch slot, then replay the accepted prefix"
+            " through c=1 on the canonical slot. 'bulk_direct' trusts the bulk"
+            " verifier as canonical. 'branch_copy' verifies on a branch slot and"
+            " copies the bulk-committed branch state back to the canonical slot."
+        ),
+    )
     parser.add_argument("--hardware-gpu", default=None, help="Human-readable GPU name to record in the benchmark artifact")
     parser.add_argument("--json", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -2673,6 +2757,8 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError("--adaptive-min-remaining-tokens must be non-negative")
     if args.adaptive_probe_amortization_tokens < 0:
         raise ValueError("--adaptive-probe-amortization-tokens must be non-negative")
+    if args.canonical_commit_mode != "replay" and (args.verifier_mode != "native_bulk_bplus1" or args.tree_mode != "chain"):
+        raise ValueError("--canonical-commit-mode bulk_direct/branch_copy requires native_bulk_bplus1 chain mode")
     if args.draft_p_min > 0.0:
         if args.tree_mode != "chain":
             raise ValueError("--draft-p-min currently supports --tree-mode chain only")
@@ -2709,6 +2795,7 @@ def main(argv: list[str] | None = None) -> int:
                 drafter_graph_mode=args.drafter_graph,
                 drafter_fusion_mode=args.drafter_fusion,
                 drafter_bucket_mode=args.drafter_bucket,
+                drafter_query_mode=args.drafter_query_mode,
                 draft_top_k=args.draft_top_k,
                 draft_p_min=args.draft_p_min,
                 adaptive_budget_mode=args.adaptive_budget,
@@ -2717,6 +2804,7 @@ def main(argv: list[str] | None = None) -> int:
                 chain_attn_mode=args.full_attn_chain_mode,
                 tree_mode=args.tree_mode,
                 tree_top_k=args.tree_top_k if args.tree_mode == "branching_topk" else 1,
+                canonical_commit_mode=args.canonical_commit_mode,
             )
             rows.append(_row_for_artifact(prompt, budget, ar, spec))
     if args.tree_mode == "branching_topk":
@@ -2768,9 +2856,11 @@ def main(argv: list[str] | None = None) -> int:
             "drafter_graph_mode": args.drafter_graph,
             "drafter_fusion_mode": args.drafter_fusion,
             "drafter_bucket_mode": args.drafter_bucket,
+            "drafter_query_mode": args.drafter_query_mode,
             "adaptive_budget_mode": args.adaptive_budget,
             "adaptive_min_remaining_tokens": args.adaptive_min_remaining_tokens,
             "adaptive_probe_amortization_tokens": args.adaptive_probe_amortization_tokens,
+            "canonical_commit_mode": args.canonical_commit_mode,
             "promotion_blocker": (
                 "native B+1 verifier ran, but full chain must still beat same-session AR before promotion"
                 if args.verifier_mode == "native_bulk_bplus1"
