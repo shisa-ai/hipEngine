@@ -22904,3 +22904,47 @@ can affect the R3.1/R3.7 economics table.
 Validation:
 - `python3 -m py_compile scripts/dflash_chain_e2e_bench.py` → pass.
 - `PYTHONPATH=. pytest -q tests/test_dflash_draft_confidence.py tests/test_dflash_topk_tree_compiler.py tests/test_adaptive_budget.py` → `12 passed`.
+
+## 2026-05-24 — R3.1 adaptive short-horizon guard and p_min diagnostic
+
+Impact/architecture pass after the llama.cpp MTP mining:
+- Direct confidence trimming is not a speed lever at B=4/D16.  `p_min=0.70`
+  reduced target verifier rows to `1.078/output` but dropped avg acceptance to
+  `0.909` and measured only `0.414x` AR.  `p_min=0.55` measured `0.383x` AR
+  with `1.406` verifier rows/output.  Conclusion: keep top-K confidence as
+  controller telemetry, not as a default chain verifier trimming policy.
+- A failed DFlash probe costs too much to amortize on short decode windows.
+  Added an adaptive remaining-token horizon guard:
+  `--adaptive-min-remaining-tokens N`.  When enabled and `remaining_tokens < N`,
+  the controller routes to AR with `decision_reason=remaining_tokens_guard`.
+- Added a terminal AR bypass for that guard and for no-spec-budget tail cycles:
+  skip drafter hidden-tap capture and drafter context commits when no future
+  DFlash probe can occur in the sequence.
+
+Diagnostic commands:
+- `HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt timeout 420 python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 4 --decode-tokens 16 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --draft-top-k 2 --draft-p-min 0.70 --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/dflash_pmin070_b4_d16_4prompt.json`
+  → exact `4/4`, `speedup_vs_ar=0.41415000590264994`, diagnostic only.
+- `HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt timeout 420 python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 4 --decode-tokens 16 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --draft-top-k 2 --draft-p-min 0.55 --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/dflash_pmin055_b4_d16_4prompt.json`
+  → exact `4/4`, `speedup_vs_ar=0.3826773843901588`, diagnostic only.
+- Before terminal bypass, `--adaptive-budget on --adaptive-min-remaining-tokens 128`
+  measured exact `4/4`, `speedup_vs_ar=0.946232220128432`.
+- After terminal bypass:
+  `HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt timeout 420 python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 4 --decode-tokens 16 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --adaptive-budget on --adaptive-min-remaining-tokens 128 --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/dflash_adaptive_min128_bypass_b4_d16_4prompt.json`
+  → exact `4/4`, aggregate guarded decode `108.64 tok/s` vs same-session AR
+  `108.01 tok/s` (`1.0058728943520892x`), row range `0.988–1.028x`,
+  `draft_calls=0`, `target_verify_rows_per_output_token=1.0`.
+
+Retained artifact:
+- `benchmarks/results/2026-05-24-hipengine-dflash-r3.1-w7900-adaptive-horizon-bypass-b4-d16-4prompt.json`
+  with `performance_claim=false` (controller safety diagnostic, not a speculative
+  speedup).
+
+Documentation/rollup:
+- Updated `docs/DFLASH.md` R3.1 table/status with the short-horizon guard and
+  p_min negative result.
+- Updated `benchmarks/README.md` and `benchmarks/CHANGELOG.md` for the retained
+  diagnostic artifact.
+
+Validation:
+- `python3 -m py_compile hipengine/speculative/adaptive_budget.py scripts/dflash_chain_e2e_bench.py` → pass.
+- `PYTHONPATH=. pytest -q tests/test_adaptive_budget.py tests/test_dflash_draft_confidence.py tests/test_dflash_topk_tree_compiler.py` → `15 passed`.

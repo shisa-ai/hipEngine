@@ -6,7 +6,8 @@ from hipengine.speculative.adaptive_budget import AdaptiveBudgetConfig, Adaptive
 
 
 def test_disabled_controller_always_chooses_dflash_and_logs_profit() -> None:
-    controller = AdaptiveBudgetController(enabled=False, ar_decode_tok_s_estimate=100.0)
+    config = AdaptiveBudgetConfig(min_remaining_tokens_for_dflash=128)
+    controller = AdaptiveBudgetController(enabled=False, ar_decode_tok_s_estimate=100.0, config=config)
 
     decision = controller.begin_cycle(cycle=1, context_tokens=128, remaining_tokens=16, active_budget=4)
     assert decision.use_dflash is True
@@ -29,6 +30,32 @@ def test_disabled_controller_always_chooses_dflash_and_logs_profit() -> None:
     assert summary["transitions"] == []
     assert summary["cycle_log"][0]["profit_ms"] == pytest.approx(5.0)
     assert summary["cycle_log"][0]["mode_used"] == "DFLASH"
+
+
+def test_enabled_controller_uses_ar_when_remaining_horizon_is_too_short() -> None:
+    config = AdaptiveBudgetConfig(min_remaining_tokens_for_dflash=64)
+    controller = AdaptiveBudgetController(enabled=True, ar_decode_tok_s_estimate=100.0, config=config)
+
+    decision = controller.begin_cycle(cycle=1, context_tokens=128, remaining_tokens=32, active_budget=4)
+
+    assert decision.use_dflash is False
+    assert decision.reason == "remaining_tokens_guard"
+
+    controller.record_ar_cycle(decision, cycle=1, cycle_wall_ms=10.0, context_tokens=128)
+    summary = controller.summary()
+    assert summary["state"] == "DFLASH"
+    assert summary["cycle_log"][0]["mode_used"] == "AR"
+    assert summary["cycle_log"][0]["decision_reason"] == "remaining_tokens_guard"
+
+
+def test_remaining_horizon_guard_allows_long_prompts() -> None:
+    config = AdaptiveBudgetConfig(min_remaining_tokens_for_dflash=64)
+    controller = AdaptiveBudgetController(enabled=True, ar_decode_tok_s_estimate=100.0, config=config)
+
+    decision = controller.begin_cycle(cycle=1, context_tokens=128, remaining_tokens=128, active_budget=4)
+
+    assert decision.use_dflash is True
+    assert decision.reason == "profit_window"
 
 
 def test_enabled_controller_demotes_after_negative_profit_window() -> None:
@@ -140,3 +167,8 @@ def test_enabled_controller_requires_positive_ar_rate() -> None:
         AdaptiveBudgetController(enabled=True, ar_decode_tok_s_estimate=None)
     with pytest.raises(ValueError, match="positive AR tok/s"):
         AdaptiveBudgetController(enabled=True, ar_decode_tok_s_estimate=0.0)
+
+
+def test_config_rejects_negative_remaining_horizon_guard() -> None:
+    with pytest.raises(ValueError, match="min_remaining_tokens_for_dflash"):
+        AdaptiveBudgetConfig(min_remaining_tokens_for_dflash=-1)

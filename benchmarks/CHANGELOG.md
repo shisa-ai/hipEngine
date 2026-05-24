@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-05-24
 
+- [diagnostic retained] hipEngine / Qwen3.6-35B-A3B-PARO packed + z-lab DFlash / W7900/gfx1100 R3.1 adaptive short-horizon guard: short 4-prompt B=4 D=16 adaptive path `0.529x -> 1.006x` AR (+90.2% relative) by routing remaining-token horizons below 128 directly to AR and skipping terminal drafter hidden-tap/context maintenance; exact same-session AR on all 4 rows, `draft_calls=0`, `target_verify_rows_per_output_token=1.0`, row speed range `0.988–1.028x`, `performance_claim=false` because this is a controller safety diagnostic rather than a speculative speedup; artifact `benchmarks/results/2026-05-24-hipengine-dflash-r3.1-w7900-adaptive-horizon-bypass-b4-d16-4prompt.json`.
 - [diagnostic retained] hipEngine / Qwen3.6-35B-A3B-PARO packed + z-lab DFlash / W7900/gfx1100 R3.1 adaptive fallback handoff: native-bulk→c=1 AR handoff exactness `False -> True` (4-prompt B=4 D=16 all rows exact) and fallback AR wall `~18 ms/token root-only bulk -> 9.90 ms mean / 9.60 ms p50` (~45% lower) by canonicalizing resident c=1 decode scratch after native bulk commits; aggregate DFlash remains diagnostic `0.529x` AR and `performance_claim=false`; artifact `benchmarks/results/2026-05-24-hipengine-dflash-r3.1-w7900-c1-fallback-handoff.json`.
 
 ## 2026-05-23

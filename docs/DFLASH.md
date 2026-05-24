@@ -1042,7 +1042,7 @@ Exact-AR equality is mandatory for every row and is NOT repeated in the Gate col
 
 | # | Task | Track | Depends on | LoC est. | Gate | Expected Δ | Actual Δ | Status |
 | --- | --- | --- | --- | ---: | --- | --- | --- | --- |
-| R3.1 | Adaptive budget controller — per-prompt or rolling-window profit signal that switches between DFlash and AR; BeeLlama `tools/server/server-adaptive-dm.h` analog. | C / G | none (data already in R2.2/R2.3 artifacts) | ~180 (Python + tests) | Controller never costs > 5% vs AR on any single prompt in the 9-prompt suite; state transitions logged in artifact. | Aggregate AR ratio cannot regress; low-accept prompts (prompt 1 archetype) route to AR and are no longer drag on the mean. | Native bulk→c=1 AR handoff fixed by canonical c=1 decode scratch after bulk commits. 4-prompt B=4 D=16 W7900 acceptance is exact (`4/4` rows) and fallback AR cycles are near same-session AR (`mean/p50 9.90/9.60 ms`, 24 cycles) instead of root-only bulk `~18 ms/token`; aggregate diagnostic still loses to AR (`0.529x`, `performance_claim=false`). | **Handoff fixed / default-off diagnostic**; run the full 9-prompt guard before promoting adaptive default-on. |
+| R3.1 | Adaptive budget controller — per-prompt or rolling-window profit signal that switches between DFlash and AR; BeeLlama `tools/server/server-adaptive-dm.h` analog. | C / G | none (data already in R2.2/R2.3 artifacts) | ~180 (Python + tests) | Controller never costs > 5% vs AR on any single prompt in the 9-prompt suite; state transitions logged in artifact. | Aggregate AR ratio cannot regress; low-accept prompts (prompt 1 archetype) route to AR and are no longer drag on the mean. | Native bulk→c=1 AR handoff fixed by canonical c=1 decode scratch after bulk commits. Short-horizon guard added: with `--adaptive-min-remaining-tokens 128`, the 4-prompt B=4 D=16 W7900 gate routes directly to AR (`draft_calls=0`, `target_verify_rows_per_output_token=1.0`) and is exact at `1.006x` same-session AR. Direct chain remains below AR when DFlash is forced (`0.529x` on the handoff gate). | **Short-horizon safety diagnostic retained / default-off**; run the full 9-prompt guard and a long-horizon probe before promoting adaptive default-on. |
 | R3.2 | Paper L1 cost-model writeup for every verifier-side and drafter-side fuse candidate. NO kernel code; produces a markdown table inside DFLASH.md (or a separate `docs/DFLASH_FUSION_COSTMODEL.md` if it grows). | B (paper) | none | ~250 LoC markdown | Each candidate has explicit `saved_launches × launch_overhead` vs `added_per_block_work × block_count` calculation; each labeled pass/fail; output is the work order for R3.6. | Selects ≥ 1 verifier fuse + ≥ 1 drafter fuse that pass the L1 check. | Cost model landed in `docs/DFLASH_FUSION_COSTMODEL.md`; shortlist is C1 drafter add+rmsnorm + C5 verifier QKV-prepare fusion; no local fuse is a primary wall lever. | **Done (paper)**; R3.6 should stay narrow and not distract from R3.4. |
 | R3.3 | Drafter dense kernel roofline + WMMA design doc. NO kernel code; produces a roofline analysis and a proposed kernel signature. | A (paper) | none | ~200 LoC markdown | Document captures: (a) per-block work/launches of current `dflash_dense_bf16_to_bf16_kernel`; (b) W7900 BW-bound floor for 16-row × 2048-dim BF16 GEMV (`~9 µs`); (c) measured per-op cost (`~306 µs` → 3% of BW peak); (d) proposed 16×16×16 BF16 WMMA tiling with LDS-staged input; (e) expected delta if kernel reaches 30–50% of BW peak. | Drafter dense roofline at `~25–50 µs/op`, ~5–10× over current. Decoder wall projection `19.6 → 5–8 ms`. Cycle wall projection `62 → ~45 ms` (prompt 3 break-even). | GPU-sanity doc landed in `docs/DRAFTER_DENSE_ROOFLINE.md`: current dense op mix is `16.32 ms/cycle` (~83% of decoder wall), 3–6% BW; 30% BW projects decoder `19.6 → ~6.3 ms`, cycle `62 → ~48.8 ms`. | **Done (paper + GPU sanity)**; R3.4 implementation is justified. |
 | R3.4 | Implement R3.3's proposed WMMA dense kernels (`bf16_to_bf16` and `bf16_to_f32`) for the drafter; register against `KernelKey(...)` per AGENTS.md (no `if backend == ...` branches). | A (code) | R3.3 (paper sign-off) | ~430 (HIP + Python + tests) | KL ≤ 0.05 + top-1 ≥ 90% vs `kernels/cpu_reference/`; `rocprofv3 --kernel-trace` shows kernel duration in expected range and BW utilization ≥ 30%; same-session AR exact match on 9-prompt suite. | Drafter decoder `19.6 → 5–8 ms`; cycle wall `62 → ~45 ms`. Combined with R3.1 routing, prompt 3 archetype reaches ≥ 1.0x AR. | RDNA3 `v_wmma_f32_16x16x16_bf16` 16x16x16 wave32 tiling landed default-on (`HIPENGINE_DFLASH_DRAFTER_DENSE=wmma`); 16-row dense ops 1.7–5.7× faster (e.g. `(16,2048,6144)` `0.523 → 0.091 ms`); per-cycle dense `16.32 → ~3.88 ms`. 9-prompt B=4 D=32 same-session DFlash: aggregate `0.446 → 0.636x` AR; drafter wall `23.50 → 9.09 ms/cycle` (-61%); cycle `52.83 → 37.21 ms`; exact-AR all 9 prompts; best `0.911x` (class_continuation). | **Done (default-on)**; necessary but insufficient — still <1.0x AR aggregate. R3.6/R3.5/R3.7 still required. |
@@ -1057,6 +1057,18 @@ Exact-AR equality is mandatory for every row and is NOT repeated in the Gate col
 
 **Status 2026-05-24:** host controller and artifact logging remain default-off, but the native-bulk→c=1 AR handoff blocker is fixed. Root cause was verifier-sized resident scratch reused by later `tokens=1` decode: split views such as linear-attention `qkv/z` and `a/b` used offsets based on the bulk row count, while c=1 projection kernels write compact one-row layouts. `Qwen35ParoResidentSession` now canonicalizes linear-attention and MoE/MLP decode scratch after native bulk commits and on c=1 entry. The 4-prompt B=4 D=16 W7900 acceptance run with `--adaptive-budget on --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched` is exact (`4/4` rows) and AR fallback cycles are near same-session AR (`mean/p50 9.90/9.60 ms`, 24 cycles) instead of the interim root-only bulk fallback (`~18 ms/token`). Aggregate diagnostic speed is still below AR (`0.529x`, `performance_claim=false`), so promotion still requires the full 9-prompt guard and/or further DFlash speed work.
 
+**Short-horizon guard addendum (2026-05-24):** a failed DFlash probe costs too
+much to amortize on short decode windows, so the adaptive controller now has an
+optional `--adaptive-min-remaining-tokens N` horizon guard. When the remaining
+decode length is below `N`, the controller routes to AR with
+`decision_reason=remaining_tokens_guard`; the terminal AR path skips unused
+drafter hidden-tap capture and drafter context commits because no future DFlash
+probe can occur as the remaining horizon only decreases. On the 4-prompt B=4
+D=16 W7900 diagnostic with `N=128`, all rows are exact, `draft_calls=0`,
+`target_verify_rows_per_output_token=1.0`, aggregate guarded decode is
+`108.64 tok/s` vs same-session AR `108.01 tok/s` (`1.006x`, row range
+`0.988–1.028x`). This is a controller safety result, not a speculative speedup.
+
 **llama.cpp HIP MTP mining addendum (2026-05-24):** local
 `/home/lhl/llama.cpp/llama.cpp-hip` contributes two relevant MTP ideas.
 Commit `3e12fbdea` splits pre-norm hidden extraction from raw-logit copying
@@ -1070,6 +1082,12 @@ low-confidence row and, when enabled, compacts the native verifier batch to the
 surviving active rows instead of verifying padded inactive suffix rows.  This is
 not a perf claim until a retained W7900/gfx1100 artifact proves exact-AR and an
 economics win.
+
+Follow-up diagnostic: direct use of that confidence gate as a speed lever is not
+promotable at B=4/D16. `--draft-top-k 2 --draft-p-min 0.70` cut verifier rows
+to `1.08/output` but dropped average acceptance to `0.91` and measured only
+`0.414x` AR; `p_min=0.55` measured `0.383x` AR. Keep top-K confidence as
+controller telemetry, not as a default chain verifier trimming policy.
 
 **Win state:**
 - For every prompt in the 9-prompt suite, `spec_tok_s_with_controller / ar_tok_s ≥ 0.95`.

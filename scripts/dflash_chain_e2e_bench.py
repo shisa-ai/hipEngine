@@ -67,7 +67,7 @@ from hipengine.loading import load_weight_index
 from hipengine.loading.dflash import load_dflash_drafter_bf16_weights, validate_dflash_artifact_pair
 from hipengine.runtime import PrefillConfig
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
-from hipengine.speculative import AdaptiveBudgetController, DraftBatch, TargetVerifyBatch
+from hipengine.speculative import AdaptiveBudgetConfig, AdaptiveBudgetController, DraftBatch, TargetVerifyBatch
 
 DEFAULT_TARGET_PATH = "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e"
 DEFAULT_DRAFTER_PATH = "/models/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719"
@@ -1553,10 +1553,13 @@ def run_dflash_tokens(
     drafter_fusion_mode: str = "off",
     drafter_bucket_mode: str = "exact",
     adaptive_budget_mode: str = "off",
+    adaptive_min_remaining_tokens: int = 0,
     ar_decode_tok_s_estimate: float | None = None,
 ) -> tuple[list[int], dict[str, Any]]:
     if adaptive_budget_mode not in {"off", "on"}:
         raise ValueError("adaptive_budget_mode must be off or on")
+    if adaptive_min_remaining_tokens < 0:
+        raise ValueError("adaptive_min_remaining_tokens must be non-negative")
     runner = Qwen35ParoNextTokenRunner(model, backend=backend)
     max_sequence = len(prompt_ids) + decode_tokens + candidate_budget + 2
     max_batch_size = candidate_budget + 2
@@ -1603,6 +1606,7 @@ def run_dflash_tokens(
             adaptive_budget = AdaptiveBudgetController(
                 enabled=adaptive_budget_mode == "on",
                 ar_decode_tok_s_estimate=ar_decode_tok_s_estimate,
+                config=AdaptiveBudgetConfig(min_remaining_tokens_for_dflash=adaptive_min_remaining_tokens),
             )
             generated: list[int] = []
             accepted_lengths: list[int] = []
@@ -1628,6 +1632,7 @@ def run_dflash_tokens(
                 if active_budget <= 0 or not decision.use_dflash:
                     # No spec budget left (or adaptive budget locked DFlash out):
                     # one bare AR step on slot 0.
+                    terminal_ar_bypass = active_budget <= 0 or decision.reason == "remaining_tokens_guard"
                     verify_rows_total += 1
                     cycle_context_tokens = context_tokens
                     t_cycle = time.perf_counter()
@@ -1637,13 +1642,14 @@ def run_dflash_tokens(
                         root_token,
                         position=context_tokens,
                         slot=0,
-                        drafter=drafter,
-                        capture_row=context_tokens,
+                        drafter=None if terminal_ar_bypass else drafter,
+                        capture_row=None if terminal_ar_bypass else context_tokens,
                     )
                     verify_seconds_total += time.perf_counter() - t_verify
-                    t_commit = time.perf_counter()
-                    drafter.commit_context_rows(start=context_tokens, count=1)
-                    commit_seconds_total += time.perf_counter() - t_commit
+                    if not terminal_ar_bypass:
+                        t_commit = time.perf_counter()
+                        drafter.commit_context_rows(start=context_tokens, count=1)
+                        commit_seconds_total += time.perf_counter() - t_commit
                     generated.append(root_token)
                     root_token = int(result.token_id)
                     context_tokens += 1
@@ -1652,7 +1658,7 @@ def run_dflash_tokens(
                         cycle=cycles,
                         cycle_wall_ms=(time.perf_counter() - t_cycle) * 1000.0,
                         context_tokens=cycle_context_tokens,
-                        forced_reason="no_spec_budget" if active_budget <= 0 else None,
+                        forced_reason="no_spec_budget" if active_budget <= 0 else decision.reason,
                         update_state=active_budget > 0,
                     )
                     continue
@@ -1765,6 +1771,7 @@ def run_same_session_pair(
     draft_top_k: int = 1,
     draft_p_min: float = 0.0,
     adaptive_budget_mode: str = "off",
+    adaptive_min_remaining_tokens: int = 0,
     chain_attn_mode: str = "c1_loop",
     tree_mode: str = "chain",
     tree_top_k: int = 1,
@@ -1780,6 +1787,8 @@ def run_same_session_pair(
 
     if adaptive_budget_mode not in {"off", "on"}:
         raise ValueError("adaptive_budget_mode must be off or on")
+    if adaptive_min_remaining_tokens < 0:
+        raise ValueError("adaptive_min_remaining_tokens must be non-negative")
     if draft_top_k <= 0 or draft_top_k > 8:
         raise ValueError("draft_top_k must be in [1, 8]")
     if draft_p_min < 0.0 or draft_p_min > 1.0:
@@ -1857,6 +1866,7 @@ def run_same_session_pair(
                 verifier_mode=verifier_mode,
                 verifier_graph_mode=verifier_graph_mode,
                 adaptive_budget_mode=adaptive_budget_mode,
+                adaptive_min_remaining_tokens=adaptive_min_remaining_tokens,
                 ar_decode_tok_s_estimate=ar_meta["decode_tok_s"],
                 chain_attn_mode=chain_attn_mode,
                 tree_mode=tree_mode,
@@ -1880,6 +1890,7 @@ def _run_dflash_chain_on_session(
     verifier_mode: str = "native_bulk_bplus1",
     verifier_graph_mode: str = "off",
     adaptive_budget_mode: str = "off",
+    adaptive_min_remaining_tokens: int = 0,
     ar_decode_tok_s_estimate: float | None = None,
     chain_attn_mode: str = "c1_loop",
     tree_mode: str = "chain",
@@ -1888,6 +1899,8 @@ def _run_dflash_chain_on_session(
 ) -> tuple[list[int], dict[str, Any]]:
     if adaptive_budget_mode not in {"off", "on"}:
         raise ValueError("adaptive_budget_mode must be off or on")
+    if adaptive_min_remaining_tokens < 0:
+        raise ValueError("adaptive_min_remaining_tokens must be non-negative")
     if draft_p_min < 0.0 or draft_p_min > 1.0:
         raise ValueError("draft_p_min must be in [0, 1]")
     if draft_p_min > 0.0 and tree_mode != "chain":
@@ -1915,6 +1928,7 @@ def _run_dflash_chain_on_session(
     adaptive_budget = AdaptiveBudgetController(
         enabled=adaptive_budget_mode == "on",
         ar_decode_tok_s_estimate=ar_decode_tok_s_estimate,
+        config=AdaptiveBudgetConfig(min_remaining_tokens_for_dflash=adaptive_min_remaining_tokens),
     )
     generated: list[int] = []
     accepted_lengths: list[int] = []
@@ -1964,6 +1978,7 @@ def _run_dflash_chain_on_session(
             active_budget=active_budget,
         )
         if active_budget <= 0 or not decision.use_dflash:
+            terminal_ar_bypass = active_budget <= 0 or decision.reason == "remaining_tokens_guard"
             cycle_context_tokens = context_tokens
             t_cycle = time.perf_counter()
             verify_rows_total += 1
@@ -1973,16 +1988,17 @@ def _run_dflash_chain_on_session(
                 root_token,
                 position=context_tokens,
                 slot=base_slot,
-                drafter=drafter,
-                capture_row=context_tokens,
+                drafter=None if terminal_ar_bypass else drafter,
+                capture_row=None if terminal_ar_bypass else context_tokens,
             )
             verify_seconds_total += time.perf_counter() - t_verify
             target_serial_forward_calls += 1
             finite_verify = finite_verify and math.isfinite(float(result.logit))
             bonus = int(result.token_id)
-            t_commit = time.perf_counter()
-            drafter.commit_context_rows(start=context_tokens, count=1)
-            commit_seconds_total += time.perf_counter() - t_commit
+            if not terminal_ar_bypass:
+                t_commit = time.perf_counter()
+                drafter.commit_context_rows(start=context_tokens, count=1)
+                commit_seconds_total += time.perf_counter() - t_commit
             generated.append(root_token)
             root_token = int(bonus)
             context_tokens += 1
@@ -1991,7 +2007,7 @@ def _run_dflash_chain_on_session(
                 cycle=cycles,
                 cycle_wall_ms=(time.perf_counter() - t_cycle) * 1000.0,
                 context_tokens=cycle_context_tokens,
-                forced_reason="no_spec_budget" if active_budget <= 0 else "c1_slot_step_fallback",
+                forced_reason="no_spec_budget" if active_budget <= 0 else decision.reason,
                 update_state=active_budget > 0,
             )
             continue
@@ -2559,6 +2575,16 @@ def main(argv: list[str] | None = None) -> int:
             " routes negative-profit cycles to AR after a hysteretic cooldown."
         ),
     )
+    parser.add_argument(
+        "--adaptive-min-remaining-tokens",
+        type=int,
+        default=0,
+        help=(
+            "When adaptive budget is on, route to AR while remaining decode"
+            " tokens are below this horizon. This avoids short prompts paying a"
+            " failed DFlash probe that cannot be amortized."
+        ),
+    )
     parser.add_argument("--hardware-gpu", default=None, help="Human-readable GPU name to record in the benchmark artifact")
     parser.add_argument("--json", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -2571,6 +2597,8 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError("--draft-top-k must be in [1, 8]")
     if args.draft_p_min < 0.0 or args.draft_p_min > 1.0:
         raise ValueError("--draft-p-min must be in [0, 1]")
+    if args.adaptive_min_remaining_tokens < 0:
+        raise ValueError("--adaptive-min-remaining-tokens must be non-negative")
     if args.draft_p_min > 0.0:
         if args.tree_mode != "chain":
             raise ValueError("--draft-p-min currently supports --tree-mode chain only")
@@ -2610,6 +2638,7 @@ def main(argv: list[str] | None = None) -> int:
                 draft_top_k=args.draft_top_k,
                 draft_p_min=args.draft_p_min,
                 adaptive_budget_mode=args.adaptive_budget,
+                adaptive_min_remaining_tokens=args.adaptive_min_remaining_tokens,
                 chain_attn_mode=args.full_attn_chain_mode,
                 tree_mode=args.tree_mode,
                 tree_top_k=args.tree_top_k if args.tree_mode == "branching_topk" else 1,
@@ -2665,6 +2694,7 @@ def main(argv: list[str] | None = None) -> int:
             "drafter_fusion_mode": args.drafter_fusion,
             "drafter_bucket_mode": args.drafter_bucket,
             "adaptive_budget_mode": args.adaptive_budget,
+            "adaptive_min_remaining_tokens": args.adaptive_min_remaining_tokens,
             "promotion_blocker": (
                 "native B+1 verifier ran, but full chain must still beat same-session AR before promotion"
                 if args.verifier_mode == "native_bulk_bplus1"

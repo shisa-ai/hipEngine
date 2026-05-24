@@ -42,6 +42,7 @@ class AdaptiveBudgetConfig:
     retry_cooldown_cycles: int = 16
     probe_cycles: int = 2
     promote_mean_profit_ms: float = 0.5
+    min_remaining_tokens_for_dflash: int = 0
 
     def __post_init__(self) -> None:
         if self.profit_window_size <= 0:
@@ -56,6 +57,8 @@ class AdaptiveBudgetConfig:
             raise ValueError("retry_cooldown_cycles must be positive")
         if self.probe_cycles <= 0:
             raise ValueError("probe_cycles must be positive")
+        if self.min_remaining_tokens_for_dflash < 0:
+            raise ValueError("min_remaining_tokens_for_dflash must be non-negative")
 
 
 class AdaptiveBudgetController:
@@ -98,14 +101,20 @@ class AdaptiveBudgetController:
     def begin_cycle(self, *, cycle: int, context_tokens: int, remaining_tokens: int, active_budget: int) -> AdaptiveBudgetDecision:
         """Return the mode decision for the next cycle.
 
-        ``context_tokens``/``remaining_tokens``/``active_budget`` are accepted
-        for logging and future policies; the current R3.1 controller is purely
-        profit-window based.
+        ``context_tokens`` is accepted for logging and future policies.  The
+        current R3.1 controller combines a remaining-token horizon guard with a
+        rolling profit window.
         """
 
-        _ = (context_tokens, remaining_tokens, active_budget)
+        _ = context_tokens
         if not self.enabled:
             decision = AdaptiveBudgetDecision(cycle=int(cycle), state=self.state, use_dflash=True, reason="disabled")
+        elif (
+            active_budget > 0
+            and self.config.min_remaining_tokens_for_dflash > 0
+            and remaining_tokens < self.config.min_remaining_tokens_for_dflash
+        ):
+            decision = AdaptiveBudgetDecision(cycle=int(cycle), state=self.state, use_dflash=False, reason="remaining_tokens_guard")
         elif self.state == "AR_LOCKED":
             decision = AdaptiveBudgetDecision(cycle=int(cycle), state=self.state, use_dflash=False, reason="cooldown")
         elif self.state == "AR_PROBE":
@@ -261,6 +270,7 @@ class AdaptiveBudgetController:
                 "retry_cooldown_cycles": self.config.retry_cooldown_cycles,
                 "probe_cycles": self.config.probe_cycles,
                 "promote_mean_profit_ms": self.config.promote_mean_profit_ms,
+                "min_remaining_tokens_for_dflash": self.config.min_remaining_tokens_for_dflash,
             },
             "mode_counts": dict(sorted(self._mode_counts.items())),
             "decision_counts": dict(sorted(self._decision_counts.items())),
