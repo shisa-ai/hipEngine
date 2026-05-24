@@ -208,7 +208,7 @@ def test_streaming_chat_completion_returns_sse_done_marker() -> None:
         {"reasoning_content": " pad"},
         {"content": "streamed reply"},
     ]
-    assert fake.calls[0][1].max_tokens == 256
+    assert fake.calls[0][1].max_tokens == 8192
 
 
 def test_server_rejects_wrong_model_and_unsupported_options() -> None:

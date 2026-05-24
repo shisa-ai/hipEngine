@@ -116,7 +116,7 @@ class ChatMessage(_OpenAIBaseModel):
 class ChatCompletionRequest(_OpenAIBaseModel):
     model: str | None = None
     messages: list[ChatMessage]
-    max_tokens: int | None = Field(default=256, ge=0)
+    max_tokens: int | None = Field(default=8192, ge=0)
     temperature: float | None = Field(default=0.0, ge=0.0)
     top_p: float | None = Field(default=1.0, ge=0.0, le=1.0)
     n: int | None = Field(default=1, ge=1)
@@ -149,7 +149,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     generation request.
     """
 
-    app = FastAPI(title="hipEngine OpenAI-compatible API", version="0.1.0")
+    app = FastAPI(title="hipEngine OpenAI-compatible API", version="0.2.1")
     app.state.hipengine_config = config
     app.state.hipengine_llm = llm
     generation_lock = asyncio.Lock()

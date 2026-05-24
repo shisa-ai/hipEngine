@@ -6,6 +6,47 @@ This changelog is for package/API releases. Performance rollup history remains i
 [`benchmarks/CHANGELOG.md`](benchmarks/CHANGELOG.md), with detailed benchmark
 evidence under [`benchmarks/results/`](benchmarks/results/).
 
+## v0.2.1 - 2026-05-25
+
+Patch release improving server session management, streaming, and
+OpenAI-compatible reasoning output.
+
+### Added
+
+- Eager model warmup on server startup: the configured model and a short
+  warmup generation run before uvicorn reports ready, so the first real
+  request does not pay load/compile cost. Controlled by `--eager-load` /
+  `--no-eager-load` (default: on), `--eager-load-prompt`, and
+  `--eager-load-max-tokens`, with `HIPENGINE_EAGER_LOAD`,
+  `HIPENGINE_EAGER_LOAD_PROMPT`, and `HIPENGINE_EAGER_LOAD_MAX_TOKENS`
+  environment variable equivalents.
+- `LLM.stream()` method for single-prompt token-by-token generation when
+  the underlying text generator supports it.
+- Reasoning-content splitting for chat completions: `<think>…</think>`
+  spans (Qwen/DeepSeek-style) are now separated into
+  `message.reasoning_content` (non-streaming) or `delta.reasoning_content`
+  chunks (streaming), matching the OpenAI reasoning-content convention.
+
+### Changed
+
+- PARO text generators and their resident sessions are now cached on the
+  `LLM` instance and reused across requests. Session capacity is bucketed
+  (floor 4 Ki tokens, configurable via `HIPENGINE_SESSION_MIN_TOKENS` and
+  `HIPENGINE_SESSION_BUCKET_TOKENS`) so normal chat-history growth does not
+  force reallocation every turn.
+- Chat `stream=true` now yields token-level SSE chunks from the resident
+  decode loop instead of buffering the full response and wrapping it in a
+  single SSE frame.
+- Chat completions default `max_tokens` raised from 16 to 8192 so clients
+  that omit the field get usable reply lengths, including verbose
+  chain-of-thought reasoning.
+
+### Fixed
+
+- Fixed `LLM.generate()` re-resolving the generation factory on every call,
+  which discarded generator-local caches and caused the PARO resident
+  session (layer weights, KV buffers) to be allocated and freed per request.
+
 ## v0.2.0 - 2026-05-25
 
 Minor release for the GGUF runtime path and W7900 benchmark refresh. GGUF is a

@@ -1,6 +1,6 @@
 # OpenAI-Compatible Server API
 
-Last updated: 2026-05-18
+Last updated: 2026-05-25
 
 hipEngine ships a thin optional FastAPI layer that adapts OpenAI-style requests
 to the torch-free `hipengine.LLM.generate()` library API. It is installed only
@@ -40,6 +40,12 @@ select `cpu_reference` where a CPU implementation exists; nearby targets such as
 `gfx1101`/`gfx1102` can force a backend with `--backend hip_gfx1100` or
 `HIPENGINE_BACKEND=hip_gfx1100` after local validation.
 
+By default the server eagerly loads the model and runs a short warmup
+generation at startup so the first real request does not pay load/compile cost.
+Disable with `--no-eager-load` or `HIPENGINE_EAGER_LOAD=0`. The warmup prompt
+and token count are configurable via `--eager-load-prompt` and
+`--eager-load-max-tokens`.
+
 Set `HIPENGINE_API_KEY` or pass `--api-key` to require OpenAI-style bearer
 authentication:
 
@@ -54,8 +60,8 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | --- | --- | --- |
 | `GET /health` | Built in | Unauthenticated health/model probe. |
 | `GET /v1/models` | Built in | Returns the single served model id. |
-| `POST /v1/completions` | Built in | Text prompt(s) to `LLM.generate()`. Supports `stream=true` as one server-sent event chunk plus `[DONE]`. |
-| `POST /v1/chat/completions` | Built in | Renders text-only messages to a Qwen-style prompt and calls `LLM.generate()`. Supports `stream=true` as one server-sent event chunk plus `[DONE]`. |
+| `POST /v1/completions` | Built in | Text prompt(s) to `LLM.generate()`. Supports `stream=true` (one SSE chunk plus `[DONE]`). |
+| `POST /v1/chat/completions` | Built in | Renders text-only messages to a Qwen-style prompt and calls `LLM.generate()`. Supports token-level `stream=true` SSE. `<think>` spans are separated into `reasoning_content` (non-streaming) or `delta.reasoning_content` chunks (streaming). |
 
 ## Examples
 

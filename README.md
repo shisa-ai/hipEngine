@@ -37,7 +37,7 @@ supported GPUs and models.
 
 ## Status
 
-**v0.2.0 alpha.** The runtime hot path is torch-free by construction, and the
+**v0.2.1 alpha.** The runtime hot path is torch-free by construction, and the
 first two 35B-class model-loading surfaces are now available on gfx1100:
 [shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed](https://huggingface.co/shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed)
 (19.07 GiB, 4.68 bpw) in packed
@@ -307,8 +307,11 @@ python -m hipengine.server \
 already present in the local HF cache; hipEngine resolves IDs locally and does
 not download weights during startup.
 
-Supported v0.2 endpoints: `GET /v1/models`, `POST /v1/completions`, and
-`POST /v1/chat/completions` (including one-chunk SSE for `stream=true`). See
+Supported endpoints: `GET /v1/models`, `POST /v1/completions`, and
+`POST /v1/chat/completions` with token-level SSE streaming. Chat responses
+separate `<think>` reasoning into `reasoning_content` (matching the OpenAI
+reasoning-content convention). The server eagerly warms the model on startup
+by default so the first request does not pay load/compile cost. See
 [`docs/API.md`](docs/API.md) for request examples, bearer-token auth, and
 current limitations.
 
