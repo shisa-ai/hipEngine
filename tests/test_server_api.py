@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from fastapi.testclient import TestClient
 
 from hipengine import SamplingParams
@@ -7,8 +9,13 @@ from hipengine.server import ServerConfig, create_app, render_chat_prompt
 
 
 class FakeLLM:
-    def __init__(self, outputs: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        outputs: list[str] | None = None,
+        stream_chunks: list[str] | None = None,
+    ) -> None:
         self.outputs = outputs
+        self.stream_chunks = stream_chunks
         self.calls: list[tuple[tuple[str, ...], SamplingParams]] = []
 
     def generate(self, prompts, sampling_params: SamplingParams) -> list[str]:
@@ -17,6 +24,15 @@ class FakeLLM:
         if self.outputs is not None:
             return self.outputs[: len(prompts)]
         return [f"generated:{prompt}" for prompt in prompts]
+
+    def stream(self, prompt: str, sampling_params: SamplingParams):
+        self.calls.append(((prompt,), sampling_params))
+        if self.stream_chunks is not None:
+            yield from self.stream_chunks
+        elif self.outputs is not None:
+            yield self.outputs[0]
+        else:
+            yield f"generated:{prompt}"
 
     def count_tokens(self, text: str) -> int:
         return len(text.split())
@@ -48,6 +64,28 @@ def test_models_endpoint_reports_served_model_name_and_auth() -> None:
             }
         ],
     }
+
+
+def test_server_eager_loads_model_on_startup() -> None:
+    fake = FakeLLM(outputs=["warm"])
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        eager_load_prompt="one two three four",
+        eager_load_max_tokens=2,
+    )
+    app = create_app(config, llm=fake)
+
+    with TestClient(app) as client:
+        response = client.get("/v1/models")
+
+    assert response.status_code == 200
+    assert fake.calls == [
+        (
+            ("one two three four",),
+            SamplingParams(max_tokens=2, temperature=0.0, top_p=1.0, ignore_eos=True),
+        )
+    ]
 
 
 def test_completions_endpoint_calls_llm_and_applies_stop() -> None:
@@ -126,8 +164,27 @@ def test_chat_completion_renders_messages_to_prompt() -> None:
     assert fake.calls[0][1].max_tokens == 4
 
 
+def test_chat_completion_segregates_reasoning_content() -> None:
+    fake = FakeLLM(outputs=["<think>scratch pad</think>assistant reply"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={"model": "fake-model", "messages": [{"role": "user", "content": "hello"}]},
+    )
+
+    assert response.status_code == 200
+    message = response.json()["choices"][0]["message"]
+    assert message == {
+        "role": "assistant",
+        "content": "assistant reply",
+        "reasoning_content": "scratch pad",
+    }
+
+
 def test_streaming_chat_completion_returns_sse_done_marker() -> None:
-    fake = FakeLLM(outputs=["streamed reply"])
+    fake = FakeLLM(stream_chunks=["<thi", "nk>scratch", " pad</think>", "streamed reply"])
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
     client = TestClient(app)
 
@@ -144,6 +201,13 @@ def test_streaming_chat_completion_returns_sse_done_marker() -> None:
     assert response.headers["content-type"].startswith("text/event-stream")
     assert '"object":"chat.completion.chunk"' in response.text
     assert "data: [DONE]" in response.text
+    deltas = [payload["choices"][0]["delta"] for payload in _sse_payloads(response.text)]
+    assert deltas[:4] == [
+        {"role": "assistant"},
+        {"reasoning_content": "scratch"},
+        {"reasoning_content": " pad"},
+        {"content": "streamed reply"},
+    ]
     assert fake.calls[0][1].max_tokens == 256
 
 
@@ -193,3 +257,12 @@ def test_chat_endpoint_rejects_non_text_content_parts() -> None:
 
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "unsupported_content_type"
+
+
+def _sse_payloads(text: str) -> list[dict]:
+    payloads = []
+    for line in text.splitlines():
+        if line == "data: [DONE]" or not line.startswith("data: "):
+            continue
+        payloads.append(json.loads(line.removeprefix("data: ")))
+    return payloads

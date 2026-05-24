@@ -41,6 +41,9 @@ class ServerConfig:
     quant: str = "w4_paro"
     served_model_name: str | None = None
     api_key: str | None = None
+    eager_load: bool = True
+    eager_load_prompt: str = "one two three four"
+    eager_load_max_tokens: int = 1
     created: int = field(default_factory=lambda: int(time.time()))
 
     @property
@@ -131,12 +134,19 @@ class _GeneratedBatch:
     usage: dict[str, int]
 
 
+@dataclass(frozen=True)
+class _ReasoningSplit:
+    content: str
+    reasoning_content: str
+
+
 def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     """Create a FastAPI app for OpenAI-compatible local inference.
 
     ``llm`` is injectable for tests and must expose ``generate(prompts,
-    sampling_params)``.  When omitted, ``hipengine.LLM`` is constructed lazily and
-    loads model metadata on first generation, not at app creation.
+    sampling_params)``.  Startup eagerly warms the configured model by default;
+    disabling ``ServerConfig.eager_load`` keeps construction lazy until the first
+    generation request.
     """
 
     app = FastAPI(title="hipEngine OpenAI-compatible API", version="0.1.0")
@@ -148,6 +158,24 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         if app.state.hipengine_llm is None:
             app.state.hipengine_llm = LLM(config.model, backend=config.backend, quant=config.quant)
         return app.state.hipengine_llm
+
+    async def eager_load_model() -> None:
+        if not config.eager_load:
+            return
+        max_tokens = max(1, int(config.eager_load_max_tokens))
+        sampling = SamplingParams(
+            max_tokens=max_tokens,
+            temperature=0.0,
+            top_p=1.0,
+            ignore_eos=True,
+        )
+        async with generation_lock:
+            await run_in_threadpool(get_llm().generate, (config.eager_load_prompt,), sampling)
+
+    if hasattr(app, "add_event_handler"):
+        app.add_event_handler("startup", eager_load_model)
+    else:  # FastAPI-lite compatibility in minimal test/runtime environments.
+        app.router.on_startup.append(eager_load_model)
 
     async def require_auth(request: Request) -> None:
         if not config.api_key:
@@ -310,6 +338,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
         batch = await generate((prompt,), request)
         text, finish_reason = _apply_stop(batch.outputs[0], request.stop)
+        split = _split_reasoning(text)
+        message: dict[str, Any] = {"role": "assistant", "content": split.content}
+        if split.reasoning_content:
+            message["reasoning_content"] = split.reasoning_content
         response_id = f"chatcmpl-{uuid.uuid4().hex}"
         created = int(time.time())
         response = {
@@ -320,7 +352,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "choices": [
                 {
                     "index": 0,
-                    "message": {"role": "assistant", "content": text},
+                    "message": message,
                     "finish_reason": finish_reason,
                 }
             ],
@@ -338,6 +370,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         response_id = f"chatcmpl-{uuid.uuid4().hex}"
         created = int(time.time())
         full_text: list[str] = []
+        splitter = _ReasoningSplitter()
         sentinel = object()
 
         def next_or_done(iterator):
@@ -363,7 +396,22 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     if not text:
                         continue
                     full_text.append(text)
-                    yield _chat_stream_delta(response_id, created, config.model_id, text)
+                    for field, chunk in splitter.feed(text):
+                        yield _chat_stream_delta(
+                            response_id,
+                            created,
+                            config.model_id,
+                            field,
+                            chunk,
+                        )
+                for field, chunk in splitter.finish():
+                    yield _chat_stream_delta(
+                        response_id,
+                        created,
+                        config.model_id,
+                        field,
+                        chunk,
+                    )
         except NotImplementedError as exc:
             yield _chat_stream_error(response_id, created, config.model_id, str(exc))
             return
@@ -550,6 +598,70 @@ def _safe_count(counter: Any, text: str) -> int:
         return 0
 
 
+_REASONING_OPEN_TAG = "<think>"
+_REASONING_CLOSE_TAG = "</think>"
+
+
+class _ReasoningSplitter:
+    """Incrementally split Qwen/DeepSeek-style thinking tags from answer text."""
+
+    def __init__(self) -> None:
+        self._buffer = ""
+        self._in_reasoning = False
+
+    def feed(self, text: str) -> list[tuple[str, str]]:
+        if not text:
+            return []
+        self._buffer += text
+        return self._drain(final=False)
+
+    def finish(self) -> list[tuple[str, str]]:
+        return self._drain(final=True)
+
+    def _drain(self, *, final: bool) -> list[tuple[str, str]]:
+        outputs: list[tuple[str, str]] = []
+        while self._buffer:
+            tag = _REASONING_CLOSE_TAG if self._in_reasoning else _REASONING_OPEN_TAG
+            index = self._buffer.find(tag)
+            if index >= 0:
+                self._append(outputs, self._buffer[:index])
+                self._buffer = self._buffer[index + len(tag) :]
+                self._in_reasoning = not self._in_reasoning
+                continue
+            if final:
+                self._append(outputs, self._buffer)
+                self._buffer = ""
+                break
+            keep = _tag_suffix_len(self._buffer, tag)
+            emit_len = len(self._buffer) - keep
+            if emit_len > 0:
+                self._append(outputs, self._buffer[:emit_len])
+                self._buffer = self._buffer[emit_len:]
+            break
+        return outputs
+
+    def _append(self, outputs: list[tuple[str, str]], text: str) -> None:
+        if text:
+            field = "reasoning_content" if self._in_reasoning else "content"
+            outputs.append((field, text))
+
+
+def _tag_suffix_len(text: str, tag: str) -> int:
+    max_len = min(len(tag) - 1, len(text))
+    for length in range(max_len, 0, -1):
+        if tag.startswith(text[-length:]):
+            return length
+    return 0
+
+
+def _split_reasoning(text: str) -> _ReasoningSplit:
+    splitter = _ReasoningSplitter()
+    parts = splitter.feed(text) + splitter.finish()
+    content = "".join(part for field, part in parts if field == "content")
+    reasoning = "".join(part for field, part in parts if field == "reasoning_content")
+    return _ReasoningSplit(content=content, reasoning_content=reasoning)
+
+
 def _completion_stream(
     response_id: str,
     created: int,
@@ -602,8 +714,17 @@ def _chat_stream(
     finish_reason: str,
 ) -> Iterator[str]:
     yield _chat_stream_role(response_id, created, model)
-    if text:
-        yield _chat_stream_delta(response_id, created, model, text)
+    split = _split_reasoning(text)
+    if split.reasoning_content:
+        yield _chat_stream_delta(
+            response_id,
+            created,
+            model,
+            "reasoning_content",
+            split.reasoning_content,
+        )
+    if split.content:
+        yield _chat_stream_delta(response_id, created, model, "content", split.content)
     yield _chat_stream_done(response_id, created, model, finish_reason)
     yield "data: [DONE]\n\n"
 
@@ -620,14 +741,14 @@ def _chat_stream_role(response_id: str, created: int, model: str) -> str:
     )
 
 
-def _chat_stream_delta(response_id: str, created: int, model: str, text: str) -> str:
+def _chat_stream_delta(response_id: str, created: int, model: str, field: str, text: str) -> str:
     return _sse(
         {
             "id": response_id,
             "object": "chat.completion.chunk",
             "created": created,
             "model": model,
-            "choices": [{"index": 0, "delta": {"content": text}, "finish_reason": None}],
+            "choices": [{"index": 0, "delta": {field: text}, "finish_reason": None}],
         }
     )
 

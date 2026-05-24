@@ -26615,3 +26615,22 @@ uv run --extra server hipengine-server --model shisa-ai/Qwen3.6-35B-A3B-PARO-ful
 ```
 
 Smoke evidence on the running server after restart from the local checkout: first streamed `max_tokens=4` request sent the role chunk immediately, then took 30.25s to warm/materialize and yielded token chunks (`<think>`, newline, `Here`, `'s`); VRAM reached 19.54GB. A second chat-history request reused the resident 4096-token session, yielded the first content chunk at 0.46s, completed at 0.49s, and VRAM stayed resident at 19.55GB. Server PID 9305, wrapper PID recorded in `/tmp/hipengine-server-8000.pid`, log `/tmp/hipengine-server-8000.log`.
+
+## 2026-05-24 — eager server warmup and reasoning-channel split
+
+Implemented eager server warmup and OpenAI-compatible reasoning segregation for the local PARO server.
+
+Changes:
+
+- Added `ServerConfig.eager_load` plus CLI `--eager-load/--no-eager-load` (default on), `--eager-load-prompt`, and `--eager-load-max-tokens`. Startup now constructs `LLM` and runs a one-token warmup before uvicorn reports startup complete, so `/v1/models` is only reachable after the model/session is resident.
+- Default warmup prompt is `one two three four`; the initial `hello` default failed native prefill because Qwen35/PARO requires at least `linear_conv_kernel_dim` (4) prompt tokens.
+- Split Qwen/DeepSeek-style `<think>...</think>` spans in chat responses. Non-stream responses put visible answer text in `message.content` and hidden reasoning text in `message.reasoning_content`. Streaming responses emit `delta.reasoning_content` for reasoning chunks and `delta.content` for final answer chunks.
+
+Validation:
+
+```bash
+uv run --extra dev python -m pytest -q tests/test_server_api.py tests/test_llm_generate.py tests/test_generation_qwen35_paro.py
+# 19 passed
+```
+
+Restarted the LAN server from the local checkout with TheRock ROCm library paths. Eager startup completed after 31s, `/v1/models` returned `qwen-paro`, and VRAM was already resident at 19.54GB before serving requests. A subsequent streamed chat request returned the role chunk at 0.01s and reasoning chunks as `delta.reasoning_content` from 0.49s onward, with VRAM staying resident at 19.54GB. Server PID 12107, wrapper PID 12082, log `/tmp/hipengine-server-8000.log`.
