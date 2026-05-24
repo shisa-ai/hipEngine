@@ -97,10 +97,10 @@ class LLM:
         if self._weight_index is not None and self._model_plugin is not None:
             return self._weight_index, self._model_plugin
 
-        from hipengine.loading import discover_gguf_files, load_gguf_index, load_weight_index
+        from hipengine.loading import discover_gguf_files, load_gguf_index, load_weight_index, resolve_model_path
         from hipengine.models import resolve_model
 
-        model_path = Path(self.model).expanduser()
+        model_path = resolve_model_path(self.model)
         if _looks_like_gguf_path(model_path):
             index = load_gguf_index(discover_gguf_files(model_path)[0])
             self.model = str(index.path)

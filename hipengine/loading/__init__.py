@@ -10,6 +10,7 @@ from hipengine.loading.gguf import (
     load_gguf_index,
     scan_gguf,
 )
+from hipengine.loading.hf_cache import resolve_model_path
 from hipengine.loading.materialize import (
     DeviceTensorAllocation,
     DeviceWeightMap,
@@ -162,6 +163,7 @@ __all__ = [
     "prepare_qwen35_paro_moe_c1_runtime_host_tensors",
     "prepared_moe_c1_tensor_names",
     "repack_paro_awq_to_marlin_k_host",
+    "resolve_model_path",
     "runtime_full_attention_dense_c1_tensor_names",
     "runtime_full_attention_moe_c1_tensor_names",
     "runtime_prepared_moe_c1_tensor_names",

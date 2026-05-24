@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 from hipengine import LLM, SamplingParams
@@ -125,3 +126,48 @@ def test_llm_generate_normalizes_single_prompt(monkeypatch) -> None:
 
     assert llm.generate("hello", SamplingParams(max_tokens=1)) == ["world"]
     assert llm.generate([], SamplingParams(max_tokens=1)) == []
+
+
+def test_llm_resolves_hf_model_id_before_gguf_detection(monkeypatch, tmp_path) -> None:
+    import hipengine.generation as generation
+    import hipengine.loading as loading
+    import hipengine.models as models
+
+    calls = {}
+    resolved = tmp_path / "snapshots" / "abc123"
+    resolved.mkdir(parents=True)
+    gguf = resolved / "model.gguf"
+    gguf.write_bytes(b"GGUF")
+    fake_index = SimpleNamespace(path=gguf, architecture="qwen35moe")
+    fake_plugin = SimpleNamespace(name="fake_gguf")
+
+    class FakeGenerator:
+        def generate(self, request: GenerationRequest) -> list[str]:
+            return ["ok"]
+
+    def factory(**kwargs):
+        calls["factory_kwargs"] = kwargs
+        return FakeGenerator()
+
+    monkeypatch.setattr(generation, "register_builtin_generators", lambda: None)
+    monkeypatch.setattr(loading, "resolve_model_path", lambda model: resolved)
+    monkeypatch.setattr(loading, "discover_gguf_files", lambda model: (Path(model) / "model.gguf",))
+    monkeypatch.setattr(loading, "load_gguf_index", lambda model: fake_index)
+    monkeypatch.setattr(models, "resolve_model", lambda architecture: fake_plugin)
+    register_text_generator(
+        model="fake_gguf",
+        backend="fake_backend",
+        quant="fake_quant",
+        factory=factory,
+        replace=True,
+    )
+
+    llm = LLM("org/model-gguf", backend="fake_backend", quant="fake_quant")
+
+    assert llm.generate("hello", SamplingParams(max_tokens=1)) == ["ok"]
+    assert llm.model == str(gguf)
+    assert calls["factory_kwargs"] == {
+        "model_path": str(gguf),
+        "weight_index": fake_index,
+        "model_plugin": fake_plugin,
+    }

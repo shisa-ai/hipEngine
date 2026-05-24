@@ -17,12 +17,16 @@ pip install -e ".[server]"
 
 ```bash
 python -m hipengine.server \
-  --model /path/to/qwen-paro-model \
+  --model shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed \
   --quant w4_paro \
   --served-model-name qwen-paro \
   --host 127.0.0.1 \
   --port 8000
 ```
+
+`--model` accepts a local filesystem path or a Hugging Face model ID that is
+already present in the local HF cache. hipEngine resolves IDs with local cache
+lookups only; it does not download weights during server startup.
 
 After installation, the console script is equivalent:
 

@@ -8,6 +8,7 @@ from math import prod
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+from hipengine.loading.hf_cache import resolve_model_path
 from hipengine.quant.gguf import (
     GGMLQuantizationType,
     GGUFValueType,
@@ -152,7 +153,7 @@ class GGUFReader:
 
 
 def discover_gguf_files(model_path: str | Path) -> tuple[Path, ...]:
-    path = Path(model_path)
+    path = resolve_model_path(model_path)
     if path.is_file() and path.suffix.lower() == ".gguf":
         return (path.resolve(),)
     if not path.is_dir():

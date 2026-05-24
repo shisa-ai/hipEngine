@@ -26566,3 +26566,19 @@ uvx --refresh --from "hipengine[server]==0.2.0" hipengine-server --help
 ```
 
 Final release pointers: GitHub release `https://github.com/shisa-ai/hipEngine/releases/tag/v0.2.0`, publish workflow `https://github.com/shisa-ai/hipEngine/actions/runs/26370452261`, release tag commit `36e351607955158e821b51f443bac042b140624f`.
+
+## 2026-05-25 — HF cache model id resolution for server/LLM
+
+Added local Hugging Face cache resolution for public model references so `hipengine-server --model` and `LLM(model=...)` can take either a filesystem path or a cached HF model id such as `shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed`. Resolution remains local-only: existing paths win, then `huggingface_hub.snapshot_download(..., local_files_only=True)` is used if available, then the standard HF cache layout is inspected directly; no weights are downloaded during startup. GGUF discovery now resolves the model reference first, so cached GGUF repos/directories work as well as direct `.gguf` file paths.
+
+Also updated README/API server examples to show the HF model id form and note that cache resolution is local-only. User's `uv run --extra server ...` command is the right shape; the `--no-build` error indicates a uv no-build mode/config/environment for the local editable package, not a hipEngine server argument issue. Workaround is to unset no-build for local editable runs or use the published wheel via `uvx --from "hipengine[server]==0.2.0"`.
+
+Validation:
+
+```bash
+python -m py_compile hipengine/loading/hf_cache.py hipengine/loading/safetensors.py hipengine/loading/gguf.py hipengine/llm.py
+python -m pytest -q tests/test_hf_cache.py tests/test_llm_generate.py tests/test_loading_safetensors.py tests/test_server_api.py
+# 19 passed
+uv run --extra dev python -m pytest -q
+# passed
+```

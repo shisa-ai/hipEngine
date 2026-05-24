@@ -298,12 +298,16 @@ Install the optional server extra and run the FastAPI layer:
 ```bash
 pip install -e ".[server]"
 python -m hipengine.server \
-  --model /path/to/model \
+  --model shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed \
   --quant w4_paro \
   --served-model-name qwen-paro
 ```
 
-Supported v0.1 endpoints: `GET /v1/models`, `POST /v1/completions`, and
+`--model` accepts either a local filesystem path or a Hugging Face model ID
+already present in the local HF cache; hipEngine resolves IDs locally and does
+not download weights during startup.
+
+Supported v0.2 endpoints: `GET /v1/models`, `POST /v1/completions`, and
 `POST /v1/chat/completions` (including one-chunk SSE for `stream=true`). See
 [`docs/API.md`](docs/API.md) for request examples, bearer-token auth, and
 current limitations.
