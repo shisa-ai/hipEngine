@@ -26508,3 +26508,33 @@ python scripts/qwen35_readme_sweep.py --engine paro ... --workloads 128K/128 ...
 python scripts/qwen35_readme_sweep.py --engine paro ... --workloads 512/128 4K/128 32K/128 128K/128 --warmup-runs 1 --measured-runs 5 --json benchmarks/results/2026-05-25-w7900-hipengine-paro-readme-persistent-5run.json
 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python scripts/qwen35_readme_sweep.py --engine gguf ... --workloads 512/128 4K/128 32K/128 128K/128 --warmup-runs 1 --measured-runs 5 --json benchmarks/results/2026-05-25-w7900-hipengine-gguf-q4ks-readme-persistent-5run.json
 ```
+
+## 2026-05-25 — v0.2.0 release prep
+
+Reclassified the planned v0.1.2 patch as v0.2.0 because GGUF support is a substantial new runtime/model-loading surface, not just a PARO patch. Updated `pyproject.toml` to `0.2.0`, refreshed `CHANGELOG.md` with GGUF support, persistent README sweep, PARO workspace-overlap fix, and GGUF max-context decode fix, and updated `README.md` status/GGUF support notes.
+
+Release validation / packaging commands run:
+
+```bash
+git fetch --tags origin && git pull --ff-only
+# Already up to date.
+git lfs ls-files | head -20
+python3 -m compileall -q hipengine scripts tests
+python -m pytest -q tests/test_qwen35_gguf_decode_repack_dispatch.py tests/test_qwen35_prefill_workspace_policy.py tests/test_qwen35_gguf_fastpath_safety.py
+# 13 passed
+uv run --extra dev python -m pytest -q
+# passed after adding tests/conftest.py registry baseline restore
+uv run --python 3.10 --extra dev python -m pytest -q
+# passed on CPython 3.10.16
+uv run --extra dev hipengine-server --help
+rm -rf dist/ && python3 -m build
+# built hipengine-0.2.0.tar.gz and hipengine-0.2.0-py3-none-manylinux_2_39_x86_64.whl
+uvx --from twine twine check dist/*
+# PASSED
+WHEEL=$(pwd)/dist/hipengine-0.2.0-py3-none-manylinux_2_39_x86_64.whl; (cd /tmp && uv run --isolated --with "${WHEEL}[server]" hipengine-server --help)
+# passed
+```
+
+The first full pytest attempt exposed an order-dependent test isolation issue: plan tests call `clear_registry_for_tests()` after collection-time imports, leaving later GGUF registry tests with cached modules but cleared registry entries. Added `tests/conftest.py` to snapshot collection-time kernel registrations and restore the process-global registry after each test, preserving per-test clear semantics while making the suite order-independent. Updated the GGUF decode-repack dispatch expectation for the retained `active_context` fix.
+
+Release is not pushed/tagged/published yet in this entry; next step is commit release metadata, then continue the `docs/PUBLISH.md` push/tag/release/upload checklist from a clean tree.

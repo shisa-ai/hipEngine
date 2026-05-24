@@ -197,7 +197,7 @@ def test_short_context_keeps_unfused_full_attention_gate(monkeypatch) -> None:
     context_args = next(args for name, args, _ in calls if name == "attention_context")
     gate_args = next(args for name, args, _ in calls if name == "attention_gate")
     assert context_args[:5] == (scratch.full_query.ptr, 0x2110, 0x2120, scratch.full_attn_context.ptr, scratch.decode_spans)
-    assert context_args[5:11] == (scratch.max_positions, scratch.block_size, 16, 2, 256, 256 ** -0.5)
+    assert context_args[5:11] == (512, scratch.block_size, 16, 2, 256, 256 ** -0.5)
     assert gate_args[:4] == (scratch.full_attn_context.ptr, scratch.full_gate.ptr, scratch.full_gated.ptr, runner.q_width)
 
 

@@ -6,13 +6,34 @@ This changelog is for package/API releases. Performance rollup history remains i
 [`benchmarks/CHANGELOG.md`](benchmarks/CHANGELOG.md), with detailed benchmark
 evidence under [`benchmarks/results/`](benchmarks/results/).
 
-## v0.1.2 - Unreleased
+## v0.2.0 - 2026-05-25
+
+Minor release for the GGUF runtime path and W7900 benchmark refresh. GGUF is a
+meaningful new model-loading surface rather than a patch-level fix, so this
+supersedes the previously planned v0.1.2 patch.
 
 ### Added
 
+- Added Qwen3.6 35B MoE GGUF support for `Q4_K_M` and `Q4_K_S` model files,
+  including resident GGUF loading, bulk prefill, graph-replay decode,
+  decode-repacked T16 layouts, and WMMA/GEMV fast-path controls used by the
+  W7900 benchmark profile.
 - Added `docs/ENVS.md` as the canonical environment-variable reference, including
   TheRock ROCm process setup, cached-build profiling guidance, and safe GGUF
   benchmark profiles.
+- Added a persistent README sweep harness that loads each hipEngine model once
+  and runs repeated in-session workload measurements, matching llama-bench-style
+  repetition without multiplying model load/decode-repack time by every shape.
+
+### Changed
+
+- Refreshed W7900 README performance tables with 5-run persistent-session medians
+  for packed PARO and GGUF Q4_K_S while keeping the existing llama.cpp HIP/Vulkan
+  comparison rows unchanged.
+- Documented the current GGUF tradeoffs: higher one-time load cost and resident
+  memory from decode-repack, Q4_K_S preferred for tighter VRAM budgets, and
+  performance still behind PARO on some shapes while already competitive in the
+  broader W7900 comparison.
 
 ### Fixed
 
@@ -21,6 +42,17 @@ evidence under [`benchmarks/results/`](benchmarks/results/).
   32K tokens, restoring 512/128-class prefill throughput while retaining the
   long-context memory-saving path for prompts above 32K when active chunking
   splits the prompt.
+- Fixed GGUF non-split full-attention decode in max-context persistent sessions
+  by launching the context kernel with the active decode context instead of the
+  session's maximum allocation length.
+
+### Known limitations
+
+- GGUF support remains alpha: production correctness and performance coverage is
+  strongest for the documented Qwen3.6 35B MoE Q4_K_M/Q4_K_S paths on gfx1100,
+  and other GGUF quants/models require local validation.
+- GGUF model load is slower than packed PARO on the same host because current
+  decode-repack happens on load and is not yet cached on disk.
 
 ## v0.1.1 - 2026-05-19
 

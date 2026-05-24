@@ -37,16 +37,15 @@ supported GPUs and models.
 
 ## Status
 
-**v0.1.x.** The runtime hot path is torch-free by construction; kernel
-families and registry plumbing are landing under
-[`hipengine/kernels/hip_gfx1100/`](hipengine/kernels/hip_gfx1100/). Current
-single-model tuning targets
+**v0.2.0 alpha.** The runtime hot path is torch-free by construction, and the
+first two 35B-class model-loading surfaces are now available on gfx1100:
 [shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed](https://huggingface.co/shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed)
 (19.07 GiB, 4.68 bpw) in packed
-[ParoQuant](https://github.com/shisa-ai/paroquant) format.
+[ParoQuant](https://github.com/shisa-ai/paroquant) format, plus Qwen3.6 GGUF
+`Q4_K_M` / `Q4_K_S` files through the new resident GGUF path.
 
-- INT8 KV cache support has been added. Qwen 3 MoE's full 256K context window can fit in <24GB tracked memory; see [Memory Usage](#memory-usage).
-- Preliminary Qwen 3.6 [Q4_K_M](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_M.gguf) and [Q4_K_S](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-IQ4_XS.gguf) GGUF support has been added (W7900 Q4_K_S sweep is in [Performance](#performance) alongside packed PARO and llama.cpp Q4_K_M HIP/Vulkan baselines). GGUF currently runs a bit slower than our PARO models on the prefill side and adds ~1.9 GiB of resident tracked peak across every shape due to a one-time on-load decode-repack into T16 tile layouts. Q4_K_S is recommended on 24 GiB cards because Q4_K_M is a fair bit bigger; on the 48 GiB W7900 Q4_K_S fits all the way to 128K context, on 24 GiB cards expect about 64K. GGUF also has a higher per-session load cost (~60 s vs ~24 s for PARO packed on the same hardware) for the same decode-repack reason. GGUF support gives more options for future model loading.
+- INT8 KV cache support has been added for PARO. Qwen 3 MoE's full 256K context window can fit in <24GB tracked memory; see [Memory Usage](#memory-usage).
+- Qwen 3.6 [Q4_K_M](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_M.gguf) and [Q4_K_S](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-IQ4_XS.gguf) GGUF support has landed (W7900 Q4_K_S sweep is in [Performance](#performance) alongside packed PARO and llama.cpp Q4_K_M HIP/Vulkan baselines). GGUF uses a substantial GGUF-specific runtime path with bulk prefill, graph decode, and on-load decode-repack into T16 tile layouts. Q4_K_S is recommended on 24 GiB cards because Q4_K_M is bigger; on the 48 GiB W7900 Q4_K_S fits all the way to 128K context, while on 24 GiB cards expect roughly 64K. GGUF also has a higher per-session load cost (~60 s vs ~24 s for PARO packed on the same hardware) for the same decode-repack reason.
 - Current gfx1100 performance snapshots are summarized in [Performance](#performance) and compared against recent llama.cpp Q4_K_M baselines.
 
 
@@ -197,10 +196,23 @@ correctness status, source-lineage targets, and external comparison baselines.
 
 ## GGUF Support
 
-It may be easier or desirable to run GGUF models, as of v0.2.0 hipEngine has introduced `Q4_K_M` and `Q4_K_S` model support (with more forthcoming), however there are a few caveats currently.
-- PARO models take ~24s to load, but GGUFs take about 60s due to decode-repack on load into T16 tile layouts. On-disk caching could be added but would double storage side.
-- There is currently also about 2GB of memory overhead, so effectively, instead of 128K context on a card.
-- While the hope was that there would be enough similarity to PARO that there wouldn't be a lot of custom kernels, in practice, GGUF has enough of its own peculiarities that there is a substantial GGUF-only path. It's currently ~30% slower on prefill and ~10% slower on decode. The goal in future releases will be to bring PARO and GGUF performance to speed parity.
+As of v0.2.0, hipEngine includes resident Qwen3.6 GGUF support for `Q4_K_M` and
+`Q4_K_S` model files (with more formats planned). This is a major runtime path,
+not just a loader shim: GGUF has its own quant readers, bulk-prefill path,
+decode-repacked T16 layouts, and fast-path controls.
+
+Current caveats:
+
+- PARO models take ~24s to load on the W7900 test host; GGUF currently takes
+  about 60s because decode-repack happens on load. On-disk caching could reduce
+  startup time later, but would require additional storage for repacked layouts.
+- GGUF has higher resident memory than packed PARO. In the current W7900 README
+  sweep, the max-context Q4_K_S session peaks at ~25.1 GiB tracked, so 128K is
+  W7900/48 GiB territory; on 24 GiB cards, expect roughly 64K context with
+  Q4_K_S.
+- GGUF is close enough to PARO to share some high-level scheduling ideas, but in
+  practice it needs substantial GGUF-only kernels and dispatch. The goal for
+  future releases is to keep closing the remaining PARO/GGUF speed gap.
 
 
 ## Architecture at a glance
