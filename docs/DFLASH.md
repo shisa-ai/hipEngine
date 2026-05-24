@@ -1057,6 +1057,20 @@ Exact-AR equality is mandatory for every row and is NOT repeated in the Gate col
 
 **Status 2026-05-24:** host controller and artifact logging remain default-off, but the native-bulk→c=1 AR handoff blocker is fixed. Root cause was verifier-sized resident scratch reused by later `tokens=1` decode: split views such as linear-attention `qkv/z` and `a/b` used offsets based on the bulk row count, while c=1 projection kernels write compact one-row layouts. `Qwen35ParoResidentSession` now canonicalizes linear-attention and MoE/MLP decode scratch after native bulk commits and on c=1 entry. The 4-prompt B=4 D=16 W7900 acceptance run with `--adaptive-budget on --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched` is exact (`4/4` rows) and AR fallback cycles are near same-session AR (`mean/p50 9.90/9.60 ms`, 24 cycles) instead of the interim root-only bulk fallback (`~18 ms/token`). Aggregate diagnostic speed is still below AR (`0.529x`, `performance_claim=false`), so promotion still requires the full 9-prompt guard and/or further DFlash speed work.
 
+**llama.cpp HIP MTP mining addendum (2026-05-24):** local
+`/home/lhl/llama.cpp/llama.cpp-hip` contributes two relevant MTP ideas.
+Commit `3e12fbdea` splits pre-norm hidden extraction from raw-logit copying
+for MTP prompt decode; hipEngine already has the analogous device-resident
+hidden-tap path and compact accept summaries, so there is no direct DFlash code
+port there.  Branch `origin/gg/mtp-graphs-improve` commit `d7b1fd2af`
+re-enables `p_min` for MTP drafts by sampling top-K and stopping low-confidence
+tails.  hipEngine now mirrors that as default-off DFlash benchmark plumbing:
+`--draft-top-k K --draft-p-min P` trims chain candidates at the first
+low-confidence row and, when enabled, compacts the native verifier batch to the
+surviving active rows instead of verifying padded inactive suffix rows.  This is
+not a perf claim until a retained W7900/gfx1100 artifact proves exact-AR and an
+economics win.
+
 **Win state:**
 - For every prompt in the 9-prompt suite, `spec_tok_s_with_controller / ar_tok_s ≥ 0.95`.
 - Per-cycle artifact records: `mode_used`, `cycle_wall_ms`, `visible_tokens`, `profit_ms`, `controller_state`.
@@ -1506,4 +1520,3 @@ positive or negative.
 | L12 | **Bucketed graph capture is a kernel-shape problem, not a cache-key tweak**: exact-context graph capture misses because `context_tokens` changes every cycle, but simply bucketing the key would be wrong today. The drafter concat/attention kernels place query K/V immediately after `context_tokens` rows and loop over `total_kv=context+block`; replaying a captured graph at a different live context would attend to the wrong/padded rows. | R2.2 sync-phase triage (2026-05-23) | R2.3 design; any context-dependent HIP graph capture |
 | L13 | **Drafter on W7900 is GPU-kernel-bound, not host-launch-bound**: bucketed HIP graph capture (R2.3) saves only `~3.6 µs / launch × ~124 launches/cycle = ~0.45 ms` (~2% of cycle). Cycle wall is dominated by 8 decoder layers' kernel time (`~19.6 ms` synced). Same finding as M14.dispatch.0/1 for MTP. Future drafter wins must move kernel work, not launches. | R2.3 W7900 4-prompt B=4 D=16 (2026-05-23) | Any drafter launch-overhead optimization; HIP graph capture re-eval; ROCm → CUDA portability claims |
 | L14 | **Drafter dense GEMVs run at ~3% of W7900 bandwidth peak**: the naive per-output-element `dflash_dense_bf16_to_bf16_kernel` runs at ~`306–350 µs/op` on `(16 rows × 2048 in × 2048 out)` vs a BW-bound floor of `~9.3 µs`. A 16×16×16 BF16 WMMA-tiled kernel with LDS-staged input should give 5–10× and is the single biggest remaining drafter lever on W7900. | R3.3 roofline analysis (2026-05-23) | All small-batch BF16 GEMV kernels in hipEngine; drafter rewrites; any non-WMMA dense kernel |
-

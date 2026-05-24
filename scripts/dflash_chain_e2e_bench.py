@@ -86,6 +86,7 @@ class DraftResult:
     graph: dict[str, Any]
     topk_tokens: tuple[tuple[int, ...], ...] = ()
     topk_values: tuple[tuple[float, ...], ...] = ()
+    top1_probabilities: tuple[float, ...] = ()
 
 
 def _dflash_cross_bucket(context_tokens: int) -> int:
@@ -110,6 +111,46 @@ def _dflash_cross_bucket(context_tokens: int) -> int:
             bucket *= 2
         return bucket
     return ((n + 127) // 128) * 128
+
+
+def _top1_probability_from_topk(row_values: Sequence[float]) -> float:
+    """Return the top-1 probability after softmax over a compact top-k row."""
+
+    if not row_values:
+        raise ValueError("top-k row must not be empty")
+    values = [float(value) for value in row_values]
+    if len(values) == 1:
+        return 1.0
+    max_value = max(values)
+    exps = [math.exp(value - max_value) for value in values]
+    denom = sum(exps)
+    if denom <= 0.0 or not math.isfinite(denom):
+        return 0.0
+    return float(exps[0] / denom)
+
+
+def _top1_probabilities_from_topk(topk_values: Sequence[Sequence[float]]) -> tuple[float, ...]:
+    return tuple(_top1_probability_from_topk(row) for row in topk_values)
+
+
+def _confidence_limited_active_count(
+    top1_probabilities: Sequence[float],
+    *,
+    max_active: int,
+    p_min: float,
+) -> int:
+    """Stop a chain draft at the first candidate below the confidence floor."""
+
+    if max_active < 0:
+        raise ValueError("max_active must be non-negative")
+    if p_min <= 0.0:
+        return int(max_active)
+    count = 0
+    for probability in top1_probabilities[: int(max_active)]:
+        if float(probability) < float(p_min):
+            break
+        count += 1
+    return count
 
 
 @dataclass(frozen=True)
@@ -621,6 +662,7 @@ class NativeDFlashChainDrafter:
         self._graph_status_counts[str(graph_info.get("status", "unknown"))] += 1
         topk_token_rows = tuple(tuple(int(x) for x in row) for row in topk.tolist())
         topk_value_rows = tuple(tuple(float(x) for x in row) for row in topk_values.tolist())
+        top1_probabilities = _top1_probabilities_from_topk(topk_value_rows)
         return DraftResult(
             candidate_tokens=tuple(int(row[0]) for row in topk_token_rows),
             draft_seconds=draft_seconds,
@@ -631,6 +673,7 @@ class NativeDFlashChainDrafter:
             graph=graph_info,
             topk_tokens=topk_token_rows,
             topk_values=topk_value_rows,
+            top1_probabilities=top1_probabilities,
         )
 
     def _write_root_inputs(self, *, root_token: int, root_position: int) -> None:
@@ -1719,6 +1762,8 @@ def run_same_session_pair(
     drafter_graph_mode: str = "off",
     drafter_fusion_mode: str = "off",
     drafter_bucket_mode: str = "exact",
+    draft_top_k: int = 1,
+    draft_p_min: float = 0.0,
     adaptive_budget_mode: str = "off",
     chain_attn_mode: str = "c1_loop",
     tree_mode: str = "chain",
@@ -1735,6 +1780,15 @@ def run_same_session_pair(
 
     if adaptive_budget_mode not in {"off", "on"}:
         raise ValueError("adaptive_budget_mode must be off or on")
+    if draft_top_k <= 0 or draft_top_k > 8:
+        raise ValueError("draft_top_k must be in [1, 8]")
+    if draft_p_min < 0.0 or draft_p_min > 1.0:
+        raise ValueError("draft_p_min must be in [0, 1]")
+    if draft_p_min > 0.0:
+        if tree_mode != "chain":
+            raise ValueError("draft_p_min is currently supported only for chain mode")
+        if draft_top_k < 2:
+            raise ValueError("draft_p_min requires draft_top_k >= 2")
     runner = Qwen35ParoNextTokenRunner(model, backend=backend)
     max_sequence = len(prompt_ids) + decode_tokens + candidate_budget + 2
     max_batch_size = max(4, candidate_budget + 3)
@@ -1790,7 +1844,7 @@ def run_same_session_pair(
             graph_mode=drafter_graph_mode,
             fusion_mode=drafter_fusion_mode,
             bucket_mode=drafter_bucket_mode,
-            draft_top_k=tree_top_k if tree_mode == "branching_topk" else 1,
+            draft_top_k=tree_top_k if tree_mode == "branching_topk" else draft_top_k,
         ) as drafter:
             spec_tokens, spec_meta = _run_dflash_chain_on_session(
                 session=session,
@@ -1807,6 +1861,7 @@ def run_same_session_pair(
                 chain_attn_mode=chain_attn_mode,
                 tree_mode=tree_mode,
                 tree_top_k=tree_top_k,
+                draft_p_min=draft_p_min,
             )
         spec_meta["same_session_control"] = True
         spec_meta["same_process_control"] = True
@@ -1829,9 +1884,14 @@ def _run_dflash_chain_on_session(
     chain_attn_mode: str = "c1_loop",
     tree_mode: str = "chain",
     tree_top_k: int = 1,
+    draft_p_min: float = 0.0,
 ) -> tuple[list[int], dict[str, Any]]:
     if adaptive_budget_mode not in {"off", "on"}:
         raise ValueError("adaptive_budget_mode must be off or on")
+    if draft_p_min < 0.0 or draft_p_min > 1.0:
+        raise ValueError("draft_p_min must be in [0, 1]")
+    if draft_p_min > 0.0 and tree_mode != "chain":
+        raise ValueError("draft_p_min is currently supported only for chain mode")
     t0 = time.perf_counter()
     next_result = None
     for pos, token in enumerate(prompt_ids):
@@ -1884,6 +1944,7 @@ def _run_dflash_chain_on_session(
     verifier_graph_validation_passed = True
     target_accept_scalar_reads = 0
     target_accept_scalar_values = 0
+    confidence_limited_cycles = 0
     t1 = time.perf_counter()
     state_copies = 0
     tree_active_nodes_total = 0
@@ -1934,11 +1995,12 @@ def _run_dflash_chain_on_session(
                 update_state=active_budget > 0,
             )
             continue
-        verify_rows_total += (1 + candidate_budget) if verifier_mode == "native_bulk_bplus1" else (1 + active_budget)
         cycle_context_tokens = context_tokens
         t_cycle = time.perf_counter()
         draft = drafter.propose(root_token=root_token, root_position=context_tokens, context_tokens=context_tokens)
         compiled_tree: _CompiledTopKTree | None = None
+        requested_active_budget = int(active_budget)
+        confidence_limited = False
         if tree_mode == "branching_topk":
             compiled_tree = _build_branching_topk_tree_target_batch(
                 root_token=root_token,
@@ -1953,6 +2015,15 @@ def _run_dflash_chain_on_session(
             draft_nodes_this_cycle = int(compiled_tree.active_count)
             tree_active_nodes_total += draft_nodes_this_cycle
         else:
+            if draft_p_min > 0.0:
+                active_budget = _confidence_limited_active_count(
+                    draft.top1_probabilities,
+                    max_active=active_budget,
+                    p_min=draft_p_min,
+                )
+                confidence_limited = active_budget != requested_active_budget
+                if confidence_limited:
+                    confidence_limited_cycles += 1
             candidates = list(draft.candidate_tokens[:active_budget])
             draft_nodes_this_cycle = active_budget
         draft_calls += 1
@@ -1975,7 +2046,27 @@ def _run_dflash_chain_on_session(
         d2h_vector_reads += draft.d2h_vector_reads
         d2h_vector_values += draft.d2h_vector_values
         t_verify = time.perf_counter()
-        if verifier_mode == "native_bulk_bplus1":
+        verify_result = None
+        target_batch = None
+        if active_budget <= 0:
+            result = _slot_step(
+                session,
+                root_token,
+                position=context_tokens,
+                slot=base_slot,
+                drafter=drafter,
+                capture_row=context_tokens,
+            )
+            target_serial_forward_calls += 1
+            verify_rows_total += 1
+            target_top1 = [int(result.token_id)]
+            accepted = 0
+            accepted_tokens = []
+            bonus = int(result.token_id)
+            finite_verify = finite_verify and math.isfinite(float(result.logit))
+            verify_elapsed = time.perf_counter() - t_verify
+            verify_seconds_total += verify_elapsed
+        elif verifier_mode == "native_bulk_bplus1":
             if tree_mode == "branching_topk":
                 if compiled_tree is None:
                     raise RuntimeError("branching_topk tree was not compiled")
@@ -2003,11 +2094,12 @@ def _run_dflash_chain_on_session(
                     capture_row_start=context_tokens,
                 )
             else:
+                chain_candidate_budget = active_budget if draft_p_min > 0.0 else candidate_budget
                 target_batch = _build_chain_target_batch(
                     root_token=root_token,
                     root_position=context_tokens,
                     candidates=candidates,
-                    candidate_budget=candidate_budget,
+                    candidate_budget=chain_candidate_budget,
                     active_count=active_budget,
                 )
                 verify_result = session.verify_chain_bulk_and_commit(
@@ -2019,6 +2111,7 @@ def _run_dflash_chain_on_session(
                     graph_mode=verifier_graph_mode,
                     chain_attn_mode=chain_attn_mode,
                 )
+            verify_rows_total += int(verify_result.rows)
             target_top1_count = int(verify_result.rows) if tree_mode == "branching_topk" else 1 + active_budget
             target_top1 = list(verify_result.target_top1[:target_top1_count])
             accepted = int(verify_result.accepted_count)
@@ -2042,6 +2135,7 @@ def _run_dflash_chain_on_session(
             # In-place verify on base_slot: every forward advances state to the
             # committed prefix.  No per-candidate state copies because the loop never
             # steps into a rejected candidate (compare is BEFORE the step).
+            serial_forwards_this_cycle = 1
             parent_result = _slot_step(
                 session,
                 root_token,
@@ -2069,17 +2163,20 @@ def _run_dflash_chain_on_session(
                     capture_row=context_tokens + idx + 1,
                 )
                 target_serial_forward_calls += 1
+                serial_forwards_this_cycle += 1
                 finite_verify = finite_verify and math.isfinite(float(result.logit))
                 target_top1.append(int(result.token_id))
                 bonus = int(result.token_id)
+            verify_rows_total += serial_forwards_this_cycle
         else:
             raise ValueError(f"unknown verifier_mode {verifier_mode!r}")
-        verify_elapsed = time.perf_counter() - t_verify
-        verify_seconds_total += verify_elapsed
+        if active_budget > 0:
+            verify_elapsed = time.perf_counter() - t_verify
+            verify_seconds_total += verify_elapsed
         accepted_lengths.append(accepted)
         accepted_tokens = (
             list(verify_result.accepted_tokens)
-            if verifier_mode == "native_bulk_bplus1" and tree_mode in {"chain_as_tree", "branching_topk"}
+            if verify_result is not None and verifier_mode == "native_bulk_bplus1" and tree_mode in {"chain_as_tree", "branching_topk"}
             else candidates[:accepted]
         )
         committed = [root_token, *accepted_tokens]
@@ -2105,6 +2202,11 @@ def _run_dflash_chain_on_session(
                 "root_token": int(root_token),
                 "draft_candidates": [int(token) for token in candidates],
                 "draft_topk_tokens": [list(map(int, row)) for row in draft.topk_tokens],
+                "draft_top1_probabilities": [float(x) for x in draft.top1_probabilities],
+                "draft_p_min": float(draft_p_min),
+                "active_budget_requested": int(requested_active_budget),
+                "active_budget_after_confidence": int(active_budget),
+                "confidence_limited": bool(confidence_limited),
                 "target_top1_path": [int(token) for token in target_top1],
                 "accepted": int(accepted),
                 "accepted_tokens": [int(token) for token in accepted_tokens],
@@ -2115,7 +2217,7 @@ def _run_dflash_chain_on_session(
                 "drafter_graph_status": graph_status,
                 "drafter_graph_bucket": draft.graph.get("bucket_key"),
             }
-            if verifier_mode == "native_bulk_bplus1":
+            if verify_result is not None and target_batch is not None and verifier_mode == "native_bulk_bplus1":
                 trace_row["commit_row"] = int(verify_result.commit_row)
                 trace_row["commit_token"] = int(verify_result.commit_token)
                 trace_row["tree_shape"] = list(target_batch.tree_shape)
@@ -2166,6 +2268,8 @@ def _run_dflash_chain_on_session(
         "tree_active_nodes_total": int(tree_active_nodes_total),
         "tree_top_k": int(tree_top_k),
         "draft_top_k": int(drafter.draft_top_k),
+        "draft_p_min": float(draft_p_min),
+        "confidence_limited_cycles": int(confidence_limited_cycles),
         "tree_compiler": "balanced_breadth_first_depth_topk" if tree_mode == "branching_topk" else None,
         "draft_native_phase_seconds": draft_phase_seconds,
         "draft_graph": {
@@ -2300,7 +2404,17 @@ def _row_for_artifact(prompt: dict[str, Any], budget: int, ar: tuple[list[int], 
             "prompt_preview": prompt.get("prompt_preview"),
             "representative": bool(prompt.get("representative")),
         },
-        "config": {"name": f"full_model_{proposal_mode}_b{budget}", "provider": "dflash", "proposal_mode": proposal_mode, "verify_mode": verify_mode, "draft_budget": budget, "topk": draft_top_k, "tree_mode": tree_mode, "tree_budget": budget if verify_mode == "verify_tree" else None},
+        "config": {
+            "name": f"full_model_{proposal_mode}_b{budget}",
+            "provider": "dflash",
+            "proposal_mode": proposal_mode,
+            "verify_mode": verify_mode,
+            "draft_budget": budget,
+            "topk": draft_top_k,
+            "draft_p_min": spec_meta.get("draft_p_min"),
+            "tree_mode": tree_mode,
+            "tree_budget": budget if verify_mode == "verify_tree" else None,
+        },
         "ar": {
             "same_session_control": bool(ar_meta.get("same_session_control", False)),
             "same_process_control": bool(ar_meta.get("same_process_control", True)),
@@ -2334,9 +2448,11 @@ def _row_for_artifact(prompt: dict[str, Any], budget: int, ar: tuple[list[int], 
             "verifier_graph": spec_meta.get("verifier_graph"),
             "draft_tokens_proposed": spec_meta.get("draft_tokens_proposed", spec_meta["draft_calls"] * budget),
             "draft_tokens": spec_meta.get("draft_tokens_proposed", spec_meta["draft_calls"] * budget),
+            "confidence_limited_cycles": spec_meta.get("confidence_limited_cycles"),
             "tree_active_nodes_total": spec_meta.get("tree_active_nodes_total"),
             "tree_top_k": spec_meta.get("tree_top_k"),
             "draft_top_k": spec_meta.get("draft_top_k"),
+            "draft_p_min": spec_meta.get("draft_p_min"),
             "tree_compiler": spec_meta.get("tree_compiler"),
             "accepted_draft_tokens": sum(int(x) for x in spec_meta["accepted_lengths"]),
             "accepted_lengths": spec_meta["accepted_lengths"],
@@ -2417,6 +2533,8 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument("--tree-top-k", type=int, default=2, help="Top-K per drafter depth row for --tree-mode branching_topk (1..8; ignored by chain modes)")
+    parser.add_argument("--draft-top-k", type=int, default=1, help="Top-K readback per DFlash chain draft row (1..8). Use >=2 with --draft-p-min")
+    parser.add_argument("--draft-p-min", type=float, default=0.0, help="Optional chain draft confidence floor. Stops verification at the first top-1 probability below this value")
     parser.add_argument("--drafter-graph", choices=("off", "auto", "validate"), default="off", help="Prototype HIP graph capture for native DFlash propose(); auto replays cache hits, validate records capture parity without requiring reuse")
     parser.add_argument("--drafter-fusion", choices=("off", "qkv"), default="off", help="Enable prototype DFlash drafter kernel fusions; qkv fuses query-side Q/K/V projections with unfused fallback available")
     parser.add_argument(
@@ -2449,6 +2567,15 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError("--decode-tokens must be positive")
     if args.tree_top_k <= 0 or args.tree_top_k > 8:
         raise ValueError("--tree-top-k must be in [1, 8]")
+    if args.draft_top_k <= 0 or args.draft_top_k > 8:
+        raise ValueError("--draft-top-k must be in [1, 8]")
+    if args.draft_p_min < 0.0 or args.draft_p_min > 1.0:
+        raise ValueError("--draft-p-min must be in [0, 1]")
+    if args.draft_p_min > 0.0:
+        if args.tree_mode != "chain":
+            raise ValueError("--draft-p-min currently supports --tree-mode chain only")
+        if args.draft_top_k < 2:
+            raise ValueError("--draft-p-min requires --draft-top-k >= 2")
     if args.tree_mode in {"chain_as_tree", "branching_topk"} and args.verifier_mode != "native_bulk_bplus1":
         raise ValueError("tree modes require --verifier-mode native_bulk_bplus1")
     compiler_version = args.compiler_version_file.read_text(encoding="utf-8") if args.compiler_version_file else None
@@ -2480,6 +2607,8 @@ def main(argv: list[str] | None = None) -> int:
                 drafter_graph_mode=args.drafter_graph,
                 drafter_fusion_mode=args.drafter_fusion,
                 drafter_bucket_mode=args.drafter_bucket,
+                draft_top_k=args.draft_top_k,
+                draft_p_min=args.draft_p_min,
                 adaptive_budget_mode=args.adaptive_budget,
                 chain_attn_mode=args.full_attn_chain_mode,
                 tree_mode=args.tree_mode,
@@ -2528,6 +2657,8 @@ def main(argv: list[str] | None = None) -> int:
             "verifier_chain_attn_mode": args.full_attn_chain_mode,
             "verifier_tree_mode": args.tree_mode,
             "tree_top_k": args.tree_top_k if args.tree_mode == "branching_topk" else 1,
+            "draft_top_k": args.tree_top_k if args.tree_mode == "branching_topk" else args.draft_top_k,
+            "draft_p_min": args.draft_p_min,
             "tree_compiler": "balanced_breadth_first_depth_topk" if args.tree_mode == "branching_topk" else None,
             "native_bulk_verifier": args.verifier_mode == "native_bulk_bplus1",
             "drafter_graph_mode": args.drafter_graph,

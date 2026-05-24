@@ -22872,3 +22872,35 @@ Task #34 remains `in_progress` (NOT completed) — see metadata.handoff.
 
 - `pytest -q tests/test_adaptive_budget.py` without `PYTHONPATH` failed collection in this environment with `ModuleNotFoundError: hipengine.speculative.adaptive_budget` despite the source file existing; reran with explicit repo path:
   `PYTHONPATH=. pytest -q tests/test_adaptive_budget.py` → `5 passed`.
+
+## 2026-05-24 — llama.cpp HIP MTP mining: draft p_min gate plumbed for DFlash diagnostics
+
+Reviewed local `/home/lhl/llama.cpp/llama.cpp-hip` after the R3.1/R3.7 handoff.
+Relevant MTP references:
+- `255582687` (`llama + spec: MTP Support`) adds Qwen3.5/Qwen3.6 MTP graph
+  support, target pre-norm hidden extraction, and recurrent rollback coverage.
+- `3e12fbdea` (`llama: avoid copying logits during prompt decode in MTP`)
+  separates pre-norm hidden extraction from raw-logit copying.  hipEngine's
+  DFlash/MTP verifier already uses device-resident hidden taps plus compact
+  accept summaries, so there is no immediate DFlash port beyond keeping that
+  invariant explicit.
+- `origin/gg/mtp-graphs-improve` `d7b1fd2af` re-enables `p_min` for MTP drafts:
+  read top-K probabilities and stop low-confidence draft tails before they
+  inflate verifier work.
+
+Implemented the analogous default-off DFlash diagnostic plumbing in
+`scripts/dflash_chain_e2e_bench.py`:
+- new `--draft-top-k` and `--draft-p-min` CLI flags for chain mode;
+- stable top-1 probability calculation from compact top-K logits;
+- chain candidate trimming at the first row below `p_min`;
+- native verifier batch compaction to `active_count` rows when `p_min` is on,
+  instead of verifying padded inactive suffix rows;
+- proposal trace/artifact fields for `draft_p_min`, top-1 probabilities, and
+  confidence-limited cycles.
+
+No performance claim yet.  This needs a retained exact-AR W7900 run before it
+can affect the R3.1/R3.7 economics table.
+
+Validation:
+- `python3 -m py_compile scripts/dflash_chain_e2e_bench.py` → pass.
+- `PYTHONPATH=. pytest -q tests/test_dflash_draft_confidence.py tests/test_dflash_topk_tree_compiler.py tests/test_adaptive_budget.py` → `12 passed`.
