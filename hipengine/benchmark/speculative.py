@@ -338,6 +338,7 @@ def normalize_speculative_row(raw: Mapping[str, Any], *, row_index: int = 0) -> 
             "target_bulk_forward_calls": _optional_int(spec.get("target_bulk_forward_calls")),
             "target_serial_forward_calls": _optional_int(spec.get("target_serial_forward_calls")),
             "target_bulk_rows": _optional_int(spec.get("target_bulk_rows")),
+            "canonical_commit_replay_rows": _optional_int(spec.get("canonical_commit_replay_rows")),
             "target_forwards_per_draft_call": _optional_float(spec.get("target_forwards_per_draft_call")),
             "gpu_accept_match_cpu": _optional_bool(spec.get("gpu_accept_match_cpu")),
             "verifier_graph": _dict_or_none(spec.get("verifier_graph")),
@@ -356,6 +357,9 @@ def normalize_speculative_row(raw: Mapping[str, Any], *, row_index: int = 0) -> 
             "same_process_control": _optional_bool(spec.get("same_process_control")),
             "verifier_mode": _optional_str(spec.get("verifier_mode")),
             "verifier_tree_mode": _optional_str(spec.get("verifier_tree_mode")),
+            "verifier_state_strategy": _optional_str(spec.get("verifier_state_strategy")),
+            "verifier_state_copies_per_cycle": _optional_float(spec.get("verifier_state_copies_per_cycle")),
+            "verifier_state_copies_total": _optional_int(spec.get("verifier_state_copies_total")),
             "native_bulk_verifier": _optional_bool(spec.get("native_bulk_verifier")),
             "backend": _optional_str(spec.get("backend")),
             "target_arch": _optional_str(spec.get("target_arch", spec.get("arch"))),
@@ -373,6 +377,7 @@ def normalize_speculative_row(raw: Mapping[str, Any], *, row_index: int = 0) -> 
         "d2h": d2h.to_json_dict(),
         "graph": graph.to_json_dict(),
         "memory": peak_memory,
+        "decode_tokens": decode_tokens,
     }
     return row
 

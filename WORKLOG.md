@@ -22948,3 +22948,72 @@ Documentation/rollup:
 Validation:
 - `python3 -m py_compile hipengine/speculative/adaptive_budget.py scripts/dflash_chain_e2e_bench.py` → pass.
 - `PYTHONPATH=. pytest -q tests/test_adaptive_budget.py tests/test_dflash_draft_confidence.py tests/test_dflash_topk_tree_compiler.py` → `15 passed`.
+
+## 2026-05-24 — R3.1 adaptive long-horizon canonical commit guard
+
+Followed up the R3.1 handoff by running the requested full short guard and a
+long-horizon probe where DFlash actually executes.
+
+Baseline/diagnostic sequence:
+- Full 9-prompt short guard before the fix:
+  `HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt timeout 900 python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 32 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --adaptive-budget on --adaptive-min-remaining-tokens 128 --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/dflash_adaptive_min128_b4_d32_9prompt_guard.json`
+  → exact `9/9`, `speedup_vs_ar=0.9932084323241874`, `draft_calls=0`,
+  rows/output `1.0`.
+- Long 4-prompt probe before the fix:
+  `HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt timeout 1800 python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 4 --decode-tokens 160 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --adaptive-budget on --adaptive-min-remaining-tokens 128 --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/dflash_adaptive_min128_b4_d160_4prompt_longprobe.json`
+  → exact `1/4`, failed quicksort/class/json at first mismatch indices
+  `62/116/109`, `speedup_vs_ar=0.894921548119907`.
+- AR-only isolation:
+  same command as above with `--max-prompts 1 --decode-tokens 160
+  --adaptive-min-remaining-tokens 999 --json
+  /tmp/dflash_adaptive_min999_b4_d160_1prompt_aronly.json`
+  → exact `1/1`, `speedup_vs_ar=0.9857865172546`, `draft_calls=0`.
+- c1-loop verifier isolation:
+  same one-prompt D160 command with `--full-attn-chain-mode c1_loop
+  --adaptive-min-remaining-tokens 128 --json
+  /tmp/dflash_adaptive_min128_b4_d160_1prompt_c1loop.json`
+  → exact `0/1`, first mismatch `62`, so the drift was not batched
+  full-attention-specific.
+
+Fix:
+- Chain `native_bulk_bplus1` now treats native bulk as a scorer, not the
+  canonical committed state.  Before each DFlash chain verify cycle, slot 1
+  (canonical target state) is copied to the branch slot; native bulk verifies on
+  that branch slot; then the accepted prefix is replayed through c=1
+  `_slot_step()` on the canonical slot with hidden-tap capture before
+  `drafter.commit_context_rows()`.
+- The replay path is authoritative: if c=1 target top-1 disagrees with the bulk
+  accepted path, it shortens acceptance and uses the c=1 bonus token.
+- Remaining-token guard cycles no longer consume cooldown/probe state.  This
+  prevents the terminal AR suffix from transitioning into `AR_PROBE` while the
+  guard is forcing AR.
+- Benchmark normalization now preserves explicit `decode_tokens` after
+  generated ids are truncated to 32-token samples; D160 aggregates now report
+  `decode_tokens=640` and rows/output correctly.
+
+Validation:
+- `python3 -m py_compile hipengine/speculative/adaptive_budget.py hipengine/benchmark/speculative.py scripts/dflash_chain_e2e_bench.py` → pass.
+- `PYTHONPATH=. pytest -q tests/test_adaptive_budget.py tests/test_speculative_benchmark.py` → `15 passed`.
+- `git diff --check` → pass.
+- One-prompt D160 canonical batched probe:
+  `HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt timeout 900 python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 1 --decode-tokens 160 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --adaptive-budget on --adaptive-min-remaining-tokens 128 --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/dflash_adaptive_min128_b4_d160_1prompt_canonical_batched.json`
+  → exact `1/1`, `speedup_vs_ar=0.8299492750424418`.
+- Retained long probe:
+  `HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt timeout 1800 python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 4 --decode-tokens 160 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --adaptive-budget on --adaptive-min-remaining-tokens 128 --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/dflash_adaptive_min128_b4_d160_4prompt_canonical.json`
+  → exact `4/4`, aggregate AR `109.42 tok/s`, guarded DFlash `89.78 tok/s`
+  (`0.8204731376659498x`), rows/output `1.1875`, `bulk_rows=30/row`,
+  canonical replay rows quicksort/function/class/json `12/15/23/15`.
+- Retained full 9-prompt guard:
+  `HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt timeout 900 python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 32 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --adaptive-budget on --adaptive-min-remaining-tokens 128 --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/dflash_adaptive_min128_b4_d32_9prompt_canonical_guard.json`
+  → exact `9/9`, aggregate AR `109.47 tok/s`, guarded path `109.33 tok/s`
+  (`0.9987323046229085x`), `draft_calls=0`, rows/output `1.0`.
+
+Documentation/rollup:
+- Updated `docs/DFLASH.md` R3.1 status: correctness fixed/default-off; default
+  promotion is still blocked because long-horizon probes cost ~18% vs AR.
+- Updated `benchmarks/README.md` and `benchmarks/CHANGELOG.md` with the new
+  retained diagnostic artifacts.
+- Copied the two retained `/tmp` artifacts to
+  `benchmarks/results/2026-05-24-hipengine-dflash-r3.1-w7900-adaptive-canonical-b4-d160-4prompt-diagnostic.json`
+  and
+  `benchmarks/results/2026-05-24-hipengine-dflash-r3.1-w7900-adaptive-horizon-b4-d32-9prompt-guard.json`.

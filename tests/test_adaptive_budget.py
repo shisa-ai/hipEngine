@@ -48,6 +48,29 @@ def test_enabled_controller_uses_ar_when_remaining_horizon_is_too_short() -> Non
     assert summary["cycle_log"][0]["decision_reason"] == "remaining_tokens_guard"
 
 
+def test_remaining_horizon_guard_does_not_consume_cooldown() -> None:
+    config = AdaptiveBudgetConfig(
+        demote_after_cycles=1,
+        demote_mean_profit_ms=-1.0,
+        initial_cooldown_cycles=2,
+        min_remaining_tokens_for_dflash=64,
+    )
+    controller = AdaptiveBudgetController(enabled=True, ar_decode_tok_s_estimate=100.0, config=config)
+
+    decision = controller.begin_cycle(cycle=1, context_tokens=100, remaining_tokens=128, active_budget=4)
+    controller.record_dflash_cycle(decision, visible_tokens=1, cycle_wall_ms=30.0, accepted_tokens=0, active_budget=4)
+    assert controller.summary()["state"] == "AR_LOCKED"
+
+    guarded = controller.begin_cycle(cycle=2, context_tokens=101, remaining_tokens=32, active_budget=4)
+    assert guarded.reason == "remaining_tokens_guard"
+    controller.record_ar_cycle(guarded, cycle=2, cycle_wall_ms=10.0, context_tokens=101, update_state=False)
+
+    summary = controller.summary()
+    assert summary["state"] == "AR_LOCKED"
+    assert summary["cycle_log"][-1]["cooldown_remaining"] == 2
+    assert summary["transitions"][-1]["to"] == "AR_LOCKED"
+
+
 def test_remaining_horizon_guard_allows_long_prompts() -> None:
     config = AdaptiveBudgetConfig(min_remaining_tokens_for_dflash=64)
     controller = AdaptiveBudgetController(enabled=True, ar_decode_tok_s_estimate=100.0, config=config)

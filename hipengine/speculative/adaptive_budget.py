@@ -214,9 +214,9 @@ class AdaptiveBudgetController:
     ) -> None:
         """Record a plain AR cycle.
 
-        ``update_state=False`` is used for forced AR cycles caused by no
-        remaining speculative budget; those should not consume cooldown/probe
-        accounting.
+        ``update_state=False`` is used for terminal/forced AR cycles, such as
+        no remaining speculative budget or a remaining-token horizon guard;
+        those should not consume cooldown/probe accounting.
         """
 
         if cycle_wall_ms < 0:

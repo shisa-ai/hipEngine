@@ -82,6 +82,25 @@ def test_aggregate_speculative_rows_preserves_exact_and_speed_gates() -> None:
     assert aggregate["speed_gate_gt_1p10"] is True
 
 
+def test_aggregate_uses_explicit_decode_tokens_when_samples_are_truncated() -> None:
+    raw = schema_fixture_row()
+    raw["decode_tokens"] = 64
+    raw["ar"]["generated_ids"] = list(range(64))
+    raw["spec"]["generated_ids"] = list(range(64))
+    raw["ar"]["decode_seconds"] = 4.0
+    raw["spec"]["decode_seconds"] = 8.0
+    raw["spec"]["target_verify_rows"] = 128
+
+    row = normalize_speculative_row(raw)
+    assert len(row["ar"]["generated_sample"]) == 32
+
+    aggregate = aggregate_speculative_rows([row])
+    assert aggregate["decode_tokens"] == 64
+    assert aggregate["ar_decode_tok_s"] == 16.0
+    assert aggregate["spec_decode_tok_s"] == 8.0
+    assert aggregate["target_verify_rows_per_output_token"] == 2.0
+
+
 def test_build_speculative_artifact_is_schema2_and_not_claim_for_fixture() -> None:
     artifact = build_speculative_artifact(
         run_tag="unit-dflash-contract",

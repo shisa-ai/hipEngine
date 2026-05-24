@@ -1659,7 +1659,7 @@ def run_dflash_tokens(
                         cycle_wall_ms=(time.perf_counter() - t_cycle) * 1000.0,
                         context_tokens=cycle_context_tokens,
                         forced_reason="no_spec_budget" if active_budget <= 0 else decision.reason,
-                        update_state=active_budget > 0,
+                        update_state=active_budget > 0 and decision.reason != "remaining_tokens_guard",
                     )
                     continue
                 verify_rows_total += 1 + active_budget
@@ -1959,6 +1959,7 @@ def _run_dflash_chain_on_session(
     target_accept_scalar_reads = 0
     target_accept_scalar_values = 0
     confidence_limited_cycles = 0
+    canonical_commit_replay_rows = 0
     t1 = time.perf_counter()
     state_copies = 0
     tree_active_nodes_total = 0
@@ -2008,7 +2009,7 @@ def _run_dflash_chain_on_session(
                 cycle_wall_ms=(time.perf_counter() - t_cycle) * 1000.0,
                 context_tokens=cycle_context_tokens,
                 forced_reason="no_spec_budget" if active_budget <= 0 else decision.reason,
-                update_state=active_budget > 0,
+                update_state=active_budget > 0 and decision.reason != "remaining_tokens_guard",
             )
             continue
         cycle_context_tokens = context_tokens
@@ -2083,13 +2084,18 @@ def _run_dflash_chain_on_session(
             verify_elapsed = time.perf_counter() - t_verify
             verify_seconds_total += verify_elapsed
         elif verifier_mode == "native_bulk_bplus1":
+            verifier_slot = base_slot
+            if tree_mode == "chain":
+                verifier_slot = branch_slot_start
+                session.copy_slot_state(base_slot, verifier_slot)
+                state_copies += 1
             if tree_mode == "branching_topk":
                 if compiled_tree is None:
                     raise RuntimeError("branching_topk tree was not compiled")
                 target_batch = compiled_tree.target_batch
                 verify_result = session.verify_tree_bulk_and_commit(
                     target_batch,
-                    base_slot=base_slot,
+                    base_slot=verifier_slot,
                     capture_layer_ids=drafter.config.target_layer_ids,
                     capture_hidden_concat=drafter.target_hidden_concat,
                     capture_row_start=context_tokens,
@@ -2104,7 +2110,7 @@ def _run_dflash_chain_on_session(
                 )
                 verify_result = session.verify_tree_bulk_and_commit(
                     target_batch,
-                    base_slot=base_slot,
+                    base_slot=verifier_slot,
                     capture_layer_ids=drafter.config.target_layer_ids,
                     capture_hidden_concat=drafter.target_hidden_concat,
                     capture_row_start=context_tokens,
@@ -2120,7 +2126,7 @@ def _run_dflash_chain_on_session(
                 )
                 verify_result = session.verify_chain_bulk_and_commit(
                     target_batch,
-                    base_slot=base_slot,
+                    base_slot=verifier_slot,
                     capture_layer_ids=drafter.config.target_layer_ids,
                     capture_hidden_concat=drafter.target_hidden_concat,
                     capture_row_start=context_tokens,
@@ -2187,6 +2193,34 @@ def _run_dflash_chain_on_session(
         else:
             raise ValueError(f"unknown verifier_mode {verifier_mode!r}")
         if active_budget > 0:
+            if verify_result is not None and verifier_mode == "native_bulk_bplus1" and tree_mode == "chain":
+                target_top1 = []
+                accepted = 0
+                accepted_tokens = []
+                committed_probe = [int(root_token), *[int(token) for token in candidates[: int(verify_result.accepted_count)]]]
+                bonus = int(verify_result.next_token) if verify_result.next_token is not None else int(verify_result.commit_token)
+                for row_idx, token in enumerate(committed_probe):
+                    result = _slot_step(
+                        session,
+                        int(token),
+                        position=context_tokens + row_idx,
+                        slot=base_slot,
+                        drafter=drafter,
+                        capture_row=context_tokens + row_idx,
+                    )
+                    target_serial_forward_calls += 1
+                    verify_rows_total += 1
+                    canonical_commit_replay_rows += 1
+                    finite_verify = finite_verify and math.isfinite(float(result.logit))
+                    target_token = int(result.token_id)
+                    target_top1.append(target_token)
+                    bonus = target_token
+                    if row_idx < len(committed_probe) - 1:
+                        next_candidate = int(committed_probe[row_idx + 1])
+                        if target_token != next_candidate:
+                            break
+                        accepted += 1
+                        accepted_tokens.append(next_candidate)
             verify_elapsed = time.perf_counter() - t_verify
             verify_seconds_total += verify_elapsed
         accepted_lengths.append(accepted)
@@ -2266,6 +2300,7 @@ def _run_dflash_chain_on_session(
         "target_bulk_forward_calls": target_bulk_forward_calls,
         "target_serial_forward_calls": target_serial_forward_calls,
         "target_bulk_rows": target_bulk_rows_total,
+        "canonical_commit_replay_rows": int(canonical_commit_replay_rows),
         "target_forwards_per_draft_call": (
             target_bulk_forward_calls / draft_calls
             if verifier_mode == "native_bulk_bplus1" and draft_calls
@@ -2314,13 +2349,18 @@ def _run_dflash_chain_on_session(
         "verifier_graph_mode": verifier_graph_mode,
         "verifier_chain_attn_mode": chain_attn_mode,
         "verifier_tree_mode": tree_mode,
+        "verifier_state_strategy": (
+            "branch_slot_bulk_verify_plus_c1_canonical_commit"
+            if verifier_mode == "native_bulk_bplus1" and tree_mode == "chain"
+            else "in_place_verifier_commit"
+        ),
         "native_bulk_verifier": verifier_mode == "native_bulk_bplus1",
         "drafter_context_mode": "append_only_projected_context_and_kv",
         "adaptive_budget": adaptive_budget.summary(),
         "draft_phase_timing_mode": "synchronized" if drafter.sync_draft_phases else "enqueue_until_final_sync",
         "base_slot": base_slot,
         "branch_slot_start": branch_slot_start,
-        "verifier_state_copies_per_cycle": 0,
+        "verifier_state_copies_per_cycle": (state_copies / draft_calls) if draft_calls else 0,
         "verifier_state_copies_total": int(state_copies),
     }
     return generated[:decode_tokens], metadata
@@ -2459,6 +2499,7 @@ def _row_for_artifact(prompt: dict[str, Any], budget: int, ar: tuple[list[int], 
             "target_bulk_forward_calls": spec_meta.get("target_bulk_forward_calls"),
             "target_serial_forward_calls": spec_meta.get("target_serial_forward_calls"),
             "target_bulk_rows": spec_meta.get("target_bulk_rows"),
+            "canonical_commit_replay_rows": spec_meta.get("canonical_commit_replay_rows"),
             "target_forwards_per_draft_call": spec_meta.get("target_forwards_per_draft_call"),
             "gpu_accept_match_cpu": spec_meta.get("gpu_accept_match_cpu"),
             "verifier_graph": spec_meta.get("verifier_graph"),
@@ -2486,6 +2527,9 @@ def _row_for_artifact(prompt: dict[str, Any], budget: int, ar: tuple[list[int], 
             },
             "verifier_mode": spec_meta["verifier_mode"],
             "verifier_tree_mode": spec_meta.get("verifier_tree_mode"),
+            "verifier_state_strategy": spec_meta.get("verifier_state_strategy"),
+            "verifier_state_copies_per_cycle": spec_meta.get("verifier_state_copies_per_cycle"),
+            "verifier_state_copies_total": spec_meta.get("verifier_state_copies_total"),
             "native_bulk_verifier": spec_meta["native_bulk_verifier"],
             "same_session_control": bool(spec_meta.get("same_session_control", False)),
             "same_process_control": bool(spec_meta.get("same_process_control", True)),
