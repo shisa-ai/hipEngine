@@ -20,6 +20,7 @@ import statistics
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Any, Iterable
@@ -41,6 +42,42 @@ SUMMARY_FIELDS = (
     "proposal_update_ms_per_cycle_mean",
     "ar_decode_ms_per_token_mean",
 )
+
+PROMPT_RENDER_MODES = ("raw", "qwen_chat_thinking_off", "qwen_chat_thinking_on")
+
+
+@dataclass(frozen=True)
+class EncodedPrompt:
+    source_text: str
+    rendered_text: str
+    token_ids: list[int]
+
+
+@dataclass(frozen=True)
+class PromptEncoder:
+    mode: str
+    tokenizer: Any
+    tokenization: str
+
+    def encode(self, text: str) -> EncodedPrompt:
+        if self.mode == "raw":
+            ids = [int(x) for x in self.tokenizer.encode(text).ids]
+            rendered = text
+        elif self.mode in {"qwen_chat_thinking_off", "qwen_chat_thinking_on"}:
+            enable_thinking = self.mode == "qwen_chat_thinking_on"
+            messages = [{"role": "user", "content": text}]
+            rendered = self.tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+                enable_thinking=enable_thinking,
+            )
+            ids = [int(x) for x in self.tokenizer.encode(rendered, add_special_tokens=False)]
+        else:  # pragma: no cover - argparse choices should prevent this.
+            raise ValueError(f"unknown prompt render mode: {self.mode}")
+        if not ids:
+            raise ValueError("prompt encoded to no tokens")
+        return EncodedPrompt(source_text=text, rendered_text=str(rendered), token_ids=ids)
 
 
 def _mean(values: Iterable[float]) -> float | None:
@@ -98,7 +135,7 @@ def _select_prompts(suite: dict[str, Any], *, names_csv: str | None, limit: int 
     return prompts
 
 
-def _load_tokenizer(model: Path) -> Any:
+def _load_raw_tokenizer(model: Path) -> Any:
     try:
         from tokenizers import Tokenizer
     except Exception as exc:  # pragma: no cover - optional dependency guard
@@ -109,11 +146,28 @@ def _load_tokenizer(model: Path) -> Any:
     return Tokenizer.from_file(str(tokenizer_path))
 
 
-def _encode_prompt(tokenizer: Any, text: str) -> list[int]:
-    ids = [int(x) for x in tokenizer.encode(text).ids]
-    if not ids:
-        raise ValueError("prompt encoded to no tokens")
-    return ids
+def _load_hf_tokenizer(model: Path) -> Any:
+    try:
+        from transformers import AutoTokenizer
+    except Exception as exc:  # pragma: no cover - optional dependency guard
+        raise RuntimeError("transformers is required for Qwen chat-template prompt rendering") from exc
+    return AutoTokenizer.from_pretrained(str(model), trust_remote_code=True)
+
+
+def _load_prompt_encoder(model: Path, mode: str) -> PromptEncoder:
+    if mode == "raw":
+        return PromptEncoder(
+            mode=mode,
+            tokenizer=_load_raw_tokenizer(model),
+            tokenization="raw prompt text encoded with model tokenizer.json",
+        )
+    if mode in {"qwen_chat_thinking_off", "qwen_chat_thinking_on"}:
+        return PromptEncoder(
+            mode=mode,
+            tokenizer=_load_hf_tokenizer(model),
+            tokenization=f"Qwen chat_template rendered with enable_thinking={mode == 'qwen_chat_thinking_on'}",
+        )
+    raise ValueError(f"unknown prompt render mode: {mode}")
 
 
 def _economics_command(args: argparse.Namespace, *, prompt_tokens_file: Path, prompt_raw_root: Path, out_path: Path) -> list[str]:
@@ -184,24 +238,31 @@ def _aggregate_across_prompts(results: list[dict[str, Any]]) -> dict[str, Any]:
     return by_budget
 
 
-def _run_prompt(args: argparse.Namespace, *, prompt: dict[str, str], tokenizer: Any) -> dict[str, Any]:
+def _run_prompt(args: argparse.Namespace, *, prompt: dict[str, str], encoder: PromptEncoder) -> dict[str, Any]:
     prompt_name = str(prompt["name"])
     prompt_dir = args.raw_root / _safe_name(prompt_name)
     prompt_dir.mkdir(parents=True, exist_ok=True)
-    token_ids = _encode_prompt(tokenizer, prompt["prompt"])
+    encoded = encoder.encode(prompt["prompt"])
+    token_ids = encoded.token_ids
     prompt_tokens_file = prompt_dir / "prompt-tokens.txt"
     prompt_tokens_file.write_text(",".join(str(token) for token in token_ids), encoding="utf-8")
+    source_text_file = prompt_dir / "prompt-source.txt"
+    source_text_file.write_text(encoded.source_text, encoding="utf-8")
     prompt_text_file = prompt_dir / "prompt.txt"
-    prompt_text_file.write_text(prompt["prompt"], encoding="utf-8")
+    prompt_text_file.write_text(encoded.rendered_text, encoding="utf-8")
     economics_out = prompt_dir / "economics.json"
     economics_log = prompt_dir / "economics.log"
     cmd = _economics_command(args, prompt_tokens_file=prompt_tokens_file, prompt_raw_root=prompt_dir / "raw", out_path=economics_out)
 
     result: dict[str, Any] = {
         "name": prompt_name,
-        "prompt_chars": len(prompt["prompt"]),
+        "prompt_render_mode": encoder.mode,
+        "source_prompt_chars": len(encoded.source_text),
+        "rendered_prompt_chars": len(encoded.rendered_text),
+        "prompt_chars": len(encoded.rendered_text),
         "prompt_tokens": len(token_ids),
         "prompt_tokens_file": str(prompt_tokens_file),
+        "prompt_source_file": str(source_text_file),
         "prompt_text_file": str(prompt_text_file),
         "economics_json": str(economics_out),
         "economics_log": str(economics_log),
@@ -237,6 +298,12 @@ def main() -> int:
     parser.add_argument("--prompt-names", help="Comma-separated prompt names to run; default runs the full suite")
     parser.add_argument("--limit", type=int, help="Run only the first N selected prompts")
     parser.add_argument("--list-prompts", action="store_true", help="List prompt names and exit")
+    parser.add_argument(
+        "--prompt-render",
+        choices=PROMPT_RENDER_MODES,
+        default="raw",
+        help="Prompt rendering before tokenization. raw preserves prior artifacts; qwen_chat_* uses the model chat_template.",
+    )
     parser.add_argument("--decode-tokens", type=int, default=192)
     parser.add_argument("--candidate-budgets", default="3")
     parser.add_argument("--runs", type=int, default=1)
@@ -266,12 +333,12 @@ def main() -> int:
 
     args.raw_root.mkdir(parents=True, exist_ok=True)
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    tokenizer = _load_tokenizer(args.model)
+    encoder = _load_prompt_encoder(args.model, args.prompt_render)
 
     results: list[dict[str, Any]] = []
     for idx, prompt in enumerate(prompts, 1):
         print(f"[prompt-suite] {idx}/{len(prompts)} {prompt['name']}", flush=True)
-        result = _run_prompt(args, prompt=prompt, tokenizer=tokenizer)
+        result = _run_prompt(args, prompt=prompt, encoder=encoder)
         results.append(result)
         for budget, summary in (result.get("by_budget") or {}).items():
             c3 = summary.get("cycle_cost_ar_tokens_mean")
@@ -288,7 +355,8 @@ def main() -> int:
         "source_prompt_suite": suite.get("source"),
         "prompts_file": str(args.prompts_file),
         "model": str(args.model),
-        "tokenization": "raw prompt text encoded with model tokenizer.json",
+        "prompt_render_mode": str(args.prompt_render),
+        "tokenization": encoder.tokenization,
         "decode_tokens": int(args.decode_tokens),
         "candidate_budgets": [int(x) for x in _split_csv(args.candidate_budgets)],
         "runs_per_prompt": int(args.runs),

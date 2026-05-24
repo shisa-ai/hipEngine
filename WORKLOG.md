@@ -23183,3 +23183,102 @@ Validation:
 Docs/rollup updated:
 - `docs/DFLASH.md` R3.1 design notes with the budget-sweep conclusion.
 - `benchmarks/README.md` and `benchmarks/CHANGELOG.md` with retained rows.
+
+## 2026-05-24 — MTP prompt rendering and DS4/HipFire reference pass
+
+User asked to compare DFlash/MTP against llama.cpp, BeeLlama, HipFire, and DS4,
+and specifically to test Qwen thinking on/off for MTP instead of assuming the
+DFlash prompt-shape lessons transfer.
+
+Reference pass:
+- HipFire's W7900/gfx1100 speed gate uses a dense Qwen3.5 27B DFlash
+  `merge_sort_thinking_off` anchor, not the current Qwen3.6 35B-A3B z-lab
+  drafter lane.  Its baseline file records `27b_3.5_dflash_merge_sort_tok_s=250`
+  and `tau=13.18` with a ChatML prompt containing a closed `<think></think>`
+  block.  HipFire's changelog also says A3B DFlash was defaulted off because
+  A3B drafts reject most tokens outside math/code-fit lanes (`tau~=1.0-1.5`) and
+  can be 2-5x slower than AR.  This matches our current A3B DFlash economics.
+- DS4's MTP CLI only enters speculative MTP when `temperature <= 0`, i.e. the
+  exact greedy path.  The MTP state machine verifies the first draft token
+  against the target logits for free, then uses micro/batched suffix verification
+  with strict/exact fallback and prefix replay/restore paths.  DS4 CUDA history
+  shows an unstable block16 routed-down diagnostic was removed because it changed
+  greedy first-token behavior; current CUDA attention/MoE code still contains
+  atomics for sorting/counting and large-token atomic down accumulation, but the
+  decode/MTP Q4_K sum6 path avoids the multi-token atomic accumulation path.
+  Lesson for hipEngine: exact greedy determinism is part of the acceptance
+  contract, not a cosmetic sampler choice.
+
+Implemented MTP prompt render modes:
+- `scripts/mtp_prompt_suite_economics.py --prompt-render
+  {raw,qwen_chat_thinking_off,qwen_chat_thinking_on}`.
+- `scripts/mtp-bench.py --mode hipengine-current` now forwards
+  `--prompt-render`; default stays `raw` for backward-compatible artifacts.
+- Rendered prompts are saved as `prompt.txt`; original suite text is saved as
+  `prompt-source.txt`.  Dry-run confirmed Qwen `thinking_off` renders a closed
+  `<think>\n\n</think>\n\n` block.
+
+MTP W7900/gfx1100 measurements, Qwen3.6-35B-A3B-PARO-MTP-BF16, B=3,
+batched verifier, `graph_mode=off`, one run per prompt:
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. timeout 1800 python3 scripts/mtp-bench.py \
+  --mode hipengine-current --prompt-names code_python,code_cpp --max-tokens 64 \
+  --candidate-budgets 3 --runs 1 --prompt-render raw --proposal-impl persistent_device \
+  --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-thinking-raw-code2 \
+  --out /tmp/hipengine-mtp-thinking-raw-code2.json
+```
+Raw result: exact `2/2`, aggregate MTP/AR `0.498x`, acceptance `0.504`,
+accepted/cycle `1.491`, visible/cycle `2.491`, cycle cost `5.023` AR-tokens.
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. timeout 1200 python3 scripts/mtp-bench.py \
+  --mode hipengine-current --prompt-names code_python --max-tokens 64 \
+  --candidate-budgets 3 --runs 1 --prompt-render qwen_chat_thinking_off \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-thinking-off-code-python \
+  --out /tmp/hipengine-mtp-thinking-off-code-python.json
+```
+`code_python` thinking-off result: exact, MTP/AR `0.352x`, acceptance `0.267`,
+accepted/cycle `0.778`, cycle cost `5.050`.
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. timeout 1200 python3 scripts/mtp-bench.py \
+  --mode hipengine-current --prompt-names code_python --max-tokens 64 \
+  --candidate-budgets 3 --runs 1 --prompt-render qwen_chat_thinking_on \
+  --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+  --chain-attn-mode batched --graph-mode off \
+  --raw-root /tmp/hipengine-mtp-thinking-on-code-python \
+  --out /tmp/hipengine-mtp-thinking-on-code-python.json
+```
+`code_python` thinking-on result: exact, MTP/AR `0.410x`, acceptance `0.359`,
+accepted/cycle `1.065`, cycle cost `5.032`.
+
+`code_cpp` thinking-off at D64 failed exact-AR with a special-token tail:
+AR ended with repeated `248045`; MTP's final token was `198`.  A shorter D32
+paired check was exact:
+- thinking-off D32: MTP/AR `0.312x`, acceptance `0.211`,
+  accepted/cycle `0.600`, cycle cost `5.131`;
+- thinking-on D32: MTP/AR `0.496x`, acceptance `0.543`,
+  accepted/cycle `1.583`, cycle cost `5.295`.
+`code_cpp` thinking-on D64 was exact but still slow: MTP/AR `0.410x`,
+acceptance `0.348`, accepted/cycle `1.032`.
+
+Conclusion: for the current Qwen3.6 A3B PARO+MTP artifact, Qwen
+thinking-off is not an MTP acceptance win.  It hurts exact comparable rows and
+can trigger exactness failure.  Raw prompt text remains strongest on the two
+code prompts; Qwen chat-template thinking-on is safer than thinking-off when
+chat rendering is explicitly tested.
+
+Retained artifact:
+- `benchmarks/results/2026-05-24-hipengine-mtp-thinking-render-w7900-diagnostic.json`
+
+Validation:
+- `python3 -m py_compile scripts/mtp_prompt_suite_economics.py scripts/mtp-bench.py tests/test_mtp_bench_tool.py` -> pass.
+- `PYTHONPATH=. pytest -q tests/test_mtp_bench_tool.py` -> `4 passed`.
+
+Docs/rollup updated:
+- `docs/MTP.md` prompt-rendering diagnostic section.
+- `benchmarks/README.md` and `benchmarks/CHANGELOG.md` with the retained
+  diagnostic row.

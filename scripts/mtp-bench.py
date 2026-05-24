@@ -284,6 +284,8 @@ def build_hipengine_current_command(args: argparse.Namespace) -> list[str]:
         str(args.engine_model),
         "--prompts-file",
         str(args.prompts_file),
+        "--prompt-render",
+        str(args.prompt_render),
         "--decode-tokens",
         str(args.max_tokens),
         "--candidate-budgets",
@@ -450,6 +452,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--candidate-budgets", default="3", help="comma-separated candidate budgets for hipengine-current mode")
     parser.add_argument("--runs", type=int, default=1, help="runs per prompt/budget for hipengine-current mode")
     parser.add_argument(
+        "--prompt-render",
+        choices=("raw", "qwen_chat_thinking_off", "qwen_chat_thinking_on"),
+        default="raw",
+        help="hipengine-current prompt rendering before tokenization",
+    )
+    parser.add_argument(
         "--proposal-impl",
         choices=("persistent_device", "persistent_device_b1", "reload_d2h"),
         default="persistent_device",
@@ -467,10 +475,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.epilog = (
         "Examples:\n"
-        "  python3 tools/mtp-bench.py --url http://127.0.0.1:8080 --out llama-mtp.json\n"
-        "  python3 tools/mtp-bench.py --diff llama-master.json llama-pr23287.json\n"
-        "  python3 tools/mtp-bench.py --temperature 0 --no-cache-prompt\n"
-        "  python3 tools/mtp-bench.py --mode hipengine-current --candidate-budgets 3 --runs 3 --out hipengine-current.json\n\n"
+        "  python3 scripts/mtp-bench.py --url http://127.0.0.1:8080 --out llama-mtp.json\n"
+        "  python3 scripts/mtp-bench.py --diff llama-master.json llama-pr23287.json\n"
+        "  python3 scripts/mtp-bench.py --temperature 0 --no-cache-prompt\n"
+        "  python3 scripts/mtp-bench.py --mode hipengine-current --candidate-budgets 3 --runs 3 --out hipengine-current.json\n\n"
         f"Source gist: {SOURCE_GIST}\nRaw revision: {SOURCE_RAW}"
     )
     return parser

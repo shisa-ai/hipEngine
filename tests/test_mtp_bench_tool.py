@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 
-TOOL_PATH = Path("tools/mtp-bench.py")
+TOOL_PATH = Path("scripts/mtp-bench.py")
 
 
 def _load_tool():
@@ -78,6 +78,8 @@ def test_hipengine_current_mode_wraps_existing_prompt_suite_command(tmp_path: Pa
             "64",
             "--candidate-budgets",
             "2,3",
+            "--prompt-render",
+            "qwen_chat_thinking_off",
             "--runs",
             "2",
             "--backend",
@@ -96,6 +98,7 @@ def test_hipengine_current_mode_wraps_existing_prompt_suite_command(tmp_path: Pa
     assert "--decode-tokens" in cmd
     assert cmd[cmd.index("--decode-tokens") + 1] == "64"
     assert cmd[cmd.index("--candidate-budgets") + 1] == "2,3"
+    assert cmd[cmd.index("--prompt-render") + 1] == "qwen_chat_thinking_off"
     assert cmd[cmd.index("--prompt-names") + 1] == "code_python,translation"
     assert cmd[cmd.index("--out") + 1] == str(out)
     assert cmd[-1] == "--dry-run"

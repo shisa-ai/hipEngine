@@ -973,6 +973,41 @@ should be revisited.  Items are not ordered by priority; some are tiny
 plumbing fixes, others are full kernel implementations.  Re-prioritize at
 the start of M14 against whatever cycle-cost gap remains after M13.D.
 
+### Prompt-rendering diagnostic (2026-05-24)
+
+User-requested check after the DFlash vs MTP discussion: compare MTP acceptance
+under raw prompt text, Qwen chat-template `enable_thinking=true`, and Qwen
+chat-template `enable_thinking=false`.  The harness now supports
+`scripts/mtp-bench.py --mode hipengine-current --prompt-render
+{raw,qwen_chat_thinking_off,qwen_chat_thinking_on}`; raw remains the default so
+old artifacts stay comparable.
+
+W7900/gfx1100, Qwen3.6-35B-A3B-PARO-MTP-BF16, B=3, batched verifier,
+`graph_mode=off`, one run per prompt:
+
+| Prompt/render | Decode | Exact | MTP/AR | Acceptance | Accepted/cycle | Cycle cost |
+| --- | ---: | --- | ---: | ---: | ---: | ---: |
+| `code_python` raw | 64 | yes | `0.498x` | `0.521` | `1.52` | `5.10` |
+| `code_python` Qwen thinking-on | 64 | yes | `0.410x` | `0.359` | `1.06` | `5.03` |
+| `code_python` Qwen thinking-off | 64 | yes | `0.352x` | `0.267` | `0.78` | `5.05` |
+| `code_cpp` raw | 64 | yes | `0.498x` | `0.487` | `1.46` | `4.95` |
+| `code_cpp` Qwen thinking-on | 64 | yes | `0.410x` | `0.348` | `1.03` | `5.01` |
+| `code_cpp` Qwen thinking-off | 64 | **no** | n/a | n/a | n/a | n/a |
+| `code_cpp` Qwen thinking-on | 32 | yes | `0.496x` | `0.543` | `1.58` | `5.30` |
+| `code_cpp` Qwen thinking-off | 32 | yes | `0.312x` | `0.211` | `0.60` | `5.13` |
+
+Artifact:
+[`2026-05-24-hipengine-mtp-thinking-render-w7900-diagnostic.json`](../benchmarks/results/2026-05-24-hipengine-mtp-thinking-render-w7900-diagnostic.json).
+
+Conclusion for the current packed A3B+MTP artifact: explicit Qwen
+thinking-off is **not** an MTP acceptance win on these code prompts.  It lowers
+acceptance on exact rows and can trigger a special-token exact-AR mismatch on
+the D64 C++ chat-template row.  This differs from HipFire's dense 27B DFlash
+thinking-off anchor and reinforces that prompt-mode policy must be measured per
+proposal family and model pair.  The safe MTP default for now is still raw prompt
+text for llama.cpp-suite comparability, with chat-template thinking-on preferred
+over thinking-off when chat rendering is explicitly tested.
+
 ### Bookkeeping / housekeeping gaps
 
 | # | Item | Lineage | Gating condition / when to revisit |
