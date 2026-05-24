@@ -26555,3 +26555,14 @@ uv run --extra dev python -m pytest -q
 ```
 
 Next: commit, push `main`, move annotated tag `v0.2.0` to the fix commit, force-push the tag per user approval, and watch the publish workflow complete via trusted publishing.
+
+### v0.2.0 publish workflow result
+
+Committed and pushed the HIP guard fix (`36e3516`), force-moved annotated tag `v0.2.0` to that commit per user approval, and re-pushed the tag. The `Publish to PyPI` workflow reran as `26370452261` and completed successfully: build validation passed, artifact attestation was generated, and `Publish to PyPI (trusted publishing)` succeeded. Verified published install path:
+
+```bash
+uvx --refresh --from "hipengine[server]==0.2.0" hipengine-server --help
+# downloaded hipengine 0.2.0 from PyPI and printed CLI help
+```
+
+Final release pointers: GitHub release `https://github.com/shisa-ai/hipEngine/releases/tag/v0.2.0`, publish workflow `https://github.com/shisa-ai/hipEngine/actions/runs/26370452261`, release tag commit `36e351607955158e821b51f443bac042b140624f`.
