@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-05-24
+
+- [diagnostic retained] hipEngine / Qwen3.6-35B-A3B-PARO packed + z-lab DFlash / W7900/gfx1100 R3.1 adaptive fallback handoff: native-bulk→c=1 AR handoff exactness `False -> True` (4-prompt B=4 D=16 all rows exact) and fallback AR wall `~18 ms/token root-only bulk -> 9.90 ms mean / 9.60 ms p50` (~45% lower) by canonicalizing resident c=1 decode scratch after native bulk commits; aggregate DFlash remains diagnostic `0.529x` AR and `performance_claim=false`; artifact `benchmarks/results/2026-05-24-hipengine-dflash-r3.1-w7900-c1-fallback-handoff.json`.
+
 ## 2026-05-23
 
 - [diagnostic retained] hipEngine / Qwen3.6-35B-A3B-PARO packed + z-lab DFlash / W7900/gfx1100 R3.4 WMMA drafter dense kernels (default-on): native RDNA3 `v_wmma_f32_16x16x16_bf16` BF16-to-{BF16,F32} dense kernels for the DFlash drafter registered as `KernelKey("hip_gfx1100", "dflash_dense", "w4_paro", "bf16_to_{bf16,f32}_wmma")`; dispatched default-on via `HIPENGINE_DFLASH_DRAFTER_DENSE=wmma` (set `naive` to revert). Microbench BF16 16x2048x2048 `0.182 -> 0.056 ms` (3.2x), 16x2048x6144 `0.523 -> 0.091 ms` (5.7x), 16x6144x2048 `0.463 -> 0.096 ms` (4.8x), 16x2048x512 `0.081 -> 0.047 ms` (1.7x). 9-prompt B=4 D=32 same-session DFlash on W7900: aggregate `0.446 -> 0.636x` AR (+42% relative); per-cycle drafter wall `23.50 -> 9.09 ms` (-61%); cycle wall `52.83 -> 37.21 ms` (-29%); exact-AR holds on all 9 prompts; per-prompt delta `+0.14 -> +0.25`, best `0.911x` (class_continuation). `performance_claim=false` (still <1.0x AR). Artifacts: `benchmarks/results/2026-05-23-hipengine-dflash-r3.4-w7900-{wmma-on,wmma-off}-b4-d32-9prompt*.json`, `benchmarks/results/2026-05-23-hipengine-dflash-r3.4-w7900-dense-wmma-microbench.json`. WORKLOG: 2026-05-23 R3.4 entry.

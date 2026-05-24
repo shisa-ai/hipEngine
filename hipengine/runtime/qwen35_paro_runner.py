@@ -2508,6 +2508,7 @@ class Qwen35ParoResidentSession:
                 commit_row_ptr=int(self.verify_commit_rows.ptr),
             )
             self._set_slot_position(int(summary.commit_positions[0]), slot=base_slot, stream=stream)
+            self._canonicalize_decode_scratch()
             self.runtime.stream_synchronize(stream)
             next_token = None if summary.next_tokens is None else summary.next_tokens[0]
             return Qwen35ParoBulkVerifyResult(
@@ -2663,6 +2664,7 @@ class Qwen35ParoResidentSession:
             commit_row_ptr=int(self.verify_commit_rows.ptr),
         )
         self._set_slot_position(int(summary.commit_positions[0]), slot=base_slot, stream=stream)
+        self._canonicalize_decode_scratch()
         self.runtime.stream_synchronize(stream)
         next_token = None if summary.next_tokens is None else summary.next_tokens[0]
         return Qwen35ParoBulkVerifyResult(
@@ -4205,8 +4207,8 @@ class Qwen35ParoResidentSession:
                         hidden,
                         conv_state=conv_state,
                         recurrent_state=recurrent_state,
-                        linear_scratch=self.linear_scratch[layer_id],
-                        moe_scratch=self.moe_scratch[layer_id],
+                        linear_scratch=self._linear_decode_scratch(layer_id, state),
+                        moe_scratch=self._mlp_decode_scratch(layer_id, state),
                         library=self.libraries,
                         stream=stream,
                     )
@@ -4224,7 +4226,7 @@ class Qwen35ParoResidentSession:
                         position=position_tensor,
                         max_positions=self.max_sequence_length,
                         attention_scratch=self.full_scratch[layer_id],
-                        moe_scratch=self.moe_scratch[layer_id],
+                        moe_scratch=self._mlp_decode_scratch(layer_id, state),
                         chunk_size=self.decode_chunk_size,
                         num_splits=num_splits,
                         library=self.libraries,
@@ -4252,6 +4254,115 @@ class Qwen35ParoResidentSession:
                     activation_dtype=DType.FP16,
                     gated_dtype=DType.FP16,
                 )
+
+    def _mlp_decode_scratch(
+        self,
+        layer_id: int,
+        state: Qwen35ParoDecodeState,
+    ) -> Qwen35ParoMoeScratch | Qwen35ParoDenseMlpScratch:
+        """Return canonical c=1 MoE/MLP scratch for resident decode."""
+
+        scratch = self.moe_scratch.get(layer_id)
+        if int(getattr(self.config, "num_experts", 1) or 0) <= 0:
+            if isinstance(scratch, Qwen35ParoDenseMlpScratch) and scratch.normed.shape[0] == 1:
+                return scratch
+            scratch = state.reserve_dense_mlp_scratch(tokens=1, activation_dtype=DType.FP16)
+        else:
+            if isinstance(scratch, Qwen35ParoMoeScratch) and scratch.normed.shape[0] == 1:
+                return scratch
+            scratch = state.reserve_moe_c1_scratch(tokens=1, activation_dtype=DType.FP16)
+        self.moe_scratch[layer_id] = scratch
+        return scratch
+
+    def _canonicalize_decode_scratch(self) -> None:
+        """Make resident c=1 scratch views current after bulk/prefill paths."""
+
+        for layer_id, state in enumerate(self.states):
+            self.moe_scratch[layer_id] = self._mlp_decode_scratch(layer_id, state)
+            if self.config.layer_types[layer_id] == "linear_attention":
+                self.linear_scratch[layer_id] = self._linear_decode_scratch(layer_id, state)
+
+    def _linear_decode_scratch(self, layer_id: int, state: Qwen35ParoDecodeState) -> Qwen35ParoLinearAttentionScratch:
+        """Return canonical c=1 linear-attention scratch for resident decode.
+
+        Native bulk verifier passes reserve ``tokens=rows`` scratch and store it
+        in ``self.linear_scratch`` so the selected ``tree_*_state`` row can be
+        committed after accept.  That scratch is **not** safe to reuse for a
+        later c=1 decode step: several split views (notably ``qkv/z`` and
+        ``a/b``) place the second view at an offset derived from the reserved
+        row count, while the c=1 projection kernels write a compact
+        one-row-concatenated layout.  Reusing verifier-sized scratch therefore
+        makes c=1 GDN read stale z/b rows after a bulk→AR handoff.
+        """
+
+        scratch = self.linear_scratch.get(layer_id)
+        if not isinstance(scratch, Qwen35ParoLinearAttentionScratch):
+            scratch = state.reserve_linear_attention_scratch(tokens=1, activation_dtype=DType.FP16)
+            self.linear_scratch[layer_id] = scratch
+            return scratch
+        if (
+            scratch.attn_input.shape[0] == 1
+            and scratch.qkv_z.shape[0] == 1
+            and scratch.ab.shape[0] == 1
+            and scratch.tree_recurrent_state.shape[0] == 1
+        ):
+            return scratch
+
+        cfg = self.config
+        qkv_width = (
+            2 * cfg.linear_num_key_heads * cfg.linear_key_head_dim
+            + cfg.linear_num_value_heads * cfg.linear_value_head_dim
+        )
+        z_width = cfg.linear_num_value_heads * cfg.linear_value_head_dim
+        lowp = scratch.attn_input.dtype
+
+        def row_view(tensor: Tensor, *tail_shape: int) -> Tensor:
+            return Tensor.from_handle(tensor.ptr, (1, *tuple(int(x) for x in tail_shape)), tensor.dtype, tensor.device)
+
+        qkv_z = Tensor.from_handle(scratch.qkv_z.ptr, (1, qkv_width + z_width), lowp, scratch.qkv_z.device)
+        qkv = Tensor.from_handle(qkv_z.ptr, (1, qkv_width), lowp, qkv_z.device)
+        z = Tensor.from_handle(qkv_z.ptr + qkv_width * lowp.itemsize, (1, z_width), lowp, qkv_z.device)
+        ab = Tensor.from_handle(scratch.ab.ptr, (1, 2 * cfg.linear_num_value_heads), lowp, scratch.ab.device)
+        a = Tensor.from_handle(ab.ptr, (1, cfg.linear_num_value_heads), lowp, ab.device)
+        b = Tensor.from_handle(
+            ab.ptr + cfg.linear_num_value_heads * lowp.itemsize,
+            (1, cfg.linear_num_value_heads),
+            lowp,
+            ab.device,
+        )
+        compact = Qwen35ParoLinearAttentionScratch(
+            attn_input=row_view(scratch.attn_input, cfg.hidden_size),
+            qkv_rot=row_view(scratch.qkv_rot, cfg.hidden_size),
+            z_rot=row_view(scratch.z_rot, cfg.hidden_size),
+            rotate_fuse_barrier=scratch.rotate_fuse_barrier,
+            qkv_z=qkv_z,
+            qkv=qkv,
+            z=z,
+            qkv_f32=row_view(scratch.qkv_f32, qkv_width),
+            ab=ab,
+            a=a,
+            b=b,
+            conv_out=row_view(scratch.conv_out, qkv_width),
+            prefill_query=row_view(scratch.prefill_query, cfg.linear_num_value_heads, cfg.linear_key_head_dim),
+            prefill_key=row_view(scratch.prefill_key, cfg.linear_num_value_heads, cfg.linear_key_head_dim),
+            prefill_value=row_view(scratch.prefill_value, cfg.linear_num_value_heads, cfg.linear_value_head_dim),
+            prefill_beta=row_view(scratch.prefill_beta, cfg.linear_num_value_heads),
+            prefill_decay=row_view(scratch.prefill_decay, cfg.linear_num_value_heads),
+            recurrent_out=row_view(scratch.recurrent_out, z_width),
+            recurrent_bf16=row_view(scratch.recurrent_bf16, z_width),
+            out_rot=row_view(scratch.out_rot, z_width),
+            out_proj=row_view(scratch.out_proj, cfg.hidden_size),
+            tree_conv_state=row_view(scratch.tree_conv_state, qkv_width, cfg.linear_conv_kernel_dim),
+            tree_recurrent_state=row_view(
+                scratch.tree_recurrent_state,
+                cfg.linear_num_value_heads,
+                cfg.linear_key_head_dim,
+                cfg.linear_value_head_dim,
+            ),
+            tree_gdn_acc=row_view(scratch.tree_gdn_acc, z_width),
+        )
+        self.linear_scratch[layer_id] = compact
+        return compact
 
     def _run_layers(
         self,
@@ -4293,8 +4404,8 @@ class Qwen35ParoResidentSession:
                     hidden,
                     conv_state=conv_state,
                     recurrent_state=recurrent_state,
-                    linear_scratch=self.linear_scratch[layer_id],
-                    moe_scratch=self.moe_scratch[layer_id],
+                    linear_scratch=self._linear_decode_scratch(layer_id, state),
+                    moe_scratch=self._mlp_decode_scratch(layer_id, state),
                     library=self.libraries,
                     stream=stream,
                 )
@@ -4312,7 +4423,7 @@ class Qwen35ParoResidentSession:
                     position=position_tensor,
                     max_positions=self.max_sequence_length,
                     attention_scratch=self.full_scratch[layer_id],
-                    moe_scratch=self.moe_scratch[layer_id],
+                    moe_scratch=self._mlp_decode_scratch(layer_id, state),
                     chunk_size=self.decode_chunk_size,
                     num_splits=num_splits,
                     library=self.libraries,

@@ -1905,53 +1905,20 @@ def _run_dflash_chain_on_session(
         if active_budget <= 0 or not decision.use_dflash:
             cycle_context_tokens = context_tokens
             t_cycle = time.perf_counter()
-            if active_budget > 0 and not decision.use_dflash and verifier_mode == "native_bulk_bplus1":
-                # Native bulk verifier state is exact when followed by another
-                # native bulk verifier cycle, but the slot is not yet guaranteed
-                # to be c=1-AR-compatible.  For adaptive fallback, use a
-                # root-only native bulk verifier pass (root + one inactive dummy
-                # row) so the state transition stays in the validated bulk path.
-                verify_rows_total += 2
-                target_batch = _build_chain_target_batch(
-                    root_token=root_token,
-                    root_position=context_tokens,
-                    candidates=(),
-                    candidate_budget=1,
-                    active_count=0,
-                )
-                t_verify = time.perf_counter()
-                verify_result = session.verify_chain_bulk_and_commit(
-                    target_batch,
-                    base_slot=base_slot,
-                    capture_layer_ids=drafter.config.target_layer_ids,
-                    capture_hidden_concat=drafter.target_hidden_concat,
-                    capture_row_start=context_tokens,
-                    graph_mode="off",
-                    chain_attn_mode=chain_attn_mode,
-                )
-                verify_seconds_total += time.perf_counter() - t_verify
-                target_bulk_forward_calls += int(verify_result.target_forward_calls)
-                target_bulk_rows_total += int(verify_result.rows)
-                target_accept_scalar_reads += 7
-                target_accept_scalar_values += 7
-                finite_verify = finite_verify and bool(verify_result.finite_logits)
-                gpu_accept_match_cpu = gpu_accept_match_cpu and bool(verify_result.gpu_accept_match_cpu)
-                bonus = int(verify_result.next_token)
-            else:
-                verify_rows_total += 1
-                t_verify = time.perf_counter()
-                result = _slot_step(
-                    session,
-                    root_token,
-                    position=context_tokens,
-                    slot=base_slot,
-                    drafter=drafter,
-                    capture_row=context_tokens,
-                )
-                verify_seconds_total += time.perf_counter() - t_verify
-                target_serial_forward_calls += 1
-                finite_verify = finite_verify and math.isfinite(float(result.logit))
-                bonus = int(result.token_id)
+            verify_rows_total += 1
+            t_verify = time.perf_counter()
+            result = _slot_step(
+                session,
+                root_token,
+                position=context_tokens,
+                slot=base_slot,
+                drafter=drafter,
+                capture_row=context_tokens,
+            )
+            verify_seconds_total += time.perf_counter() - t_verify
+            target_serial_forward_calls += 1
+            finite_verify = finite_verify and math.isfinite(float(result.logit))
+            bonus = int(result.token_id)
             t_commit = time.perf_counter()
             drafter.commit_context_rows(start=context_tokens, count=1)
             commit_seconds_total += time.perf_counter() - t_commit
@@ -1963,7 +1930,7 @@ def _run_dflash_chain_on_session(
                 cycle=cycles,
                 cycle_wall_ms=(time.perf_counter() - t_cycle) * 1000.0,
                 context_tokens=cycle_context_tokens,
-                forced_reason="no_spec_budget" if active_budget <= 0 else "bulk_root_only_fallback",
+                forced_reason="no_spec_budget" if active_budget <= 0 else "c1_slot_step_fallback",
                 update_state=active_budget > 0,
             )
             continue

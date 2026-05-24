@@ -22765,3 +22765,110 @@ Updated docs:
 - docs/DFLASH.md (R3.7 design-notes section now includes implementation
   outcome, rocprof gate evidence, perf trade-off table, and decision
   rationale).
+
+## 2026-05-24 R3.1 / Task #34 in-progress handoff (context compacted, work not committed)
+
+Working on Task #34 "Fix native-bulk to c1 AR handoff for adaptive fallback".
+Reproduced the bug deterministically: with `HIPENGINE_DFLASH_ADAPTIVE_FALLBACK_DEBUG=c1_slot_step`
+the bench routes adaptive demotion to the broken `_slot_step` path; 3/4 prompts
+diverge at output indices 8, 10, 10 (state-corruption symptom: spec loops on
+repeated tokens after the divergence, classic recurrent/SSM state corruption).
+
+Ruled out as root cause:
+- `chain_attn_mode=batched` vs `c1_loop` full-attention (same divergence).
+- GDN c=1 vs chain_tloop reduction-order mismatch (made c=1 GDN call
+  chain_tloop with max_nodes=1 via new env flag `HIPENGINE_GDN_C1_USE_CHAIN_TLOOP`;
+  monkey-patched kernel counts confirm the fix path runs; divergence
+  indices unchanged → GDN kernel is not the cause).
+- GPU accept-summary disagreement (`gpu_accept_match_cpu=True` every cycle).
+
+Still on the table:
+- Linear-attention conv kernel: c=1 keeps state in HBM with in-place
+  shift, chain_tloop keeps state in registers (FP32) — `_commit_bulk_linear_states`
+  copies `tree_conv_state[selected_row]` back to canonical conv_state but the
+  two representations need a bit-equality test.
+- Scratch-buffer reuse: `linear_scratch[layer_id]` is reserved for B+1 rows
+  by the bulk verifier and then reused by the c=1 step at tokens=1 — verify
+  no stale per-row state leaks into the c=1 path.
+- `_run_layers(persist_aliases=False)` interaction with the slot-0 alias of
+  `self.hidden`/`self.next_hidden`.
+
+WIP in worktree (NOT committed pending diagnosis):
+- `hipengine/runtime/qwen35_paro.py` — `_gdn_c1_use_chain_tloop_enabled()`
+  helper plus chain_tloop dispatch in the c=1 GDN orchestrators (default-on).
+  Does NOT fix Task #34; recommend reverting and revisiting after kernel
+  parity tests.
+- `scripts/dflash_chain_e2e_bench.py` — `HIPENGINE_DFLASH_ADAPTIVE_FALLBACK_DEBUG`
+  env-flag gates the broken `_slot_step` fallback so we can reproduce the
+  bug deterministically. Keep this as a real diagnostic in a follow-up commit.
+
+Saved artifacts under `.handoff/`:
+- `R31_TASK34_HANDOFF.md` — full handoff doc with reproducer, diagnosis,
+  ruled-out hypotheses, concrete next steps, and cleanup recommendation.
+- `wip_chain_tloop_c1_gdn.patch` — the WIP GDN fix as a diff.
+- `wip_force_c1_fallback_debug_flag.patch` — the bench debug-flag patch.
+- `r31_pre_fix_*.json` / `r31_post_chain_tloop_fix_*.json` — bench artifacts
+  showing the divergence persists.
+
+Task #34 remains `in_progress` (NOT completed) — see metadata.handoff.
+
+## 2026-05-24 — R3.1 Task #34 native-bulk→c=1 fallback handoff fixed
+
+### Root cause and implementation
+
+- Root cause was resident scratch reuse across verifier modes, not GDN/conv
+  arithmetic.  Native bulk verification reserves linear-attention scratch with
+  `tokens=rows` and leaves it in `self.linear_scratch[layer_id]`; later c=1
+  `_slot_step` decode reused those views at `tokens=1`.  Split views such as
+  `qkv/z` and `a/b` offset the second half by `tokens * width`, but c=1
+  projection kernels write a compact one-row concatenated layout.  After a
+  B+1 bulk cycle, c=1 GDN therefore read stale verifier rows from `z/b`, which
+  produced deterministic recurrent-state corruption and repeated-token loops.
+- Added `Qwen35ParoResidentSession._linear_decode_scratch()` to canonicalize a
+  verifier-sized `Qwen35ParoLinearAttentionScratch` into compact c=1 Tensor
+  views over the same backing allocation (no first-fallback reallocation spike),
+  plus `_mlp_decode_scratch()` for c=1 MoE/dense MLP scratch.
+- `_run_layers()` and serial suffix prefill c=1 paths now request canonical c=1
+  scratch on entry.  `verify_chain_bulk_and_commit()` canonicalizes immediately
+  after committing bulk linear states and slot position, so adaptive fallback
+  pays no host repair cost in the first AR cycle.
+- Replaced the interim adaptive fallback in `scripts/dflash_chain_e2e_bench.py`
+  from root-only native bulk verifier to true `_slot_step` c=1 AR fallback;
+  artifact cycle logs now label these rows `c1_slot_step_fallback`.
+
+### Validation
+
+- Compile check:
+  `python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py scripts/dflash_chain_e2e_bench.py`
+  → pass.
+- Task #34 acceptance command (W7900/gfx1100, cached builds):
+  `HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt timeout 360 python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 4 --decode-tokens 16 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --adaptive-budget on --hardware-gpu 'AMD Radeon Pro W7900' --json benchmarks/results/2026-05-24-hipengine-dflash-r3.1-w7900-c1-fallback-handoff.json`
+  → `all_correctness_passed=true`, `correctness_gate.all_exact_match_ar=true`
+  (`4/4` rows), aggregate DFlash `57.96 tok/s` vs AR `109.60 tok/s`
+  (`0.529x`, diagnostic only, `performance_claim=false`).
+- AR fallback cycle timing from the retained artifact: 24 c=1 fallback cycles,
+  mean/p50/min/max `9.90/9.60/9.57/13.15 ms`.  This meets Task #34's
+  same-session-AR handoff criterion (near `~9 ms/token`) and removes the
+  interim root-only bulk fallback cost (`~18 ms/token`).
+- Per-prompt exactness: quicksort, function continuation, class continuation,
+  and json/yaml continuation all have `first_mismatch_index=None`.  Pre-fix
+  forced c=1 fallback diverged deterministically at indices 10, 8, and 10 for
+  three of these prompts.
+
+### Documentation and artifact updates
+
+- Retained artifact:
+  `benchmarks/results/2026-05-24-hipengine-dflash-r3.1-w7900-c1-fallback-handoff.json`.
+- Updated `docs/DFLASH.md` R3.1 row/status from blocked-on-handoff to
+  handoff-fixed/default-off diagnostic.  Adaptive still needs the full
+  9-prompt guard and better DFlash economics before default-on promotion.
+- Updated `benchmarks/README.md` and `benchmarks/CHANGELOG.md` per benchmark
+  rollup policy.
+- Left `.handoff/` untracked as prior-session diagnostic material; it is no
+  longer needed for the code path but preserves the abandoned GDN patch and
+  pre-fix reproducer artifacts.
+
+### Validation addendum
+
+- `pytest -q tests/test_adaptive_budget.py` without `PYTHONPATH` failed collection in this environment with `ModuleNotFoundError: hipengine.speculative.adaptive_budget` despite the source file existing; reran with explicit repo path:
+  `PYTHONPATH=. pytest -q tests/test_adaptive_budget.py` → `5 passed`.
