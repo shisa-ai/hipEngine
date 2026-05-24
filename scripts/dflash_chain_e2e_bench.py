@@ -73,6 +73,7 @@ DEFAULT_TARGET_PATH = "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B
 DEFAULT_DRAFTER_PATH = "/models/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719"
 DEFAULT_TARGET_REVISION = "501ef8635e5cfb5a7497d232358ca8d1afc0c66e"
 DEFAULT_DRAFTER_REVISION = "42d3b34d588423cdae7ba8f53a8cf7789346a719"
+_ADAPTIVE_AR_GUARD_REASONS = {"remaining_tokens_guard", "probe_amortization_guard"}
 
 
 @dataclass(frozen=True)
@@ -1554,12 +1555,15 @@ def run_dflash_tokens(
     drafter_bucket_mode: str = "exact",
     adaptive_budget_mode: str = "off",
     adaptive_min_remaining_tokens: int = 0,
+    adaptive_probe_amortization_tokens: int = 64,
     ar_decode_tok_s_estimate: float | None = None,
 ) -> tuple[list[int], dict[str, Any]]:
     if adaptive_budget_mode not in {"off", "on"}:
         raise ValueError("adaptive_budget_mode must be off or on")
     if adaptive_min_remaining_tokens < 0:
         raise ValueError("adaptive_min_remaining_tokens must be non-negative")
+    if adaptive_probe_amortization_tokens < 0:
+        raise ValueError("adaptive_probe_amortization_tokens must be non-negative")
     runner = Qwen35ParoNextTokenRunner(model, backend=backend)
     max_sequence = len(prompt_ids) + decode_tokens + candidate_budget + 2
     max_batch_size = candidate_budget + 2
@@ -1606,7 +1610,10 @@ def run_dflash_tokens(
             adaptive_budget = AdaptiveBudgetController(
                 enabled=adaptive_budget_mode == "on",
                 ar_decode_tok_s_estimate=ar_decode_tok_s_estimate,
-                config=AdaptiveBudgetConfig(min_remaining_tokens_for_dflash=adaptive_min_remaining_tokens),
+                config=AdaptiveBudgetConfig(
+                    min_remaining_tokens_for_dflash=adaptive_min_remaining_tokens,
+                    probe_min_amortization_tokens=adaptive_probe_amortization_tokens,
+                ),
             )
             generated: list[int] = []
             accepted_lengths: list[int] = []
@@ -1632,7 +1639,7 @@ def run_dflash_tokens(
                 if active_budget <= 0 or not decision.use_dflash:
                     # No spec budget left (or adaptive budget locked DFlash out):
                     # one bare AR step on slot 0.
-                    terminal_ar_bypass = active_budget <= 0 or decision.reason == "remaining_tokens_guard"
+                    terminal_ar_bypass = active_budget <= 0 or decision.reason in _ADAPTIVE_AR_GUARD_REASONS
                     verify_rows_total += 1
                     cycle_context_tokens = context_tokens
                     t_cycle = time.perf_counter()
@@ -1659,7 +1666,7 @@ def run_dflash_tokens(
                         cycle_wall_ms=(time.perf_counter() - t_cycle) * 1000.0,
                         context_tokens=cycle_context_tokens,
                         forced_reason="no_spec_budget" if active_budget <= 0 else decision.reason,
-                        update_state=active_budget > 0 and decision.reason != "remaining_tokens_guard",
+                        update_state=active_budget > 0 and decision.reason not in _ADAPTIVE_AR_GUARD_REASONS,
                     )
                     continue
                 verify_rows_total += 1 + active_budget
@@ -1772,6 +1779,7 @@ def run_same_session_pair(
     draft_p_min: float = 0.0,
     adaptive_budget_mode: str = "off",
     adaptive_min_remaining_tokens: int = 0,
+    adaptive_probe_amortization_tokens: int = 64,
     chain_attn_mode: str = "c1_loop",
     tree_mode: str = "chain",
     tree_top_k: int = 1,
@@ -1789,6 +1797,8 @@ def run_same_session_pair(
         raise ValueError("adaptive_budget_mode must be off or on")
     if adaptive_min_remaining_tokens < 0:
         raise ValueError("adaptive_min_remaining_tokens must be non-negative")
+    if adaptive_probe_amortization_tokens < 0:
+        raise ValueError("adaptive_probe_amortization_tokens must be non-negative")
     if draft_top_k <= 0 or draft_top_k > 8:
         raise ValueError("draft_top_k must be in [1, 8]")
     if draft_p_min < 0.0 or draft_p_min > 1.0:
@@ -1867,6 +1877,7 @@ def run_same_session_pair(
                 verifier_graph_mode=verifier_graph_mode,
                 adaptive_budget_mode=adaptive_budget_mode,
                 adaptive_min_remaining_tokens=adaptive_min_remaining_tokens,
+                adaptive_probe_amortization_tokens=adaptive_probe_amortization_tokens,
                 ar_decode_tok_s_estimate=ar_meta["decode_tok_s"],
                 chain_attn_mode=chain_attn_mode,
                 tree_mode=tree_mode,
@@ -1891,6 +1902,7 @@ def _run_dflash_chain_on_session(
     verifier_graph_mode: str = "off",
     adaptive_budget_mode: str = "off",
     adaptive_min_remaining_tokens: int = 0,
+    adaptive_probe_amortization_tokens: int = 64,
     ar_decode_tok_s_estimate: float | None = None,
     chain_attn_mode: str = "c1_loop",
     tree_mode: str = "chain",
@@ -1901,6 +1913,8 @@ def _run_dflash_chain_on_session(
         raise ValueError("adaptive_budget_mode must be off or on")
     if adaptive_min_remaining_tokens < 0:
         raise ValueError("adaptive_min_remaining_tokens must be non-negative")
+    if adaptive_probe_amortization_tokens < 0:
+        raise ValueError("adaptive_probe_amortization_tokens must be non-negative")
     if draft_p_min < 0.0 or draft_p_min > 1.0:
         raise ValueError("draft_p_min must be in [0, 1]")
     if draft_p_min > 0.0 and tree_mode != "chain":
@@ -1928,7 +1942,10 @@ def _run_dflash_chain_on_session(
     adaptive_budget = AdaptiveBudgetController(
         enabled=adaptive_budget_mode == "on",
         ar_decode_tok_s_estimate=ar_decode_tok_s_estimate,
-        config=AdaptiveBudgetConfig(min_remaining_tokens_for_dflash=adaptive_min_remaining_tokens),
+        config=AdaptiveBudgetConfig(
+            min_remaining_tokens_for_dflash=adaptive_min_remaining_tokens,
+            probe_min_amortization_tokens=adaptive_probe_amortization_tokens,
+        ),
     )
     generated: list[int] = []
     accepted_lengths: list[int] = []
@@ -1979,7 +1996,7 @@ def _run_dflash_chain_on_session(
             active_budget=active_budget,
         )
         if active_budget <= 0 or not decision.use_dflash:
-            terminal_ar_bypass = active_budget <= 0 or decision.reason == "remaining_tokens_guard"
+            terminal_ar_bypass = active_budget <= 0 or decision.reason in _ADAPTIVE_AR_GUARD_REASONS
             cycle_context_tokens = context_tokens
             t_cycle = time.perf_counter()
             verify_rows_total += 1
@@ -2009,7 +2026,7 @@ def _run_dflash_chain_on_session(
                 cycle_wall_ms=(time.perf_counter() - t_cycle) * 1000.0,
                 context_tokens=cycle_context_tokens,
                 forced_reason="no_spec_budget" if active_budget <= 0 else decision.reason,
-                update_state=active_budget > 0 and decision.reason != "remaining_tokens_guard",
+                update_state=active_budget > 0 and decision.reason not in _ADAPTIVE_AR_GUARD_REASONS,
             )
             continue
         cycle_context_tokens = context_tokens
@@ -2629,6 +2646,17 @@ def main(argv: list[str] | None = None) -> int:
             " failed DFlash probe that cannot be amortized."
         ),
     )
+    parser.add_argument(
+        "--adaptive-probe-amortization-tokens",
+        type=int,
+        default=64,
+        help=(
+            "When adaptive budget is on, require this many extra remaining"
+            " decode tokens beyond --adaptive-min-remaining-tokens before"
+            " starting or retrying a DFlash probe. Already-promoted DFlash uses"
+            " the normal remaining-token horizon."
+        ),
+    )
     parser.add_argument("--hardware-gpu", default=None, help="Human-readable GPU name to record in the benchmark artifact")
     parser.add_argument("--json", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -2643,6 +2671,8 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError("--draft-p-min must be in [0, 1]")
     if args.adaptive_min_remaining_tokens < 0:
         raise ValueError("--adaptive-min-remaining-tokens must be non-negative")
+    if args.adaptive_probe_amortization_tokens < 0:
+        raise ValueError("--adaptive-probe-amortization-tokens must be non-negative")
     if args.draft_p_min > 0.0:
         if args.tree_mode != "chain":
             raise ValueError("--draft-p-min currently supports --tree-mode chain only")
@@ -2683,6 +2713,7 @@ def main(argv: list[str] | None = None) -> int:
                 draft_p_min=args.draft_p_min,
                 adaptive_budget_mode=args.adaptive_budget,
                 adaptive_min_remaining_tokens=args.adaptive_min_remaining_tokens,
+                adaptive_probe_amortization_tokens=args.adaptive_probe_amortization_tokens,
                 chain_attn_mode=args.full_attn_chain_mode,
                 tree_mode=args.tree_mode,
                 tree_top_k=args.tree_top_k if args.tree_mode == "branching_topk" else 1,
@@ -2739,6 +2770,7 @@ def main(argv: list[str] | None = None) -> int:
             "drafter_bucket_mode": args.drafter_bucket,
             "adaptive_budget_mode": args.adaptive_budget,
             "adaptive_min_remaining_tokens": args.adaptive_min_remaining_tokens,
+            "adaptive_probe_amortization_tokens": args.adaptive_probe_amortization_tokens,
             "promotion_blocker": (
                 "native B+1 verifier ran, but full chain must still beat same-session AR before promotion"
                 if args.verifier_mode == "native_bulk_bplus1"

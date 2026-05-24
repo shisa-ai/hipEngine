@@ -23042,3 +23042,54 @@ Updates:
 
 No new GPU measurement was run for this doc-only closeout; it records existing
 R3.7 evidence from the retained artifacts and prior WORKLOG entry.
+
+## 2026-05-24 — R3.1 strict adaptive probe guard
+
+Implemented stricter adaptive probing to address the remaining R3.1 blocker:
+failed/negative-profit probes were exact but too expensive.  The controller now:
+- Starts enabled adaptive mode in `AR_PROBE` instead of assuming DFlash.
+- Uses one-cycle startup/retry probes by default.
+- Demotes from `DFLASH` after one negative-profit cycle instead of a 4-cycle
+  negative window.
+- Uses 32-cycle initial/retry cooldowns.
+- Adds `probe_min_amortization_tokens` / CLI
+  `--adaptive-probe-amortization-tokens` (default `64`).  A startup/retry probe
+  only runs when
+  `remaining_tokens >= adaptive_min_remaining_tokens + adaptive_probe_amortization_tokens`;
+  already-promoted DFlash still uses the normal remaining-token horizon.
+
+Validation:
+- `python3 -m py_compile hipengine/speculative/adaptive_budget.py scripts/dflash_chain_e2e_bench.py` -> pass.
+- `PYTHONPATH=. pytest -q tests/test_adaptive_budget.py` -> `13 passed`.
+- Intermediate one-probe D160 run (before the amortization margin):
+  `/tmp/dflash_adaptive_strict_probe_b4_d160_4prompt.json` exact `4/4`,
+  aggregate `0.943702282745497x` AR, `draft_calls=4`, rows/output `1.03125`,
+  canonical replay rows `[1, 1, 2, 1]`.  This showed one failed probe still left
+  a few rows below the 0.95 guard.
+- Retained D160 strict-margin run:
+  `HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt timeout 1800 python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 4 --decode-tokens 160 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --adaptive-budget on --adaptive-min-remaining-tokens 128 --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/dflash_adaptive_strict_probe_margin64_b4_d160_4prompt.json`
+  -> exact `4/4`, aggregate AR `108.77 tok/s`, guarded path
+  `108.27 tok/s` (`0.9954529734625642x`), per-row `0.9957/1.0035/0.9906/0.9921`,
+  `draft_calls=0`, rows/output `1.0`, reason counts
+  `probe_amortization_guard=132`, `remaining_tokens_guard=504`, `no_spec_budget=4`.
+- Retained D32 9-prompt guard:
+  `HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt timeout 900 python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 32 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --adaptive-budget on --adaptive-min-remaining-tokens 128 --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/dflash_adaptive_strict_probe_margin64_b4_d32_9prompt_guard.json`
+  -> exact `9/9`, aggregate AR `109.63 tok/s`, guarded path
+  `108.63 tok/s` (`0.9909083317398852x`), per-row min `0.9548`,
+  `draft_calls=0`, rows/output `1.0`.
+
+Copied retained artifacts to:
+- `benchmarks/results/2026-05-24-hipengine-dflash-r3.1-w7900-adaptive-strict-probe-b4-d160-4prompt.json`
+- `benchmarks/results/2026-05-24-hipengine-dflash-r3.1-w7900-adaptive-strict-probe-b4-d32-9prompt-guard.json`
+
+Documentation/rollup updated:
+- `docs/DFLASH.md` R3.1 row, status addendum, and controller state-machine
+  pseudocode.
+- `docs/BEELLAMA_PROFILE.md` R3.1 mapping.
+- `benchmarks/README.md` and `benchmarks/CHANGELOG.md` strict-probe rows.
+
+Decision: this solves the failed-probe cost for the retained D32/D160 guards by
+declining to speculate when there is not enough remaining horizon to amortize a
+failed probe.  It is not a DFlash speed promotion; profitable longer-horizon
+probing still needs lower target-verifier/canonical-commit cost or a workload
+where DFlash cycles are positive-profit.

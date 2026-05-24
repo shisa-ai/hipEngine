@@ -1042,7 +1042,7 @@ Exact-AR equality is mandatory for every row and is NOT repeated in the Gate col
 
 | # | Task | Track | Depends on | LoC est. | Gate | Expected Δ | Actual Δ | Status |
 | --- | --- | --- | --- | ---: | --- | --- | --- | --- |
-| R3.1 | Adaptive budget controller — per-prompt or rolling-window profit signal that switches between DFlash and AR; BeeLlama `tools/server/server-adaptive-dm.h` analog. | C / G | none (data already in R2.2/R2.3 artifacts) | ~180 (Python + tests) | Controller never costs > 5% vs AR on any single prompt in the 9-prompt suite; state transitions logged in artifact. | Aggregate AR ratio cannot regress; low-accept prompts (prompt 1 archetype) route to AR and are no longer drag on the mean. | Native bulk→c=1 AR handoff fixed in two layers: c=1 decode scratch is canonicalized after bulk commits, and chain native bulk now scores on a branch slot then replays the accepted prefix through the canonical c=1 slot before drafter context commit. Short guard: 9-prompt B=4 D=32 W7900 with `--adaptive-min-remaining-tokens 128` routes directly to AR (`draft_calls=0`, rows/output `1.0`) and is exact at `0.999x` same-session AR. Long probe: 4-prompt B=4 D=160 now exercises DFlash and is exact at `0.820x` AR, rows/output `1.1875`, after the pre-fix run failed 3/4 rows from committed-state drift. | **Correctness fixed / default-off**; controller safety is proven for short horizons, but default-on promotion remains blocked because long-horizon DFlash probes still cost ~18% vs AR on this mix. Next R3.1 work needs stricter adaptive probing or lower-cost canonical commit. |
+| R3.1 | Adaptive budget controller — per-prompt or rolling-window profit signal that switches between DFlash and AR; BeeLlama `tools/server/server-adaptive-dm.h` analog. | C / G | none (data already in R2.2/R2.3 artifacts) | ~180 (Python + tests) | Controller never costs > 5% vs AR on any single prompt in the 9-prompt suite; state transitions logged in artifact. | Aggregate AR ratio cannot regress; low-accept prompts (prompt 1 archetype) route to AR and are no longer drag on the mean. | Native bulk→c=1 AR handoff fixed in two layers: c=1 decode scratch is canonicalized after bulk commits, and chain native bulk now scores on a branch slot then replays the accepted prefix through the canonical c=1 slot before drafter context commit. Strict probe policy now starts adaptive mode in `AR_PROBE`, uses one-cycle probes, demotes after one negative-profit cycle, and requires `--adaptive-probe-amortization-tokens 64` extra remaining tokens beyond the normal horizon before probing. With `--adaptive-min-remaining-tokens 128`, D160 4-prompt W7900 routes entirely to AR (`draft_calls=0`, rows/output `1.0`) and is exact at `0.995x` AR; D32 9-prompt guard is exact at `0.991x` AR, row min `0.955x`. | **Controller safety fixed / default-off as a speed path**; failed/negative-profit probe cost is avoided for D32/D160, but the retained policy does this by declining to speculate when the horizon cannot amortize a failed probe. DFlash speed promotion still needs a genuinely profitable longer-horizon probe or lower-cost canonical commit. |
 | R3.2 | Paper L1 cost-model writeup for every verifier-side and drafter-side fuse candidate. NO kernel code; produces a markdown table inside DFLASH.md (or a separate `docs/DFLASH_FUSION_COSTMODEL.md` if it grows). | B (paper) | none | ~250 LoC markdown | Each candidate has explicit `saved_launches × launch_overhead` vs `added_per_block_work × block_count` calculation; each labeled pass/fail; output is the work order for R3.6. | Selects ≥ 1 verifier fuse + ≥ 1 drafter fuse that pass the L1 check. | Cost model landed in `docs/DFLASH_FUSION_COSTMODEL.md`; shortlist is C1 drafter add+rmsnorm + C5 verifier QKV-prepare fusion; no local fuse is a primary wall lever. | **Done (paper)**; R3.6 should stay narrow and not distract from R3.4. |
 | R3.3 | Drafter dense kernel roofline + WMMA design doc. NO kernel code; produces a roofline analysis and a proposed kernel signature. | A (paper) | none | ~200 LoC markdown | Document captures: (a) per-block work/launches of current `dflash_dense_bf16_to_bf16_kernel`; (b) W7900 BW-bound floor for 16-row × 2048-dim BF16 GEMV (`~9 µs`); (c) measured per-op cost (`~306 µs` → 3% of BW peak); (d) proposed 16×16×16 BF16 WMMA tiling with LDS-staged input; (e) expected delta if kernel reaches 30–50% of BW peak. | Drafter dense roofline at `~25–50 µs/op`, ~5–10× over current. Decoder wall projection `19.6 → 5–8 ms`. Cycle wall projection `62 → ~45 ms` (prompt 3 break-even). | GPU-sanity doc landed in `docs/DRAFTER_DENSE_ROOFLINE.md`: current dense op mix is `16.32 ms/cycle` (~83% of decoder wall), 3–6% BW; 30% BW projects decoder `19.6 → ~6.3 ms`, cycle `62 → ~48.8 ms`. | **Done (paper + GPU sanity)**; R3.4 implementation is justified. |
 | R3.4 | Implement R3.3's proposed WMMA dense kernels (`bf16_to_bf16` and `bf16_to_f32`) for the drafter; register against `KernelKey(...)` per AGENTS.md (no `if backend == ...` branches). | A (code) | R3.3 (paper sign-off) | ~430 (HIP + Python + tests) | KL ≤ 0.05 + top-1 ≥ 90% vs `kernels/cpu_reference/`; `rocprofv3 --kernel-trace` shows kernel duration in expected range and BW utilization ≥ 30%; same-session AR exact match on 9-prompt suite. | Drafter decoder `19.6 → 5–8 ms`; cycle wall `62 → ~45 ms`. Combined with R3.1 routing, prompt 3 archetype reaches ≥ 1.0x AR. | RDNA3 `v_wmma_f32_16x16x16_bf16` 16x16x16 wave32 tiling landed default-on (`HIPENGINE_DFLASH_DRAFTER_DENSE=wmma`); 16-row dense ops 1.7–5.7× faster (e.g. `(16,2048,6144)` `0.523 → 0.091 ms`); per-cycle dense `16.32 → ~3.88 ms`. 9-prompt B=4 D=32 same-session DFlash: aggregate `0.446 → 0.636x` AR; drafter wall `23.50 → 9.09 ms/cycle` (-61%); cycle `52.83 → 37.21 ms`; exact-AR all 9 prompts; best `0.911x` (class_continuation). | **Done (default-on)**; necessary but insufficient — still <1.0x AR aggregate. R3.6/R3.5/R3.7 still required. |
@@ -1089,6 +1089,21 @@ to `1.08/output` but dropped average acceptance to `0.91` and measured only
 `0.414x` AR; `p_min=0.55` measured `0.383x` AR. Keep top-K confidence as
 controller telemetry, not as a default chain verifier trimming policy.
 
+**Strict probe addendum (2026-05-24):** failed probes were still too expensive
+after the canonical commit fix because the controller paid four initial DFlash
+cycles plus two retry probes before locking out.  Adaptive mode now starts in
+`AR_PROBE` instead of assuming DFlash, uses one-cycle probes by default,
+demotes from `DFLASH` after one negative-profit cycle, and adds
+`--adaptive-probe-amortization-tokens` (default `64`).  A probe only runs when
+`remaining_tokens >= adaptive_min_remaining_tokens + adaptive_probe_amortization_tokens`;
+already-promoted `DFLASH` still uses the normal remaining-token horizon.  On
+the D160 4-prompt W7900 guard with `min_remaining=128`, the new margin blocks
+the unamortizable initial probe (`probe_amortization_guard` for the first 33
+cycles, then `remaining_tokens_guard`), preserving exactness with
+`draft_calls=0`, rows/output `1.0`, aggregate `0.995x` AR, and per-row range
+`0.991–1.004x`.  The D32 9-prompt guard remains exact with `draft_calls=0`,
+rows/output `1.0`, aggregate `0.991x` AR, row min `0.955x`.
+
 **Win state:**
 - For every prompt in the 9-prompt suite, `spec_tok_s_with_controller / ar_tok_s ≥ 0.95`.
 - Per-cycle artifact records: `mode_used`, `cycle_wall_ms`, `visible_tokens`, `profit_ms`, `controller_state`.
@@ -1112,30 +1127,35 @@ State machine:
 ```
 state ∈ {DFLASH, AR_LOCKED, AR_PROBE}
 
-init: state = DFLASH, profit_window = deque(maxlen=8)
+init: state = AR_PROBE, probe_cycles = 1, profit_window = deque(maxlen=8)
 
 on each cycle:
+  if remaining_tokens < adaptive_min_remaining_tokens:
+    run AR cycle; do not consume cooldown/probe state; continue
+  elif state == AR_PROBE and remaining_tokens < adaptive_min_remaining_tokens + adaptive_probe_amortization_tokens:
+    run AR cycle; do not consume cooldown/probe state; continue
   if state == DFLASH:
     run DFlash cycle; profit_window.append(profit_ms)
-    if len(profit_window) >= 4 and mean(profit_window[-4:]) < -5.0:
-      state = AR_LOCKED; cooldown = 8
+    if mean(profit_window[-1:]) < -5.0:
+      state = AR_LOCKED; cooldown = 32
   elif state == AR_LOCKED:
     run AR cycle; cooldown -= 1
     if cooldown == 0:
-      state = AR_PROBE; probe_cycles = 2; probe_profit = []
+      state = AR_PROBE; probe_cycles = 1; probe_profit = []
   elif state == AR_PROBE:
     run DFlash cycle; probe_profit.append(profit_ms); probe_cycles -= 1
     if probe_cycles == 0:
       if mean(probe_profit) > 0.5:
         state = DFLASH; profit_window.extend(probe_profit)
       else:
-        state = AR_LOCKED; cooldown = 16
+        state = AR_LOCKED; cooldown = 32
 ```
 
 **Integration points (concrete):**
 - New module `hipengine/speculative/adaptive_budget.py` containing `AdaptiveBudgetController` class with `should_use_dflash() -> bool`, `record(cycle_metrics)`, `summary() -> dict`.
 - Call sites: `scripts/dflash_chain_e2e_bench.py:run_dflash_tokens` and `_run_dflash_chain_on_session`, between the budget check and the drafter `propose()` call.
 - New CLI flag `--adaptive-budget {off, on}` (default `off` during validation; flip to `on` after measured pass).
+- New CLI flag `--adaptive-probe-amortization-tokens N` (default `64`) for the extra remaining-token margin required before startup/retry probes.
 - Artifact summary key: `spec.adaptive_budget` containing controller state transitions + per-cycle log.
 
 **Grind budget:**

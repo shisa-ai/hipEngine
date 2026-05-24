@@ -2,14 +2,16 @@
 
 The controller is deliberately host-only.  It decides whether the next decode
 cycle should run speculative DFlash or fall back to a plain AR step based on a
-rolling profit signal measured in milliseconds:
+bounded startup probe and a rolling profit signal measured in milliseconds:
 
     profit_ms = visible_tokens * ar_ms_per_token - cycle_wall_ms
 
 Positive profit means the speculative cycle emitted more visible tokens than an
 AR decode would have emitted in the same wall time.  Negative profit means the
-cycle should have stayed on AR.  The state machine adds cooldown/probe
-hysteresis so borderline prompts do not flap every cycle.
+cycle should have stayed on AR.  Adaptive mode starts in ``AR_PROBE`` by
+default, so a losing prompt pays for one speculative cycle before locking to AR.
+The state machine adds cooldown/probe hysteresis so borderline prompts do not
+flap every cycle.
 """
 
 from __future__ import annotations
@@ -36,13 +38,15 @@ class AdaptiveBudgetConfig:
     """Tunable hysteresis for :class:`AdaptiveBudgetController`."""
 
     profit_window_size: int = 8
-    demote_after_cycles: int = 4
+    demote_after_cycles: int = 1
     demote_mean_profit_ms: float = -5.0
-    initial_cooldown_cycles: int = 8
-    retry_cooldown_cycles: int = 16
-    probe_cycles: int = 2
+    initial_cooldown_cycles: int = 32
+    retry_cooldown_cycles: int = 32
+    probe_cycles: int = 1
     promote_mean_profit_ms: float = 0.5
     min_remaining_tokens_for_dflash: int = 0
+    initial_probe_cycles: int = 1
+    probe_min_amortization_tokens: int = 64
 
     def __post_init__(self) -> None:
         if self.profit_window_size <= 0:
@@ -59,6 +63,10 @@ class AdaptiveBudgetConfig:
             raise ValueError("probe_cycles must be positive")
         if self.min_remaining_tokens_for_dflash < 0:
             raise ValueError("min_remaining_tokens_for_dflash must be non-negative")
+        if self.initial_probe_cycles < 0:
+            raise ValueError("initial_probe_cycles must be non-negative")
+        if self.probe_min_amortization_tokens < 0:
+            raise ValueError("probe_min_amortization_tokens must be non-negative")
 
 
 class AdaptiveBudgetController:
@@ -88,9 +96,9 @@ class AdaptiveBudgetController:
             self.ar_decode_tok_s_estimate = float(ar_decode_tok_s_estimate)
             self.ar_ms_per_token = 1000.0 / float(ar_decode_tok_s_estimate)
         self.max_cycle_log = max_cycle_log
-        self.state: AdaptiveState = "DFLASH"
+        self.state: AdaptiveState = "AR_PROBE" if self.enabled and self.config.initial_probe_cycles > 0 else "DFLASH"
         self.cooldown_remaining = 0
-        self.probe_remaining = 0
+        self.probe_remaining = self.config.initial_probe_cycles if self.state == "AR_PROBE" else 0
         self._profit_window: Deque[float] = deque(maxlen=self.config.profit_window_size)
         self._probe_profit: list[float] = []
         self._cycle_log: list[dict[str, Any]] = []
@@ -115,6 +123,14 @@ class AdaptiveBudgetController:
             and remaining_tokens < self.config.min_remaining_tokens_for_dflash
         ):
             decision = AdaptiveBudgetDecision(cycle=int(cycle), state=self.state, use_dflash=False, reason="remaining_tokens_guard")
+        elif (
+            active_budget > 0
+            and self.state == "AR_PROBE"
+            and self.config.probe_min_amortization_tokens > 0
+            and remaining_tokens
+            < self.config.min_remaining_tokens_for_dflash + self.config.probe_min_amortization_tokens
+        ):
+            decision = AdaptiveBudgetDecision(cycle=int(cycle), state=self.state, use_dflash=False, reason="probe_amortization_guard")
         elif self.state == "AR_LOCKED":
             decision = AdaptiveBudgetDecision(cycle=int(cycle), state=self.state, use_dflash=False, reason="cooldown")
         elif self.state == "AR_PROBE":
@@ -271,6 +287,8 @@ class AdaptiveBudgetController:
                 "probe_cycles": self.config.probe_cycles,
                 "promote_mean_profit_ms": self.config.promote_mean_profit_ms,
                 "min_remaining_tokens_for_dflash": self.config.min_remaining_tokens_for_dflash,
+                "initial_probe_cycles": self.config.initial_probe_cycles,
+                "probe_min_amortization_tokens": self.config.probe_min_amortization_tokens,
             },
             "mode_counts": dict(sorted(self._mode_counts.items())),
             "decision_counts": dict(sorted(self._decision_counts.items())),
