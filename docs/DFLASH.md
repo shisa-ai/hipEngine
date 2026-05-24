@@ -1080,6 +1080,33 @@ dense stack.  Keep the new dense WMMA gate default-off for reproducibility, and
 prioritize lower-cost canonical commit / tree topology / Q8 KV over another
 small-row WMMA dispatch flip.
 
+### B+1=16 verifier threshold check (2026-05-25)
+
+Follow-up to the WMMA audit: the relevant question is whether B=15
+(`B+1=16` verifier rows) moves the 27B dense verifier into a profitable
+prefill-shaped regime.  It does improve row efficiency, but not enough.
+
+Retained diagnostic:
+[`2026-05-25-hipengine-dflash-b15-verifier-prefill-threshold-diagnostic.json`](../benchmarks/results/2026-05-25-hipengine-dflash-b15-verifier-prefill-threshold-diagnostic.json).
+
+Measured on Qwen3.6-27B-PARO dense + z-lab DFlash, W7900/gfx1100, one
+quicksort prompt, D64, `--draft-budgets 15`, `native_bulk_bplus1`,
+`full-attn-chain-mode batched`, and `canonical-commit-mode bulk_direct`:
+
+| Mode | Correctness | AR tok/s | DFlash tok/s | vs AR | Verifier cost | Notes |
+| --- | --- | ---: | ---: | ---: | --- | --- |
+| default prefill-at-16 | exact | 33.17 | 19.31 | `0.582x` | `167.63 ms/cycle` | avg accept `2.94`, rows/output `4.02` |
+| force GEMV cutoff at 16 | exact | 32.93 | 17.11 | `0.519x` | `194.19 ms/cycle` | `HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD=16`; slower |
+| default + A/B WMMA | exact | 33.01 | 19.13 | `0.580x` | `169.51 ms/cycle` | `HIPENGINE_VERIFY_DENSE_GEMV_WMMA=on`; neutral/slower |
+
+The default path already routes the 16-row verifier through the prefill-style W4
+projection kernels where current call-site gates allow it.  Forcing the affected
+sites back to GEMV is slower, so the "16 rows unlocks prefill" part is true.
+The economics still fail because acceptance does not scale with the larger
+budget: B=15 accepts only `2.94` draft tokens/cycle on this prompt, while
+target rows/output rises to `4.02`.  B=4 stays the measured optimum for this
+27B DFlash lane.
+
 ### Qwen3.6-27B PARO/DFLASH lane check (2026-05-25)
 
 The z-lab Qwen3.6-27B lane is dense PARO (`num_experts=0`,

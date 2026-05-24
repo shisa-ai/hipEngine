@@ -23548,3 +23548,53 @@ Validation:
 Docs/rollup updated:
 - `docs/DFLASH.md` lower-cost commit/topology/Q8 triage.
 - `benchmarks/README.md` and `benchmarks/CHANGELOG.md` retained diagnostic row.
+
+## 2026-05-25 — DFlash B+1=16 verifier threshold check
+
+Reviewed the "WMMA at B+1=16 instead of B+1=5" feedback.  Code trace result:
+the local knob is not `NANOVLLM_PARO_WMMA_MIN_TOKENS`; hipEngine already routes
+the Qwen3.6-27B dense B=15 verifier through prefill-style W4 projection kernels
+at 16 rows for the relevant call sites (`_small_batch_decode_threshold()` is 7,
+so rows=16 takes the prefill branch).  The verifier MoE grouped threshold
+(`HIPENGINE_VERIFY_MOE_GROUPED_MIN_TOKENS`) already defaults to 16 for
+linear-attention chain/tree layers, but the 27B dense model has no MoE.
+
+Ran the proposed one-prompt 27B dense direct-bulk check anyway, plus two
+diagnostic controls.  Hardware W7900/gfx1100, exact same-session AR equality,
+target `/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207`,
+drafter `/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106`,
+shape B=15 D64, `native_bulk_bplus1`, `full-attn-chain-mode batched`,
+`canonical-commit-mode bulk_direct`.
+
+Commands:
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 2400 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 1 --decode-tokens 64 --draft-budgets 15 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode bulk_direct --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b15-d64-bulk-direct-default.json
+
+HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD=16 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 2400 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 1 --decode-tokens 64 --draft-budgets 15 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode bulk_direct --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b15-d64-bulk-direct-smallbatch16.json
+
+HIPENGINE_VERIFY_DENSE_GEMV_WMMA=on HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 2400 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 1 --decode-tokens 64 --draft-budgets 15 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode bulk_direct --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b15-d64-bulk-direct-ab-wmma-on.json
+```
+
+Results:
+- Default prefill-at-16: exact, AR `33.17 tok/s`, DFlash `19.31 tok/s`,
+  `0.582x` AR, avg accept `2.94`, rows/output `4.02`, verifier
+  `167.63 ms/cycle`, draft `0.630 s`.
+- `HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD=16`: exact but slower, AR
+  `32.93 tok/s`, DFlash `17.11 tok/s`, `0.519x` AR, verifier
+  `194.19 ms/cycle`.
+- `HIPENGINE_VERIFY_DENSE_GEMV_WMMA=on`: exact but neutral/slower, AR
+  `33.01 tok/s`, DFlash `19.13 tok/s`, `0.580x` AR, verifier
+  `169.51 ms/cycle`.
+
+Decision: the feedback is directionally right that B+1=16 is the row-coverage
+regime to test; the result is that default prefill-at-16 already beats the
+forced-GEMV cutoff, but B=15 still loses because acceptance does not grow enough
+to amortize 16 verifier rows.  The accepted-token histogram was
+`{0:3, 1:2, 2:5, 3:2, 5:2, 8:1, 11:1}` over 16 cycles.  B=4 remains the 27B
+lane optimum.
+
+Retained artifact:
+- `benchmarks/results/2026-05-25-hipengine-dflash-b15-verifier-prefill-threshold-diagnostic.json`
+
+Validation:
+- All three benchmark rows passed exact same-session AR equality.

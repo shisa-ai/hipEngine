@@ -1,0 +1,103 @@
+{
+  "schema": 1,
+  "timestamp": "2026-05-25T05:11:58+09:00",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "backend": "hip_gfx1100"
+  },
+  "software": {
+    "hipengine_commit": "7eb739e5d8be2a555cf140703a74a9d5538bf151",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
+    "env_common": "HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=."
+  },
+  "models": {
+    "target": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207",
+    "drafter": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106",
+    "target_family": "Qwen3.6-27B-PARO dense_paro_w4",
+    "drafter_family": "z-lab Qwen3.6-27B-DFlash"
+  },
+  "workload": {
+    "prompt_suite": "fixtures/dflash/stable_prompts.jsonl",
+    "prompt": "code:quicksort_prefix",
+    "decode_tokens": 64,
+    "draft_budget": 15,
+    "verifier_rows_per_cycle": 16,
+    "verifier_mode": "native_bulk_bplus1",
+    "full_attn_chain_mode": "batched",
+    "canonical_commit_mode": "bulk_direct",
+    "same_session_ar_oracle": true
+  },
+  "commands": {
+    "default_prefill_at_16": "HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 2400 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 1 --decode-tokens 64 --draft-budgets 15 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode bulk_direct --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b15-d64-bulk-direct-default.json",
+    "forced_gemv_cutoff_16": "HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD=16 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 2400 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 1 --decode-tokens 64 --draft-budgets 15 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode bulk_direct --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b15-d64-bulk-direct-smallbatch16.json",
+    "ab_wmma_on": "HIPENGINE_VERIFY_DENSE_GEMV_WMMA=on HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 2400 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 1 --decode-tokens 64 --draft-budgets 15 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode bulk_direct --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b15-d64-bulk-direct-ab-wmma-on.json"
+  },
+  "measurements": [
+    {
+      "mode": "default_prefill_at_16",
+      "exact": true,
+      "ar_tok_s": 33.17276863275826,
+      "dflash_tok_s": 19.306128586559634,
+      "speedup_vs_ar": 0.581987255881161,
+      "avg_accept": 2.9375,
+      "target_verify_seconds": 2.682068607013207,
+      "target_verify_ms_per_cycle": 167.62928793832543,
+      "draft_seconds": 0.6299915630370378,
+      "target_verify_rows": 257,
+      "target_verify_rows_per_output_token": 4.015625,
+      "accept_histogram": {
+        "0": 3,
+        "1": 2,
+        "2": 5,
+        "3": 2,
+        "5": 2,
+        "8": 1,
+        "11": 1
+      }
+    },
+    {
+      "mode": "forced_gemv_cutoff_16",
+      "exact": true,
+      "ar_tok_s": 32.93301830966953,
+      "dflash_tok_s": 17.108371588827765,
+      "speedup_vs_ar": 0.5194899364509369,
+      "avg_accept": 2.9375,
+      "target_verify_seconds": 3.1070862020133063,
+      "target_verify_ms_per_cycle": 194.19288762583164,
+      "draft_seconds": 0.630689006880857,
+      "target_verify_rows": 257,
+      "target_verify_rows_per_output_token": 4.015625,
+      "delta_vs_default_speedup_relative": -0.1073851984380054,
+      "delta_vs_default_verify_ms_per_cycle": 26.563599687506206
+    },
+    {
+      "mode": "default_prefill_at_16_plus_ab_wmma",
+      "exact": true,
+      "ar_tok_s": 33.01414850486356,
+      "dflash_tok_s": 19.133553891483206,
+      "speedup_vs_ar": 0.5795561829699923,
+      "avg_accept": 2.9375,
+      "target_verify_seconds": 2.7121983008109964,
+      "target_verify_ms_per_cycle": 169.51239380068728,
+      "draft_seconds": 0.6297253891243599,
+      "target_verify_rows": 257,
+      "target_verify_rows_per_output_token": 4.015625,
+      "delta_vs_default_speedup_relative": -0.004177197216311529,
+      "delta_vs_default_verify_ms_per_cycle": 1.8831058623618475
+    }
+  ],
+  "correctness_gate": {
+    "oracle": "same-session greedy AR equality plus finite AR/draft/verify logits",
+    "passed": true,
+    "rows": "all three rows exact"
+  },
+  "decision": {
+    "default_prefill_at_16": "Retained as current best B=15 diagnostic, but still below B=4 and AR.",
+    "forced_gemv_cutoff_16": "Rejected. At verifier_rows=16, the prefill-style W4 path is faster than the forced GEMV cutoff for the affected projection sites.",
+    "ab_wmma": "Rejected/default-off. Full 16-row coverage does not make the skinny A/B WMMA path profitable.",
+    "budget": "B=15 improves verifier row efficiency but avg_accept=2.94 and rows/output=4.02 leave the cycle uneconomic versus the B=4 lane."
+  }
+}
