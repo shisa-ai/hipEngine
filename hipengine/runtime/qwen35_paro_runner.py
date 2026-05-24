@@ -1074,21 +1074,23 @@ class Qwen35ParoResidentSession:
             return None
         return self._sample_from_hidden(hidden)
 
-    def copy_slot_state(self, src_slot: int, dst_slot: int, *, stream: int = 0) -> None:
+    def copy_slot_state(self, src_slot: int, dst_slot: int, *, stream: int = 0, kv_rows: int | None = None) -> None:
         """Copy resident decode state/KV metadata between physical slots.
 
         This is a correctness-first branch primitive for serial speculative
         verification: slot ``dst_slot`` receives the same recurrent state,
         full-attention KV cache, hidden scratch rows, and position/context
-        scalars as ``src_slot``.  It intentionally copies the whole per-slot KV
-        capacity; native DFlash verifier kernels avoid this cost with dedicated
-        tree scratch and compact commit.
+        scalars as ``src_slot``.  By default it copies the whole per-slot KV
+        capacity; callers that know the live KV prefix can pass ``kv_rows`` to
+        avoid copying unused future cache rows.
         """
 
         self._check_slot(src_slot)
         self._check_slot(dst_slot)
         if src_slot == dst_slot:
             return
+        if kv_rows is not None and int(kv_rows) < 0:
+            raise ValueError("kv_rows must be non-negative")
         for tensor, _state in ((self.batch_hidden, "hidden"), (self.batch_next_hidden, "next_hidden")):
             stride = int(self.config.hidden_size) * tensor.dtype.itemsize
             self.runtime.memcpy_async(
@@ -1119,20 +1121,29 @@ class Qwen35ParoResidentSession:
         for layer_id in self.full_caches:
             key_cache, value_cache, key_buf, value_buf = self.full_caches[layer_id]
             cache_stride = int(np.prod(key_cache.shape)) * key_cache.dtype.itemsize
-            self.runtime.memcpy_async(
-                key_buf.ptr + int(dst_slot) * cache_stride,
-                key_buf.ptr + int(src_slot) * cache_stride,
-                cache_stride,
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-                stream,
-            )
-            self.runtime.memcpy_async(
-                value_buf.ptr + int(dst_slot) * cache_stride,
-                value_buf.ptr + int(src_slot) * cache_stride,
-                cache_stride,
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-                stream,
-            )
+            cache_nbytes = cache_stride
+            if kv_rows is not None:
+                if len(key_cache.shape) < 3:
+                    raise ValueError(f"expected paged KV cache shape, got {key_cache.shape}")
+                capacity_rows = int(key_cache.shape[0]) * int(key_cache.shape[1])
+                row_elems = int(np.prod(key_cache.shape[2:]))
+                copy_rows = min(int(kv_rows), capacity_rows)
+                cache_nbytes = copy_rows * row_elems * key_cache.dtype.itemsize
+            if cache_nbytes > 0:
+                self.runtime.memcpy_async(
+                    key_buf.ptr + int(dst_slot) * cache_stride,
+                    key_buf.ptr + int(src_slot) * cache_stride,
+                    cache_nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+                self.runtime.memcpy_async(
+                    value_buf.ptr + int(dst_slot) * cache_stride,
+                    value_buf.ptr + int(src_slot) * cache_stride,
+                    cache_nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
         for buffer in (self.position_buf, self.context_buf, self.token_id_buf):
             self.runtime.memcpy_async(
                 buffer.ptr + int(dst_slot) * DType.INT64.itemsize,

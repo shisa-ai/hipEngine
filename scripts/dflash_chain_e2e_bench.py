@@ -2152,7 +2152,7 @@ def _run_dflash_chain_on_session(
             use_branch_slot = tree_mode == "chain" and canonical_commit_mode in {"replay", "branch_copy"}
             if use_branch_slot:
                 verifier_slot = branch_slot_start
-                session.copy_slot_state(base_slot, verifier_slot)
+                session.copy_slot_state(base_slot, verifier_slot, kv_rows=context_tokens)
                 state_copies += 1
             if tree_mode == "branching_topk":
                 if compiled_tree is None:
@@ -2298,7 +2298,7 @@ def _run_dflash_chain_on_session(
                 and canonical_commit_mode == "branch_copy"
                 and verifier_slot != base_slot
             ):
-                session.copy_slot_state(verifier_slot, base_slot)
+                session.copy_slot_state(verifier_slot, base_slot, kv_rows=context_tokens + 1 + accepted)
                 state_copies += 1
             verify_elapsed = time.perf_counter() - t_verify
             verify_seconds_total += verify_elapsed

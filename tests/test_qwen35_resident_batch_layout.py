@@ -758,6 +758,40 @@ def test_qwen35_resident_copy_slot_state_copies_all_slot_owned_buffers() -> None
     assert calls[-1] == (0x5000 + 2 * DType.INT64.itemsize, 0x5000, DType.INT64.itemsize, runner_module.HipMemcpyKind.DEVICE_TO_DEVICE, 7)
 
 
+def test_qwen35_resident_copy_slot_state_can_bound_kv_rows() -> None:
+    device = Device("hip", 0)
+    calls: list[tuple[int, int, int, object, int]] = []
+
+    class FakeRuntime:
+        def memcpy_async(self, dst, src, nbytes, kind, stream):
+            calls.append((int(dst), int(src), int(nbytes), kind, int(stream)))
+
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.device = device
+    session.runtime = FakeRuntime()
+    session.max_batch_size = 2
+    session.config = SimpleNamespace(hidden_size=8)
+    session.batch_hidden = _tensor(0x1000, (2, 8), DType.FP16)
+    session.batch_next_hidden = _tensor(0x2000, (2, 8), DType.FP16)
+    session.position_buf = DeviceBuffer(0x3000, 2 * DType.INT64.itemsize)
+    session.context_buf = DeviceBuffer(0x4000, 2 * DType.INT64.itemsize)
+    session.token_id_buf = DeviceBuffer(0x5000, 2 * DType.INT64.itemsize)
+    conv = _tensor(0x6000, (8, 4), DType.FP32)
+    rec = _tensor(0x7000, (2, 4, 4), DType.FP32)
+    session.linear_states = {0: (conv, rec, DeviceBuffer(0x6000, 2 * conv.numel * DType.FP32.itemsize), DeviceBuffer(0x7000, 2 * rec.numel * DType.FP32.itemsize), None, None)}
+    key = _tensor(0x8000, (4, 256, 1, 4), DType.BF16)
+    val = _tensor(0x9000, (4, 256, 1, 4), DType.BF16)
+    session.full_caches = {1: (key, val, DeviceBuffer(0x8000, 2 * key.numel * DType.BF16.itemsize), DeviceBuffer(0x9000, 2 * val.numel * DType.BF16.itemsize))}
+
+    session.copy_slot_state(0, 1, stream=3, kv_rows=17)
+
+    slot_stride = key.numel * DType.BF16.itemsize
+    bounded_kv_nbytes = 17 * key.shape[2] * key.shape[3] * DType.BF16.itemsize
+    assert (0x8000 + slot_stride, 0x8000, bounded_kv_nbytes, runner_module.HipMemcpyKind.DEVICE_TO_DEVICE, 3) in calls
+    assert (0x9000 + slot_stride, 0x9000, bounded_kv_nbytes, runner_module.HipMemcpyKind.DEVICE_TO_DEVICE, 3) in calls
+    assert (0x8000 + slot_stride, 0x8000, slot_stride, runner_module.HipMemcpyKind.DEVICE_TO_DEVICE, 3) not in calls
+
+
 def test_qwen35_resident_session_slot_views_offset_batch_state() -> None:
     device = Device("hip", 0)
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)

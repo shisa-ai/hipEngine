@@ -23479,3 +23479,72 @@ Docs/rollup updated:
 - `docs/DFLASH.md` verifier-side WMMA audit.
 - `docs/KERNELS.md` dense GEMV WMMA variants.
 - `benchmarks/README.md` and `benchmarks/CHANGELOG.md` with the retained diagnostic row.
+
+## 2026-05-25 — DFlash lower-cost commit / tree topology / Q8 KV triage
+
+Started from the post-WMMA conclusion that verifier dense WMMA is not the easy
+win.  Attacked the next three levers in order: lower-cost canonical commit,
+tree topology, then Q8 KV scope.
+
+Code change:
+- Added optional `kv_rows` to
+  `Qwen35ParoResidentSession.copy_slot_state(src, dst, kv_rows=...)`.  Default
+  behavior still copies the full per-slot KV capacity; DFlash branch-slot setup
+  now copies only the live context prefix, and branch-copy commit copies only
+  `context_tokens + 1 + accepted` rows.
+- Added `test_qwen35_resident_copy_slot_state_can_bound_kv_rows` to verify the
+  bounded KV byte count while keeping the existing full-copy test.
+
+Canonical commit measurements (W7900/gfx1100, exact same-session AR equality,
+commands embedded in retained artifact):
+- 27B dense PARO + z-lab DFlash, B=4 D64, 4 prompts:
+  - safe replay baseline: exact `4/4`, `0.451x` AR, AR `32.60 tok/s`,
+    DFlash `14.69 tok/s`, avg accept `2.53`, rows/output `2.406`,
+    verify `221.38 ms/cycle`, replay rows `254`.
+  - branch-copy bounded-KV: exact `4/4`, `0.859x` AR, AR `32.80 tok/s`,
+    DFlash `28.19 tok/s`, avg accept `2.53`, rows/output `1.414`,
+    verify `105.54 ms/cycle`, replay rows `0`, state copies `144`.
+- 27B B=4 D160, 1 prompt: branch-copy exact, `0.754x` AR, avg accept
+  `2.14`, rows/output `1.594`.
+- 35B A3B B=4 D32, 1 prompt:
+  - replay baseline: exact, `0.255x` AR, verify `61.68 ms/cycle`, replay
+    rows `31`.
+  - branch-copy bounded-KV: exact, `0.340x` AR, verify `41.08 ms/cycle`,
+    replay rows `0`, state copies `34`.
+- The bounded-KV copy itself is neutral at short D64 contexts: branch-copy
+  full-KV `0.8591x` vs bounded-KV `0.8595x` AR.  Interpretation: the useful
+  speed win is replacing c=1 replay with branch-copy; byte-bounding mostly
+  matters once resident capacity spans multiple KV blocks.
+
+Tree topology measurements (27B dense, W7900/gfx1100, D64 one prompt):
+- `chain_as_tree`, B=4/K=1: exact, `0.843x` AR, avg accept `2.50`,
+  rows/output `1.422`, verify `107.81 ms/cycle`.
+- `branching_topk`, B=4/K=2: exact, `0.659x` AR, avg accept `1.74`,
+  rows/output `1.812`, verify `107.50 ms/cycle`.
+- `branching_topk`, B=8/K=2: exact, `0.612x` AR, avg accept `2.32`,
+  rows/output `2.688`, verify `139.10 ms/cycle`.
+- Conclusion: current balanced branching topology loses top-1 depth; breadth
+  does not pay.  Keep off the promotion path until a depth-aware topology
+  exists.
+
+Q8 KV scope:
+- Current hipEngine hot verifier paths are BF16-KV typed end-to-end:
+  `paged_kv_write` writes BF16, paged/full/tree attention kernels read BF16,
+  and AOTriton cache-backed prefill rejects non-BF16 KV tensors.
+- hipfire's Q8/asym KV advantage comes from a full storage+attention family
+  (`kv_cache_write_q8_0[_batched]`, asym3 K writers, and matching batched/tree
+  attention kernels such as `attention_flash_asym3_tile_batched`).  A c=1-only
+  Q8 port would not accelerate native-bulk DFlash verify, so this stays a
+  dedicated kernel-family port rather than a micro-optimization.
+
+Retained artifact:
+- `benchmarks/results/2026-05-25-hipengine-dflash-canonical-tree-q8-triage.json`
+
+Validation:
+- `python3 -m py_compile hipengine/runtime/qwen35_paro_runner.py scripts/dflash_chain_e2e_bench.py tests/test_qwen35_resident_batch_layout.py` -> pass.
+- `PYTHONPATH=. pytest -q tests/test_qwen35_resident_batch_layout.py -k 'copy_slot_state or slot_views'` -> `3 passed`.
+- Benchmark correctness gates listed above all passed exact same-session AR equality.
+
+Docs/rollup updated:
+- `docs/DFLASH.md` lower-cost commit/topology/Q8 triage.
+- `benchmarks/README.md` and `benchmarks/CHANGELOG.md` retained diagnostic row.

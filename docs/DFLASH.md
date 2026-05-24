@@ -736,8 +736,11 @@ Do not start these before D1-D6 establish a winning native chain path.
    profiled hot.
 
 4. **Quantized KV / Q8 state.**
-   hipfire's Q8/asym KV is part of its memory and bandwidth story. Port only
-   after BF16/BF16-state correctness and speed are established.
+   hipfire's Q8/asym KV is part of its memory and bandwidth story.  The
+   2026-05-25 triage confirmed this is not a small runtime flag in hipEngine:
+   paged KV write, paged/tree attention, and AOTriton cache-backed paths are
+   BF16-typed today.  Treat Q8/asym KV as a full storage + verifier-attention
+   kernel-family port.
 
 5. **HIP graph multi-bucket cache.**
    Add graph buckets for multiple budgets and prompt regimes after a single
@@ -1092,7 +1095,9 @@ Measured on W7900/gfx1100 with the local 27B target snapshot
 | Mode | Shape | Correctness | AR tok/s | DFlash tok/s | vs AR | Key economics |
 | --- | --- | --- | ---: | ---: | ---: | --- |
 | safe replay | B=4, D64, 4 prompts | exact `4/4` | 32.60 | 14.69 | `0.451x` | avg accept `2.53`, rows/output `2.41`, 63-64 replay rows per prompt |
+| branch copy | B=4, D64, 4 prompts | exact `4/4` | 32.80 | 28.19 | `0.859x` | avg accept `2.53`, rows/output `1.41`, zero replay rows, 144 state copies |
 | direct bulk | B=4, D64, 4 prompts | exact `4/4` | 32.69 | 27.43 | `0.839x` | avg accept `2.53`, rows/output `1.41` |
+| branch copy | B=4, D160, 1 prompt | exact `1/1` | 32.91 | 24.82 | `0.754x` | avg accept `2.14`, rows/output `1.59`, zero replay rows |
 | direct bulk | B=4, D160, 1 prompt | exact `1/1` | 32.71 | 23.83 | `0.728x` | avg accept `2.14`, rows/output `1.59` |
 | direct bulk budget sweep | B={1,2,4,8,12,15}, D64, 1 prompt | exact `6/6` | 32.75 | 21.45 aggregate | `0.655x` aggregate | B4 is best: `0.823x`; B8/B12/B15 regress to `0.706/0.644/0.582x` |
 
@@ -1100,13 +1105,42 @@ Interpretation: 27B dense PARO/DFLASH is a materially better speculation lane
 than the current 35B A3B DFlash path.  It also confirms the budget conclusion:
 B=4 remains the measured optimum; the 8-24-token range pays too many verifier
 rows before acceptance catches up.  The remaining blocker is not drafter
-quality on the best prompts, it is exact commit cost.  Safe replay is still far
-below AR, while direct bulk is close enough to be architecturally interesting
-but remains diagnostic until canonical-state equivalence is proven broadly or
-replaced with a lower-cost exact commit.
+quality on the best prompts, it is exact commit cost.  Branch-copy commit is the
+first lower-cost exact canonical mode that materially closes the replay gap:
+27B D64 four-prompt improves `0.451x -> 0.859x` AR and 35B A3B D32 one-prompt
+improves `0.255x -> 0.340x` AR, both exact.  It still does not beat AR, but it
+should replace safe replay as the conservative speed-work baseline when
+`native_bulk_bplus1` chain mode is available.  Direct bulk remains diagnostic
+until canonical-state equivalence is proven broadly.
 
 Artifact:
 [`2026-05-25-hipengine-dflash-qwen36-27b-w7900-diagnostic.json`](../benchmarks/results/2026-05-25-hipengine-dflash-qwen36-27b-w7900-diagnostic.json).
+
+### Lower-cost commit / topology / Q8 KV triage (2026-05-25)
+
+Retained diagnostic:
+[`2026-05-25-hipengine-dflash-canonical-tree-q8-triage.json`](../benchmarks/results/2026-05-25-hipengine-dflash-canonical-tree-q8-triage.json).
+
+- **Canonical commit:** `--canonical-commit-mode branch_copy` is exact on 27B
+  D64 four-prompt, 27B D160 one-prompt, and 35B A3B D32 one-prompt.  It avoids
+  c=1 replay by verifying on a branch slot and copying the committed branch
+  state back to canonical.  A bounded-KV copy variant now passes the live
+  context row count into `copy_slot_state`; this is neutral at D64 because the
+  resident capacity is still one 256-token KV block, but it avoids copying
+  unused future rows at longer capacities.
+- **Tree topology:** `chain_as_tree` is exact but slightly slower than chain on
+  27B B=4/D64 one-prompt (`0.843x` AR).  Balanced `branching_topk K=2` is
+  exact but much slower at B=4 (`0.659x`) and B=8 (`0.612x`) because breadth
+  steals depth from the top-1 path: avg accept drops from `2.50` to `1.74` at
+  B=4.  Do not promote current balanced branching topology before a depth-aware
+  tree shape exists.
+- **Q8 KV:** current hipEngine verifier hot paths are BF16-KV typed end to end:
+  paged KV write stores BF16, paged/full/tree attention kernels read BF16, and
+  AOTriton cache-backed prefill explicitly rejects non-BF16 KV tensors.  hipfire
+  obtains its KV advantage from a full storage+attention family (`Q8_0` /
+  asym3 writers plus matching batched/tree attention kernels), not from a small
+  flag.  A c=1-only Q8 path would not accelerate native bulk DFlash verify, so
+  Q8/asym KV stays a dedicated kernel-family port rather than a micro-iteration.
 
 ### R3.1 design notes — Adaptive budget controller
 

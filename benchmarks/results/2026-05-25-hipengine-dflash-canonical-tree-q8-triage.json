@@ -1,0 +1,159 @@
+{
+  "schema": 1,
+  "timestamp": "2026-05-25T00:00:00+09:00",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "backend": "hip_gfx1100"
+  },
+  "software": {
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
+    "env": "HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=."
+  },
+  "models": {
+    "qwen36_27b_target": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207",
+    "qwen36_27b_drafter": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106",
+    "qwen36_35b_target": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16",
+    "qwen36_35b_drafter": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719"
+  },
+  "workload": {
+    "prompt_suite": "fixtures/dflash/stable_prompts.jsonl",
+    "verifier_mode": "native_bulk_bplus1",
+    "full_attn_chain_mode": "batched",
+    "same_session_ar_oracle": true
+  },
+  "commands": {
+    "27b_branch_copy_bounded_d64_4prompt": "HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 2400 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 4 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branch-copy-bounded-kv-4prompt.json",
+    "35b_branch_copy_bounded_d32_1prompt": "HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 2400 python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 1 --decode-tokens 32 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-35b-b4-d32-1prompt-branch-copy-bounded-kv.json",
+    "27b_chain_as_tree_d64_1prompt": "HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 1800 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 1 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --tree-mode chain_as_tree --tree-top-k 1 --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-chain-as-tree-1prompt.json",
+    "27b_branching_topk2_b4_d64_1prompt": "HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 1800 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 1 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --tree-mode branching_topk --tree-top-k 2 --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branching-topk2-1prompt.json",
+    "27b_branching_topk2_b8_d64_1prompt": "HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 1800 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 1 --decode-tokens 64 --draft-budgets 8 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --tree-mode branching_topk --tree-top-k 2 --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b8-d64-branching-topk2-1prompt.json"
+  },
+  "measurements": {
+    "canonical_commit": [
+      {
+        "model": "Qwen3.6-27B-PARO",
+        "shape": "B=4 D64 4 prompts",
+        "mode": "safe replay",
+        "exact": true,
+        "speedup_vs_ar": 0.45069959299352125,
+        "ar_tok_s": 32.60247150354496,
+        "dflash_tok_s": 14.693920637230589,
+        "avg_accept": 2.5277777777777777,
+        "target_rows_per_output": 2.40625,
+        "verify_ms_per_cycle": 221.37699413562788,
+        "replay_rows": 254,
+        "state_copies": 72
+      },
+      {
+        "model": "Qwen3.6-27B-PARO",
+        "shape": "B=4 D64 4 prompts",
+        "mode": "branch_copy bounded-kv",
+        "exact": true,
+        "speedup_vs_ar": 0.8594881286952839,
+        "ar_tok_s": 32.79536717484322,
+        "dflash_tok_s": 28.18722876298074,
+        "avg_accept": 2.5277777777777777,
+        "target_rows_per_output": 1.4140625,
+        "verify_ms_per_cycle": 105.53545988821296,
+        "replay_rows": 0,
+        "state_copies": 144
+      },
+      {
+        "model": "Qwen3.6-27B-PARO",
+        "shape": "B=4 D160 1 prompt",
+        "mode": "branch_copy",
+        "exact": true,
+        "speedup_vs_ar": 0.7541106946982054,
+        "ar_tok_s": 32.90854943445334,
+        "dflash_tok_s": 24.816689075525844,
+        "avg_accept": 2.1372549019607843,
+        "target_rows_per_output": 1.59375
+      },
+      {
+        "model": "Qwen3.6-35B-A3B-PARO",
+        "shape": "B=4 D32 1 prompt",
+        "mode": "safe replay",
+        "exact": true,
+        "speedup_vs_ar": 0.25540929254208283,
+        "ar_tok_s": 103.86192051034243,
+        "dflash_tok_s": 26.5272996396086,
+        "avg_accept": 0.8235294117647058,
+        "target_rows_per_output": 3.65625,
+        "verify_ms_per_cycle": 61.68441069380873,
+        "replay_rows": 31,
+        "state_copies": 17
+      },
+      {
+        "model": "Qwen3.6-35B-A3B-PARO",
+        "shape": "B=4 D32 1 prompt",
+        "mode": "branch_copy bounded-kv",
+        "exact": true,
+        "speedup_vs_ar": 0.3401932485135052,
+        "ar_tok_s": 109.42909924071772,
+        "dflash_tok_s": 37.227040752606506,
+        "avg_accept": 0.8235294117647058,
+        "target_rows_per_output": 2.6875,
+        "verify_ms_per_cycle": 41.08379735364853,
+        "replay_rows": 0,
+        "state_copies": 34
+      }
+    ],
+    "bounded_kv_copy": {
+      "unit_test": "tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_copy_slot_state_can_bound_kv_rows",
+      "27b_d64_4prompt_effect": "neutral at short-context one-block capacity: branch_copy full-KV 0.8590687996612969x AR, bounded-KV 0.8594881286952839x AR"
+    },
+    "tree_topology": [
+      {
+        "model": "Qwen3.6-27B-PARO",
+        "shape": "B=4 D64 1 prompt",
+        "mode": "chain_as_tree",
+        "exact": true,
+        "speedup_vs_ar": 0.8425790188827218,
+        "avg_accept": 2.5,
+        "target_rows_per_output": 1.421875,
+        "verify_ms_per_cycle": 107.80810923056885
+      },
+      {
+        "model": "Qwen3.6-27B-PARO",
+        "shape": "B=4 K=2 D64 1 prompt",
+        "mode": "branching_topk",
+        "exact": true,
+        "speedup_vs_ar": 0.6585810615411548,
+        "avg_accept": 1.7391304347826086,
+        "target_rows_per_output": 1.8125,
+        "verify_ms_per_cycle": 107.49508635110587,
+        "tree_active_nodes_total": 90
+      },
+      {
+        "model": "Qwen3.6-27B-PARO",
+        "shape": "B=8 K=2 D64 1 prompt",
+        "mode": "branching_topk",
+        "exact": true,
+        "speedup_vs_ar": 0.6120464232658108,
+        "avg_accept": 2.3157894736842106,
+        "target_rows_per_output": 2.6875,
+        "verify_ms_per_cycle": 139.10183532004194,
+        "tree_active_nodes_total": 146
+      }
+    ],
+    "q8_kv_scope": {
+      "implemented": false,
+      "current_hot_path": "BF16 paged KV write and BF16 paged/tree/full-attention kernels; AOTriton cache-backed path explicitly requires BF16 KV tensors.",
+      "reference": "hipfire uses separate q8_0/asym3 KV writers plus matching batched/tree attention kernels, e.g. reference/hipfire/kernels/src/kv_cache_write_q8_0_batched.hip and attention_flash_asym3_tile_batched.hip.",
+      "decision": "Do not port a c=1-only Q8 KV path for this round; it would not accelerate DFlash native bulk/tree verifier. Required work is a full Q8/asym KV storage mode and verifier attention kernel family."
+    }
+  },
+  "correctness_gate": {
+    "oracle": "same-session greedy AR equality plus finite AR/draft/verify logits",
+    "passed": true,
+    "rows": "all measured rows exact"
+  },
+  "decision": {
+    "canonical_commit": "branch_copy is a useful lower-cost exact canonical mode versus replay, but still below AR; bounded KV copy is retained for future longer-context capacity but neutral at D64 one-block contexts.",
+    "tree_topology": "current chain_as_tree and balanced branching_topk topologies are not speed wins; branching loses top-1 depth and should not be promoted.",
+    "q8_kv": "scoped as future kernel-family work, not an incremental benchmark toggle."
+  }
+}
