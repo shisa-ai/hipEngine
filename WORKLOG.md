@@ -23672,3 +23672,97 @@ safety fallback for this D64 shape.  Next real speed work should target B=4
 target verifier cost and/or profile/history-based route classification.  The
 branch-copy canonical commit path is already low enough that it is not the next
 14% wall.
+
+## 2026-05-25 — 27B DFlash B=4 verifier rocprof/down-projection diagnostic
+
+Added benchmark-only ROCTX support to `scripts/dflash_chain_e2e_bench.py`:
+`--roctx` emits `dflash_verify_pass_N` ranges and
+`--rocprof-selected-region dflash_verify` wraps each target-verify window in
+`roctxProfilerResume/Pause` for `rocprofv3 --selected-regions`.
+
+Important profiler environment finding: system `/opt/rocm/lib/libroctx64.so`
+has range push/pop but not `roctxProfilerResume/Pause`, so selected-region
+profiling silently emitted no kernel CSV.  The therock SDK library works when
+aliased as `libroctx64.so`:
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+sdk=Path('/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/librocprofiler-sdk-roctx.so.1')
+override=Path('/tmp/hipengine-roctx-sdk-override-dflash')
+override.mkdir(parents=True, exist_ok=True)
+link=override/'libroctx64.so'
+if link.exists() or link.is_symlink(): link.unlink()
+link.symlink_to(sdk)
+PY
+```
+
+Baseline selected-region profile command:
+
+```bash
+LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override-dflash:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/rocm_sysdeps/lib:$LD_LIBRARY_PATH HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 rocprofv3 --kernel-trace --selected-regions true --output-format csv -d /tmp/hipengine-rocprof-dflash-27b-b4-verify-selected -o dflash-27b-b4-verify-selected -- python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 1 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --rocprof-selected-region dflash_verify --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branch-copy-1prompt-verify-selected.json
+```
+
+Result: exact, `0.817x` AR under profiler.  Verifier-only CSV:
+`/tmp/hipengine-rocprof-dflash-27b-b4-verify-selected/dflash-27b-b4-verify-selected_kernel_trace.csv`.
+Selected-region kernel time `1413.8 ms`, trace span `2318.8 ms`.  Top families:
+W4 prefill single projection `555.7 ms` (`39.3%`, 2304 calls), existing
+multi-row W4 dense `300.4 ms` (`21.2%`), other dense/GEMV `224.9 ms`
+(`15.9%`), chain/tree state `165.5 ms` (`11.7%`), full attention `62.0 ms`
+(`4.4%`).  The B=4 verifier wall is W4 projection, not attention or commit.
+
+Tried a scoped runtime experiment routing verifier-sized shared+dense MLP down
+projections through existing `gemv_awq_pack8_multi_row_transposed_fp16`.  Narrow
+validation passed:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro.py scripts/dflash_chain_e2e_bench.py
+PYTHONPATH=. pytest -q tests/test_dflash_draft_confidence.py tests/test_speculative_benchmark.py
+```
+
+Single-prompt non-profiled quicksort exact speed improved:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 1800 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 1 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branch-copy-1prompt-down-multirow.json
+```
+
+Result: exact, `0.971x` AR (`32.06` vs `33.02 tok/s`), target verify
+`2.00 -> 1.62 s`; draft and commit stayed flat.  Post-change selected-region
+profile showed `awq_fusedw4_prefill_fp16` `555.7 -> 146.7 ms`, kernel time
+`1413.8 -> 1137.2 ms`, trace span `2318.8 -> 2037.3 ms`.
+
+Full 9-prompt exactness gate rejected the all-down route:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branch-copy-9prompt-down-multirow.json
+```
+
+Result: `8/9` exact, aggregate `1.003x` AR.  Failure:
+`code:json_yaml_continuation`, first mismatch index `48`.
+
+Site isolation:
+- Shared-down-only first 4 prompts exact, `0.862x` AR:
+  `HIPENGINE_W4_MULTI_ROW_PACK8_SITES=full_qk,linear_qkv_z,dense_gate_up,single_full_o,single_shared_down`.
+- Dense-down-only first 4 prompts failed exact, `1.011x` AR:
+  `HIPENGINE_W4_MULTI_ROW_PACK8_SITES=full_qk,linear_qkv_z,dense_gate_up,single_full_o,single_dense_down`.
+- Default-mask/shared-down 9-prompt exact, but not a suite win: `0.863x` AR vs
+  the prior branch-copy baseline `0.867x`.
+- Dense-down with canonical replay first 4 prompts is exact but too slow:
+  `0.498x` AR.  This implies the dense-down speed path mainly breaks
+  branch-copy canonical state, not the replayed c=1 state.
+
+Decision: reverted the production runtime dispatch experiment.  Dense-down
+multi-row is the first concrete verifier-cost lever that can reach break-even,
+but it needs lower-cost exact canonicalization or a deterministic dense-down
+verifier path before default-on.  Kept only the profiler harness support.
+
+Retained artifact:
+- `benchmarks/results/2026-05-25-hipengine-dflash-27b-verifier-rocprof-down-proj-diagnostic.json`
+
+Validation:
+- `python3 -m py_compile hipengine/runtime/qwen35_paro.py scripts/dflash_chain_e2e_bench.py`
+- `PYTHONPATH=. pytest -q tests/test_dflash_draft_confidence.py tests/test_speculative_benchmark.py` (`12 passed`)
+
+Docs/rollup updated:
+- `docs/DFLASH.md` 27B B=4 verifier rocprof/down-projection check.
+- `benchmarks/README.md` and `benchmarks/CHANGELOG.md` retained diagnostic row.

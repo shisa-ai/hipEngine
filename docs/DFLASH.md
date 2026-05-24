@@ -1197,6 +1197,50 @@ should focus on the B=4 target verifier cost and on profile/history-based
 routing; online one-cycle probing is a safety fallback for this D64 shape, not
 a speed path.
 
+### 27B B=4 verifier rocprof + down-projection check (2026-05-25)
+
+Retained diagnostic:
+[`2026-05-25-hipengine-dflash-27b-verifier-rocprof-down-proj-diagnostic.json`](../benchmarks/results/2026-05-25-hipengine-dflash-27b-verifier-rocprof-down-proj-diagnostic.json).
+
+The benchmark harness now has `--roctx` and
+`--rocprof-selected-region dflash_verify` so `rocprofv3 --selected-regions`
+can profile only the target-verifier windows.  On this host, selected regions
+require the therock ROCTX SDK shim on `LD_LIBRARY_PATH`; the system
+`/opt/rocm/lib/libroctx64.so` exposes range markers but not
+`roctxProfilerResume/Pause`.
+
+Verifier-only rocprof for the 27B B=4/D64 quicksort row confirms the current
+wall is W4 target projection, not attention or commit:
+
+| Verifier family | Kernel time | Share | Calls | Notes |
+| --- | ---: | ---: | ---: | --- |
+| `awq_fusedw4_prefill_fp16` single W4 projections | `555.7 ms` | `39.3%` | 2304 | Dense-MLP down projection dominates |
+| Existing multi-row W4 dense | `300.4 ms` | `21.2%` | 1458 | Mostly gate/up and safe sites |
+| Other W4/GEMV dense | `224.9 ms` | `15.9%` | 4032 | Includes verifier-size single GEMV |
+| Linear/GDN chain state | `165.5 ms` | `11.7%` | 2610 | Recurrent linear-attn state path |
+| Full attention | `62.0 ms` | `4.4%` | 288 | Not the primary wall at this context |
+
+Experiment: route verifier-sized shared+dense MLP down projections through the
+existing `gemv_awq_pack8_multi_row_transposed_fp16` path.  On the one-prompt
+trace, `awq_fusedw4_prefill_fp16` drops `555.7 -> 146.7 ms`, selected-region
+kernel time drops `1413.8 -> 1137.2 ms`, and target verify wall drops
+`2.00 -> 1.62 s`; single-prompt speed improves `0.817x -> 0.971x` AR.
+
+Promotion is rejected for correctness/economics:
+
+| Variant | Scope | Correctness | vs AR | Result |
+| --- | --- | --- | ---: | --- |
+| shared+dense down multi-row + branch-copy | 9 prompts | failed `8/9` exact | `1.003x` | `code:json_yaml_continuation` diverges at token 48 |
+| shared-down-only default mask | 9 prompts | exact `9/9` | `0.863x` | no suite win over the `0.867x` baseline |
+| dense-down-only + branch-copy | first 4 prompts | failed | `1.011x` | reproduces the JSON/YAML failure |
+| dense-down + canonical replay | first 4 prompts | exact | `0.498x` | replay fixes drift but costs too much |
+
+Conclusion: dense-down multi-row is the first concrete verifier-cost lever that
+can reach break-even, but branch-copy canonical state is not exact with it.
+Do not default this dispatch.  Next useful work is a lower-cost exact canonical
+commit/state-canonicalization path for dense-down multi-row, or a deterministic
+verifier down-projection path that preserves the branch-copy speed.
+
 ### R3.1 design notes — Adaptive budget controller
 
 **Goal:** Default DFlash on, but never lose to AR by more than 5% on any prompt. Required to make any future R3.4/R3.6 win promotable across the full 9-prompt suite (not just the prompt 3 archetype).

@@ -14,6 +14,7 @@ speed gates pass.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import json
 import math
 import platform
@@ -75,6 +76,55 @@ DEFAULT_TARGET_REVISION = "501ef8635e5cfb5a7497d232358ca8d1afc0c66e"
 DEFAULT_DRAFTER_REVISION = "42d3b34d588423cdae7ba8f53a8cf7789346a719"
 _ADAPTIVE_AR_GUARD_REASONS = {"remaining_tokens_guard", "probe_amortization_guard"}
 _PROFILE_ROUTE_VALUES = {"ar", "chain", "tree", "spec"}
+
+
+class _Roctx:
+    """Minimal ROCTX range helper for rocprof marker slicing."""
+
+    def __init__(self, *, enabled: bool) -> None:
+        self.enabled = bool(enabled)
+        self._lib = None
+        self._resume = None
+        self._pause = None
+        if not self.enabled:
+            return
+        try:
+            self._lib = ctypes.CDLL("libroctx64.so")
+            self._lib.roctxRangePushA.argtypes = [ctypes.c_char_p]
+            self._lib.roctxRangePushA.restype = ctypes.c_int
+            self._lib.roctxRangePop.argtypes = []
+            self._lib.roctxRangePop.restype = ctypes.c_int
+            self._resume = getattr(self._lib, "roctxProfilerResume", None)
+            self._pause = getattr(self._lib, "roctxProfilerPause", None)
+            if self._resume is not None:
+                self._resume.argtypes = [ctypes.c_int]
+                self._resume.restype = None
+            if self._pause is not None:
+                self._pause.argtypes = [ctypes.c_int]
+                self._pause.restype = None
+        except OSError as exc:
+            print(f"warning: --roctx requested but libroctx64.so could not be loaded: {exc}", file=sys.stderr)
+            self._lib = None
+
+    def push(self, name: str) -> None:
+        if self._lib is not None:
+            self._lib.roctxRangePushA(name.encode("utf-8"))
+
+    def pop(self) -> None:
+        if self._lib is not None:
+            self._lib.roctxRangePop()
+
+    def profiler_resume(self) -> None:
+        if self._resume is not None:
+            self._resume(0)
+
+    def profiler_pause(self) -> None:
+        if self._pause is not None:
+            self._pause(0)
+
+    @property
+    def profiler_controls_available(self) -> bool:
+        return self._resume is not None and self._pause is not None
 
 
 def _hf_snapshot_identity(path: Path, *, default_name: str, default_revision: str) -> tuple[str, str]:
@@ -1989,6 +2039,8 @@ def run_same_session_pair(
     tree_top_k: int = 1,
     canonical_commit_mode: str = "replay",
     profile_route: str = "spec",
+    roctx: _Roctx | None = None,
+    rocprof_selected_region: str = "none",
 ) -> tuple[tuple[list[int], dict[str, Any]], tuple[list[int], dict[str, Any]]]:
     """Run AR control and DFlash chain in one resident target session.
 
@@ -2108,6 +2160,8 @@ def run_same_session_pair(
                 tree_top_k=tree_top_k,
                 draft_p_min=draft_p_min,
                 canonical_commit_mode=routed_canonical_commit_mode,
+                roctx=roctx,
+                rocprof_selected_region=rocprof_selected_region,
             )
         spec_meta["same_session_control"] = True
         spec_meta["same_process_control"] = True
@@ -2136,6 +2190,8 @@ def _run_dflash_chain_on_session(
     tree_top_k: int = 1,
     draft_p_min: float = 0.0,
     canonical_commit_mode: str = "replay",
+    roctx: _Roctx | None = None,
+    rocprof_selected_region: str = "none",
 ) -> tuple[list[int], dict[str, Any]]:
     if adaptive_budget_mode not in {"off", "on"}:
         raise ValueError("adaptive_budget_mode must be off or on")
@@ -2311,6 +2367,10 @@ def _run_dflash_chain_on_session(
         finite_draft = finite_draft and draft.finite_logits
         d2h_vector_reads += draft.d2h_vector_reads
         d2h_vector_values += draft.d2h_vector_values
+        if roctx is not None:
+            if rocprof_selected_region == "dflash_verify":
+                roctx.profiler_resume()
+            roctx.push(f"dflash_verify_pass_{draft_calls}")
         t_verify = time.perf_counter()
         verify_result = None
         target_batch = None
@@ -2487,6 +2547,10 @@ def _run_dflash_chain_on_session(
                 state_copies += 1
             verify_elapsed = time.perf_counter() - t_verify
             verify_seconds_total += verify_elapsed
+        if roctx is not None:
+            roctx.pop()
+            if rocprof_selected_region == "dflash_verify":
+                roctx.profiler_pause()
         accepted_lengths.append(accepted)
         accepted_tokens = (
             list(verify_result.accepted_tokens)
@@ -2960,6 +3024,17 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument("--hardware-gpu", default=None, help="Human-readable GPU name to record in the benchmark artifact")
+    parser.add_argument(
+        "--roctx",
+        action="store_true",
+        help="Emit ROCTX ranges named dflash_verify_pass_N around each DFlash target-verify window for rocprof marker slicing.",
+    )
+    parser.add_argument(
+        "--rocprof-selected-region",
+        choices=("none", "dflash_verify"),
+        default="none",
+        help="Call roctxProfilerResume/Pause around the selected DFlash phase for rocprofv3 --selected-regions.",
+    )
     parser.add_argument("--json", type=Path, required=True)
     args = parser.parse_args(argv)
 
@@ -2994,6 +3069,14 @@ def main(argv: list[str] | None = None) -> int:
     prefill_config = PrefillConfig(auto_tune_chunk_sizes=True)
     rows: list[dict[str, Any]] = []
     commands = {"benchmark": " ".join(shlex.quote(part) for part in ["python3", "scripts/dflash_chain_e2e_bench.py", *(argv if argv is not None else sys.argv[1:])])}
+    roctx = _Roctx(enabled=args.roctx or args.rocprof_selected_region != "none")
+    if args.rocprof_selected_region != "none" and not roctx.profiler_controls_available:
+        print(
+            "warning: --rocprof-selected-region requested but libroctx64.so lacks "
+            "roctxProfilerResume/Pause; rocprofv3 --selected-regions will emit no samples "
+            "unless an SDK ROCTX shim is first on LD_LIBRARY_PATH",
+            file=sys.stderr,
+        )
     for prompt in prompts:
         prompt_ids = [int(x) for x in prompt["prompt_ids"]]
         profile_route = _profile_route_for_prompt(prompt, default=profile_route_default, routes=profile_routes)
@@ -3027,6 +3110,8 @@ def main(argv: list[str] | None = None) -> int:
                 tree_top_k=tree_top_k_for_row,
                 canonical_commit_mode=args.canonical_commit_mode,
                 profile_route=profile_route,
+                roctx=roctx,
+                rocprof_selected_region=args.rocprof_selected_region,
             )
             rows.append(_row_for_artifact(prompt, budget, ar, spec))
     if args.tree_mode == "branching_topk":
@@ -3097,6 +3182,8 @@ def main(argv: list[str] | None = None) -> int:
             "profile_route_default": profile_route_default,
             "profile_routes": profile_routes,
             "profile_route_manifest_body": profile_route_manifest,
+            "roctx_markers": bool(args.roctx),
+            "rocprof_selected_region": args.rocprof_selected_region,
             "promotion_blocker": (
                 "native B+1 verifier ran, but full chain must still beat same-session AR before promotion"
                 if args.verifier_mode == "native_bulk_bplus1"

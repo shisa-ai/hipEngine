@@ -1,0 +1,1011 @@
+{
+  "schema": "hipengine.benchmark.diagnostic.v1",
+  "timestamp": "2026-05-24T22:50:06.477866+00:00",
+  "status": "diagnostic",
+  "performance_claim": false,
+  "purpose": "DFlash 27B B=4 target-verifier rocprof breakdown and down-projection dispatch experiment",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100"
+  },
+  "models": {
+    "target": "z-lab/Qwen3.6-27B-PARO snapshot 84f86409151d4f2ec86dc0b6a096d5f6daa7f207",
+    "drafter": "z-lab/Qwen3.6-27B-DFlash snapshot 0919688658996800f86b895034249700e9481106"
+  },
+  "workload": {
+    "decode_tokens": 64,
+    "draft_budget": 4,
+    "verifier_mode": "native_bulk_bplus1",
+    "full_attn_chain_mode": "batched",
+    "canonical_commit_mode": "branch_copy unless noted",
+    "prompt_suite": "stable 9-prompt fixture; one-prompt traces use code:quicksort_prefix"
+  },
+  "roctx_selected_region_note": "rocprofv3 --selected-regions needs the therock librocprofiler-sdk-roctx.so.1 LD_LIBRARY_PATH override; system /opt/rocm libroctx64.so lacks roctxProfilerResume/Pause.",
+  "runs": {
+    "baseline_selected_region": {
+      "json": "/tmp/hipengine-dflash-27b-b4-d64-branch-copy-1prompt-verify-selected.json",
+      "command": "python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 1 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --rocprof-selected-region dflash_verify --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branch-copy-1prompt-verify-selected.json",
+      "correctness_passed": true,
+      "exact_rows": 1,
+      "rows": 1,
+      "ar_decode_tok_s": 33.02960059243897,
+      "spec_decode_tok_s": 26.975721653893768,
+      "speedup_vs_ar": 0.8167135287754271,
+      "target_verify_rows": 91,
+      "rows_per_output_token": 1.421875,
+      "acceptance": {
+        "accept_histogram": {
+          "0": 3,
+          "1": 1,
+          "2": 5,
+          "3": 2,
+          "4": 7
+        },
+        "accepted_output_tokens": 45,
+        "avg_accept_length": 2.5,
+        "exact_rate_0_to_n": {
+          "0": 0.16666666666666666,
+          "1": 0.05555555555555555,
+          "10": 0.0,
+          "2": 0.2777777777777778,
+          "3": 0.1111111111111111,
+          "4": 0.3888888888888889,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "ge_rate_1_to_n": {
+          "1": 0.8333333333333334,
+          "10": 0.0,
+          "2": 0.7777777777777778,
+          "3": 0.5,
+          "4": 0.3888888888888889,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "multi_token_acceptance_rate": 0.7777777777777778,
+        "steps": 18
+      },
+      "row_speedups": [
+        0.8167135287754271
+      ],
+      "failed_prompts": [],
+      "phase_split_first_row": {
+        "commit_fraction": 0.0011279177017017809,
+        "commit_seconds": 0.002675988944247365,
+        "draft_fraction": 0.154154168728128,
+        "draft_seconds": 0.3657313389121555,
+        "other_fraction": 0.0009713802380568226,
+        "other_seconds": 0.002304603229276836,
+        "target_verify_fraction": 0.8437465333321134,
+        "target_verify_seconds": 2.0017917898949236,
+        "total_seconds": 2.3725037209806032
+      }
+    },
+    "all_down_multirow_selected_region": {
+      "json": "/tmp/hipengine-dflash-27b-b4-d64-branch-copy-1prompt-down-multirow-roctx.json",
+      "command": "python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 1 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --rocprof-selected-region dflash_verify --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branch-copy-1prompt-down-multirow-roctx.json",
+      "correctness_passed": true,
+      "exact_rows": 1,
+      "rows": 1,
+      "ar_decode_tok_s": 33.052578243799765,
+      "spec_decode_tok_s": 30.512722865287067,
+      "speedup_vs_ar": 0.9231571177359169,
+      "target_verify_rows": 91,
+      "rows_per_output_token": 1.421875,
+      "acceptance": {
+        "accept_histogram": {
+          "0": 3,
+          "1": 1,
+          "2": 5,
+          "3": 2,
+          "4": 7
+        },
+        "accepted_output_tokens": 45,
+        "avg_accept_length": 2.5,
+        "exact_rate_0_to_n": {
+          "0": 0.16666666666666666,
+          "1": 0.05555555555555555,
+          "10": 0.0,
+          "2": 0.2777777777777778,
+          "3": 0.1111111111111111,
+          "4": 0.3888888888888889,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "ge_rate_1_to_n": {
+          "1": 0.8333333333333334,
+          "10": 0.0,
+          "2": 0.7777777777777778,
+          "3": 0.5,
+          "4": 0.3888888888888889,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "multi_token_acceptance_rate": 0.7777777777777778,
+        "steps": 18
+      },
+      "row_speedups": [
+        0.9231571177359169
+      ],
+      "failed_prompts": [],
+      "phase_split_first_row": {
+        "commit_fraction": 0.0012571951954813356,
+        "commit_seconds": 0.0026369489496573806,
+        "draft_fraction": 0.1743023989838906,
+        "draft_seconds": 0.36559679004130885,
+        "other_fraction": 0.004146459714016956,
+        "other_seconds": 0.008697139972355217,
+        "target_verify_fraction": 0.8202939461066111,
+        "target_verify_seconds": 1.7205548250349239,
+        "total_seconds": 2.0974857039982453
+      }
+    },
+    "all_down_multirow_9prompt": {
+      "json": "/tmp/hipengine-dflash-27b-b4-d64-branch-copy-9prompt-down-multirow.json",
+      "command": "python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branch-copy-9prompt-down-multirow.json",
+      "correctness_passed": false,
+      "exact_rows": 8,
+      "rows": 9,
+      "ar_decode_tok_s": 32.87920718708411,
+      "spec_decode_tok_s": 32.96727038912749,
+      "speedup_vs_ar": 1.002678385812112,
+      "target_verify_rows": 798,
+      "rows_per_output_token": 1.3854166666666667,
+      "acceptance": {
+        "accept_histogram": {
+          "0": 33,
+          "1": 13,
+          "2": 21,
+          "3": 9,
+          "4": 83
+        },
+        "accepted_output_tokens": 414,
+        "avg_accept_length": 2.6037735849056602,
+        "exact_rate_0_to_n": {
+          "0": 0.20754716981132076,
+          "1": 0.08176100628930817,
+          "10": 0.0,
+          "2": 0.1320754716981132,
+          "3": 0.05660377358490566,
+          "4": 0.5220125786163522,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "ge_rate_1_to_n": {
+          "1": 0.7924528301886793,
+          "10": 0.0,
+          "2": 0.710691823899371,
+          "3": 0.5786163522012578,
+          "4": 0.5220125786163522,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "multi_token_acceptance_rate": 0.710691823899371,
+        "steps": 159
+      },
+      "row_speedups": [
+        0.9778713517086105,
+        0.8576820171082188,
+        1.160553687348393,
+        1.113855702062769,
+        1.2757976971206055,
+        0.6647118910878711,
+        0.9939451624197412,
+        1.1894939669389064,
+        1.1251757076389364
+      ],
+      "failed_prompts": [
+        {
+          "row_index": 3,
+          "prompt_id": "code:json_yaml_continuation",
+          "first_mismatch_index": 48
+        }
+      ],
+      "phase_split_first_row": {
+        "commit_fraction": 0.0010630942978304212,
+        "commit_seconds": 0.002100910118315369,
+        "draft_fraction": 0.1873335495539611,
+        "draft_seconds": 0.3702126429998316,
+        "other_fraction": 0.0004746313495803402,
+        "other_seconds": 0.0009379768162034452,
+        "target_verify_fraction": 0.8111287247986282,
+        "target_verify_seconds": 1.6029702620580792,
+        "total_seconds": 1.9762217919924296
+      }
+    },
+    "shared_down_default_9prompt": {
+      "json": "/tmp/hipengine-dflash-27b-b4-d64-branch-copy-9prompt-shared-down-default.json",
+      "command": "python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branch-copy-9prompt-shared-down-default.json",
+      "correctness_passed": true,
+      "exact_rows": 9,
+      "rows": 9,
+      "ar_decode_tok_s": 32.77206545419924,
+      "spec_decode_tok_s": 28.278646347145067,
+      "speedup_vs_ar": 0.8628887424463991,
+      "target_verify_rows": 808,
+      "rows_per_output_token": 1.4027777777777777,
+      "acceptance": {
+        "accept_histogram": {
+          "0": 33,
+          "1": 15,
+          "2": 23,
+          "3": 9,
+          "4": 81
+        },
+        "accepted_output_tokens": 412,
+        "avg_accept_length": 2.559006211180124,
+        "exact_rate_0_to_n": {
+          "0": 0.20496894409937888,
+          "1": 0.09316770186335403,
+          "10": 0.0,
+          "2": 0.14285714285714285,
+          "3": 0.055900621118012424,
+          "4": 0.5031055900621118,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "ge_rate_1_to_n": {
+          "1": 0.7950310559006211,
+          "10": 0.0,
+          "2": 0.7018633540372671,
+          "3": 0.5590062111801242,
+          "4": 0.5031055900621118,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "multi_token_acceptance_rate": 0.7018633540372671,
+        "steps": 161
+      },
+      "row_speedups": [
+        0.8470008023653529,
+        0.7092496447196441,
+        1.017728212572584,
+        0.9177307182084423,
+        1.1115594884169926,
+        0.5808242080012301,
+        0.8633907402868786,
+        1.0403770603039606,
+        0.9780644756751885
+      ],
+      "failed_prompts": [],
+      "phase_split_first_row": {
+        "commit_fraction": 0.0010125108881345113,
+        "commit_seconds": 0.002321542880963534,
+        "draft_fraction": 0.1609027368328376,
+        "draft_seconds": 0.3689269988099113,
+        "other_fraction": 0.00046972283551987486,
+        "other_seconds": 0.0010770073859021068,
+        "target_verify_fraction": 0.8376150294435081,
+        "target_verify_seconds": 1.9205316519364715,
+        "total_seconds": 2.2928572010132484
+      }
+    },
+    "shared_down_only_4prompt": {
+      "json": "/tmp/hipengine-dflash-27b-b4-d64-branch-copy-4prompt-shared-down-only.json",
+      "command": "python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 4 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branch-copy-4prompt-shared-down-only.json",
+      "correctness_passed": true,
+      "exact_rows": 4,
+      "rows": 4,
+      "ar_decode_tok_s": 32.70027208359609,
+      "spec_decode_tok_s": 28.173043151967235,
+      "speedup_vs_ar": 0.8615537840157631,
+      "target_verify_rows": 362,
+      "rows_per_output_token": 1.4140625,
+      "acceptance": {
+        "accept_histogram": {
+          "0": 13,
+          "1": 7,
+          "2": 14,
+          "3": 5,
+          "4": 33
+        },
+        "accepted_output_tokens": 182,
+        "avg_accept_length": 2.5277777777777777,
+        "exact_rate_0_to_n": {
+          "0": 0.18055555555555555,
+          "1": 0.09722222222222222,
+          "10": 0.0,
+          "2": 0.19444444444444445,
+          "3": 0.06944444444444445,
+          "4": 0.4583333333333333,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "ge_rate_1_to_n": {
+          "1": 0.8194444444444444,
+          "10": 0.0,
+          "2": 0.7222222222222222,
+          "3": 0.5277777777777778,
+          "4": 0.4583333333333333,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "multi_token_acceptance_rate": 0.7222222222222222,
+        "steps": 72
+      },
+      "row_speedups": [
+        0.8537642386442574,
+        0.7109649731932177,
+        1.0228641916173253,
+        0.9194160870008563
+      ],
+      "failed_prompts": [],
+      "phase_split_first_row": {
+        "commit_fraction": 0.0009555226712074728,
+        "commit_seconds": 0.0021779240341857076,
+        "draft_fraction": 0.16208124809616756,
+        "draft_seconds": 0.369431993982289,
+        "other_fraction": 0.00042344421778154614,
+        "other_seconds": 0.0009651569416746497,
+        "target_verify_fraction": 0.8365397850148434,
+        "target_verify_seconds": 1.906726191053167,
+        "total_seconds": 2.2793012660113163
+      }
+    },
+    "dense_down_only_4prompt": {
+      "json": "/tmp/hipengine-dflash-27b-b4-d64-branch-copy-4prompt-dense-down-only.json",
+      "command": "python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 4 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branch-copy-4prompt-dense-down-only.json",
+      "correctness_passed": false,
+      "exact_rows": 3,
+      "rows": 4,
+      "ar_decode_tok_s": 32.580760867529165,
+      "spec_decode_tok_s": 32.95380394426087,
+      "speedup_vs_ar": 1.0114497963460236,
+      "target_verify_rows": 352,
+      "rows_per_output_token": 1.375,
+      "acceptance": {
+        "accept_histogram": {
+          "0": 13,
+          "1": 5,
+          "2": 12,
+          "3": 5,
+          "4": 35
+        },
+        "accepted_output_tokens": 184,
+        "avg_accept_length": 2.6285714285714286,
+        "exact_rate_0_to_n": {
+          "0": 0.18571428571428572,
+          "1": 0.07142857142857142,
+          "10": 0.0,
+          "2": 0.17142857142857143,
+          "3": 0.07142857142857142,
+          "4": 0.5,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "ge_rate_1_to_n": {
+          "1": 0.8142857142857143,
+          "10": 0.0,
+          "2": 0.7428571428571429,
+          "3": 0.5714285714285714,
+          "4": 0.5,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "multi_token_acceptance_rate": 0.7428571428571429,
+        "steps": 70
+      },
+      "row_speedups": [
+        0.9721279643919862,
+        0.8509967808458542,
+        1.1659343849445385,
+        1.1183836527547217
+      ],
+      "failed_prompts": [
+        {
+          "row_index": 3,
+          "prompt_id": "code:json_yaml_continuation",
+          "first_mismatch_index": 48
+        }
+      ],
+      "phase_split_first_row": {
+        "commit_fraction": 0.0011850169891299371,
+        "commit_seconds": 0.0023906469577923417,
+        "draft_fraction": 0.18265839468670036,
+        "draft_seconds": 0.3684940718812868,
+        "other_fraction": 0.000503879667069041,
+        "other_seconds": 0.0010165241546928883,
+        "target_verify_fraction": 0.8156527086571006,
+        "target_verify_seconds": 1.6454934270586818,
+        "total_seconds": 2.017394670052454
+      }
+    },
+    "dense_down_replay_4prompt": {
+      "json": "/tmp/hipengine-dflash-27b-b4-d64-replay-4prompt-dense-down.json",
+      "command": "python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 4 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode replay --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-replay-4prompt-dense-down.json",
+      "correctness_passed": true,
+      "exact_rows": 4,
+      "rows": 4,
+      "ar_decode_tok_s": 32.79701823073355,
+      "spec_decode_tok_s": 16.321638944203873,
+      "speedup_vs_ar": 0.4976561841499704,
+      "target_verify_rows": 616,
+      "rows_per_output_token": 2.40625,
+      "acceptance": {
+        "accept_histogram": {
+          "0": 13,
+          "1": 7,
+          "2": 14,
+          "3": 5,
+          "4": 33
+        },
+        "accepted_output_tokens": 182,
+        "avg_accept_length": 2.5277777777777777,
+        "exact_rate_0_to_n": {
+          "0": 0.18055555555555555,
+          "1": 0.09722222222222222,
+          "10": 0.0,
+          "2": 0.19444444444444445,
+          "3": 0.06944444444444445,
+          "4": 0.4583333333333333,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "ge_rate_1_to_n": {
+          "1": 0.8194444444444444,
+          "10": 0.0,
+          "2": 0.7222222222222222,
+          "3": 0.5277777777777778,
+          "4": 0.4583333333333333,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "multi_token_acceptance_rate": 0.7222222222222222,
+        "steps": 72
+      },
+      "row_speedups": [
+        0.49793813028516254,
+        0.448265525086448,
+        0.5421407950865796,
+        0.5116702480757428
+      ],
+      "failed_prompts": [],
+      "phase_split_first_row": {
+        "commit_fraction": 0.0006222357261079255,
+        "commit_seconds": 0.0024383729905821383,
+        "draft_fraction": 0.09412772571353743,
+        "draft_seconds": 0.3688610190874897,
+        "other_fraction": 0.0002904523191598237,
+        "other_seconds": 0.001138203835580498,
+        "target_verify_fraction": 0.9049595862411948,
+        "target_verify_seconds": 3.5462910920614377,
+        "total_seconds": 3.91872868797509
+      }
+    }
+  },
+  "rocprof": {
+    "baseline_selected_region": {
+      "raw_csv": "/tmp/hipengine-rocprof-dflash-27b-b4-verify-selected/dflash-27b-b4-verify-selected_kernel_trace.csv",
+      "kernel_calls": 32322,
+      "kernel_total_ms": 1413.77689,
+      "trace_span_ms": 2318.829146,
+      "families": [
+        {
+          "family": "target_prefill_w4_dense",
+          "total_ms": 555.664185,
+          "pct_kernel_time": 39.303527,
+          "calls": 2304,
+          "avg_us": 241.173691
+        },
+        {
+          "family": "target_multirow_dense",
+          "total_ms": 300.372742,
+          "pct_kernel_time": 21.246121,
+          "calls": 1458,
+          "avg_us": 206.01697
+        },
+        {
+          "family": "other_dense_linear",
+          "total_ms": 224.893898,
+          "pct_kernel_time": 15.907312,
+          "calls": 4032,
+          "avg_us": 55.777256
+        },
+        {
+          "family": "chain_tree_state",
+          "total_ms": 165.508345,
+          "pct_kernel_time": 11.706822,
+          "calls": 2610,
+          "avg_us": 63.413159
+        },
+        {
+          "family": "target_prefill_attention",
+          "total_ms": 62.024863,
+          "pct_kernel_time": 4.387175,
+          "calls": 288,
+          "avg_us": 215.364108
+        },
+        {
+          "family": "copy_buffer",
+          "total_ms": 42.048108,
+          "pct_kernel_time": 2.974169,
+          "calls": 6744,
+          "avg_us": 6.234891
+        },
+        {
+          "family": "other",
+          "total_ms": 34.891851,
+          "pct_kernel_time": 2.467988,
+          "calls": 8496,
+          "avg_us": 4.106856
+        },
+        {
+          "family": "norm",
+          "total_ms": 17.469359,
+          "pct_kernel_time": 1.235652,
+          "calls": 2610,
+          "avg_us": 6.693241
+        },
+        {
+          "family": "state_glue",
+          "total_ms": 9.552926,
+          "pct_kernel_time": 0.675703,
+          "calls": 3456,
+          "avg_us": 2.764157
+        },
+        {
+          "family": "rope_qgate",
+          "total_ms": 1.02985,
+          "pct_kernel_time": 0.072844,
+          "calls": 288,
+          "avg_us": 3.575868
+        },
+        {
+          "family": "verify_lm_head_sample",
+          "total_ms": 0.320763,
+          "pct_kernel_time": 0.022688,
+          "calls": 36,
+          "avg_us": 8.910083
+        }
+      ],
+      "top_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::awq_fusedw4_prefill_fp16_kernel<16, 16, true>(int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, int, int, int, int, int)",
+          "total_ms": 555.664185,
+          "pct_kernel_time": 39.303527,
+          "calls": 2304,
+          "avg_us": 241.173691,
+          "shape": [
+            "10240",
+            "1",
+            "1",
+            "32"
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::gemv_awq_dual_pack8_multi_row_kernel<_Float16, true, true, 1, 8>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, _Float16*, long, long, long, long, int)",
+          "total_ms": 221.534724,
+          "pct_kernel_time": 15.669709,
+          "calls": 1152,
+          "avg_us": 192.304448,
+          "shape": [
+            "557056",
+            "1",
+            "1",
+            "128"
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::gemv_awq_pack8_kernel<_Float16, true>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, int, bool)",
+          "total_ms": 215.619588,
+          "pct_kernel_time": 15.251316,
+          "calls": 2304,
+          "avg_us": 93.584891,
+          "shape": [
+            "16384",
+            "5",
+            "1",
+            "128"
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)",
+          "total_ms": 147.636161,
+          "pct_kernel_time": 10.442677,
+          "calls": 816,
+          "avg_us": 180.926668,
+          "shape": [
+            "3072",
+            "128",
+            "1",
+            "64"
+          ]
+        },
+        {
+          "kernel": "(anonymous namespace)::w8a16_linear_multi_row_kernel(unsigned short const*, signed char const*, float const*, float*, long, long, long)",
+          "total_ms": 63.729076,
+          "pct_kernel_time": 4.507718,
+          "calls": 18,
+          "avg_us": 3540.504222,
+          "shape": [
+            "31784960",
+            "1",
+            "1",
+            "128"
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel<true>(float const*, unsigned short const*, unsigned short const*, _Float16 const*, _Float16*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float)",
+          "total_ms": 62.024863,
+          "pct_kernel_time": 4.387175,
+          "calls": 288,
+          "avg_us": 215.364108,
+          "shape": [
+            "768",
+            "5",
+            "1",
+            "32"
+          ]
+        },
+        {
+          "kernel": "__amd_rocclr_copyBuffer",
+          "total_ms": 42.048108,
+          "pct_kernel_time": 2.974169,
+          "calls": 6744,
+          "avg_us": 6.234891,
+          "shape": [
+            "1024",
+            "1",
+            "1",
+            "1024"
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::gemv_awq_pack8_multi_row_kernel<_Float16, true, 8>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, long, int, bool)",
+          "total_ms": 15.108942,
+          "pct_kernel_time": 1.068694,
+          "calls": 288,
+          "avg_us": 52.461604,
+          "shape": [
+            "40960",
+            "1",
+            "1",
+            "64"
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::paro_rotate1_kernel<_Float16>(_Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+          "total_ms": 12.196294,
+          "pct_kernel_time": 0.862675,
+          "calls": 2304,
+          "avg_us": 5.29353,
+          "shape": [
+            "320",
+            "136",
+            "1",
+            "64"
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::paro_rotate2_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+          "total_ms": 12.159028,
+          "pct_kernel_time": 0.860039,
+          "calls": 2016,
+          "avg_us": 6.031264,
+          "shape": [
+            "320",
+            "40",
+            "2",
+            "64"
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float const*, float*, long const*, float*, long, long, long, long, long)",
+          "total_ms": 10.538788,
+          "pct_kernel_time": 0.745435,
+          "calls": 48,
+          "avg_us": 219.558083,
+          "shape": [
+            "3072",
+            "128",
+            "1",
+            "64"
+          ]
+        },
+        {
+          "kernel": "__amd_rocclr_fillBufferAligned",
+          "total_ms": 9.552926,
+          "pct_kernel_time": 0.675703,
+          "calls": 3456,
+          "avg_us": 2.764157,
+          "shape": [
+            "256",
+            "1",
+            "1",
+            "256"
+          ]
+        }
+      ]
+    },
+    "all_down_multirow_selected_region": {
+      "raw_csv": "/tmp/hipengine-rocprof-dflash-27b-b4-verify-down-multirow/dflash-27b-b4-verify-down-multirow_kernel_trace.csv",
+      "kernel_calls": 32322,
+      "kernel_total_ms": 1137.206162,
+      "trace_span_ms": 2037.310142,
+      "families": [
+        {
+          "family": "target_multirow_dense",
+          "total_ms": 416.50658,
+          "pct_kernel_time": 36.625424,
+          "calls": 2610,
+          "avg_us": 159.581065
+        },
+        {
+          "family": "other_dense_linear",
+          "total_ms": 231.95336,
+          "pct_kernel_time": 20.396773,
+          "calls": 4032,
+          "avg_us": 57.528115
+        },
+        {
+          "family": "chain_tree_state",
+          "total_ms": 172.34107,
+          "pct_kernel_time": 15.154778,
+          "calls": 2610,
+          "avg_us": 66.031061
+        },
+        {
+          "family": "target_prefill_w4_dense",
+          "total_ms": 146.738691,
+          "pct_kernel_time": 12.903438,
+          "calls": 1152,
+          "avg_us": 127.377336
+        },
+        {
+          "family": "target_prefill_attention",
+          "total_ms": 63.40126,
+          "pct_kernel_time": 5.575177,
+          "calls": 288,
+          "avg_us": 220.143264
+        },
+        {
+          "family": "copy_buffer",
+          "total_ms": 41.024654,
+          "pct_kernel_time": 3.607495,
+          "calls": 6744,
+          "avg_us": 6.083134
+        },
+        {
+          "family": "other",
+          "total_ms": 36.319576,
+          "pct_kernel_time": 3.193755,
+          "calls": 8496,
+          "avg_us": 4.274903
+        },
+        {
+          "family": "norm",
+          "total_ms": 17.878639,
+          "pct_kernel_time": 1.572155,
+          "calls": 2610,
+          "avg_us": 6.850053
+        },
+        {
+          "family": "state_glue",
+          "total_ms": 9.680634,
+          "pct_kernel_time": 0.851265,
+          "calls": 3456,
+          "avg_us": 2.801109
+        },
+        {
+          "family": "rope_qgate",
+          "total_ms": 1.049292,
+          "pct_kernel_time": 0.092269,
+          "calls": 288,
+          "avg_us": 3.643375
+        },
+        {
+          "family": "verify_lm_head_sample",
+          "total_ms": 0.312406,
+          "pct_kernel_time": 0.027471,
+          "calls": 36,
+          "avg_us": 8.677944
+        }
+      ],
+      "top_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::gemv_awq_dual_pack8_multi_row_kernel<_Float16, true, true, 1, 8>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, _Float16*, long, long, long, long, int)",
+          "total_ms": 227.931741,
+          "pct_kernel_time": 20.043133,
+          "calls": 1152,
+          "avg_us": 197.857414,
+          "shape": [
+            "557056",
+            "1",
+            "1",
+            "128"
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::gemv_awq_pack8_kernel<_Float16, true>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, int, bool)",
+          "total_ms": 222.197861,
+          "pct_kernel_time": 19.538925,
+          "calls": 2304,
+          "avg_us": 96.440044,
+          "shape": [
+            "16384",
+            "5",
+            "1",
+            "128"
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)",
+          "total_ms": 153.963117,
+          "pct_kernel_time": 13.538716,
+          "calls": 816,
+          "avg_us": 188.68029,
+          "shape": [
+            "3072",
+            "128",
+            "1",
+            "64"
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::awq_fusedw4_prefill_fp16_kernel<16, 16, true>(int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, int, int, int, int, int)",
+          "total_ms": 146.738691,
+          "pct_kernel_time": 12.903438,
+          "calls": 1152,
+          "avg_us": 127.377336,
+          "shape": [
+            "2048",
+            "1",
+            "1",
+            "32"
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::gemv_awq_pack8_multi_row_kernel<_Float16, true, 8>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, long, int, bool)",
+          "total_ms": 124.203135,
+          "pct_kernel_time": 10.921778,
+          "calls": 1440,
+          "avg_us": 86.252177,
+          "shape": [
+            "81920",
+            "1",
+            "1",
+            "128"
+          ]
+        },
+        {
+          "kernel": "(anonymous namespace)::w8a16_linear_multi_row_kernel(unsigned short const*, signed char const*, float const*, float*, long, long, long)",
+          "total_ms": 64.371704,
+          "pct_kernel_time": 5.660513,
+          "calls": 18,
+          "avg_us": 3576.205778,
+          "shape": [
+            "31784960",
+            "1",
+            "1",
+            "128"
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel<true>(float const*, unsigned short const*, unsigned short const*, _Float16 const*, _Float16*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float)",
+          "total_ms": 63.40126,
+          "pct_kernel_time": 5.575177,
+          "calls": 288,
+          "avg_us": 220.143264,
+          "shape": [
+            "768",
+            "5",
+            "1",
+            "32"
+          ]
+        },
+        {
+          "kernel": "__amd_rocclr_copyBuffer",
+          "total_ms": 41.024654,
+          "pct_kernel_time": 3.607495,
+          "calls": 6744,
+          "avg_us": 6.083134,
+          "shape": [
+            "1024",
+            "1",
+            "1",
+            "1024"
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::paro_rotate1_kernel<_Float16>(_Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+          "total_ms": 12.832161,
+          "pct_kernel_time": 1.128394,
+          "calls": 2304,
+          "avg_us": 5.569514,
+          "shape": [
+            "320",
+            "136",
+            "1",
+            "64"
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::paro_rotate2_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+          "total_ms": 12.74719,
+          "pct_kernel_time": 1.120922,
+          "calls": 2016,
+          "avg_us": 6.323011,
+          "shape": [
+            "320",
+            "40",
+            "2",
+            "64"
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float const*, float*, long const*, float*, long, long, long, long, long)",
+          "total_ms": 10.92924,
+          "pct_kernel_time": 0.961061,
+          "calls": 48,
+          "avg_us": 227.6925,
+          "shape": [
+            "3072",
+            "128",
+            "1",
+            "64"
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::dense_gemv_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16*, long, long, long)",
+          "total_ms": 9.755499,
+          "pct_kernel_time": 0.857848,
+          "calls": 1728,
+          "avg_us": 5.645543,
+          "shape": [
+            "3072",
+            "5",
+            "1",
+            "64"
+          ]
+        }
+      ]
+    }
+  },
+  "decision": {
+    "production_change": "rejected for now",
+    "reason": "Routing verifier-size shared+dense down projections to existing multi-row W4 cuts one-prompt verifier wall, but the 9-prompt exactness gate fails on code:json_yaml_continuation at token 48. Shared-down-only is exact but does not improve the 9-prompt mean. Canonical replay fixes dense-down exactness but costs too much.",
+    "next": "If revisiting, fix lower-cost canonical commit/state canonicalization for dense-down multi-row branch-copy or add a deterministic dense-down verifier path; do not default this dispatch until 9-prompt exactness passes and mean improves."
+  }
+}
