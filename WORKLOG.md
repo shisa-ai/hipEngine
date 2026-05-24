@@ -23391,3 +23391,91 @@ Docs/rollup updated:
 - `docs/DFLASH.md` 27B lane check.
 - `benchmarks/README.md` and `benchmarks/CHANGELOG.md` with the retained
   diagnostic row.
+
+## 2026-05-25 — DFlash verifier dense-GEMV WMMA diagnostic
+
+User asked to apply the R3.4-style WMMA idea to the verifier dense GEMV family.
+Code audit found that the target verifier does not call the DFlash drafter
+`dflash_dense_*` kernels for Q/K/V/O/MLP; it primarily uses PARO W4 target
+projection dispatch.  The remaining true dense verifier family is
+`project_linear_attention_ab_fp16`, which launches two FP16 dense GEMVs for the
+linear-attention A/B projections at small verifier row counts.
+
+Implemented diagnostic/default-off dense WMMA variants:
+- `dense_gemv_out_{bf16,fp16}_wmma`
+- `dense_dual_gemv_out_{bf16,fp16}_wmma`
+- registered as `out_wmma` / `out_fp16_wmma` variants
+- runtime gate: `HIPENGINE_VERIFY_DENSE_GEMV_WMMA=on` for multi-row
+  `project_linear_attention_ab_fp16` only; default remains off.
+
+Shape microbench on W7900/gfx1100 with `/tmp/hipengine-hipcc-version.txt`:
+- `5x5120x48`: scalar GEMV `0.0066 ms`, WMMA `0.0322 ms` (WMMA 4.88x slower).
+- `5x2048x32`: scalar GEMV `0.0062 ms`, WMMA `0.0159 ms` (WMMA 2.56x slower).
+- `8x5120x48`: scalar GEMV `0.0067 ms`, WMMA `0.0324 ms`.
+- `16x5120x48`: scalar GEMV `0.0191 ms`, WMMA `0.0335 ms`.
+
+Also tested existing W4 verifier projection dispatch forced toward the prefill
+WMMA kernels:
+```bash
+HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD=1 HIPENGINE_W4_MULTI_ROW_PACK8=off \
+HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 1800 python3 scripts/dflash_chain_e2e_bench.py \
+  --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 \
+  --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 \
+  --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --max-prompts 1 --decode-tokens 64 --draft-budgets 4 \
+  --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched \
+  --canonical-commit-mode bulk_direct --hardware-gpu 'AMD Radeon Pro W7900' \
+  --json /tmp/hipengine-dflash-27b-b4-d64-bulk-direct-1prompt-forced-prefill-wmma.json
+```
+Result: exact, but 27B direct-bulk one-prompt D64 slowed from default
+`0.862x` AR to `0.852x`; verifier mean `99.17 -> 100.36 ms/cycle`.
+
+Dense-GEMV WMMA full-model A/B:
+```bash
+HIPENGINE_VERIFY_DENSE_GEMV_WMMA=on HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 1800 python3 scripts/dflash_chain_e2e_bench.py \
+  --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 \
+  --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 \
+  --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --max-prompts 1 --decode-tokens 64 --draft-budgets 4 \
+  --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched \
+  --canonical-commit-mode bulk_direct --hardware-gpu 'AMD Radeon Pro W7900' \
+  --json /tmp/hipengine-dflash-27b-b4-d64-bulk-direct-1prompt-dense-gemv-wmma-on.json
+```
+Result: exact, but 27B direct-bulk slowed from default `0.862x` AR to
+`0.835x`; verifier mean `99.17 -> 102.47 ms/cycle`.
+
+35B A3B safe-replay one-prompt D32 check:
+```bash
+HIPENGINE_VERIFY_DENSE_GEMV_WMMA=on HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 1800 python3 scripts/dflash_chain_e2e_bench.py \
+  --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 \
+  --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --max-prompts 1 --decode-tokens 32 --draft-budgets 4 \
+  --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched \
+  --canonical-commit-mode replay --hardware-gpu 'AMD Radeon Pro W7900' \
+  --json /tmp/hipengine-dflash-35b-b4-d32-1prompt-dense-gemv-wmma-on.json
+```
+Comparator default command identical without `HIPENGINE_VERIFY_DENSE_GEMV_WMMA=on`,
+writing `/tmp/hipengine-dflash-35b-b4-d32-1prompt-dense-gemv-default.json`.
+Result: exact both; default `0.255x` AR, WMMA `0.242x` AR; verifier mean
+`58.26 -> 58.50 ms/cycle`.
+
+Conclusion: the easy verifier-side R3.4 analogue is rejected.  The drafter WMMA
+win came from 16-row x large-output BF16 dense ops; the verifier dense A/B shape
+is skinny (`out_features=32/48`) and WMMA under-occupies.  W4 prefill-WMMA
+forcing is also slower for B=4 verifier rows.  Keep the new gate default-off and
+prioritize lower-cost canonical commit / tree topology / Q8 KV next.
+
+Retained artifact:
+- `benchmarks/results/2026-05-25-hipengine-dflash-verifier-dense-wmma-diagnostic.json`
+
+Validation:
+- `python3 -m py_compile hipengine/kernels/hip_gfx1100/linear/dense_gemv.py hipengine/kernels/hip_gfx1100/linear/__init__.py hipengine/runtime/qwen35_paro.py tests/test_dense_gemv_plan.py tests/test_dense_gemv_wmma.py` -> pass.
+- `HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_dense_gemv_plan.py tests/test_dense_gemv_wmma.py` -> `6 passed`.
+- `python3 -m json.tool benchmarks/results/2026-05-25-hipengine-dflash-verifier-dense-wmma-diagnostic.json` -> pass.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` -> failed before diff because `docs/source_lineage.json` points at missing `/home/lhl/github/shisa-ai/amd-gpu-tuning/nano-vllm-amd`; parent repo is available under `/home/lhl/amd-gpu-tuning/...`, but the lineage helper needs path refresh before it can run.
+
+Docs/rollup updated:
+- `docs/DFLASH.md` verifier-side WMMA audit.
+- `docs/KERNELS.md` dense GEMV WMMA variants.
+- `benchmarks/README.md` and `benchmarks/CHANGELOG.md` with the retained diagnostic row.

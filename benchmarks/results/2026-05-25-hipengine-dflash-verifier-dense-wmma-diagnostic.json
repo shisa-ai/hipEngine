@@ -1,0 +1,134 @@
+{
+  "change": {
+    "default": "off",
+    "kernels": [
+      "dense_gemv_out_{bf16,fp16}_wmma",
+      "dense_dual_gemv_out_{bf16,fp16}_wmma"
+    ],
+    "runtime_gate": "HIPENGINE_VERIFY_DENSE_GEMV_WMMA=on",
+    "verifier_site": "project_linear_attention_ab_fp16 multi-row A/B dense projections"
+  },
+  "commands": {
+    "27b_default": "HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 1800 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 1 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode bulk_direct --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-bulk-direct-1prompt-default-prewmma.json",
+    "27b_dense_wmma_on": "HIPENGINE_VERIFY_DENSE_GEMV_WMMA=on HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 1800 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 1 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode bulk_direct --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-bulk-direct-1prompt-dense-gemv-wmma-on.json",
+    "35b_default": "HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 1800 python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 1 --decode-tokens 32 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode replay --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-35b-b4-d32-1prompt-dense-gemv-default.json",
+    "35b_dense_wmma_on": "HIPENGINE_VERIFY_DENSE_GEMV_WMMA=on HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 1800 python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 1 --decode-tokens 32 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode replay --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-35b-b4-d32-1prompt-dense-gemv-wmma-on.json",
+    "microbench": "HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 - <<'PY' ... dense_gemv_out_fp16 vs dense_gemv_out_fp16_wmma timing ... PY"
+  },
+  "correctness_gate": {
+    "oracle": "same-session greedy AR equality plus finite AR/draft/verify logits for full-model rows; WMMA unit tests compare against naive dense GEMV kernels",
+    "passed": true
+  },
+  "date": "2026-05-25",
+  "decision": {
+    "accepted": false,
+    "performance_claim": false,
+    "reason": "WMMA under-occupies the skinny verifier dense shapes and regresses DFlash speed; keep gate default-off."
+  },
+  "hardware": {
+    "arch": "gfx1100",
+    "backend": "hip_gfx1100",
+    "gpu": "AMD Radeon Pro W7900"
+  },
+  "measurements": {
+    "27b_default": {
+      "ar_decode_tok_s": 32.945678131777846,
+      "artifact": "/tmp/hipengine-dflash-27b-b4-d64-bulk-direct-1prompt-default-prewmma.json",
+      "avg_accept_length": 2.5,
+      "cycle_wall_ms_mean": 118.56532583969008,
+      "cycles": 19,
+      "draft_ms_mean": 19.22314068743665,
+      "exact_match_ar": true,
+      "finite_all_logits": true,
+      "spec_decode_tok_s": 28.404550404852568,
+      "speedup_vs_ar": 0.8621631733072411,
+      "verify_ms_mean": 99.16996605093836,
+      "verify_ms_p50": 100.60008597793058
+    },
+    "27b_dense_wmma_on": {
+      "ar_decode_tok_s": 33.11910348198756,
+      "artifact": "/tmp/hipengine-dflash-27b-b4-d64-bulk-direct-1prompt-dense-gemv-wmma-on.json",
+      "avg_accept_length": 2.5,
+      "cycle_wall_ms_mean": 121.84929141260095,
+      "cycles": 19,
+      "draft_ms_mean": 19.20542152488212,
+      "exact_match_ar": true,
+      "finite_all_logits": true,
+      "spec_decode_tok_s": 27.63897010714347,
+      "speedup_vs_ar": 0.8345325567817813,
+      "verify_ms_mean": 102.46746052411925,
+      "verify_ms_p50": 104.40636600833386
+    },
+    "27b_forced_w4_prefill_wmma_existing_dispatch": {
+      "ar_decode_tok_s": 32.99338689863286,
+      "artifact": "/tmp/hipengine-dflash-27b-b4-d64-bulk-direct-1prompt-forced-prefill-wmma.json",
+      "avg_accept_length": 2.5,
+      "cycle_wall_ms_mean": 119.76014198980441,
+      "cycles": 19,
+      "draft_ms_mean": 19.23083574020941,
+      "exact_match_ar": true,
+      "finite_all_logits": true,
+      "spec_decode_tok_s": 28.121325144215124,
+      "speedup_vs_ar": 0.8523321728264392,
+      "verify_ms_mean": 100.36443663748766,
+      "verify_ms_p50": 101.87672299798578
+    },
+    "35b_default": {
+      "ar_decode_tok_s": 103.86192051034243,
+      "artifact": "/tmp/hipengine-dflash-35b-b4-d32-1prompt-dense-gemv-default.json",
+      "avg_accept_length": 0.8235294117647058,
+      "cycle_wall_ms_mean": 66.99143806084369,
+      "cycles": 18,
+      "draft_ms_mean": 8.46586151035606,
+      "exact_match_ar": true,
+      "finite_all_logits": true,
+      "spec_decode_tok_s": 26.5272996396086,
+      "speedup_vs_ar": 0.25540929254208283,
+      "verify_ms_mean": 58.2577434349029,
+      "verify_ms_p50": 58.14828450093046
+    },
+    "35b_dense_wmma_on": {
+      "ar_decode_tok_s": 109.4501720613466,
+      "artifact": "/tmp/hipengine-dflash-35b-b4-d32-1prompt-dense-gemv-wmma-on.json",
+      "avg_accept_length": 0.8235294117647058,
+      "cycle_wall_ms_mean": 67.22634710927701,
+      "cycles": 18,
+      "draft_ms_mean": 8.445013886860883,
+      "exact_match_ar": true,
+      "finite_all_logits": true,
+      "spec_decode_tok_s": 26.43403628742912,
+      "speedup_vs_ar": 0.24151662614667152,
+      "verify_ms_mean": 58.49767727583336,
+      "verify_ms_p50": 57.00740352040157
+    }
+  },
+  "microbench_ms_per_call": {
+    "rows16_in5120_out48": {
+      "gemv": 0.0191,
+      "wmma": 0.0335,
+      "wmma_vs_gemv": 1.75
+    },
+    "rows5_in2048_out32": {
+      "gemv": 0.0062,
+      "wmma": 0.0159,
+      "wmma_vs_gemv": 2.56
+    },
+    "rows5_in5120_out48": {
+      "gemv": 0.0066,
+      "wmma": 0.0322,
+      "wmma_vs_gemv": 4.88
+    },
+    "rows8_in5120_out48": {
+      "gemv": 0.0067,
+      "wmma": 0.0324,
+      "wmma_vs_gemv": 4.84
+    }
+  },
+  "schema_version": 1,
+  "scope": "DFlash verifier dense-GEMV WMMA diagnostic",
+  "validation": [
+    "python3 -m py_compile hipengine/kernels/hip_gfx1100/linear/dense_gemv.py hipengine/kernels/hip_gfx1100/linear/__init__.py hipengine/runtime/qwen35_paro.py tests/test_dense_gemv_plan.py tests/test_dense_gemv_wmma.py -> pass",
+    "HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_dense_gemv_plan.py tests/test_dense_gemv_wmma.py -> 6 passed",
+    "python3 scripts/check_lineage.py --kind kernel --diff stat -> failed: source_lineage path /home/lhl/github/shisa-ai/amd-gpu-tuning/nano-vllm-amd missing"
+  ]
+}

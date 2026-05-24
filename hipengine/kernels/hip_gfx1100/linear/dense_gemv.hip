@@ -5,8 +5,17 @@
 #include <stdint.h>
 
 using half_t = _Float16;
+using bf16_t = uint16_t;
+typedef half_t __attribute__((ext_vector_type(16))) halfx16_t;
+typedef bf16_t __attribute__((ext_vector_type(16))) bf16x16_t;
+typedef float __attribute__((ext_vector_type(8))) float8_t;
 
 namespace {
+
+constexpr int kDenseWmmaWave = 32;
+constexpr int kDenseWmmaTileM = 16;
+constexpr int kDenseWmmaTileN = 16;
+constexpr int kDenseWmmaTileK = 16;
 
 __device__ inline float bf16_bits_to_float(uint16_t value) {
   union {
@@ -46,6 +55,67 @@ __device__ inline scalar_t float_to_scalar(float value) {
 template <>
 __device__ inline uint16_t float_to_scalar<uint16_t>(float value) {
   return float_to_bf16_bits(value);
+}
+
+__device__ inline float8_t dense_wmma_zero_acc() {
+  float8_t acc;
+#pragma unroll
+  for (int i = 0; i < 8; ++i) {
+    acc[i] = 0.0f;
+  }
+  return acc;
+}
+
+__device__ inline halfx16_t dense_wmma_zero_halfx16() {
+  halfx16_t r;
+#pragma unroll
+  for (int i = 0; i < 16; ++i) {
+    r[i] = static_cast<half_t>(0.0f);
+  }
+  return r;
+}
+
+__device__ inline bf16x16_t dense_wmma_zero_bf16x16() {
+  bf16x16_t r;
+#pragma unroll
+  for (int i = 0; i < 16; ++i) {
+    r[i] = static_cast<bf16_t>(0);
+  }
+  return r;
+}
+
+__device__ inline void dense_wmma_load_half_operands(
+    const half_t* __restrict__ x,
+    const half_t* __restrict__ weight,
+    int64_t x_row,
+    int64_t weight_row,
+    int64_t k_offset,
+    int64_t in_features,
+    bool x_in_range,
+    bool w_in_range,
+    halfx16_t& a_reg,
+    halfx16_t& b_reg) {
+  a_reg = w_in_range ? *reinterpret_cast<const halfx16_t*>(weight + weight_row * in_features + k_offset)
+                     : dense_wmma_zero_halfx16();
+  b_reg = x_in_range ? *reinterpret_cast<const halfx16_t*>(x + x_row * in_features + k_offset)
+                     : dense_wmma_zero_halfx16();
+}
+
+__device__ inline void dense_wmma_load_bf16_operands(
+    const bf16_t* __restrict__ x,
+    const bf16_t* __restrict__ weight,
+    int64_t x_row,
+    int64_t weight_row,
+    int64_t k_offset,
+    int64_t in_features,
+    bool x_in_range,
+    bool w_in_range,
+    bf16x16_t& a_reg,
+    bf16x16_t& b_reg) {
+  a_reg = w_in_range ? *reinterpret_cast<const bf16x16_t*>(weight + weight_row * in_features + k_offset)
+                     : dense_wmma_zero_bf16x16();
+  b_reg = x_in_range ? *reinterpret_cast<const bf16x16_t*>(x + x_row * in_features + k_offset)
+                     : dense_wmma_zero_bf16x16();
 }
 
 template <typename scalar_t>
@@ -149,9 +219,184 @@ __global__ void dense_dual_gemv_out_kernel(
   }
 }
 
+__launch_bounds__(kDenseWmmaWave, 4)
+__global__ void dense_gemv_out_fp16_wmma_kernel(
+    const half_t* __restrict__ x,
+    const half_t* __restrict__ weight,
+    half_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  const int lane = static_cast<int>(threadIdx.x);
+  const int lane_lo = lane & 15;
+  const int lane_hi = lane >> 4;
+  const int64_t row_tile_base = static_cast<int64_t>(blockIdx.y) * kDenseWmmaTileM;
+  const int64_t col_tile_base = static_cast<int64_t>(blockIdx.x) * kDenseWmmaTileN;
+  const int64_t x_row = row_tile_base + lane_lo;
+  const int64_t weight_row = col_tile_base + lane_lo;
+  const bool x_in_range = x_row < rows;
+  const bool w_in_range = weight_row < out_features;
+
+  float8_t acc = dense_wmma_zero_acc();
+  const int64_t k_tiles = in_features / kDenseWmmaTileK;
+  for (int64_t kt = 0; kt < k_tiles; ++kt) {
+    const int64_t k_offset = kt * kDenseWmmaTileK;
+    halfx16_t a_reg, b_reg;
+    dense_wmma_load_half_operands(x, weight, x_row, weight_row, k_offset, in_features, x_in_range, w_in_range, a_reg, b_reg);
+    acc = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_reg, b_reg, acc);
+  }
+
+  const int64_t store_row = row_tile_base + lane_lo;
+  if (store_row >= rows) {
+    return;
+  }
+#pragma unroll
+  for (int j = 0; j < 8; ++j) {
+    const int64_t store_col = col_tile_base + (2 * j + lane_hi);
+    if (store_col < out_features) {
+      out[store_row * out_features + store_col] = static_cast<half_t>(acc[j]);
+    }
+  }
+}
+
+__launch_bounds__(kDenseWmmaWave, 4)
+__global__ void dense_gemv_out_bf16_wmma_kernel(
+    const bf16_t* __restrict__ x,
+    const bf16_t* __restrict__ weight,
+    bf16_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  const int lane = static_cast<int>(threadIdx.x);
+  const int lane_lo = lane & 15;
+  const int lane_hi = lane >> 4;
+  const int64_t row_tile_base = static_cast<int64_t>(blockIdx.y) * kDenseWmmaTileM;
+  const int64_t col_tile_base = static_cast<int64_t>(blockIdx.x) * kDenseWmmaTileN;
+  const int64_t x_row = row_tile_base + lane_lo;
+  const int64_t weight_row = col_tile_base + lane_lo;
+  const bool x_in_range = x_row < rows;
+  const bool w_in_range = weight_row < out_features;
+
+  float8_t acc = dense_wmma_zero_acc();
+  const int64_t k_tiles = in_features / kDenseWmmaTileK;
+  for (int64_t kt = 0; kt < k_tiles; ++kt) {
+    const int64_t k_offset = kt * kDenseWmmaTileK;
+    bf16x16_t a_reg, b_reg;
+    dense_wmma_load_bf16_operands(x, weight, x_row, weight_row, k_offset, in_features, x_in_range, w_in_range, a_reg, b_reg);
+    acc = __builtin_amdgcn_wmma_f32_16x16x16_bf16_w32(a_reg, b_reg, acc);
+  }
+
+  const int64_t store_row = row_tile_base + lane_lo;
+  if (store_row >= rows) {
+    return;
+  }
+#pragma unroll
+  for (int j = 0; j < 8; ++j) {
+    const int64_t store_col = col_tile_base + (2 * j + lane_hi);
+    if (store_col < out_features) {
+      out[store_row * out_features + store_col] = float_to_bf16_bits(acc[j]);
+    }
+  }
+}
+
+__launch_bounds__(kDenseWmmaWave, 4)
+__global__ void dense_dual_gemv_out_fp16_wmma_kernel(
+    const half_t* __restrict__ x,
+    const half_t* __restrict__ weight_a,
+    const half_t* __restrict__ weight_b,
+    half_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b) {
+  const int lane = static_cast<int>(threadIdx.x);
+  const int lane_lo = lane & 15;
+  const int lane_hi = lane >> 4;
+  const int64_t row_tile_base = static_cast<int64_t>(blockIdx.y) * kDenseWmmaTileM;
+  const int64_t col_tile_base = static_cast<int64_t>(blockIdx.x) * kDenseWmmaTileN;
+  const int64_t total_out = out_features_a + out_features_b;
+  const int64_t x_row = row_tile_base + lane_lo;
+  const int64_t global_weight_row = col_tile_base + lane_lo;
+  const bool x_in_range = x_row < rows;
+  const bool w_in_range = global_weight_row < total_out;
+  const bool use_b = global_weight_row >= out_features_a;
+  const half_t* __restrict__ weight = use_b ? weight_b : weight_a;
+  const int64_t local_weight_row = use_b ? (global_weight_row - out_features_a) : global_weight_row;
+
+  float8_t acc = dense_wmma_zero_acc();
+  const int64_t k_tiles = in_features / kDenseWmmaTileK;
+  for (int64_t kt = 0; kt < k_tiles; ++kt) {
+    const int64_t k_offset = kt * kDenseWmmaTileK;
+    halfx16_t a_reg, b_reg;
+    dense_wmma_load_half_operands(x, weight, x_row, local_weight_row, k_offset, in_features, x_in_range, w_in_range, a_reg, b_reg);
+    acc = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_reg, b_reg, acc);
+  }
+
+  const int64_t store_row = row_tile_base + lane_lo;
+  if (store_row >= rows) {
+    return;
+  }
+#pragma unroll
+  for (int j = 0; j < 8; ++j) {
+    const int64_t store_col = col_tile_base + (2 * j + lane_hi);
+    if (store_col < total_out) {
+      out[store_row * total_out + store_col] = static_cast<half_t>(acc[j]);
+    }
+  }
+}
+
+__launch_bounds__(kDenseWmmaWave, 4)
+__global__ void dense_dual_gemv_out_bf16_wmma_kernel(
+    const bf16_t* __restrict__ x,
+    const bf16_t* __restrict__ weight_a,
+    const bf16_t* __restrict__ weight_b,
+    bf16_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b) {
+  const int lane = static_cast<int>(threadIdx.x);
+  const int lane_lo = lane & 15;
+  const int lane_hi = lane >> 4;
+  const int64_t row_tile_base = static_cast<int64_t>(blockIdx.y) * kDenseWmmaTileM;
+  const int64_t col_tile_base = static_cast<int64_t>(blockIdx.x) * kDenseWmmaTileN;
+  const int64_t total_out = out_features_a + out_features_b;
+  const int64_t x_row = row_tile_base + lane_lo;
+  const int64_t global_weight_row = col_tile_base + lane_lo;
+  const bool x_in_range = x_row < rows;
+  const bool w_in_range = global_weight_row < total_out;
+  const bool use_b = global_weight_row >= out_features_a;
+  const bf16_t* __restrict__ weight = use_b ? weight_b : weight_a;
+  const int64_t local_weight_row = use_b ? (global_weight_row - out_features_a) : global_weight_row;
+
+  float8_t acc = dense_wmma_zero_acc();
+  const int64_t k_tiles = in_features / kDenseWmmaTileK;
+  for (int64_t kt = 0; kt < k_tiles; ++kt) {
+    const int64_t k_offset = kt * kDenseWmmaTileK;
+    bf16x16_t a_reg, b_reg;
+    dense_wmma_load_bf16_operands(x, weight, x_row, local_weight_row, k_offset, in_features, x_in_range, w_in_range, a_reg, b_reg);
+    acc = __builtin_amdgcn_wmma_f32_16x16x16_bf16_w32(a_reg, b_reg, acc);
+  }
+
+  const int64_t store_row = row_tile_base + lane_lo;
+  if (store_row >= rows) {
+    return;
+  }
+#pragma unroll
+  for (int j = 0; j < 8; ++j) {
+    const int64_t store_col = col_tile_base + (2 * j + lane_hi);
+    if (store_col < total_out) {
+      out[store_row * total_out + store_col] = float_to_bf16_bits(acc[j]);
+    }
+  }
+}
 
 bool valid_threads(int64_t threads) {
   return threads == 64 || threads == 128 || threads == 256;
+}
+
+bool valid_wmma_shape(int64_t rows, int64_t in_features, int64_t out_features) {
+  return rows > 0 && in_features > 0 && out_features > 0 && (in_features % kDenseWmmaTileK) == 0;
 }
 
 }  // namespace
@@ -259,6 +504,128 @@ extern "C" int hipengine_dense_dual_gemv_out_fp16(
       (dense_dual_gemv_out_kernel<half_t>),
       dim3(static_cast<unsigned int>(out_features_a + out_features_b), static_cast<unsigned int>(rows)),
       dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      x,
+      weight_a,
+      weight_b,
+      out,
+      rows,
+      in_features,
+      out_features_a,
+      out_features_b);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dense_gemv_out_bf16_wmma(
+    const uint16_t* x,
+    const uint16_t* weight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!valid_wmma_shape(rows, in_features, out_features)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t row_tiles = (rows + kDenseWmmaTileM - 1) / kDenseWmmaTileM;
+  const int64_t col_tiles = (out_features + kDenseWmmaTileN - 1) / kDenseWmmaTileN;
+  hipLaunchKernelGGL(
+      dense_gemv_out_bf16_wmma_kernel,
+      dim3(static_cast<unsigned int>(col_tiles), static_cast<unsigned int>(row_tiles)),
+      dim3(static_cast<unsigned int>(kDenseWmmaWave)),
+      0,
+      stream,
+      x,
+      weight,
+      out,
+      rows,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dense_gemv_out_fp16_wmma(
+    const half_t* x,
+    const half_t* weight,
+    half_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!valid_wmma_shape(rows, in_features, out_features)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t row_tiles = (rows + kDenseWmmaTileM - 1) / kDenseWmmaTileM;
+  const int64_t col_tiles = (out_features + kDenseWmmaTileN - 1) / kDenseWmmaTileN;
+  hipLaunchKernelGGL(
+      dense_gemv_out_fp16_wmma_kernel,
+      dim3(static_cast<unsigned int>(col_tiles), static_cast<unsigned int>(row_tiles)),
+      dim3(static_cast<unsigned int>(kDenseWmmaWave)),
+      0,
+      stream,
+      x,
+      weight,
+      out,
+      rows,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dense_dual_gemv_out_bf16_wmma(
+    const uint16_t* x,
+    const uint16_t* weight_a,
+    const uint16_t* weight_b,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    hipStream_t stream) {
+  if (!valid_wmma_shape(rows, in_features, out_features_a) || out_features_b <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t total_out = out_features_a + out_features_b;
+  const int64_t row_tiles = (rows + kDenseWmmaTileM - 1) / kDenseWmmaTileM;
+  const int64_t col_tiles = (total_out + kDenseWmmaTileN - 1) / kDenseWmmaTileN;
+  hipLaunchKernelGGL(
+      dense_dual_gemv_out_bf16_wmma_kernel,
+      dim3(static_cast<unsigned int>(col_tiles), static_cast<unsigned int>(row_tiles)),
+      dim3(static_cast<unsigned int>(kDenseWmmaWave)),
+      0,
+      stream,
+      x,
+      weight_a,
+      weight_b,
+      out,
+      rows,
+      in_features,
+      out_features_a,
+      out_features_b);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dense_dual_gemv_out_fp16_wmma(
+    const half_t* x,
+    const half_t* weight_a,
+    const half_t* weight_b,
+    half_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    hipStream_t stream) {
+  if (!valid_wmma_shape(rows, in_features, out_features_a) || out_features_b <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t total_out = out_features_a + out_features_b;
+  const int64_t row_tiles = (rows + kDenseWmmaTileM - 1) / kDenseWmmaTileM;
+  const int64_t col_tiles = (total_out + kDenseWmmaTileN - 1) / kDenseWmmaTileN;
+  hipLaunchKernelGGL(
+      dense_dual_gemv_out_fp16_wmma_kernel,
+      dim3(static_cast<unsigned int>(col_tiles), static_cast<unsigned int>(row_tiles)),
+      dim3(static_cast<unsigned int>(kDenseWmmaWave)),
       0,
       stream,
       x,

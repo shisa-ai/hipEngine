@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-05-25
 
+- [diagnostic retained] hipEngine / DFlash verifier dense GEMV WMMA / W7900/gfx1100 B=4: 27B dense direct-bulk one-prompt D64 `0.862x -> 0.835x` AR (-3.2% relative) and verifier `99.17 -> 102.47 ms/cycle` after enabling `HIPENGINE_VERIFY_DENSE_GEMV_WMMA=on`; 35B A3B safe replay one-prompt D32 `0.255x -> 0.242x` AR (-5.4% relative), verifier `58.26 -> 58.50 ms/cycle`; skinny A/B microbench also rejects WMMA (`5x5120x48` `0.0066 -> 0.0322 ms`, slower), so the gate remains default-off; artifact `benchmarks/results/2026-05-25-hipengine-dflash-verifier-dense-wmma-diagnostic.json`.
 - [diagnostic retained] hipEngine / Qwen3.6-27B-PARO dense + z-lab Qwen3.6-27B-DFlash / W7900/gfx1100 B=4 D64 four-prompt: 35B safe replay reference `0.343x` (D32 4-prompt B4 mean) -> 27B safe replay `0.451x` AR (+31.5% relative, exact `4/4`), and 35B direct-bulk reference `0.524x` -> 27B direct-bulk `0.839x` AR (+60.1% relative, exact `4/4`) after adding dense PARO DFlash target validation and benchmark model-identity inference; D64 direct budget sweep B1/B2/B4/B8/B12/B15 = `0.556/0.686/0.823/0.706/0.644/0.582x`, so B=4 remains best; D160 direct-bulk one-prompt exact at `0.728x`; artifact `benchmarks/results/2026-05-25-hipengine-dflash-qwen36-27b-w7900-diagnostic.json`.
 
 ## 2026-05-24

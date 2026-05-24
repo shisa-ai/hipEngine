@@ -57,6 +57,7 @@ from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
     dense_dual_gemv_out_fp16,
     dense_gemv_out_bf16,
     dense_gemv_out_fp16,
+    dense_gemv_out_fp16_wmma,
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
     qwen35_linear_attn_chain_conv_decode_fp16_tloop,
@@ -3672,30 +3673,54 @@ class Qwen35ParoDecodeState:
                     stream=stream,
                 )
             else:
-                dense_gemv_out_fp16(
-                    hidden.ptr,
-                    a_weight.ptr,
-                    scratch.a.ptr,
-                    tokens,
-                    self.config.hidden_size,
-                    self.config.linear_num_value_heads,
-                    threads=threads,
-                    stream=stream,
-                    library=dense_library,
-                    runtime=self.runtime,
-                )
-                dense_gemv_out_fp16(
-                    hidden.ptr,
-                    b_weight.ptr,
-                    scratch.b.ptr,
-                    tokens,
-                    self.config.hidden_size,
-                    self.config.linear_num_value_heads,
-                    threads=threads,
-                    stream=stream,
-                    library=dense_library,
-                    runtime=self.runtime,
-                )
+                if _use_verify_dense_gemv_wmma(tokens, self.config.hidden_size):
+                    dense_gemv_out_fp16_wmma(
+                        hidden.ptr,
+                        a_weight.ptr,
+                        scratch.a.ptr,
+                        tokens,
+                        self.config.hidden_size,
+                        self.config.linear_num_value_heads,
+                        stream=stream,
+                        library=dense_library,
+                        runtime=self.runtime,
+                    )
+                    dense_gemv_out_fp16_wmma(
+                        hidden.ptr,
+                        b_weight.ptr,
+                        scratch.b.ptr,
+                        tokens,
+                        self.config.hidden_size,
+                        self.config.linear_num_value_heads,
+                        stream=stream,
+                        library=dense_library,
+                        runtime=self.runtime,
+                    )
+                else:
+                    dense_gemv_out_fp16(
+                        hidden.ptr,
+                        a_weight.ptr,
+                        scratch.a.ptr,
+                        tokens,
+                        self.config.hidden_size,
+                        self.config.linear_num_value_heads,
+                        threads=threads,
+                        stream=stream,
+                        library=dense_library,
+                        runtime=self.runtime,
+                    )
+                    dense_gemv_out_fp16(
+                        hidden.ptr,
+                        b_weight.ptr,
+                        scratch.b.ptr,
+                        tokens,
+                        self.config.hidden_size,
+                        self.config.linear_num_value_heads,
+                        threads=threads,
+                        stream=stream,
+                        library=dense_library,
+                        runtime=self.runtime,
+                    )
         return scratch.a, scratch.b
 
     def run_linear_attention_conv_gdn_fp16(
@@ -7242,6 +7267,14 @@ def _linear_ab_prefill_rocblas_min_tokens() -> int:
 def _use_linear_ab_prefill_rocblas(tokens: int) -> bool:
     threshold = _linear_ab_prefill_rocblas_min_tokens()
     return threshold > 0 and tokens >= threshold
+
+
+def _use_verify_dense_gemv_wmma(tokens: int, in_features: int) -> bool:
+    return (
+        _env_enabled("HIPENGINE_VERIFY_DENSE_GEMV_WMMA", default=False)
+        and 1 < int(tokens) <= 16
+        and (int(in_features) % 16) == 0
+    )
 
 
 def _use_linear_gdn_prefill_rotate_fused(config, *, tokens: int, group_size: int) -> bool:

@@ -1051,6 +1051,32 @@ Exact-AR equality is mandatory for every row and is NOT repeated in the Gate col
 | R3.7 | Reduced-logits verifier wire-through for DFlash chain accept (carry-over from R2.4); confirm via rocprof that no full-vocab lm-head kernel and no full-vocab D2H copy run in the verifier window. | B (code) | none (infra exists in MTP M12.6+) | ~50 (Python) | `HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD=on` returns exact-AR; rocprofv3 shows no full-vocab lm-head kernel in verifier window. | -0.5 to -1 ms verifier. Small but free. | Fused W8A16 LM-head + argmax rows landed behind `HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD=on`. Correctness: 6-shape parity test is bit-exact vs unfused LM-head + `argmax_f32_rows_i32`; 9-prompt B=4 D=32 chain bench remains exact with identical `avg_accept_length=1.527`. Rocprof gate passes: no `w8a16_linear_multi_row_kernel`, no `argmax_rows_stage1_i32_kernel`, no full-vocab D2H in the verifier window. Perf A/B is negative on W7900: fused-on `0.621x` AR vs fused-off `0.637x` AR, verifier `27.04 → 28.00 ms/cycle`, because stage-1 grid occupancy collapses from ~248K vocab blocks to `243 × 5` long-running blocks. | **Done / default-off**; architectural gate closed, speed promotion rejected on gfx1100. Future use needs a different work schedule, larger verifier row count, or true reduced-vocab sampling. |
 | R3.8 | BeeLlama v0.2.0 profile read + writeup. Compare their default config and kernels to ours. | reference | none | ~120 LoC markdown | Notes document (`docs/BEELLAMA_PROFILE.md`) captures: their default B, drafter architecture / param count, verifier batching strategy, kernel fusion tricks they call out. Maps each finding back to R3.x items. | Validates whether 4.4x is achievable on similar hardware or reflects a different setup. Does not directly produce a code change. | Done in [`docs/BEELLAMA_PROFILE.md`](BEELLAMA_PROFILE.md). Default `B=16` flat DFlash with greedy drafter and adaptive `profit` controller (per-context-bucket EWMA over depth ladder `{0..8,10,12,14,16}` with hysteresis + baseline reprobe). Drafter is shallow-and-wide (5 layers @ `n_embd=5120` for Qwen3.5-27B). Reduced-logits verifier path (`set_dflash_verify_logits`) is real and has a long sampler/grammar blocklist. `4.40x` headline is RTX 3090 + Q5/Q4 GGUF target (~3× lower target memory traffic than our BF16 target) + adaptive B up to 16, so not directly comparable to W7900 BF16 R3.4 numbers. Confirms R3.1 + R3.7 are the right next levers. | **Done (paper)**; informs R3.1 controller fix priority and R3.7 streaming argmax-over-vocab kernel design |
 
+### Verifier-Side WMMA Audit (2026-05-25)
+
+The drafter R3.4 result does **not** transfer to the current target verifier as
+a simple "turn WMMA on for all small rows" change.
+
+Two verifier-side checks were run on W7900/gfx1100:
+
+- Existing W4 projection dispatch forced to prefill/WMMA-style kernels for
+  small verifier rows (`HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD=1`
+  `HIPENGINE_W4_MULTI_ROW_PACK8=off`) was exact on the 27B B=4/D64 one-prompt
+  direct-bulk row, but slowed `0.862x -> 0.852x` AR and verifier mean
+  `99.17 -> 100.36 ms/cycle`.
+- New dense-GEMV WMMA variants for the true dense verifier family
+  (`project_linear_attention_ab_fp16`) were added behind
+  `HIPENGINE_VERIFY_DENSE_GEMV_WMMA=on`.  Unit correctness passed, but the
+  skinny A/B shapes under-occupy WMMA: `5x5120x48` was `0.0066 ms` with the
+  scalar GEMV kernel vs `0.0322 ms` with WMMA, and `5x2048x32` was
+  `0.0062 ms` vs `0.0159 ms`.  Full-model checks stayed exact but regressed:
+  27B direct-bulk `0.862x -> 0.835x` AR, 35B safe replay `0.255x -> 0.242x`.
+
+Conclusion: the easy verifier-side R3.4 analogue is rejected.  The verifier
+projection tax is not the same shape as the drafter's 16-row x 2048/6144 BF16
+dense stack.  Keep the new dense WMMA gate default-off for reproducibility, and
+prioritize lower-cost canonical commit / tree topology / Q8 KV over another
+small-row WMMA dispatch flip.
+
 ### Qwen3.6-27B PARO/DFLASH lane check (2026-05-25)
 
 The z-lab Qwen3.6-27B lane is dense PARO (`num_experts=0`,
