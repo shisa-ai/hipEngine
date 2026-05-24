@@ -1,6 +1,6 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-05-23
+Last updated: 2026-05-25
 
 Human-readable scoreboard for hipEngine performance. Machine-readable benchmark
 attempts live under [`benchmarks/results/`](results/); this file tracks the
@@ -76,21 +76,25 @@ $ROCM_DEV/bin/hipcc --version > /tmp/hipengine-hipcc-version.txt
 
 Use rows as workload shapes and columns as engines in the hardware report. The
 standard README sweep shapes are `512/128`, `1K/128`, `4K/128`, `32K/128`,
-`64K/128`, and `128K/128`. Include max-context compressed-KV rows (`64K/128`,
-`128K/128`) for hipEngine PARO INT8 KV and llama.cpp `Q8_0` KV when available.
+`64K/128`, and `128K/128`; the compact root README table currently displays the
+subset with existing llama.cpp rows (`512/128`, `4K/128`, `32K/128`,
+`128K/128`). HipEngine sweeps should load each resident model once for the whole
+shape family and run 5 measured repetitions per shape, llama-bench style. Include
+max-context compressed-KV rows (`64K/128`, `128K/128`) for hipEngine PARO INT8
+KV and llama.cpp `Q8_0` KV when available.
 
 hipEngine PARO BF16 KV:
 
 ```bash
-PARO=/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/snapshots/dca2736e88e9f70855128fc81a8e918043a163cd
-for P in 512 1024 4096 32768 65536 131072; do
-  PYTHONPATH=. "$PY" scripts/qwen35_paro_bench.py \
-    --model "$PARO" --prompt-length "$P" --token-id 9707 \
-    --decode-tokens 128 --warmup-decode-tokens 1 \
-    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
-    --attn-aotriton-min-tokens 512 --graph-replay-decode \
-    --json "benchmarks/results/<date>-<gpu>-hipengine-paro-bf16kv-${P}-128.json"
-done
+PARO=/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e
+PYTHONPATH=. "$PY" scripts/qwen35_readme_sweep.py \
+  --engine paro --model "$PARO" --backend hip_gfx1100 \
+  --shared-expert-format packed_paro_w4 --token-id 9707 \
+  --workloads 512/128 1K/128 4K/128 32K/128 64K/128 128K/128 \
+  --warmup-runs 1 --measured-runs 5 --warmup-decode-tokens 4 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --attn-aotriton-min-tokens 512 --graph-replay-decode \
+  --json "benchmarks/results/<date>-<gpu>-hipengine-paro-bf16kv-readme-sweep.json"
 ```
 
 For max-context PARO INT8 KV, add:
@@ -99,22 +103,20 @@ For max-context PARO INT8 KV, add:
 --kv-storage int8_per_token_head --kv-scale-dtype fp16 --kv-scale-granularity per_token_head
 ```
 
-hipEngine GGUF Q4_K_M:
+hipEngine GGUF Q4_K_S:
 
 ```bash
-GGUF_M=/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
-for P in 512 1024 4096 32768 65536 131072; do
-  HIPENGINE_GGUF_DECODE_REPACK=1 \
-  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
-  PYTHONPATH=. "$PY" scripts/qwen35_gguf_bench.py \
-    --model "$GGUF_M" --quant gguf_q4_k_m \
-    --prompt-length "$P" --decode-tokens 128 --warmup-decode-tokens 1 \
-    --warmup-runs 0 --measured-runs 1 \
-    --force-bulk-prefill --bulk-prefill-attention-mode bulk \
-    --use-wmma-prefill --use-gemv-decode \
-    --compiler-version-file /tmp/hipengine-hipcc-version.txt \
-    --json "benchmarks/results/<date>-<gpu>-hipengine-gguf-q4km-${P}-128.json"
-done
+GGUF_S=/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf
+HIPENGINE_GGUF_DECODE_REPACK=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+PYTHONPATH=. "$PY" scripts/qwen35_readme_sweep.py \
+  --engine gguf --model "$GGUF_S" --quant gguf_q4_k_s \
+  --workloads 512/128 1K/128 4K/128 32K/128 64K/128 128K/128 \
+  --warmup-runs 1 --measured-runs 5 --warmup-decode-tokens 1 \
+  --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --use-wmma-prefill --use-gemv-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json "benchmarks/results/<date>-<gpu>-hipengine-gguf-q4ks-readme-sweep.json"
 ```
 
 llama.cpp HIP/Vulkan, with peak VRAM sampling:
@@ -323,6 +325,7 @@ requires a shisa correctness gate before promotion.
 
 | Model | Quant | Workload | Path | Correctness / status | Diagnostic timing | Memory | Artifact | Last updated | Blocker / notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Qwen3.6-35B-A3B PARO + GGUF | w4_paro + gguf_q4_k_s | W7900 README persistent 5-run sweep: 512/128, 4K/128, 32K/128, 128K/128 | `scripts/qwen35_readme_sweep.py`; one resident session per model allocated for max requested context, 1 warmup + 5 measured runs per shape, graph replay decode. Existing llama.cpp HIP/Vulkan Q4_K_M rows reused unchanged. | `status=diagnostic_retained`, `performance_claim=false`; final token IDs stable and finite final logits in measured runs, but no new KL/top-1 gate for shisa/PARO or GGUF production rows. | Median prefill tok/s PARO `2718.497 / 2838.773 / 2074.699 / 1055.454`; GGUF Q4_K_S `2258.847 / 2576.673 / 1893.967 / 998.143`. Median decode tok/s PARO `103.460 / 101.964 / 90.438 / 59.598`; GGUF `109.152 / 100.048 / 86.774 / 57.954`. | Max-context persistent-session tracked peak: PARO `20.962 / 21.906 / 22.016 / 22.122 GiB`; GGUF `25.108 GiB` for all displayed shapes. | [`2026-05-25-w7900-hipengine-readme-persistent-5run-diagnostic.json`](results/2026-05-25-w7900-hipengine-readme-persistent-5run-diagnostic.json) | 2026-05-25 | Diagnostic README refresh. Short-shape hipEngine peak is not a minimum-fit number because the session is allocated for the whole 128K sweep. |
 | Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | task #32 P9.G1 final acceptance: 512/0 + 512/128 | Requested P8 WMMA prefill + P9 GEMV decode with resident decode-repack (`--use-wmma-prefill --use-gemv-decode`, `HIPENGINE_GGUF_DECODE_REPACK=1`). qwen35moe safety keeps `effective_wmma_prefill=false` and `effective_gemv_decode=true`. | `status=blocked_prefill_target_not_met`, `performance_claim=false`; P9.E2 accepted (`KL 0`, top-1 `100%`, deterministic tails); targeted dispatch/ops tests passed (`42 passed`). | 512/0 rocprof total prefill kernel time `1004.494 ms` vs acceptance `<=350 ms` (stretch `<=250 ms`); wall prefill median `505.132 tok/s`. 512/128 graph decode meets the decode floor: `98.144 tok/s` median vs `>=95`, but misses stretch `>=110`. | tracked peak `21.343 GiB`; HIP sampled peak median `21.807 GiB`. | [`2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_g1-final-acceptance-blocked.json`](results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_g1-final-acceptance-blocked.json) | 2026-05-20 | Final P9 combined acceptance remains blocked by prefill: requested WMMA prefill is safety-disabled after P9.E2's unsafe-path rejection, so the 512/0 path stays far above target. Decode acceptance is covered by the P9.D18/P9.B7 row above. |
 | Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | task #48 P9.C17 final #27 gate / no-wire decision | No runtime Q4 redesign wired: P9.C15 rejected Q4T16 compact32, and P9.C16 rejected compact tile-list/no-padding plus wider-column proxies. | `status=blocked_no_q4_redesign_to_wire`, `performance_claim=false`; carry forward P9.C11 correctness passing bundle (`143` tests, finite deterministic 512/128 final token `220`). | Final #27 combined bucket remains `140.110 ms` vs `<=110 ms` target (`gap 30.110 ms`): Q4 `58.126`, Q5 `27.043`, Q6 `2.656`, Q8 `52.285`. Candidate evidence: Q4T16 best `59.395 ms`, no-padding lower bound `54.775 ms`, `64x16=61.868 ms`, `64x32=91.831 ms`. | tracked peak carried forward `20.886 GiB`; HIP sampled `21.354 GiB`; no new memory path. | [`2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c17-no-q4-redesign-blocked.json`](results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c17-no-q4-redesign-blocked.json) | 2026-05-20 | #27 must remain open/blocked. Further Q4 selected-MoE work should move to parent kernel R&D/new design before any hipENGINE runtime wiring; decode target is covered by the accepted P9.D18 row above. |
 | Qwen3.6-35B-A3B GGUF | gguf_q4_k_m | task #47 P9.C16 selected-MoE alternative evaluation: 512/0 replay/model | Evaluated alternatives after P9.C15: compact tile-list/no-padding ABI model from real routing counts, plus measured wider-column raw selected WMMA tile proxies (`64x16`, `64x32`). | `status=rejected_no_inrepo_alternative_selected`, `performance_claim=false`; no broad runtime change selected. | Raw Q4 selected gate+up `62.199 ms`; optimistic no-padding lower bound `54.775 ms`; measured `64x16` Q4 `61.868 ms`, `64x32` Q4 `91.831 ms`. Padding is only `13.45%` and residual tails `5.40%`, so metadata/tail compaction cannot hit `<=35-40 ms`. | no new memory path; modeled only. | [`2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c16-selected-moe-alternatives.json`](results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c16-selected-moe-alternatives.json) | 2026-05-20 | No winning Q4 redesign for #48. Further Q4 selected-MoE work should move to parent kernel R&D/new design; hipENGINE can refocus on #51/#28 blockers. |

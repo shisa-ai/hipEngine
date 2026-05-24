@@ -1876,7 +1876,7 @@ class Qwen35GGUFFullStackRunner:
                 value_cache.ptr,
                 scratch.full_attn_context.ptr,
                 scratch.decode_spans,
-                scratch.max_positions,
+                active_context,
                 scratch.block_size,
                 cfg.head_count,
                 cfg.head_count_kv,

@@ -17,6 +17,11 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-05-25
+
+- [diagnostic retained] hipENGINE / W7900 TheRock ROCm 7.13 / PARO + GGUF README persistent 5-run sweep: switched hipEngine README sweep protocol to one resident model load per engine with 1 warmup + 5 measured runs per shape. PARO median prefill/decode at `512/4K/32K/128K` is `2718.497/103.460`, `2838.773/101.964`, `2074.699/90.438`, `1055.454/59.598`; GGUF Q4_K_S is `2258.847/109.152`, `2576.673/100.048`, `1893.967/86.774`, `998.143/57.954`. Existing llama.cpp rows unchanged; no new KL/top-1 gate so `performance_claim=false`; `benchmarks/results/2026-05-25-w7900-hipengine-readme-persistent-5run-diagnostic.json`.
+- [fix] hipENGINE / GGUF resident decode / mixed-context persistent sweep: non-split full-attention decode now passes `active_context` rather than `scratch.max_positions` to the context kernel, fixing `HIP error 1: invalid argument` when a max-128K session runs short 512/128 decode before long-context rows; validated by the GGUF 5-run sweep artifact above.
+
 ## 2026-05-23
 
 - [diagnostic retained] hipENGINE / Qwen3.6-35B-A3B PARO packed BF16 KV / W7900 TheRock ROCm 7.13 workspace-overlap threshold sweep: release-vs-resident prefill deltas `-8.2% / -3.9% / -1.4% / +0.1% / +0.2% / +1.2% / +0.4%` at `4K / 8K / 16K / 32K / 48K / 64K / 128K`, saving `0.19-0.27 GiB`; retained policy keeps workspaces resident through 32K and minimizes overlap for `>32K` prompts with active chunking; `benchmarks/results/2026-05-23-paro-prefill-workspace-overlap-threshold-diagnostic.json`.

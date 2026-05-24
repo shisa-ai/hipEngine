@@ -137,36 +137,36 @@ With `-ub 512`:
 
 ### gfx1100 (Radeon RX 7900 XTX / Radeon Pro W7900)
 
-While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipEngine/blob/main/docs/ROOFLINE.md), the current gfx1100 implementation does well compared to Q4_K_M quants of recent llama.cpp builds (`b9042`) on the same model family. The latest W7900 packed rows use the default prefill policy: 512-token prompts stay unchunked and prompts above 1K use `1024/1024/4096/1024/1024` chunks. The `hipEngine GGUF Q4_K_S` column uses the same chunked-prefill policy plus the WMMA prefill + GEMV decode fast paths and the persistent on-load decode-repack into T16 tile layouts (the source of the ~1.9 GiB peak-memory delta vs PARO at every shape).
+While we are far from [gfx1100 roofline](https://github.com/shisa-ai/hipEngine/blob/main/docs/ROOFLINE.md), the current gfx1100 implementation does well compared to Q4_K_M quants of recent llama.cpp builds (`b9042`) on the same model family. The latest W7900 hipEngine rows use TheRock ROCm 7.13 and load each resident model once for 1 warmup + 5 measured in-session repetitions per shape. PARO uses the default prefill policy: 512-token prompts stay unchunked and prompts above 1K use `1024/1024/4096/1024/1024` chunks. The `hipEngine GGUF Q4_K_S` column uses the same chunked-prefill policy plus the WMMA prefill + GEMV decode fast paths and the persistent on-load decode-repack into T16 tile layouts.
 
 ### Prefill tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF Q4_K_S | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **2500.565** | 1584.822 | 2436.049 | 1816.927 |
-| 4K/128 | **2899.685** | 1736.812 | 2176.905 | 1705.093 |
-| 32K/128 | **2115.050** | 1384.032 | 1496.409 | 1128.554 |
-| 128K/128 | **1054.291** | 831.386 | 710.213 | 480.539 |
+| 512/128 | **2718.497** | 2258.847 | 2436.049 | 1816.927 |
+| 4K/128 | **2838.773** | 2576.673 | 2176.905 | 1705.093 |
+| 32K/128 | **2074.699** | 1893.967 | 1496.409 | 1128.554 |
+| 128K/128 | **1055.454** | 998.143 | 710.213 | 480.539 |
 
 ### Decode tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF Q4_K_S | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | 111.516 | 92.936 | 85.487 | **127.515** |
-| 4K/128 | 113.094 | 101.341 | 87.375 | **120.163** |
-| 32K/128 | 97.594 | 87.016 | 76.994 | **98.073** |
-| 128K/128 | 62.027 | 58.123 | 57.341 | **64.478** |
+| 512/128 | 103.460 | 109.152 | 85.487 | **127.515** |
+| 4K/128 | 101.964 | 100.048 | 87.375 | **120.163** |
+| 32K/128 | 90.438 | 86.774 | 76.994 | **98.073** |
+| 128K/128 | 59.598 | 57.954 | 57.341 | **64.478** |
 
 ### Peak GiB
 
 | Workload | hipEngine PARO | hipEngine GGUF Q4_K_S | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **18.123** | 20.185 | 21.125 | 20.844 |
-| 4K/128 | **19.455** | 21.335 | 21.197 | 20.969 |
-| 32K/128 | **20.267** | 22.146 | 21.738 | 21.533 |
-| 128K/128 | **23.235** | 25.108 | 23.605 | 23.596 |
+| 512/128 | 20.962 | 25.108 | 21.125 | **20.844** |
+| 4K/128 | 21.906 | 25.108 | 21.197 | **20.969** |
+| 32K/128 | 22.016 | 25.108 | 21.738 | **21.533** |
+| 128K/128 | **22.122** | 25.108 | 23.605 | 23.596 |
 
-hipEngine GGUF Q4_K_S row source: [`benchmarks/results/2026-05-23-hipengine-qwen36-35b-a3b-q4ks-w7900-readme-sweep-accepted.json`](benchmarks/results/2026-05-23-hipengine-qwen36-35b-a3b-q4ks-w7900-readme-sweep-accepted.json) (W7900, 1 warmup + 3 measured runs per shape, finite logits + effective WMMA prefill + effective GEMV decode true on every run). Decode is within 1-3% of the prior local RX 7900 XTX dual-column gate; W7900 prefill is currently lower than RX 7900 XTX on the same kernels (-36% at 4K), most likely because the bench launches a fresh resident session per run and the W7900 starts each session in a low-power idle state - tracked as a follow-up rather than a kernel change. The hipEngine GGUF Q4_K_S column is compared against the existing llama.cpp Q4_K_M baselines because that is the lineage of measured baselines we have on this host; cross-quant comparisons should be read as approximate.
+hipEngine W7900 row source: [`benchmarks/results/2026-05-25-w7900-hipengine-readme-persistent-5run-diagnostic.json`](benchmarks/results/2026-05-25-w7900-hipengine-readme-persistent-5run-diagnostic.json). Both hipEngine columns are 5-run medians from one resident session allocated for the maximum requested context (`128K/128`), so the peak-memory column is a max-context persistent-session high-water mark rather than each shape's minimum allocation. Existing W7900 llama.cpp HIP/Vulkan Q4_K_M rows are reused unchanged. The hipEngine GGUF Q4_K_S column is compared against the existing llama.cpp Q4_K_M baselines because that is the lineage of measured baselines we have on this host; cross-quant comparisons should be read as approximate.
 
 ### gfx1151 (AMD Ryzen AI MAX+ 395 / Radeon 8060S)
 

@@ -964,6 +964,55 @@ class Qwen35ParoResidentSession:
     def __exit__(self, exc_type, exc, tb) -> None:
         self.close()
 
+    def reset(self) -> None:
+        """Reset sequence state without freeing resident weights or scratch."""
+
+        if self.closed:
+            raise RuntimeError("session is closed")
+        self.runtime.device_synchronize()
+        self.position_arr.fill(0)
+        self.context_arr.fill(1)
+        self.token_id_arr.fill(0)
+        self.active_mask_arr.fill(0)
+        self.active_mask_arr[0] = 1
+        copy_host_to_device(
+            self.position_buf,
+            host_array_ptr(self.position_arr),
+            self.position_arr.nbytes,
+            runtime=self.runtime,
+        )
+        copy_host_to_device(
+            self.context_buf,
+            host_array_ptr(self.context_arr),
+            self.context_arr.nbytes,
+            runtime=self.runtime,
+        )
+        copy_host_to_device(
+            self.token_id_buf,
+            host_array_ptr(self.token_id_arr),
+            self.token_id_arr.nbytes,
+            runtime=self.runtime,
+        )
+        copy_host_to_device(
+            self.active_mask_buf,
+            host_array_ptr(self.active_mask_arr),
+            self.active_mask_arr.nbytes,
+            runtime=self.runtime,
+        )
+        for state_buffers in self.linear_states.values():
+            _conv_state, _recurrent_state, conv_buf, recurrent_buf, _conv_zero, _recurrent_zero = state_buffers
+            self.runtime.memset(conv_buf.ptr, 0, conv_buf.nbytes)
+            self.runtime.memset(recurrent_buf.ptr, 0, recurrent_buf.nbytes)
+        for cache_buffers in self.full_caches.values():
+            _key_cache, _value_cache, key_buf, value_buf = cache_buffers
+            self.runtime.memset(key_buf.ptr, 0, key_buf.nbytes)
+            self.runtime.memset(value_buf.ptr, 0, value_buf.nbytes)
+        for scale_buffers in self.full_cache_scales.values():
+            _key_scale, _value_scale, key_scale_buf, value_scale_buf = scale_buffers
+            self.runtime.memset(key_scale_buf.ptr, 0, key_scale_buf.nbytes)
+            self.runtime.memset(value_scale_buf.ptr, 0, value_scale_buf.nbytes)
+        self.last_prefill_execution = None
+
     def step(self, token_id: int, *, position: int, sample: bool = True) -> Qwen35ParoAutoregressiveStepResult | None:
         if self.closed:
             raise RuntimeError("session is closed")

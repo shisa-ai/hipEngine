@@ -26477,3 +26477,34 @@ python -m pytest -q tests/test_qwen35_gguf_fastpath_safety.py tests/test_aotrito
 # 37 passed
 git diff --check
 ```
+
+## 2026-05-25 — W7900 README persistent 5-run sweep refresh
+
+Updated the hipEngine README sweep protocol so hipEngine models load once per engine and run repeated in-session measurements instead of paying the 20-60s model load/decode-repack cost for every shape. Added `scripts/qwen35_readme_sweep.py`, which creates one resident session at the largest requested context, resets sequence state between runs, and records 1 warmup + 5 measured repetitions per workload by default. Added `Qwen35ParoResidentSession.reset()` for the PARO path.
+
+During the GGUF mixed-shape sweep, a max-128K resident session failed on the short 512/128 decode with `HIP error 1: invalid argument`. Root cause: the non-split GGUF full-attention decode path passed `scratch.max_positions` to the context kernel even when the active decode context was small; for a max-128K session this selected an invalid short-context launch shape. Fixed `_run_full_attention_attn_only()` to pass `active_context` to `qwen35_paged_full_attn_decode_context_bf16_spans()` in the non-split branch. Split decode already used active context.
+
+W7900 / TheRock HIP `7.13.26162-1140233ffe`, repeated token id `9707`, graph replay decode, existing llama.cpp HIP/Vulkan rows reused unchanged. Exact commands are in `benchmarks/results/2026-05-25-w7900-hipengine-readme-persistent-5run-diagnostic.json`; raw artifacts:
+
+```text
+benchmarks/results/2026-05-25-w7900-hipengine-paro-readme-persistent-5run.json
+benchmarks/results/2026-05-25-w7900-hipengine-gguf-q4ks-readme-persistent-5run.json
+benchmarks/results/2026-05-25-w7900-hipengine-readme-persistent-5run-diagnostic.json
+```
+
+5-run medians (`512/128`, `4K/128`, `32K/128`, `128K/128`):
+
+- PARO packed BF16 KV prefill: `2718.497 / 2838.773 / 2074.699 / 1055.454 tok/s`; decode: `103.460 / 101.964 / 90.438 / 59.598 tok/s`; tracked peak: `20.962 / 21.906 / 22.016 / 22.122 GiB`.
+- GGUF Q4_K_S prefill: `2258.847 / 2576.673 / 1893.967 / 998.143 tok/s`; decode: `109.152 / 100.048 / 86.774 / 57.954 tok/s`; tracked peak: `25.108 GiB` for all displayed shapes because the resident session is allocated for max 128K context.
+
+Updated `README.md`, `benchmarks/W7900.md`, `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`. These rows remain diagnostic (`performance_claim=false`) because no new KL/top-1 gate was run for the production shisa/PARO or GGUF rows; final-token sanity was stable across the measured runs.
+
+Validation:
+
+```bash
+python -m py_compile hipengine/runtime/qwen35_paro_runner.py hipengine/runtime/qwen35_gguf_runner.py scripts/qwen35_readme_sweep.py
+python scripts/qwen35_readme_sweep.py --engine paro ... --workloads 512/128 ... --measured-runs 1 --json /tmp/paro-readme-sweep-smoke.json
+python scripts/qwen35_readme_sweep.py --engine paro ... --workloads 128K/128 ... --measured-runs 1 --json /tmp/paro-readme-sweep-128k-smoke.json
+python scripts/qwen35_readme_sweep.py --engine paro ... --workloads 512/128 4K/128 32K/128 128K/128 --warmup-runs 1 --measured-runs 5 --json benchmarks/results/2026-05-25-w7900-hipengine-paro-readme-persistent-5run.json
+HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-713.txt python scripts/qwen35_readme_sweep.py --engine gguf ... --workloads 512/128 4K/128 32K/128 128K/128 --warmup-runs 1 --measured-runs 5 --json benchmarks/results/2026-05-25-w7900-hipengine-gguf-q4ks-readme-persistent-5run.json
+```
