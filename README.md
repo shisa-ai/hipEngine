@@ -221,7 +221,7 @@ Current caveats:
 ┌─────────────────────────────────────────────────────────────────┐
 │  USER API                                                       │
 │  hipengine.LLM.generate()           library API                 │
-│  hipengine.server                   optional [server] extra     │
+│  hipengine serve                    OpenAI-compatible server    │
 ├─────────────────────────────────────────────────────────────────┤
 │  LOADING (torch-free)                                           │
 │  safetensors mmap + hipMemcpyAsync / HF config / jinja2 chat    │
@@ -255,11 +255,8 @@ Full layer diagram, plugin axes, KV cache ABI, and roadmap are in
 git lfs install
 git lfs pull
 
-# core runtime (torch-free)
+# runtime + OpenAI-compatible server (torch-free hot path)
 pip install -e .
-
-# with the OpenAI-compatible server
-pip install -e ".[server]"
 
 # with the optional dlpack torch bridge for user-boundary interop
 pip install -e ".[torch]"
@@ -270,6 +267,14 @@ pip install -e ".[dev]"
 
 Python 3.11+. A working ROCm install with `libamdhip64.so` on the loader path
 is required for any GPU run; CPU-reference correctness tests run without a GPU.
+
+The installed app exposes a small command group:
+
+```bash
+hipengine --help
+hipengine serve --help
+hipengine bench list
+```
 
 ## Quickstart (Phase 0 — bring-up only)
 
@@ -293,11 +298,11 @@ combinations fail loudly rather than falling back to a generic torch path. See
 
 ## OpenAI-compatible server
 
-Install the optional server extra and run the FastAPI layer:
+The OpenAI-compatible FastAPI layer is installed by default:
 
 ```bash
-pip install -e ".[server]"
-python -m hipengine.server \
+pip install hipengine
+hipengine serve \
   --model shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed \
   --quant w4_paro \
   --served-model-name qwen-paro

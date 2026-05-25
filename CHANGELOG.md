@@ -8,7 +8,17 @@ evidence under [`benchmarks/results/`](benchmarks/results/).
 
 ## Unreleased
 
-No changes yet.
+### Added
+
+- Added a top-level `hipengine` console command. `hipengine serve` launches the
+  OpenAI-compatible server and `hipengine bench` lists/launches packaged
+  benchmark helpers.
+
+### Changed
+
+- FastAPI/Uvicorn server dependencies now install by default because most users
+  want the OpenAI-compatible API. The old `hipengine-server` console script has
+  been replaced by `hipengine serve`.
 
 ## v0.2.2 - 2026-05-26
 

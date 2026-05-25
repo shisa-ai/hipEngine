@@ -86,7 +86,7 @@ qwen35moe fast-path safety gate.
 | `HIPENGINE_HIPCC_VERSION_TEXT` / `HIPENGINE_HIPCC_VERSION_FILE` | HIP JIT cache | unset | Compiler-specific override for `hipcc`; takes precedence over the generic compiler-version vars. The same pattern applies to other compiler basenames. |
 | `HIPENGINE_AOTRITON_LIB` | AOTriton discovery | unset | Explicit `libaotriton_v2.so` override. The matching `include/` and `aotriton.images/` trees must be in the standard release layout. |
 | `HIPENGINE_AOTRITON_HOME` | AOTriton discovery | unset | Explicit cache root containing `<version>/lib/libaotriton_v2.so`. Missing explicit roots fail loudly instead of falling back silently. |
-| `HIPENGINE_API_KEY` | OpenAI-compatible server | unset | Optional bearer token used by `python -m hipengine.server` when `--api-key` is omitted. |
+| `HIPENGINE_API_KEY` | OpenAI-compatible server | unset | Optional bearer token used by `hipengine serve` when `--api-key` is omitted. |
 
 Removed historical AOTriton knobs (`HIPENGINE_AOTRITON_SOURCE_ROOT` and
 `HIPENGINE_AOTRITON_RUNTIME_ROOT`) are no longer read by the runtime.

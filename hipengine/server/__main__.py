@@ -1,4 +1,4 @@
-"""Command-line entry point for the optional hipEngine server."""
+"""Command-line entry point for the hipEngine OpenAI-compatible server."""
 
 from __future__ import annotations
 
@@ -115,7 +115,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         import uvicorn
     except Exception as exc:  # pragma: no cover - dependency guard
-        raise RuntimeError("uvicorn is required; install hipengine[server]") from exc
+        raise RuntimeError("uvicorn is required; reinstall hipengine with its default dependencies") from exc
     uvicorn.run(app, host=args.host, port=args.port, log_level=args.log_level)
     return 0
 

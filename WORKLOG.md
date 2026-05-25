@@ -26721,3 +26721,31 @@ WHEEL=/tmp/hipengine-release-v021.QhOZ2d/dist/hipengine-0.2.2-py3-none-manylinux
 ```
 
 Results: compileall passed; full pytest passed on CPython 3.10.16 (including the explicit `--python 3.10` run); server CLI smoke passed; `python3 -m build` produced `hipengine-0.2.2.tar.gz` and `hipengine-0.2.2-py3-none-manylinux_2_39_x86_64.whl`; wheel metadata reports `Root-Is-Purelib: false` and tag `py3-none-manylinux_2_39_x86_64`; `twine check` passed for both artifacts; isolated wheel server CLI smoke passed. Rebuild artifacts after this log append before publishing so `dist/` matches the final commit.
+
+## 2026-05-26 — top-level hipengine CLI and default server deps
+
+Added a standalone `hipengine` console command: `hipengine serve` dispatches to the OpenAI-compatible server, `hipengine bench list` enumerates packaged benchmark helpers, and `hipengine bench {paro,gguf,sweep,batch-serial}` forwards to the corresponding benchmark module. Removed the `hipengine-server` console script per user direction (no legacy entry point needed). FastAPI/Uvicorn are now default dependencies so `pip install hipengine` includes the OpenAI-compatible API; the `[server]` extra is intentionally empty.
+
+Packaging now includes the `scripts` package so benchmark launchers are available from wheel installs. Docs were updated in `README.md`, `docs/API.md`, `docs/PLAN.md`, `docs/IMPLEMENTATION.md`, `docs/ENVS.md`, and `docs/PUBLISH.md` to prefer `hipengine serve` and default server installs.
+
+Validation:
+
+```bash
+python -m compileall -q hipengine scripts tests
+python -m pytest -q tests/test_cli.py tests/test_server_api.py tests/test_generation_qwen35_paro.py tests/test_llm_generate.py
+# 30 passed
+python -m build --outdir /tmp/hipengine-cli-dist
+# built hipengine-0.2.2.tar.gz and hipengine-0.2.2-py3-none-manylinux_2_39_x86_64.whl
+python - <<'PY'
+import zipfile
+from pathlib import Path
+wheel=next(Path('/tmp/hipengine-cli-dist').glob('hipengine-*.whl'))
+with zipfile.ZipFile(wheel) as z:
+    print(z.read('hipengine-0.2.2.dist-info/entry_points.txt').decode())
+    print('scripts/qwen35_paro_bench.py' in z.namelist())
+PY
+WHEEL=/tmp/hipengine-cli-dist/hipengine-0.2.2-py3-none-manylinux_2_39_x86_64.whl
+(cd /tmp && uv run --refresh --isolated --with "$WHEEL" hipengine --help)
+(cd /tmp && uv run --refresh --isolated --with "$WHEEL" hipengine serve --help)
+(cd /tmp && uv run --refresh --isolated --with "$WHEEL" hipengine bench list)
+```

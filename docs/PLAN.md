@@ -367,7 +367,7 @@ The kernel layer sees `hipengine.Tensor` (raw device ptr + metadata) on the acti
 | **Torch-free at runtime** | hipEngine does not import `torch` at inference time. We own a thin `hipengine.Tensor` over HIP/CUDA device pointers, call `hipblasLt` / `hipGraph` / loading libs via `ctypes`, and JIT kernels with `hipcc` + `ctypes.CDLL` (no `torch.utils.cpp_extension`). This removes a 1.7 GiB dependency. Optional `hipengine[torch]` extra exposes dlpack interop for users who want to hand in torch tensors. |
 | **Fast dispatch, no Python in the hot path** | Decode forward is captured into a `hipGraph` at warmup and replayed with zero Python overhead per subsequent step. Python runs only once per token for sampling. |
 | **Fused + unfused kernels coexist** | Every fused composite (`rmsnorm_rotate`, `gate_combine_residual`, etc.) has an unfused chain equivalent. The dispatcher prefers fused when a registered composite matches the upcoming op chain and falls back to unfused primitives when not. Unfused kernels also serve as the correctness baseline. |
-| **Library-first, server-optional** | `pip install hipengine` gives you `from hipengine import LLM`. The OpenAI-compatible server is an optional extra (`pip install hipengine[server]`). |
+| **Library-first, server-included** | `pip install hipengine` gives you `from hipengine import LLM` plus the `hipengine serve` OpenAI-compatible server CLI. The torch-free inference hot path still does not import FastAPI/Uvicorn. |
 | **Extensible by design** | Four orthogonal plugin axes — **backend**, **model**, **quant**, **layer** — not hardcoded branches. See Extensibility Design. |
 | **Evidence-backed performance** | Every performance claim comes with a reproducible benchmark command, hardware context, and workload shape. No marketing numbers. |
 
@@ -379,8 +379,8 @@ The kernel layer sees `hipengine.Tensor` (raw device ptr + metadata) on the acti
 ┌─────────────────────────────────────────────────────────────────┐
 │  USER INTERFACE                                                  │
 │  • hipengine.LLM.generate()           (library API)              │
-│  • hipengine.server                   (optional, pip extra)      │
-│  • hipengine.benchmark                (comparable harness)       │
+│  • hipengine serve                    (OpenAI-compatible server) │
+│  • hipengine bench                    (benchmark launcher)       │
 ├─────────────────────────────────────────────────────────────────┤
 │  LOADING (~900 lines, torch-free)                                │
 │  • safetensors mmap + hipMemcpyAsync to device                   │
@@ -1136,7 +1136,7 @@ hipengine/
 │   │   ├── mtp.py               # Qwen3.5 MTP layers
 │   │   ├── eagle3.py            # feature-conditioned draft model
 │   │   └── dflash.py            # sansho / FastKMS draft acceptance
-│   ├── server/                  # Optional: `pip install hipengine[server]`
+│   ├── server/                  # OpenAI-compatible API used by `hipengine serve`
 │   │   ├── __init__.py
 │   │   ├── api.py               # FastAPI app
 │   │   ├── chat.py              # /v1/chat/completions
@@ -1171,8 +1171,8 @@ hipengine/
 │   └── API.md
 ├── benchmarks/
 │   └── vllm_bench_adapter.py
-├── pyproject.toml               # Core deps: safetensors, tokenizers, jinja2, numpy
-│                                # Extras: [server]=fastapi, [torch]=torch (dlpack bridge)
+├── pyproject.toml               # Deps: safetensors, tokenizers, jinja2, numpy, FastAPI/Uvicorn
+│                                # Extras: [torch]=torch (dlpack bridge)
 └── README.md
 ```
 
@@ -1190,7 +1190,7 @@ hipengine/
 | | Own FA2 prefill HIP kernel (replaces `F.scaled_dot_product_attention`) | **~1,500** (HIP) | ~0 | **~1,500** |
 | | CPU-reference backend (numpy implementations of all `layer` keys for correctness oracle) | ~800 | ~0 | **~800** |
 | | Smoke: Qwen3-0.6B + Qwen3.5 0.8B dense generate text end-to-end | ~20 | ~0 | **~20** |
-| **1. Server + Benchmark** | FastAPI server (`hipengine[server]` extra) | ~150 | ~200 | **~350** |
+| **1. Server + Benchmark** | FastAPI server (`hipengine serve`, installed by default) | ~150 | ~200 | **~350** |
 | | Benchmark harness (prefill/decode/memory) | ~150 | ~0 | **~150** |
 | | Correctness fixtures (KL, top-1, PPL) driven by `cpu_reference` oracle | ~200 | ~0 | **~200** |
 | | Qwen3.5 27B dense target benchmark vs `llama.cpp` ROCm baseline | ~50 | ~0 | **~50** |
@@ -1277,7 +1277,7 @@ hipengine/
 | Quantization | Plugin registry with six orthogonal axes (weight storage / activation preprocess / compute dtype / scale granularity / calibration artifact / kernel family) | Lets GPTQ, GPTAQ, AWQ, PARO-W4, W8A16 all share the `gemm_dequant` kernel family. EXL3/QTIP adds `codebook_lut` family (Phase 5). FastKron adds `kronecker` family (research). FP8 weight is backend-gated (not gfx1100). |
 | KV cache | `KVPolicy` with `KVLiveSpans` as the kernel ABI and `admission_cap()` as the scheduler unit | Makes DMS, H2O, SnapKV, StreamingLLM all drop-in policy plugins. Avoids the vLLM-DMS "major surgery" (per `~/FastDMS/README.md`). RadixCache default; others plug in. |
 | DMS support | Phase 4, ~2,500 LoC total (`DMSKVPolicy` + 3 HIP kernels + loader) | `KVLiveSpans` + `admission_cap()` designed day-1 so DMS is a policy drop, not a rewrite |
-| Server | FastAPI (optional `[server]` extra) | Not shipped by default; `hipengine.server` is a library import |
+| Server | FastAPI installed by default, launched via `hipengine serve` | Most users want the OpenAI-compatible API; server deps remain outside the torch-free inference hot path |
 | Wavefront | Wave32 default for gfx1100 HIP device code | `-mcumode` is orthogonal to wavefront size; wave64 is only an isolated experiment with explicit flags/probes/gates |
 | Native binary path | Phase 3+ (conditional on profiling) | Extract C++ engine-step extension once dispatch layer is stable; keeps Shape A as Phase 0 |
 

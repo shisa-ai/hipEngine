@@ -1,22 +1,22 @@
 # OpenAI-Compatible Server API
 
-Last updated: 2026-05-25
+Last updated: 2026-05-26
 
-hipEngine ships a thin optional FastAPI layer that adapts OpenAI-style requests
-to the torch-free `hipengine.LLM.generate()` library API. It is installed only
-with the `server` extra and is intentionally serialized today because the
-current runnable Qwen/PARO path is still single-request / `c=1`.
+hipEngine ships a thin FastAPI layer that adapts OpenAI-style requests to the
+torch-free `hipengine.LLM.generate()` library API. Server dependencies are
+installed by default, and execution is intentionally serialized today because
+the current runnable Qwen/PARO path is still single-request / `c=1`.
 
 ## Install
 
 ```bash
-pip install -e ".[server]"
+pip install hipengine
 ```
 
 ## Run
 
 ```bash
-python -m hipengine.server \
+hipengine serve \
   --model shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed \
   --quant w4_paro \
   --served-model-name qwen-paro \
@@ -28,10 +28,10 @@ python -m hipengine.server \
 already present in the local HF cache. hipEngine resolves IDs with local cache
 lookups only; it does not download weights during server startup.
 
-After installation, the console script is equivalent:
+The module entry point is equivalent for environments that prefer `python -m`:
 
 ```bash
-hipengine-server --model /path/to/model --served-model-name qwen-paro
+python -m hipengine serve --model /path/to/model --served-model-name qwen-paro
 ```
 
 The server defaults to `--backend auto`, which maps exact `gfx1100`/`gfx1151`

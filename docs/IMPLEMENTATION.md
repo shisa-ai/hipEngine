@@ -93,7 +93,7 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
 
 ## Phase 1 — Server + benchmark
 
-- [x] Add optional FastAPI/OpenAI-compatible server layer (`hipengine[server]`) with `/v1/models`, `/v1/completions`, `/v1/chat/completions`, bearer-token auth, one-chunk SSE, and fake-engine endpoint tests.
+- [x] Add default-installed FastAPI/OpenAI-compatible server layer (`hipengine serve`) with `/v1/models`, `/v1/completions`, `/v1/chat/completions`, bearer-token auth, SSE streaming, and fake-engine endpoint tests.
 - [ ] Add benchmark harness polish beyond the current Qwen/PARO diagnostic scripts.
 
 ## Notes
