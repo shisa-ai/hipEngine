@@ -64,6 +64,36 @@ class Qwen35ParoOneTokenGenerator:
             for prompt in request.prompts
         ]
 
+    def prepare(self, *, max_sequence_length: int | None = None, sampling_params: Any | None = None) -> int:
+        params = sampling_params
+        runner = self._get_runner()
+        kv_policy = resolve_kv_policy(
+            getattr(params, "kv_storage", "auto"),
+            scale_dtype=getattr(params, "kv_scale_dtype", "fp16"),
+            scale_granularity=getattr(params, "kv_scale_granularity", "per_token_head"),
+        )
+        auto_context_length = max_sequence_length is None
+        if auto_context_length:
+            requested_length = int(getattr(runner.config, "max_position_embeddings", 0) or 0)
+            if requested_length <= 0:
+                requested_length = _session_capacity_for(1)
+        else:
+            if int(max_sequence_length) <= 0:
+                raise ValueError("max_sequence_length must be positive")
+            requested_length = int(max_sequence_length)
+        session_capacity = _session_capacity_for(requested_length)
+        session = self._get_session(
+            runner,
+            max_sequence_length=session_capacity,
+            kv_policy=kv_policy,
+            auto_context_length=auto_context_length,
+        )
+        return int(getattr(session, "max_sequence_length", self._session_capacity))
+
+    def count_tokens(self, text: str) -> int:
+        _last_token_id, prompt_ids = _select_token(Path(self.model_path), str(text), None)
+        return len(prompt_ids)
+
     def stream(self, request: GenerationRequest) -> Iterator[str]:
         if len(request.prompts) != 1:
             raise ValueError("streaming currently supports exactly one prompt")
@@ -183,6 +213,7 @@ class Qwen35ParoOneTokenGenerator:
         *,
         max_sequence_length: int,
         kv_policy,
+        auto_context_length: bool = False,
     ) -> Qwen35ParoResidentSession:
         kv_key = (
             kv_policy.storage_dtype.value,
@@ -190,20 +221,23 @@ class Qwen35ParoOneTokenGenerator:
             kv_policy.scale_granularity,
             int(kv_policy.block_size),
         )
+        capacity_ok = self._session_capacity >= max_sequence_length or bool(auto_context_length)
         if (
             self._session is None
-            or self._session_capacity < max_sequence_length
+            or not capacity_ok
             or self._session_kv_key != kv_key
         ):
             self.close()
-            self._session = Qwen35ParoResidentSession(
-                runner,
-                max_sequence_length=max_sequence_length,
-                kv_policy=kv_policy.create_policy(),
-                kv_scale_dtype=kv_policy.scale_dtype,
-                kv_scale_granularity=kv_policy.scale_granularity,
-            )
-            self._session_capacity = max_sequence_length
+            session_kwargs = {
+                "max_sequence_length": max_sequence_length,
+                "kv_policy": kv_policy.create_policy(),
+                "kv_scale_dtype": kv_policy.scale_dtype,
+                "kv_scale_granularity": kv_policy.scale_granularity,
+            }
+            if auto_context_length:
+                session_kwargs["auto_context_length"] = True
+            self._session = Qwen35ParoResidentSession(runner, **session_kwargs)
+            self._session_capacity = int(getattr(self._session, "max_sequence_length", max_sequence_length))
             self._session_kv_key = kv_key
         else:
             self._session.reset()

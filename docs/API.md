@@ -40,11 +40,24 @@ select `cpu_reference` where a CPU implementation exists; nearby targets such as
 `gfx1101`/`gfx1102` can force a backend with `--backend hip_gfx1100` or
 `HIPENGINE_BACKEND=hip_gfx1100` after local validation.
 
-By default the server eagerly loads the model and runs a short warmup
-generation at startup so the first real request does not pay load/compile cost.
-Disable with `--no-eager-load` or `HIPENGINE_EAGER_LOAD=0`. The warmup prompt
-and token count are configurable via `--eager-load-prompt` and
+By default the server eagerly loads the model, loads resident weights, estimates
+remaining HIP memory for KV cache plus persistent context metadata, then
+preallocates `min(model max context, estimated allocatable context)`. Pass
+`--max-context-tokens` (or `HIPENGINE_MAX_CONTEXT_TOKENS`) to force a lower cap.
+Startup fails with a clear error if the requested cap cannot be allocated; lower
+`--max-context-tokens` or use `--kv-storage int8_per_token_head`. Disable eager
+startup with `--no-eager-load` or `HIPENGINE_EAGER_LOAD=0`. The warmup prompt and
+token count are configurable via `--eager-load-prompt` and
 `--eager-load-max-tokens`.
+
+The resident KV policy is server-wide: set `--kv-storage` (`auto`, `bf16`, or
+`int8_per_token_head`), `--kv-scale-dtype`, and `--kv-scale-granularity` at
+startup. Requests that ask for a different KV policy are rejected instead of
+rebuilding the resident model. Startup logs include a compact KVCache summary
+from current HIP free memory and warn when even INT8 KV is below the model's
+advertised max context. Chat requests that omit `max_tokens` use
+`max_tokens=auto`, meaning the remaining admitted context
+(`max_context_tokens - prompt_tokens - 1`).
 
 Set `HIPENGINE_API_KEY` or pass `--api-key` to require OpenAI-style bearer
 authentication:

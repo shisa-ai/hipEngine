@@ -6,6 +6,41 @@ This changelog is for package/API releases. Performance rollup history remains i
 [`benchmarks/CHANGELOG.md`](benchmarks/CHANGELOG.md), with detailed benchmark
 evidence under [`benchmarks/results/`](benchmarks/results/).
 
+## Unreleased
+
+No changes yet.
+
+## v0.2.2 - 2026-05-26
+
+Patch release improving server startup context preallocation, KV memory
+admission, and request defaults.
+
+### Added
+
+- Server-wide resident context/KV preallocation controls:
+  `--max-context-tokens`, `--kv-storage`, `--kv-scale-dtype`, and
+  `--kv-scale-granularity`. Eager startup prepares the resident PARO session for
+  the configured context, and requests beyond that context or with a different
+  KV policy are rejected instead of resizing/reloading the model.
+- Automatic server context sizing when `--max-context-tokens` is omitted: after
+  resident weights load, the runtime estimates the selected KV dtype plus
+  persistent context metadata and preallocates
+  `min(model_max_context_tokens, allocatable_context_tokens)`.
+- Fast PARO retained-KV capacity estimate during resident session build. The
+  runtime uses current `hipMemGetInfo` after model weights load to report the
+  estimated max context for the selected KV dtype and for INT8 KV, warning when
+  INT8 still falls below the model's advertised max context.
+
+### Changed
+
+- Chat requests that omit `max_tokens` now use `max_tokens=auto`, meaning the
+  remaining admitted context (`max_context_tokens - prompt_tokens - 1`).
+
+### Fixed
+
+- Clean up partially-built PARO resident sessions if capacity preflight or
+  allocation fails, avoiding leaked resident buffers on startup/admission OOM.
+
 ## v0.2.1 - 2026-05-25
 
 Patch release improving server session management, streaming, and

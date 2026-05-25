@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 import uuid
 from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
@@ -32,6 +33,9 @@ from starlette.concurrency import run_in_threadpool
 from hipengine import LLM, SamplingParams
 
 
+_LOGGER = logging.getLogger("uvicorn.error")
+
+
 @dataclass(frozen=True)
 class ServerConfig:
     """Configuration for the optional OpenAI-compatible server."""
@@ -44,6 +48,10 @@ class ServerConfig:
     eager_load: bool = True
     eager_load_prompt: str = "one two three four"
     eager_load_max_tokens: int = 1
+    max_context_tokens: int | None = None
+    kv_storage: str = "auto"
+    kv_scale_dtype: str = "fp16"
+    kv_scale_granularity: str = "per_token_head"
     created: int = field(default_factory=lambda: int(time.time()))
 
     @property
@@ -116,7 +124,7 @@ class ChatMessage(_OpenAIBaseModel):
 class ChatCompletionRequest(_OpenAIBaseModel):
     model: str | None = None
     messages: list[ChatMessage]
-    max_tokens: int | None = Field(default=8192, ge=0)
+    max_tokens: int | None = Field(default=None, ge=0)
     temperature: float | None = Field(default=0.0, ge=0.0)
     top_p: float | None = Field(default=1.0, ge=0.0, le=1.0)
     n: int | None = Field(default=1, ge=1)
@@ -152,6 +160,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     app = FastAPI(title="hipEngine OpenAI-compatible API", version="0.2.1")
     app.state.hipengine_config = config
     app.state.hipengine_llm = llm
+    app.state.hipengine_effective_max_context_tokens = config.max_context_tokens
     generation_lock = asyncio.Lock()
 
     def get_llm() -> Any:
@@ -159,18 +168,134 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             app.state.hipengine_llm = LLM(config.model, backend=config.backend, quant=config.quant)
         return app.state.hipengine_llm
 
+    def configured_max_context_tokens() -> int | None:
+        if config.max_context_tokens is None:
+            return None
+        return max(1, int(config.max_context_tokens))
+
+    def effective_max_context_tokens(engine: Any) -> int | None:
+        configured = configured_max_context_tokens()
+        if configured is not None:
+            return configured
+        cached = getattr(app.state, "hipengine_effective_max_context_tokens", None)
+        if cached is not None:
+            return max(1, int(cached))
+        prepared = _prepared_context_tokens(engine)
+        if prepared is not None:
+            app.state.hipengine_effective_max_context_tokens = prepared
+            return prepared
+        return None
+
+    def preparation_sampling(request: CompletionRequest | ChatCompletionRequest | None = None) -> SamplingParams:
+        return SamplingParams(
+            max_tokens=1,
+            temperature=0.0,
+            top_p=1.0,
+            ignore_eos=True,
+            kv_storage=(request.kv_storage if request is not None and request.kv_storage else config.kv_storage),
+            kv_scale_dtype=(
+                request.kv_scale_dtype if request is not None and request.kv_scale_dtype else config.kv_scale_dtype
+            ),
+            kv_scale_granularity=(
+                request.kv_scale_granularity
+                if request is not None and request.kv_scale_granularity
+                else config.kv_scale_granularity
+            ),
+        )
+
+    async def ensure_resident_context(
+        engine: Any,
+        sampling: SamplingParams,
+        *,
+        phase: str,
+    ) -> int | None:
+        requested_context = configured_max_context_tokens()
+        prepared = _prepared_context_tokens(engine)
+        if prepared is not None and (requested_context is None or prepared >= requested_context):
+            app.state.hipengine_effective_max_context_tokens = prepared
+            return effective_max_context_tokens(engine)
+        preparer = getattr(engine, "prepare", None)
+        if not callable(preparer):
+            return effective_max_context_tokens(engine)
+        try:
+            prepared_result = await run_in_threadpool(
+                lambda: preparer(
+                    max_sequence_length=requested_context,
+                    sampling_params=sampling,
+                )
+            )
+        except MemoryError as exc:
+            _LOGGER.error(
+                "hipEngine %s failed to allocate resident KV cache: %s. "
+                "Try a lower --max-context-tokens or --kv-storage int8_per_token_head.",
+                phase,
+                exc,
+            )
+            raise
+        except Exception as exc:
+            _LOGGER.error(
+                "hipEngine %s failed to prepare resident session/KV cache: %s. "
+                "Try a lower --max-context-tokens or --kv-storage int8_per_token_head.",
+                phase,
+                exc,
+            )
+            raise
+        if prepared_result is not None:
+            app.state.hipengine_effective_max_context_tokens = max(1, int(prepared_result))
+        else:
+            prepared = _prepared_context_tokens(engine)
+            if prepared is not None:
+                app.state.hipengine_effective_max_context_tokens = prepared
+        return effective_max_context_tokens(engine)
+
     async def eager_load_model() -> None:
-        if not config.eager_load:
-            return
         max_tokens = max(1, int(config.eager_load_max_tokens))
+        if not config.eager_load:
+            max_context = configured_max_context_tokens()
+            _LOGGER.info(
+                "Config: model=%s served_model=%s max_context_tokens=%s "
+                "chat_default_max_tokens=auto kv_storage=%s kv_scale_dtype=%s "
+                "kv_scale_granularity=%s eager_load=False",
+                config.model,
+                config.model_id,
+                "auto" if max_context is None else str(max_context),
+                config.kv_storage,
+                config.kv_scale_dtype,
+                config.kv_scale_granularity,
+            )
+            return
         sampling = SamplingParams(
             max_tokens=max_tokens,
             temperature=0.0,
             top_p=1.0,
             ignore_eos=True,
+            kv_storage=config.kv_storage,
+            kv_scale_dtype=config.kv_scale_dtype,
+            kv_scale_granularity=config.kv_scale_granularity,
         )
         async with generation_lock:
-            await run_in_threadpool(get_llm().generate, (config.eager_load_prompt,), sampling)
+            engine = get_llm()
+            max_context = await ensure_resident_context(engine, sampling, phase="startup")
+            _LOGGER.info(
+                "Config: model=%s served_model=%s max_context_tokens=%s "
+                "chat_default_max_tokens=auto kv_storage=%s kv_scale_dtype=%s "
+                "kv_scale_granularity=%s eager_load=True",
+                config.model,
+                config.model_id,
+                "unknown" if max_context is None else str(max_context),
+                config.kv_storage,
+                config.kv_scale_dtype,
+                config.kv_scale_granularity,
+            )
+            _log_kv_capacity_summary(engine)
+            _validate_context_budget(max_context, engine, (config.eager_load_prompt,), sampling)
+            _LOGGER.info(
+                "WARMUP: prompt_tokens<=%s max_tokens=%d",
+                "unknown" if max_context is None else str(max_context),
+                max_tokens,
+            )
+            await run_in_threadpool(engine.generate, (config.eager_load_prompt,), sampling)
+            _LOGGER.info("hipEngine is ready.")
 
     if hasattr(app, "add_event_handler"):
         app.add_event_handler("startup", eager_load_model)
@@ -223,27 +348,35 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             },
         )
 
-    def sampling_params(request: CompletionRequest | ChatCompletionRequest) -> SamplingParams:
+    def sampling_params(
+        request: CompletionRequest | ChatCompletionRequest,
+        prompts: Sequence[str],
+        engine: Any,
+    ) -> SamplingParams:
         return SamplingParams(
-            max_tokens=int(request.max_tokens if request.max_tokens is not None else 16),
+            max_tokens=_request_max_tokens(request, prompts, engine, effective_max_context_tokens(engine)),
             temperature=float(request.temperature if request.temperature is not None else 0.0),
             top_p=float(request.top_p if request.top_p is not None else 1.0),
             ignore_eos=bool(request.ignore_eos),
-            kv_storage=request.kv_storage or "auto",
-            kv_scale_dtype=request.kv_scale_dtype or "fp16",
-            kv_scale_granularity=request.kv_scale_granularity or "per_token_head",
+            kv_storage=request.kv_storage or config.kv_storage,
+            kv_scale_dtype=request.kv_scale_dtype or config.kv_scale_dtype,
+            kv_scale_granularity=request.kv_scale_granularity or config.kv_scale_granularity,
         )
 
     async def generate(
         prompts: Sequence[str],
         request: CompletionRequest | ChatCompletionRequest,
     ) -> _GeneratedBatch:
-        _validate_generation_request(request)
-        sampling = sampling_params(request)
+        _validate_generation_request(config, request)
         engine = get_llm()
         try:
             async with generation_lock:
+                await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
+                sampling = sampling_params(request, prompts, engine)
+                _validate_context_budget(effective_max_context_tokens(engine), engine, prompts, sampling)
                 raw_outputs = await run_in_threadpool(engine.generate, tuple(prompts), sampling)
+        except OpenAIHTTPError:
+            raise
         except NotImplementedError as exc:
             raise OpenAIHTTPError(400, str(exc), code="unsupported_parameter") from exc
         except ValueError as exc:
@@ -364,8 +497,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         prompt: str,
         request: ChatCompletionRequest,
     ) -> AsyncIterator[str]:
-        _validate_generation_request(request)
-        sampling = sampling_params(request)
+        try:
+            _validate_generation_request(config, request)
+        except OpenAIHTTPError as exc:
+            response_id = f"chatcmpl-{uuid.uuid4().hex}"
+            created = int(time.time())
+            yield _chat_stream_error(response_id, created, config.model_id, exc.message)
+            yield "data: [DONE]\n\n"
+            return
         engine = get_llm()
         response_id = f"chatcmpl-{uuid.uuid4().hex}"
         created = int(time.time())
@@ -381,6 +520,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
 
         try:
             async with generation_lock:
+                await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
+                sampling = sampling_params(request, (prompt,), engine)
+                _validate_context_budget(effective_max_context_tokens(engine), engine, (prompt,), sampling)
                 streamer = getattr(engine, "stream", None)
                 if not callable(streamer):
                     text = (await run_in_threadpool(engine.generate, (prompt,), sampling))[0]
@@ -412,6 +554,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         field,
                         chunk,
                     )
+        except OpenAIHTTPError as exc:
+            yield _chat_stream_error(response_id, created, config.model_id, exc.message)
+            yield "data: [DONE]\n\n"
+            return
         except NotImplementedError as exc:
             yield _chat_stream_error(response_id, created, config.model_id, str(exc))
             return
@@ -475,7 +621,95 @@ def _validate_model(config: ServerConfig, requested: str | None) -> None:
         )
 
 
-def _validate_generation_request(request: CompletionRequest | ChatCompletionRequest) -> None:
+def _log_kv_capacity_summary(engine: Any) -> None:
+    session = _resident_session_for_engine(engine)
+    if session is None:
+        return
+    estimate = getattr(session, "kv_capacity_estimate", None)
+    if estimate is not None:
+        model_max = int(getattr(estimate, "model_max_context_tokens", 0) or 0)
+        _LOGGER.info(
+            "KVCache: storage=%s scale=%s max_context_tokens=%d model_max_context_tokens=%s "
+            "allocatable_context_tokens=%d requested_kv=%s metadata=%s total=%s "
+            "bytes_per_token=%d usable=%s reserve=%s",
+            getattr(estimate, "kv_storage_dtype", "unknown"),
+            getattr(estimate, "kv_scale_dtype", None) or "none",
+            int(getattr(estimate, "requested_context_tokens", 0) or 0),
+            "unknown" if model_max <= 0 else str(model_max),
+            int(getattr(estimate, "allocatable_context_tokens", 0) or 0),
+            _format_bytes(int(getattr(estimate, "requested_kv_bytes", 0) or 0)),
+            _format_bytes(int(getattr(estimate, "requested_context_overhead_bytes", 0) or 0)),
+            _format_bytes(int(getattr(estimate, "requested_total_bytes", 0) or 0)),
+            int(getattr(estimate, "bytes_per_token", 0) or 0),
+            _format_bytes(int(getattr(estimate, "usable_bytes", 0) or 0)),
+            _format_bytes(int(getattr(estimate, "reserve_bytes", 0) or 0)),
+        )
+        if model_max > 0 and not bool(getattr(estimate, "fits_model_max", True)):
+            _LOGGER.warning(
+                "KVCache: selected policy can fit allocatable_context_tokens=%d, "
+                "below model_max_context_tokens=%d",
+                int(getattr(estimate, "allocatable_context_tokens", 0) or 0),
+                model_max,
+            )
+    int8_estimate = getattr(session, "kv_capacity_int8_estimate", None)
+    if int8_estimate is None:
+        return
+    int8_model_max = int(getattr(int8_estimate, "model_max_context_tokens", 0) or 0)
+    if int8_model_max > 0 and not bool(getattr(int8_estimate, "fits_model_max", True)):
+        _LOGGER.warning(
+            "KVCache: int8_per_token_head can fit allocatable_context_tokens=%d, "
+            "below model_max_context_tokens=%d",
+            int(getattr(int8_estimate, "allocatable_context_tokens", 0) or 0),
+            int8_model_max,
+        )
+
+
+def _resident_session_for_engine(engine: Any) -> Any | None:
+    if hasattr(engine, "kv_capacity_estimate"):
+        return engine
+    generator = getattr(engine, "_text_generator", None)
+    if generator is not None:
+        session = getattr(generator, "_session", None)
+        if session is not None:
+            return session
+    session = getattr(engine, "_session", None)
+    if session is not None:
+        return session
+    return None
+
+
+def _prepared_context_tokens(engine: Any) -> int | None:
+    session = _resident_session_for_engine(engine)
+    if session is None:
+        return None
+    value = getattr(session, "max_sequence_length", None)
+    if value is None:
+        return None
+    return max(1, int(value))
+
+
+def _format_bytes(value: int) -> str:
+    return f"{int(value) / 1024**3:.2f} GiB"
+
+
+def _request_max_tokens(
+    request: CompletionRequest | ChatCompletionRequest,
+    prompts: Sequence[str],
+    engine: Any,
+    max_context_tokens: int | None,
+) -> int:
+    if request.max_tokens is not None:
+        return max(0, int(request.max_tokens))
+    if isinstance(request, ChatCompletionRequest) and max_context_tokens is not None:
+        remaining = min(
+            int(max_context_tokens) - _count_tokens_for_admission(engine, str(prompt)) - 1
+            for prompt in prompts
+        )
+        return max(0, int(remaining))
+    return 8192 if isinstance(request, ChatCompletionRequest) else 16
+
+
+def _validate_generation_request(config: ServerConfig, request: CompletionRequest | ChatCompletionRequest) -> None:
     if request.n not in (None, 1):
         raise OpenAIHTTPError(
             400,
@@ -493,13 +727,68 @@ def _validate_generation_request(request: CompletionRequest | ChatCompletionRequ
     try:
         from hipengine.kvcache import resolve_kv_policy
 
-        resolve_kv_policy(
-            request.kv_storage or "auto",
-            scale_dtype=request.kv_scale_dtype or "fp16",
-            scale_granularity=request.kv_scale_granularity or "per_token_head",
+        server_policy = resolve_kv_policy(
+            config.kv_storage,
+            scale_dtype=config.kv_scale_dtype,
+            scale_granularity=config.kv_scale_granularity,
+        )
+        request_policy = resolve_kv_policy(
+            request.kv_storage or config.kv_storage,
+            scale_dtype=request.kv_scale_dtype or config.kv_scale_dtype,
+            scale_granularity=request.kv_scale_granularity or config.kv_scale_granularity,
         )
     except ValueError as exc:
         raise OpenAIHTTPError(400, str(exc), code="invalid_kv_policy", param="kv_storage") from exc
+    if (
+        request.kv_storage is not None
+        or request.kv_scale_dtype is not None
+        or request.kv_scale_granularity is not None
+    ) and (
+        request_policy.storage_dtype != server_policy.storage_dtype
+        or request_policy.scale_dtype != server_policy.scale_dtype
+        or request_policy.scale_granularity != server_policy.scale_granularity
+    ):
+        raise OpenAIHTTPError(
+            400,
+            "this server preallocates a fixed KV cache policy; restart with matching "
+            "--kv-storage/--kv-scale-dtype to use different KV settings",
+            code="unsupported_kv_policy",
+            param="kv_storage",
+        )
+
+
+def _validate_context_budget(
+    max_context_tokens: int | None,
+    engine: Any,
+    prompts: Sequence[str],
+    sampling: SamplingParams,
+) -> None:
+    if max_context_tokens is None:
+        return
+    max_context = max(1, int(max_context_tokens))
+    max_tokens = max(0, int(sampling.max_tokens))
+    for index, prompt in enumerate(prompts):
+        prompt_tokens = _count_tokens_for_admission(engine, str(prompt))
+        required = prompt_tokens + max_tokens + 1
+        if required > max_context:
+            raise OpenAIHTTPError(
+                400,
+                f"request requires {required} context tokens (prompt {prompt_tokens} + "
+                f"max_tokens {max_tokens} + 1), exceeding this server's "
+                f"preallocated max_context_tokens={max_context}",
+                code="context_length_exceeded",
+                param=f"prompts[{index}].max_tokens" if len(prompts) > 1 else "max_tokens",
+            )
+
+
+def _count_tokens_for_admission(engine: Any, text: str) -> int:
+    counter = getattr(engine, "count_tokens", None)
+    if not callable(counter):
+        return 0
+    try:
+        return max(0, int(counter(text)))
+    except NotImplementedError:
+        return 0
 
 
 def _normalize_prompts(prompt: str | list[str]) -> tuple[str, ...]:

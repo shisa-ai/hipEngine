@@ -6,6 +6,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+import logging
 import os
 
 import numpy as np
@@ -85,6 +86,7 @@ from hipengine.speculative import DraftBatch, TargetCommitPlan, TargetStateCommi
 
 
 _PREFILL_OVERLAP_MIN_TOKENS = 32768
+_LOGGER = logging.getLogger(__name__)
 
 
 def _env_int(name: str, default: int, *aliases: str) -> int:
@@ -123,6 +125,268 @@ def _paged_attn_decode_split_config(context_len: int, *, block_size: int, chunk_
         effective_chunk = ((effective_chunk + int(block_size) - 1) // int(block_size)) * int(block_size)
         splits = (int(context_len) + effective_chunk - 1) // effective_chunk
     return effective_chunk, max(1, splits)
+
+
+@dataclass(frozen=True)
+class Qwen35ParoKVCapacityEstimate:
+    """Fast retained-KV capacity estimate from current free HIP memory."""
+
+    requested_context_tokens: int
+    requested_context_tokens_rounded: int
+    model_max_context_tokens: int
+    allocatable_context_tokens: int
+    available_bytes: int
+    reserve_bytes: int
+    usable_bytes: int
+    bytes_per_token: int
+    requested_kv_bytes: int
+    requested_context_overhead_bytes: int
+    requested_total_bytes: int
+    model_max_kv_bytes: int
+    model_max_context_overhead_bytes: int
+    model_max_total_bytes: int
+    full_attention_layers: int
+    kv_storage_dtype: str
+    kv_scale_dtype: str | None
+    block_size: int
+    max_batch_size: int
+
+    @property
+    def fits_requested(self) -> bool:
+        return self.bytes_per_token == 0 or self.requested_total_bytes <= self.usable_bytes
+
+    @property
+    def fits_model_max(self) -> bool:
+        return self.model_max_context_tokens <= 0 or self.bytes_per_token == 0 or self.model_max_total_bytes <= self.usable_bytes
+
+    def to_json_dict(self) -> dict[str, Any]:
+        return {
+            "requested_context_tokens": self.requested_context_tokens,
+            "requested_context_tokens_rounded": self.requested_context_tokens_rounded,
+            "model_max_context_tokens": self.model_max_context_tokens,
+            "allocatable_context_tokens": self.allocatable_context_tokens,
+            "available_bytes": self.available_bytes,
+            "reserve_bytes": self.reserve_bytes,
+            "usable_bytes": self.usable_bytes,
+            "bytes_per_token": self.bytes_per_token,
+            "requested_kv_bytes": self.requested_kv_bytes,
+            "requested_context_overhead_bytes": self.requested_context_overhead_bytes,
+            "requested_total_bytes": self.requested_total_bytes,
+            "model_max_kv_bytes": self.model_max_kv_bytes,
+            "model_max_context_overhead_bytes": self.model_max_context_overhead_bytes,
+            "model_max_total_bytes": self.model_max_total_bytes,
+            "full_attention_layers": self.full_attention_layers,
+            "kv_storage_dtype": self.kv_storage_dtype,
+            "kv_scale_dtype": self.kv_scale_dtype,
+            "block_size": self.block_size,
+            "max_batch_size": self.max_batch_size,
+            "fits_requested": self.fits_requested,
+            "fits_model_max": self.fits_model_max,
+        }
+
+
+def estimate_qwen35_paro_kv_capacity(
+    config: Any,
+    *,
+    available_bytes: int,
+    requested_context_tokens: int,
+    storage_dtype: str | DType,
+    scale_dtype: str | DType = DType.FP16,
+    block_size: int = 256,
+    chunk_size: int = 256,
+    reserve_bytes: int = 0,
+    max_batch_size: int = 1,
+) -> Qwen35ParoKVCapacityEstimate:
+    """Estimate the largest retained full-attention KV arena that can fit.
+
+    This is deliberately cheap: it uses model metadata and ``hipMemGetInfo``'s
+    current free-memory value after resident weights load.  It covers the retained
+    full-attention KV payload, INT8 scale metadata, and persistent
+    context-dependent metadata such as the prefill block table.  Transient
+    prefill workspaces and allocator fragmentation are represented by
+    ``reserve_bytes``.
+    """
+
+    if block_size <= 0:
+        raise ValueError("block_size must be positive")
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be positive")
+    requested = int(requested_context_tokens)
+    if requested <= 0:
+        raise ValueError("requested_context_tokens must be positive")
+    available = max(0, int(available_bytes))
+    reserve = max(0, int(reserve_bytes))
+    usable = max(0, available - reserve)
+    max_batch = max(1, int(max_batch_size))
+    block = int(block_size)
+    chunk = int(chunk_size)
+    bytes_per_token = qwen35_paro_kv_bytes_per_token(
+        config,
+        storage_dtype=storage_dtype,
+        scale_dtype=scale_dtype,
+        max_batch_size=max_batch,
+    )
+    requested_rounded = _round_up_to_block(requested, block)
+    requested_kv_bytes = requested_rounded * bytes_per_token
+    requested_overhead = _qwen35_paro_context_overhead_bytes(
+        requested,
+        block_size=block,
+        chunk_size=chunk,
+        max_batch_size=max_batch,
+    )
+    model_max = int(getattr(config, "max_position_embeddings", 0) or 0)
+    model_rounded = _round_up_to_block(model_max, block) if model_max > 0 else 0
+    model_overhead = (
+        _qwen35_paro_context_overhead_bytes(
+            model_max,
+            block_size=block,
+            chunk_size=chunk,
+            max_batch_size=max_batch,
+        )
+        if model_max > 0
+        else 0
+    )
+    if bytes_per_token > 0:
+        allocatable = _qwen35_paro_allocatable_context_tokens(
+            usable,
+            bytes_per_token=bytes_per_token,
+            block_size=block,
+            chunk_size=chunk,
+            max_batch_size=max_batch,
+        )
+    else:
+        allocatable = requested_rounded
+    storage = DType.parse(storage_dtype)
+    scale = DType.parse(scale_dtype) if storage == DType.INT8_PER_TOKEN_HEAD else None
+    return Qwen35ParoKVCapacityEstimate(
+        requested_context_tokens=requested,
+        requested_context_tokens_rounded=requested_rounded,
+        model_max_context_tokens=model_max,
+        allocatable_context_tokens=int(allocatable),
+        available_bytes=available,
+        reserve_bytes=reserve,
+        usable_bytes=usable,
+        bytes_per_token=bytes_per_token,
+        requested_kv_bytes=requested_kv_bytes,
+        requested_context_overhead_bytes=requested_overhead,
+        requested_total_bytes=requested_kv_bytes + requested_overhead,
+        model_max_kv_bytes=model_rounded * bytes_per_token,
+        model_max_context_overhead_bytes=model_overhead,
+        model_max_total_bytes=model_rounded * bytes_per_token + model_overhead,
+        full_attention_layers=_qwen35_paro_full_attention_layers(config),
+        kv_storage_dtype=storage.value,
+        kv_scale_dtype=None if scale is None else scale.value,
+        block_size=block,
+        max_batch_size=max_batch,
+    )
+
+
+def _qwen35_paro_allocatable_context_tokens(
+    usable_bytes: int,
+    *,
+    bytes_per_token: int,
+    block_size: int,
+    chunk_size: int,
+    max_batch_size: int,
+) -> int:
+    if usable_bytes <= 0 or bytes_per_token <= 0:
+        return 0
+    block = int(block_size)
+    high = (int(usable_bytes) // int(bytes_per_token)) // block * block
+    low = 0
+    while low < high:
+        mid_blocks = (low // block + high // block + 1) // 2
+        mid = mid_blocks * block
+        total = _round_up_to_block(mid, block) * int(bytes_per_token) + _qwen35_paro_context_overhead_bytes(
+            mid,
+            block_size=block,
+            chunk_size=chunk_size,
+            max_batch_size=max_batch_size,
+        )
+        if total <= usable_bytes:
+            low = mid
+        else:
+            high = (mid_blocks - 1) * block
+    return int(low)
+
+
+def _qwen35_paro_context_overhead_bytes(
+    context_tokens: int,
+    *,
+    block_size: int,
+    chunk_size: int,
+    max_batch_size: int,
+) -> int:
+    tokens = int(context_tokens)
+    if tokens <= 0:
+        return 0
+    max_batch = max(1, int(max_batch_size))
+    decode_chunk_size, max_splits = _paged_attn_decode_split_config(
+        tokens,
+        block_size=int(block_size),
+        chunk_size=int(chunk_size),
+    )
+    decode_context_capacity = int(decode_chunk_size) * int(max_splits)
+    blocks = (max(tokens, decode_context_capacity) + int(block_size) - 1) // int(block_size)
+    prefill_rows = tokens * max_batch
+    block_table_bytes = blocks * np.dtype(np.int32).itemsize
+    prefill_block_table_bytes = prefill_rows * blocks * np.dtype(np.int32).itemsize
+    prefill_token_bytes = prefill_rows * np.dtype(np.int64).itemsize
+    prefill_position_bytes = prefill_rows * np.dtype(np.int64).itemsize
+    prefill_context_count_bytes = prefill_rows * np.dtype(np.int64).itemsize
+    return int(
+        block_table_bytes
+        + prefill_block_table_bytes
+        + prefill_token_bytes
+        + prefill_position_bytes
+        + prefill_context_count_bytes
+    )
+
+
+def qwen35_paro_kv_bytes_per_token(
+    config: Any,
+    *,
+    storage_dtype: str | DType,
+    scale_dtype: str | DType = DType.FP16,
+    max_batch_size: int = 1,
+) -> int:
+    storage = DType.parse(storage_dtype)
+    if storage not in {DType.BF16, DType.INT8_PER_TOKEN_HEAD}:
+        raise ValueError("Qwen3.5/PARO KV storage must be bf16 or int8_per_token_head")
+    full_layers = _qwen35_paro_full_attention_layers(config)
+    if full_layers <= 0:
+        return 0
+    kv_heads = int(getattr(config, "num_key_value_heads", 0) or 0)
+    head_dim = int(getattr(config, "head_dim", 0) or 0)
+    if kv_heads <= 0 or head_dim <= 0:
+        raise ValueError("Qwen3.5/PARO KV estimate requires num_key_value_heads and head_dim")
+    batch = max(1, int(max_batch_size))
+    payload = batch * full_layers * 2 * kv_heads * head_dim * storage.itemsize
+    if storage != DType.INT8_PER_TOKEN_HEAD:
+        return payload
+    scale = DType.parse(scale_dtype)
+    if scale not in {DType.FP16, DType.FP32}:
+        raise ValueError("INT8 KV scale dtype must be fp16 or fp32")
+    return payload + batch * full_layers * 2 * kv_heads * scale.itemsize
+
+
+def _qwen35_paro_full_attention_layers(config: Any) -> int:
+    layer_types = tuple(getattr(config, "layer_types", ()) or ())
+    if layer_types:
+        return sum(1 for item in layer_types if str(item) == "full_attention")
+    return int(getattr(config, "num_hidden_layers", 0) or 0)
+
+
+def _round_up_to_block(tokens: int, block_size: int) -> int:
+    value = int(tokens)
+    block = int(block_size)
+    if value <= 0:
+        return 0
+    return ((value + block - 1) // block) * block
+
+
+def _format_bytes_gib(value: int) -> str:
+    return f"{int(value) / 1024**3:.2f} GiB"
 
 
 @dataclass(frozen=True)
@@ -830,6 +1094,7 @@ class Qwen35ParoResidentSession:
         kv_policy: FixedPagedKVPolicy | None = None,
         kv_scale_dtype: str | DType = DType.FP16,
         kv_scale_granularity: str = "per_token_head",
+        auto_context_length: bool = False,
     ) -> None:
         if max_sequence_length <= 0:
             raise ValueError("max_sequence_length must be positive")
@@ -862,6 +1127,7 @@ class Qwen35ParoResidentSession:
         if kv_scale_granularity not in KV_SCALE_GRANULARITY_CHOICES:
             raise ValueError("resident INT8 KV scale granularity must be per_token_head")
         self.kv_scale_granularity = kv_scale_granularity
+        self.auto_context_length = bool(auto_context_length)
         self.decode_chunk_size, self.max_splits = _paged_attn_decode_split_config(
             self.max_sequence_length,
             block_size=self.block_size,
@@ -910,7 +1176,11 @@ class Qwen35ParoResidentSession:
         self.prefill_moe_scratch: Qwen35ParoGroupedMoeScratch | Qwen35ParoMoeScratch | None = None
         self.tokenizer = _load_tokenizer(self.model)
         self.closed = False
-        self._build()
+        try:
+            self._build()
+        except Exception:
+            self.close()
+            raise
 
     def _prefill_tuning_total_memory_bytes(self, config: PrefillConfig, *, sequence_length: int | None = None) -> int:
         length = self.max_sequence_length if sequence_length is None else int(sequence_length)
@@ -2744,8 +3014,8 @@ class Qwen35ParoResidentSession:
         self._load_kernel_libraries()
         self._load_embedding()
         self._load_final_norm_and_head()
-        self._allocate_common_buffers()
         self._materialize_layers()
+        self._allocate_common_buffers()
         self._emit("resident_build_done", layers=self.layer_limit)
 
     def _load_kernel_libraries(self) -> None:
@@ -3030,6 +3300,164 @@ class Qwen35ParoResidentSession:
             return np.float32
         raise ValueError(f"cannot allocate zeroed resident buffer for dtype {dtype.value!r}")
 
+    def _auto_context_length_from_estimate(self, estimate: Qwen35ParoKVCapacityEstimate) -> int:
+        if estimate.model_max_context_tokens > 0 and estimate.allocatable_context_tokens > 0:
+            return min(estimate.model_max_context_tokens, estimate.allocatable_context_tokens)
+        if estimate.model_max_context_tokens > 0:
+            return estimate.model_max_context_tokens
+        return max(0, estimate.allocatable_context_tokens)
+
+    def _set_sequence_capacity(self, max_sequence_length: int) -> None:
+        capacity = int(max_sequence_length)
+        if capacity <= 0:
+            raise ValueError("max_sequence_length must be positive")
+        self.max_sequence_length = capacity
+        self.decode_chunk_size, self.max_splits = _paged_attn_decode_split_config(
+            self.max_sequence_length,
+            block_size=self.block_size,
+            chunk_size=self.chunk_size,
+        )
+        self._resolve_prefill_config_for_length(self.max_sequence_length)
+        decode_context_capacity = self.decode_chunk_size * self.max_splits
+        self.blocks = (max(self.max_sequence_length, decode_context_capacity) + self.block_size - 1) // self.block_size
+        self.batch_layout = Qwen35ParoResidentBatchLayout(
+            max_batch_size=self.max_batch_size,
+            hidden_size=self.config.hidden_size,
+            max_sequence_length=self.max_sequence_length,
+            block_size=self.block_size,
+            blocks=self.blocks,
+            num_key_value_heads=self.config.num_key_value_heads,
+            head_dim=self.config.head_dim,
+        )
+        if hasattr(self, "hidden_nbytes"):
+            self.batch_hidden_nbytes = self.max_batch_size * self.hidden_nbytes
+            self.prefill_capacity_rows = self.max_sequence_length * self.max_batch_size
+            self.prefill_hidden_nbytes = self.prefill_capacity_rows * self.hidden_nbytes
+        self.active_batch = ActiveBatch(self.max_batch_size)
+        self.active_batch.admit(RequestState.from_tokens(0, (), max_new_tokens=self.max_sequence_length))
+
+    def _check_retained_kv_capacity_before_allocation(self) -> Qwen35ParoKVCapacityEstimate | None:
+        try:
+            free_bytes, _total_bytes = self.runtime.mem_get_info()
+        except Exception as exc:
+            self._emit("kv_capacity_estimate_unavailable", error=str(exc))
+            return None
+        reserve_mib = max(0, _env_int("HIPENGINE_KV_CAPACITY_RESERVE_MIB", 512))
+        reserve_bytes = reserve_mib * 1024**2
+        estimate = estimate_qwen35_paro_kv_capacity(
+            self.config,
+            available_bytes=free_bytes,
+            requested_context_tokens=self.max_sequence_length,
+            storage_dtype=self.kv_storage_dtype,
+            scale_dtype=self.kv_scale_dtype,
+            block_size=self.block_size,
+            chunk_size=self.chunk_size,
+            reserve_bytes=reserve_bytes,
+            max_batch_size=self.max_batch_size,
+        )
+        if self.auto_context_length:
+            auto_context = self._auto_context_length_from_estimate(estimate)
+            if auto_context <= 0:
+                raise MemoryError(
+                    "automatic resident KV cache sizing found no allocatable context tokens; "
+                    "try freeing GPU memory, setting --kv-storage int8_per_token_head, or "
+                    "setting a lower --max-context-tokens manually"
+                )
+            if auto_context != self.max_sequence_length:
+                self._emit(
+                    "kv_auto_context_selected",
+                    requested_context_tokens=self.max_sequence_length,
+                    selected_context_tokens=auto_context,
+                    model_max_context_tokens=estimate.model_max_context_tokens,
+                    allocatable_context_tokens=estimate.allocatable_context_tokens,
+                )
+                self._set_sequence_capacity(auto_context)
+                estimate = estimate_qwen35_paro_kv_capacity(
+                    self.config,
+                    available_bytes=free_bytes,
+                    requested_context_tokens=self.max_sequence_length,
+                    storage_dtype=self.kv_storage_dtype,
+                    scale_dtype=self.kv_scale_dtype,
+                    block_size=self.block_size,
+                    chunk_size=self.chunk_size,
+                    reserve_bytes=reserve_bytes,
+                    max_batch_size=self.max_batch_size,
+                )
+        self.kv_capacity_estimate = estimate
+        self._emit("kv_capacity_estimate", **estimate.to_json_dict())
+        label = "INT8" if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else self.kv_storage_dtype.value.upper()
+        _LOGGER.debug(
+            "%s KV capacity estimate: requested resident context %d tokens needs %s KV + %s metadata; "
+            "current free HIP memory can fit about %d tokens (%s usable after %s reserve)%s.",
+            label,
+            estimate.requested_context_tokens,
+            _format_bytes_gib(estimate.requested_kv_bytes),
+            _format_bytes_gib(estimate.requested_context_overhead_bytes),
+            estimate.allocatable_context_tokens,
+            _format_bytes_gib(estimate.usable_bytes),
+            _format_bytes_gib(estimate.reserve_bytes),
+            "" if estimate.model_max_context_tokens <= 0 else f" vs model max {estimate.model_max_context_tokens} tokens",
+        )
+        if estimate.model_max_context_tokens > 0 and not estimate.fits_model_max:
+            _LOGGER.debug(
+                "%s KV capacity estimate: current free HIP memory after model load can fit about %d tokens "
+                "(%s usable after %s reserve), below model max context %d tokens; requested resident context is %d tokens.",
+                label,
+                estimate.allocatable_context_tokens,
+                _format_bytes_gib(estimate.usable_bytes),
+                _format_bytes_gib(estimate.reserve_bytes),
+                estimate.model_max_context_tokens,
+                estimate.requested_context_tokens,
+            )
+        if self.kv_storage_dtype != DType.INT8_PER_TOKEN_HEAD:
+            int8_estimate = estimate_qwen35_paro_kv_capacity(
+                self.config,
+                available_bytes=free_bytes,
+                requested_context_tokens=self.max_sequence_length,
+                storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+                scale_dtype=self.kv_scale_dtype,
+                block_size=self.block_size,
+                chunk_size=self.chunk_size,
+                reserve_bytes=reserve_bytes,
+                max_batch_size=self.max_batch_size,
+            )
+            self.kv_capacity_int8_estimate = int8_estimate
+            self._emit("kv_capacity_estimate_int8", **int8_estimate.to_json_dict())
+            _LOGGER.debug(
+                "INT8 KV capacity estimate: requested resident context %d tokens needs %s KV + %s metadata; "
+                "current free HIP memory can fit about %d tokens (%s usable after %s reserve)%s.",
+                int8_estimate.requested_context_tokens,
+                _format_bytes_gib(int8_estimate.requested_kv_bytes),
+                _format_bytes_gib(int8_estimate.requested_context_overhead_bytes),
+                int8_estimate.allocatable_context_tokens,
+                _format_bytes_gib(int8_estimate.usable_bytes),
+                _format_bytes_gib(int8_estimate.reserve_bytes),
+                "" if int8_estimate.model_max_context_tokens <= 0 else f" vs model max {int8_estimate.model_max_context_tokens} tokens",
+            )
+            if int8_estimate.model_max_context_tokens > 0 and not int8_estimate.fits_model_max:
+                _LOGGER.debug(
+                    "INT8 KV capacity estimate: current free HIP memory after model load can fit about %d tokens "
+                    "(%s usable after %s reserve), below model max context %d tokens; requested resident context is %d tokens.",
+                    int8_estimate.allocatable_context_tokens,
+                    _format_bytes_gib(int8_estimate.usable_bytes),
+                    _format_bytes_gib(int8_estimate.reserve_bytes),
+                    int8_estimate.model_max_context_tokens,
+                    int8_estimate.requested_context_tokens,
+                )
+        if not estimate.fits_requested:
+            raise MemoryError(
+                "requested resident KV cache context "
+                f"{estimate.requested_context_tokens_rounded} tokens needs "
+                f"{_format_bytes_gib(estimate.requested_total_bytes)} "
+                f"({_format_bytes_gib(estimate.requested_kv_bytes)} KV + "
+                f"{_format_bytes_gib(estimate.requested_context_overhead_bytes)} metadata) but only "
+                f"{_format_bytes_gib(estimate.usable_bytes)} is estimated available for retained KV "
+                f"after reserve; estimated max context is {estimate.allocatable_context_tokens} tokens "
+                f"with {estimate.kv_storage_dtype} KV; try a lower --max-context-tokens "
+                "or --kv-storage int8_per_token_head"
+            )
+        return estimate
+
     def _allocate_full_attention_cache(self, layer_id: int) -> None:
         payload_dtype = DType.INT8 if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD else DType.BF16
         key_zero = np.zeros(self.batch_layout.full_kv_shape, dtype=self._zero_array_dtype(payload_dtype))
@@ -3072,6 +3500,7 @@ class Qwen35ParoResidentSession:
 
     def _materialize_layers(self) -> None:
         self.states = self.runner._materialize_resident_states(self.layer_limit, emit=self._emit)
+        self._check_retained_kv_capacity_before_allocation()
         qkv_width = (
             2 * self.config.linear_num_key_heads * self.config.linear_key_head_dim
             + self.config.linear_num_value_heads * self.config.linear_value_head_dim

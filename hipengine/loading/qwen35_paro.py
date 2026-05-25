@@ -46,6 +46,7 @@ class Qwen35ParoConfig:
     layer_types: tuple[str, ...]
     quant_method: str
     vocab_size: int = 0
+    max_position_embeddings: int = 0
     rms_norm_eps: float = 1.0e-6
     rope_theta: float = 1000000.0
     rotary_dim: int = 0
@@ -142,6 +143,7 @@ def qwen35_paro_config_from_hf(config: dict[str, Any]) -> Qwen35ParoConfig:
         layer_types=layer_types,
         quant_method=quant_method,
         vocab_size=int(text.get("vocab_size", 0) or 0),
+        max_position_embeddings=int(text.get("max_position_embeddings", config.get("max_position_embeddings", 0)) or 0),
         rms_norm_eps=float(text.get("rms_norm_eps", 1.0e-6) or 1.0e-6),
         rope_theta=float(text.get("rope_theta", rope_parameters.get("rope_theta", 1000000.0)) or 1000000.0),
         rotary_dim=rotary_dim,

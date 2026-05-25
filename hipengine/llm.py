@@ -71,6 +71,36 @@ class LLM:
         for text in generator.generate(request):
             yield text
 
+    def prepare(
+        self,
+        *,
+        max_sequence_length: int | None = None,
+        sampling_params: SamplingParams | None = None,
+    ) -> int | None:
+        """Eagerly prepare a resident session when the generator supports it.
+
+        Passing ``max_sequence_length=None`` lets generators choose the largest
+        context they can preallocate for the selected model/KV policy.
+        """
+
+        generator = self._get_text_generator()
+        preparer = getattr(generator, "prepare", None)
+        if not callable(preparer):
+            return None
+        return preparer(
+            max_sequence_length=None if max_sequence_length is None else int(max_sequence_length),
+            sampling_params=sampling_params or SamplingParams(),
+        )
+
+    def count_tokens(self, text: str) -> int:
+        """Return tokenizer token count when the resolved generator exposes one."""
+
+        generator = self._get_text_generator()
+        counter = getattr(generator, "count_tokens", None)
+        if not callable(counter):
+            raise NotImplementedError("token counting is not supported by this generator")
+        return int(counter(str(text)))
+
     def _get_text_generator(self) -> Any:
         if self._text_generator is not None:
             return self._text_generator

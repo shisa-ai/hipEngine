@@ -23,6 +23,13 @@ def _positive_int(value: str) -> int:
     return parsed
 
 
+def _env_positive_int(name: str) -> int | None:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return None
+    return _positive_int(raw)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the hipEngine OpenAI-compatible server")
     parser.add_argument("--model", required=True, help="Path or model id served by hipEngine")
@@ -58,6 +65,30 @@ def build_parser() -> argparse.ArgumentParser:
         default=int(os.environ.get("HIPENGINE_EAGER_LOAD_MAX_TOKENS", "1")),
         help="Generated tokens used for startup warmup (default: 1)",
     )
+    parser.add_argument(
+        "--max-context-tokens",
+        type=_positive_int,
+        default=_env_positive_int("HIPENGINE_MAX_CONTEXT_TOKENS"),
+        help=(
+            "Resident session/KV context tokens preallocated at startup "
+            "(default: auto = min(model max context, estimated allocatable KV context))"
+        ),
+    )
+    parser.add_argument(
+        "--kv-storage",
+        default=os.environ.get("HIPENGINE_KV_STORAGE", "auto"),
+        help="Server-wide KV storage policy: auto, bf16, or int8_per_token_head",
+    )
+    parser.add_argument(
+        "--kv-scale-dtype",
+        default=os.environ.get("HIPENGINE_KV_SCALE_DTYPE", "fp16"),
+        help="INT8 KV scale dtype: fp16 or fp32 (default: fp16)",
+    )
+    parser.add_argument(
+        "--kv-scale-granularity",
+        default=os.environ.get("HIPENGINE_KV_SCALE_GRANULARITY", "per_token_head"),
+        help="INT8 KV scale granularity (default: per_token_head)",
+    )
     parser.add_argument("--host", default="127.0.0.1", help="Bind host")
     parser.add_argument("--port", type=int, default=8000, help="Bind port")
     parser.add_argument("--log-level", default="info", help="uvicorn log level")
@@ -75,6 +106,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         eager_load=args.eager_load,
         eager_load_prompt=args.eager_load_prompt,
         eager_load_max_tokens=args.eager_load_max_tokens,
+        max_context_tokens=args.max_context_tokens,
+        kv_storage=args.kv_storage,
+        kv_scale_dtype=args.kv_scale_dtype,
+        kv_scale_granularity=args.kv_scale_granularity,
     )
     app = create_app(config)
     try:

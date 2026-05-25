@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hipengine"
-version = "0.2.1"
+version = "0.2.2"
 description = "ROCm-native local LLM inference engine with a torch-free runtime hot path"
 readme = "README.md"
 requires-python = ">=3.10"

@@ -26634,3 +26634,90 @@ uv run --extra dev python -m pytest -q tests/test_server_api.py tests/test_llm_g
 ```
 
 Restarted the LAN server from the local checkout with TheRock ROCm library paths. Eager startup completed after 31s, `/v1/models` returned `qwen-paro`, and VRAM was already resident at 19.54GB before serving requests. A subsequent streamed chat request returned the role chunk at 0.01s and reasoning chunks as `delta.reasoning_content` from 0.49s onward, with VRAM staying resident at 19.54GB. Server PID 12107, wrapper PID 12082, log `/tmp/hipengine-server-8000.log`.
+
+## 2026-05-25 — PARO KV capacity preflight for server sizing
+
+Revisited the first-request reload diagnosis. The chat default should remain `max_tokens=8192`; the real issue is that session sizing is request-driven, so a warmed 4096-token resident session can be discarded when a later request needs a larger KV arena. Before changing admission/preallocation policy, added a fast retained-KV capacity estimate in `Qwen35ParoResidentSession`: after resident weights load and before full-attention KV buffers are allocated, the runtime reads `hipMemGetInfo`, subtracts a configurable reserve (`HIPENGINE_KV_CAPACITY_RESERVE_MIB`, default 512 MiB), computes bytes/token for the selected KV dtype and for INT8 KV, emits structured progress records, and logs a warning when INT8 capacity is below the model's advertised max context. This gives startup logs such as "INT8 KV can fit about N tokens vs model max M" instead of discovering the limit via an OOMing `hipMalloc`.
+
+Wired the estimate into server policy: `ServerConfig`/CLI now have `--max-context-tokens` (default 131072), `--kv-storage`, `--kv-scale-dtype`, and `--kv-scale-granularity`. Eager startup calls `LLM.prepare(max_sequence_length=...)` before the warmup generation, so the resident PARO session/KV arena is preallocated for the configured context. Request admission checks `prompt_tokens + max_tokens + 1 <= max_context_tokens`, and per-request KV settings must match the server-wide preallocated policy; violations return OpenAI-style 400 errors instead of triggering a session resize/reload.
+
+Also made PARO resident session construction clean up partially-built buffers if preflight/allocation fails, so an over-large requested context fails cleanly instead of leaking resident weights/KV. Chat default coverage was restored to assert the intended 8192-token server default.
+
+Validation:
+
+```bash
+python -m pytest -q tests/test_server_api.py tests/test_generation_qwen35_paro.py tests/test_llm_generate.py
+# 24 passed
+python -m py_compile hipengine/runtime/qwen35_paro_runner.py hipengine/loading/qwen35_paro.py hipengine/server/api.py hipengine/server/__main__.py hipengine/llm.py hipengine/generation/qwen35_paro.py
+```
+
+## 2026-05-25 — server auto context sizing accounts for retained metadata
+
+Follow-up to the PARO server KV preallocation work: a real startup with default auto sizing attempted the model max 262144-token BF16 context and OOMed before the old KV estimate ran because `_allocate_common_buffers()` materialized a large persistent prefill block table (`prefill_capacity_rows x blocks`). Fixed the sizing path to load resident weights first, run the HIP free-memory estimate before context-dependent metadata/KV allocation, and include persistent context metadata in the allocatable-token calculation. Automatic server startup now selects `min(model_max_context_tokens, allocatable_context_tokens)` for the selected KV policy, while explicit `--max-context-tokens` still fails fast with guidance to lower the cap or use INT8 KV.
+
+Also made chat `max_tokens` dynamic when omitted: after the resident context is prepared, chat requests default to the remaining admitted context (`max_context_tokens - prompt_tokens - 1`) instead of a fixed 8192. Startup logs were compacted to `Config`, `KVCache`, `WARMUP`, and `hipEngine is ready.` lines, with KVCache reporting KV bytes plus retained metadata bytes.
+
+Validation:
+
+```bash
+python -m pytest -q tests/test_generation_qwen35_paro.py tests/test_server_api.py tests/test_llm_generate.py
+# 24 passed
+python -m py_compile hipengine/runtime/qwen35_paro_runner.py hipengine/server/api.py hipengine/generation/qwen35_paro.py hipengine/llm.py hipengine/server/__main__.py
+```
+
+## 2026-05-25 — suppress duplicate low-level KV capacity logs
+
+Kept the server `Config`/`KVCache` summary as the user-facing startup output and demoted the lower-level PARO runner KV-capacity info/warning lines to DEBUG. The resolved `Config` and `KVCache` lines intentionally remain after resident weights load because auto sizing uses actual `hipMemGetInfo` free memory after model materialization.
+
+Validation:
+
+```bash
+python -m pytest -q tests/test_server_api.py tests/test_generation_qwen35_paro.py
+python -m py_compile hipengine/runtime/qwen35_paro_runner.py hipengine/server/api.py
+```
+
+## 2026-05-26 — v0.2.1 release validation and artifact build
+
+Prepared v0.2.1 for publishing with the server KV preallocation improvements folded into the `CHANGELOG.md` v0.2.1 entry (leaving `Unreleased` empty). Used a clean detached worktree at `/tmp/hipengine-release-v021.QhOZ2d` to avoid the main checkout's unrelated untracked `uv.lock`.
+
+Validation and artifact commands:
+
+```bash
+git fetch --tags origin && git pull --ff-only
+python3 -m compileall -q hipengine scripts tests
+uv run --extra dev python -m pytest -q
+uv run --python 3.10 --extra dev python -m pytest -q
+uv run --extra dev hipengine-server --help
+rm -rf dist && python3 -m build
+unzip -p dist/hipengine-0.2.1-py3-none-manylinux_2_39_x86_64.whl hipengine-0.2.1.dist-info/WHEEL
+uvx --from twine twine check dist/*
+WHEEL=/tmp/hipengine-release-v021.QhOZ2d/dist/hipengine-0.2.1-py3-none-manylinux_2_39_x86_64.whl; \
+  (cd /tmp && uv run --isolated --with "${WHEEL}[server]" hipengine-server --help)
+```
+
+Results: compileall passed; full pytest passed on CPython 3.10.16 (including the explicit `--python 3.10` run); server CLI smoke passed; `python3 -m build` produced `hipengine-0.2.1.tar.gz` and `hipengine-0.2.1-py3-none-manylinux_2_39_x86_64.whl`; wheel metadata reports `Root-Is-Purelib: false` and tag `py3-none-manylinux_2_39_x86_64`; `twine check` passed for both artifacts; isolated wheel server CLI smoke passed.
+
+## 2026-05-26 — retarget server KV preallocation release to v0.2.2
+
+Confirmed `v0.2.1` was already immutable on PyPI and tagged on GitHub, so retargeted the server KV preallocation improvements to `v0.2.2`. Updated `pyproject.toml` to `0.2.2` and split `CHANGELOG.md` so `v0.2.1` retains the already-published session reuse/warmup/streaming notes while `v0.2.2` carries the resident context/KV preallocation controls, auto context sizing, retained-KV capacity estimate, `max_tokens=auto`, and partial-construction cleanup notes.
+
+## 2026-05-26 — v0.2.2 release validation and artifact build
+
+Built the server KV preallocation release as `v0.2.2` from clean detached worktree `/tmp/hipengine-release-v021.QhOZ2d` at commit `fc16570` before the release-validation log append.
+
+Validation and artifact commands:
+
+```bash
+python3 -m compileall -q hipengine scripts tests
+uv run --extra dev python -m pytest -q
+uv run --python 3.10 --extra dev python -m pytest -q
+uv run --extra dev hipengine-server --help
+rm -f uv.lock && rm -rf .venv dist
+python3 -m build
+unzip -p dist/hipengine-0.2.2-py3-none-manylinux_2_39_x86_64.whl hipengine-0.2.2.dist-info/WHEEL
+uvx --from twine twine check dist/*
+WHEEL=/tmp/hipengine-release-v021.QhOZ2d/dist/hipengine-0.2.2-py3-none-manylinux_2_39_x86_64.whl; \
+  (cd /tmp && uv run --isolated --with "${WHEEL}[server]" hipengine-server --help)
+```
+
+Results: compileall passed; full pytest passed on CPython 3.10.16 (including the explicit `--python 3.10` run); server CLI smoke passed; `python3 -m build` produced `hipengine-0.2.2.tar.gz` and `hipengine-0.2.2-py3-none-manylinux_2_39_x86_64.whl`; wheel metadata reports `Root-Is-Purelib: false` and tag `py3-none-manylinux_2_39_x86_64`; `twine check` passed for both artifacts; isolated wheel server CLI smoke passed. Rebuild artifacts after this log append before publishing so `dist/` matches the final commit.

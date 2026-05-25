@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
 from hipengine import SamplingParams
 from hipengine.server import ServerConfig, create_app, render_chat_prompt
+from hipengine.server.api import ChatCompletionRequest
 
 
 class FakeLLM:
@@ -17,6 +20,25 @@ class FakeLLM:
         self.outputs = outputs
         self.stream_chunks = stream_chunks
         self.calls: list[tuple[tuple[str, ...], SamplingParams]] = []
+        self.prepares: list[tuple[int | None, SamplingParams]] = []
+        self.max_sequence_length: int | None = None
+        self.kv_capacity_estimate = None
+        self.kv_capacity_int8_estimate = None
+
+    def prepare(self, *, max_sequence_length: int | None = None, sampling_params: SamplingParams) -> int:
+        self.prepares.append((None if max_sequence_length is None else int(max_sequence_length), sampling_params))
+        requested = 262144 if max_sequence_length is None else int(max_sequence_length)
+        selected = min(262144, 131072) if max_sequence_length is None else requested
+        self.max_sequence_length = selected
+        self.kv_capacity_estimate = _fake_kv_estimate(
+            max_sequence_length=selected,
+            storage="bf16" if sampling_params.kv_storage == "auto" else sampling_params.kv_storage,
+        )
+        self.kv_capacity_int8_estimate = _fake_kv_estimate(
+            max_sequence_length=selected,
+            storage="int8_per_token_head",
+        )
+        return selected
 
     def generate(self, prompts, sampling_params: SamplingParams) -> list[str]:
         prompts = tuple(prompts)
@@ -36,6 +58,23 @@ class FakeLLM:
 
     def count_tokens(self, text: str) -> int:
         return len(text.split())
+
+
+def _fake_kv_estimate(*, max_sequence_length: int, storage: str):
+    bytes_per_token = 8192
+    rounded_tokens = ((int(max_sequence_length) + 255) // 256) * 256
+    return SimpleNamespace(
+        requested_context_tokens=int(max_sequence_length),
+        model_max_context_tokens=262144,
+        allocatable_context_tokens=131072,
+        requested_kv_bytes=rounded_tokens * bytes_per_token,
+        bytes_per_token=bytes_per_token,
+        usable_bytes=4 * 1024**3,
+        reserve_bytes=512 * 1024**2,
+        kv_storage_dtype=storage,
+        kv_scale_dtype="fp16" if storage == "int8_per_token_head" else None,
+        fits_model_max=False,
+    )
 
 
 def test_models_endpoint_reports_served_model_name_and_auth() -> None:
@@ -66,7 +105,8 @@ def test_models_endpoint_reports_served_model_name_and_auth() -> None:
     }
 
 
-def test_server_eager_loads_model_on_startup() -> None:
+def test_server_eager_loads_model_on_startup(caplog) -> None:
+    caplog.set_level(logging.INFO, logger="uvicorn.error")
     fake = FakeLLM(outputs=["warm"])
     config = ServerConfig(
         model="fake-path",
@@ -80,6 +120,20 @@ def test_server_eager_loads_model_on_startup() -> None:
         response = client.get("/v1/models")
 
     assert response.status_code == 200
+    assert "Config: model=fake-path" in caplog.text
+    assert "max_context_tokens=131072" in caplog.text
+    assert "chat_default_max_tokens=auto" in caplog.text
+    assert "kv_storage=auto" in caplog.text
+    assert "KVCache: storage=bf16" in caplog.text
+    assert "model_max_context_tokens=262144" in caplog.text
+    assert "WARMUP: prompt_tokens<=131072 max_tokens=2" in caplog.text
+    assert "hipEngine is ready." in caplog.text
+    assert fake.prepares == [
+        (
+            None,
+            SamplingParams(max_tokens=2, temperature=0.0, top_p=1.0, ignore_eos=True),
+        )
+    ]
     assert fake.calls == [
         (
             ("one two three four",),
@@ -88,9 +142,26 @@ def test_server_eager_loads_model_on_startup() -> None:
     ]
 
 
+def test_chat_default_max_tokens_is_dynamic_when_omitted() -> None:
+    request = ChatCompletionRequest(
+        model="fake-model",
+        messages=[{"role": "user", "content": "hello"}],
+    )
+
+    assert request.max_tokens is None
+
+
 def test_completions_endpoint_calls_llm_and_applies_stop() -> None:
     fake = FakeLLM(outputs=["alpha<stop>tail", "beta<stop>tail"])
-    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            kv_storage="int8_per_token_head",
+            kv_scale_dtype="fp32",
+        ),
+        llm=fake,
+    )
     client = TestClient(app)
 
     response = client.post(
@@ -208,7 +279,52 @@ def test_streaming_chat_completion_returns_sse_done_marker() -> None:
         {"reasoning_content": " pad"},
         {"content": "streamed reply"},
     ]
-    assert fake.calls[0][1].max_tokens == 8192
+    prompt = fake.calls[0][0][0]
+    assert fake.calls[0][1].max_tokens == 131072 - fake.count_tokens(prompt) - 1
+
+
+def test_server_rejects_requests_beyond_preallocated_context() -> None:
+    fake = FakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            max_context_tokens=5,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "one two three four", "max_tokens": 2},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "context_length_exceeded"
+    assert fake.calls == []
+
+
+def test_server_rejects_request_kv_policy_mismatch() -> None:
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            kv_storage="int8_per_token_head",
+        ),
+        llm=FakeLLM(),
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "hello", "kv_storage": "bf16"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "unsupported_kv_policy"
 
 
 def test_server_rejects_wrong_model_and_unsupported_options() -> None:
