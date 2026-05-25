@@ -26749,3 +26749,63 @@ WHEEL=/tmp/hipengine-cli-dist/hipengine-0.2.2-py3-none-manylinux_2_39_x86_64.whl
 (cd /tmp && uv run --refresh --isolated --with "$WHEEL" hipengine serve --help)
 (cd /tmp && uv run --refresh --isolated --with "$WHEEL" hipengine bench list)
 ```
+
+## 2026-05-26 — GPU0 c=1..8 pre-bench and scheduler serial diagnostics
+
+Generated temporary deterministic Qwen3.6/PARO prompt fixtures for diagnostic concurrent sweeps on GPU0 / W7900:
+
+- `/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json` — 8 rows x 512 ids.
+- `/tmp/hipengine-prebench/fixtures/qwen36_paro_8x4096_prompt_ids.json` — 8 rows x 4096 ids.
+
+Pre-bench c>N primitive correctness passed for c=1/2/4/8 with `HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0`:
+
+| c | append_key_mismatch | append_value_mismatch | attn_batch_vs_c1_max_abs | attn_batch_vs_numpy_max_abs | artifact |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 1 | 0 | 0 | 0.0 | 0.0 | `/tmp/hipengine-prebench/correctness/qwen35-batch-c1-correctness.json` |
+| 2 | 0 | 0 | 0.0 | 2.2351741790771484e-08 | `/tmp/hipengine-prebench/correctness/qwen35-batch-c2-correctness.json` |
+| 4 | 0 | 0 | 0.0 | 2.9802322387695312e-08 | `/tmp/hipengine-prebench/correctness/qwen35-batch-c4-correctness.json` |
+| 8 | 0 | 0 | 0.0 | 5.960464477539063e-08 | `/tmp/hipengine-prebench/correctness/qwen35-batch-c8-correctness.json` |
+
+Commands:
+
+```bash
+export HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0
+for c in 1 2 4 8; do
+  python3 scripts/qwen35_batch_correctness.py \
+    --rows "$c" \
+    --json "/tmp/hipengine-prebench/correctness/qwen35-batch-c${c}-correctness.json"
+done
+```
+
+Ran the diagnostic scheduler serial bridge sweep with explicit INT8 KV. All rows are `status=blocked`, `performance_claim=false`, `path=scheduler_serial_slot_bridge`, `workload.native_compact_prefill=false`, and `native_caware_decode=false`; they are useful characterization only, not retained throughput claims. Note: execution metadata reports the current layer set has a full native single-request prefill plan, but this diagnostic harness still drives prefill/decode through `step_batch_serial` and does not use the packed c>N prefill path.
+
+| shape | correctness | load s | prefill s | prefill tok/s | decode s | decode agg tok/s | decode per-req tok/s | artifact |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| c=1 512/128 | passed | 21.169 | 4.575 | 111.91 | 1.253 | 102.12 | 102.12 | `/tmp/hipengine-prebench/scheduler/qwen36-paro-c1-512-128-serial-bridge.json` |
+| c=2 512/128 | passed | 21.304 | 8.963 | 114.24 | 2.502 | 102.32 | 51.16 | `/tmp/hipengine-prebench/scheduler/qwen36-paro-c2-512-128-serial-bridge.json` |
+| c=4 512/128 | passed | 21.161 | 17.947 | 114.11 | 5.046 | 101.47 | 25.37 | `/tmp/hipengine-prebench/scheduler/qwen36-paro-c4-512-128-serial-bridge.json` |
+| c=8 512/128 | passed | 21.683 | 35.927 | 114.01 | 10.210 | 100.30 | 12.54 | `/tmp/hipengine-prebench/scheduler/qwen36-paro-c8-512-128-serial-bridge.json` |
+| c=1 4K/128 | passed | 21.464 | 36.822 | 111.24 | 1.280 | 99.98 | 99.98 | `/tmp/hipengine-prebench/scheduler/qwen36-paro-c1-4k-128-serial-bridge.json` |
+| c=2 4K/128 | passed | 21.213 | 73.362 | 111.66 | 2.591 | 98.82 | 49.41 | `/tmp/hipengine-prebench/scheduler/qwen36-paro-c2-4k-128-serial-bridge.json` |
+| c=4 4K/128 | passed | 21.214 | 147.056 | 111.41 | 5.184 | 98.76 | 24.69 | `/tmp/hipengine-prebench/scheduler/qwen36-paro-c4-4k-128-serial-bridge.json` |
+| c=8 4K/128 | passed | 21.640 | 294.723 | 111.18 | 10.356 | 98.88 | 12.36 | `/tmp/hipengine-prebench/scheduler/qwen36-paro-c8-4k-128-serial-bridge.json` |
+
+Sweep command shape:
+
+```bash
+export HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0
+MODEL=/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16
+python3 scripts/qwen35_batch_serial_bench.py \
+  --model "$MODEL" \
+  --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
+  --batch-size C \
+  --prompt-length 512 \
+  --decode-tokens 128 \
+  --warmup-decode-tokens 8 \
+  --max-layers 40 \
+  --kv-storage int8_per_token_head \
+  --compiler-version-file /tmp/hipengine-prebench/hipcc-version.txt \
+  --json /tmp/hipengine-prebench/scheduler/qwen36-paro-cC-512-128-serial-bridge.json
+```
+
+Implication: aggregate decode tok/s stays roughly flat around 99-102 tok/s as c increases while per-request tok/s falls ~1/c, confirming the current bridge is serialized over c=1 decode work. This validates the user-visible answer that server/kernel/KV c>N support must be audited and upgraded before a proper vLLM-style c=1..8 retained benchmark.
