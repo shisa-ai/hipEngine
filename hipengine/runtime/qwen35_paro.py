@@ -5438,8 +5438,31 @@ class Qwen35ParoDecodeState:
                 runtime=self.runtime,
             )
         down_qweight = self.tensor(f"{down_base}.qweight_pack8_decode")
-        if small_batch:
+        down_site = _w4_multi_row_single_site(down_base)
+        down_mode = _w4_down_proj_small_batch_mode(down_site)
+        if small_batch or (1 < tokens <= 8 and down_mode == "gemv"):
             gemv_awq_pack8_transposed_fp16(
+                scratch.shared_down_input.ptr,
+                down_qweight.ptr,
+                self.tensor(f"{down_base}.qzeros").ptr,
+                self.tensor(f"{down_base}.scales").ptr,
+                scratch.shared_out.ptr,
+                tokens,
+                cfg.shared_expert_intermediate_size,
+                _out_packed_from_generic_transposed_qweight(down_qweight),
+                group_size,
+                threads=threads,
+                stream=stream,
+                library=_library_for(library, "awq"),
+                runtime=self.runtime,
+            )
+        elif (
+            1 < tokens <= 8
+            and down_mode == "multi_row"
+            and group_size % 16 == 0
+            and cfg.shared_expert_intermediate_size % group_size == 0
+        ):
+            gemv_awq_pack8_multi_row_transposed_fp16(
                 scratch.shared_down_input.ptr,
                 down_qweight.ptr,
                 self.tensor(f"{down_base}.qzeros").ptr,
@@ -5666,8 +5689,31 @@ class Qwen35ParoDecodeState:
                 runtime=self.runtime,
             )
         down_qweight = self.tensor(f"{down_base}.qweight_pack8_decode")
-        if tokens == 1:
+        down_site = _w4_multi_row_single_site(down_base)
+        down_mode = _w4_down_proj_small_batch_mode(down_site)
+        if tokens == 1 or (1 < tokens <= 8 and down_mode == "gemv"):
             gemv_awq_pack8_transposed_fp16(
+                scratch.shared_down_input.ptr,
+                down_qweight.ptr,
+                self.tensor(f"{down_base}.qzeros").ptr,
+                self.tensor(f"{down_base}.scales").ptr,
+                scratch.shared_out.ptr,
+                tokens,
+                intermediate,
+                _out_packed_from_generic_transposed_qweight(down_qweight),
+                group_size,
+                threads=threads,
+                stream=stream,
+                library=_library_for(library, "awq"),
+                runtime=self.runtime,
+            )
+        elif (
+            1 < tokens <= 8
+            and down_mode == "multi_row"
+            and group_size % 16 == 0
+            and intermediate % group_size == 0
+        ):
+            gemv_awq_pack8_multi_row_transposed_fp16(
                 scratch.shared_down_input.ptr,
                 down_qweight.ptr,
                 self.tensor(f"{down_base}.qzeros").ptr,
@@ -7214,6 +7260,41 @@ def _w4_multi_row_single_site_enabled(prefix: str) -> bool:
     return _w4_multi_row_single_enabled() and _w4_multi_row_site_enabled(
         _w4_multi_row_single_site(prefix)
     )
+
+
+def _w4_down_proj_small_batch_mode(site: str) -> str:
+    """Dispatch mode for verifier-sized W4 down projections.
+
+    Defaults to ``gemv`` because the standard pack8 GEMV arithmetic path passed
+    the 27B DFlash exact-suite gate and avoids the slow prefill projection
+    kernel at B+1<=8.  ``multi_row`` remains diagnostic only: it is faster, but
+    currently fails branch-copy exactness for dense down.  Site filtering
+    reuses ``HIPENGINE_W4_MULTI_ROW_PACK8_SITES`` so experiments can isolate
+    ``single_shared_down`` vs ``single_dense_down``.
+    """
+
+    raw = os.environ.get("HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH")
+    mode = "gemv" if raw is None or raw.strip() == "" else raw.strip().lower()
+    aliases = {
+        "0": "prefill",
+        "off": "prefill",
+        "false": "prefill",
+        "no": "prefill",
+        "decode": "gemv",
+        "decode_gemv": "gemv",
+        "single": "gemv",
+        "single_gemv": "gemv",
+        "1": "gemv",
+        "on": "gemv",
+        "true": "gemv",
+        "yes": "gemv",
+    }
+    mode = aliases.get(mode, mode)
+    if mode not in {"prefill", "gemv", "multi_row"}:
+        raise ValueError("HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH must be prefill, gemv, or multi_row")
+    if mode != "prefill" and not _w4_multi_row_site_enabled(site):
+        return "prefill"
+    return mode
 
 
 def _w4_multi_row_dual_site_eligible(site: str, tokens: int, in_features: int, group_size: int) -> bool:

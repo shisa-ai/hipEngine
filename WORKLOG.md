@@ -23766,3 +23766,86 @@ Validation:
 Docs/rollup updated:
 - `docs/DFLASH.md` 27B B=4 verifier rocprof/down-projection check.
 - `benchmarks/README.md` and `benchmarks/CHANGELOG.md` retained diagnostic row.
+
+## 2026-05-25 — 27B DFlash B=4 exact down-GEMV default
+
+Followed up the rejected dense-down multi-row experiment with a deterministic
+variant: for verifier-sized W4 shared+dense MLP down projections
+(`B+1<=8`), use the existing row-wise `gemv_awq_pack8_kernel` path instead of
+`awq_fusedw4_prefill_fp16`.  This keeps each row on the standard c=1-style
+arithmetic path; the faster weight-sharing multi-row down path remains
+diagnostic-only because it failed branch-copy exactness on the full suite.
+
+Implementation:
+- `hipengine/runtime/qwen35_paro.py` now defaults
+  `HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH` to `gemv` for site-mask-enabled
+  `single_shared_down` and `single_dense_down`.
+- Rollback knob: `HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=prefill` (or `off`).
+- Rejected/diagnostic knob: `HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=multi_row`.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro.py
+PYTHONPATH=. pytest -q tests/test_dflash_draft_confidence.py tests/test_speculative_benchmark.py
+git diff --check
+```
+
+Result: all passed (`12 passed` for pytest).
+
+Initial env-enabled 4-prompt exactness/speed slice:
+
+```bash
+HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=gemv HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 2400 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 4 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branch-copy-4prompt-down-gemv.json
+```
+
+Result: exact `4/4`, `0.923x` AR (`30.36` vs `32.87 tok/s`), median row
+`0.951x`, avg accept `2.53`, rows/output `1.414`.
+
+Full env-enabled 9-prompt check:
+
+```bash
+HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=gemv HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branch-copy-9prompt-down-gemv.json
+```
+
+Result: exact `9/9`, `0.924x` AR (`30.30` vs `32.80 tok/s`), median row
+`0.981x`.
+
+Selected-region verifier profile:
+
+```bash
+LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override-dflash:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/rocm_sysdeps/lib:$LD_LIBRARY_PATH HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=gemv HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 rocprofv3 --kernel-trace --selected-regions true --output-format csv -d /tmp/hipengine-rocprof-dflash-27b-b4-verify-down-gemv -o dflash-27b-b4-verify-down-gemv -- python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 1 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --rocprof-selected-region dflash_verify --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branch-copy-1prompt-down-gemv-roctx.json
+```
+
+Result: exact under profiler.  Verifier-only selected kernel time:
+baseline `1413.8 ms`, exact down-GEMV `1285.1 ms`, rejected multi-row
+down `1137.2 ms`.  Main movement:
+- `awq_fusedw4_prefill_fp16`: `555.7 -> 149.3 ms`
+- row-wise `gemv_awq_pack8`: `215.6 -> 469.1 ms`
+- full attention unchanged (`~62-65 ms`)
+
+Retained default-on 9-prompt command:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branch-copy-9prompt-down-gemv-default.json
+```
+
+Result: exact `9/9`, DFlash `30.40 tok/s` vs AR `32.83 tok/s`, `0.926x` AR,
+median row `0.983x`, avg accept `2.56`, rows/output `1.40`.  Current prior
+branch-copy baseline was exact `0.867x` AR (`28.47 tok/s`), so this is +6.8%
+relative on the same 9-prompt shape.  Still below AR and below the `>1.10x`
+promotion gate, so retained as default-on speed work with
+`performance_claim=false`.
+
+Retained artifact:
+- `benchmarks/results/2026-05-25-hipengine-dflash-27b-down-gemv-default.json`
+
+Docs/rollup updated:
+- `docs/DFLASH.md` 27B B=4 down-GEMV result.
+- `benchmarks/README.md` and `benchmarks/CHANGELOG.md` retained diagnostic row.
+
+Next speed target: exact but faster dense-down multi-row would be another
+~10-12% verifier-kernel reduction, but the current weight-sharing path drifts
+branch-copy canonical state.  If we stay with exact arithmetic, remaining
+high-ROI levers are per-prompt routing/classification to avoid low-acceptance
+rows and a lower-cost exact dense-down canonicalization path.

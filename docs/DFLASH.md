@@ -253,6 +253,32 @@ not cheap enough. To reach meaningful speedups with the same acceptance:
 The native implementation must therefore reduce **per-row target verify cost**
 and **draft/host overhead**. Policy tuning alone cannot produce a large win.
 
+### 2026-05-25 27B B=4 down-projection result
+
+The retained Qwen3.6-27B-PARO dense + z-lab DFlash B=4/D64 9-prompt
+branch-copy suite now defaults verifier-sized W4 MLP down projections
+(`shared_expert.down_proj` and dense `mlp.down_proj`, `B+1<=8`) to the standard
+row-wise pack8 GEMV path:
+
+| Metric | Prior branch-copy | Down-GEMV default |
+| --- | ---: | ---: |
+| exact rows | 9/9 | 9/9 |
+| AR decode | 32.83 tok/s | 32.83 tok/s |
+| DFlash decode | 28.47 tok/s | 30.40 tok/s |
+| vs AR | 0.867x | 0.926x |
+| median row vs AR | 0.919x | 0.983x |
+| avg accept length | 2.56 | 2.56 |
+| target verify rows/output | 1.40 | 1.40 |
+
+Selected-region verifier rocprof confirms this is a verifier-cost reduction,
+not an acceptance change: total selected kernel time moves `1413.8 -> 1285.1
+ms`; `awq_fusedw4_prefill_fp16` drops `555.7 -> 149.3 ms`; row-wise
+`gemv_awq_pack8` rises `215.6 -> 469.1 ms`. The faster multi-row
+weight-sharing down-projection path remains rejected because it was only `8/9`
+exact on the same suite (`code:json_yaml_continuation`, token 48). Roll back
+the promoted exact path with `HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=prefill`; force
+the rejected diagnostic with `HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=multi_row`.
+
 ### What already worked
 
 These are worth porting or preserving:
@@ -278,7 +304,12 @@ These are worth porting or preserving:
    gate was the limitation. E2E impact was neutral in the Python harness, but
    it removes real dispatches and should be part of the native path.
 
-5. **R3: persistent per-layer node-state rings.**
+5. **Verifier-sized W4 down-projection GEMV.**
+   For Qwen3.6-27B dense DFlash B=4, shared+dense MLP down projections at
+   `B+1<=8` are cheaper through the standard row-wise pack8 GEMV path than
+   through `awq_fusedw4_prefill_fp16`, while preserving the exact AR suite.
+
+6. **R3: persistent per-layer node-state rings.**
    Reusing per-layer scratch for `tree_conv_state`, `tree_recurrent_state`, and
    row intermediates cut peak memory by ~0.94 GiB at bs=8 and ~2.10 GiB at
    bs=16. It was performance-neutral in Python because commit/allocations were

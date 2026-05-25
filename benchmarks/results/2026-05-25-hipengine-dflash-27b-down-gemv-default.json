@@ -1,0 +1,733 @@
+{
+  "schema": "hipengine_benchmark_result.v1",
+  "timestamp": "2026-05-25T02:04:40.363072+00:00",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "decision": "retained_default_on_speed_work",
+  "decision_reason": "Exact 9-prompt DFlash suite improves current B=4 branch-copy ratio 0.867x -> 0.926x AR, but still does not beat AR or pass the >1.10x speed gate.",
+  "change": {
+    "summary": "Default verifier-sized W4 MLP down projections to existing row-wise pack8 GEMV for B+1<=8, with HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=prefill/off rollback and multi_row diagnostic retained.",
+    "files": [
+      "hipengine/runtime/qwen35_paro.py"
+    ],
+    "rollback_env": "HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=prefill",
+    "diagnostic_env": "HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=multi_row"
+  },
+  "hardware": {
+    "arch": "gfx1100",
+    "backend": "hip_gfx1100",
+    "gpu": "AMD Radeon Pro W7900"
+  },
+  "software": {
+    "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n",
+    "hipengine_branch": "mpt-dflash",
+    "hipengine_commit": "18116f9897580865f54d1c2a354c2d3d543e5700",
+    "hipengine_dirty": true,
+    "hipengine_status_porcelain": "M hipengine/runtime/qwen35_paro.py\n?? .handoff/\n?? benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-b3-batched-graphauto-rev2.json\n?? benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-b3-batched-graphauto.json\n?? benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-b3-c1loop-graphauto.json\n?? benchmarks/results/2026-05-22-hipengine-mtp-m12.6b-w7900-b3-batched-graphauto.json",
+    "platform": "Linux-7.0.9-1-cachyos-x86_64-with-glibc2.43",
+    "python": "3.12.9"
+  },
+  "models": {
+    "drafter": {
+      "dtype": "bf16",
+      "name": "z-lab/Qwen3.6-27B-DFlash",
+      "path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106",
+      "snapshot_revision": "0919688658996800f86b895034249700e9481106"
+    },
+    "target": {
+      "name": "z-lab/Qwen3.6-27B-PARO",
+      "path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207",
+      "quant": "w4_paro_packed",
+      "snapshot_revision": "84f86409151d4f2ec86dc0b6a096d5f6daa7f207"
+    }
+  },
+  "workload": {
+    "adaptive_budget_mode": "off",
+    "adaptive_min_remaining_tokens": 0,
+    "adaptive_probe_amortization_tokens": 64,
+    "artifact_validation": {
+      "drafter": {
+        "artifact_kind": "dflash_drafter",
+        "config": {
+          "architecture": "DFlashDraftModel",
+          "block_size": 16,
+          "dtype": "bfloat16",
+          "head_dim": 128,
+          "hidden_size": 5120,
+          "intermediate_size": 17408,
+          "layer_types": [
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "full_attention"
+          ],
+          "mask_token_id": 248070,
+          "num_attention_heads": 32,
+          "num_hidden_layers": 5,
+          "num_key_value_heads": 8,
+          "num_target_layers": 64,
+          "rope_theta": 10000000.0,
+          "target_hidden_concat_size": 25600,
+          "target_hidden_size": 5120,
+          "target_layer_ids": [
+            1,
+            16,
+            31,
+            46,
+            61
+          ],
+          "vocab_size": 248320
+        },
+        "config_errors": [],
+        "dtype_errors": [],
+        "missing": [],
+        "model_path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106",
+        "passed": true,
+        "present_count": 58,
+        "shape_errors": []
+      },
+      "pair_errors": [],
+      "passed": true,
+      "target": {
+        "artifact_kind": "dflash_target",
+        "config": {
+          "architecture": "Qwen3_5ForConditionalGeneration",
+          "head_dim": 256,
+          "hidden_size": 5120,
+          "layer_types": [
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention"
+          ],
+          "num_attention_heads": 24,
+          "num_experts": 0,
+          "num_experts_per_tok": 0,
+          "num_hidden_layers": 64,
+          "num_key_value_heads": 4,
+          "quant_method": "paroquant",
+          "shared_expert_format": "dense_paro_w4",
+          "vocab_size": 248320
+        },
+        "config_errors": [],
+        "dtype_errors": [],
+        "missing": [],
+        "model_path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207",
+        "passed": true,
+        "present_count": 2850,
+        "shape_errors": []
+      }
+    },
+    "canonical_commit_mode": "branch_copy",
+    "decode_tokens": 64,
+    "draft_budgets": [
+      4
+    ],
+    "draft_p_min": 0.0,
+    "draft_top_k": 1,
+    "drafter_bucket_mode": "exact",
+    "drafter_fusion_mode": "off",
+    "drafter_graph_mode": "off",
+    "drafter_query_mode": "block",
+    "native_bulk_verifier": true,
+    "profile_route_default": "spec",
+    "profile_route_manifest": null,
+    "profile_route_manifest_body": null,
+    "profile_routes": {},
+    "promotion_blocker": "native B+1 verifier ran, but full chain must still beat same-session AR before promotion",
+    "prompt_suite": "fixtures/dflash/stable_prompts.jsonl",
+    "prompt_suite_sha256": "04a88c095fa0b05c81eaa09f62d58cac053272fc307e1dafae6ab076c214892f",
+    "provider": "dflash",
+    "rocprof_selected_region": "none",
+    "roctx_markers": false,
+    "shape": "full_model_dflash_chain_e2e",
+    "tree_compiler": null,
+    "tree_top_k": 1,
+    "verifier_chain_attn_mode": "batched",
+    "verifier_graph_mode": "off",
+    "verifier_mode": "native_bulk_bplus1",
+    "verifier_tree_mode": "chain",
+    "verify_modes": [
+      "verify_chain"
+    ]
+  },
+  "speculative_contract": {
+    "providers": [
+      "dflash",
+      "mtp"
+    ],
+    "required_row_metrics": [
+      "same_session_ar_decode_tok_s",
+      "spec_decode_tok_s",
+      "exact_match_ar",
+      "finite_ar_logits",
+      "finite_draft_logits",
+      "finite_verify_logits",
+      "acceptance_histogram",
+      "target_verify_rows_per_output_token",
+      "draft_seconds",
+      "target_verify_seconds",
+      "commit_seconds",
+      "scalar_d2h_reads",
+      "vector_d2h_reads",
+      "graph_status",
+      "peak_memory"
+    ],
+    "verify_modes": [
+      "verify_chain",
+      "verify_tree"
+    ]
+  },
+  "commands": {
+    "baseline_9prompt": "python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branch-copy-9prompt.json",
+    "default_down_gemv_9prompt": "python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branch-copy-9prompt-down-gemv-default.json",
+    "env_down_gemv_4prompt": "python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 4 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branch-copy-4prompt-down-gemv.json",
+    "selected_region_profile_down_gemv": "LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override-dflash:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/rocm_sysdeps/lib:$LD_LIBRARY_PATH HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=gemv HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 rocprofv3 --kernel-trace --selected-regions true --output-format csv -d /tmp/hipengine-rocprof-dflash-27b-b4-verify-down-gemv -o dflash-27b-b4-verify-down-gemv -- python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 1 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --rocprof-selected-region dflash_verify --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branch-copy-1prompt-down-gemv-roctx.json",
+    "validation": [
+      "python3 -m py_compile hipengine/runtime/qwen35_paro.py",
+      "PYTHONPATH=. pytest -q tests/test_dflash_draft_confidence.py tests/test_speculative_benchmark.py",
+      "git diff --check"
+    ]
+  },
+  "measurements": {
+    "baseline_9prompt": {
+      "all_correctness_passed": true,
+      "exact_match_rows": 9,
+      "rows": 9,
+      "ar_decode_tok_s": 32.82923987604057,
+      "dflash_decode_tok_s": 28.46991010708901,
+      "speedup_vs_ar": 0.8672119797652372,
+      "median_row_speedup_vs_ar": 0.9194154516807408,
+      "avg_accept_length": 2.559006211180124,
+      "target_verify_rows_per_output_token": 1.4027777777777777
+    },
+    "down_gemv_4prompt_env": {
+      "all_correctness_passed": true,
+      "exact_match_rows": 4,
+      "rows": 4,
+      "ar_decode_tok_s": 32.873647521020764,
+      "dflash_decode_tok_s": 30.355149872420835,
+      "speedup_vs_ar": 0.9233885547081595,
+      "median_row_speedup_vs_ar": 0.9513475277903163,
+      "avg_accept_length": 2.5277777777777777,
+      "target_verify_rows_per_output_token": 1.4140625
+    },
+    "down_gemv_9prompt_default": {
+      "all_correctness_passed": true,
+      "exact_match_rows": 9,
+      "rows": 9,
+      "ar_decode_tok_s": 32.83492043362977,
+      "dflash_decode_tok_s": 30.404348555747777,
+      "speedup_vs_ar": 0.9259760082929094,
+      "median_row_speedup_vs_ar": 0.9825260079605105,
+      "avg_accept_length": 2.559006211180124,
+      "target_verify_rows_per_output_token": 1.4027777777777777,
+      "rows_detail": [
+        {
+          "row_index": 0,
+          "prompt_id": "code:quicksort_prefix",
+          "category": "code_promotion",
+          "exact_match_ar": true,
+          "speedup_vs_ar": 0.9110968686543108,
+          "ar_decode_tok_s": 33.08407021166265,
+          "dflash_decode_tok_s": 30.142792772185203,
+          "avg_accept_length": 2.5,
+          "steps": 18,
+          "target_verify_seconds": 1.7499014731147327
+        },
+        {
+          "row_index": 1,
+          "prompt_id": "code:function_continuation",
+          "category": "code_promotion",
+          "exact_match_ar": true,
+          "speedup_vs_ar": 0.7633537703373989,
+          "ar_decode_tok_s": 32.79270699290706,
+          "dflash_decode_tok_s": 25.032436522605188,
+          "avg_accept_length": 1.9090909090909092,
+          "steps": 22,
+          "target_verify_seconds": 2.1047331669251435
+        },
+        {
+          "row_index": 2,
+          "prompt_id": "code:class_continuation",
+          "category": "code_promotion",
+          "exact_match_ar": true,
+          "speedup_vs_ar": 1.0828051345594512,
+          "ar_decode_tok_s": 32.92952425380834,
+          "dflash_decode_tok_s": 35.65625794062365,
+          "avg_accept_length": 3.2,
+          "steps": 15,
+          "target_verify_seconds": 1.4841998529154807
+        },
+        {
+          "row_index": 3,
+          "prompt_id": "code:json_yaml_continuation",
+          "category": "code_promotion",
+          "exact_match_ar": true,
+          "speedup_vs_ar": 0.9825260079605105,
+          "ar_decode_tok_s": 32.71696051966792,
+          "dflash_decode_tok_s": 32.14526461199095,
+          "avg_accept_length": 2.764705882352941,
+          "steps": 17,
+          "target_verify_seconds": 1.6405793930753134
+        },
+        {
+          "row_index": 4,
+          "prompt_id": "code:humaneval_add",
+          "category": "code_promotion",
+          "exact_match_ar": true,
+          "speedup_vs_ar": 1.1819704709247343,
+          "ar_decode_tok_s": 32.90652157411928,
+          "dflash_decode_tok_s": 38.894536801456695,
+          "avg_accept_length": 3.5714285714285716,
+          "steps": 14,
+          "target_verify_seconds": 1.3558765640482306
+        },
+        {
+          "row_index": 5,
+          "prompt_id": "code:humaneval_sort_third",
+          "category": "code_promotion",
+          "exact_match_ar": true,
+          "speedup_vs_ar": 0.6237045330484325,
+          "ar_decode_tok_s": 32.577239229630585,
+          "dflash_decode_tok_s": 20.318571781723822,
+          "avg_accept_length": 1.4230769230769231,
+          "steps": 26,
+          "target_verify_seconds": 2.59843351674499
+        },
+        {
+          "row_index": 6,
+          "prompt_id": "math:short_gsm8k_style",
+          "category": "robustness",
+          "exact_match_ar": true,
+          "speedup_vs_ar": 0.9255443842599984,
+          "ar_decode_tok_s": 32.83607777780537,
+          "dflash_decode_tok_s": 30.39124738837229,
+          "avg_accept_length": 2.5555555555555554,
+          "steps": 18,
+          "target_verify_seconds": 1.7384087849641219
+        },
+        {
+          "row_index": 7,
+          "prompt_id": "instruct:simple_qa_no_template",
+          "category": "robustness",
+          "exact_match_ar": true,
+          "speedup_vs_ar": 1.1247114695344536,
+          "ar_decode_tok_s": 32.85326184460116,
+          "dflash_decode_tok_s": 36.95044040824156,
+          "avg_accept_length": 3.2666666666666666,
+          "steps": 15,
+          "target_verify_seconds": 1.4276622168836184
+        },
+        {
+          "row_index": 8,
+          "prompt_id": "instruct:simple_qa_qwen_static_chat",
+          "category": "robustness",
+          "exact_match_ar": true,
+          "speedup_vs_ar": 1.0564672865665266,
+          "ar_decode_tok_s": 32.8227580322207,
+          "dflash_decode_tok_s": 34.676170115929864,
+          "avg_accept_length": 3.0,
+          "steps": 16,
+          "target_verify_seconds": 1.5198597959824838
+        }
+      ]
+    },
+    "relative_delta": {
+      "dflash_decode_tok_s_delta": 1.9344384486587671,
+      "dflash_decode_tok_s_relative_pct": 6.79467705160437,
+      "speedup_vs_ar_delta": 0.05876402852767215,
+      "speedup_vs_ar_relative_pct": 6.776201194035636
+    },
+    "selected_region_profiles": {
+      "baseline": {
+        "total_kernel_ms": 1413.77689,
+        "kernel_dispatches": 32322,
+        "families": {
+          "awq_fusedw4_prefill_fp16": {
+            "ms": 555.664185,
+            "calls": 2304,
+            "pct_kernel_time": 39.30352723476757
+          },
+          "gemv_awq_pack8": {
+            "ms": 215.619588,
+            "calls": 2304,
+            "pct_kernel_time": 15.251316493085412
+          },
+          "gemv_awq_pack8_multi_row": {
+            "ms": 15.108942,
+            "calls": 288,
+            "pct_kernel_time": 1.068693519244044
+          },
+          "gemv_awq_dual_pack8_multi_row": {
+            "ms": 221.534724,
+            "calls": 1152,
+            "pct_kernel_time": 15.669708959523309
+          },
+          "full_attention": {
+            "ms": 62.024863,
+            "calls": 288,
+            "pct_kernel_time": 4.387174768431814
+          },
+          "chain_state": {
+            "ms": 151.918727,
+            "calls": 1632,
+            "pct_kernel_time": 10.745594165144402
+          },
+          "runtime_copy_fill": {
+            "ms": 51.601034,
+            "calls": 10200,
+            "pct_kernel_time": 3.6498710910460557
+          }
+        },
+        "top_kernels": [
+          {
+            "kernel": "void (anonymous namespace)::awq_fusedw4_prefill_fp16_kernel<16, 16, true>(int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, int, int, int, int, int)",
+            "ms": 555.664185,
+            "calls": 2304
+          },
+          {
+            "kernel": "void (anonymous namespace)::gemv_awq_dual_pack8_multi_row_kernel<_Float16, true, true, 1, 8>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, _Float16*, long, long, long, long, int)",
+            "ms": 221.534724,
+            "calls": 1152
+          },
+          {
+            "kernel": "void (anonymous namespace)::gemv_awq_pack8_kernel<_Float16, true>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, int, bool)",
+            "ms": 215.619588,
+            "calls": 2304
+          },
+          {
+            "kernel": "void (anonymous namespace)::qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)",
+            "ms": 147.636161,
+            "calls": 816
+          },
+          {
+            "kernel": "(anonymous namespace)::w8a16_linear_multi_row_kernel(unsigned short const*, signed char const*, float const*, float*, long, long, long)",
+            "ms": 63.729076,
+            "calls": 18
+          },
+          {
+            "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel<true>(float const*, unsigned short const*, unsigned short const*, _Float16 const*, _Float16*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float)",
+            "ms": 62.024863,
+            "calls": 288
+          },
+          {
+            "kernel": "__amd_rocclr_copyBuffer",
+            "ms": 42.048108,
+            "calls": 6744
+          },
+          {
+            "kernel": "void (anonymous namespace)::gemv_awq_pack8_multi_row_kernel<_Float16, true, 8>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, long, int, bool)",
+            "ms": 15.108942,
+            "calls": 288
+          },
+          {
+            "kernel": "void (anonymous namespace)::paro_rotate1_kernel<_Float16>(_Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+            "ms": 12.196294,
+            "calls": 2304
+          },
+          {
+            "kernel": "void (anonymous namespace)::paro_rotate2_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+            "ms": 12.159028,
+            "calls": 2016
+          },
+          {
+            "kernel": "void (anonymous namespace)::qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float const*, float*, long const*, float*, long, long, long, long, long)",
+            "ms": 10.538788,
+            "calls": 48
+          },
+          {
+            "kernel": "__amd_rocclr_fillBufferAligned",
+            "ms": 9.552926,
+            "calls": 3456
+          }
+        ]
+      },
+      "down_gemv": {
+        "total_kernel_ms": 1285.122821,
+        "kernel_dispatches": 32322,
+        "families": {
+          "awq_fusedw4_prefill_fp16": {
+            "ms": 149.254921,
+            "calls": 1152,
+            "pct_kernel_time": 11.614058871342694
+          },
+          "gemv_awq_pack8": {
+            "ms": 469.079613,
+            "calls": 3456,
+            "pct_kernel_time": 36.500761276264036
+          },
+          "gemv_awq_pack8_multi_row": {
+            "ms": 15.585479,
+            "calls": 288,
+            "pct_kernel_time": 1.2127618267546119
+          },
+          "gemv_awq_dual_pack8_multi_row": {
+            "ms": 229.387067,
+            "calls": 1152,
+            "pct_kernel_time": 17.849427560667372
+          },
+          "full_attention": {
+            "ms": 65.15358,
+            "calls": 288,
+            "pct_kernel_time": 5.069832932334177
+          },
+          "chain_state": {
+            "ms": 160.773184,
+            "calls": 1632,
+            "pct_kernel_time": 12.510336084055892
+          },
+          "runtime_copy_fill": {
+            "ms": 51.061088,
+            "calls": 10200,
+            "pct_kernel_time": 3.973245760297645
+          }
+        },
+        "top_kernels": [
+          {
+            "kernel": "void (anonymous namespace)::gemv_awq_pack8_kernel<_Float16, true>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, int, bool)",
+            "ms": 469.079613,
+            "calls": 3456
+          },
+          {
+            "kernel": "void (anonymous namespace)::gemv_awq_dual_pack8_multi_row_kernel<_Float16, true, true, 1, 8>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, _Float16*, long, long, long, long, int)",
+            "ms": 229.387067,
+            "calls": 1152
+          },
+          {
+            "kernel": "void (anonymous namespace)::qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)",
+            "ms": 156.285532,
+            "calls": 816
+          },
+          {
+            "kernel": "void (anonymous namespace)::awq_fusedw4_prefill_fp16_kernel<16, 16, true>(int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, int, int, int, int, int)",
+            "ms": 149.254921,
+            "calls": 1152
+          },
+          {
+            "kernel": "(anonymous namespace)::w8a16_linear_multi_row_kernel(unsigned short const*, signed char const*, float const*, float*, long, long, long)",
+            "ms": 66.053507,
+            "calls": 18
+          },
+          {
+            "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel<true>(float const*, unsigned short const*, unsigned short const*, _Float16 const*, _Float16*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float)",
+            "ms": 65.15358,
+            "calls": 288
+          },
+          {
+            "kernel": "__amd_rocclr_copyBuffer",
+            "ms": 41.199606,
+            "calls": 6744
+          },
+          {
+            "kernel": "void (anonymous namespace)::gemv_awq_pack8_multi_row_kernel<_Float16, true, 8>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, long, int, bool)",
+            "ms": 15.585479,
+            "calls": 288
+          },
+          {
+            "kernel": "void (anonymous namespace)::paro_rotate2_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+            "ms": 13.133456,
+            "calls": 2016
+          },
+          {
+            "kernel": "void (anonymous namespace)::paro_rotate1_kernel<_Float16>(_Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+            "ms": 12.012296,
+            "calls": 2304
+          },
+          {
+            "kernel": "void (anonymous namespace)::qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float const*, float*, long const*, float*, long, long, long, long, long)",
+            "ms": 11.238588,
+            "calls": 48
+          },
+          {
+            "kernel": "__amd_rocclr_fillBufferAligned",
+            "ms": 9.861482,
+            "calls": 3456
+          }
+        ]
+      },
+      "down_multirow_rejected": {
+        "total_kernel_ms": 1137.206162,
+        "kernel_dispatches": 32322,
+        "families": {
+          "awq_fusedw4_prefill_fp16": {
+            "ms": 146.738691,
+            "calls": 1152,
+            "pct_kernel_time": 12.903437908033425
+          },
+          "gemv_awq_pack8": {
+            "ms": 222.197861,
+            "calls": 2304,
+            "pct_kernel_time": 19.538925168082233
+          },
+          "gemv_awq_pack8_multi_row": {
+            "ms": 124.203135,
+            "calls": 1440,
+            "pct_kernel_time": 10.921778227227016
+          },
+          "gemv_awq_dual_pack8_multi_row": {
+            "ms": 227.931741,
+            "calls": 1152,
+            "pct_kernel_time": 20.043132777185917
+          },
+          "full_attention": {
+            "ms": 63.40126,
+            "calls": 288,
+            "pct_kernel_time": 5.5751773177606125
+          },
+          "chain_state": {
+            "ms": 158.309642,
+            "calls": 1632,
+            "pct_kernel_time": 13.920927206512973
+          },
+          "runtime_copy_fill": {
+            "ms": 50.705288,
+            "calls": 10200,
+            "pct_kernel_time": 4.458759519102922
+          }
+        },
+        "top_kernels": [
+          {
+            "kernel": "void (anonymous namespace)::gemv_awq_dual_pack8_multi_row_kernel<_Float16, true, true, 1, 8>(_Float16 const*, _Float16 const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, _Float16*, long, long, long, long, int)",
+            "ms": 227.931741,
+            "calls": 1152
+          },
+          {
+            "kernel": "void (anonymous namespace)::gemv_awq_pack8_kernel<_Float16, true>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, int, bool)",
+            "ms": 222.197861,
+            "calls": 2304
+          },
+          {
+            "kernel": "void (anonymous namespace)::qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)",
+            "ms": 153.963117,
+            "calls": 816
+          },
+          {
+            "kernel": "void (anonymous namespace)::awq_fusedw4_prefill_fp16_kernel<16, 16, true>(int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, int, int, int, int, int)",
+            "ms": 146.738691,
+            "calls": 1152
+          },
+          {
+            "kernel": "void (anonymous namespace)::gemv_awq_pack8_multi_row_kernel<_Float16, true, 8>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, _Float16*, long, long, long, long, int, bool)",
+            "ms": 124.203135,
+            "calls": 1440
+          },
+          {
+            "kernel": "(anonymous namespace)::w8a16_linear_multi_row_kernel(unsigned short const*, signed char const*, float const*, float*, long, long, long)",
+            "ms": 64.371704,
+            "calls": 18
+          },
+          {
+            "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel<true>(float const*, unsigned short const*, unsigned short const*, _Float16 const*, _Float16*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float)",
+            "ms": 63.40126,
+            "calls": 288
+          },
+          {
+            "kernel": "__amd_rocclr_copyBuffer",
+            "ms": 41.024654,
+            "calls": 6744
+          },
+          {
+            "kernel": "void (anonymous namespace)::paro_rotate1_kernel<_Float16>(_Float16 const*, _Float16*, short const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+            "ms": 12.832161,
+            "calls": 2304
+          },
+          {
+            "kernel": "void (anonymous namespace)::paro_rotate2_kernel<_Float16>(_Float16 const*, _Float16*, _Float16*, short const*, short const*, _Float16 const*, _Float16 const*, _Float16 const*, _Float16 const*, long, long, int, int)",
+            "ms": 12.74719,
+            "calls": 2016
+          },
+          {
+            "kernel": "void (anonymous namespace)::qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_kernel<_Float16>(float const*, _Float16 const*, _Float16 const*, _Float16 const*, float const*, float const*, float const*, float const*, float*, long const*, float*, long, long, long, long, long)",
+            "ms": 10.92924,
+            "calls": 48
+          },
+          {
+            "kernel": "void (anonymous namespace)::dense_gemv_out_kernel<_Float16>(_Float16 const*, _Float16 const*, _Float16*, long, long, long)",
+            "ms": 9.755499,
+            "calls": 1728
+          }
+        ]
+      }
+    }
+  },
+  "source_lineage": {
+    "notes": [
+      "Metric contract only; PyTorch/HF parent hot loops are not production hipEngine runtime code.",
+      "Rows require same-session AR controls before any speedup can be promoted."
+    ],
+    "ported_metric_shape_from": [
+      "../amd-gpu-tuning/nano-vllm-amd/scripts/sweep_qwen35_mtp_real_acceptance.py",
+      "../amd-gpu-tuning/nano-vllm-amd/scripts/bench_qwen35_dflash_acceptance.py",
+      "../amd-gpu-tuning/nano-vllm-amd/scripts/eval_qwen35_dflash_acceptance_suite.py",
+      "../amd-gpu-tuning/scripts/bench_dense27_dflash_smoke.py",
+      "../amd-gpu-tuning/scripts/sweep_dense27_dflash_prediction.py"
+    ]
+  },
+  "notes": [
+    "This promotes the exact row-wise GEMV down-projection path, not the faster multi-row weight-sharing down-projection path rejected by the prior 8/9 exactness result.",
+    "Acceptance is unchanged; remaining gap to AR is still dominated by low-acceptance prompts and target verifier cost."
+  ],
+  "source_git_head": "18116f9897580865f54d1c2a354c2d3d543e5700"
+}
