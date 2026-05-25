@@ -78,6 +78,8 @@ _SYMBOL_PACK8_STRIDED_FP16 = "hipengine_gemv_awq_pack8_strided_fp16"
 _SYMBOL_PACK8_TRANSPOSED_FP16 = "hipengine_gemv_awq_pack8_transposed_fp16"
 _SYMBOL_PACK8_MULTI_ROW_STRIDED_FP16 = "hipengine_gemv_awq_pack8_multi_row_strided_fp16"
 _SYMBOL_PACK8_MULTI_ROW_TRANSPOSED_FP16 = "hipengine_gemv_awq_pack8_multi_row_transposed_fp16"
+_SYMBOL_PACK8_MULTI_ROW_DECODE_STRIDED_FP16 = "hipengine_gemv_awq_pack8_multi_row_decode_strided_fp16"
+_SYMBOL_PACK8_MULTI_ROW_DECODE_TRANSPOSED_FP16 = "hipengine_gemv_awq_pack8_multi_row_decode_transposed_fp16"
 _SYMBOL_PACK8_MULTI_ROW_STRIDED_BF16 = "hipengine_gemv_awq_pack8_multi_row_strided_bf16"
 _SYMBOL_PACK8_MULTI_ROW_TRANSPOSED_BF16 = "hipengine_gemv_awq_pack8_multi_row_transposed_bf16"
 _SYMBOL_FUSEDW4_PREFILL_FP16 = "hipengine_awq_fusedw4_prefill_fp16"
@@ -499,6 +501,85 @@ def gemv_awq_pack8_multi_row_strided_fp16(
 
     _launch_pack8_single(
         _SYMBOL_PACK8_MULTI_ROW_STRIDED_FP16,
+        x_ptr,
+        qweight_ptr,
+        qzeros_ptr,
+        scales_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_packed,
+        group_size,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+
+def gemv_awq_pack8_multi_row_decode_transposed_fp16(
+    x_ptr: int,
+    qweight_ptr: int,
+    qzeros_ptr: int,
+    scales_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed: int,
+    group_size: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Multi-row FP16 pack8 GEMV using row-wise GEMV f32 dequant semantics.
+
+    This shares the weight tile across ``rows <= 8`` like the M12.6 multi-row
+    path, but matches ``gemv_awq_pack8_transposed_fp16`` arithmetic instead of
+    the FP16 prefill-WMMA compatibility dequantization.
+    """
+
+    _launch_pack8_single(
+        _SYMBOL_PACK8_MULTI_ROW_DECODE_TRANSPOSED_FP16,
+        x_ptr,
+        qweight_ptr,
+        qzeros_ptr,
+        scales_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_packed,
+        group_size,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+
+def gemv_awq_pack8_multi_row_decode_strided_fp16(
+    x_ptr: int,
+    qweight_ptr: int,
+    qzeros_ptr: int,
+    scales_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_packed: int,
+    group_size: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Strided variant of ``gemv_awq_pack8_multi_row_decode_transposed_fp16``."""
+
+    _launch_pack8_single(
+        _SYMBOL_PACK8_MULTI_ROW_DECODE_STRIDED_FP16,
         x_ptr,
         qweight_ptr,
         qzeros_ptr,

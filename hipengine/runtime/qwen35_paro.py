@@ -115,6 +115,7 @@ from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     awq_fusedw4_prefill_fp16,
     awq_fusedw4_prefill_strided_fp16,
     gemv_awq_dual_pack8_multi_row_split_transposed_fp16,
+    gemv_awq_pack8_multi_row_decode_transposed_fp16,
     gemv_awq_pack8_multi_row_strided_fp16,
     gemv_awq_pack8_multi_row_transposed_fp16,
     gemv_awq_dual_pack8_transposed_bf16,
@@ -5458,11 +5459,16 @@ class Qwen35ParoDecodeState:
             )
         elif (
             1 < tokens <= 8
-            and down_mode == "multi_row"
+            and down_mode in {"multi_row", "multi_row_decode"}
             and group_size % 16 == 0
             and cfg.shared_expert_intermediate_size % group_size == 0
         ):
-            gemv_awq_pack8_multi_row_transposed_fp16(
+            down_kernel = (
+                gemv_awq_pack8_multi_row_decode_transposed_fp16
+                if down_mode == "multi_row_decode"
+                else gemv_awq_pack8_multi_row_transposed_fp16
+            )
+            down_kernel(
                 scratch.shared_down_input.ptr,
                 down_qweight.ptr,
                 self.tensor(f"{down_base}.qzeros").ptr,
@@ -5709,11 +5715,16 @@ class Qwen35ParoDecodeState:
             )
         elif (
             1 < tokens <= 8
-            and down_mode == "multi_row"
+            and down_mode in {"multi_row", "multi_row_decode"}
             and group_size % 16 == 0
             and intermediate % group_size == 0
         ):
-            gemv_awq_pack8_multi_row_transposed_fp16(
+            down_kernel = (
+                gemv_awq_pack8_multi_row_decode_transposed_fp16
+                if down_mode == "multi_row_decode"
+                else gemv_awq_pack8_multi_row_transposed_fp16
+            )
+            down_kernel(
                 scratch.shared_down_input.ptr,
                 down_qweight.ptr,
                 self.tensor(f"{down_base}.qzeros").ptr,
@@ -7268,7 +7279,10 @@ def _w4_down_proj_small_batch_mode(site: str) -> str:
     Defaults to ``gemv`` because the standard pack8 GEMV arithmetic path passed
     the 27B DFlash exact-suite gate and avoids the slow prefill projection
     kernel at B+1<=8.  ``multi_row`` remains diagnostic only: it is faster, but
-    currently fails branch-copy exactness for dense down.  Site filtering
+    currently fails branch-copy exactness for dense down because it follows the
+    FP16 prefill-WMMA dequantization path.  ``multi_row_decode`` keeps the
+    weight-sharing launch shape but matches row-wise GEMV dequantization for
+    exactness experiments.  Site filtering
     reuses ``HIPENGINE_W4_MULTI_ROW_PACK8_SITES`` so experiments can isolate
     ``single_shared_down`` vs ``single_dense_down``.
     """
@@ -7288,10 +7302,13 @@ def _w4_down_proj_small_batch_mode(site: str) -> str:
         "on": "gemv",
         "true": "gemv",
         "yes": "gemv",
+        "multi_row_exact": "multi_row_decode",
+        "decode_multi_row": "multi_row_decode",
+        "multi_row_gemv": "multi_row_decode",
     }
     mode = aliases.get(mode, mode)
-    if mode not in {"prefill", "gemv", "multi_row"}:
-        raise ValueError("HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH must be prefill, gemv, or multi_row")
+    if mode not in {"prefill", "gemv", "multi_row", "multi_row_decode"}:
+        raise ValueError("HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH must be prefill, gemv, multi_row, or multi_row_decode")
     if mode != "prefill" and not _w4_multi_row_site_enabled(site):
         return "prefill"
     return mode

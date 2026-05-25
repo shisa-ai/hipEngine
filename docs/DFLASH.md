@@ -277,7 +277,33 @@ ms`; `awq_fusedw4_prefill_fp16` drops `555.7 -> 149.3 ms`; row-wise
 weight-sharing down-projection path remains rejected because it was only `8/9`
 exact on the same suite (`code:json_yaml_continuation`, token 48). Roll back
 the promoted exact path with `HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=prefill`; force
-the rejected diagnostic with `HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=multi_row`.
+the rejected prefill-dequant diagnostic with
+`HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=multi_row`.
+
+### 2026-05-26 GPU1 exact-dequant multi-row and profile route
+
+GPU1 was selected with `HIP_VISIBLE_DEVICES=1` (RX 7900 XTX/gfx1100).  The 27B
+dense target+drafter pair OOMs on this 24 GiB card during model load, so this
+round used the fitting 35B A3B packed lane for full-model checks and a small GPU
+unit test for the kernel arithmetic gate.
+
+- Added `HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=multi_row_decode`: it keeps the
+  weight-sharing multi-row down-projection launch shape, but matches the
+  row-wise pack8 GEMV f32 dequantization instead of the old FP16 prefill-WMMA
+  compatibility dequantization.  Synthetic GPU tests are bit-exact vs
+  `gemv_awq_pack8_transposed_fp16` for rows `{2,5,8}`.
+- On 35B A3B B=4/D16 4-prompt branch-copy, the opt-in mode stayed exact and
+  moved all-chain DFlash `44.97 -> 46.87 tok/s` (+4.2%) with summed target
+  verify seconds `1.200 -> 1.144` (-4.6%), but it is still far below AR and
+  remains **opt-in** pending a larger exact suite.
+- Added `scripts/dflash_build_profile_route_manifest.py`, which turns prior
+  exact same-session rows into a zero-probe `{AR, chain}` manifest.  On the GPU1
+  35B A3B D16 slice no chain row beat AR, so the generated manifest selects AR
+  for all four prompts and measures exact `1.021x` vs same-session AR (variance
+  around plain AR, not a speculative speed claim).
+
+Retained artifact:
+[`2026-05-26-hipengine-dflash-gpu1-multi-row-decode-profile-route.json`](../benchmarks/results/2026-05-26-hipengine-dflash-gpu1-multi-row-decode-profile-route.json).
 
 ### 2026-05-25 adaptive D64 probe guard
 

@@ -1,0 +1,301 @@
+{
+  "commands": {
+    "baseline": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 4 --decode-tokens 16 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'AMD Radeon RX 7900 XTX' --json /tmp/hipengine-dflash-35b-a3b-b4-d16-gpu1-current-4prompt.json",
+    "build_profile_route_manifest": "PYTHONPATH=. python3 scripts/dflash_build_profile_route_manifest.py --input /tmp/hipengine-dflash-35b-a3b-b4-d16-gpu1-current-4prompt.json --output /tmp/hipengine-dflash-35b-a3b-b4-d16-gpu1-current-profile-route-manifest.json --min-chain-speedup 1.02",
+    "multi_row_decode": "HIP_VISIBLE_DEVICES=1 HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=multi_row_decode HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 4 --decode-tokens 16 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'AMD Radeon RX 7900 XTX' --json /tmp/hipengine-dflash-35b-a3b-b4-d16-gpu1-multi-row-decode-4prompt.json",
+    "profile_route_generated": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 4 --decode-tokens 16 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --profile-route-manifest /tmp/hipengine-dflash-35b-a3b-b4-d16-gpu1-current-profile-route-manifest.json --hardware-gpu 'AMD Radeon RX 7900 XTX' --json /tmp/hipengine-dflash-35b-a3b-b4-d16-gpu1-profile-route-generated-4prompt.json"
+  },
+  "correctness_gate": {
+    "baseline_35b_a3b": true,
+    "multi_row_decode_35b_a3b": true,
+    "profile_route_35b_a3b": true,
+    "synthetic_pack8_multi_row_decode": "pytest rows=2,5,8 bit-exact vs row-wise gemv_awq_pack8_transposed_fp16"
+  },
+  "decision": {
+    "accepted": false,
+    "reason": "multi_row_decode is exact and lower verifier time on the GPU1 35B A3B slice, but remains opt-in until a larger exact suite/promotable speed gate passes; generated profile route selects AR for all four GPU1 D16 prompts because no chain row beats AR."
+  },
+  "hardware": {
+    "arch": "gfx1100",
+    "backend": "hip_gfx1100",
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "selection": "HIP_VISIBLE_DEVICES=1"
+  },
+  "measurements": {
+    "baseline_default_down_gemv": {
+      "all_correctness_passed": true,
+      "all_exact_match_ar": true,
+      "ar_decode_tok_s": 104.73466488088991,
+      "decode_tokens": 64,
+      "draft_seconds_sum": 0.21649341801094124,
+      "row_summaries": [
+        {
+          "ar_decode_tok_s": 101.83948848706042,
+          "draft_calls": 9,
+          "draft_seconds": 0.07374327200523112,
+          "exact_match_ar": true,
+          "profile_route": null,
+          "prompt_id": "code:quicksort_prefix",
+          "proposal_mode": "chain",
+          "spec_decode_tok_s": 33.27412708463347,
+          "speedup_vs_ar": 0.3267310900610153,
+          "target_verify_rows_per_output_token": 2.875,
+          "target_verify_seconds": 0.4045497510014684
+        },
+        {
+          "ar_decode_tok_s": 127.69402774334041,
+          "draft_calls": 6,
+          "draft_seconds": 0.0475113729989971,
+          "exact_match_ar": true,
+          "profile_route": null,
+          "prompt_id": "code:function_continuation",
+          "proposal_mode": "chain",
+          "spec_decode_tok_s": 49.680860091868475,
+          "speedup_vs_ar": 0.3890617358528693,
+          "target_verify_rows_per_output_token": 1.875,
+          "target_verify_seconds": 0.2728871200015419
+        },
+        {
+          "ar_decode_tok_s": 94.55324998954407,
+          "draft_calls": 4,
+          "draft_seconds": 0.03148222900199471,
+          "exact_match_ar": true,
+          "profile_route": null,
+          "prompt_id": "code:class_continuation",
+          "proposal_mode": "chain",
+          "spec_decode_tok_s": 74.71997289054583,
+          "speedup_vs_ar": 0.7902422486673758,
+          "target_verify_rows_per_output_token": 1.25,
+          "target_verify_seconds": 0.18162215300981188
+        },
+        {
+          "ar_decode_tok_s": 100.35018136768896,
+          "draft_calls": 8,
+          "draft_seconds": 0.06375654400471831,
+          "exact_match_ar": true,
+          "profile_route": null,
+          "prompt_id": "code:json_yaml_continuation",
+          "proposal_mode": "chain",
+          "spec_decode_tok_s": 39.39255149238505,
+          "speedup_vs_ar": 0.39255087490124635,
+          "target_verify_rows_per_output_token": 2.5,
+          "target_verify_seconds": 0.3405694610046339
+        }
+      ],
+      "rows": 4,
+      "spec_decode_tok_s": 44.96874569933674,
+      "speedup_vs_ar": 0.42935875863523987,
+      "target_verify_rows_per_output_token": 2.125,
+      "target_verify_seconds_sum": 1.1996284850174561
+    },
+    "deltas": {
+      "multi_row_decode_vs_baseline_spec_tok_s_percent": 4.233118643511902,
+      "multi_row_decode_vs_baseline_target_verify_seconds_percent": -4.621653679049775,
+      "profile_route_vs_all_chain_speedup_relative_percent": 137.73577022146083
+    },
+    "opt_in_multi_row_decode_down": {
+      "all_correctness_passed": true,
+      "all_exact_match_ar": true,
+      "ar_decode_tok_s": 121.33791990966384,
+      "decode_tokens": 64,
+      "draft_seconds_sum": 0.21478033898893045,
+      "row_summaries": [
+        {
+          "ar_decode_tok_s": 126.39753208466055,
+          "draft_calls": 9,
+          "draft_seconds": 0.07215287697908934,
+          "exact_match_ar": true,
+          "profile_route": null,
+          "prompt_id": "code:quicksort_prefix",
+          "proposal_mode": "chain",
+          "spec_decode_tok_s": 36.507888906533616,
+          "speedup_vs_ar": 0.28883387439938923,
+          "target_verify_rows_per_output_token": 2.875,
+          "target_verify_seconds": 0.36399554998934036
+        },
+        {
+          "ar_decode_tok_s": 110.15100891041094,
+          "draft_calls": 6,
+          "draft_seconds": 0.04705532200750895,
+          "exact_match_ar": true,
+          "profile_route": null,
+          "prompt_id": "code:function_continuation",
+          "proposal_mode": "chain",
+          "spec_decode_tok_s": 51.92800419775634,
+          "speedup_vs_ar": 0.47142558848454047,
+          "target_verify_rows_per_output_token": 1.875,
+          "target_verify_seconds": 0.25936950200411957
+        },
+        {
+          "ar_decode_tok_s": 126.52857891505256,
+          "draft_calls": 4,
+          "draft_seconds": 0.03163388800021494,
+          "exact_match_ar": true,
+          "profile_route": null,
+          "prompt_id": "code:class_continuation",
+          "proposal_mode": "chain",
+          "spec_decode_tok_s": 74.68532470300276,
+          "speedup_vs_ar": 0.5902644710262984,
+          "target_verify_rows_per_output_token": 1.25,
+          "target_verify_seconds": 0.1816885880107293
+        },
+        {
+          "ar_decode_tok_s": 123.87826680975736,
+          "draft_calls": 8,
+          "draft_seconds": 0.06393825200211722,
+          "exact_match_ar": true,
+          "profile_route": null,
+          "prompt_id": "code:json_yaml_continuation",
+          "proposal_mode": "chain",
+          "spec_decode_tok_s": 39.52581951398701,
+          "speedup_vs_ar": 0.3190698460020247,
+          "target_verify_rows_per_output_token": 2.5,
+          "target_verify_seconds": 0.3391321710005286
+        }
+      ],
+      "rows": 4,
+      "spec_decode_tok_s": 46.872326057288824,
+      "speedup_vs_ar": 0.3862957770512738,
+      "target_verify_rows_per_output_token": 2.125,
+      "target_verify_seconds_sum": 1.1441858110047178
+    },
+    "profile_route_generated_from_baseline": {
+      "all_correctness_passed": true,
+      "all_exact_match_ar": true,
+      "ar_decode_tok_s": 125.02809737915929,
+      "decode_tokens": 64,
+      "draft_seconds_sum": 0.0,
+      "row_summaries": [
+        {
+          "ar_decode_tok_s": 120.5583542627075,
+          "draft_calls": 0,
+          "draft_seconds": 0.0,
+          "exact_match_ar": true,
+          "profile_route": "ar",
+          "prompt_id": "code:quicksort_prefix",
+          "proposal_mode": "ar",
+          "spec_decode_tok_s": 127.64533590012576,
+          "speedup_vs_ar": 1.0587846581081812,
+          "target_verify_rows_per_output_token": 1.0,
+          "target_verify_seconds": 0.12534731400228338
+        },
+        {
+          "ar_decode_tok_s": 124.36049751241488,
+          "draft_calls": 0,
+          "draft_seconds": 0.0,
+          "exact_match_ar": true,
+          "profile_route": "ar",
+          "prompt_id": "code:function_continuation",
+          "proposal_mode": "ar",
+          "spec_decode_tok_s": 127.22853198416307,
+          "speedup_vs_ar": 1.0230622627692678,
+          "target_verify_rows_per_output_token": 1.0,
+          "target_verify_seconds": 0.12575795500015374
+        },
+        {
+          "ar_decode_tok_s": 127.4325824718678,
+          "draft_calls": 0,
+          "draft_seconds": 0.0,
+          "exact_match_ar": true,
+          "profile_route": "ar",
+          "prompt_id": "code:class_continuation",
+          "proposal_mode": "ar",
+          "spec_decode_tok_s": 127.68636857108476,
+          "speedup_vs_ar": 1.0019915322619548,
+          "target_verify_rows_per_output_token": 1.0,
+          "target_verify_seconds": 0.12530703299853485
+        },
+        {
+          "ar_decode_tok_s": 128.04679137429338,
+          "draft_calls": 0,
+          "draft_seconds": 0.0,
+          "exact_match_ar": true,
+          "profile_route": "ar",
+          "prompt_id": "code:json_yaml_continuation",
+          "proposal_mode": "ar",
+          "spec_decode_tok_s": 127.92613647241758,
+          "speedup_vs_ar": 0.9990577280337849,
+          "target_verify_rows_per_output_token": 1.0,
+          "target_verify_seconds": 0.1250721739997971
+        }
+      ],
+      "rows": 4,
+      "spec_decode_tok_s": 127.6210990824407,
+      "speedup_vs_ar": 1.0207393518547905,
+      "target_verify_rows_per_output_token": 1.0,
+      "target_verify_seconds_sum": 0.5014844760007691
+    }
+  },
+  "models": {
+    "drafter": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719",
+    "note": "27B dense target+drafter OOM on GPU1 during one-prompt D64 load; GPU1 retained rows use the 35B A3B packed lane that fits at ~19.5 GiB peak.",
+    "target": "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16"
+  },
+  "performance_claim": false,
+  "route_manifest": {
+    "default": "ar",
+    "description": "Zero-probe DFlash profile/history route generated from exact same-session bench rows.",
+    "generated_at": "2026-05-25T22:59:30.928669+00:00",
+    "min_chain_speedup": 1.02,
+    "routes": {},
+    "row_evidence": [
+      {
+        "benchmark_group": "code_promotion",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "code:quicksort_prefix",
+        "route": "ar",
+        "speedup_vs_ar": 0.3267310900610153
+      },
+      {
+        "benchmark_group": "code_promotion",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "code:function_continuation",
+        "route": "ar",
+        "speedup_vs_ar": 0.3890617358528693
+      },
+      {
+        "benchmark_group": "code_promotion",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "code:class_continuation",
+        "route": "ar",
+        "speedup_vs_ar": 0.7902422486673758
+      },
+      {
+        "benchmark_group": "code_promotion",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "code:json_yaml_continuation",
+        "route": "ar",
+        "speedup_vs_ar": 0.39255087490124635
+      }
+    ],
+    "source_artifact": "/tmp/hipengine-dflash-35b-a3b-b4-d16-gpu1-current-4prompt.json",
+    "summary": {
+      "chain_routes": 0,
+      "default_route": "ar",
+      "rows_seen": 4,
+      "rows_with_prompt_id": 4,
+      "skipped_rows": 0
+    }
+  },
+  "run_tag": "dflash-gpu1-multi-row-decode-profile-route-diagnostic",
+  "schema_version": 1,
+  "status": "diagnostic",
+  "summary": "GPU1 RX 7900 XTX DFlash #1/#2 pass: add exact-dequant multi-row down projection candidate and zero-probe route-manifest builder; exact but still below speculative speed gate.",
+  "timestamp": "2026-05-25T23:02:30.807496+00:00",
+  "validation": [
+    "python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.py hipengine/runtime/qwen35_paro.py tests/test_paro_awq_gemv_multi_row_decode.py",
+    "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_paro_awq_gemv_multi_row_decode.py",
+    "python3 -m py_compile scripts/dflash_build_profile_route_manifest.py tests/test_dflash_profile_route_manifest.py",
+    "PYTHONPATH=. pytest -q tests/test_dflash_profile_route_manifest.py tests/test_dflash_draft_confidence.py tests/test_speculative_benchmark.py"
+  ],
+  "workload": {
+    "canonical_commit_mode": "branch_copy",
+    "full_attn_chain_mode": "batched",
+    "shape": "DFlash chain B=4 D16 4 prompts",
+    "verifier_mode": "native_bulk_bplus1"
+  }
+}

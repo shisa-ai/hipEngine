@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-05-26
+
+- [diagnostic retained] hipEngine / DFlash GPU1 exact-dequant multi-row + profile route / Qwen3.6-35B-A3B-PARO packed + z-lab DFlash / RX 7900 XTX/gfx1100 B=4 D16 4-prompt branch-copy: exact `4/4`; opt-in `HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=multi_row_decode` all-chain DFlash `44.97 -> 46.87 tok/s` (+4.2%) and summed target verify seconds `1.200 -> 1.144` (-4.6%) while still below AR; generated zero-probe profile route selects AR for all four prompts and measures exact `1.021x` AR (plain-AR variance, no speculative speed claim); 27B dense target+drafter OOMs on GPU1; artifact `benchmarks/results/2026-05-26-hipengine-dflash-gpu1-multi-row-decode-profile-route.json`.
+
 ## 2026-05-25
 
 - [diagnostic retained] hipEngine / DFlash 27B adaptive probe guard / Qwen3.6-27B-PARO dense + z-lab DFlash / W7900/gfx1100 B=4 D64 9-prompt branch-copy: exact `9/9`, adaptive mode `0.976x -> 0.998x` AR (`32.03 -> 32.76 tok/s`, +2.3% relative) by raising the default `--adaptive-probe-amortization-tokens` from `64` to `128`, which blocks unamortizable startup probes on D64 and routes all rows through AR fallback (`target_verify_rows/output=1.00`, accepted draft tokens `0`); artifact `benchmarks/results/2026-05-25-hipengine-dflash-27b-adaptive-probe128-guard.json`.

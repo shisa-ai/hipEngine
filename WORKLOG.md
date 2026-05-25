@@ -23913,3 +23913,96 @@ Docs/rollup updated:
 Next routing work should not be more one-cycle probing for D64.  It should be a
 zero-probe classifier/profile route, or a genuinely lower-cost probe primitive
 than a full target verifier cycle.
+
+## 2026-05-26 — DFlash GPU1 multi-row decode + profile route
+
+Started the requested DFlash #1/#2 pass on GPU1.  ROCm device mapping check:
+`rocm-smi` shows GPU[1] = AMD Radeon RX 7900 XTX/gfx1100.  Use only
+`HIP_VISIBLE_DEVICES=1`; setting both `HIP_VISIBLE_DEVICES=1` and
+`ROCR_VISIBLE_DEVICES=1` leaves HIP with zero visible devices in this shell.
+
+The 27B dense target+drafter B=4/D64 one-prompt command OOMed on GPU1 during
+resident target materialization:
+
+```bash
+HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 1800 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 1 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'AMD Radeon RX 7900 XTX' --json /tmp/hipengine-dflash-27b-b4-d64-gpu1-current-1prompt.json
+```
+
+Error: `hipengine.core.hip.HipError: HIP error 2: out of memory`.  Switched the
+GPU1 full-model checks to the fitting 35B A3B packed lane (peak ~19.5 GiB).
+
+#1 dense-down verifier cost: added an opt-in
+`HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=multi_row_decode` mode.  It reuses the
+multi-row weight-sharing pack8 launch shape, but dequantizes exactly like the
+row-wise `gemv_awq_pack8_transposed_fp16` path (`float(q-z)*float(scale)`) rather
+than the older `multi_row` FP16 prefill-WMMA compatibility dequantization.  This
+keeps the old `multi_row` diagnostic unchanged.
+
+Validation / measurements on GPU1:
+
+```bash
+python3 -m py_compile hipengine/kernels/hip_gfx1100/quant/paro_awq_gemv.py hipengine/runtime/qwen35_paro.py tests/test_paro_awq_gemv_multi_row_decode.py
+HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_paro_awq_gemv_multi_row_decode.py
+```
+
+Result: synthetic rows `{2,5,8}` bit-exact vs row-wise pack8 GEMV (`3 passed`).
+
+35B A3B B=4/D16 4-prompt baseline:
+
+```bash
+HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 2400 python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 4 --decode-tokens 16 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'AMD Radeon RX 7900 XTX' --json /tmp/hipengine-dflash-35b-a3b-b4-d16-gpu1-current-4prompt.json
+```
+
+Result: exact `4/4`, all-chain DFlash `44.97 tok/s`, AR `104.73 tok/s`,
+`0.429x` AR, summed target verify `1.200 s`.
+
+Opt-in multi-row decode:
+
+```bash
+HIP_VISIBLE_DEVICES=1 HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=multi_row_decode HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 2400 python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 4 --decode-tokens 16 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'AMD Radeon RX 7900 XTX' --json /tmp/hipengine-dflash-35b-a3b-b4-d16-gpu1-multi-row-decode-4prompt.json
+```
+
+Result: exact `4/4`, all-chain DFlash `46.87 tok/s` (+4.2% vs baseline spec),
+summed target verify `1.144 s` (-4.6%).  Aggregate vs-AR is not comparable
+run-to-run because the same-session AR control varied (`104.7 -> 121.3 tok/s`),
+and the row remains far below AR, so the mode is **not defaulted**.
+
+#2 zero-probe profile/history route: added
+`scripts/dflash_build_profile_route_manifest.py`, which mines prior exact
+same-session rows and writes a manifest selecting `chain` only for prompts whose
+previous chain row beats a threshold (default `1.02x`), with `ar` as fallback.
+
+```bash
+PYTHONPATH=. python3 scripts/dflash_build_profile_route_manifest.py --input /tmp/hipengine-dflash-35b-a3b-b4-d16-gpu1-current-4prompt.json --output /tmp/hipengine-dflash-35b-a3b-b4-d16-gpu1-current-profile-route-manifest.json --min-chain-speedup 1.02
+```
+
+Result: `chain_routes=0`; all four GPU1 D16 rows route to AR because no chain
+row beats AR.
+
+Generated-profile route check:
+
+```bash
+HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 2400 python3 scripts/dflash_chain_e2e_bench.py --target-model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 4 --decode-tokens 16 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --profile-route-manifest /tmp/hipengine-dflash-35b-a3b-b4-d16-gpu1-current-profile-route-manifest.json --hardware-gpu 'AMD Radeon RX 7900 XTX' --json /tmp/hipengine-dflash-35b-a3b-b4-d16-gpu1-profile-route-generated-4prompt.json
+```
+
+Result: exact `4/4`, `1.021x` vs same-session AR.  This is plain-AR variance,
+not a speculative speed claim; it confirms the profile/history route avoids the
+expensive failed DFlash probe on this short-horizon GPU1 slice.
+
+Additional validation:
+
+```bash
+python3 -m py_compile scripts/dflash_build_profile_route_manifest.py tests/test_dflash_profile_route_manifest.py
+PYTHONPATH=. pytest -q tests/test_dflash_profile_route_manifest.py tests/test_dflash_draft_confidence.py tests/test_speculative_benchmark.py
+python3 -m json.tool benchmarks/results/2026-05-26-hipengine-dflash-gpu1-multi-row-decode-profile-route.json >/tmp/hipengine-gpu1-artifact-check.json
+```
+
+Retained artifact:
+- `benchmarks/results/2026-05-26-hipengine-dflash-gpu1-multi-row-decode-profile-route.json`
+
+Docs/rollup updated:
+- `docs/DFLASH.md` GPU1 exact-dequant multi-row/profile-route note.
+- `benchmarks/README.md` and `benchmarks/CHANGELOG.md` retained diagnostic row.
+
+Next: run the `multi_row_decode` mode on W7900 for the 27B dense 9-prompt D64
+suite before even considering a default; GPU1 cannot hold that lane.

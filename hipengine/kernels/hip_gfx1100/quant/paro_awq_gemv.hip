@@ -70,6 +70,15 @@ __device__ inline float awq_prefill_dequant_weight(uint16_t scale_bits, int q, i
   return static_cast<float>(q - z) * bf16_bits_to_float(scale_bits);
 }
 
+template <typename scalar_t>
+__device__ inline float awq_decode_dequant_weight(scalar_t scale, int q, int z) {
+  // Match the stock row-wise pack8 GEMV path: dequantize in f32 as
+  // ``float(q - z) * float(scale)``.  This differs from the FP16 prefill WMMA
+  // compatibility path above, which intentionally half-rounds the scale/zp
+  // products before f32 accumulation.
+  return static_cast<float>(q - z) * scalar_to_float(scale);
+}
+
 // RDNA3 HIP defaults to wave32 for this profile; even wave64-oriented
 // shuffle probes only exchanged within 32-lane halves. Reduce each 32-lane
 // wave with __shfl_down, then explicitly sum however many waves the block has.
@@ -632,7 +641,7 @@ __global__ void gemv_awq_pack8_kernel(
 // WMMA: regular FMA gives full per-thread accumulation across all real rows
 // without wasted slots.  ``MAX_ROWS`` templates the per-thread accumulator
 // matrix; we instantiate the variant inside ``launch_gemv_awq_pack8_multi_row``.
-template <typename scalar_t, bool qweight_transposed, int MAX_ROWS>
+template <typename scalar_t, bool qweight_transposed, int MAX_ROWS, bool decode_dequant>
 __launch_bounds__(128, 4)
 __global__ void gemv_awq_pack8_multi_row_kernel(
     const scalar_t* __restrict__ x,
@@ -700,7 +709,9 @@ __global__ void gemv_awq_pack8_multi_row_kernel(
 #pragma unroll
         for (int j = 0; j < 8; ++j) {
           const int q = static_cast<int>((pw[kk] >> awq_shift_for_pack_lane(j)) & 0xF);
-          const float wq = awq_prefill_dequant_weight(s[j], q, z[j]);
+          const float wq = decode_dequant
+              ? awq_decode_dequant_weight(s[j], q, z[j])
+              : awq_prefill_dequant_weight(s[j], q, z[j]);
           acc[r][j] = fmaf(xv, wq, acc[r][j]);
         }
       }
@@ -721,7 +732,10 @@ __global__ void gemv_awq_pack8_multi_row_kernel(
       for (int j = 0; j < 8; ++j) {
         const int q = static_cast<int>((pw >> awq_shift_for_pack_lane(j)) & 0xF);
         const int z = static_cast<int>((pz >> awq_shift_for_pack_lane(j)) & 0xF);
-        acc[r][j] = fmaf(xv, awq_prefill_dequant_weight(scale_ptr[j], q, z), acc[r][j]);
+        const float wq = decode_dequant
+            ? awq_decode_dequant_weight(scale_ptr[j], q, z)
+            : awq_prefill_dequant_weight(scale_ptr[j], q, z);
+        acc[r][j] = fmaf(xv, wq, acc[r][j]);
       }
     }
   }
@@ -2191,7 +2205,7 @@ extern "C" int hipengine_gemv_awq_pack8_transposed_fp16(
 // that fits ``rows`` so each block stores no more accumulator slots than
 // needed.  Only rows 1..8 are supported; callers above that fall back to the
 // stock prefill (WMMA) kernel.
-template <typename scalar_t, bool qweight_transposed>
+template <typename scalar_t, bool qweight_transposed, bool decode_dequant = false>
 static int launch_pack8_multi_row(
     const scalar_t* x,
     const int32_t* qweight,
@@ -2211,7 +2225,7 @@ static int launch_pack8_multi_row(
   const int64_t out_features = out_packed << 3;
 #define HIPENGINE_LAUNCH_PACK8_MULTI_ROW(MAX_ROWS) \
   hipLaunchKernelGGL( \
-      (gemv_awq_pack8_multi_row_kernel<scalar_t, qweight_transposed, MAX_ROWS>), \
+      (gemv_awq_pack8_multi_row_kernel<scalar_t, qweight_transposed, MAX_ROWS, decode_dequant>), \
       dim3(static_cast<unsigned int>(out_packed)), \
       dim3(static_cast<unsigned int>(threads)), \
       0, \
@@ -2265,6 +2279,38 @@ extern "C" int hipengine_gemv_awq_pack8_multi_row_transposed_fp16(
     int64_t threads,
     hipStream_t stream) {
   return launch_pack8_multi_row<half_t, true>(
+      x, qweight, qzeros, scales, out, rows, in_features, out_packed, group_size, threads, stream);
+}
+
+extern "C" int hipengine_gemv_awq_pack8_multi_row_decode_strided_fp16(
+    const half_t* x,
+    const int32_t* qweight,
+    const int32_t* qzeros,
+    const half_t* scales,
+    half_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_pack8_multi_row<half_t, false, true>(
+      x, qweight, qzeros, scales, out, rows, in_features, out_packed, group_size, threads, stream);
+}
+
+extern "C" int hipengine_gemv_awq_pack8_multi_row_decode_transposed_fp16(
+    const half_t* x,
+    const int32_t* qweight,
+    const int32_t* qzeros,
+    const half_t* scales,
+    half_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_packed,
+    int64_t group_size,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_pack8_multi_row<half_t, true, true>(
       x, qweight, qzeros, scales, out, rows, in_features, out_packed, group_size, threads, stream);
 }
 
