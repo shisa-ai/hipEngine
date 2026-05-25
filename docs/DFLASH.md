@@ -279,6 +279,26 @@ exact on the same suite (`code:json_yaml_continuation`, token 48). Roll back
 the promoted exact path with `HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=prefill`; force
 the rejected diagnostic with `HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=multi_row`.
 
+### 2026-05-25 adaptive D64 probe guard
+
+On the same 27B B=4/D64 suite, the old adaptive default
+`--adaptive-probe-amortization-tokens 64` still paid one startup DFlash probe on
+every prompt.  That improved all-chain `0.926x` to `0.976x`, but it was still
+worse than AR because losing prompts paid a full failed verifier cycle.  The
+benchmark harness default is now `128`, so a 64-token decode uses AR fallback
+unless the caller explicitly lowers the probe guard:
+
+| Policy | vs AR | DFlash/spec tok/s | rows/output | accepted draft tokens |
+| --- | ---: | ---: | ---: | ---: |
+| all-chain down-GEMV | 0.926x | 30.40 | 1.40 | 412 |
+| adaptive probe guard 64 | 0.976x | 32.03 | 1.06 | 93 |
+| adaptive probe guard 128 | 0.998x | 32.76 | 1.00 | 0 |
+| offline `{AR, chain}` oracle | 1.046x | 34.34 | mixed | n/a |
+
+This is a safety default, not a speedup: online probing remains too expensive
+for D64 unless a prompt classifier can predict the four chain-winning prompts
+without paying a speculative cycle.
+
 ### What already worked
 
 These are worth porting or preserving:

@@ -23849,3 +23849,67 @@ Next speed target: exact but faster dense-down multi-row would be another
 branch-copy canonical state.  If we stay with exact arithmetic, remaining
 high-ROI levers are per-prompt routing/classification to avoid low-acceptance
 rows and a lower-cost exact dense-down canonicalization path.
+
+## 2026-05-25 — 27B DFlash adaptive probe guard defaults to 128
+
+Rechecked adaptive routing after the down-GEMV default.  Current all-chain
+down-GEMV default on the 27B B=4/D64 9-prompt suite is exact `9/9`, `0.926x`
+AR (`30.40` vs `32.83 tok/s`).  The offline `{AR, chain}` oracle on those same
+rows is only `1.046x` AR and selects four chain rows:
+`code:class_continuation`, `code:humaneval_add`,
+`instruct:simple_qa_no_template`, and
+`instruct:simple_qa_qwen_static_chat`.
+
+Measured the existing adaptive default (`probe_min_amortization_tokens=64`):
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --adaptive-budget on --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branch-copy-adaptive-down-gemv-default-9prompt.json
+```
+
+Result: exact `9/9`, `0.976x` AR (`32.03` vs `32.83 tok/s`), rows/output
+`1.061`, accepted draft tokens `93`.  It improves all-chain but still loses to
+AR because every prompt pays a startup DFlash probe.  Failure mode: one-cycle
+probe cost is too high for D64; `simple_qa_no_template` is a full-chain winner
+(`1.125x`) but starts with a negative first probe and is routed to AR.
+
+Tried an uncommitted controller demotion-window experiment
+(`demote_after_cycles=3`).  Unit tests passed, but the full adaptive gate was
+unchanged:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --adaptive-budget on --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branch-copy-adaptive-demote3-down-gemv-default-9prompt.json
+```
+
+Result: exact `9/9`, `0.976x` AR.  Reverted the demotion-window change.
+
+Promoted the safer harness default: `--adaptive-probe-amortization-tokens` now
+defaults to `128` instead of `64`.  Retained command:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --adaptive-budget on --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branch-copy-adaptive-probe128-down-gemv-default-9prompt.json
+```
+
+Result: exact `9/9`, `0.998x` AR (`32.76` vs `32.83 tok/s`),
+rows/output `1.000`, accepted draft tokens `0`.  This is a safety guard, not a
+DFlash speedup.  To explore short-horizon probes explicitly, pass
+`--adaptive-probe-amortization-tokens 64`.
+
+Validation:
+
+```bash
+python3 -m py_compile hipengine/speculative/adaptive_budget.py scripts/dflash_chain_e2e_bench.py
+PYTHONPATH=. pytest -q tests/test_adaptive_budget.py tests/test_dflash_draft_confidence.py tests/test_speculative_benchmark.py
+python3 -m json.tool benchmarks/results/2026-05-25-hipengine-dflash-27b-adaptive-probe128-guard.json >/tmp/hipengine-adaptive-probe128-artifact-check.json
+git diff --check
+```
+
+Retained artifact:
+- `benchmarks/results/2026-05-25-hipengine-dflash-27b-adaptive-probe128-guard.json`
+
+Docs/rollup updated:
+- `docs/DFLASH.md` adaptive D64 probe guard.
+- `benchmarks/README.md` and `benchmarks/CHANGELOG.md` retained diagnostic row.
+
+Next routing work should not be more one-cycle probing for D64.  It should be a
+zero-probe classifier/profile route, or a genuinely lower-cost probe primitive
+than a full target verifier cycle.

@@ -1680,7 +1680,7 @@ def run_dflash_tokens(
     drafter_query_mode: str = "block",
     adaptive_budget_mode: str = "off",
     adaptive_min_remaining_tokens: int = 0,
-    adaptive_probe_amortization_tokens: int = 64,
+    adaptive_probe_amortization_tokens: int = 128,
     ar_decode_tok_s_estimate: float | None = None,
 ) -> tuple[list[int], dict[str, Any]]:
     if adaptive_budget_mode not in {"off", "on"}:
@@ -2033,7 +2033,7 @@ def run_same_session_pair(
     draft_p_min: float = 0.0,
     adaptive_budget_mode: str = "off",
     adaptive_min_remaining_tokens: int = 0,
-    adaptive_probe_amortization_tokens: int = 64,
+    adaptive_probe_amortization_tokens: int = 128,
     chain_attn_mode: str = "c1_loop",
     tree_mode: str = "chain",
     tree_top_k: int = 1,
@@ -2183,7 +2183,7 @@ def _run_dflash_chain_on_session(
     verifier_graph_mode: str = "off",
     adaptive_budget_mode: str = "off",
     adaptive_min_remaining_tokens: int = 0,
-    adaptive_probe_amortization_tokens: int = 64,
+    adaptive_probe_amortization_tokens: int = 128,
     ar_decode_tok_s_estimate: float | None = None,
     chain_attn_mode: str = "c1_loop",
     tree_mode: str = "chain",
@@ -2993,7 +2993,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--adaptive-probe-amortization-tokens",
         type=int,
-        default=64,
+        default=128,
         help=(
             "When adaptive budget is on, require this many extra remaining"
             " decode tokens beyond --adaptive-min-remaining-tokens before"

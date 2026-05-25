@@ -1,0 +1,444 @@
+{
+  "schema": "hipengine_benchmark_result.v1",
+  "timestamp": "2026-05-25T02:26:16.737701+00:00",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "decision": "retained_adaptive_probe_guard_default",
+  "decision_reason": "Raising the benchmark default adaptive probe amortization guard from 64 to 128 avoids unamortizable D64 startup probes, improving adaptive 0.976x -> 0.998x AR; still no speculative speedup claim.",
+  "change": {
+    "summary": "Default scripts/dflash_chain_e2e_bench.py --adaptive-probe-amortization-tokens to 128 instead of 64.",
+    "files": [
+      "scripts/dflash_chain_e2e_bench.py"
+    ],
+    "override_for_exploration": "--adaptive-probe-amortization-tokens 64"
+  },
+  "hardware": {
+    "arch": "gfx1100",
+    "backend": "hip_gfx1100",
+    "gpu": "AMD Radeon Pro W7900"
+  },
+  "software": {
+    "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n",
+    "hipengine_branch": "mpt-dflash",
+    "hipengine_commit": "7802ba739c359824804fdc5c1d7be8a3e47443b3",
+    "hipengine_dirty": true,
+    "hipengine_status_porcelain": "M scripts/dflash_chain_e2e_bench.py\n?? .handoff/\n?? benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-b3-batched-graphauto-rev2.json\n?? benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-b3-batched-graphauto.json\n?? benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-b3-c1loop-graphauto.json\n?? benchmarks/results/2026-05-22-hipengine-mtp-m12.6b-w7900-b3-batched-graphauto.json",
+    "platform": "Linux-7.0.9-1-cachyos-x86_64-with-glibc2.43",
+    "python": "3.12.9"
+  },
+  "models": {
+    "drafter": {
+      "dtype": "bf16",
+      "name": "z-lab/Qwen3.6-27B-DFlash",
+      "path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106",
+      "snapshot_revision": "0919688658996800f86b895034249700e9481106"
+    },
+    "target": {
+      "name": "z-lab/Qwen3.6-27B-PARO",
+      "path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207",
+      "quant": "w4_paro_packed",
+      "snapshot_revision": "84f86409151d4f2ec86dc0b6a096d5f6daa7f207"
+    }
+  },
+  "workload": {
+    "adaptive_budget_mode": "on",
+    "adaptive_min_remaining_tokens": 0,
+    "adaptive_probe_amortization_tokens": 128,
+    "artifact_validation": {
+      "drafter": {
+        "artifact_kind": "dflash_drafter",
+        "config": {
+          "architecture": "DFlashDraftModel",
+          "block_size": 16,
+          "dtype": "bfloat16",
+          "head_dim": 128,
+          "hidden_size": 5120,
+          "intermediate_size": 17408,
+          "layer_types": [
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "full_attention"
+          ],
+          "mask_token_id": 248070,
+          "num_attention_heads": 32,
+          "num_hidden_layers": 5,
+          "num_key_value_heads": 8,
+          "num_target_layers": 64,
+          "rope_theta": 10000000.0,
+          "target_hidden_concat_size": 25600,
+          "target_hidden_size": 5120,
+          "target_layer_ids": [
+            1,
+            16,
+            31,
+            46,
+            61
+          ],
+          "vocab_size": 248320
+        },
+        "config_errors": [],
+        "dtype_errors": [],
+        "missing": [],
+        "model_path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106",
+        "passed": true,
+        "present_count": 58,
+        "shape_errors": []
+      },
+      "pair_errors": [],
+      "passed": true,
+      "target": {
+        "artifact_kind": "dflash_target",
+        "config": {
+          "architecture": "Qwen3_5ForConditionalGeneration",
+          "head_dim": 256,
+          "hidden_size": 5120,
+          "layer_types": [
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention"
+          ],
+          "num_attention_heads": 24,
+          "num_experts": 0,
+          "num_experts_per_tok": 0,
+          "num_hidden_layers": 64,
+          "num_key_value_heads": 4,
+          "quant_method": "paroquant",
+          "shared_expert_format": "dense_paro_w4",
+          "vocab_size": 248320
+        },
+        "config_errors": [],
+        "dtype_errors": [],
+        "missing": [],
+        "model_path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207",
+        "passed": true,
+        "present_count": 2850,
+        "shape_errors": []
+      }
+    },
+    "canonical_commit_mode": "branch_copy",
+    "decode_tokens": 64,
+    "draft_budgets": [
+      4
+    ],
+    "draft_p_min": 0.0,
+    "draft_top_k": 1,
+    "drafter_bucket_mode": "exact",
+    "drafter_fusion_mode": "off",
+    "drafter_graph_mode": "off",
+    "drafter_query_mode": "block",
+    "native_bulk_verifier": true,
+    "profile_route_default": "spec",
+    "profile_route_manifest": null,
+    "profile_route_manifest_body": null,
+    "profile_routes": {},
+    "promotion_blocker": "native B+1 verifier ran, but full chain must still beat same-session AR before promotion",
+    "prompt_suite": "fixtures/dflash/stable_prompts.jsonl",
+    "prompt_suite_sha256": "04a88c095fa0b05c81eaa09f62d58cac053272fc307e1dafae6ab076c214892f",
+    "provider": "dflash",
+    "rocprof_selected_region": "none",
+    "roctx_markers": false,
+    "shape": "full_model_dflash_chain_e2e",
+    "tree_compiler": null,
+    "tree_top_k": 1,
+    "verifier_chain_attn_mode": "batched",
+    "verifier_graph_mode": "off",
+    "verifier_mode": "native_bulk_bplus1",
+    "verifier_tree_mode": "chain",
+    "verify_modes": [
+      "verify_chain"
+    ]
+  },
+  "speculative_contract": {
+    "providers": [
+      "dflash",
+      "mtp"
+    ],
+    "required_row_metrics": [
+      "same_session_ar_decode_tok_s",
+      "spec_decode_tok_s",
+      "exact_match_ar",
+      "finite_ar_logits",
+      "finite_draft_logits",
+      "finite_verify_logits",
+      "acceptance_histogram",
+      "target_verify_rows_per_output_token",
+      "draft_seconds",
+      "target_verify_seconds",
+      "commit_seconds",
+      "scalar_d2h_reads",
+      "vector_d2h_reads",
+      "graph_status",
+      "peak_memory"
+    ],
+    "verify_modes": [
+      "verify_chain",
+      "verify_tree"
+    ]
+  },
+  "commands": {
+    "old_adaptive_probe64": "python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --adaptive-budget on --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branch-copy-adaptive-down-gemv-default-9prompt.json",
+    "new_adaptive_probe128_default": "python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --adaptive-budget on --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-branch-copy-adaptive-probe128-down-gemv-default-9prompt.json",
+    "validation": [
+      "python3 -m py_compile hipengine/speculative/adaptive_budget.py scripts/dflash_chain_e2e_bench.py",
+      "PYTHONPATH=. pytest -q tests/test_adaptive_budget.py tests/test_dflash_draft_confidence.py tests/test_speculative_benchmark.py",
+      "git diff --check"
+    ]
+  },
+  "measurements": {
+    "all_chain_down_gemv_default": {
+      "all_correctness_passed": true,
+      "exact_match_rows": 9,
+      "rows": 9,
+      "ar_decode_tok_s": 32.83492043362977,
+      "dflash_decode_tok_s": 30.404348555747777,
+      "speedup_vs_ar": 0.9259760082929094,
+      "median_row_speedup_vs_ar": 0.9825260079605105,
+      "target_verify_rows_per_output_token": 1.4027777777777777,
+      "accepted_output_tokens": 412,
+      "avg_accept_length": 2.559006211180124,
+      "steps": 161
+    },
+    "adaptive_probe64_old_default": {
+      "all_correctness_passed": true,
+      "exact_match_rows": 9,
+      "rows": 9,
+      "ar_decode_tok_s": 32.82840275984369,
+      "dflash_decode_tok_s": 32.030245402597124,
+      "speedup_vs_ar": 0.9756869877865978,
+      "median_row_speedup_vs_ar": 0.9590308348548937,
+      "target_verify_rows_per_output_token": 1.0607638888888888,
+      "accepted_output_tokens": 93,
+      "avg_accept_length": 2.90625,
+      "steps": 32
+    },
+    "adaptive_probe128_new_default": {
+      "all_correctness_passed": true,
+      "exact_match_rows": 9,
+      "rows": 9,
+      "ar_decode_tok_s": 32.830509106399994,
+      "dflash_decode_tok_s": 32.75940463121793,
+      "speedup_vs_ar": 0.9978341951703636,
+      "median_row_speedup_vs_ar": 0.9992318491989018,
+      "target_verify_rows_per_output_token": 1.0,
+      "accepted_output_tokens": 0,
+      "avg_accept_length": null,
+      "steps": 0
+    },
+    "relative_delta_vs_probe64": {
+      "dflash_decode_tok_s_delta": 0.7291592286208086,
+      "dflash_decode_tok_s_relative_pct": 2.276470940062447,
+      "speedup_vs_ar_delta": 0.022147207383765855,
+      "speedup_vs_ar_relative_pct": 2.269909065202147
+    },
+    "oracle_ar_chain_from_all_chain_rows": {
+      "tok_s": 34.338821220707025,
+      "speedup_vs_ar": 1.045801870911097,
+      "selected_chain_rows": [
+        "code:class_continuation",
+        "code:humaneval_add",
+        "instruct:simple_qa_no_template",
+        "instruct:simple_qa_qwen_static_chat"
+      ]
+    },
+    "adaptive_probe128_rows": [
+      {
+        "row_index": 0,
+        "prompt_id": "code:quicksort_prefix",
+        "exact_match_ar": true,
+        "speedup_vs_ar": 0.9997741136572471,
+        "mode_counts": {
+          "ar": 64
+        },
+        "decision_counts": {
+          "ar": 63,
+          "dflash": 1
+        }
+      },
+      {
+        "row_index": 1,
+        "prompt_id": "code:function_continuation",
+        "exact_match_ar": true,
+        "speedup_vs_ar": 0.9969777186668854,
+        "mode_counts": {
+          "ar": 64
+        },
+        "decision_counts": {
+          "ar": 63,
+          "dflash": 1
+        }
+      },
+      {
+        "row_index": 2,
+        "prompt_id": "code:class_continuation",
+        "exact_match_ar": true,
+        "speedup_vs_ar": 0.9928230088349735,
+        "mode_counts": {
+          "ar": 64
+        },
+        "decision_counts": {
+          "ar": 63,
+          "dflash": 1
+        }
+      },
+      {
+        "row_index": 3,
+        "prompt_id": "code:json_yaml_continuation",
+        "exact_match_ar": true,
+        "speedup_vs_ar": 1.0019593395070763,
+        "mode_counts": {
+          "ar": 64
+        },
+        "decision_counts": {
+          "ar": 63,
+          "dflash": 1
+        }
+      },
+      {
+        "row_index": 4,
+        "prompt_id": "code:humaneval_add",
+        "exact_match_ar": true,
+        "speedup_vs_ar": 0.9958502854365545,
+        "mode_counts": {
+          "ar": 64
+        },
+        "decision_counts": {
+          "ar": 63,
+          "dflash": 1
+        }
+      },
+      {
+        "row_index": 5,
+        "prompt_id": "code:humaneval_sort_third",
+        "exact_match_ar": true,
+        "speedup_vs_ar": 0.9909393843223827,
+        "mode_counts": {
+          "ar": 64
+        },
+        "decision_counts": {
+          "ar": 63,
+          "dflash": 1
+        }
+      },
+      {
+        "row_index": 6,
+        "prompt_id": "math:short_gsm8k_style",
+        "exact_match_ar": true,
+        "speedup_vs_ar": 1.0011378252513343,
+        "mode_counts": {
+          "ar": 64
+        },
+        "decision_counts": {
+          "ar": 63,
+          "dflash": 1
+        }
+      },
+      {
+        "row_index": 7,
+        "prompt_id": "instruct:simple_qa_no_template",
+        "exact_match_ar": true,
+        "speedup_vs_ar": 0.9992318491989018,
+        "mode_counts": {
+          "ar": 64
+        },
+        "decision_counts": {
+          "ar": 63,
+          "dflash": 1
+        }
+      },
+      {
+        "row_index": 8,
+        "prompt_id": "instruct:simple_qa_qwen_static_chat",
+        "exact_match_ar": true,
+        "speedup_vs_ar": 1.001950387002675,
+        "mode_counts": {
+          "ar": 64
+        },
+        "decision_counts": {
+          "ar": 63,
+          "dflash": 1
+        }
+      }
+    ]
+  },
+  "notes": [
+    "At D64, the exact online probe ceiling is poor: the all-chain AR/chain oracle is only 1.046x, while a single failed probe can cost 0.92-0.96x on losing prompts.",
+    "This default keeps long-horizon probing available: pass a larger decode horizon, lower --adaptive-probe-amortization-tokens explicitly, or set --adaptive-min-remaining-tokens with the extra guard for stricter policies."
+  ],
+  "source_lineage": {
+    "notes": [
+      "Metric contract only; PyTorch/HF parent hot loops are not production hipEngine runtime code.",
+      "Rows require same-session AR controls before any speedup can be promoted."
+    ],
+    "ported_metric_shape_from": [
+      "../amd-gpu-tuning/nano-vllm-amd/scripts/sweep_qwen35_mtp_real_acceptance.py",
+      "../amd-gpu-tuning/nano-vllm-amd/scripts/bench_qwen35_dflash_acceptance.py",
+      "../amd-gpu-tuning/nano-vllm-amd/scripts/eval_qwen35_dflash_acceptance_suite.py",
+      "../amd-gpu-tuning/scripts/bench_dense27_dflash_smoke.py",
+      "../amd-gpu-tuning/scripts/sweep_dense27_dflash_prediction.py"
+    ]
+  },
+  "source_git_head": "7802ba739c359824804fdc5c1d7be8a3e47443b3"
+}
