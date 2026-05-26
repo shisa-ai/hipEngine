@@ -1066,6 +1066,7 @@ def test_qwen35_resident_run_layers_batch_decode_uses_per_row_splitk_fallback_fo
     device = Device("hip", 0)
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     session.device = device
+    session.layer_limit = 1
     session.config = SimpleNamespace(hidden_size=8, layer_types=("full_attention",))
     session.batch_hidden = Tensor.from_handle(0x1000, (2, 8), DType.FP16, device)
     session.batch_next_hidden = Tensor.from_handle(0x2000, (2, 8), DType.FP16, device)
@@ -1120,6 +1121,19 @@ def test_qwen35_resident_run_layers_batch_decode_uses_per_row_splitk_fallback_fo
         (0x2000, 0x9000, session.hidden_nbytes, 7),
         (0x2000 + session.hidden_nbytes, 0x9000 + 2 * 0x100, session.hidden_nbytes, 7),
     ]
+    assert session.last_batch_decode_execution == {
+        "rows": 2,
+        "slots": [0, 2],
+        "max_full_attention_context": 1025,
+        "full_attention_decode_path": "per_row_splitk_fallback",
+        "native_caware_decode": False,
+    }
+    metadata = session.batch_execution_metadata(scheduler_owned=True, native_decode=True)
+    assert not metadata.native_caware_decode
+    assert metadata.row_execution == "native_linear_batch_with_per_row_full_attention_fallback"
+    assert metadata.decode_execution == session.last_batch_decode_execution
+    assert any("per-row fallback" in blocker for blocker in metadata.blockers)
+    assert metadata.to_json_dict()["decode_execution"]["full_attention_decode_path"] == "per_row_splitk_fallback"
 
 
 def test_qwen35_resident_step_batch_native_accepts_long_context_for_splitk_fallback(monkeypatch) -> None:

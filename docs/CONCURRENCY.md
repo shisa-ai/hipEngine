@@ -654,8 +654,11 @@ roll-up/status view.
       long-context rejection is removed and split-K contexts now route through
       the existing per-row split-K fallback, with `/tmp/hipengine-hidden-bisect-L4-1024-1-splitk.json`
       showing reduced L4 1024/1 generated-token and hidden equality vs
-      independent c=1. The item remains open until the split-K reducer itself
-      is row-aware/native c>N.
+      independent c=1. Batch execution metadata now records
+      `decode_execution.full_attention_decode_path=per_row_splitk_fallback` and
+      forces `native_caware_decode=false` when that fallback is used, so retained
+      artifacts cannot overclaim long-context native decode. The item remains
+      open until the split-K reducer itself is row-aware/native c>N.
 - [x] **C2.8 append-only block-id contract.** Prevent block ids from changing
       backing pointer during a live request; add a debug/memory-audit test.
       Acceptance: the test would fail on pointer mutation or id reuse.

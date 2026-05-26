@@ -973,9 +973,10 @@ class Qwen35ParoResidentBatchExecution:
     native_caware_decode: bool
     throughput_claim_eligible: bool
     blockers: tuple[str, ...]
+    decode_execution: dict[str, Any] | None = None
 
     def to_json_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "path": self.path,
             "scheduler_owned": self.scheduler_owned,
             "row_execution": self.row_execution,
@@ -985,6 +986,9 @@ class Qwen35ParoResidentBatchExecution:
             "throughput_claim_eligible": self.throughput_claim_eligible,
             "blockers": list(self.blockers),
         }
+        if self.decode_execution is not None:
+            payload["decode_execution"] = self.decode_execution
+        return payload
 
 
 @dataclass(frozen=True)
@@ -1556,16 +1560,28 @@ class Qwen35ParoResidentSession:
 
         native_prefill_plan = self.native_prefill_plan()
         blockers = list(native_prefill_plan.blockers)
+        decode_execution = getattr(self, "last_batch_decode_execution", None) if native_decode else None
         if native_decode:
             blockers.extend(
                 [
-                    "native c>N decode currently supports only compact slots, BF16 KV, and context < 1024",
+                    "native c>N decode currently supports compact physical-slot-ordered rows; "
+                    "full-attention batch context is native only for BF16 KV and context < 1024",
                     "native c>N decode is experimental and blocked until generated-token equality passes",
                 ]
             )
             path = "scheduler_native_compact_batch" if scheduler_owned else "native_compact_batch"
-            row_execution = "native_compact_caware_layers"
-            native_caware_decode = True
+            full_attention_path = (
+                decode_execution.get("full_attention_decode_path")
+                if isinstance(decode_execution, dict)
+                else None
+            )
+            if full_attention_path in {"per_row_splitk_fallback", "per_row_context_fallback"}:
+                row_execution = "native_linear_batch_with_per_row_full_attention_fallback"
+                native_caware_decode = False
+                blockers.append("full-attention decode used a per-row fallback, so this is not native c-aware decode")
+            else:
+                row_execution = "native_compact_caware_layers"
+                native_caware_decode = True
             eligible = False
         else:
             blockers.extend(
@@ -1587,6 +1603,7 @@ class Qwen35ParoResidentSession:
             native_caware_decode=native_caware_decode,
             throughput_claim_eligible=eligible,
             blockers=tuple(dict.fromkeys(blockers)),
+            decode_execution=decode_execution if isinstance(decode_execution, dict) else None,
         )
 
     def prefill_native(
@@ -3149,6 +3166,8 @@ class Qwen35ParoResidentSession:
         hidden = Tensor.from_handle(self.batch_hidden.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
         next_hidden = Tensor.from_handle(self.batch_next_hidden.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
         cu_seqlens, state_indices, temp_buffers = self._batch_decode_segment_metadata(rows=rows, slots=slots)
+        full_attention_decode_path = "none"
+        max_full_attention_context = 0
         try:
             for layer_id, state in enumerate(self.states):
                 layer_type = self.config.layer_types[layer_id]
@@ -3171,8 +3190,10 @@ class Qwen35ParoResidentSession:
                     )
                 elif layer_type == "full_attention":
                     max_context = max(int(position) + 1 for position in positions)
+                    max_full_attention_context = max(max_full_attention_context, max_context)
                     native_full = _env_flag("HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE", True) and max_context < 1024
                     if native_full:
+                        full_attention_decode_path = "batch_context"
                         key_cache, value_cache = self._full_cache_all_slots(layer_id)
                         position_tensor, append_spans, decode_spans = self._batch_full_spans(
                             layer_id,
@@ -3200,6 +3221,8 @@ class Qwen35ParoResidentSession:
                         )
                         self.runtime.memcpy_async(next_hidden.ptr, out.ptr, rows * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
                     else:
+                        if full_attention_decode_path == "none":
+                            full_attention_decode_path = "per_row_splitk_fallback" if max_context >= 1024 else "per_row_context_fallback"
                         for row, (slot, position) in enumerate(zip(slots, positions, strict=True)):
                             key_cache, value_cache = self._slot_full_cache(layer_id, slot)
                             position_tensor, append_spans, decode_spans = self._slot_full_spans(layer_id, slot)
@@ -3239,6 +3262,13 @@ class Qwen35ParoResidentSession:
                 if layer_type != "full_attention":
                     self.runtime.memcpy_async(next_hidden.ptr, out.ptr, rows * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
                 hidden, next_hidden = next_hidden, hidden
+            self.last_batch_decode_execution = {
+                "rows": int(rows),
+                "slots": [int(slot) for slot in slots],
+                "max_full_attention_context": int(max_full_attention_context),
+                "full_attention_decode_path": full_attention_decode_path,
+                "native_caware_decode": full_attention_decode_path not in {"per_row_splitk_fallback", "per_row_context_fallback"},
+            }
             return hidden
         finally:
             for buf in temp_buffers:
