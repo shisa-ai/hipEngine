@@ -264,6 +264,78 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_missing(
     assert skipped["precondition"]["reason"] == "scaling reference artifact does not exist"
 
 
+def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Path, monkeypatch) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    (output_dir / "primitive-c2.json").write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "rows": 2,
+                "passed": True,
+                "append_key_mismatch": 0,
+                "append_value_mismatch": 0,
+                "attn_batch_vs_c1_max_abs": 0.0,
+            }
+        )
+    )
+    (output_dir / "native-baseline-c1.json").write_text(
+        json.dumps({"schema": 1, "throughput": {"warmed_decode_tok_s": 10.0}})
+    )
+    (output_dir / "serial-bridge-c2.json").write_text(
+        json.dumps(
+            {
+                "schema": 2,
+                "status": "blocked",
+                "workload": {"concurrency": 2},
+                "measurements": {"decode_tok_s_aggregate": 20.0, "decode_tok_s_per_request": 10.0},
+            }
+        )
+    )
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+            "--warmup-decode-tokens",
+            "1",
+            "--max-layers",
+            "3",
+        ]
+    )
+    monkeypatch.setattr(c_sweep, "_git_state", lambda: {"commit": "test", "dirty": False, "status_short": []})
+    calls: list[list[str]] = []
+
+    class FakeProc:
+        returncode = 0
+        stdout = "ok"
+
+    def fake_run(argv, **kwargs):
+        calls.append(list(argv))
+        return FakeProc()
+
+    monkeypatch.setattr(c_sweep.subprocess, "run", fake_run)
+
+    summary = run_sweep(args)
+
+    assert summary["status"] == "passed"
+    assert [entry["status"] for entry in summary["commands"]] == ["passed", "passed", "passed"]
+    assert len(calls) == 3
+    assert calls[-1][1] == "scripts/qwen35_batch_retained_bench.py"
+    native = summary["commands"][-1]
+    assert native["category"] == "native_diagnostic"
+    assert "precondition" not in native
+
+
 def test_batch_c_sweep_can_plan_int8_blocked_diagnostics(tmp_path: Path) -> None:
     args = build_c_sweep_parser().parse_args(
         [
