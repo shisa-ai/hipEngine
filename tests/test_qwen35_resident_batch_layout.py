@@ -1180,6 +1180,21 @@ class _FakePrefillState:
         return Tensor.from_handle(0x30000 + tokens * 0x100, (tokens, 8), DType.FP16, self.device)
 
 
+def test_qwen35_resident_decode_batch_uses_grouped_moe_scratch_for_rows_gt1() -> None:
+    device = Device("hip", 0)
+    state = _FakePrefillState(device)
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.config = SimpleNamespace(num_experts=128)
+    session.states = [state]
+    session.moe_scratch = {0: SimpleNamespace(residual=Tensor.from_handle(0x5000, (1, 8), DType.FP16, device))}
+
+    scratch = session._ensure_moe_decode_batch_scratch(0, rows=2)
+
+    assert isinstance(scratch, Qwen35ParoGroupedMoeScratch)
+    assert scratch is state.grouped_reservations[0]
+    assert session.moe_scratch[0] is scratch
+
+
 def test_qwen35_resident_linear_prefill_restores_decode_scratch_token1() -> None:
     device = Device("hip", 0)
     runtime = _FakePrefillRuntime()

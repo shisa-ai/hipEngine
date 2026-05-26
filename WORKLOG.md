@@ -27986,3 +27986,43 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY C2.3 grouped-MoE decode-batch progress
+
+Materially advanced, but did not close, C2.3 (`selected-MoE lane-map fix`):
+
+- Switched native decode batch rows (`tokens > 1`) from selected-MoE c1 wrappers to grouped compact MoE scratch/metadata in both linear-attention and full-attention decode batch layer paths.
+- Updated resident scratch selection so `_ensure_moe_decode_batch_scratch(...)` reserves `Qwen35ParoGroupedMoeScratch` for batch rows and keeps c1/dense scratch for rows=1/dense MLP.
+- Added a structural resident-layout test proving decode batch rows reserve grouped MoE scratch.
+- Re-ran reduced hidden bisection with layer limits 1..8. The grouped path does **not** close equality: `/tmp/hipengine-hidden-bisect-L1-8-512-1-grouped.json` reports first hidden mismatch at layer-limit 6 (row 0, generated index 1; `max_abs=0.00146484375`) and no token mismatch within the one-token probe. The full L8 512/16 grouped rerun `/tmp/hipengine-hidden-bisect-L8-512-16-grouped.json` still has the old row-0 token idx-13 mismatch, so C2.3 remains open.
+- Updated `docs/CONCURRENCY.md` with the narrowed status; no throughput/scaling claim was made.
+
+Validation:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 1 --max-layers 8 --layer-limits 1-8 --max-sequence-length 1024 --json /tmp/hipengine-hidden-bisect-L1-8-512-1-grouped.json
+# status=mismatch_found; first_hidden_mismatch layer_limit=6 generated_index=1 row=0 max_abs=0.00146484375; first_token_mismatch=None for the one-token probe
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --json /tmp/hipengine-hidden-bisect-L8-512-16-grouped.json
+# status=mismatch_found; old row-0 token first_index=13 remains
+python3 -m pytest -q tests/test_qwen35_resident_batch_layout.py -q
+# 48 passed
+```
+
+Loop guard after C2.3 grouped-MoE progress:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+```
+
+Additional guard output for the same C2.3 progress packet:
+
+```bash
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```

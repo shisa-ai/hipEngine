@@ -3372,7 +3372,7 @@ class Qwen35ParoDecodeState:
         positions: Tensor,
         max_positions: int,
         attention_scratch: Qwen35ParoAttentionScratch | None = None,
-        moe_scratch: Qwen35ParoMoeScratch | Qwen35ParoDenseMlpScratch | None = None,
+        moe_scratch: Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | Qwen35ParoDenseMlpScratch | None = None,
         tokens: int,
         group_size: int = 128,
         block_size: int = 256,
@@ -3393,6 +3393,9 @@ class Qwen35ParoDecodeState:
         if dense_mlp:
             if not isinstance(moe_scratch, Qwen35ParoDenseMlpScratch):
                 moe_scratch = self.reserve_dense_mlp_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        elif tokens > 1:
+            if not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
+                moe_scratch = self.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
         elif not isinstance(moe_scratch, Qwen35ParoMoeScratch):
             moe_scratch = self.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
         self.input_rmsnorm_fp16(
@@ -3452,6 +3455,16 @@ class Qwen35ParoDecodeState:
         )
         if dense_mlp:
             return self.run_dense_mlp_residual_fp16(
+                mlp_input,
+                residual,
+                scratch=moe_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        if tokens > 1:
+            return self.run_moe_grouped_compact_fp16(
                 mlp_input,
                 residual,
                 scratch=moe_scratch,
@@ -4783,13 +4796,13 @@ class Qwen35ParoDecodeState:
         state_indices: Tensor,
         segments: int,
         linear_scratch: Qwen35ParoLinearAttentionScratch | None = None,
-        moe_scratch: Qwen35ParoMoeScratch | Qwen35ParoDenseMlpScratch | None = None,
+        moe_scratch: Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | Qwen35ParoDenseMlpScratch | None = None,
         tokens: int,
         group_size: int = 128,
         library=None,
         stream: int = 0,
     ) -> Tensor:
-        """Run native compact decode rows while keeping the selected-MoE path."""
+        """Run native compact decode rows with grouped MoE for batch lanes."""
 
         if tokens <= 0:
             raise ValueError("tokens must be positive")
@@ -4798,6 +4811,9 @@ class Qwen35ParoDecodeState:
         if dense_mlp:
             if not isinstance(moe_scratch, Qwen35ParoDenseMlpScratch):
                 moe_scratch = self.reserve_dense_mlp_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        elif tokens > 1:
+            if not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
+                moe_scratch = self.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
         elif not isinstance(moe_scratch, Qwen35ParoMoeScratch):
             moe_scratch = self.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
         self.input_rmsnorm_fp16(hidden, linear_scratch.attn_input, tokens=tokens, library=library, stream=stream)
@@ -4824,6 +4840,16 @@ class Qwen35ParoDecodeState:
         )
         if dense_mlp:
             return self.run_dense_mlp_residual_fp16(
+                mlp_input,
+                residual,
+                scratch=moe_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        if tokens > 1:
+            return self.run_moe_grouped_compact_fp16(
                 mlp_input,
                 residual,
                 scratch=moe_scratch,

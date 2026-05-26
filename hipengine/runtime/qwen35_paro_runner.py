@@ -3120,8 +3120,18 @@ class Qwen35ParoResidentSession:
             self.full_scratch[layer_id] = scratch
         return scratch
 
-    def _ensure_moe_decode_batch_scratch(self, layer_id: int, rows: int) -> Qwen35ParoMoeScratch:
+    def _ensure_moe_decode_batch_scratch(self, layer_id: int, rows: int) -> Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | Qwen35ParoDenseMlpScratch:
         scratch = self.moe_scratch[layer_id]
+        if int(getattr(self.config, "num_experts", 1) or 0) <= 0:
+            if not isinstance(scratch, Qwen35ParoDenseMlpScratch) or scratch.residual.shape[0] < rows:
+                scratch = self.states[layer_id].reserve_dense_mlp_scratch(tokens=rows, activation_dtype=DType.FP16)
+                self.moe_scratch[layer_id] = scratch
+            return scratch
+        if rows > 1:
+            if not isinstance(scratch, Qwen35ParoGroupedMoeScratch) or scratch.residual.shape[0] < rows:
+                scratch = self.states[layer_id].reserve_moe_grouped_prefill_scratch(tokens=rows, activation_dtype=DType.FP16)
+                self.moe_scratch[layer_id] = scratch
+            return scratch
         if not isinstance(scratch, Qwen35ParoMoeScratch) or scratch.residual.shape[0] < rows:
             scratch = self.states[layer_id].reserve_moe_c1_scratch(tokens=rows, activation_dtype=DType.FP16)
             self.moe_scratch[layer_id] = scratch

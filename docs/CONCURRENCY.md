@@ -100,8 +100,12 @@ L40 c=2 512/32 pass generated-token equality vs independent c=1. The full
 `eq-L8-selectedmoe.json` failure points at selected-MoE/native-row mapping.
 The path is not a throughput claim. The hidden-state bisection harness now
 reproduces an L8 c=2 512/16 hidden mismatch at generated index 1 and a token
-mismatch at index 13 (`/tmp/hipengine-hidden-bisect-L8-512-16.json`), so the
-active root-cause target is selected-MoE/native-row mapping.
+mismatch at index 13 (`/tmp/hipengine-hidden-bisect-L8-512-16.json`). Decode
+batch rows now use grouped MoE metadata instead of selected-MoE c1 wrappers, but
+`/tmp/hipengine-hidden-bisect-L1-8-512-1-grouped.json` still first diverges at
+layer-limit 6, so the active root-cause target has narrowed to the layer-6
+linear/full-prefix state or grouped metadata boundary rather than the old
+selected-MoE wrapper alone.
 
 The elastic KV pool, prefix sharing, per-row sampler, streaming routing,
 cancellation reclaim path, and `/metrics` observability are **not** in code
@@ -118,7 +122,7 @@ yet. The phase ladder below sequences them.
 | Decode runtime | Production c>N prompt-list decode uses `step_batch_serial`. Experimental `step_batch_native` is gated by `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1`; current default `serial_lm_head` passes L40 c=2 512/32 as a reduced diagnostic but fails full c=2 512/128 generated-token equality. Hidden bisection reproduces the reduced L8 failure at generated index 1. | `step_batch_serial`, `step_batch_native`, `_sample_batch_from_hidden`, `batch_execution_metadata`; `/tmp/hipengine-retained/guarded-L40-{512-32,c2-512-128}-current.json`; `/tmp/hipengine-hidden-bisect-L8-512-16.json`. | selected-MoE/native-row fix; c=2/4/8 512/128 equality; row-aware split-K full-attention; native sampler. |
 | Sampler | Greedy `argmax_f32` per row. Sampling parameters apply globally to the call, not per row. The coalescer requires identical sampling keys per batch. Experimental native decode currently defaults to `serial_lm_head`; `batched_lm_head` is diagnostic only. | `_sample_from_hidden`, `_sample_batch_from_hidden`. | Per-row temperature/top-k/top-p/rep-penalty/seed/stop tokens; per-row EOS handling; replace the per-row LM-head loop after equality is proven. |
 | Attention / KV primitives | BF16 batched paged KV append and batched full-attention context decode pass c=1/2/4/8 primitive correctness. Split-K reducer is c1-only. INT8 batched paths exist as wrappers but lack the end-to-end gate. | `scripts/qwen35_batch_correctness.py`; `hipengine/kernels/hip_gfx1100/attention/`. | Row-aware split-K reducer; INT8 batched end-to-end gate. |
-| MoE / quant kernels | Many wrappers accept `rows` or routed-lane counts; end-to-end selected-MoE decode still follows c1 assumptions. `eq-L8-selectedmoe.json` diverges from c=1 reference at idx 13. | `hipengine/kernels/hip_gfx1100/quant/*`, `hipengine/runtime/qwen35_paro.py`. | Token-row to routed-lane mapping; grouped-by-expert execution for c=4/8; c-aware dispatch thresholds. |
+| MoE / quant kernels | Many wrappers accept `rows` or routed-lane counts; native decode batch rows now use grouped compact MoE scratch instead of selected-MoE c1 wrappers for `tokens>1`, but reduced L8 hidden bisection still diverges at layer-limit 6 and token idx 13. | `hipengine/kernels/hip_gfx1100/quant/*`, `hipengine/runtime/qwen35_paro.py`; `/tmp/hipengine-hidden-bisect-L1-8-512-1-grouped.json`. | Token-row/grouped metadata root cause; c=2/4/8 equality; c-aware dispatch thresholds. |
 | KV pool | Fixed-size pool sized at startup from `hipMemGetInfo()` after weights resident (v0.2.2). Pool does not grow or shrink during a session. Block ids reuse pointers across reallocation. | `hipengine/runtime/qwen35_paro_runner.py` startup path. | Append-only block id contract; chunked grow up to high water; idle shrink to low water; admission against current capacity. |
 | Prefix / radix cache | Not implemented in code today. `grep RadixCache hipengine` returns nothing. | — | Refcounted pages; RadixCache trie; copy-on-write fork; `n>1` lowering. Flat prefix-LRU is intentionally not a peer implementation. |
 | Observability | Server emits standard FastAPI logs. No request-level timings, no pool counters, no `/metrics`. | — | Per-request timings; per-pool counters; per-bucket histograms; `/metrics` endpoint. |
@@ -615,7 +619,11 @@ roll-up/status view.
       lane mapping or grouped metadata so selected MoE is hidden-equality green
       at c=2. Acceptance: C2.2 reports selected-MoE hidden equality for the
       failing fixture and generated-token equality progresses past the old
-      idx-13 failure.
+      idx-13 failure. Progress: decode batch rows now use grouped compact MoE
+      scratch for `tokens>1` instead of selected-MoE c1 wrappers, but
+      `/tmp/hipengine-hidden-bisect-L1-8-512-1-grouped.json` still reports the
+      first hidden mismatch at layer-limit 6 (row 0, generated index 1), and the
+      old row-0 token idx-13 mismatch remains.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions
