@@ -26834,3 +26834,21 @@ pytest -q tests/test_generation_qwen35_paro.py tests/test_generation_batch_sched
 ```
 
 Next blockers before c>N benchmark claims: independent HTTP request admission/coalescing, generated-token equality vs independent c=1 for c=2/4/8, INT8 packed prefill coverage, and native c-aware decode graph replay.
+
+## 2026-05-26 — Non-streaming server generation coalescer
+
+Implemented the next C1 server increment:
+
+- Added `_GenerationBatcher` in `hipengine/server/api.py` with a default 5 ms batch window (`ServerConfig.generation_batch_window_ms`, CLI/env: `--generation-batch-window-ms` / `HIPENGINE_GENERATION_BATCH_WINDOW_MS`).
+- Non-streaming `/v1/completions` and `/v1/chat/completions` now validate/prepare under the existing safety lock, then enqueue compatible `SamplingParams` generations. The batcher concatenates compatible prompt groups and calls `engine.generate(tuple(prompts), sampling)` once under a grouped safety lock.
+- This lets concurrent compatible HTTP requests reach the Qwen/PARO prompt-list c>N generator path from commit `abe099c`; streaming remains one-request-at-a-time and `n>1` remains rejected.
+- Incompatible sampling params (for example different `max_tokens`) remain separate engine calls.
+- Updated `docs/CONCURRENCY.md` to move server non-streaming coalescing to done while keeping continuous batching, streaming routing, timestamps, latency accounting, and native c-aware decode as blockers.
+
+Validation:
+
+```bash
+pytest -q tests/test_server_api.py tests/test_generation_qwen35_paro.py tests/test_generation_batch_scheduler.py tests/test_qwen35_resident_batch_layout.py tests/test_cli.py -q
+# ........................................................................ [ 97%]
+# ..                                                                       [100%]
+```

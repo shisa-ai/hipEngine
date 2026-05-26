@@ -13,7 +13,8 @@ import json
 import logging
 import time
 import uuid
-from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
+from collections import deque
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -52,6 +53,7 @@ class ServerConfig:
     kv_storage: str = "auto"
     kv_scale_dtype: str = "fp16"
     kv_scale_granularity: str = "per_token_head"
+    generation_batch_window_ms: float = 5.0
     created: int = field(default_factory=lambda: int(time.time()))
 
     @property
@@ -142,6 +144,102 @@ class _GeneratedBatch:
     usage: dict[str, int]
 
 
+@dataclass
+class _QueuedGeneration:
+    prompts: tuple[str, ...]
+    sampling: SamplingParams
+    future: asyncio.Future[list[str]]
+
+
+class _GenerationBatcher:
+    """Coalesce compatible non-streaming HTTP generations into prompt-list calls."""
+
+    def __init__(
+        self,
+        *,
+        engine_factory: Callable[[], Any],
+        generation_lock: asyncio.Lock,
+        batch_window_seconds: float,
+    ) -> None:
+        self._engine_factory = engine_factory
+        self._generation_lock = generation_lock
+        self._batch_window_seconds = max(0.0, float(batch_window_seconds))
+        self._queue: deque[_QueuedGeneration] = deque()
+        self._worker: asyncio.Task[None] | None = None
+
+    async def submit(self, prompts: Sequence[str], sampling: SamplingParams) -> list[str]:
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[list[str]] = loop.create_future()
+        self._queue.append(
+            _QueuedGeneration(
+                prompts=tuple(str(prompt) for prompt in prompts),
+                sampling=sampling,
+                future=future,
+            )
+        )
+        if self._worker is None or self._worker.done():
+            self._worker = loop.create_task(self._run())
+        return await future
+
+    async def _run(self) -> None:
+        try:
+            if self._batch_window_seconds > 0.0:
+                await asyncio.sleep(self._batch_window_seconds)
+            while self._queue:
+                first = self._queue.popleft()
+                if first.future.cancelled():
+                    continue
+                key = _sampling_key(first.sampling)
+                group = [first]
+                deferred: deque[_QueuedGeneration] = deque()
+                while self._queue:
+                    item = self._queue.popleft()
+                    if item.future.cancelled():
+                        continue
+                    if _sampling_key(item.sampling) == key:
+                        group.append(item)
+                    else:
+                        deferred.append(item)
+                self._queue.extendleft(reversed(deferred))
+                await self._run_group(group)
+                if self._queue and self._batch_window_seconds > 0.0:
+                    await asyncio.sleep(self._batch_window_seconds)
+        finally:
+            self._worker = None
+            if self._queue:
+                self._worker = asyncio.create_task(self._run())
+
+    async def _run_group(self, group: Sequence[_QueuedGeneration]) -> None:
+        if not group:
+            return
+        prompts: list[str] = []
+        slices: list[tuple[_QueuedGeneration, int, int]] = []
+        for item in group:
+            start = len(prompts)
+            prompts.extend(item.prompts)
+            slices.append((item, start, len(prompts)))
+        try:
+            async with self._generation_lock:
+                raw_outputs = await run_in_threadpool(
+                    self._engine_factory().generate,
+                    tuple(prompts),
+                    group[0].sampling,
+                )
+            outputs = [str(item) for item in raw_outputs]
+            if len(outputs) != len(prompts):
+                raise RuntimeError(
+                    f"generator returned {len(outputs)} outputs for {len(prompts)} prompts"
+                )
+        except Exception as exc:
+            for item in group:
+                if not item.future.done():
+                    item.future.set_exception(exc)
+            return
+        for item, start, end in slices:
+            if not item.future.done():
+                item.future.set_result(outputs[start:end])
+
+
 @dataclass(frozen=True)
 class _ReasoningSplit:
     content: str
@@ -167,6 +265,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         if app.state.hipengine_llm is None:
             app.state.hipengine_llm = LLM(config.model, backend=config.backend, quant=config.quant)
         return app.state.hipengine_llm
+
+    generation_batcher = _GenerationBatcher(
+        engine_factory=get_llm,
+        generation_lock=generation_lock,
+        batch_window_seconds=float(config.generation_batch_window_ms) / 1000.0,
+    )
+    app.state.hipengine_generation_batcher = generation_batcher
 
     def configured_max_context_tokens() -> int | None:
         if config.max_context_tokens is None:
@@ -374,7 +479,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
                 sampling = sampling_params(request, prompts, engine)
                 _validate_context_budget(effective_max_context_tokens(engine), engine, prompts, sampling)
-                raw_outputs = await run_in_threadpool(engine.generate, tuple(prompts), sampling)
+            raw_outputs = await generation_batcher.submit(tuple(prompts), sampling)
         except OpenAIHTTPError:
             raise
         except NotImplementedError as exc:
@@ -862,6 +967,18 @@ def _stop_strings(stop: str | list[str] | None) -> tuple[str, ...]:
     if isinstance(stop, str):
         return (stop,)
     return tuple(str(item) for item in stop)
+
+
+def _sampling_key(sampling: SamplingParams) -> tuple[Any, ...]:
+    return (
+        int(sampling.max_tokens),
+        float(sampling.temperature),
+        float(sampling.top_p),
+        bool(sampling.ignore_eos),
+        str(sampling.kv_storage),
+        str(sampling.kv_scale_dtype),
+        str(sampling.kv_scale_granularity),
+    )
 
 
 def _usage(engine: Any, prompts: Sequence[str], outputs: Sequence[str]) -> dict[str, int]:

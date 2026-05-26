@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from types import SimpleNamespace
@@ -8,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from hipengine import SamplingParams
 from hipengine.server import ServerConfig, create_app, render_chat_prompt
-from hipengine.server.api import ChatCompletionRequest
+from hipengine.server.api import ChatCompletionRequest, _GenerationBatcher
 
 
 class FakeLLM:
@@ -149,6 +150,51 @@ def test_chat_default_max_tokens_is_dynamic_when_omitted() -> None:
     )
 
     assert request.max_tokens is None
+
+
+def test_generation_batcher_coalesces_compatible_submissions() -> None:
+    async def run() -> None:
+        fake = FakeLLM()
+        sampling = SamplingParams(max_tokens=2)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            generation_lock=asyncio.Lock(),
+            batch_window_seconds=0.001,
+        )
+
+        first, second = await asyncio.gather(
+            batcher.submit(("one",), sampling),
+            batcher.submit(("two", "three"), sampling),
+        )
+
+        assert first == ["generated:one"]
+        assert second == ["generated:two", "generated:three"]
+        assert fake.calls == [(("one", "two", "three"), sampling)]
+
+    asyncio.run(run())
+
+
+def test_generation_batcher_keeps_incompatible_sampling_separate() -> None:
+    async def run() -> None:
+        fake = FakeLLM()
+        first_sampling = SamplingParams(max_tokens=1)
+        second_sampling = SamplingParams(max_tokens=2)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            generation_lock=asyncio.Lock(),
+            batch_window_seconds=0.001,
+        )
+
+        first, second = await asyncio.gather(
+            batcher.submit(("one",), first_sampling),
+            batcher.submit(("two",), second_sampling),
+        )
+
+        assert first == ["generated:one"]
+        assert second == ["generated:two"]
+        assert fake.calls == [(("one",), first_sampling), (("two",), second_sampling)]
+
+    asyncio.run(run())
 
 
 def test_completions_endpoint_calls_llm_and_applies_stop() -> None:

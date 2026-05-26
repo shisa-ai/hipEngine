@@ -23,11 +23,25 @@ def _positive_int(value: str) -> int:
     return parsed
 
 
+def _nonnegative_float(value: str) -> float:
+    parsed = float(value)
+    if parsed < 0.0:
+        raise argparse.ArgumentTypeError("value must be >= 0")
+    return parsed
+
+
 def _env_positive_int(name: str) -> int | None:
     raw = os.environ.get(name)
     if raw is None or raw == "":
         return None
     return _positive_int(raw)
+
+
+def _env_nonnegative_float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return float(default)
+    return _nonnegative_float(raw)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -89,6 +103,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=os.environ.get("HIPENGINE_KV_SCALE_GRANULARITY", "per_token_head"),
         help="INT8 KV scale granularity (default: per_token_head)",
     )
+    parser.add_argument(
+        "--generation-batch-window-ms",
+        type=_nonnegative_float,
+        default=_env_nonnegative_float("HIPENGINE_GENERATION_BATCH_WINDOW_MS", 5.0),
+        help="Milliseconds to coalesce compatible non-streaming requests (default: 5)",
+    )
     parser.add_argument("--host", default="127.0.0.1", help="Bind host")
     parser.add_argument("--port", type=int, default=8000, help="Bind port")
     parser.add_argument("--log-level", default="info", help="uvicorn log level")
@@ -110,6 +130,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         kv_storage=args.kv_storage,
         kv_scale_dtype=args.kv_scale_dtype,
         kv_scale_granularity=args.kv_scale_granularity,
+        generation_batch_window_ms=args.generation_batch_window_ms,
     )
     app = create_app(config)
     try:

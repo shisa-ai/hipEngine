@@ -33,15 +33,18 @@ Related source-of-truth docs:
 The public Qwen/PARO generator now has a first prompt-list c>N path: it admits
 all prompt rows into `ResidentBatchScheduler`, uses native compact packed prefill
 for BF16 KV prompt lists, and routes output by request id. Decode after the
-seed token still uses `step_batch_serial`, and HTTP requests are still protected
-by the server's generation lock, so this is not continuous batching or a
-retained throughput path yet.
+seed token still uses `step_batch_serial`. The OpenAI server now coalesces
+compatible non-streaming HTTP generations over a short configurable batch window
+(`--generation-batch-window-ms`, default 5 ms) before one prompt-list
+`LLM.generate()` call, but streaming remains one request at a time
+and decode is still serial, so this is not continuous batching or a retained
+throughput path yet.
 
 ## Readiness matrix
 
 | Layer | Current status | Evidence / code | Blocks true c>N |
 | --- | --- | --- | --- |
-| OpenAI server | HTTP generation is serialized behind `generation_lock`; `n>1` is rejected. Prompt-list completions can reach the batch generator inside one request. | `hipengine/server/api.py:create_app`, `_validate_generation_request`. | Replace one-request-at-a-time HTTP locking with scheduler admission/output routing. |
+| OpenAI server | Compatible non-streaming HTTP generations are coalesced into one prompt-list `LLM.generate()` call behind a grouped safety lock; `n>1` is still rejected and streaming remains one request at a time. | `hipengine/server/api.py:_GenerationBatcher`, `create_app`, `_validate_generation_request`. | Add continuous admission/completion timestamps, streaming routing, and latency/occupancy accounting. |
 | Public `LLM.generate()` | Prompt lists with `len(prompts)>1` now use `ResidentBatchScheduler`, BF16 packed native prefill, request-id output routing, and serial slot-bridge decode. Streaming is one prompt only. | `hipengine/generation/qwen35_paro.py:Qwen35ParoOneTokenGenerator._generate_batch`. | Replace serial slot-bridge decode with native c-aware decode; add generated-token equality gates. |
 | Scheduler | `ResidentBatchScheduler` owns pending/admitted queues, slots, active masks, compact prefill slabs, decode work, graph bucket keys, and completion routing in the prompt-list generator. | `hipengine/generation/batch_scheduler.py`; `Qwen35ParoOneTokenGenerator._generate_batch`. | Wire independent HTTP request admission and latency/occupancy accounting. |
 | Prefill | Single-request native prefill is active. Prompt-list BF16 c>N uses `next_compact_prefill_slabs(...)` plus `prefill_native_packed(...)`. INT8 packed prefill is still not wired. | `Qwen35ParoResidentSession.prefill_native`, `prefill_native_packed`, `ResidentBatchScheduler.next_compact_prefill_slabs`. | Validate generated-token equality and add INT8 packed prefill before retained c>N claims. |
@@ -166,8 +169,9 @@ A c>N row is not eligible for `accepted` status until all of these pass:
       scheduler request ids, physical slots, packed prefill slabs, and output
       routing. It still receives public prompt strings rather than full server
       request metadata.
-- [ ] Wire server generation into `ResidentBatchScheduler` instead of holding
-      `generation_lock` for the full request.
+- [x] Coalesce compatible non-streaming server generations into one prompt-list
+      `LLM.generate()` call so the generator-owned scheduler can admit c>N rows;
+      keep a grouped safety lock around the non-reentrant engine call.
 - [ ] Preserve a narrow safety lock only around non-reentrant model/session
       mutation until the session is proven concurrency-safe.
 - [ ] Add request IDs, enqueue/admit timestamps, finish timestamps, and output
