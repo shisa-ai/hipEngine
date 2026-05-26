@@ -27024,3 +27024,31 @@ Expanded `docs/CONCURRENCY.md` with a `Bite-sized implementation queue` for the 
 For the multiloop metric, count open/partial checkboxes in the bite-sized queue only; current queue count is 42 open/partial items. This avoids double-counting the phase-ladder summary checkboxes.
 
 Validation: docs-only change; re-read the inserted queue and counted queue vs whole-doc checkboxes with a small Python regex helper.
+
+## 2026-05-27 — CONCURRENCY C2.1 remove batch metadata shim
+
+Closed bite-sized packet C2.1 from `docs/CONCURRENCY.md`:
+
+- Removed the stale `TypeError` compatibility fallback around `session.batch_execution_metadata(...)` in `Qwen35ParoOneTokenGenerator._generate_batch`.
+- Updated the generator packed-prefill test fake to require the settled `native_decode` keyword, so an old-signature fake now fails loudly instead of being silently supported.
+- Marked C2.1 and the phase-ladder compatibility-glue item complete in `docs/CONCURRENCY.md` with targeted-test evidence.
+
+Validation:
+
+```bash
+pytest -q tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py -q
+```
+
+Loop guard after C2.1:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 41
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```

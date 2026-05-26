@@ -560,10 +560,11 @@ roll-up/status view.
 
 ### C2 packets — native BF16 c>N correctness first
 
-- [ ] **C2.1 remove compatibility shim.** Remove the generator
+- [x] **C2.1 remove compatibility shim.** Remove the generator
       `batch_execution_metadata(...)` `TypeError` compatibility path once all
       call sites use the settled signature. Acceptance: targeted generator and
-      resident-layout tests pass.
+      resident-layout tests pass. Evidence: commit removing the shim plus
+      `pytest -q tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py -q`.
 - [ ] **C2.2 hidden-state bisection harness.** Add a HIP-guarded diagnostic
       that compares c=2 native vs independent c=1 hidden tensors after each
       layer and optionally after sub-stages (attention, selected MoE, shared
@@ -766,8 +767,8 @@ in place even though pool growth lands in C4.
       serial_lm_head` until row-aware sampler lands.
 - [x] Document `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE` and
       `HIPENGINE_QWEN35_BATCH_SAMPLE_MODE` in `docs/ENVS.md`.
-- [ ] Remove stale compatibility glue once the guarded native API is
-      settled (for example the `batch_execution_metadata(...)` `TypeError`
+- [x] Remove stale compatibility glue once the guarded native API is
+      settled (removed the `batch_execution_metadata(...)` `TypeError`
       shim in the generator).
 - [ ] Add HIP-guarded reduced-shape equality diagnostics that do **not**
       require full 40 layers, so failures can be bisected in CI/dev

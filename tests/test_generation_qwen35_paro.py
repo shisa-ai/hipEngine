@@ -204,8 +204,10 @@ def test_qwen35_paro_generator_uses_scheduler_packed_prefill_for_prompt_batch(mo
             )
             return (_result(200, "C"), _result(201, "D"))
 
-        def batch_execution_metadata(self, *, scheduler_owned: bool = False):
-            calls.append(("batch_execution_metadata", scheduler_owned))
+        def batch_execution_metadata(
+            self, *, scheduler_owned: bool = False, native_decode: bool = False
+        ):
+            calls.append(("batch_execution_metadata", scheduler_owned, native_decode))
             return SimpleNamespace(
                 native_compact_prefill=True,
                 native_caware_decode=False,
@@ -233,7 +235,7 @@ def test_qwen35_paro_generator_uses_scheduler_packed_prefill_for_prompt_batch(mo
         ("init", runner, 4096, 2, "bf16"),
         ("prefill_native_packed", (0, 1), ((10, 11), (20,)), (0, 1), True),
         ("step_batch_serial", (100, 101), (2, 1), (0, 1), True),
-        ("batch_execution_metadata", True),
+        ("batch_execution_metadata", True, False),
     ]
     assert generator.last_batch_generation == {
         "path": "scheduler_native_packed_prefill_serial_decode",

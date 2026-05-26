@@ -320,13 +320,10 @@ class Qwen35ParoOneTokenGenerator:
             decode_steps += 1
 
         native_decode_complete = decode_steps > 0 and native_decode_steps == decode_steps and not serial_decode_fallback
-        try:
-            batch_execution = session.batch_execution_metadata(
-                scheduler_owned=True,
-                native_decode=native_decode_complete,
-            )
-        except TypeError:
-            batch_execution = session.batch_execution_metadata(scheduler_owned=True)
+        batch_execution = session.batch_execution_metadata(
+            scheduler_owned=True,
+            native_decode=native_decode_complete,
+        )
         self.last_batch_generation = {
             "path": "scheduler_native_packed_prefill_native_decode"
             if native_decode_complete
