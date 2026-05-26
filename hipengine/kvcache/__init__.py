@@ -12,7 +12,7 @@ from hipengine.kvcache.policy import (
     ResolvedKVPolicy,
     resolve_kv_policy,
 )
-from hipengine.kvcache.pool import ChunkedKVPool, KVPoolAllocation, KVPoolChunk, KVPoolStats
+from hipengine.kvcache.pool import ChunkedKVPool, KVPoolAllocation, KVPoolChunk, KVPoolSharedAdmission, KVPoolStats
 from hipengine.kvcache.spans import KVLiveSpans, KVScaleMetadata
 
 __all__ = [
@@ -22,6 +22,7 @@ __all__ = [
     "KVPolicy",
     "KVPoolAllocation",
     "KVPoolChunk",
+    "KVPoolSharedAdmission",
     "KVPoolStats",
     "KVReservation",
     "KVScaleMetadata",

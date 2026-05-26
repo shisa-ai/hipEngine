@@ -20,6 +20,16 @@ class KVPoolAllocation:
 
 
 @dataclass(frozen=True, slots=True)
+class KVPoolSharedAdmission:
+    """Admission result containing shared-prefix and private suffix blocks."""
+
+    block_ids: tuple[int, ...]
+    pointers: tuple[int, ...]
+    reused_block_ids: tuple[int, ...]
+    allocated_block_ids: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class KVPoolStats:
     """Observable fake KV-pool counters used by scheduler/bench tests."""
 
@@ -32,6 +42,8 @@ class KVPoolStats:
     grow_events: int
     grow_failures: int
     shrink_events: int
+    prefix_reuse_events: int
+    prefix_reused_pages: int
 
     def to_json_dict(self) -> dict[str, int]:
         return {
@@ -44,6 +56,8 @@ class KVPoolStats:
             "grow_events": self.grow_events,
             "grow_failures": self.grow_failures,
             "shrink_events": self.shrink_events,
+            "prefix_reuse_events": self.prefix_reuse_events,
+            "prefix_reused_pages": self.prefix_reused_pages,
         }
 
 
@@ -108,6 +122,8 @@ class ChunkedKVPool:
         self._grow_events = 0
         self._grow_failures = 0
         self._shrink_events = 0
+        self._prefix_reuse_events = 0
+        self._prefix_reused_pages = 0
         self._last_active_seconds = 0.0
         self._high_water_observed_pages = 0
         self._append_chunk(int(initial_pages))
@@ -131,6 +147,8 @@ class ChunkedKVPool:
             grow_events=self._grow_events,
             grow_failures=self._grow_failures,
             shrink_events=self._shrink_events,
+            prefix_reuse_events=self._prefix_reuse_events,
+            prefix_reused_pages=self._prefix_reused_pages,
         )
 
     @property
@@ -174,6 +192,56 @@ class ChunkedKVPool:
             if self._refcounts.get(block_id, 0) <= 0:
                 raise ValueError("cannot incref a free block")
             self._refcounts[block_id] += 1
+
+    def admit_with_shared_prefix(
+        self,
+        prefix_block_ids: tuple[int, ...] | list[int],
+        *,
+        suffix_pages: int,
+        now_seconds: float = 0.0,
+    ) -> KVPoolSharedAdmission:
+        """Admit a request by sharing prefix pages and allocating suffix pages.
+
+        Prefix pages must already be live.  Their refcounts are incremented
+        before the private suffix is allocated; if suffix allocation fails, the
+        prefix increments are rolled back so admission is atomic from the fake
+        pool's perspective.
+        """
+
+        prefix = tuple(int(block_id) for block_id in prefix_block_ids)
+        if len(set(prefix)) != len(prefix):
+            raise ValueError("shared prefix block ids must be unique")
+        if suffix_pages < 0:
+            raise ValueError("suffix_pages must be non-negative")
+        if not prefix and int(suffix_pages) == 0:
+            raise ValueError("admission must reuse or allocate at least one page")
+        for block_id in prefix:
+            if block_id not in self._known_live_block_ids():
+                raise KeyError(f"unknown live block id {block_id}")
+            if self._refcounts.get(block_id, 0) <= 0:
+                raise ValueError("cannot share a free prefix block")
+        self._last_active_seconds = float(now_seconds)
+        if prefix:
+            self.incref(prefix)
+            self._prefix_reuse_events += 1
+            self._prefix_reused_pages += len(prefix)
+        suffix = KVPoolAllocation(block_ids=(), pointers=())
+        try:
+            if int(suffix_pages) > 0:
+                suffix = self.allocate(int(suffix_pages), now_seconds=now_seconds)
+        except Exception:
+            if prefix:
+                self.release(prefix, now_seconds=now_seconds)
+                self._prefix_reuse_events -= 1
+                self._prefix_reused_pages -= len(prefix)
+            raise
+        block_ids = (*prefix, *suffix.block_ids)
+        return KVPoolSharedAdmission(
+            block_ids=block_ids,
+            pointers=tuple(self.pointer_for(block_id) for block_id in block_ids),
+            reused_block_ids=prefix,
+            allocated_block_ids=suffix.block_ids,
+        )
 
     def release(self, block_ids: tuple[int, ...] | list[int], *, now_seconds: float = 0.0) -> None:
         """Drop one reference per block and return zero-refcount pages to free list."""
@@ -248,4 +316,4 @@ class ChunkedKVPool:
         return known
 
 
-__all__ = ["ChunkedKVPool", "KVPoolAllocation", "KVPoolChunk", "KVPoolStats"]
+__all__ = ["ChunkedKVPool", "KVPoolAllocation", "KVPoolChunk", "KVPoolSharedAdmission", "KVPoolStats"]

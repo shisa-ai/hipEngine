@@ -709,9 +709,11 @@ roll-up/status view.
 
 ### C5 packets — prefix sharing, per-row sampling, `n>1`, metrics
 
-- [ ] **C5.1 block refcounts.** Add block-id refcounts and reuse accounting.
+- [x] **C5.1 block refcounts.** Add block-id refcounts and reuse accounting.
       Acceptance: shared-prefix admission increments/decrements refcounts and
-      reclaim only frees zero-refcount blocks.
+      reclaim only frees zero-refcount blocks. Evidence:
+      `ChunkedKVPool.admit_with_shared_prefix(...)`, prefix reuse counters, and
+      `pytest -q tests/test_kvcache_policy.py -q`.
 - [ ] **C5.2 RadixCache.** Implement the token-id trie with
       `HIPENGINE_PREFIX_CACHE` / `--prefix-cache` in `{off, radix}`. Acceptance:
       prefix-hit/miss tests cover partial-block edges and cancellation.
@@ -917,7 +919,7 @@ Definition of done: refcounted prefix sharing on by default; per-row sampler
 in code; `n>1` lowered to N scheduler requests; Prometheus `/metrics`
 endpoint live; retained c>N rows include all gates above.
 
-- [ ] Add block-id refcounts; admission increments refcount when reusing
+- [x] Add block-id refcounts; admission increments refcount when reusing
       an existing block on a matched prefix.
 - [ ] Implement RadixCache trie index over token ids; expose
       `HIPENGINE_PREFIX_CACHE` / `--prefix-cache` in `{off, radix}` with

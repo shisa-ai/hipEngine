@@ -137,6 +137,51 @@ def test_chunked_kv_pool_grows_and_shrinks_on_burst_idle() -> None:
     assert again.pointers == (pool.pointer_for(0),)
 
 
+def test_chunked_kv_pool_shared_prefix_refcounts_reclaim_zero_only() -> None:
+    pool = ChunkedKVPool(
+        page_bytes=2048,
+        initial_pages=4,
+        low_water_pages=2,
+        high_water_pages=6,
+        chunk_pages=2,
+        idle_grace_seconds=0.0,
+    )
+    parent = pool.allocate(2, now_seconds=1.0)
+
+    child = pool.admit_with_shared_prefix(parent.block_ids, suffix_pages=1, now_seconds=2.0)
+
+    assert child.reused_block_ids == parent.block_ids
+    assert child.allocated_block_ids == (2,)
+    assert child.block_ids == (0, 1, 2)
+    assert child.pointers == tuple(pool.pointer_for(block_id) for block_id in child.block_ids)
+    assert pool.refcount(0) == 2
+    assert pool.refcount(1) == 2
+    assert pool.refcount(2) == 1
+    assert pool.stats.prefix_reuse_events == 1
+    assert pool.stats.prefix_reused_pages == 2
+
+    pool.release(parent.block_ids, now_seconds=3.0)
+
+    assert pool.refcount(0) == 1
+    assert pool.refcount(1) == 1
+    assert pool.refcount(2) == 1
+    assert pool.stats.free_pages == 1
+    probe = pool.allocate(1, now_seconds=4.0)
+    assert probe.block_ids == (3,)
+    pool.release(probe.block_ids, now_seconds=5.0)
+
+    pool.release(child.block_ids, now_seconds=6.0)
+
+    assert pool.refcount(0) == 0
+    assert pool.refcount(1) == 0
+    assert pool.refcount(2) == 0
+    assert pool.stats.free_pages == 4
+    assert pool.shrink_idle(now_seconds=6.0) == 0
+
+    with pytest.raises(ValueError, match="free prefix"):
+        pool.admit_with_shared_prefix((0,), suffix_pages=0, now_seconds=7.0)
+
+
 def test_chunked_kv_pool_preserves_refcounted_tail_and_capacity_failures() -> None:
     pool = ChunkedKVPool(
         page_bytes=4096,
