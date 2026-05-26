@@ -1,6 +1,6 @@
 # Environment variables
 
-Last updated: 2026-05-26
+Last updated: 2026-05-27
 
 This is the user-facing env-var reference for hipEngine. Most users should not
 need any hipEngine-specific env vars for normal `LLM.generate()` use; prefer
@@ -120,6 +120,23 @@ These affect both PARO and GGUF decode paths where applicable.
 | `HIPENGINE_PAGED_ATTN_GQA_GROUPED_MIN_SPLITS` | `64` | Minimum split count that selects grouped-GQA split decode. |
 | `HIPENGINE_PAGED_ATTN_GQA_GROUPED_MIN_CONTEXT` | `4096` | Minimum context length that selects grouped-GQA split decode. |
 | `HIPENGINE_PAGED_ATTN_WARP_SPLIT_CTX` | true | Enables warp-split GQA fallback where grouped-GQA is not selected. Compatibility alias: `NANOVLLM_AMD_PAGED_ATTN_WARP_SPLIT_CTX`. |
+
+## Continuous batching / engine-loop variables
+
+These C4 knobs are wired into the torch-free engine-loop option resolver and
+fake KV-pool scaffolding. Runtime server lowering to the loop lands separately;
+until then they are primarily for scheduler/pool tests and future adapters.
+CLI flags with the same names (lowercase, dash-separated) override env values
+when an adapter/parser calls `add_engine_loop_config_args(...)`.
+
+| Variable | Default | CLI flag | Values / notes |
+| --- | --- | --- | --- |
+| `HIPENGINE_PREFILL_DECODE_POLICY` | `protect_decode` | `--prefill-decode-policy` | One of `protect_decode`, `protect_ttft`, or `fair`. |
+| `HIPENGINE_KV_POOL_INITIAL_PAGES` | `128` | `--kv-pool-initial-pages` | Initial dynamic KV-pool pages; must be > 0. |
+| `HIPENGINE_KV_POOL_LOW_WATER_PAGES` | `128` | `--kv-pool-low-water-pages` | Idle-shrink low-water pages; must be > 0 and no greater than initial pages. |
+| `HIPENGINE_KV_POOL_HIGH_WATER_PAGES` | unset | `--kv-pool-high-water-pages` | Optional grow-on-admission page cap; unset means no scaffold cap. |
+| `HIPENGINE_KV_POOL_CHUNK_PAGES` | `128` | `--kv-pool-chunk-pages` | Pages per grow/shrink chunk; must be > 0. |
+| `HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS` | `30.0` | `--kv-pool-idle-grace-seconds` | Seconds before fully-free tail chunks are eligible to shrink; must be ≥ 0. |
 
 ## PARO variables
 

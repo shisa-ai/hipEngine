@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -11,6 +12,7 @@ from hipengine.core.tensor import Tensor
 from hipengine.dispatch import WorkKind
 from hipengine.generation import (
     CompactPromptSlab,
+    EngineLoopConfig,
     GeneratedToken,
     GraphBucketCache,
     ResidentBatchScheduler,
@@ -20,6 +22,9 @@ from hipengine.generation import (
     SpeculativeVerifyBufferPlan,
     SpeculativeVerifyPlan,
     SpeculativeVerifyWork,
+    add_engine_loop_config_args,
+    engine_loop_config_from_args,
+    engine_loop_config_from_env,
 )
 from hipengine.kvcache import FixedPagedKVPolicy
 from hipengine.speculative import AcceptResult, DraftBatch, TargetAcceptSummary, TargetStateCommitBuffers, TargetVerifyBuffers
@@ -100,6 +105,81 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     assert all("git_dirty" in entry for entry in persisted["commands"])
     assert any("qwen35_batch_retained_bench.py" in entry["command"] for entry in persisted["commands"])
     assert any("qwen35_paro_bench.py" in entry["command"] for entry in persisted["commands"])
+
+
+def test_engine_loop_cli_env_defaults_match_docs() -> None:
+    parser = argparse.ArgumentParser()
+    add_engine_loop_config_args(parser, environ={})
+    config = engine_loop_config_from_args(parser.parse_args([]))
+
+    assert config == EngineLoopConfig()
+    assert config.prefill_decode_policy == "protect_decode"
+    assert config.kv_pool_initial_pages == 128
+    assert config.kv_pool_low_water_pages == 128
+    assert config.kv_pool_high_water_pages is None
+    assert config.kv_pool_chunk_pages == 128
+    assert config.kv_pool_idle_grace_seconds == 30.0
+
+    docs = Path("docs/ENVS.md").read_text()
+    for text in [
+        "HIPENGINE_PREFILL_DECODE_POLICY",
+        "HIPENGINE_KV_POOL_INITIAL_PAGES",
+        "HIPENGINE_KV_POOL_LOW_WATER_PAGES",
+        "HIPENGINE_KV_POOL_HIGH_WATER_PAGES",
+        "HIPENGINE_KV_POOL_CHUNK_PAGES",
+        "HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS",
+        "protect_decode",
+        "128",
+        "30.0",
+    ]:
+        assert text in docs
+
+
+def test_engine_loop_cli_env_overrides() -> None:
+    env = {
+        "HIPENGINE_PREFILL_DECODE_POLICY": "fair",
+        "HIPENGINE_KV_POOL_INITIAL_PAGES": "16",
+        "HIPENGINE_KV_POOL_LOW_WATER_PAGES": "8",
+        "HIPENGINE_KV_POOL_HIGH_WATER_PAGES": "64",
+        "HIPENGINE_KV_POOL_CHUNK_PAGES": "4",
+        "HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS": "1.5",
+    }
+    env_config = engine_loop_config_from_env(env)
+    assert env_config == EngineLoopConfig(
+        prefill_decode_policy="fair",
+        kv_pool_initial_pages=16,
+        kv_pool_low_water_pages=8,
+        kv_pool_high_water_pages=64,
+        kv_pool_chunk_pages=4,
+        kv_pool_idle_grace_seconds=1.5,
+    )
+
+    parser = argparse.ArgumentParser()
+    add_engine_loop_config_args(parser, environ=env)
+    cli_config = engine_loop_config_from_args(
+        parser.parse_args(
+            [
+                "--prefill-decode-policy",
+                "protect_ttft",
+                "--kv-pool-initial-pages",
+                "32",
+                "--kv-pool-low-water-pages",
+                "16",
+                "--kv-pool-high-water-pages",
+                "96",
+                "--kv-pool-chunk-pages",
+                "8",
+                "--kv-pool-idle-grace-seconds",
+                "2.5",
+            ]
+        )
+    )
+    assert cli_config.prefill_decode_policy == "protect_ttft"
+    assert cli_config.kv_pool_initial_pages == 32
+    assert cli_config.kv_pool_low_water_pages == 16
+    assert cli_config.kv_pool_high_water_pages == 96
+    assert cli_config.kv_pool_chunk_pages == 8
+    assert cli_config.kv_pool_idle_grace_seconds == 2.5
 
 
 def test_resident_engine_loop_submit_poll_cancel_and_reclaim() -> None:

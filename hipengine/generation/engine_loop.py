@@ -8,6 +8,9 @@ before native c>N sessions become correctness-green.
 
 from __future__ import annotations
 
+import argparse
+import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Iterable, Protocol, Sequence
 
@@ -15,6 +18,38 @@ from hipengine.dispatch import WorkItem, WorkKind
 from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToken, ResidentBatchScheduler
 
 PREFILL_DECODE_POLICIES = ("protect_decode", "protect_ttft", "fair")
+DEFAULT_KV_POOL_INITIAL_PAGES = 128
+DEFAULT_KV_POOL_LOW_WATER_PAGES = 128
+DEFAULT_KV_POOL_CHUNK_PAGES = 128
+DEFAULT_KV_POOL_IDLE_GRACE_SECONDS = 30.0
+
+
+@dataclass(frozen=True, slots=True)
+class EngineLoopConfig:
+    """CLI/env-resolved knobs for the C4 scheduler-owned engine loop."""
+
+    prefill_decode_policy: str = "protect_decode"
+    kv_pool_initial_pages: int = DEFAULT_KV_POOL_INITIAL_PAGES
+    kv_pool_low_water_pages: int = DEFAULT_KV_POOL_LOW_WATER_PAGES
+    kv_pool_high_water_pages: int | None = None
+    kv_pool_chunk_pages: int = DEFAULT_KV_POOL_CHUNK_PAGES
+    kv_pool_idle_grace_seconds: float = DEFAULT_KV_POOL_IDLE_GRACE_SECONDS
+
+    def __post_init__(self) -> None:
+        if self.prefill_decode_policy not in PREFILL_DECODE_POLICIES:
+            raise ValueError(f"prefill_decode_policy must be one of {PREFILL_DECODE_POLICIES!r}")
+        if self.kv_pool_initial_pages <= 0:
+            raise ValueError("kv_pool_initial_pages must be positive")
+        if self.kv_pool_low_water_pages <= 0:
+            raise ValueError("kv_pool_low_water_pages must be positive")
+        if self.kv_pool_low_water_pages > self.kv_pool_initial_pages:
+            raise ValueError("kv_pool_low_water_pages cannot exceed kv_pool_initial_pages")
+        if self.kv_pool_high_water_pages is not None and self.kv_pool_high_water_pages < self.kv_pool_initial_pages:
+            raise ValueError("kv_pool_high_water_pages cannot be below kv_pool_initial_pages")
+        if self.kv_pool_chunk_pages <= 0:
+            raise ValueError("kv_pool_chunk_pages must be positive")
+        if self.kv_pool_idle_grace_seconds < 0:
+            raise ValueError("kv_pool_idle_grace_seconds must be non-negative")
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +74,118 @@ class EngineLoopRunner(Protocol):
         """Return one generated token per decoded request row."""
 
 
+def add_engine_loop_config_args(
+    parser: argparse.ArgumentParser,
+    *,
+    environ: Mapping[str, str] | None = None,
+) -> None:
+    """Add C4 engine-loop CLI knobs with env-backed defaults."""
+
+    env = os.environ if environ is None else environ
+    parser.add_argument(
+        "--prefill-decode-policy",
+        choices=PREFILL_DECODE_POLICIES,
+        default=_env_prefill_decode_policy(env),
+        help="Prefill/decode scheduler policy (env HIPENGINE_PREFILL_DECODE_POLICY; default: protect_decode)",
+    )
+    parser.add_argument(
+        "--kv-pool-initial-pages",
+        type=_positive_int_arg,
+        default=_env_positive_int(env, "HIPENGINE_KV_POOL_INITIAL_PAGES", DEFAULT_KV_POOL_INITIAL_PAGES),
+        help="Initial dynamic KV pool pages (env HIPENGINE_KV_POOL_INITIAL_PAGES; default: 128)",
+    )
+    parser.add_argument(
+        "--kv-pool-low-water-pages",
+        type=_positive_int_arg,
+        default=_env_positive_int(env, "HIPENGINE_KV_POOL_LOW_WATER_PAGES", DEFAULT_KV_POOL_LOW_WATER_PAGES),
+        help="KV pool idle-shrink low-water pages (env HIPENGINE_KV_POOL_LOW_WATER_PAGES; default: 128)",
+    )
+    parser.add_argument(
+        "--kv-pool-high-water-pages",
+        type=_positive_int_arg,
+        default=_env_optional_positive_int(env, "HIPENGINE_KV_POOL_HIGH_WATER_PAGES"),
+        help="Optional KV pool high-water page cap (env HIPENGINE_KV_POOL_HIGH_WATER_PAGES; default: unset)",
+    )
+    parser.add_argument(
+        "--kv-pool-chunk-pages",
+        type=_positive_int_arg,
+        default=_env_positive_int(env, "HIPENGINE_KV_POOL_CHUNK_PAGES", DEFAULT_KV_POOL_CHUNK_PAGES),
+        help="KV pool grow/shrink chunk size in pages (env HIPENGINE_KV_POOL_CHUNK_PAGES; default: 128)",
+    )
+    parser.add_argument(
+        "--kv-pool-idle-grace-seconds",
+        type=_nonnegative_float_arg,
+        default=_env_nonnegative_float(
+            env,
+            "HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS",
+            DEFAULT_KV_POOL_IDLE_GRACE_SECONDS,
+        ),
+        help="Seconds before idle tail chunks can shrink (env HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS; default: 30.0)",
+    )
+
+
+def engine_loop_config_from_args(args: object) -> EngineLoopConfig:
+    """Build an ``EngineLoopConfig`` from an argparse namespace-like object."""
+
+    return EngineLoopConfig(
+        prefill_decode_policy=str(getattr(args, "prefill_decode_policy")),
+        kv_pool_initial_pages=int(getattr(args, "kv_pool_initial_pages")),
+        kv_pool_low_water_pages=int(getattr(args, "kv_pool_low_water_pages")),
+        kv_pool_high_water_pages=(
+            None
+            if getattr(args, "kv_pool_high_water_pages") is None
+            else int(getattr(args, "kv_pool_high_water_pages"))
+        ),
+        kv_pool_chunk_pages=int(getattr(args, "kv_pool_chunk_pages")),
+        kv_pool_idle_grace_seconds=float(getattr(args, "kv_pool_idle_grace_seconds")),
+    )
+
+
+def engine_loop_config_from_env(environ: Mapping[str, str] | None = None) -> EngineLoopConfig:
+    """Resolve C4 engine-loop knobs directly from environment values."""
+
+    parser = argparse.ArgumentParser(add_help=False)
+    add_engine_loop_config_args(parser, environ=environ)
+    return engine_loop_config_from_args(parser.parse_args([]))
+
+
+def _env_prefill_decode_policy(environ: Mapping[str, str]) -> str:
+    raw = environ.get("HIPENGINE_PREFILL_DECODE_POLICY")
+    value = "protect_decode" if raw is None or raw == "" else raw.strip()
+    if value not in PREFILL_DECODE_POLICIES:
+        raise ValueError(f"HIPENGINE_PREFILL_DECODE_POLICY must be one of {PREFILL_DECODE_POLICIES!r}")
+    return value
+
+
+def _env_positive_int(environ: Mapping[str, str], name: str, default: int) -> int:
+    raw = environ.get(name)
+    return int(default) if raw is None or raw == "" else _positive_int_arg(raw)
+
+
+def _env_optional_positive_int(environ: Mapping[str, str], name: str) -> int | None:
+    raw = environ.get(name)
+    return None if raw is None or raw == "" else _positive_int_arg(raw)
+
+
+def _env_nonnegative_float(environ: Mapping[str, str], name: str, default: float) -> float:
+    raw = environ.get(name)
+    return float(default) if raw is None or raw == "" else _nonnegative_float_arg(raw)
+
+
+def _positive_int_arg(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("value must be > 0")
+    return parsed
+
+
+def _nonnegative_float_arg(value: str) -> float:
+    parsed = float(value)
+    if parsed < 0.0:
+        raise argparse.ArgumentTypeError("value must be >= 0")
+    return parsed
+
+
 class ResidentEngineLoop:
     """Persistent ``submit``/``poll``/``cancel`` driver for resident batches.
 
@@ -56,14 +203,17 @@ class ResidentEngineLoop:
         prefill_chunk_size: int = 256,
         context_bucket_size: int = 256,
         prefill_decode_policy: str = "protect_decode",
+        config: EngineLoopConfig | None = None,
     ) -> None:
         if prefill_chunk_size <= 0:
             raise ValueError("prefill_chunk_size must be positive")
-        if prefill_decode_policy not in PREFILL_DECODE_POLICIES:
-            raise ValueError(f"prefill_decode_policy must be one of {PREFILL_DECODE_POLICIES!r}")
+        if config is not None and prefill_decode_policy != "protect_decode":
+            raise ValueError("pass either config or prefill_decode_policy override, not both")
+        resolved_config = config or EngineLoopConfig(prefill_decode_policy=prefill_decode_policy)
         self.runner = runner
         self.prefill_chunk_size = int(prefill_chunk_size)
-        self.prefill_decode_policy = prefill_decode_policy
+        self.config = resolved_config
+        self.prefill_decode_policy = resolved_config.prefill_decode_policy
         self._last_work_kind: WorkKind | None = None
         self.scheduler = ResidentBatchScheduler(capacity=capacity, context_bucket_size=context_bucket_size)
 
@@ -180,4 +330,17 @@ class ResidentEngineLoop:
         return tuple(events)
 
 
-__all__ = ["EngineLoopEvent", "EngineLoopRunner", "PREFILL_DECODE_POLICIES", "ResidentEngineLoop"]
+__all__ = [
+    "DEFAULT_KV_POOL_CHUNK_PAGES",
+    "DEFAULT_KV_POOL_IDLE_GRACE_SECONDS",
+    "DEFAULT_KV_POOL_INITIAL_PAGES",
+    "DEFAULT_KV_POOL_LOW_WATER_PAGES",
+    "EngineLoopConfig",
+    "EngineLoopEvent",
+    "EngineLoopRunner",
+    "PREFILL_DECODE_POLICIES",
+    "ResidentEngineLoop",
+    "add_engine_loop_config_args",
+    "engine_loop_config_from_args",
+    "engine_loop_config_from_env",
+]

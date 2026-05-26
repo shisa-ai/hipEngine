@@ -15,7 +15,16 @@ from hipengine.generation.batch_scheduler import (
     SpeculativeVerifyPlan,
     SpeculativeVerifyWork,
 )
-from hipengine.generation.engine_loop import PREFILL_DECODE_POLICIES, EngineLoopEvent, EngineLoopRunner, ResidentEngineLoop
+from hipengine.generation.engine_loop import (
+    PREFILL_DECODE_POLICIES,
+    EngineLoopConfig,
+    EngineLoopEvent,
+    EngineLoopRunner,
+    ResidentEngineLoop,
+    add_engine_loop_config_args,
+    engine_loop_config_from_args,
+    engine_loop_config_from_env,
+)
 from hipengine.generation.registry import (
     DuplicateGeneratorError,
     GenerationKey,
@@ -53,6 +62,7 @@ __all__ = [
     "CompactPromptSlab",
     "CompletedRequest",
     "DuplicateGeneratorError",
+    "EngineLoopConfig",
     "EngineLoopEvent",
     "EngineLoopRunner",
     "GeneratedToken",
@@ -70,7 +80,10 @@ __all__ = [
     "SpeculativeVerifyPlan",
     "SpeculativeVerifyWork",
     "TextGenerator",
+    "add_engine_loop_config_args",
     "clear_generation_registry_for_tests",
+    "engine_loop_config_from_args",
+    "engine_loop_config_from_env",
     "register_builtin_generators",
     "register_text_generator",
     "registered_text_generators",

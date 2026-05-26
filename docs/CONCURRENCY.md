@@ -683,9 +683,11 @@ roll-up/status view.
       Acceptance: burst+idle fixture records at least one grow and shrink or
       explicitly records that the initial chunk sufficed. Evidence:
       `hipengine/kvcache/pool.py` plus `pytest -q tests/test_kvcache_policy.py -q`.
-- [ ] **C4.5 pool/env docs.** Add CLI/env knobs for `HIPENGINE_KV_POOL_*` and
+- [x] **C4.5 pool/env docs.** Add CLI/env knobs for `HIPENGINE_KV_POOL_*` and
       `HIPENGINE_PREFILL_DECODE_POLICY` and document them in `docs/ENVS.md`.
-      Acceptance: CLI/env tests and docs agree on defaults.
+      Acceptance: CLI/env tests and docs agree on defaults. Evidence:
+      `add_engine_loop_config_args(...)`, `docs/ENVS.md`, and
+      `pytest -q tests/test_generation_batch_scheduler.py -q`.
 - [ ] **C4.6 streaming through loop.** Route streaming completions through
       per-request token queues instead of bypassing the batcher. Acceptance:
       streaming and non-streaming share reclaim/cancel tests.
@@ -879,7 +881,7 @@ becomes a `submit+poll` adapter.
 - [ ] Add idle shrink down to `kv_pool_low_water_bytes` with
       `kv_pool_idle_grace_seconds`; never free a chunk holding a non-zero
       refcount.
-- [ ] Add CLI/env knobs `--kv-pool-{initial,low-water,high-water,
+- [x] Add CLI/env knobs `--kv-pool-{initial,low-water,high-water,
       chunk-pages,idle-grace}-*`,
       `HIPENGINE_KV_POOL_*`,
       `HIPENGINE_PREFILL_DECODE_POLICY` / `--prefill-decode-policy`;
