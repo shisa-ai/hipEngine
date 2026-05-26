@@ -14,10 +14,12 @@ from hipengine.generation import (
     CompactPromptSlab,
     EngineLoopConfig,
     GeneratedToken,
+    GenerationRequest,
     GraphBucketCache,
     PerRowSamplingParams,
     ResidentBatchScheduler,
     ResidentEngineLoop,
+    SubmitPollTextGenerator,
     SpeculativeCommitPlan,
     SpeculativeStateCommitPlan,
     SpeculativeVerifyBufferPlan,
@@ -55,6 +57,16 @@ class _FakeSerialBridgeRunner:
             self._counts[request_id] = count + 1
             tokens.append(GeneratedToken(request_id, 1000 + request_id * 10 + count))
         return tuple(tokens)
+
+
+class _FakeTextGenerator:
+    def __init__(self) -> None:
+        self.requests: list[GenerationRequest] = []
+
+    def generate(self, request: GenerationRequest) -> list[str]:
+        self.requests.append(request)
+        seeds = request.row_seeds or tuple(-1 for _ in request.prompts)
+        return [f"generated:{prompt}:{seed}" for prompt, seed in zip(request.prompts, seeds, strict=True)]
 
 
 def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) -> None:
@@ -106,6 +118,26 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     assert all("git_dirty" in entry for entry in persisted["commands"])
     assert any("qwen35_batch_retained_bench.py" in entry["command"] for entry in persisted["commands"])
     assert any("qwen35_paro_bench.py" in entry["command"] for entry in persisted["commands"])
+
+
+def test_submit_poll_text_generator_preserves_prompt_order_and_row_seeds() -> None:
+    inner = _FakeTextGenerator()
+    adapter = SubmitPollTextGenerator(inner)
+    request = GenerationRequest(
+        prompts=("one", "two", "three"),
+        max_tokens=5,
+        temperature=0.0,
+        top_p=1.0,
+        ignore_eos=False,
+        seed=7,
+        row_seeds=(70, 71, 72),
+    )
+
+    outputs = adapter.generate(request)
+
+    assert outputs == ["generated:one:70", "generated:two:71", "generated:three:72"]
+    assert [seen.prompts for seen in inner.requests] == [("one", "two", "three")]
+    assert inner.requests[0] == request
 
 
 def test_engine_loop_cli_env_defaults_match_docs() -> None:

@@ -27794,3 +27794,34 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY C4.2 submit+poll text adapter
+
+Closed bite-sized packet C4.2 from `docs/CONCURRENCY.md`:
+
+- Added `SubmitPollTextGenerator`, a host-side bridge that wraps resolved model text generators in the resident `submit`/`poll` lifecycle.
+- `LLM._get_text_generator()` now wraps the concrete generator factory output with that adapter, so public `LLM.generate()` submits per-prompt rows, polls scheduler work, and collects outputs by stable request id.
+- The adapter preserves prompt-list batching, per-row seed slicing, generator delegation, and existing stream/prepare/count-token delegation via the wrapped generator.
+- Added a scheduler test proving prompt order and row seeds survive the submit+poll adapter.
+- Marked C4.2 complete in `docs/CONCURRENCY.md`; server non-streaming endpoints keep routing through `LLM.generate()` / `_GenerationBatcher.submit(...)`, with prompt-list batching covered by server tests.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py tests/test_llm_generate.py tests/test_server_api.py -q
+# 48 passed
+```
+
+Loop guard after C4.2:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 17
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```

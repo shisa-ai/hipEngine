@@ -671,10 +671,15 @@ roll-up/status view.
       admitted, decoded, finished, and reclaimed without a one-call lifetime.
       Evidence: `hipengine/generation/engine_loop.py` plus
       `pytest -q tests/test_generation_batch_scheduler.py -q`.
-- [ ] **C4.2 adapter migration.** Lower `LLM.generate()` and non-streaming
+- [x] **C4.2 adapter migration.** Lower `LLM.generate()` and non-streaming
       server endpoints onto `submit+poll` while preserving current outputs.
       Acceptance: existing generator/server tests pass and prompt-list
-      batching still routes by request id.
+      batching still routes by request id. Evidence:
+      `SubmitPollTextGenerator` wraps resolved model generators in
+      `LLM._get_text_generator()`, prompt order/row-seed coverage in
+      `pytest -q tests/test_generation_batch_scheduler.py tests/test_llm_generate.py -q`,
+      and server prompt-list batching remains covered by
+      `pytest -q tests/test_server_api.py -q`.
 - [x] **C4.3 tick policy.** Implement `RECLAIM → ADMIT → choose(PREFILL_CHUNK,
       DECODE_STEP)` with `protect_decode` default. Acceptance: scheduler tests
       cover decode protection and TTFT/fair alternatives. Evidence:

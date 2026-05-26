@@ -11,12 +11,13 @@ from __future__ import annotations
 import argparse
 import os
 import time
-from collections.abc import Mapping
-from dataclasses import dataclass
+from collections.abc import Iterator, Mapping
+from dataclasses import dataclass, replace
 from typing import Iterable, Protocol, Sequence
 
 from hipengine.dispatch import WorkItem, WorkKind
 from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToken, ResidentBatchScheduler
+from hipengine.generation.registry import GenerationRequest, TextGenerator
 
 PREFILL_DECODE_POLICIES = ("protect_decode", "protect_ttft", "fair")
 DEFAULT_KV_POOL_INITIAL_PAGES = 128
@@ -73,6 +74,121 @@ class EngineLoopRunner(Protocol):
 
     def decode(self, work: WorkItem) -> Sequence[GeneratedToken]:
         """Return one generated token per decoded request row."""
+
+
+class SubmitPollTextGenerator:
+    """Run a ``TextGenerator`` through the resident ``submit``/``poll`` loop.
+
+    The wrapped generator still owns tokenization and model execution.  This
+    adapter gives public ``LLM.generate()`` the same request-id preserving
+    lifecycle as the C4 resident scheduler: rows are submitted, prefilled by
+    scheduler work items, decoded as one text batch, and collected by completion
+    request id.  It is a host-side serial bridge until native token streaming
+    runners replace the inner ``generate`` call.
+    """
+
+    def __init__(
+        self,
+        inner: TextGenerator,
+        *,
+        prefill_chunk_size: int = 1024,
+        context_bucket_size: int = 256,
+    ) -> None:
+        if prefill_chunk_size <= 0:
+            raise ValueError("prefill_chunk_size must be positive")
+        self._inner = inner
+        self._prefill_chunk_size = int(prefill_chunk_size)
+        self._context_bucket_size = int(context_bucket_size)
+
+    @property
+    def inner(self) -> TextGenerator:
+        return self._inner
+
+    def __getattr__(self, name: str):
+        return getattr(self._inner, name)
+
+    def generate(self, request: GenerationRequest) -> list[str]:
+        prompts = tuple(str(prompt) for prompt in request.prompts)
+        if not prompts:
+            return []
+        runner = _SubmitPollTextRunner(self._inner, replace(request, prompts=prompts))
+        loop = ResidentEngineLoop(
+            runner,
+            capacity=len(prompts),
+            prefill_chunk_size=self._prefill_chunk_size,
+            context_bucket_size=self._context_bucket_size,
+            prefill_decode_policy="protect_ttft",
+        )
+        request_ids = tuple(
+            loop.submit(_surrogate_prompt_tokens(prompt), max_new_tokens=1, request_id=index)
+            for index, prompt in enumerate(prompts)
+        )
+        max_ticks = _submit_poll_max_ticks(prompts, self._prefill_chunk_size)
+        ticks = 0
+        while any(request_id not in runner.outputs for request_id in request_ids):
+            events = loop.poll(max_ticks=1)
+            ticks += 1
+            if not events:
+                missing = [request_id for request_id in request_ids if request_id not in runner.outputs]
+                raise RuntimeError(f"submit+poll text generation stalled; missing request_ids={missing}")
+            if ticks > max_ticks:
+                missing = [request_id for request_id in request_ids if request_id not in runner.outputs]
+                raise RuntimeError(f"submit+poll text generation exceeded {max_ticks} ticks; missing request_ids={missing}")
+        return [runner.outputs[request_id] for request_id in request_ids]
+
+    def stream(self, request: GenerationRequest) -> Iterator[str]:
+        streamer = getattr(self._inner, "stream", None)
+        if callable(streamer):
+            yield from streamer(request)
+            return
+        for text in self.generate(request):
+            yield text
+
+
+class _SubmitPollTextRunner:
+    def __init__(self, inner: TextGenerator, request: GenerationRequest) -> None:
+        self._inner = inner
+        self._request = request
+        self.outputs: dict[int, str] = {}
+
+    def prefill(self, work: WorkItem) -> None:
+        return None
+
+    def decode(self, work: WorkItem) -> tuple[GeneratedToken, ...]:
+        request_ids = tuple(int(request_id) for request_id in work.request_ids)
+        subrequest = self._subset_request(request_ids)
+        outputs = list(self._inner.generate(subrequest))
+        if len(outputs) != len(request_ids):
+            raise RuntimeError(
+                f"generator returned {len(outputs)} outputs for {len(request_ids)} submit+poll rows"
+            )
+        tokens: list[GeneratedToken] = []
+        for row, (request_id, output) in enumerate(zip(request_ids, outputs, strict=True)):
+            self.outputs[request_id] = str(output)
+            tokens.append(GeneratedToken(request_id, row, finished=True))
+        return tuple(tokens)
+
+    def _subset_request(self, request_ids: tuple[int, ...]) -> GenerationRequest:
+        prompts = tuple(self._request.prompts[request_id] for request_id in request_ids)
+        row_seeds: tuple[int, ...] = ()
+        if self._request.row_seeds:
+            if len(self._request.row_seeds) != len(self._request.prompts):
+                raise ValueError("row_seeds must have one entry per prompt")
+            row_seeds = tuple(self._request.row_seeds[request_id] for request_id in request_ids)
+        return replace(self._request, prompts=prompts, row_seeds=row_seeds)
+
+
+def _surrogate_prompt_tokens(prompt: str) -> tuple[int, ...]:
+    # The inner text generator performs real tokenization.  The scheduler only
+    # needs a non-empty non-negative row to exercise admission/prefill lifecycle.
+    return (len(prompt.encode("utf-8")),)
+
+
+def _submit_poll_max_ticks(prompts: Sequence[str], prefill_chunk_size: int) -> int:
+    # One admission+prefill tick per prompt plus one decode tick is expected for
+    # the current surrogate rows.  Keep a loose bound so future larger surrogate
+    # rows fail loudly instead of hanging tests or server requests.
+    return max(8, len(prompts) * (int(prefill_chunk_size) + 2) + 4)
 
 
 def add_engine_loop_config_args(
@@ -345,6 +461,7 @@ __all__ = [
     "EngineLoopRunner",
     "PREFILL_DECODE_POLICIES",
     "ResidentEngineLoop",
+    "SubmitPollTextGenerator",
     "add_engine_loop_config_args",
     "engine_loop_config_from_args",
     "engine_loop_config_from_env",
