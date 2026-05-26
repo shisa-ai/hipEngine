@@ -11,10 +11,12 @@ import pytest
 from hipengine.core.device import Device
 from hipengine.core.tensor import Tensor
 from hipengine.dispatch import (
+    BatchSamplerMode,
     ProjectionDispatchCandidate,
     ProjectionDispatchEvidence,
     ProjectionKernelSelection,
     WorkKind,
+    plan_batch_sampler_dispatch,
     plan_projection_dispatch,
 )
 from hipengine.generation import (
@@ -261,6 +263,32 @@ def test_projection_dispatch_selects_best_evidence_green_cN_candidate() -> None:
     assert decision.throughput_claim_eligible is True
     assert decision.evidence == wmma.evidence
     assert decision.to_json_dict()["evidence"]["aggregate_vs_row_gemv"] == 1.35
+
+
+def test_batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head() -> None:
+    serial = plan_batch_sampler_dispatch(rows=2, requested_mode="serial_lm_head")
+    assert serial.mode is BatchSamplerMode.SERIAL_LM_HEAD
+    assert serial.native_row_aware_lm_head is False
+
+    blocked = plan_batch_sampler_dispatch(rows=2, requested_mode="batched_lm_head")
+    assert blocked.requested_mode is BatchSamplerMode.BATCHED_LM_HEAD
+    assert blocked.mode is BatchSamplerMode.SERIAL_LM_HEAD
+    assert blocked.native_row_aware_lm_head is False
+    assert "batched LM-head requires green c>N generated-token equality evidence" in blocked.blockers
+    assert "batched LM-head requires an equality artifact path" in blocked.blockers
+
+    allowed = plan_batch_sampler_dispatch(
+        rows=8,
+        requested_mode="batched_lm_head",
+        c2_equality_green=True,
+        equality_artifact="benchmarks/results/qwen35-c8-eq.json",
+    )
+    assert allowed.mode is BatchSamplerMode.BATCHED_LM_HEAD
+    assert allowed.native_row_aware_lm_head is True
+    assert allowed.to_json_dict()["equality_artifact"] == "benchmarks/results/qwen35-c8-eq.json"
+
+    with pytest.raises(ValueError, match="unknown batch sampler mode"):
+        plan_batch_sampler_dispatch(rows=2, requested_mode="surprise")
 
 
 def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:

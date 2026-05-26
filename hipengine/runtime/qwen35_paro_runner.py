@@ -52,7 +52,7 @@ from hipengine.kernels.hip_gfx1100.runtime import (
     set_i64_scalar,
     set_i64_vector,
 )
-from hipengine.dispatch import ActiveBatch, RequestState
+from hipengine.dispatch import ActiveBatch, BatchSamplerMode, RequestState, plan_batch_sampler_dispatch
 from hipengine.kvcache import FixedPagedKVPolicy, KVLiveSpans, KVScaleMetadata
 from hipengine.kvcache.policy import KV_SCALE_GRANULARITY_CHOICES
 from hipengine.loading import (
@@ -4086,7 +4086,20 @@ class Qwen35ParoResidentSession:
         if rows > self.max_batch_size:
             raise ValueError("rows exceed max_batch_size")
         sample_mode = os.environ.get("HIPENGINE_QWEN35_BATCH_SAMPLE_MODE", "serial_lm_head")
-        if sample_mode == "serial_lm_head":
+        try:
+            sampler_decision = plan_batch_sampler_dispatch(
+                rows=rows,
+                requested_mode=sample_mode,
+                c2_equality_green=_env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_C2_EQ_OK"),
+                equality_artifact=os.environ.get("HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT") or None,
+            )
+        except ValueError as exc:
+            raise ValueError("HIPENGINE_QWEN35_BATCH_SAMPLE_MODE must be serial_lm_head or batched_lm_head") from exc
+        self.last_batch_sampler_execution = sampler_decision.to_json_dict()
+        decode_execution = getattr(self, "last_batch_decode_execution", None)
+        if isinstance(decode_execution, dict):
+            decode_execution["sampler_execution"] = sampler_decision.to_json_dict()
+        if sampler_decision.mode is BatchSamplerMode.SERIAL_LM_HEAD:
             results: list[Qwen35ParoAutoregressiveStepResult] = []
             for row in range(rows):
                 row_hidden = Tensor.from_handle(
@@ -4097,8 +4110,6 @@ class Qwen35ParoResidentSession:
                 )
                 results.append(self._sample_from_hidden(row_hidden))
             return tuple(results)
-        if sample_mode != "batched_lm_head":
-            raise ValueError("HIPENGINE_QWEN35_BATCH_SAMPLE_MODE must be serial_lm_head or batched_lm_head")
         paro_rmsnorm_out_fp16(
             hidden.ptr,
             self.norm_weight.tensor.ptr,

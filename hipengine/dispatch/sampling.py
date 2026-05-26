@@ -1,0 +1,125 @@
+"""Batch sampler / LM-head dispatch safety policy.
+
+The Qwen/PARO native c>N path currently keeps the row sampler conservative:
+per-row serial LM-head sampling is correctness-safe, while a row-aware batched
+LM-head/argmax launch must not become a retained path until c>N generated-token
+equality is green.  This module centralizes that decision so runtime code can
+record explicit blockers instead of relying on ad-hoc env checks.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any
+
+
+class BatchSamplerMode(str, Enum):
+    """Supported c>N sampler execution modes."""
+
+    SERIAL_LM_HEAD = "serial_lm_head"
+    BATCHED_LM_HEAD = "batched_lm_head"
+
+
+@dataclass(frozen=True, slots=True)
+class BatchSamplerDispatchDecision:
+    """Resolved sampler dispatch mode for one batch decode step."""
+
+    rows: int
+    requested_mode: BatchSamplerMode
+    mode: BatchSamplerMode
+    native_row_aware_lm_head: bool
+    c2_equality_green: bool
+    equality_artifact: str | None
+    blockers: tuple[str, ...]
+
+    def to_json_dict(self) -> dict[str, Any]:
+        return {
+            "rows": self.rows,
+            "requested_mode": self.requested_mode.value,
+            "mode": self.mode.value,
+            "native_row_aware_lm_head": self.native_row_aware_lm_head,
+            "c2_equality_green": self.c2_equality_green,
+            "equality_artifact": self.equality_artifact,
+            "blockers": list(self.blockers),
+        }
+
+
+def _sampler_mode(value: BatchSamplerMode | str) -> BatchSamplerMode:
+    try:
+        return value if isinstance(value, BatchSamplerMode) else BatchSamplerMode(str(value))
+    except ValueError as exc:
+        valid = ", ".join(mode.value for mode in BatchSamplerMode)
+        raise ValueError(f"unknown batch sampler mode {value!r}; expected one of: {valid}") from exc
+
+
+def plan_batch_sampler_dispatch(
+    *,
+    rows: int,
+    requested_mode: BatchSamplerMode | str = BatchSamplerMode.SERIAL_LM_HEAD,
+    c2_equality_green: bool = False,
+    equality_artifact: str | None = None,
+) -> BatchSamplerDispatchDecision:
+    """Plan row sampling for a native batch decode result.
+
+    ``serial_lm_head`` always selects the current per-row c=1 LM-head loop.  A
+    requested ``batched_lm_head`` is honored for c>N only when generated-token
+    equality evidence is explicitly marked green and an artifact path is
+    supplied.  Otherwise the decision falls back to ``serial_lm_head`` with
+    blockers, preserving correctness and preventing premature throughput claims.
+    """
+
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    requested = _sampler_mode(requested_mode)
+    if requested is BatchSamplerMode.SERIAL_LM_HEAD:
+        return BatchSamplerDispatchDecision(
+            rows=rows,
+            requested_mode=requested,
+            mode=BatchSamplerMode.SERIAL_LM_HEAD,
+            native_row_aware_lm_head=False,
+            c2_equality_green=bool(c2_equality_green),
+            equality_artifact=equality_artifact,
+            blockers=(),
+        )
+    if rows == 1:
+        return BatchSamplerDispatchDecision(
+            rows=rows,
+            requested_mode=requested,
+            mode=BatchSamplerMode.BATCHED_LM_HEAD,
+            native_row_aware_lm_head=True,
+            c2_equality_green=bool(c2_equality_green),
+            equality_artifact=equality_artifact,
+            blockers=(),
+        )
+    blockers: list[str] = []
+    if not c2_equality_green:
+        blockers.append("batched LM-head requires green c>N generated-token equality evidence")
+    if not equality_artifact:
+        blockers.append("batched LM-head requires an equality artifact path")
+    if blockers:
+        return BatchSamplerDispatchDecision(
+            rows=rows,
+            requested_mode=requested,
+            mode=BatchSamplerMode.SERIAL_LM_HEAD,
+            native_row_aware_lm_head=False,
+            c2_equality_green=bool(c2_equality_green),
+            equality_artifact=equality_artifact,
+            blockers=tuple(blockers),
+        )
+    return BatchSamplerDispatchDecision(
+        rows=rows,
+        requested_mode=requested,
+        mode=BatchSamplerMode.BATCHED_LM_HEAD,
+        native_row_aware_lm_head=True,
+        c2_equality_green=True,
+        equality_artifact=equality_artifact,
+        blockers=(),
+    )
+
+
+__all__ = [
+    "BatchSamplerDispatchDecision",
+    "BatchSamplerMode",
+    "plan_batch_sampler_dispatch",
+]

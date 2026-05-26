@@ -1191,6 +1191,33 @@ def test_qwen35_resident_sample_batch_defaults_to_serial_lm_head(monkeypatch) ->
     assert sampled_ptrs == [0x5000, 0x5000 + session.hidden_nbytes]
 
 
+def test_qwen35_resident_sample_batch_batched_lm_head_falls_back_without_c2_evidence(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_SAMPLE_MODE", "batched_lm_head")
+    monkeypatch.delenv("HIPENGINE_QWEN35_BATCH_SAMPLE_C2_EQ_OK", raising=False)
+    monkeypatch.delenv("HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT", raising=False)
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.max_batch_size = 2
+    session.hidden_nbytes = 8 * DType.FP16.itemsize
+    session.config = SimpleNamespace(hidden_size=8)
+    hidden = Tensor.from_handle(0x5100, (2, 8), DType.FP16, Device("hip", 0))
+    sampled_ptrs: list[int] = []
+
+    def fake_sample(row_hidden):
+        sampled_ptrs.append(row_hidden.ptr)
+        return SimpleNamespace(token_id=row_hidden.ptr)
+
+    session._sample_from_hidden = fake_sample
+
+    results = session._sample_batch_from_hidden(hidden, rows=2)
+
+    assert [result.token_id for result in results] == [0x5100, 0x5100 + session.hidden_nbytes]
+    assert sampled_ptrs == [0x5100, 0x5100 + session.hidden_nbytes]
+    assert session.last_batch_sampler_execution["requested_mode"] == "batched_lm_head"
+    assert session.last_batch_sampler_execution["mode"] == "serial_lm_head"
+    assert session.last_batch_sampler_execution["native_row_aware_lm_head"] is False
+    assert "batched LM-head requires green c>N generated-token equality evidence" in session.last_batch_sampler_execution["blockers"]
+
+
 def test_qwen35_resident_sample_batch_rejects_unknown_mode(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_SAMPLE_MODE", "surprise")
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)

@@ -28295,3 +28295,29 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY C3.6 batched LM-head safety gate
+
+Materially advanced C3.6 without closing it:
+
+- Added `hipengine.dispatch.sampling`, a small c>N sampler dispatch policy for `serial_lm_head` vs `batched_lm_head`.
+- `batched_lm_head` is honored for c>N only when generated-token equality evidence is explicitly marked green and an equality artifact path is supplied; otherwise it falls back to `serial_lm_head` with blockers.
+- Wired `_sample_batch_from_hidden(...)` through the policy, recording `last_batch_sampler_execution` and embedding the sampler decision into `last_batch_decode_execution` metadata when present.
+- Documented `HIPENGINE_QWEN35_BATCH_SAMPLE_C2_EQ_OK` and `HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT` in `docs/ENVS.md`.
+- Updated C3.6 docs. C3.6 remains open until c=2/4/8 equality is green with a row-aware batched LM-head/argmax path.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_sample_batch_defaults_to_serial_lm_head tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_sample_batch_batched_lm_head_falls_back_without_c2_evidence tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_sample_batch_rejects_unknown_mode -q
+# 4 passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```

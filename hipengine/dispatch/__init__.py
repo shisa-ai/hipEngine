@@ -20,9 +20,12 @@ from hipengine.dispatch.projection import (
     ProjectionKernelSelection,
     plan_projection_dispatch,
 )
+from hipengine.dispatch.sampling import BatchSamplerDispatchDecision, BatchSamplerMode, plan_batch_sampler_dispatch
 
 __all__ = [
     "ActiveBatch",
+    "BatchSamplerDispatchDecision",
+    "BatchSamplerMode",
     "BatchShapeKey",
     "BatchSlot",
     "BoundKernel",
@@ -44,6 +47,7 @@ __all__ = [
     "plan_paged_attn_decode",
     "plan_paged_kv_write",
     "plan_projection_dispatch",
+    "plan_batch_sampler_dispatch",
     "resolve_paged_attn_decode",
     "resolve_paged_kv_write",
     "resolve_plan",
