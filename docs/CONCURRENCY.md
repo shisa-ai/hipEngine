@@ -852,7 +852,11 @@ roll-up/status view.
       fallback, per-row metadata allocation, per-row LM-head launches, and
       Python per-layer dispatch from steady-state native decode. Acceptance:
       profiler summaries show the removed bottleneck and equality remains
-      green.
+      green. Progress: accepted/performance-claim c>N artifact schema now rejects
+      serial-bridge paths, row executions labeled `serial`/`fallback`, per-row
+      full-attention decode fallbacks, and non-native sampler metadata, so
+      residual serial loops cannot be promoted as retained rows while this item
+      remains open.
 - [ ] **P4 MoE/projection scaling.** Group routed lanes by expert and switch
       c=2/4/8 projections/MoE to kernels that beat row-GEMV. Acceptance:
       c=8 aggregate decode improves vs both c=1 and the serial bridge, with
@@ -862,11 +866,11 @@ roll-up/status view.
       JSON artifacts under `benchmarks/results/`. Acceptance: every perf claim
       cites correctness gate, profiler status, exact command, and hardware.
       Progress: accepted/performance-claim c>N artifacts now fail schema
-      validation unless they include non-empty benchmark and profiler commands,
-      non-empty hardware, commit/dirty-state software fields, and captured
-      profiler evidence with expected kernels present. The scoreboard item
-      remains open until accepted artifacts exist and the benchmark rollups are
-      updated.
+      validation unless they include fully native batch-execution metadata,
+      non-empty benchmark and profiler commands, non-empty hardware,
+      commit/dirty-state software fields, and captured profiler evidence with
+      expected kernels present. The scoreboard item remains open until accepted
+      artifacts exist and the benchmark rollups are updated.
 
 ## Phase ladder
 

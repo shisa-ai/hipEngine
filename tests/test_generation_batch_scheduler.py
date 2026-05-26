@@ -1511,9 +1511,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
         },
         "execution": {
             "batch_execution": {
+                "path": "scheduler_native_compact_batch",
+                "row_execution": "native_compact_caware_layers",
                 "native_compact_prefill": True,
                 "native_caware_decode": True,
                 "throughput_claim_eligible": True,
+                "decode_execution": {
+                    "full_attention_decode_path": "native_batch",
+                    "native_caware_decode": True,
+                    "sampler_execution": {"native_row_aware_lm_head": True},
+                },
             }
         },
         "observability": {
@@ -1603,6 +1610,31 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     failed_primitive["correctness"]["primitive_batch_correctness"]["passed"] = False
     with pytest.raises(ValueError, match="primitive_batch_correctness.passed"):
         validate_cn_diagnostic_artifact_payload(failed_primitive)
+
+    serial_bridge_execution = json.loads(json.dumps(accepted))
+    serial_bridge_execution["execution"]["batch_execution"]["path"] = "scheduler_serial_slot_bridge"
+    with pytest.raises(ValueError, match="serial bridge"):
+        validate_cn_diagnostic_artifact_payload(serial_bridge_execution)
+
+    fallback_execution = json.loads(json.dumps(accepted))
+    fallback_execution["execution"]["batch_execution"]["row_execution"] = "native_linear_batch_with_per_row_full_attention_fallback"
+    with pytest.raises(ValueError, match="serial or fallback"):
+        validate_cn_diagnostic_artifact_payload(fallback_execution)
+
+    non_native_decode = json.loads(json.dumps(accepted))
+    non_native_decode["execution"]["batch_execution"]["native_caware_decode"] = False
+    with pytest.raises(ValueError, match="native_caware_decode"):
+        validate_cn_diagnostic_artifact_payload(non_native_decode)
+
+    per_row_splitk = json.loads(json.dumps(accepted))
+    per_row_splitk["execution"]["batch_execution"]["decode_execution"]["full_attention_decode_path"] = "per_row_splitk_fallback"
+    with pytest.raises(ValueError, match="per-row fallback"):
+        validate_cn_diagnostic_artifact_payload(per_row_splitk)
+
+    serial_sampler = json.loads(json.dumps(accepted))
+    serial_sampler["execution"]["batch_execution"]["decode_execution"]["sampler_execution"]["native_row_aware_lm_head"] = False
+    with pytest.raises(ValueError, match="native_row_aware_lm_head"):
+        validate_cn_diagnostic_artifact_payload(serial_sampler)
 
     missing_latency = dict(accepted)
     missing_latency["observability"] = {

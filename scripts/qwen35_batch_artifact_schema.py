@@ -105,6 +105,7 @@ def validate_cn_diagnostic_artifact_payload(payload: Mapping[str, Any]) -> None:
     accepted = bool(decision.get("accepted"))
     if accepted or status == "accepted" or performance_claim is True:
         _validate_accepted_retained_gates(payload, errors)
+        _validate_accepted_execution_gates(payload, errors)
         _validate_accepted_correctness_gates(correctness, errors)
         _validate_accepted_scaling_gates(payload, errors)
         _validate_accepted_evidence_fields(payload, errors)
@@ -160,6 +161,34 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
             errors.append("memory.prefix_sharing.enabled must be a bool for accepted artifacts")
         if not _is_number(prefix_sharing.get("savings_bytes")):
             errors.append("memory.prefix_sharing.savings_bytes must be numeric for accepted artifacts")
+
+
+def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[str]) -> None:
+    execution = _mapping_at(payload, "execution", errors)
+    batch_execution = execution.get("batch_execution")
+    if not isinstance(batch_execution, Mapping):
+        errors.append("execution.batch_execution must be an object for accepted artifacts")
+        return
+    for field in _REQUIRED_BATCH_EXECUTION_FLAGS:
+        if batch_execution.get(field) is not True:
+            errors.append(f"execution.batch_execution.{field} must be true for accepted artifacts")
+    path = batch_execution.get("path")
+    if not isinstance(path, str) or not path:
+        errors.append("execution.batch_execution.path must be a non-empty string for accepted artifacts")
+    elif "serial" in path:
+        errors.append("execution.batch_execution.path must not be a serial bridge for accepted artifacts")
+    row_execution = batch_execution.get("row_execution")
+    if not isinstance(row_execution, str) or not row_execution:
+        errors.append("execution.batch_execution.row_execution must be a non-empty string for accepted artifacts")
+    elif "serial" in row_execution or "fallback" in row_execution:
+        errors.append("execution.batch_execution.row_execution must not contain serial or fallback for accepted artifacts")
+    decode_execution = batch_execution.get("decode_execution")
+    if isinstance(decode_execution, Mapping):
+        if decode_execution.get("full_attention_decode_path") in {"per_row_splitk_fallback", "per_row_context_fallback"}:
+            errors.append("execution.batch_execution.decode_execution.full_attention_decode_path must not be a per-row fallback for accepted artifacts")
+        sampler_execution = decode_execution.get("sampler_execution")
+        if isinstance(sampler_execution, Mapping) and sampler_execution.get("native_row_aware_lm_head") is not True:
+            errors.append("execution.batch_execution.decode_execution.sampler_execution.native_row_aware_lm_head must be true for accepted artifacts")
 
 
 def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[str]) -> None:
