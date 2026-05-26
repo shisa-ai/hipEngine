@@ -556,11 +556,13 @@ roll-up/status view.
 
 ### C0 packets — make diagnostics durable
 
-- [ ] **C0.1 c-sweep CLI.** Add `hipengine bench c-sweep` (or an equivalent
+- [x] **C0.1 c-sweep CLI.** Add `hipengine bench c-sweep` (or an equivalent
       `scripts/qwen35_batch_c_sweep.py`) that runs c=1/2/4/8 primitive,
       serial-bridge, and native-diagnostic commands from one config without
       copy/paste loops. Acceptance: JSON summary records every command,
-      status, artifact path, and dirty git state.
+      status, artifact path, and dirty git state. Evidence:
+      `hipengine bench c-sweep --dry-run ...` plus
+      `pytest -q tests/test_generation_batch_scheduler.py -q`.
 - [x] **C0.2 artifact schema guard.** Add a CPU test/helper that rejects c>N
       diagnostic JSON missing `workload.native_compact_prefill`,
       `execution.batch_execution.native_compact_prefill`,
@@ -769,7 +771,7 @@ Definition of done: every c>N number on disk is unambiguously labeled
       status.
 - [x] Promote `rejected_correctness` as a distinct status in the retained
       bench harness so failing-equality rows are not silently `blocked`.
-- [ ] Add a `hipengine bench c-sweep` subcommand that runs the full
+- [x] Add a `hipengine bench c-sweep` subcommand that runs the full
       diagnostic sweep without copy/paste loops.
 - [x] Ensure every diagnostic artifact distinguishes
       `workload.native_compact_prefill`,

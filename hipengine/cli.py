@@ -12,6 +12,7 @@ _BENCHMARKS = {
     "gguf": ("scripts.qwen35_gguf_bench", "Qwen GGUF resident benchmark"),
     "sweep": ("scripts.qwen35_readme_sweep", "README-style repeated workload sweep"),
     "batch-serial": ("scripts.qwen35_batch_serial_bench", "Diagnostic c>N scheduler serial bridge benchmark"),
+    "c-sweep": ("scripts.qwen35_batch_c_sweep", "Qwen/PARO c=1/2/4/8 concurrency diagnostic sweep"),
 }
 
 

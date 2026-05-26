@@ -27365,3 +27365,49 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY C0.1 c-sweep CLI
+
+Closed bite-sized packet C0.1 from `docs/CONCURRENCY.md`:
+
+- Added packaged `hipengine bench c-sweep` dispatch to `scripts/qwen35_batch_c_sweep.py`.
+- The sweep builds primitive (`scripts/qwen35_batch_correctness.py`), scheduler serial-bridge (`scripts/qwen35_batch_serial_bench.py`), and native diagnostic commands (`scripts/qwen35_paro_bench.py` for c=1, `scripts/qwen35_batch_retained_bench.py` for c>1) from one config.
+- Added `--dry-run` so CI/review can produce the same JSON summary without invoking ROCm or model weights.
+- The JSON summary records every command, argv, status, artifact path, per-command dirty-git flag, and launch git status.
+- Wired the helper into `hipengine bench c-sweep` and added CPU dry-run coverage in `tests/test_generation_batch_scheduler.py`.
+- Marked C0.1 and the phase-ladder c-sweep item complete in `docs/CONCURRENCY.md`.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -q
+# 17 passed
+python3 - <<'PY'
+from hipengine.cli import main
+raise SystemExit(main(['bench', 'c-sweep', '--dry-run', '--batch-sizes', '1,2', '--output-dir', '/tmp/hipengine-c-sweep-smoke', '--summary-json', '/tmp/hipengine-c-sweep-smoke/summary.json', '--prompt-length', '16', '--decode-tokens', '2', '--warmup-decode-tokens', '1', '--max-layers', '3']))
+PY
+python3 - <<'PY'
+import json
+from pathlib import Path
+p = Path('/tmp/hipengine-c-sweep-smoke/summary.json')
+summary = json.loads(p.read_text())
+print(summary['status'], len(summary['commands']), sorted({entry['category'] for entry in summary['commands']}))
+print(all(entry['command'] and entry['artifact_path'] and 'git_dirty' in entry for entry in summary['commands']))
+PY
+# planned 6 ['native_diagnostic', 'primitive', 'serial_bridge']
+# True
+```
+
+Loop guard after C0.1:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 30
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```

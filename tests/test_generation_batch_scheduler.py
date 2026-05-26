@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -23,6 +24,7 @@ from hipengine.generation import (
 from hipengine.kvcache import FixedPagedKVPolicy
 from hipengine.speculative import AcceptResult, DraftBatch, TargetAcceptSummary, TargetStateCommitBuffers, TargetVerifyBuffers
 from scripts.qwen35_batch_artifact_schema import validate_cn_diagnostic_artifact_payload
+from scripts.qwen35_batch_c_sweep import build_parser as build_c_sweep_parser, build_sweep_commands, run_sweep
 from scripts.qwen35_batch_serial_bench import _load_prompt_slices, _summarize_samples
 
 
@@ -47,6 +49,57 @@ class _FakeSerialBridgeRunner:
             self._counts[request_id] = count + 1
             tokens.append(GeneratedToken(request_id, 1000 + request_id * 10 + count))
         return tuple(tokens)
+
+
+def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) -> None:
+    summary_path = tmp_path / "summary.json"
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--dry-run",
+            "--batch-sizes",
+            "1,2",
+            "--output-dir",
+            str(tmp_path / "artifacts"),
+            "--summary-json",
+            str(summary_path),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+            "--warmup-decode-tokens",
+            "1",
+            "--max-layers",
+            "3",
+        ]
+    )
+
+    planned = build_sweep_commands(args)
+    assert [(item.category, item.batch_size) for item in planned] == [
+        ("primitive", 1),
+        ("serial_bridge", 1),
+        ("native_diagnostic", 1),
+        ("primitive", 2),
+        ("serial_bridge", 2),
+        ("native_diagnostic", 2),
+    ]
+
+    summary = run_sweep(args)
+
+    assert summary["status"] == "planned"
+    assert summary["dry_run"] is True
+    assert summary_path.exists()
+    persisted = json.loads(summary_path.read_text())
+    assert len(persisted["commands"]) == 6
+    assert all(entry["status"] == "planned" for entry in persisted["commands"])
+    assert all(entry["command"] for entry in persisted["commands"])
+    assert all(entry["artifact_path"] for entry in persisted["commands"])
+    assert all("git_dirty" in entry for entry in persisted["commands"])
+    assert any("qwen35_batch_retained_bench.py" in entry["command"] for entry in persisted["commands"])
+    assert any("qwen35_paro_bench.py" in entry["command"] for entry in persisted["commands"])
 
 
 def test_resident_engine_loop_submit_poll_cancel_and_reclaim() -> None:
