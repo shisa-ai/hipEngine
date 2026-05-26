@@ -7,7 +7,7 @@ import pytest
 from hipengine.core.device import Device
 from hipengine.core.tensor import Tensor
 from hipengine.dispatch import WorkItem, WorkKind
-from hipengine.kvcache import FixedPagedKVPolicy, KVLiveSpans, KVScaleMetadata, KVTransaction, resolve_kv_policy
+from hipengine.kvcache import ChunkedKVPool, FixedPagedKVPolicy, KVLiveSpans, KVScaleMetadata, KVTransaction, resolve_kv_policy
 
 
 def _tensor(ptr: int, shape: tuple[int, ...], dtype: str, device: Device | None = None) -> Tensor:
@@ -100,6 +100,67 @@ def test_resolve_kv_policy_records_explicit_and_admission_selection() -> None:
     assert gated.storage_dtype.value == "int8_per_token_head"
     assert gated.to_json_dict()["int8_explicit"] is False
     assert gated.to_json_dict()["int8_admission_gated"] is True
+
+
+def test_chunked_kv_pool_grows_and_shrinks_on_burst_idle() -> None:
+    pool = ChunkedKVPool(
+        page_bytes=1024,
+        initial_pages=2,
+        low_water_pages=2,
+        high_water_pages=6,
+        chunk_pages=2,
+        idle_grace_seconds=5.0,
+    )
+
+    burst = pool.allocate(5, now_seconds=1.0)
+
+    assert burst.block_ids == (0, 1, 2, 3, 4)
+    assert burst.pointers == tuple(pool.pointer_for(block_id) for block_id in burst.block_ids)
+    assert pool.stats.grow_events == 2
+    assert pool.stats.current_pages == 6
+    assert pool.stats.free_pages == 1
+    assert pool.stats.refcounted_pages == 5
+    assert pool.stats.high_water_observed_pages == 6
+
+    pool.release(list(burst.block_ids), now_seconds=2.0)
+    assert pool.shrink_idle(now_seconds=4.0) == 0
+    assert pool.shrink_idle(now_seconds=8.0) == 4
+
+    stats = pool.stats
+    assert stats.current_pages == 2
+    assert stats.shrink_events == 2
+    assert stats.free_pages == 2
+    assert stats.refcounted_pages == 0
+
+    again = pool.allocate(1, now_seconds=9.0)
+    assert again.block_ids == (0,)
+    assert again.pointers == (pool.pointer_for(0),)
+
+
+def test_chunked_kv_pool_preserves_refcounted_tail_and_capacity_failures() -> None:
+    pool = ChunkedKVPool(
+        page_bytes=4096,
+        initial_pages=1,
+        low_water_pages=1,
+        high_water_pages=3,
+        chunk_pages=1,
+        idle_grace_seconds=0.0,
+    )
+    allocation = pool.allocate(3, now_seconds=1.0)
+    pool.incref([allocation.block_ids[-1]])
+    pool.release([allocation.block_ids[0], allocation.block_ids[1], allocation.block_ids[-1]], now_seconds=2.0)
+
+    assert pool.refcount(allocation.block_ids[-1]) == 1
+    assert pool.shrink_idle(now_seconds=2.0) == 0
+    assert pool.stats.current_pages == 3
+
+    pool.release([allocation.block_ids[-1]], now_seconds=3.0)
+    assert pool.shrink_idle(now_seconds=3.0) == 2
+    assert pool.stats.current_pages == 1
+
+    with pytest.raises(MemoryError, match="cannot grow"):
+        pool.allocate(4, now_seconds=4.0)
+    assert pool.stats.grow_failures == 1
 
 
 def test_fixed_paged_policy_c1_spans_and_admission_cap() -> None:

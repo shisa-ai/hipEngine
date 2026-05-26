@@ -27445,3 +27445,34 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY C4.4 chunked KV pool fake runtime
+
+Closed bite-sized packet C4.4 from `docs/CONCURRENCY.md`:
+
+- Added `hipengine/kvcache/pool.py`, a host-only/fake-runtime `ChunkedKVPool` model for the C4 dynamic-pool contract.
+- The pool starts with one chunk, grows by `chunk_pages` on admission, enforces a high-water cap, tracks grow failures, preserves stable block ids/pointers, and shrinks only fully-free tail chunks after idle grace.
+- Exported `ChunkedKVPool`, `KVPoolAllocation`, `KVPoolChunk`, and `KVPoolStats` from `hipengine.kvcache`.
+- Added CPU tests for a burst+idle fixture that records grow and shrink events, stable pointer reuse for retained chunks, refcounted-tail shrink protection, and high-water admission failure accounting.
+- Marked C4.4 complete in `docs/CONCURRENCY.md`; runtime wiring/env docs remain separate C4.5+ work.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_kvcache_policy.py -q
+# 16 passed
+```
+
+Loop guard after C4.4:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 28
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```

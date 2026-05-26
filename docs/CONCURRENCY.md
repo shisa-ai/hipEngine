@@ -678,10 +678,11 @@ roll-up/status view.
       cover decode protection and TTFT/fair alternatives. Evidence:
       `ResidentEngineLoop(prefill_decode_policy=...)` plus
       `pytest -q tests/test_generation_batch_scheduler.py -q`.
-- [ ] **C4.4 chunked KV pool.** Add chunked allocation, grow-on-admission,
+- [x] **C4.4 chunked KV pool.** Add chunked allocation, grow-on-admission,
       idle shrink, and high/low-water knobs behind fake-runtime tests first.
       Acceptance: burst+idle fixture records at least one grow and shrink or
-      explicitly records that the initial chunk sufficed.
+      explicitly records that the initial chunk sufficed. Evidence:
+      `hipengine/kvcache/pool.py` plus `pytest -q tests/test_kvcache_policy.py -q`.
 - [ ] **C4.5 pool/env docs.** Add CLI/env knobs for `HIPENGINE_KV_POOL_*` and
       `HIPENGINE_PREFILL_DECODE_POLICY` and document them in `docs/ENVS.md`.
       Acceptance: CLI/env tests and docs agree on defaults.
