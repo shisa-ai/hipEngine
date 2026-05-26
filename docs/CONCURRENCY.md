@@ -731,9 +731,11 @@ roll-up/status view.
 - [ ] **C5.5 per-row sampler.** Land per-row temperature/top-k/top-p/
       repetition-penalty/seed/stop-token handling. Acceptance: incompatible
       sampling params decode together and deterministic seeds are stable.
-- [ ] **C5.6 per-row EOS/reclaim.** Finish rows independently inside a batch.
+- [x] **C5.6 per-row EOS/reclaim.** Finish rows independently inside a batch.
       Acceptance: one row can finish while others keep decoding and its KV is
-      reclaimed at the next commit point.
+      reclaimed at the next commit point. Evidence:
+      `ResidentBatchScheduler(reclaim_callback=...)` and
+      `pytest -q tests/test_generation_batch_scheduler.py -q`.
 - [x] **C5.7 metrics endpoint.** Add Prometheus `/metrics` behind
       `HIPENGINE_METRICS` / `--metrics`. Acceptance: metrics are additive and
       include request, pool, and graph-bucket counters. Evidence:
@@ -939,7 +941,7 @@ endpoint live; retained c>N rows include all gates above.
       remove the `n>1 → 400` rejection.
 - [ ] Land the per-row sampler params block (temperature, top-k, top-p,
       repetition penalty, seed, stop tokens) in one launch.
-- [ ] Per-row EOS handling drives `RECLAIM` per-row, not per-batch.
+- [x] Per-row EOS handling drives `RECLAIM` per-row, not per-batch.
 - [ ] Remove or demote the submission-time coalescer
       (`_GenerationBatcher`) to a cold-path optimization.
 - [x] Add Prometheus `/metrics` endpoint;

@@ -351,6 +351,7 @@ class ResidentBatchScheduler:
         capacity: int,
         context_bucket_size: int = 256,
         clock: Callable[[], float] | None = None,
+        reclaim_callback: Callable[[CompletedRequest], None] | None = None,
     ) -> None:
         if capacity <= 0:
             raise ValueError("capacity must be positive")
@@ -365,6 +366,7 @@ class ResidentBatchScheduler:
         self._observability: dict[int, _RequestObservabilityState] = {}
         self._next_request_id = 0
         self._clock = time.monotonic if clock is None else clock
+        self._reclaim_callback = reclaim_callback
 
     @property
     def pending_count(self) -> int:
@@ -958,6 +960,8 @@ class ResidentBatchScheduler:
             observability=observability,
         )
         self._completed[done.request_id] = done
+        if self._reclaim_callback is not None:
+            self._reclaim_callback(done)
         return done
 
 

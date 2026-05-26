@@ -338,6 +338,65 @@ def test_resident_scheduler_unified_reclaim_finish_reasons() -> None:
         pending.cancel(123, reason="stop")
 
 
+def test_resident_scheduler_per_row_eos_reclaims_finished_rows_only() -> None:
+    reclaimed: list[tuple[int, str]] = []
+    policy = FixedPagedKVPolicy(block_size=16, total_capacity_tokens=96)
+
+    def reclaim(done) -> None:
+        reclaimed.append((done.request_id, done.finish_reason))
+        policy.reclaim(done.request_id)
+
+    scheduler = ResidentBatchScheduler(capacity=3, context_bucket_size=4, reclaim_callback=reclaim)
+    r0 = scheduler.submit([10], max_new_tokens=3)
+    r1 = scheduler.submit([20], max_new_tokens=2)
+    r2 = scheduler.submit([30], max_new_tokens=3)
+    scheduler.admit_pending()
+    for request_id, ptr in [(r0, 0x1000), (r1, 0x2000), (r2, 0x3000)]:
+        policy.register(
+            request_id,
+            block_table=_tensor(ptr, (1,), "int32"),
+            live_counts=_tensor(ptr + 0x100, (1,), "int64"),
+            max_live_count=1,
+            capacity_tokens=16,
+        )
+    for _ in range(3):
+        assert scheduler.next_prefill_work(chunk_size=8) is not None
+
+    decode = scheduler.next_decode_work()
+    assert decode is not None and decode.request_ids == (r0, r1, r2)
+    completed = scheduler.record_generated(
+        [
+            GeneratedToken(r0, 100, finished=True),
+            GeneratedToken(r1, 200),
+            GeneratedToken(r2, 300),
+        ]
+    )
+
+    assert [(item.request_id, item.finish_reason) for item in completed] == [(r0, "stop")]
+    assert reclaimed == [(r0, "stop")]
+    assert r0 not in policy.reservations
+    assert set(policy.reservations) == {r1, r2}
+    assert scheduler.active_batch.slot_to_request == (None, r1, r2)
+
+    decode = scheduler.next_decode_work()
+    assert decode is not None and decode.request_ids == (r1, r2)
+    completed = scheduler.record_generated([GeneratedToken(r1, 201), GeneratedToken(r2, 301)])
+
+    assert [(item.request_id, item.finish_reason) for item in completed] == [(r1, "length")]
+    assert reclaimed == [(r0, "stop"), (r1, "length")]
+    assert r1 not in policy.reservations
+    assert set(policy.reservations) == {r2}
+
+    decode = scheduler.next_decode_work()
+    assert decode is not None and decode.request_ids == (r2,)
+    completed = scheduler.record_generated([GeneratedToken(r2, 302, finished=True)])
+
+    assert [(item.request_id, item.finish_reason) for item in completed] == [(r2, "stop")]
+    assert reclaimed == [(r0, "stop"), (r1, "length"), (r2, "stop")]
+    assert policy.reservations == {}
+    assert scheduler.active_count == 0
+
+
 def test_resident_engine_loop_prefill_decode_policies() -> None:
     protect_runner = _FakeSerialBridgeRunner()
     protect_loop = ResidentEngineLoop(
