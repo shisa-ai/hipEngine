@@ -5,6 +5,7 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from hipengine.core.device import Device
@@ -34,6 +35,13 @@ from hipengine.speculative import AcceptResult, DraftBatch, TargetAcceptSummary,
 from scripts.qwen35_batch_artifact_schema import validate_cn_diagnostic_artifact_payload
 from scripts.qwen35_batch_c_sweep import build_parser as build_c_sweep_parser, build_sweep_commands, run_sweep
 from scripts.qwen35_batch_gguf_diagnostic import build_parser as build_gguf_diagnostic_parser, run as run_gguf_diagnostic
+from scripts.qwen35_batch_hidden_bisect import (
+    _first_hidden_mismatch,
+    _parse_layer_limits,
+    build_parser as build_hidden_bisect_parser,
+    hidden_comparison,
+    run as run_hidden_bisect,
+)
 from scripts.qwen35_batch_serial_bench import _load_prompt_slices, _summarize_samples
 
 
@@ -119,6 +127,63 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     assert all("git_dirty" in entry for entry in persisted["commands"])
     assert any("qwen35_batch_retained_bench.py" in entry["command"] for entry in persisted["commands"])
     assert any("qwen35_paro_bench.py" in entry["command"] for entry in persisted["commands"])
+
+
+def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
+    output = tmp_path / "hidden-bisect.json"
+    args = build_hidden_bisect_parser().parse_args(
+        [
+            "--dry-run",
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "fixtures/qwen35_paro/parent_512_32_seed1234.json",
+            "--prompt-length",
+            "32",
+            "--batch-size",
+            "2",
+            "--decode-tokens",
+            "4",
+            "--max-layers",
+            "8",
+            "--layer-limits",
+            "1,4,8",
+            "--json",
+            str(output),
+        ]
+    )
+
+    payload = run_hidden_bisect(args, ["--dry-run", "--layer-limits", "1,4,8"])
+
+    assert payload["status"] == "planned"
+    assert payload["mode"] == "qwen35_paro_native_hidden_bisect"
+    assert payload["performance_claim"] is False
+    assert payload["workload"]["native_compact_prefill"] is True
+    assert payload["workload"]["native_caware_decode"] is True
+    assert payload["workload"]["layer_limits"] == [1, 4, 8]
+    assert len(payload["commands"]) == 3
+    assert all("scripts/qwen35_batch_hidden_bisect.py" in command for command in payload["commands"])
+    assert output.exists()
+
+
+def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:
+    assert _parse_layer_limits("1,3-4", max_layers=4) == [1, 3, 4]
+    same = np.array([[0x3C00, 0x4000]], dtype=np.uint16)
+    changed = np.array([[0x3C00, 0x4200]], dtype=np.uint16)
+
+    passed = hidden_comparison(same, same.copy(), atol=0.0)
+    failed = hidden_comparison(changed, same, atol=0.0)
+
+    assert passed["passed"] is True
+    assert failed["passed"] is False
+    assert failed["bit_mismatch"] == 1
+    first = _first_hidden_mismatch(
+        [
+            {"layer_limit": 1, "steps": [{"decode_step": 0, "generated_index": 1, "rows": [{"row": 0, "hidden_comparison": passed}]}]},
+            {"layer_limit": 2, "steps": [{"decode_step": 3, "generated_index": 4, "rows": [{"row": 1, "hidden_comparison": failed}]}]},
+        ]
+    )
+    assert first == {"layer_limit": 2, "decode_step": 3, "generated_index": 4, "row": 1, "max_abs": failed["max_abs"], "bit_mismatch": 1}
 
 
 def test_gguf_cN_diagnostic_template_records_blocked_c2_command(tmp_path: Path) -> None:

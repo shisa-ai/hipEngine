@@ -98,7 +98,10 @@ L40 c=2 512/32 pass generated-token equality vs independent c=1. The full
 (`/tmp/hipengine-retained/guarded-L40-c2-512-128-current.json`, row 0 idx 87,
 `batch=271` vs `c1=1165`) and `throughput_claim_eligible=false`. A separate
 `eq-L8-selectedmoe.json` failure points at selected-MoE/native-row mapping.
-The path is not a throughput claim.
+The path is not a throughput claim. The hidden-state bisection harness now
+reproduces an L8 c=2 512/16 hidden mismatch at generated index 1 and a token
+mismatch at index 13 (`/tmp/hipengine-hidden-bisect-L8-512-16.json`), so the
+active root-cause target is selected-MoE/native-row mapping.
 
 The elastic KV pool, prefix sharing, per-row sampler, streaming routing,
 cancellation reclaim path, and `/metrics` observability are **not** in code
@@ -112,7 +115,7 @@ yet. The phase ladder below sequences them.
 | Public `LLM.generate()` | Prompt lists with `len(prompts)>1` use `ResidentBatchScheduler`, BF16 packed native prefill, request-id output routing, and the serial slot bridge for decode. Streaming is one prompt only. | `hipengine/generation/qwen35_paro.py:Qwen35ParoOneTokenGenerator._generate_batch`. | Lower `LLM.generate()` to `submit+poll` over the engine loop; native c-aware decode. |
 | Engine loop / scheduler | `ResidentBatchScheduler` owns pending/admitted queues, slots, active masks, compact prefill slabs, decode work, graph bucket keys, and completion routing within a single `_generate_batch` call. The loop does not persist beyond one call. | `hipengine/generation/batch_scheduler.py`; `_generate_batch`. | Promote to a long-lived background driver with submit/poll/cancel, work-class ticks, and commit-point semantics. |
 | Prefill | Single-request native prefill and prompt-list BF16 packed native prefill are live. INT8 packed prefill is not wired. Chunked prefill is not interleaved with decode. | `Qwen35ParoResidentSession.prefill_native`, `prefill_native_packed`, `ResidentBatchScheduler.next_compact_prefill_slabs`. | INT8 packed prefill; chunked prefill interleaved with decode under a policy. |
-| Decode runtime | Production c>N prompt-list decode uses `step_batch_serial`. Experimental `step_batch_native` is gated by `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1`; current default `serial_lm_head` passes L40 c=2 512/32 as a reduced diagnostic but fails full c=2 512/128 generated-token equality. | `step_batch_serial`, `step_batch_native`, `_sample_batch_from_hidden`, `batch_execution_metadata`; `/tmp/hipengine-retained/guarded-L40-{512-32,c2-512-128}-current.json`. | Layer-level hidden-state bisection; selected-MoE/native-row fix; c=2/4/8 512/128 equality; row-aware split-K full-attention; native sampler. |
+| Decode runtime | Production c>N prompt-list decode uses `step_batch_serial`. Experimental `step_batch_native` is gated by `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1`; current default `serial_lm_head` passes L40 c=2 512/32 as a reduced diagnostic but fails full c=2 512/128 generated-token equality. Hidden bisection reproduces the reduced L8 failure at generated index 1. | `step_batch_serial`, `step_batch_native`, `_sample_batch_from_hidden`, `batch_execution_metadata`; `/tmp/hipengine-retained/guarded-L40-{512-32,c2-512-128}-current.json`; `/tmp/hipengine-hidden-bisect-L8-512-16.json`. | selected-MoE/native-row fix; c=2/4/8 512/128 equality; row-aware split-K full-attention; native sampler. |
 | Sampler | Greedy `argmax_f32` per row. Sampling parameters apply globally to the call, not per row. The coalescer requires identical sampling keys per batch. Experimental native decode currently defaults to `serial_lm_head`; `batched_lm_head` is diagnostic only. | `_sample_from_hidden`, `_sample_batch_from_hidden`. | Per-row temperature/top-k/top-p/rep-penalty/seed/stop tokens; per-row EOS handling; replace the per-row LM-head loop after equality is proven. |
 | Attention / KV primitives | BF16 batched paged KV append and batched full-attention context decode pass c=1/2/4/8 primitive correctness. Split-K reducer is c1-only. INT8 batched paths exist as wrappers but lack the end-to-end gate. | `scripts/qwen35_batch_correctness.py`; `hipengine/kernels/hip_gfx1100/attention/`. | Row-aware split-K reducer; INT8 batched end-to-end gate. |
 | MoE / quant kernels | Many wrappers accept `rows` or routed-lane counts; end-to-end selected-MoE decode still follows c1 assumptions. `eq-L8-selectedmoe.json` diverges from c=1 reference at idx 13. | `hipengine/kernels/hip_gfx1100/quant/*`, `hipengine/runtime/qwen35_paro.py`. | Token-row to routed-lane mapping; grouped-by-expert execution for c=4/8; c-aware dispatch thresholds. |
@@ -597,11 +600,16 @@ roll-up/status view.
       call sites use the settled signature. Acceptance: targeted generator and
       resident-layout tests pass. Evidence: commit removing the shim plus
       `pytest -q tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py -q`.
-- [ ] **C2.2 hidden-state bisection harness.** Add a HIP-guarded diagnostic
+- [x] **C2.2 hidden-state bisection harness.** Add a HIP-guarded diagnostic
       that compares c=2 native vs independent c=1 hidden tensors after each
       layer and optionally after sub-stages (attention, selected MoE, shared
       expert, combine, LM head). Acceptance: the harness can reproduce the
       current L40 c=2 512/128 divergence earlier than generated-token idx 87.
+      Evidence: `scripts/qwen35_batch_hidden_bisect.py` plus
+      `python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --json /tmp/hipengine-hidden-bisect-L8-512-16.json`
+      emitted `status=mismatch_found`, first hidden mismatch at generated
+      index 1, and first token mismatch at row 0 index 13 (< 87). CPU guard
+      coverage: `pytest -q tests/test_generation_batch_scheduler.py -q`.
 - [ ] **C2.3 selected-MoE lane-map fix.** Root-cause
       `/tmp/hipengine-retained/eq-L8-selectedmoe.json`; fix token-row → routed
       lane mapping or grouped metadata so selected MoE is hidden-equality green
@@ -851,7 +859,7 @@ in place even though pool growth lands in C4.
 - [x] Remove stale compatibility glue once the guarded native API is
       settled (removed the `batch_execution_metadata(...)` `TypeError`
       shim in the generator).
-- [ ] Add HIP-guarded reduced-shape equality diagnostics that do **not**
+- [x] Add HIP-guarded reduced-shape equality diagnostics that do **not**
       require full 40 layers, so failures can be bisected in CI/dev
       environments with ROCm. Keep full 40-layer 512/128 as the retained
       benchmark gate.
@@ -1190,8 +1198,10 @@ correctness signals:
   `/tmp/hipengine-retained/guarded-L40-c2-512-128-current.json`, row 0 idx 87
   (`batch=271`, `c1=1165`), `throughput_claim_eligible=false`. The separate
   `/tmp/hipengine-retained/eq-L8-selectedmoe.json` failure points at
-  selected-MoE/native-row mapping, so the next correctness step is layer-level
-  hidden-state bisection rather than more token-only sweeps.
+  selected-MoE/native-row mapping. `scripts/qwen35_batch_hidden_bisect.py`
+  now reproduces that reduced L8 failure with a hidden mismatch at generated
+  index 1 and token mismatch at index 13, so the next correctness step is the
+  selected-MoE lane-map fix rather than more token-only sweeps.
 
 ## What not to claim yet
 
