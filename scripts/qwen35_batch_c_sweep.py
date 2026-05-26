@@ -216,6 +216,59 @@ def _batch_bench_argv(
     return argv
 
 
+def _native_retained_precondition(command: SweepCommand) -> dict[str, Any] | None:
+    if command.category != "native_diagnostic" or command.batch_size <= 1:
+        return None
+    argv = list(command.argv)
+    try:
+        idx = argv.index("--primitive-correctness-json")
+        primitive_path = Path(argv[idx + 1])
+    except (ValueError, IndexError):
+        return {
+            "kind": "primitive_correctness",
+            "artifact_path": None,
+            "passed": False,
+            "reason": "retained native diagnostic is missing --primitive-correctness-json",
+        }
+    if not primitive_path.exists():
+        return {
+            "kind": "primitive_correctness",
+            "artifact_path": str(primitive_path),
+            "passed": False,
+            "reason": "primitive correctness artifact does not exist",
+        }
+    try:
+        payload = json.loads(primitive_path.read_text())
+    except Exception as exc:
+        return {
+            "kind": "primitive_correctness",
+            "artifact_path": str(primitive_path),
+            "passed": False,
+            "reason": f"primitive correctness artifact is invalid JSON: {type(exc).__name__}: {exc}",
+        }
+    reasons: list[str] = []
+    if not isinstance(payload, dict):
+        reasons.append("primitive correctness artifact root is not an object")
+    else:
+        if payload.get("rows") != command.batch_size:
+            reasons.append(f"rows={payload.get('rows')!r} does not match batch_size={command.batch_size}")
+        if payload.get("passed") is not True:
+            reasons.append("passed is not true")
+        if payload.get("append_key_mismatch") != 0:
+            reasons.append("append_key_mismatch is non-zero")
+        if payload.get("append_value_mismatch") != 0:
+            reasons.append("append_value_mismatch is non-zero")
+        attn_vs_c1 = payload.get("attn_batch_vs_c1_max_abs")
+        if not isinstance(attn_vs_c1, (int, float)) or isinstance(attn_vs_c1, bool) or float(attn_vs_c1) > 1e-6:
+            reasons.append("attn_batch_vs_c1_max_abs is missing or above 1e-6")
+    return {
+        "kind": "primitive_correctness",
+        "artifact_path": str(primitive_path),
+        "passed": not reasons,
+        "reason": None if not reasons else "; ".join(reasons),
+    }
+
+
 def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -234,6 +287,21 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
         if args.dry_run:
             entry.update({"status": "planned", "returncode": None, "duration_seconds": 0.0})
         else:
+            precondition = _native_retained_precondition(command)
+            if precondition is not None and not precondition["passed"]:
+                entry.update(
+                    {
+                        "status": "skipped",
+                        "returncode": None,
+                        "duration_seconds": 0.0,
+                        "precondition": precondition,
+                        "output_tail": precondition["reason"],
+                    }
+                )
+                entries.append(entry)
+                if args.stop_on_failure:
+                    break
+                continue
             start = time.perf_counter()
             proc = subprocess.run(
                 list(command.argv),
@@ -275,6 +343,8 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
 def _summary_status(entries: Sequence[dict[str, Any]]) -> str:
     if any(entry["status"] == "failed" for entry in entries):
         return "failed"
+    if any(entry["status"] == "skipped" for entry in entries):
+        return "blocked"
     if all(entry["status"] == "planned" for entry in entries):
         return "planned"
     return "passed"
@@ -327,7 +397,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     summary = run_sweep(args)
     print(json.dumps(summary, indent=2))
-    return 1 if summary["status"] == "failed" else 0
+    return 1 if summary["status"] in {"failed", "blocked"} else 0
 
 
 if __name__ == "__main__":  # pragma: no cover

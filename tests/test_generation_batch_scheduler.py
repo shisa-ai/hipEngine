@@ -40,6 +40,7 @@ from hipengine.generation import (
 )
 from hipengine.kvcache import ChunkedKVPool, FixedPagedKVPolicy
 from hipengine.speculative import AcceptResult, DraftBatch, TargetAcceptSummary, TargetStateCommitBuffers, TargetVerifyBuffers
+from scripts import qwen35_batch_c_sweep as c_sweep
 from scripts import qwen35_batch_retained_bench as retained_bench
 from scripts.qwen35_batch_artifact_schema import validate_cn_diagnostic_artifact_payload
 from scripts.qwen35_batch_c_sweep import build_parser as build_c_sweep_parser, build_sweep_commands, run_sweep
@@ -144,6 +145,46 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     assert str(tmp_path / "artifacts" / "serial-bridge-c2.json") in retained_c2.argv
     assert "--primitive-correctness-json" in retained_c2.argv
     assert str(tmp_path / "artifacts" / "primitive-c2.json") in retained_c2.argv
+
+
+def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: Path, monkeypatch) -> None:
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(tmp_path / "artifacts"),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+            "--warmup-decode-tokens",
+            "1",
+            "--max-layers",
+            "3",
+        ]
+    )
+    monkeypatch.setattr(c_sweep, "_git_state", lambda: {"commit": "test", "dirty": False, "status_short": []})
+
+    class FakeProc:
+        returncode = 0
+        stdout = "ok"
+
+    monkeypatch.setattr(c_sweep.subprocess, "run", lambda *args, **kwargs: FakeProc())
+
+    summary = run_sweep(args)
+
+    assert summary["status"] == "blocked"
+    assert [entry["status"] for entry in summary["commands"]] == ["passed", "passed", "skipped"]
+    skipped = summary["commands"][-1]
+    assert skipped["category"] == "native_diagnostic"
+    assert skipped["precondition"]["kind"] == "primitive_correctness"
+    assert skipped["precondition"]["passed"] is False
+    assert skipped["precondition"]["reason"] == "primitive correctness artifact does not exist"
 
 
 def test_batch_c_sweep_can_plan_int8_blocked_diagnostics(tmp_path: Path) -> None:

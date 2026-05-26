@@ -28499,3 +28499,28 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY c-sweep retained primitive precondition
+
+Materially advanced retained c>N orchestration without closing P1:
+
+- `scripts/qwen35_batch_c_sweep.py` now checks each c>N `native_diagnostic` command's `--primitive-correctness-json` before execution.
+- If the matching primitive artifact is missing, invalid, row-mismatched, failed, has non-zero append mismatches, or has `attn_batch_vs_c1_max_abs > 1e-6`, the retained native diagnostic is recorded as `status=skipped` and the sweep summary becomes `blocked` instead of running a retained benchmark after a failed primitive gate.
+- Dry-run planning is unchanged.
+- Updated the P1 note. P1 remains open until accepted artifacts and retained rollups exist.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_batch_c_sweep_skips_retained_when_primitive_artifact_missing tests/test_generation_batch_scheduler.py::test_batch_c_sweep_dry_run_records_commands_and_artifacts -q
+# 2 passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```
