@@ -398,6 +398,32 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
     assert _metric_value(metrics.text, "hipengine_graph_bucket_misses_total") == 8
 
 
+def test_streaming_chat_completion_lowers_n_to_seeded_rows() -> None:
+    fake = FakeLLM(outputs=["alpha", "beta"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "stream": True,
+            "n": 2,
+            "seed": 5,
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    indices = [payload["choices"][0]["index"] for payload in payloads]
+    assert 0 in indices and 1 in indices
+    assert "data: [DONE]" in response.text
+    assert fake.calls[0][0] == (fake.calls[0][0][0], fake.calls[0][0][0])
+    assert len(fake.calls[0][1].row_seeds) == 2
+    assert len(set(fake.calls[0][1].row_seeds)) == 2
+
+
 def test_server_rejects_requests_beyond_preallocated_context() -> None:
     fake = FakeLLM()
     app = create_app(
@@ -453,26 +479,57 @@ def test_server_rejects_wrong_model_and_unsupported_options() -> None:
     assert wrong_model.status_code == 404
     assert wrong_model.json()["error"]["code"] == "model_not_found"
 
-    unsupported_completion_n = client.post(
-        "/v1/completions",
-        json={"model": "fake-model", "prompt": "hello", "n": 2},
-    )
-    assert unsupported_completion_n.status_code == 400
-    assert unsupported_completion_n.json()["error"]["param"] == "n"
-
-    unsupported_chat_n = client.post(
-        "/v1/chat/completions",
-        json={"model": "fake-model", "messages": [{"role": "user", "content": "hello"}], "n": 2},
-    )
-    assert unsupported_chat_n.status_code == 400
-    assert unsupported_chat_n.json()["error"]["param"] == "n"
-
     unsupported_logprobs = client.post(
         "/v1/completions",
         json={"model": "fake-model", "prompt": "hello", "logprobs": 1},
     )
     assert unsupported_logprobs.status_code == 400
     assert unsupported_logprobs.json()["error"]["param"] == "logprobs"
+
+
+def test_completions_endpoint_lowers_n_to_distinct_seeded_rows() -> None:
+    fake = FakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": ["one", "two"], "max_tokens": 1, "n": 2, "seed": 123},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [choice["text"] for choice in body["choices"]] == [
+        "generated:one",
+        "generated:one",
+        "generated:two",
+        "generated:two",
+    ]
+    assert [choice["index"] for choice in body["choices"]] == [0, 1, 2, 3]
+    assert len({choice["request_id"] for choice in body["choices"]}) == 4
+    assert fake.calls[0][0] == ("one", "one", "two", "two")
+    assert len(fake.calls[0][1].row_seeds) == 4
+    assert len(set(fake.calls[0][1].row_seeds)) == 4
+
+
+def test_chat_endpoint_lowers_n_to_distinct_seeded_rows() -> None:
+    fake = FakeLLM(outputs=["first", "second"])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={"model": "fake-model", "messages": [{"role": "user", "content": "hello"}], "n": 2, "seed": 9},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [choice["index"] for choice in body["choices"]] == [0, 1]
+    assert [choice["message"]["content"] for choice in body["choices"]] == ["first", "second"]
+    assert len({choice["request_id"] for choice in body["choices"]}) == 2
+    assert fake.calls[0][0] == (fake.calls[0][0][0], fake.calls[0][0][0])
+    assert len(fake.calls[0][1].row_seeds) == 2
+    assert len(set(fake.calls[0][1].row_seeds)) == 2
 
 
 def test_render_chat_prompt_accepts_plain_message_mappings() -> None:

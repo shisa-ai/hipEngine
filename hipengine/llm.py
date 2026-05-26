@@ -23,6 +23,8 @@ class SamplingParams:
     kv_storage: str = "auto"
     kv_scale_dtype: str = "fp16"
     kv_scale_granularity: str = "per_token_head"
+    seed: int | None = None
+    row_seeds: tuple[int, ...] = ()
 
 
 class LLM:
@@ -166,6 +168,8 @@ def _generation_request(prompt_tuple: tuple[str, ...], params: SamplingParams):
         kv_storage=params.kv_storage,
         kv_scale_dtype=params.kv_scale_dtype,
         kv_scale_granularity=params.kv_scale_granularity,
+        seed=params.seed,
+        row_seeds=params.row_seeds,
     )
 
 

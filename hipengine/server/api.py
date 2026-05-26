@@ -15,7 +15,7 @@ import time
 import uuid
 from collections import deque
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -112,6 +112,7 @@ class CompletionRequest(_OpenAIBaseModel):
     n: int | None = Field(default=1, ge=1)
     stream: bool = False
     stop: str | list[str] | None = None
+    seed: int | None = Field(default=None, ge=0)
     echo: bool = False
     logprobs: int | None = None
     ignore_eos: bool = False
@@ -135,6 +136,7 @@ class ChatCompletionRequest(_OpenAIBaseModel):
     n: int | None = Field(default=1, ge=1)
     stream: bool = False
     stop: str | list[str] | None = None
+    seed: int | None = Field(default=None, ge=0)
     ignore_eos: bool = False
     kv_storage: str | None = None
     kv_scale_dtype: str | None = None
@@ -494,6 +496,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             kv_storage=request.kv_storage or config.kv_storage,
             kv_scale_dtype=request.kv_scale_dtype or config.kv_scale_dtype,
             kv_scale_granularity=request.kv_scale_granularity or config.kv_scale_granularity,
+            seed=request.seed,
         )
 
     async def generate(
@@ -506,6 +509,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             async with generation_lock:
                 await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
                 sampling = sampling_params(request, prompts, engine)
+                if _request_n(request) > 1:
+                    sampling = replace(
+                        sampling,
+                        row_seeds=_row_seeds_for_request(request.seed, len(prompts)),
+                    )
                 _validate_context_budget(effective_max_context_tokens(engine), engine, prompts, sampling)
             raw_outputs = await generation_batcher.submit(tuple(prompts), sampling)
         except OpenAIHTTPError:
@@ -576,24 +584,27 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     ) -> dict[str, Any] | StreamingResponse:
         _validate_model(config, request.model)
         prompts = _normalize_prompts(request.prompt)
-        batch = await generate(prompts, request)
+        n = _request_n(request)
+        expanded_prompts = _expand_prompts_for_n(prompts, n)
+        batch = await generate(expanded_prompts, request)
         response_id = f"cmpl-{uuid.uuid4().hex}"
         created = int(time.time())
         choices = []
         final_texts: list[str] = []
-        for index, (prompt, output) in enumerate(zip(prompts, batch.outputs)):
+        for index, (prompt, output) in enumerate(zip(expanded_prompts, batch.outputs)):
             text, finish_reason = _apply_stop(output, request.stop)
             if request.echo:
                 text = prompt + text
             final_texts.append(text)
-            choices.append(
-                {
-                    "text": text,
-                    "index": index,
-                    "logprobs": None,
-                    "finish_reason": finish_reason,
-                }
-            )
+            choice = {
+                "text": text,
+                "index": index,
+                "logprobs": None,
+                "finish_reason": finish_reason,
+            }
+            if n > 1:
+                choice["request_id"] = _choice_request_id(response_id, index // n, index % n)
+            choices.append(choice)
         response = {
             "id": response_id,
             "object": "text_completion",
@@ -617,33 +628,78 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         _validate_model(config, request.model)
         prompt = render_chat_prompt(request.messages)
         if request.stream:
+            streamer = stream_chat_completion_many if _request_n(request) > 1 else stream_chat_completion
             return StreamingResponse(
-                stream_chat_completion(prompt, request),
+                streamer(prompt, request),
                 media_type="text/event-stream",
             )
-        batch = await generate((prompt,), request)
-        text, finish_reason = _apply_stop(batch.outputs[0], request.stop)
-        split = _split_reasoning(text)
-        message: dict[str, Any] = {"role": "assistant", "content": split.content}
-        if split.reasoning_content:
-            message["reasoning_content"] = split.reasoning_content
+        n = _request_n(request)
+        prompts = tuple(prompt for _ in range(n))
+        batch = await generate(prompts, request)
         response_id = f"chatcmpl-{uuid.uuid4().hex}"
         created = int(time.time())
+        choices = []
+        for index, output in enumerate(batch.outputs):
+            text, finish_reason = _apply_stop(output, request.stop)
+            split = _split_reasoning(text)
+            message: dict[str, Any] = {"role": "assistant", "content": split.content}
+            if split.reasoning_content:
+                message["reasoning_content"] = split.reasoning_content
+            choice = {
+                "index": index,
+                "message": message,
+                "finish_reason": finish_reason,
+            }
+            if n > 1:
+                choice["request_id"] = _choice_request_id(response_id, 0, index)
+            choices.append(choice)
         response = {
             "id": response_id,
             "object": "chat.completion",
             "created": created,
             "model": config.model_id,
-            "choices": [
-                {
-                    "index": 0,
-                    "message": message,
-                    "finish_reason": finish_reason,
-                }
-            ],
+            "choices": choices,
             "usage": batch.usage,
         }
         return response
+
+    async def stream_chat_completion_many(
+        prompt: str,
+        request: ChatCompletionRequest,
+    ) -> AsyncIterator[str]:
+        response_id = f"chatcmpl-{uuid.uuid4().hex}"
+        created = int(time.time())
+        try:
+            n = _request_n(request)
+            batch = await generate(tuple(prompt for _ in range(n)), request)
+            for index, output in enumerate(batch.outputs):
+                text, finish_reason = _apply_stop(output, request.stop)
+                split = _split_reasoning(text)
+                yield _chat_stream_role(response_id, created, config.model_id, index=index)
+                if split.reasoning_content:
+                    yield _chat_stream_delta(
+                        response_id,
+                        created,
+                        config.model_id,
+                        "reasoning_content",
+                        split.reasoning_content,
+                        index=index,
+                    )
+                if split.content:
+                    yield _chat_stream_delta(
+                        response_id,
+                        created,
+                        config.model_id,
+                        "content",
+                        split.content,
+                        index=index,
+                    )
+                yield _chat_stream_done(response_id, created, config.model_id, finish_reason, index=index)
+        except OpenAIHTTPError as exc:
+            yield _chat_stream_error(response_id, created, config.model_id, exc.message)
+        except Exception as exc:  # pragma: no cover - real runtime failures
+            yield _chat_stream_error(response_id, created, config.model_id, f"generation failed: {exc}")
+        yield "data: [DONE]\n\n"
 
     async def stream_chat_completion(
         prompt: str,
@@ -1008,13 +1064,7 @@ def _request_max_tokens(
 
 
 def _validate_generation_request(config: ServerConfig, request: CompletionRequest | ChatCompletionRequest) -> None:
-    if request.n not in (None, 1):
-        raise OpenAIHTTPError(
-            400,
-            "only n=1 is currently supported",
-            code="unsupported_parameter",
-            param="n",
-        )
+    _request_n(request)
     if isinstance(request, CompletionRequest) and request.logprobs is not None:
         raise OpenAIHTTPError(
             400,
@@ -1097,6 +1147,33 @@ def _normalize_prompts(prompt: str | list[str]) -> tuple[str, ...]:
     return tuple(str(item) for item in prompt)
 
 
+def _request_n(request: CompletionRequest | ChatCompletionRequest) -> int:
+    n = 1 if request.n is None else int(request.n)
+    if n < 1:
+        raise OpenAIHTTPError(400, "n must be at least 1", code="invalid_request", param="n")
+    return n
+
+
+def _expand_prompts_for_n(prompts: Sequence[str], n: int) -> tuple[str, ...]:
+    return tuple(prompt for prompt in prompts for _ in range(int(n)))
+
+
+def _choice_request_id(response_id: str, prompt_index: int, choice_index: int) -> str:
+    return f"{response_id}:prompt-{int(prompt_index)}:choice-{int(choice_index)}"
+
+
+def _row_seeds_for_request(seed: int | None, row_count: int) -> tuple[int, ...]:
+    base = 0 if seed is None else int(seed)
+    mask = (1 << 63) - 1
+    values = []
+    for index in range(int(row_count)):
+        value = (base + 0x9E3779B97F4A7C15 + index * 0xBF58476D1CE4E5B9) & ((1 << 64) - 1)
+        value ^= (value >> 30)
+        value = (value * 0x94D049BB133111EB) & ((1 << 64) - 1)
+        values.append(value & mask)
+    return tuple(values)
+
+
 def _message_content_text(content: str | list[Any] | None, message_index: int) -> str:
     if content is None:
         return ""
@@ -1171,6 +1248,8 @@ def _sampling_key(sampling: SamplingParams) -> tuple[Any, ...]:
         str(sampling.kv_storage),
         str(sampling.kv_scale_dtype),
         str(sampling.kv_scale_granularity),
+        None if sampling.seed is None else int(sampling.seed),
+        tuple(int(seed) for seed in sampling.row_seeds),
     )
 
 
@@ -1328,38 +1407,46 @@ def _chat_stream(
     yield "data: [DONE]\n\n"
 
 
-def _chat_stream_role(response_id: str, created: int, model: str) -> str:
+def _chat_stream_role(response_id: str, created: int, model: str, *, index: int = 0) -> str:
     return _sse(
         {
             "id": response_id,
             "object": "chat.completion.chunk",
             "created": created,
             "model": model,
-            "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}],
+            "choices": [{"index": int(index), "delta": {"role": "assistant"}, "finish_reason": None}],
         }
     )
 
 
-def _chat_stream_delta(response_id: str, created: int, model: str, field: str, text: str) -> str:
+def _chat_stream_delta(
+    response_id: str,
+    created: int,
+    model: str,
+    field: str,
+    text: str,
+    *,
+    index: int = 0,
+) -> str:
     return _sse(
         {
             "id": response_id,
             "object": "chat.completion.chunk",
             "created": created,
             "model": model,
-            "choices": [{"index": 0, "delta": {field: text}, "finish_reason": None}],
+            "choices": [{"index": int(index), "delta": {field: text}, "finish_reason": None}],
         }
     )
 
 
-def _chat_stream_done(response_id: str, created: int, model: str, finish_reason: str) -> str:
+def _chat_stream_done(response_id: str, created: int, model: str, finish_reason: str, *, index: int = 0) -> str:
     return _sse(
         {
             "id": response_id,
             "object": "chat.completion.chunk",
             "created": created,
             "model": model,
-            "choices": [{"index": 0, "delta": {}, "finish_reason": finish_reason}],
+            "choices": [{"index": int(index), "delta": {}, "finish_reason": finish_reason}],
         }
     )
 

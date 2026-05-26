@@ -725,9 +725,11 @@ roll-up/status view.
       requests keep prefix bytes shared and produce independent suffix KV.
       Evidence: `ChunkedKVPool.fork_copy_on_write(...)`, COW fork counters,
       and `pytest -q tests/test_kvcache_policy.py -q`.
-- [ ] **C5.4 `n>1` lowering.** Replace API rejection with N scheduler
+- [x] **C5.4 `n>1` lowering.** Replace API rejection with N scheduler
       requests sharing a prompt prefix and distinct seeds. Acceptance:
       OpenAI-compatible responses preserve `n` semantics and request IDs.
+      Evidence: server completion/chat `n` lowering, distinct `row_seeds`,
+      per-choice `request_id`, and `pytest -q tests/test_server_api.py -q`.
 - [x] **C5.5 per-row sampler.** Land per-row temperature/top-k/top-p/
       repetition-penalty/seed/stop-token handling. Acceptance: incompatible
       sampling params decode together and deterministic seeds are stable.
@@ -938,7 +940,7 @@ endpoint live; retained c>N rows include all gates above.
       stable across hypothetical tier moves; refcount and eviction state
       must attach to the radix node rather than the block pointer. KVTC
       itself ships in a separate feature branch.
-- [ ] Lower `n > 1` at the API layer to N `submit()` calls with the same
+- [x] Lower `n > 1` at the API layer to N `submit()` calls with the same
       prompt tokens and distinct seeds; collect output by `request_id`;
       remove the `n>1 → 400` rejection.
 - [x] Land the per-row sampler params block (temperature, top-k, top-p,
