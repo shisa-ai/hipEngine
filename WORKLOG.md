@@ -27164,3 +27164,46 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY C0.3 promote c=2 native diagnostics
+
+Closed bite-sized packet C0.3 from `docs/CONCURRENCY.md`:
+
+- Promoted the current c=2 native-decode review diagnostics from `/tmp/hipengine-retained/` into `benchmarks/results/` without adding scoreboard rows:
+  - `benchmarks/results/2026-05-27-hipengine-qwen35-paro-c2-native-l40-512-32-blocked.json`
+  - `benchmarks/results/2026-05-27-hipengine-qwen35-paro-c2-native-l40-512-128-rejected-correctness.json`
+- Validated both payloads with `scripts.qwen35_batch_artifact_schema.validate_cn_diagnostic_artifact_payload(...)`.
+- The L40 512/32 diagnostic remains `status=blocked` with generated-token equality passing but reduced decode length / `throughput_claim_eligible=false`.
+- The L40 c=2 512/128 diagnostic remains `status=rejected_correctness` with first mismatch row 0 idx 87 (`batch=271`, `c1=1165`) and `throughput_claim_eligible=false`.
+- No `benchmarks/README.md` or `benchmarks/CHANGELOG.md` scoreboard update was made because neither artifact is accepted.
+
+Validation:
+
+```bash
+python3 - <<'PY'
+import json
+from pathlib import Path
+from scripts.qwen35_batch_artifact_schema import validate_cn_diagnostic_artifact_payload
+for path in [
+    Path('benchmarks/results/2026-05-27-hipengine-qwen35-paro-c2-native-l40-512-32-blocked.json'),
+    Path('benchmarks/results/2026-05-27-hipengine-qwen35-paro-c2-native-l40-512-128-rejected-correctness.json'),
+]:
+    payload = json.loads(path.read_text())
+    validate_cn_diagnostic_artifact_payload(payload)
+    print(path.name, payload['status'], payload['correctness']['generated_token_equality']['passed'], payload['decision']['reason'])
+PY
+```
+
+Loop guard after C0.3:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 36
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```

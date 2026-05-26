@@ -568,11 +568,13 @@ roll-up/status view.
       and `throughput_claim_eligible`. Acceptance: failing fixture proves the
       guard catches a missing field. Evidence: `scripts/qwen35_batch_artifact_schema.py`
       plus `pytest -q tests/test_generation_batch_scheduler.py -q`.
-- [ ] **C0.3 promote current diagnostics.** Move or regenerate the current
+- [x] **C0.3 promote current diagnostics.** Move or regenerate the current
       c=2 accepted/rejected diagnostic JSONs under `benchmarks/results/` with
       `status=blocked` or `rejected_correctness` as appropriate. Acceptance:
       `WORKLOG.md` links exact commands and no scoreboard row is added unless
-      `status=accepted`.
+      `status=accepted`. Evidence:
+      `benchmarks/results/2026-05-27-hipengine-qwen35-paro-c2-native-l40-512-32-blocked.json`
+      and `benchmarks/results/2026-05-27-hipengine-qwen35-paro-c2-native-l40-512-128-rejected-correctness.json`.
 
 ### C1 packets — keep current integration safe
 
@@ -807,7 +809,7 @@ in place even though pool growth lands in C4.
       L40 512/32 passes as a reduced diagnostic, but full L40 512/128 is
       still `rejected_correctness` at row 0 idx 87
       (`/tmp/hipengine-retained/guarded-L40-c2-512-128-current.json`).
-- [ ] Promote current c=2 accepted/rejected diagnostic artifacts under
+- [x] Promote current c=2 accepted/rejected diagnostic artifacts under
       `benchmarks/results/` before using them as retained evidence.
 - [ ] Root-cause and fix the selected-MoE c>N divergence
       (`/tmp/hipengine-retained/eq-L8-selectedmoe.json`).
@@ -1088,9 +1090,14 @@ not new tasks.
 
 ## GPU0 diagnostic evidence
 
-Fixtures and artifacts live under `/tmp/hipengine-prebench/` and
-`/tmp/hipengine-retained/` pending stable promotion to `benchmarks/results/`
-(C0 punchlist item).
+Most historical scratch fixtures and artifacts live under `/tmp/hipengine-prebench/`
+and `/tmp/hipengine-retained/`. The current c=2 native-decode review artifacts
+are promoted under `benchmarks/results/` as blocked/rejected diagnostics:
+
+- `benchmarks/results/2026-05-27-hipengine-qwen35-paro-c2-native-l40-512-32-blocked.json`
+- `benchmarks/results/2026-05-27-hipengine-qwen35-paro-c2-native-l40-512-128-rejected-correctness.json`
+
+These are not scoreboard rows because neither has `status=accepted`.
 
 Primitive c=1/2/4/8 correctness (BF16 batched KV append + batched paged
 full-attention decode):
