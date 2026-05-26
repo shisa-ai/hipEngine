@@ -30,20 +30,22 @@ Related source-of-truth docs:
 
 **hipEngine does not yet support true vLLM-style c>N serving.**
 
-The current server and public Qwen/PARO generator are safe for local use, but
-they serialize generation. Several lower-level c>N primitives are already green,
-and the scheduler has batch-shaped metadata, but the end-to-end path still uses
-a serial bridge for concurrent diagnostics.
+The public Qwen/PARO generator now has a first prompt-list c>N path: it admits
+all prompt rows into `ResidentBatchScheduler`, uses native compact packed prefill
+for BF16 KV prompt lists, and routes output by request id. Decode after the
+seed token still uses `step_batch_serial`, and HTTP requests are still protected
+by the server's generation lock, so this is not continuous batching or a
+retained throughput path yet.
 
 ## Readiness matrix
 
 | Layer | Current status | Evidence / code | Blocks true c>N |
 | --- | --- | --- | --- |
-| OpenAI server | HTTP generation is serialized behind `generation_lock`; `n>1` is rejected. | `hipengine/server/api.py:create_app`, `_validate_generation_request`. | Replace one-request-at-a-time generation calls with scheduler admission/output routing. |
-| Public `LLM.generate()` | Accepts an iterable of prompts, but Qwen/PARO loops prompts in Python. Streaming is one prompt only. | `hipengine/generation/qwen35_paro.py:Qwen35ParoOneTokenGenerator.generate/stream`. | Add a batch-capable generator/session that owns an active request table. |
-| Scheduler | `ResidentBatchScheduler` exists with pending/admitted queues, slots, active masks, compact prefill slabs, decode work, graph bucket keys, and completion routing. | `hipengine/generation/batch_scheduler.py`. | Wire it into the public generator and server; add latency/occupancy accounting. |
-| Prefill | Single-request native prefill is active. Packed prefill helpers and slab metadata exist. | `Qwen35ParoResidentSession.prefill_native`, `prefill_native_packed`, `ResidentBatchScheduler.next_compact_prefill_slabs`. | Make the c>N generator actually use packed prefill and validate generated-token equality. |
-| Decode runtime | c>N diagnostic uses `step_batch_serial`: batch-shaped slots/KV, but row execution is serial c=1. | `Qwen35ParoResidentSession.step_batch_serial`, `batch_execution_metadata`. | Native c-aware decode graph replay and per-layer c>N kernels. |
+| OpenAI server | HTTP generation is serialized behind `generation_lock`; `n>1` is rejected. Prompt-list completions can reach the batch generator inside one request. | `hipengine/server/api.py:create_app`, `_validate_generation_request`. | Replace one-request-at-a-time HTTP locking with scheduler admission/output routing. |
+| Public `LLM.generate()` | Prompt lists with `len(prompts)>1` now use `ResidentBatchScheduler`, BF16 packed native prefill, request-id output routing, and serial slot-bridge decode. Streaming is one prompt only. | `hipengine/generation/qwen35_paro.py:Qwen35ParoOneTokenGenerator._generate_batch`. | Replace serial slot-bridge decode with native c-aware decode; add generated-token equality gates. |
+| Scheduler | `ResidentBatchScheduler` owns pending/admitted queues, slots, active masks, compact prefill slabs, decode work, graph bucket keys, and completion routing in the prompt-list generator. | `hipengine/generation/batch_scheduler.py`; `Qwen35ParoOneTokenGenerator._generate_batch`. | Wire independent HTTP request admission and latency/occupancy accounting. |
+| Prefill | Single-request native prefill is active. Prompt-list BF16 c>N uses `next_compact_prefill_slabs(...)` plus `prefill_native_packed(...)`. INT8 packed prefill is still not wired. | `Qwen35ParoResidentSession.prefill_native`, `prefill_native_packed`, `ResidentBatchScheduler.next_compact_prefill_slabs`. | Validate generated-token equality and add INT8 packed prefill before retained c>N claims. |
+| Decode runtime | c>N prompt-list decode and diagnostics use `step_batch_serial`: batch-shaped slots/KV, but row execution is serial c=1. | `Qwen35ParoOneTokenGenerator._generate_batch`, `Qwen35ParoResidentSession.step_batch_serial`, `batch_execution_metadata`. | Native c-aware decode graph replay and per-layer c>N kernels. |
 | Attention/KV primitives | BF16 batched paged KV append and batched full-attention context decode pass c=1/2/4/8 primitive correctness. | `scripts/qwen35_batch_correctness.py`. | Extend/validate the exact kernel families used by the resident runner, including INT8 KV paths and graph replay. |
 | MoE/quant kernels | Many wrappers accept `rows` or routed-lane counts, but end-to-end selected-MoE decode still follows c1 assumptions in the current bridge. | `hipengine/kernels/hip_gfx1100/quant/*`, `hipengine/runtime/qwen35_paro.py`. | Token-row to routed-lane mapping, grouped-by-expert execution, c-aware dispatch thresholds. |
 | KV cache | Dense fixed paged KV with uniform `KVLiveSpans`; BF16 and INT8-per-token/head storage are supported. c>1 metadata must be packed by the caller. | `hipengine/kvcache/policy.py`, `hipengine/kvcache/spans.py`. | Scheduler-owned allocation/admission/reclaim for multiple live requests; transactional scratch/journal for verify rows. |
@@ -160,8 +162,10 @@ A c>N row is not eligible for `accepted` status until all of these pass:
 
 ### Phase C1 — server and generator integration
 
-- [ ] Add a batch-capable Qwen/PARO generator entry point that accepts request
-      metadata, not just a tuple of prompt strings.
+- [x] Add a batch-capable Qwen/PARO generator path for prompt lists that owns
+      scheduler request ids, physical slots, packed prefill slabs, and output
+      routing. It still receives public prompt strings rather than full server
+      request metadata.
 - [ ] Wire server generation into `ResidentBatchScheduler` instead of holding
       `generation_lock` for the full request.
 - [ ] Preserve a narrow safety lock only around non-reentrant model/session
@@ -173,9 +177,9 @@ A c>N row is not eligible for `accepted` status until all of these pass:
 
 ### Phase C2 — native c>N prefill/decode
 
-- [ ] Use `ResidentBatchScheduler.next_compact_prefill_slabs(...)` and
-      `Qwen35ParoResidentSession.prefill_native_packed(...)` for concurrent
-      prefill.
+- [x] Use `ResidentBatchScheduler.next_compact_prefill_slabs(...)` and
+      `Qwen35ParoResidentSession.prefill_native_packed(...)` for BF16 prompt-list
+      concurrent prefill in `Qwen35ParoOneTokenGenerator._generate_batch`.
 - [ ] Add generated-token equality vs independent c=1 for c=2/4/8 512/128.
 - [ ] Replace `step_batch_serial` in the benchmark path with a native c-aware
       decode step.

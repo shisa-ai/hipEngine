@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from hipengine.generation.batch_scheduler import GeneratedToken, ResidentBatchScheduler
 from hipengine.generation.registry import GenerationRequest, register_text_generator
 from hipengine.kvcache import resolve_kv_policy
 from hipengine.loading import WeightIndex
@@ -36,7 +37,9 @@ class Qwen35ParoOneTokenGenerator:
     _runner: Qwen35ParoNextTokenRunner | None = field(default=None, init=False, repr=False)
     _session: Qwen35ParoResidentSession | None = field(default=None, init=False, repr=False)
     _session_capacity: int = field(default=0, init=False, repr=False)
+    _session_batch_size: int = field(default=0, init=False, repr=False)
     _session_kv_key: tuple[str, str, str, int] | None = field(default=None, init=False, repr=False)
+    last_batch_generation: dict[str, Any] | None = field(default=None, init=False, repr=False)
 
     def generate(self, request: GenerationRequest) -> list[str]:
         if request.max_tokens < 0:
@@ -46,6 +49,7 @@ class Qwen35ParoOneTokenGenerator:
                 "Qwen3.5/PARO generator currently supports greedy sampling only"
             )
         if request.max_tokens == 0:
+            self.last_batch_generation = None
             return ["" for _ in request.prompts]
         runner = self._get_runner()
         kv_policy = resolve_kv_policy(
@@ -53,18 +57,31 @@ class Qwen35ParoOneTokenGenerator:
             scale_dtype=request.kv_scale_dtype,
             scale_granularity=request.kv_scale_granularity,
         )
-        return [
-            self._generate_one(
-                runner,
-                prompt,
-                request.max_tokens,
-                ignore_eos=request.ignore_eos,
-                kv_policy=kv_policy,
-            )
-            for prompt in request.prompts
-        ]
+        if len(request.prompts) == 1:
+            self.last_batch_generation = None
+            return [
+                self._generate_one(
+                    runner,
+                    request.prompts[0],
+                    request.max_tokens,
+                    ignore_eos=request.ignore_eos,
+                    kv_policy=kv_policy,
+                )
+            ]
+        return self._generate_batch(
+            runner,
+            request.prompts,
+            request.max_tokens,
+            ignore_eos=request.ignore_eos,
+            kv_policy=kv_policy,
+        )
 
-    def prepare(self, *, max_sequence_length: int | None = None, sampling_params: Any | None = None) -> int:
+    def prepare(
+        self,
+        *,
+        max_sequence_length: int | None = None,
+        sampling_params: Any | None = None,
+    ) -> int:
         params = sampling_params
         runner = self._get_runner()
         kv_policy = resolve_kv_policy(
@@ -162,6 +179,138 @@ class Qwen35ParoOneTokenGenerator:
                     break
         return "".join(generated_text)
 
+    def _generate_batch(
+        self,
+        runner: Qwen35ParoNextTokenRunner,
+        prompts: tuple[str, ...],
+        max_tokens: int,
+        *,
+        ignore_eos: bool,
+        kv_policy,
+    ) -> list[str]:
+        """Generate a prompt list through the scheduler-owned c>N path.
+
+        Native compact prefill runs all admitted rows together when their block
+        table shapes permit it. Decode remains the explicit serial slot bridge
+        until native c-aware replay lands; keep ``last_batch_generation`` clear
+        about that so prompt-list batching is not mistaken for a retained c>N
+        throughput path.
+        """
+
+        prompt_rows: list[list[int]] = []
+        for prompt in prompts:
+            _last_token_id, prompt_ids = _select_token(Path(self.model_path), prompt, None)
+            if not prompt_ids:
+                raise ValueError("prompt produced no tokens")
+            prompt_rows.append([int(token) for token in prompt_ids])
+        batch_size = len(prompt_rows)
+        required_sequence_length = max(len(row) for row in prompt_rows) + max_tokens + 1
+        session_capacity = _session_capacity_for(required_sequence_length)
+        session = self._get_session(
+            runner,
+            max_sequence_length=session_capacity,
+            max_batch_size=batch_size,
+            kv_policy=kv_policy,
+        )
+        scheduler = ResidentBatchScheduler(capacity=batch_size)
+        request_ids = tuple(
+            scheduler.submit(row, max_new_tokens=max(0, max_tokens - 1))
+            for row in prompt_rows
+        )
+        admitted = scheduler.admit_pending()
+        if admitted != request_ids:
+            raise RuntimeError(f"unexpected admitted request ids {admitted!r}")
+
+        output_parts: dict[int, list[str]] = {request_id: [] for request_id in request_ids}
+        next_token_by_request: dict[int, int] = {}
+        packed_slabs = scheduler.next_compact_prefill_slabs(
+            chunk_size=max(len(row) for row in prompt_rows),
+            block_size=getattr(session, "block_size", 256),
+        )
+        prefill_slab_shapes: list[dict[str, Any]] = []
+        for slab in packed_slabs:
+            prefill_slab_shapes.append(
+                {
+                    "request_ids": list(slab.request_ids),
+                    "slot_ids": list(slab.physical_slot_ids),
+                    "rows": slab.rows,
+                    "request_count": slab.request_count,
+                    "block_count": slab.block_count,
+                }
+            )
+            results = session.prefill_native_packed(slab, sample=True)
+            if len(results) != slab.request_count:
+                raise RuntimeError(
+                    "packed prefill returned "
+                    f"{len(results)} results for {slab.request_count} requests"
+                )
+            for request_id, result in zip(slab.request_ids, results, strict=True):
+                if result is None:
+                    raise RuntimeError("packed native prefill did not produce next-token logits")
+                output_parts[request_id].append(result.token_text)
+                seed_finished = (
+                    not ignore_eos and _is_eos(session.tokenizer, result.token_id)
+                ) or max_tokens <= 1
+                if seed_finished:
+                    scheduler.record_generated(
+                        (GeneratedToken(request_id, result.token_id, finished=True),)
+                    )
+                else:
+                    next_token_by_request[request_id] = int(result.token_id)
+
+        decode_steps = 0
+        while next_token_by_request:
+            work = scheduler.next_decode_work()
+            if work is None:
+                raise RuntimeError("scheduler did not emit decode work")
+            request_ids_for_step = tuple(
+                request_id for request_id in work.request_ids if request_id in next_token_by_request
+            )
+            if not request_ids_for_step:
+                raise RuntimeError("scheduler decode work did not include runnable requests")
+            results = session.step_batch_serial(
+                [next_token_by_request[request_id] for request_id in request_ids_for_step],
+                positions=[
+                    scheduler.active_batch.requests[request_id].context_len
+                    for request_id in request_ids_for_step
+                ],
+                slots=[
+                    scheduler.active_batch.slot_for(request_id)
+                    for request_id in request_ids_for_step
+                ],
+                sample=True,
+            )
+            generated: list[GeneratedToken] = []
+            for request_id, result in zip(request_ids_for_step, results, strict=True):
+                if result is None:
+                    raise RuntimeError("decode step did not produce next-token logits")
+                output_parts[request_id].append(result.token_text)
+                next_token_by_request[request_id] = int(result.token_id)
+                finished = not ignore_eos and _is_eos(session.tokenizer, result.token_id)
+                generated.append(GeneratedToken(request_id, result.token_id, finished=finished))
+            completed = scheduler.record_generated(generated)
+            for done in completed:
+                next_token_by_request.pop(done.request_id, None)
+            decode_steps += 1
+
+        batch_execution = session.batch_execution_metadata(scheduler_owned=True)
+        self.last_batch_generation = {
+            "path": "scheduler_native_packed_prefill_serial_decode",
+            "batch_size": batch_size,
+            "request_ids": list(request_ids),
+            "prompt_lengths": [len(row) for row in prompt_rows],
+            "packed_prefill_slabs": prefill_slab_shapes,
+            "decode_steps": decode_steps,
+            "native_compact_prefill": bool(
+                getattr(batch_execution, "native_compact_prefill", False)
+            ),
+            "native_caware_decode": bool(getattr(batch_execution, "native_caware_decode", False)),
+            "throughput_claim_eligible": bool(
+                getattr(batch_execution, "throughput_claim_eligible", False)
+            ),
+        }
+        return ["".join(output_parts[request_id]) for request_id in request_ids]
+
     def _stream_one(
         self,
         runner: Qwen35ParoNextTokenRunner,
@@ -214,6 +363,7 @@ class Qwen35ParoOneTokenGenerator:
         max_sequence_length: int,
         kv_policy,
         auto_context_length: bool = False,
+        max_batch_size: int = 1,
     ) -> Qwen35ParoResidentSession:
         kv_key = (
             kv_policy.storage_dtype.value,
@@ -221,10 +371,13 @@ class Qwen35ParoOneTokenGenerator:
             kv_policy.scale_granularity,
             int(kv_policy.block_size),
         )
+        batch_size = max(1, int(max_batch_size))
         capacity_ok = self._session_capacity >= max_sequence_length or bool(auto_context_length)
+        batch_ok = self._session_batch_size >= batch_size
         if (
             self._session is None
             or not capacity_ok
+            or not batch_ok
             or self._session_kv_key != kv_key
         ):
             self.close()
@@ -236,8 +389,13 @@ class Qwen35ParoOneTokenGenerator:
             }
             if auto_context_length:
                 session_kwargs["auto_context_length"] = True
+            if batch_size > 1:
+                session_kwargs["max_batch_size"] = batch_size
             self._session = Qwen35ParoResidentSession(runner, **session_kwargs)
-            self._session_capacity = int(getattr(self._session, "max_sequence_length", max_sequence_length))
+            self._session_capacity = int(
+                getattr(self._session, "max_sequence_length", max_sequence_length)
+            )
+            self._session_batch_size = int(getattr(self._session, "max_batch_size", batch_size))
             self._session_kv_key = kv_key
         else:
             self._session.reset()
@@ -248,6 +406,7 @@ class Qwen35ParoOneTokenGenerator:
             self._session.close()
             self._session = None
         self._session_capacity = 0
+        self._session_batch_size = 0
         self._session_kv_key = None
 
 

@@ -26815,3 +26815,22 @@ Implication: aggregate decode tok/s stays roughly flat around 99-102 tok/s as c 
 Created branch `concurrency` from current HEAD after the CLI and c>N diagnostic commits. Added `docs/CONCURRENCY.md` as the focused c>N serving guide: it records the current server/generator/scheduler/kernel/KV readiness matrix, GPU0 c=1/2/4/8 primitive and scheduler-serial diagnostic evidence, benchmark eligibility gates, and the phase checklist for real vLLM-style c>N support. Updated `docs/README.md` to link the new guide.
 
 Validation: docs-only change; re-read `docs/CONCURRENCY.md` end-to-end and reviewed the staged diff before commit.
+
+## 2026-05-26 — Prompt-list c>N packed prefill generator path
+
+Implemented the first C1/C2 concurrency increment on branch `concurrency`:
+
+- `Qwen35ParoOneTokenGenerator.generate()` now routes prompt lists (`len(prompts)>1`) through a scheduler-owned c>N path instead of looping prompts in Python.
+- The new path admits rows into `ResidentBatchScheduler`, builds compact prefill slabs with `next_compact_prefill_slabs(...)`, runs BF16 native packed prefill via `Qwen35ParoResidentSession.prefill_native_packed(...)`, and routes generated text by stable request id.
+- Decode after the seed token still uses `Qwen35ParoResidentSession.step_batch_serial(...)`; `last_batch_generation` records `native_caware_decode=false` and `throughput_claim_eligible=false` so this cannot be mistaken for retained c>N throughput.
+- Session reuse now tracks `max_batch_size` so a resident c=1 session is rebuilt when a prompt-list batch needs more physical slots.
+- `docs/CONCURRENCY.md` updated: public generator/prefill status advanced, server HTTP lock and serial decode remain blockers.
+
+Validation:
+
+```bash
+pytest -q tests/test_generation_qwen35_paro.py tests/test_generation_batch_scheduler.py tests/test_qwen35_resident_batch_layout.py -q
+# ......................................................                   [100%]
+```
+
+Next blockers before c>N benchmark claims: independent HTTP request admission/coalescing, generated-token equality vs independent c=1 for c=2/4/8, INT8 packed prefill coverage, and native c-aware decode graph replay.
