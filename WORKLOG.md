@@ -26878,3 +26878,9 @@ HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 python3 scripts/qwen35_batch_correc
 ```
 
 Next action: audit row-aware linear-attention decode and full-attention/MoE batch kernels against c=1 intermediate tensors before enabling `step_batch_native` by default or recording any retained c>N throughput row.
+
+## 2026-05-26 — Expanded continuous batching punchlist
+
+Updated `docs/CONCURRENCY.md` with a detailed remaining punchlist for the full vLLM-style c>N serving target. The new section separates correctness/basic implementation from performance/scaling work, defines done criteria for native c>N correctness, basic continuous batching, and performant c>N, and calls out required scaling evidence against c=1 prefill/decode and the serial bridge before any retained throughput claim.
+
+Validation: docs-only change; re-read `docs/CONCURRENCY.md` end-to-end after editing.

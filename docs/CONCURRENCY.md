@@ -37,8 +37,10 @@ seed token still uses `step_batch_serial`. The OpenAI server now coalesces
 compatible non-streaming HTTP generations over a short configurable batch window
 (`--generation-batch-window-ms`, default 5 ms) before one prompt-list
 `LLM.generate()` call, but streaming remains one request at a time
-and decode is still serial, so this is not continuous batching or a retained
-throughput path yet.
+and production decode is still serial. An experimental native decode diagnostic
+exists behind `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1`, but it is
+currently rejected on generated-token equality and is not a retained throughput
+path. This is not continuous batching yet.
 
 ## Readiness matrix
 
@@ -214,6 +216,155 @@ A c>N row is not eligible for `accepted` status until all of these pass:
 - [ ] Disable prefix/radix cache initially for DMS or any policy with eviction;
       shared prefixes need per-sequence eviction overlays before they are safe.
 - [ ] Port compact DMS after dense c>N is stable, following [`KVCACHE.md`](KVCACHE.md).
+
+## Remaining punchlist to vLLM-style c>N continuous batching
+
+This is the working punchlist for the target pipeline. The order matters:
+first make the basic c>N pipeline correct and observable, then make the green
+path fast enough to scale against c=1 prefill and decode.
+
+### Definition of done
+
+| Milestone | Done when |
+| --- | --- |
+| Basic native c>N correctness | Full 40-layer Qwen/PARO dense fixed-page BF16 c=2/4/8 512/128 emits generated token IDs equal to independent c=1 runs, with no serial decode bridge and `throughput_claim_eligible=true` only after that gate passes. |
+| Basic continuous batching | One long-lived scheduler loop can admit new HTTP requests while other requests decode, interleave chunked prefill with decode, finish/reclaim/compact slots independently, and route both streaming and non-streaming outputs by request id. |
+| Performant c>N | Accepted artifacts show aggregate prefill and decode scaling versus the c=1 baseline and the serial bridge, with aggregate/c1 and per-request/c1 ratios, latency p50/p95, occupancy, graph-bucket stats, and profiler evidence. |
+
+### A. Correctness and basic implementation first
+
+- [ ] Remove stale compatibility glue once the guarded native API is settled
+      (for example the `batch_execution_metadata(... )` `TypeError` shim in the
+      generator).
+- [ ] Add CPU-runnable structural tests for the current guardrails:
+  - `step_batch_native` raises unless
+    `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1`.
+  - sparse/non-contiguous slots are rejected.
+  - INT8 KV and long-context split-K native decode are rejected until wired.
+  - metadata reports `throughput_claim_eligible=false` for guarded diagnostics.
+- [ ] Add HIP-guarded reduced-shape equality diagnostics that do **not** require
+      full 40 layers, so failures can be bisected in CI/dev environments with
+      ROCm. Keep full 40-layer 512/128 as the retained benchmark gate.
+- [ ] Triage the current native decode equality failures before enabling the
+      path by default:
+  - compare c=2 native vs independent c=1 after every layer for L1/L3/L8/full
+    model slices;
+  - isolate linear-attention state update, full-attention KV append/decode,
+    MoE routing/selected-lane mapping, shared expert, O projection, and LM-head
+    sampling;
+  - verify `_batch_full_spans` block-table layout against the exact
+    `qwen35_paged_full_attn_decode_context_bf16_batch_spans` cache addressing;
+  - audit scratch aliasing and row views so row 0 cannot overwrite row 1
+    temporaries or vice versa.
+- [ ] Make native BF16 compact-slot decode correct for the smallest retained
+      scope: dense fixed-page KV, compact physical slots `0..C-1`, context
+      `<1024`, greedy sampling, SpecDec disabled.
+- [ ] Extend native decode correctness to non-compact slots after scheduler
+      compaction/reclaim moves requests.
+- [ ] Add row-aware split-K full-attention decode/reduce before any long-context
+      native c>N claim (`max_context >= 1024`).
+- [ ] Add INT8-per-token/head native c>N append/decode coverage after BF16 is
+      green; require the same generated-token equality gate.
+- [ ] Make linear-attention conv/recurrent state updates consume `[C, ...]`
+      state, active masks, and slot ids without c1 aliases.
+- [ ] Replace selected-MoE c1 lane assumptions with explicit token-row to
+      routed-lane mapping (`tokens=C`, `lanes=C*top_k`) and validate grouped
+      by-expert metadata for c=2/4/8.
+- [ ] Make batched sampling deterministic and isolated per row:
+  - one row's argmax/logit buffers cannot be overwritten by another row;
+  - EOS/stop-token handling is per request;
+  - `n>1` remains separate scheduler requests, not one shared output stream.
+- [ ] Promote the resident runner from static prompt-list batches to a
+      scheduler-owned engine loop:
+  - pending queue, active table, and physical slots live beyond one
+    `LLM.generate()` call;
+  - `next_prefill_work` and `next_decode_work` are interleaved;
+  - completed requests are reclaimed without waiting for the longest request;
+  - active masks, context lengths, positions, and output queues are updated at
+    every commit point.
+- [ ] Add scheduler-owned dense KV allocation/admission/reclaim for multiple
+      live requests. The scheduler should reject or queue work based on KV page
+      capacity before device allocation fails.
+- [ ] Add cancellation, timeout, EOS, max-token, and client disconnect handling
+      to the same completion/reclaim path used by normal generation.
+- [ ] Route server streaming through the same scheduler loop instead of the
+      current one-request-at-a-time path.
+- [ ] Narrow or remove the coarse `generation_lock`; any remaining lock should
+      protect only non-reentrant session mutation, not the whole lifetime of a
+      generated batch.
+- [ ] Add request-level observability: enqueue/admit/start-prefill/start-decode/
+      first-token/finish timestamps, queue time, prefill time, decode time,
+      tokens generated, slot moves, and final status.
+- [ ] Keep prefix/radix cache, DMS/compact KV, and SpecDec disabled on the c>N
+      correctness path until dense fixed-page c>N is green.
+
+### B. Then make the green path fast
+
+- [ ] Establish baseline artifacts before optimizing:
+  - c=1 native prefill/decode for the retained shapes;
+  - c=2/4/8 serial bridge diagnostics;
+  - first green uncaptured native c>N rows;
+  - primitive/kernel microbenchmarks for attention, KV append, MoE, projection,
+    and LM-head sampling.
+- [ ] Report scaling explicitly for every retained row:
+  - `prefill_tok_s_aggregate / c1_prefill_tok_s`;
+  - `decode_tok_s_aggregate / c1_decode_tok_s`;
+  - `decode_tok_s_per_request / c1_decode_tok_s`;
+  - p50/p95 first-token latency and inter-token latency;
+  - active-batch occupancy over time.
+- [ ] Target decode aggregate speedup versus c=1 and versus the serial bridge.
+      Per [`PLAN.md`](PLAN.md), c=8 decode plausibly lands around 2-4x c=1
+      aggregate when kernels reuse enough work; do not promise 8x.
+- [ ] Target prefill aggregate scaling versus c=1 by keeping prompt rows packed,
+      avoiding per-request Python loops, and using AOTriton/WMMA paths where they
+      beat row-GEMV.
+- [ ] Add hipGraph capture/replay buckets for decode by `(C, context bucket,
+      active mask, KV dtype, layer plan, top_k/experts, replay length)`, with an
+      uncaptured fallback for rare shapes.
+- [ ] Eliminate residual serial loops on the native path after correctness is
+      green:
+  - full-attention per-row fallback;
+  - per-row host metadata allocation/free;
+  - per-row LM-head/argmax launches where a batched launch is correct;
+  - Python per-layer dispatch overhead inside steady-state decode.
+- [ ] Add c-aware projection dispatch thresholds:
+  - c=1 stays on tuned GEMV/Marlin-K paths;
+  - c=2/4/8 can use MMQ/GEMM/WMMA-style kernels when they beat row-GEMV;
+  - c>16 should prefer GEMM/WMMA and grouped MoE designs over widening c1
+    GEMV wrappers.
+- [ ] Optimize MoE for routed-lane reuse:
+  - group lanes by expert;
+  - use compact/WMMA grouped kernels when routed lanes justify it;
+  - measure router, group-scatter, gate/up, down, shared expert, and combine
+    time separately.
+- [ ] Optimize memory traffic and workspace reuse:
+  - preallocate per-bucket scratch instead of allocating per step;
+  - avoid host-device copies for metadata that can be updated on device;
+  - keep JIT builds out of profiler runs with `require_cached`;
+  - track peak allocator/KV/workspace bytes in artifacts.
+- [ ] Add backpressure and fairness policies once the scheduler is continuous:
+  - max active requests, max queued requests, max prefill chunk tokens;
+  - prefill-vs-decode scheduling policy to protect decode latency;
+  - sampling-parameter grouping without starving incompatible requests.
+- [ ] Capture profiler summaries for accepted rows: expected kernel names,
+      duration/share for attention, MoE, projection, sampling, graph replay, and
+      any CPU-side bottleneck.
+- [ ] Only update `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, and
+      `benchmarks/results/` for retained rows with correctness green, protocol
+      shape satisfied, and profiler evidence. Rejected/blocked diagnostics stay
+      useful but are not scoreboard entries.
+
+### C. After dense c>N is correct and fast
+
+- [ ] Add prefix/radix cache with per-request ownership and invalidation; keep it
+      disabled for eviction policies until prefix overlays are designed.
+- [ ] Wire SpecDec/MTP verification through the same batch runner with
+      transactional KV scratch/journals and accepted-token commit semantics.
+- [ ] Port compact DMS/variable-span KV after dense fixed-page continuous
+      batching is stable, using `KVLiveSpans` and `KVPolicy.admission_cap()` as
+      the scheduler/kernel boundary.
+- [ ] Revisit multi-GPU admission, TP/PP/EP, and cross-GPU KV ownership only
+      after single-GPU W7900 c>N serving has retained c=2/4/8 rows.
 
 ## What not to claim yet
 
