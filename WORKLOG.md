@@ -26809,3 +26809,9 @@ python3 scripts/qwen35_batch_serial_bench.py \
 ```
 
 Implication: aggregate decode tok/s stays roughly flat around 99-102 tok/s as c increases while per-request tok/s falls ~1/c, confirming the current bridge is serialized over c=1 decode work. This validates the user-visible answer that server/kernel/KV c>N support must be audited and upgraded before a proper vLLM-style c=1..8 retained benchmark.
+
+## 2026-05-26 — concurrency branch and guide
+
+Created branch `concurrency` from current HEAD after the CLI and c>N diagnostic commits. Added `docs/CONCURRENCY.md` as the focused c>N serving guide: it records the current server/generator/scheduler/kernel/KV readiness matrix, GPU0 c=1/2/4/8 primitive and scheduler-serial diagnostic evidence, benchmark eligibility gates, and the phase checklist for real vLLM-style c>N support. Updated `docs/README.md` to link the new guide.
+
+Validation: docs-only change; re-read `docs/CONCURRENCY.md` end-to-end and reviewed the staged diff before commit.
