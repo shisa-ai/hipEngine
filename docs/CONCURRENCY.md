@@ -554,10 +554,10 @@ roll-up/status view.
       protected by `generation_lock`; document which session state is still
       non-reentrant. Acceptance: a focused test or review note proves the lock
       is narrow enough for C1 and names the exact blocker for C4 removal.
-- [ ] **C1.2 API rejection contract.** Keep `n>1` rejected until C5 and add
+- [x] **C1.2 API rejection contract.** Keep `n>1` rejected until C5 and add
       regression coverage if missing for completions and chat. Acceptance:
       server tests prove `n>1` returns the intended 4xx while prompt-list
-      batching still works.
+      batching still works. Evidence: `pytest -q tests/test_server_api.py -q`.
 
 ### C2 packets — native BF16 c>N correctness first
 
@@ -751,7 +751,7 @@ batch generator; `n>1` rejected; streaming unchanged.
       prompt-list `LLM.generate()` call.
 - [ ] Preserve a narrow safety lock only around non-reentrant
       model/session mutation until the session is proven concurrency-safe.
-- [ ] Keep `n>1` rejected at the API layer until C5 lowers it to N
+- [x] Keep `n>1` rejected at the API layer until C5 lowers it to N
       scheduler requests.
 
 ### C2 — native c>N prefill/decode green

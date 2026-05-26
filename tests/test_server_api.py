@@ -384,12 +384,19 @@ def test_server_rejects_wrong_model_and_unsupported_options() -> None:
     assert wrong_model.status_code == 404
     assert wrong_model.json()["error"]["code"] == "model_not_found"
 
-    unsupported_n = client.post(
+    unsupported_completion_n = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "hello", "n": 2},
+    )
+    assert unsupported_completion_n.status_code == 400
+    assert unsupported_completion_n.json()["error"]["param"] == "n"
+
+    unsupported_chat_n = client.post(
         "/v1/chat/completions",
         json={"model": "fake-model", "messages": [{"role": "user", "content": "hello"}], "n": 2},
     )
-    assert unsupported_n.status_code == 400
-    assert unsupported_n.json()["error"]["param"] == "n"
+    assert unsupported_chat_n.status_code == 400
+    assert unsupported_chat_n.json()["error"]["param"] == "n"
 
     unsupported_logprobs = client.post(
         "/v1/completions",
