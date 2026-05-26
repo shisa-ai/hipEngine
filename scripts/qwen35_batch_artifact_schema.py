@@ -105,6 +105,7 @@ def validate_cn_diagnostic_artifact_payload(payload: Mapping[str, Any]) -> None:
     accepted = bool(decision.get("accepted"))
     if accepted or status == "accepted" or performance_claim is True:
         _validate_accepted_retained_gates(payload, errors)
+        _validate_accepted_correctness_gates(correctness, errors)
         _validate_accepted_scaling_gates(payload, errors)
 
     if errors:
@@ -158,6 +159,28 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
             errors.append("memory.prefix_sharing.enabled must be a bool for accepted artifacts")
         if not _is_number(prefix_sharing.get("savings_bytes")):
             errors.append("memory.prefix_sharing.savings_bytes must be numeric for accepted artifacts")
+
+
+def _validate_accepted_correctness_gates(correctness: Mapping[str, Any], errors: list[str]) -> None:
+    if correctness.get("passed") is not True:
+        errors.append("correctness.passed must be true for accepted artifacts")
+    equality = correctness.get("generated_token_equality")
+    if not isinstance(equality, Mapping):
+        errors.append("correctness.generated_token_equality must be an object for accepted artifacts")
+        return
+    if equality.get("passed") is not True:
+        errors.append("correctness.generated_token_equality.passed must be true for accepted artifacts")
+    if equality.get("skipped") is not False:
+        errors.append("correctness.generated_token_equality.skipped must be false for accepted artifacts")
+    if not isinstance(equality.get("batch_sequences"), list):
+        errors.append("correctness.generated_token_equality.batch_sequences must be a list for accepted artifacts")
+    if not isinstance(equality.get("c1_sequences"), list):
+        errors.append("correctness.generated_token_equality.c1_sequences must be a list for accepted artifacts")
+    mismatches = equality.get("mismatches")
+    if not isinstance(mismatches, list):
+        errors.append("correctness.generated_token_equality.mismatches must be a list for accepted artifacts")
+    elif mismatches:
+        errors.append("correctness.generated_token_equality.mismatches must be empty for accepted artifacts")
 
 
 def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[str]) -> None:

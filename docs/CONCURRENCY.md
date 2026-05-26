@@ -826,8 +826,9 @@ roll-up/status view.
       for timestamps, p50/p95 latency, dynamic pool, stable block id, and
       prefix-sharing savings before `status=accepted`. Acceptance: a fixture
       missing any required field cannot be accepted. Evidence:
-      `scripts/qwen35_batch_artifact_schema.py` accepted-row gates plus
-      `pytest -q tests/test_generation_batch_scheduler.py -q`.
+      `scripts/qwen35_batch_artifact_schema.py` accepted-row gates now also
+      require non-skipped generated-token equality vs independent c=1 with no
+      mismatches, plus `pytest -q tests/test_generation_batch_scheduler.py -q`.
 
 ### Performance packets — run only after correctness is green
 

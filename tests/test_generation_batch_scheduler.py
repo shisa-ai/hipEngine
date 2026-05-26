@@ -1455,7 +1455,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
             "native_compact_prefill": True,
             "native_caware_decode": True,
         },
-        "correctness": {"passed": True},
+        "correctness": {
+            "passed": True,
+            "generated_token_equality": {
+                "passed": True,
+                "skipped": False,
+                "batch_sequences": [[10, 11], [20, 21]],
+                "c1_sequences": [[10, 11], [20, 21]],
+                "mismatches": [],
+            },
+        },
         "execution": {
             "batch_execution": {
                 "native_compact_prefill": True,
@@ -1525,6 +1534,21 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     }
 
     validate_cn_diagnostic_artifact_payload(accepted)
+
+    missing_equality = json.loads(json.dumps(accepted))
+    missing_equality["correctness"].pop("generated_token_equality")
+    with pytest.raises(ValueError, match="generated_token_equality"):
+        validate_cn_diagnostic_artifact_payload(missing_equality)
+
+    skipped_equality = json.loads(json.dumps(accepted))
+    skipped_equality["correctness"]["generated_token_equality"]["skipped"] = True
+    with pytest.raises(ValueError, match="skipped must be false"):
+        validate_cn_diagnostic_artifact_payload(skipped_equality)
+
+    mismatch_equality = json.loads(json.dumps(accepted))
+    mismatch_equality["correctness"]["generated_token_equality"]["mismatches"] = [{"row": 0}]
+    with pytest.raises(ValueError, match="mismatches must be empty"):
+        validate_cn_diagnostic_artifact_payload(mismatch_equality)
 
     missing_latency = dict(accepted)
     missing_latency["observability"] = {
