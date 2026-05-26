@@ -97,6 +97,13 @@ def _env_int(name: str, default: int, *aliases: str) -> int:
     return default
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None or value.strip() == "":
+        return bool(default)
+    return value.strip().lower() not in {"0", "false", "off", "no"}
+
+
 def _paged_attn_max_splits() -> int:
     return max(
         1,
@@ -1339,6 +1346,57 @@ class Qwen35ParoResidentSession:
         finally:
             self.hidden, self.next_hidden = saved_hidden, saved_next_hidden
 
+    def step_batch_native(
+        self,
+        token_ids: list[int] | tuple[int, ...],
+        *,
+        positions: list[int] | tuple[int, ...],
+        slots: list[int] | tuple[int, ...] | None = None,
+        sample: bool = True,
+    ) -> tuple[Qwen35ParoAutoregressiveStepResult | None, ...]:
+        """Run one decode token per active row through native c-aware layer kernels.
+
+        This retained bring-up path supports dense, compact batch slots for the
+        c=N 512/128 protocol.  It intentionally rejects sparse/non-contiguous
+        slot sets and long-context split-K attention until those kernels are
+        row-aware as well.
+        """
+
+        if self.closed:
+            raise RuntimeError("session is closed")
+        if not _env_flag("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"):
+            raise NotImplementedError(
+                "native c>N decode is experimental and currently blocked on generated-token equality; "
+                "set HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1 for diagnostics"
+            )
+        if self.kv_storage_dtype != DType.BF16:
+            raise NotImplementedError("native c>N decode currently requires BF16 KV")
+        tokens = tuple(int(token) for token in token_ids)
+        pos = tuple(int(position) for position in positions)
+        if len(tokens) != len(pos):
+            raise ValueError("token_ids and positions must have the same length")
+        if not tokens:
+            raise ValueError("token_ids must be non-empty")
+        rows = len(tokens)
+        if rows > self.max_batch_size:
+            raise ValueError("token_ids exceed max_batch_size")
+        slot_ids = tuple(range(rows)) if slots is None else tuple(int(slot) for slot in slots)
+        if slot_ids != tuple(range(rows)):
+            raise NotImplementedError("native c>N decode currently requires compact slots 0..C-1")
+        for position in pos:
+            self._check_position(position)
+        max_context = max(position + 1 for position in pos)
+        if max_context >= 1024:
+            raise NotImplementedError("native c>N split-K full-attention decode is not wired")
+
+        self._set_batch_token_embeddings(tokens, stream=0)
+        self._set_batch_positions(pos, stream=0)
+        hidden = self._run_layers_batch_decode(rows=rows, positions=pos, slots=slot_ids, stream=0)
+        if not sample:
+            self.runtime.device_synchronize()
+            return tuple(None for _ in tokens)
+        return self._sample_batch_from_hidden(hidden, rows=rows)
+
     def native_prefill_plan(self) -> Qwen35ParoNativePrefillPlan:
         """Return the native prefill coverage currently available for this session."""
 
@@ -1486,23 +1544,46 @@ class Qwen35ParoResidentSession:
             blockers=blockers,
         )
 
-    def batch_execution_metadata(self, *, scheduler_owned: bool = False) -> Qwen35ParoResidentBatchExecution:
+    def batch_execution_metadata(
+        self,
+        *,
+        scheduler_owned: bool = False,
+        native_decode: bool = False,
+    ) -> Qwen35ParoResidentBatchExecution:
         """Describe whether the resident c>N path is native or a serial fallback."""
 
         native_prefill_plan = self.native_prefill_plan()
-        blockers = [
-            "step_batch_serial executes decode active physical slots serially through the c=1 layer path",
-            "native c-aware full-attention decode graph replay is not wired",
-        ]
-        blockers.extend(native_prefill_plan.blockers)
+        blockers = list(native_prefill_plan.blockers)
+        if native_decode:
+            blockers.extend(
+                [
+                    "native c>N decode currently supports only compact slots, BF16 KV, and context < 1024",
+                    "native c>N decode is experimental and blocked until generated-token equality passes",
+                ]
+            )
+            path = "scheduler_native_compact_batch" if scheduler_owned else "native_compact_batch"
+            row_execution = "native_compact_caware_layers"
+            native_caware_decode = True
+            eligible = False
+        else:
+            blockers.extend(
+                [
+                    "step_batch_serial executes decode active physical slots serially through the c=1 layer path",
+                    "native c-aware full-attention decode graph replay is not wired",
+                ]
+            )
+            path = "scheduler_serial_slot_bridge" if scheduler_owned else "serial_slot_bridge"
+            row_execution = "serial_c1_layer_path"
+            native_caware_decode = False
+            eligible = False
         return Qwen35ParoResidentBatchExecution(
-            path="scheduler_serial_slot_bridge" if scheduler_owned else "serial_slot_bridge",
+            path=path,
             scheduler_owned=bool(scheduler_owned),
-            row_execution="serial_c1_layer_path",
+            row_execution=row_execution,
             native_prefill_plan=native_prefill_plan,
             native_compact_prefill=bool(native_prefill_plan.full_layer_limit_native),
-            native_caware_decode=False,
-            throughput_claim_eligible=False,
+            native_caware_decode=native_caware_decode,
+            throughput_claim_eligible=eligible,
             blockers=tuple(dict.fromkeys(blockers)),
         )
 
@@ -2951,6 +3032,199 @@ class Qwen35ParoResidentSession:
                     gated_dtype=DType.FP16,
                 )
 
+    def _batch_decode_segment_metadata(
+        self,
+        *,
+        rows: int,
+        slots: tuple[int, ...],
+    ) -> tuple[Tensor, Tensor, tuple[DeviceBuffer, ...]]:
+        cu_arr = np.arange(rows + 1, dtype=np.int32)
+        state_arr = np.asarray(slots, dtype=np.int64)
+        cu_buf = malloc(cu_arr.nbytes, runtime=self.runtime)
+        state_buf = malloc(state_arr.nbytes, runtime=self.runtime)
+        copy_host_to_device(cu_buf, host_array_ptr(cu_arr), runtime=self.runtime)
+        copy_host_to_device(state_buf, host_array_ptr(state_arr), runtime=self.runtime)
+        cu = Tensor.from_handle(cu_buf.ptr, cu_arr.shape, DType.INT32, self.device)
+        state_indices = Tensor.from_handle(state_buf.ptr, state_arr.shape, DType.INT64, self.device)
+        return cu, state_indices, (cu_buf, state_buf)
+
+    def _batch_full_spans(
+        self,
+        layer_id: int,
+        *,
+        rows: int,
+        positions: tuple[int, ...],
+        slots: tuple[int, ...],
+    ) -> tuple[Tensor, KVLiveSpans, KVLiveSpans]:
+        _ = layer_id
+        # BF16 batch append/decode kernels address the retained cache as
+        # row-major [active_row, block, ...] and add the row base internally.
+        # Compact native decode requires slots == rows, so the span table carries
+        # per-row local block ids rather than global physical-slot ids.
+        block_rows = np.tile(np.arange(self.blocks, dtype=np.int32), (rows, 1))
+        copy_host_to_device(
+            self.prefill_block_table_buf,
+            host_array_ptr(block_rows),
+            block_rows.nbytes,
+            runtime=self.runtime,
+        )
+        block_table = Tensor.from_handle(
+            self.prefill_block_table_buf.ptr,
+            (rows, self.blocks),
+            DType.INT32,
+            self.device,
+        )
+        position_tensor = Tensor.from_handle(self.position_buf.ptr, (rows,), DType.INT64, self.device)
+        context_tensor = Tensor.from_handle(self.context_buf.ptr, (rows,), DType.INT64, self.device)
+        append_spans = KVLiveSpans.paged_uniform(
+            block_table=block_table,
+            live_counts=position_tensor,
+            max_live_count=max(positions),
+            storage_dtype=self.kv_storage_dtype,
+        )
+        decode_spans = KVLiveSpans.paged_uniform(
+            block_table=block_table,
+            live_counts=context_tensor,
+            max_live_count=max(position + 1 for position in positions),
+            storage_dtype=self.kv_storage_dtype,
+        )
+        return position_tensor, append_spans, decode_spans
+
+    def _ensure_linear_decode_batch_scratch(self, layer_id: int, rows: int) -> Qwen35ParoLinearAttentionScratch:
+        scratch = self.linear_scratch[layer_id]
+        if scratch.attn_input.shape[0] < rows:
+            scratch = self.states[layer_id].reserve_linear_attention_scratch(tokens=rows, activation_dtype=DType.FP16)
+            self.linear_scratch[layer_id] = scratch
+        return scratch
+
+    def _ensure_full_decode_batch_scratch(self, layer_id: int, rows: int) -> Qwen35ParoAttentionScratch:
+        scratch = self.full_scratch[layer_id]
+        if scratch.attn_input.shape[0] < rows:
+            scratch = self.states[layer_id].reserve_full_attention_scratch(
+                tokens=rows,
+                num_splits=self.max_splits,
+                activation_dtype=DType.FP16,
+                gated_dtype=DType.FP16,
+            )
+            self.full_scratch[layer_id] = scratch
+        return scratch
+
+    def _ensure_moe_decode_batch_scratch(self, layer_id: int, rows: int) -> Qwen35ParoMoeScratch:
+        scratch = self.moe_scratch[layer_id]
+        if not isinstance(scratch, Qwen35ParoMoeScratch) or scratch.residual.shape[0] < rows:
+            scratch = self.states[layer_id].reserve_moe_c1_scratch(tokens=rows, activation_dtype=DType.FP16)
+            self.moe_scratch[layer_id] = scratch
+        return scratch
+
+    def _run_layers_batch_decode(
+        self,
+        *,
+        rows: int,
+        positions: tuple[int, ...],
+        slots: tuple[int, ...],
+        stream: int = 0,
+    ) -> Tensor:
+        if rows <= 0:
+            raise ValueError("rows must be positive")
+        if len(positions) != rows or len(slots) != rows:
+            raise ValueError("positions and slots must match rows")
+        hidden = Tensor.from_handle(self.batch_hidden.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
+        next_hidden = Tensor.from_handle(self.batch_next_hidden.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
+        cu_seqlens, state_indices, temp_buffers = self._batch_decode_segment_metadata(rows=rows, slots=slots)
+        try:
+            for layer_id, state in enumerate(self.states):
+                layer_type = self.config.layer_types[layer_id]
+                if layer_type == "linear_attention":
+                    conv_state, recurrent_state, _conv_buf, _recurrent_buf, _conv_zero, _recurrent_zero = self.linear_states[layer_id]
+                    linear_scratch = self._ensure_linear_decode_batch_scratch(layer_id, rows)
+                    moe_scratch = self._ensure_moe_decode_batch_scratch(layer_id, rows)
+                    out = state.run_linear_attention_moe_decode_batch_layer_fp16(
+                        hidden,
+                        conv_state=conv_state,
+                        recurrent_state=recurrent_state,
+                        cu_seqlens=cu_seqlens,
+                        state_indices=state_indices,
+                        segments=rows,
+                        linear_scratch=linear_scratch,
+                        moe_scratch=moe_scratch,
+                        tokens=rows,
+                        library=self.libraries,
+                        stream=stream,
+                    )
+                elif layer_type == "full_attention":
+                    native_full = _env_flag("HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE", True)
+                    if native_full:
+                        key_cache, value_cache = self._full_cache_all_slots(layer_id)
+                        position_tensor, append_spans, decode_spans = self._batch_full_spans(
+                            layer_id,
+                            rows=rows,
+                            positions=positions,
+                            slots=slots,
+                        )
+                        attention_scratch = self._ensure_full_decode_batch_scratch(layer_id, rows)
+                        moe_scratch = self._ensure_moe_decode_batch_scratch(layer_id, rows)
+                        out = state.run_full_attention_moe_decode_batch_layer_fp16(
+                            hidden,
+                            key_cache=key_cache,
+                            value_cache=value_cache,
+                            append_spans=append_spans,
+                            decode_spans=decode_spans,
+                            cos_table=self.cos,
+                            sin_table=self.sin,
+                            positions=position_tensor,
+                            max_positions=self.max_sequence_length,
+                            attention_scratch=attention_scratch,
+                            moe_scratch=moe_scratch,
+                            tokens=rows,
+                            library=self.libraries,
+                            stream=stream,
+                        )
+                        self.runtime.memcpy_async(next_hidden.ptr, out.ptr, rows * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
+                    else:
+                        for row, (slot, position) in enumerate(zip(slots, positions, strict=True)):
+                            key_cache, value_cache = self._slot_full_cache(layer_id, slot)
+                            position_tensor, append_spans, decode_spans = self._slot_full_spans(layer_id, slot)
+                            row_hidden = Tensor.from_handle(
+                                hidden.ptr + row * self.hidden_nbytes,
+                                (1, self.config.hidden_size),
+                                hidden.dtype,
+                                hidden.device,
+                            )
+                            num_splits = max(1, (int(position) + 1 + self.decode_chunk_size - 1) // self.decode_chunk_size)
+                            row_out = state.run_full_attention_moe_c1_layer_fp16(
+                                row_hidden,
+                                key_cache=key_cache,
+                                value_cache=value_cache,
+                                append_spans=append_spans,
+                                decode_spans=decode_spans,
+                                cos_table=self.cos,
+                                sin_table=self.sin,
+                                position=position_tensor,
+                                max_positions=self.max_sequence_length,
+                                attention_scratch=self.full_scratch[layer_id],
+                                moe_scratch=self.moe_scratch[layer_id],
+                                chunk_size=self.decode_chunk_size,
+                                num_splits=num_splits,
+                                library=self.libraries,
+                                stream=stream,
+                            )
+                            self.runtime.memcpy_async(
+                                next_hidden.ptr + row * self.hidden_nbytes,
+                                row_out.ptr,
+                                self.hidden_nbytes,
+                                HipMemcpyKind.DEVICE_TO_DEVICE,
+                                stream,
+                            )
+                else:
+                    raise ValueError(f"unsupported layer type {layer_type!r} at layer {layer_id}")
+                if layer_type != "full_attention":
+                    self.runtime.memcpy_async(next_hidden.ptr, out.ptr, rows * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
+                hidden, next_hidden = next_hidden, hidden
+            return hidden
+        finally:
+            for buf in temp_buffers:
+                free(buf, runtime=self.runtime)
+
     def _run_layers(
         self,
         *,
@@ -3286,7 +3560,40 @@ class Qwen35ParoResidentSession:
         self.lm_block_indices = malloc(self.lm_head_stage1_blocks * DType.INT64.itemsize, runtime=self.runtime)
         self.lm_out_index = malloc(DType.INT64.itemsize, runtime=self.runtime)
         self.lm_out_value = malloc(DType.FP32.itemsize, runtime=self.runtime)
-        self.buffers.extend((self.lm_logits, self.lm_block_values, self.lm_block_indices, self.lm_out_index, self.lm_out_value))
+        self.batch_lm_logits = malloc(
+            self.max_batch_size * self.vocab_size * DType.FP32.itemsize,
+            runtime=self.runtime,
+        )
+        self.batch_lm_block_values = malloc(
+            self.max_batch_size * self.lm_head_stage1_blocks * DType.FP32.itemsize,
+            runtime=self.runtime,
+        )
+        self.batch_lm_block_indices = malloc(
+            self.max_batch_size * self.lm_head_stage1_blocks * DType.INT64.itemsize,
+            runtime=self.runtime,
+        )
+        self.batch_lm_out_index = malloc(
+            self.max_batch_size * DType.INT64.itemsize,
+            runtime=self.runtime,
+        )
+        self.batch_lm_out_value = malloc(
+            self.max_batch_size * DType.FP32.itemsize,
+            runtime=self.runtime,
+        )
+        self.buffers.extend(
+            (
+                self.lm_logits,
+                self.lm_block_values,
+                self.lm_block_indices,
+                self.lm_out_index,
+                self.lm_out_value,
+                self.batch_lm_logits,
+                self.batch_lm_block_values,
+                self.batch_lm_block_indices,
+                self.batch_lm_out_index,
+                self.batch_lm_out_value,
+            )
+        )
 
     @staticmethod
     def _zero_array_dtype(dtype: DType):
@@ -3723,6 +4030,97 @@ class Qwen35ParoResidentSession:
     def _check_position(self, position: int) -> None:
         if position < 0 or position >= self.max_sequence_length:
             raise ValueError(f"position {position} outside session capacity {self.max_sequence_length}")
+
+    def _sample_batch_from_hidden(self, hidden: Tensor, *, rows: int, stream: int = 0) -> tuple[Qwen35ParoAutoregressiveStepResult, ...]:
+        if rows <= 0:
+            raise ValueError("rows must be positive")
+        if rows > self.max_batch_size:
+            raise ValueError("rows exceed max_batch_size")
+        sample_mode = os.environ.get("HIPENGINE_QWEN35_BATCH_SAMPLE_MODE", "serial_lm_head")
+        if sample_mode == "serial_lm_head":
+            results: list[Qwen35ParoAutoregressiveStepResult] = []
+            for row in range(rows):
+                row_hidden = Tensor.from_handle(
+                    hidden.ptr + row * self.hidden_nbytes,
+                    (1, self.config.hidden_size),
+                    hidden.dtype,
+                    hidden.device,
+                )
+                results.append(self._sample_from_hidden(row_hidden))
+            return tuple(results)
+        if sample_mode != "batched_lm_head":
+            raise ValueError("HIPENGINE_QWEN35_BATCH_SAMPLE_MODE must be serial_lm_head or batched_lm_head")
+        paro_rmsnorm_out_fp16(
+            hidden.ptr,
+            self.norm_weight.tensor.ptr,
+            self.batch_norm_out.ptr,
+            rows,
+            self.config.hidden_size,
+            self.config.rms_norm_eps,
+            stream=stream,
+            library=self.libraries["norm"],
+            runtime=self.runtime,
+        )
+        fp16_to_bf16(
+            self.batch_norm_out.ptr,
+            self.batch_norm_out_bf16.ptr,
+            rows * self.config.hidden_size,
+            stream=stream,
+            library=self.libraries["cast"],
+            runtime=self.runtime,
+        )
+        w8a16_linear_bf16_f32_out(
+            self.batch_norm_out_bf16.ptr,
+            self.lm_head_weight.tensor.ptr,
+            self.lm_head_scale.tensor.ptr,
+            self.batch_lm_logits.ptr,
+            rows,
+            self.config.hidden_size,
+            self.vocab_size,
+            threads=self.lm_head_threads,
+            stream=stream,
+            library=self.libraries["w8a16"],
+            runtime=self.runtime,
+        )
+        for row in range(rows):
+            logits_ptr = self.batch_lm_logits.ptr + row * self.vocab_size * DType.FP32.itemsize
+            block_values_ptr = self.batch_lm_block_values.ptr + row * self.lm_head_stage1_blocks * DType.FP32.itemsize
+            block_indices_ptr = self.batch_lm_block_indices.ptr + row * self.lm_head_stage1_blocks * DType.INT64.itemsize
+            out_index_ptr = self.batch_lm_out_index.ptr + row * DType.INT64.itemsize
+            out_value_ptr = self.batch_lm_out_value.ptr + row * DType.FP32.itemsize
+            argmax_f32(
+                logits_ptr,
+                block_values_ptr,
+                block_indices_ptr,
+                out_index_ptr,
+                out_value_ptr,
+                self.vocab_size,
+                threads=self.lm_head_threads,
+                stream=stream,
+                library=self.libraries["lm_head"],
+                runtime=self.runtime,
+            )
+        self.runtime.device_synchronize()
+        index_host = np.empty((rows,), dtype=np.int64)
+        value_host = np.empty((rows,), dtype=np.float32)
+        copy_device_to_host(
+            host_array_ptr(index_host),
+            DeviceBuffer(self.batch_lm_out_index.ptr, rows * DType.INT64.itemsize),
+            runtime=self.runtime,
+        )
+        copy_device_to_host(
+            host_array_ptr(value_host),
+            DeviceBuffer(self.batch_lm_out_value.ptr, rows * DType.FP32.itemsize),
+            runtime=self.runtime,
+        )
+        return tuple(
+            Qwen35ParoAutoregressiveStepResult(
+                token_id=int(index_host[row]),
+                token_text=_decode_token_cached(self.tokenizer, int(index_host[row])),
+                logit=float(value_host[row]),
+            )
+            for row in range(rows)
+        )
 
     def _sample_device_from_hidden(self, hidden: Tensor, *, stream: int = 0) -> None:
         paro_rmsnorm_out_fp16(

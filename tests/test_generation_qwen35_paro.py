@@ -250,6 +250,8 @@ def test_qwen35_paro_generator_uses_scheduler_packed_prefill_for_prompt_batch(mo
             }
         ],
         "decode_steps": 1,
+        "native_decode_steps": 0,
+        "serial_decode_fallback": True,
         "native_compact_prefill": True,
         "native_caware_decode": False,
         "throughput_claim_eligible": False,

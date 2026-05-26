@@ -26852,3 +26852,29 @@ pytest -q tests/test_server_api.py tests/test_generation_qwen35_paro.py tests/te
 # ........................................................................ [ 97%]
 # ..                                                                       [100%]
 ```
+
+## 2026-05-26 — Experimental native retained c>N decode blocked on equality
+
+Continued the retained c>N bring-up after server coalescing. Added an experimental `step_batch_native` path for compact BF16 slots and a retained benchmark harness, then gated the runtime entry point behind `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1` so production prompt-list/server generation still falls back to the known serial decode bridge unless diagnostics explicitly opt in.
+
+Findings:
+
+- Native packed prefill still works, but experimental native decode is **not** eligible for retained throughput claims yet.
+- Generated-token equality vs independent c=1 is unstable on diagnostic shapes. Current blocked artifact:
+  - `/tmp/hipengine-retained/guarded-L8-512-32.json`
+  - command: `HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 32 --warmup-decode-tokens 8 --max-layers 8 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-retained/guarded-L8-512-32.json`
+  - result: `status=rejected_correctness`, `throughput_claim_eligible=false`, `generated_token_equality=false`, first mismatch row 0 at sequence index 13 (`batch=78951`, `c1=25890`), aggregate decode diagnostic ~324 tok/s. This is **not** a performance claim.
+- Reduced L3 512/16 and L3 512/32 smokes (`/tmp/hipengine-retained/guarded-L3-512-16.json`, `/tmp/hipengine-retained/guarded-L3-512-32.json`) passed generated-token equality but remain `status=blocked` because they are neither full 40 layers nor the 512/128 protocol.
+
+Validation for the guarded production path:
+
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_batch_retained_bench.py
+pytest -q tests/test_generation_qwen35_paro.py tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py -q
+# ........................................................................ [ 74%]
+# .........................                                                [100%]
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-retained/qwen35-batch-c2-correctness-final.json
+# primitive passed=True, append_key_mismatch=0, append_value_mismatch=0, attn_batch_vs_c1_max_abs=0.0
+```
+
+Next action: audit row-aware linear-attention decode and full-attention/MoE batch kernels against c=1 intermediate tensors before enabling `step_batch_native` by default or recording any retained c>N throughput row.

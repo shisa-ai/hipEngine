@@ -259,6 +259,8 @@ class Qwen35ParoOneTokenGenerator:
                     next_token_by_request[request_id] = int(result.token_id)
 
         decode_steps = 0
+        native_decode_steps = 0
+        serial_decode_fallback = False
         while next_token_by_request:
             work = scheduler.next_decode_work()
             if work is None:
@@ -268,18 +270,42 @@ class Qwen35ParoOneTokenGenerator:
             )
             if not request_ids_for_step:
                 raise RuntimeError("scheduler decode work did not include runnable requests")
-            results = session.step_batch_serial(
-                [next_token_by_request[request_id] for request_id in request_ids_for_step],
-                positions=[
-                    scheduler.active_batch.requests[request_id].context_len
-                    for request_id in request_ids_for_step
-                ],
-                slots=[
-                    scheduler.active_batch.slot_for(request_id)
-                    for request_id in request_ids_for_step
-                ],
-                sample=True,
-            )
+            token_ids_for_step = [next_token_by_request[request_id] for request_id in request_ids_for_step]
+            positions_for_step = [
+                scheduler.active_batch.requests[request_id].context_len
+                for request_id in request_ids_for_step
+            ]
+            slots_for_step = [
+                scheduler.active_batch.slot_for(request_id)
+                for request_id in request_ids_for_step
+            ]
+            compact_slots = tuple(slots_for_step) == tuple(range(len(slots_for_step)))
+            use_native_decode = compact_slots and len(slots_for_step) > 1 and hasattr(session, "step_batch_native")
+            if use_native_decode:
+                try:
+                    results = session.step_batch_native(
+                        token_ids_for_step,
+                        positions=positions_for_step,
+                        slots=slots_for_step,
+                        sample=True,
+                    )
+                    native_decode_steps += 1
+                except NotImplementedError:
+                    serial_decode_fallback = True
+                    results = session.step_batch_serial(
+                        token_ids_for_step,
+                        positions=positions_for_step,
+                        slots=slots_for_step,
+                        sample=True,
+                    )
+            else:
+                serial_decode_fallback = serial_decode_fallback or len(slots_for_step) > 1
+                results = session.step_batch_serial(
+                    token_ids_for_step,
+                    positions=positions_for_step,
+                    slots=slots_for_step,
+                    sample=True,
+                )
             generated: list[GeneratedToken] = []
             for request_id, result in zip(request_ids_for_step, results, strict=True):
                 if result is None:
@@ -293,14 +319,25 @@ class Qwen35ParoOneTokenGenerator:
                 next_token_by_request.pop(done.request_id, None)
             decode_steps += 1
 
-        batch_execution = session.batch_execution_metadata(scheduler_owned=True)
+        native_decode_complete = decode_steps > 0 and native_decode_steps == decode_steps and not serial_decode_fallback
+        try:
+            batch_execution = session.batch_execution_metadata(
+                scheduler_owned=True,
+                native_decode=native_decode_complete,
+            )
+        except TypeError:
+            batch_execution = session.batch_execution_metadata(scheduler_owned=True)
         self.last_batch_generation = {
-            "path": "scheduler_native_packed_prefill_serial_decode",
+            "path": "scheduler_native_packed_prefill_native_decode"
+            if native_decode_complete
+            else "scheduler_native_packed_prefill_serial_decode",
             "batch_size": batch_size,
             "request_ids": list(request_ids),
             "prompt_lengths": [len(row) for row in prompt_rows],
             "packed_prefill_slabs": prefill_slab_shapes,
             "decode_steps": decode_steps,
+            "native_decode_steps": native_decode_steps,
+            "serial_decode_fallback": serial_decode_fallback,
             "native_compact_prefill": bool(
                 getattr(batch_execution, "native_compact_prefill", False)
             ),
