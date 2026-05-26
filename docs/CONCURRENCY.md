@@ -584,10 +584,11 @@ roll-up/status view.
 - [ ] **C2.5 c=4/c=8 BF16 equality.** Extend the same gate to c=4 and c=8.
       Acceptance: generated-token equality passes for both shapes, with
       aggregate/per-request scaling fields recorded even if not yet optimized.
-- [ ] **C2.6 sparse-slot and long-context guards.** Add CPU structural tests
+- [x] **C2.6 sparse-slot and long-context guards.** Add CPU structural tests
       for sparse/non-contiguous slot rejection and `max_context >= 1024`
       rejection until row-aware split-K is live. Acceptance: tests fail if the
-      experimental path silently accepts unsupported shapes.
+      experimental path silently accepts unsupported shapes. Evidence:
+      `pytest -q tests/test_qwen35_resident_batch_layout.py -q`.
 - [ ] **C2.7 row-aware split-K full attention.** Make full-attention decode
       and reduction consume per-row spans for `max_context >= 1024` before any
       long-context c>N claim. Acceptance: primitive correctness plus a
@@ -787,7 +788,7 @@ in place even though pool growth lands in C4.
 - [x] Add CPU-runnable structural tests for the experimental env gate,
       INT8 KV rejection, default/invalid sample mode, and
       `throughput_claim_eligible=false` for guarded diagnostics.
-- [ ] Extend structural tests for sparse-slot and long-context rejection.
+- [x] Extend structural tests for sparse-slot and long-context rejection.
 - [ ] **Append-only block id contract.** Make the KV allocator's block id
       permanent for its lifetime. Remove any path that reuses a block id at
       a different pointer. Add a debug check that fails on pointer mutation.

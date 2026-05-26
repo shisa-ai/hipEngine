@@ -967,6 +967,30 @@ def test_qwen35_resident_step_batch_native_rejects_int8_kv_when_experimental(mon
         session.step_batch_native([1], positions=[0], slots=[0])
 
 
+@pytest.mark.parametrize("slots", [(0, 2), (1, 0)])
+def test_qwen35_resident_step_batch_native_rejects_sparse_slots(monkeypatch, slots) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE", "1")
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.closed = False
+    session.kv_storage_dtype = DType.BF16
+    session.max_batch_size = 2
+
+    with pytest.raises(NotImplementedError, match="compact slots 0..C-1"):
+        session.step_batch_native([1, 2], positions=[0, 0], slots=slots)
+
+
+def test_qwen35_resident_step_batch_native_rejects_long_context(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE", "1")
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.closed = False
+    session.kv_storage_dtype = DType.BF16
+    session.max_batch_size = 2
+    session.max_sequence_length = 2048
+
+    with pytest.raises(NotImplementedError, match="split-K full-attention"):
+        session.step_batch_native([1, 2], positions=[1023, 1023], slots=[0, 1])
+
+
 def test_qwen35_resident_sample_batch_defaults_to_serial_lm_head(monkeypatch) -> None:
     monkeypatch.delenv("HIPENGINE_QWEN35_BATCH_SAMPLE_MODE", raising=False)
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
