@@ -335,7 +335,8 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "max_sequence_length": int(args.max_sequence_length),
             "kv_storage_dtype": "bf16",
             "native_compact_prefill": True,
-            "native_caware_decode": True,
+            "native_caware_decode": bool(args.prompt_length + args.decode_tokens < 1024),
+            "full_attention_decode_path": "batch_context" if args.prompt_length + args.decode_tokens < 1024 else "per_row_splitk_fallback",
         },
         "correctness": {
             "oracle": "hidden tensors and generated-token IDs vs independent c=1 resident sessions",

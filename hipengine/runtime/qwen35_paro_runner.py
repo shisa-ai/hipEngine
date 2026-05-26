@@ -1357,8 +1357,9 @@ class Qwen35ParoResidentSession:
         """Run one decode token per active row through native c-aware layer kernels.
 
         This retained bring-up path runs compact active rows while addressing
-        retained KV/linear state through explicit physical slot ids.  Long
-        split-K contexts remain rejected until those reducers are row-aware.
+        retained KV/linear state through explicit physical slot ids.  Full-
+        attention rows at split-K context lengths use the existing per-row
+        split-K path until a true row-aware batch reducer lands.
         """
 
         if self.closed:
@@ -1390,10 +1391,6 @@ class Qwen35ParoResidentSession:
             raise NotImplementedError("native c>N decode currently requires slots in physical-slot order")
         for position in pos:
             self._check_position(position)
-        max_context = max(position + 1 for position in pos)
-        if max_context >= 1024:
-            raise NotImplementedError("native c>N split-K full-attention decode is not wired")
-
         self._set_batch_token_embeddings(tokens, stream=0)
         self._set_batch_positions(pos, stream=0)
         hidden = self._run_layers_batch_decode(rows=rows, positions=pos, slots=slot_ids, stream=0)
@@ -3173,7 +3170,8 @@ class Qwen35ParoResidentSession:
                         stream=stream,
                     )
                 elif layer_type == "full_attention":
-                    native_full = _env_flag("HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE", True)
+                    max_context = max(int(position) + 1 for position in positions)
+                    native_full = _env_flag("HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE", True) and max_context < 1024
                     if native_full:
                         key_cache, value_cache = self._full_cache_all_slots(layer_id)
                         position_tensor, append_spans, decode_spans = self._batch_full_spans(

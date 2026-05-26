@@ -641,7 +641,12 @@ roll-up/status view.
 - [ ] **C2.7 row-aware split-K full attention.** Make full-attention decode
       and reduction consume per-row spans for `max_context >= 1024` before any
       long-context c>N claim. Acceptance: primitive correctness plus a
-      generated-token diagnostic at a long-context shape.
+      generated-token diagnostic at a long-context shape. Progress: the host
+      long-context rejection is removed and split-K contexts now route through
+      the existing per-row split-K fallback, with `/tmp/hipengine-hidden-bisect-L4-1024-1-splitk.json`
+      showing reduced L4 1024/1 generated-token and hidden equality vs
+      independent c=1. The item remains open until the split-K reducer itself
+      is row-aware/native c>N.
 - [x] **C2.8 append-only block-id contract.** Prevent block ids from changing
       backing pointer during a live request; add a debug/memory-audit test.
       Acceptance: the test would fail on pointer mutation or id reuse.
@@ -886,7 +891,8 @@ in place even though pool growth lands in C4.
 - [ ] Root-cause and fix the selected-MoE c>N divergence
       (`/tmp/hipengine-retained/eq-L8-selectedmoe.json`).
 - [ ] Add row-aware split-K full-attention decode/reduce before any
-      long-context c>N claim (`max_context ≥ 1024`).
+      long-context c>N claim (`max_context ≥ 1024`). The current long-context
+      diagnostic uses the per-row split-K fallback, not a row-aware batch reducer.
 - [x] Add CPU-runnable structural tests for the experimental env gate,
       INT8 KV rejection, default/invalid sample mode, and
       `throughput_claim_eligible=false` for guarded diagnostics.

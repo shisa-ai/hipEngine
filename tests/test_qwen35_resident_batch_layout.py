@@ -1062,16 +1062,98 @@ def test_qwen35_resident_batch_full_spans_maps_sparse_slots(monkeypatch) -> None
     assert decode_spans.max_live_count == 7
 
 
-def test_qwen35_resident_step_batch_native_rejects_long_context(monkeypatch) -> None:
+def test_qwen35_resident_run_layers_batch_decode_uses_per_row_splitk_fallback_for_long_context(monkeypatch) -> None:
+    device = Device("hip", 0)
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.device = device
+    session.config = SimpleNamespace(hidden_size=8, layer_types=("full_attention",))
+    session.batch_hidden = Tensor.from_handle(0x1000, (2, 8), DType.FP16, device)
+    session.batch_next_hidden = Tensor.from_handle(0x2000, (2, 8), DType.FP16, device)
+    session.hidden_nbytes = 8 * DType.FP16.itemsize
+    session.decode_chunk_size = 512
+    session.max_sequence_length = 2048
+    session.cos = Tensor.from_handle(0xA000, (1,), DType.BF16, device)
+    session.sin = Tensor.from_handle(0xB000, (1,), DType.BF16, device)
+    session.libraries = {}
+    session.full_scratch = {0: SimpleNamespace(name="full")}
+    session.moe_scratch = {0: SimpleNamespace(name="moe")}
+    session._batch_decode_segment_metadata = lambda *, rows, slots: (
+        Tensor.from_handle(0x3000, (rows + 1,), DType.INT32, device),
+        Tensor.from_handle(0x4000, (rows,), DType.INT64, device),
+        (),
+    )
+    session._slot_full_cache = lambda layer_id, slot: (
+        Tensor.from_handle(0x5000 + slot * 0x100, (1,), DType.BF16, device),
+        Tensor.from_handle(0x6000 + slot * 0x100, (1,), DType.BF16, device),
+    )
+    session._slot_full_spans = lambda layer_id, slot: (
+        Tensor.from_handle(0x7000 + slot * 8, (1,), DType.INT64, device),
+        SimpleNamespace(slot=slot, span="append"),
+        SimpleNamespace(slot=slot, span="decode"),
+    )
+    copies: list[tuple[int, int, int, int]] = []
+
+    class FakeRuntime:
+        def memcpy_async(self, dst, src, nbytes, kind, stream):
+            copies.append((int(dst), int(src), int(nbytes), int(stream)))
+
+    class FakeState:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def run_full_attention_moe_c1_layer_fp16(self, hidden, **kwargs):
+            self.calls.append((hidden, kwargs))
+            slot = kwargs["append_spans"].slot
+            return Tensor.from_handle(0x9000 + slot * 0x100, (1, 8), DType.FP16, device)
+
+    state = FakeState()
+    session.runtime = FakeRuntime()
+    session.states = [state]
+
+    out = session._run_layers_batch_decode(rows=2, positions=(1023, 1024), slots=(0, 2), stream=7)
+
+    assert out.ptr == 0x2000
+    assert [call[0].ptr for call in state.calls] == [0x1000, 0x1000 + session.hidden_nbytes]
+    assert [call[1]["append_spans"].slot for call in state.calls] == [0, 2]
+    assert [call[1]["num_splits"] for call in state.calls] == [2, 3]
+    assert copies == [
+        (0x2000, 0x9000, session.hidden_nbytes, 7),
+        (0x2000 + session.hidden_nbytes, 0x9000 + 2 * 0x100, session.hidden_nbytes, 7),
+    ]
+
+
+def test_qwen35_resident_step_batch_native_accepts_long_context_for_splitk_fallback(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE", "1")
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     session.closed = False
     session.kv_storage_dtype = DType.BF16
     session.max_batch_size = 2
     session.max_sequence_length = 2048
+    calls: list[tuple[str, object]] = []
 
-    with pytest.raises(NotImplementedError, match="split-K full-attention"):
-        session.step_batch_native([1, 2], positions=[1023, 1023], slots=[0, 1])
+    class FakeRuntime:
+        def device_synchronize(self):
+            calls.append(("sync", None))
+
+    session.runtime = FakeRuntime()
+    session._set_batch_token_embeddings = lambda tokens, *, stream=0: calls.append(("tokens", (tuple(tokens), stream)))
+    session._set_batch_positions = lambda positions, *, stream=0: calls.append(("positions", (tuple(positions), stream)))
+
+    def fake_run_layers(*, rows, positions, slots, stream=0):
+        calls.append(("run", (rows, tuple(positions), tuple(slots), stream)))
+        return Tensor.from_handle(0x7100, (rows, 8), DType.FP16, Device("hip", 0))
+
+    session._run_layers_batch_decode = fake_run_layers
+
+    results = session.step_batch_native([1, 2], positions=[1023, 1023], slots=[0, 1], sample=False)
+
+    assert results == (None, None)
+    assert calls == [
+        ("tokens", ((1, 2), 0)),
+        ("positions", ((1023, 1023), 0)),
+        ("run", (2, (1023, 1023), (0, 1), 0)),
+        ("sync", None),
+    ]
 
 
 def test_qwen35_resident_sample_batch_defaults_to_serial_lm_head(monkeypatch) -> None:

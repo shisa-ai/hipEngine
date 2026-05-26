@@ -28054,3 +28054,36 @@ Loop guard after C4 phase-ladder sync:
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY C2.7 long-context split-K fallback progress
+
+Materially advanced, but did not close, C2.7 (`row-aware split-K full attention`):
+
+- Removed the global `step_batch_native(...)` rejection for `max_context >= 1024`.
+- `_run_layers_batch_decode(...)` now routes full-attention layers at split-K context lengths through the existing per-row c1 split-K path while keeping shorter contexts on the native batch context kernel.
+- Updated `scripts/qwen35_batch_hidden_bisect.py` to label long-context diagnostics as `native_caware_decode=false` and `full_attention_decode_path=per_row_splitk_fallback`, avoiding any false native c>N claim.
+- Added structural tests proving long-context `step_batch_native(...)` reaches `_run_layers_batch_decode(...)` and that full-attention long contexts use the per-row split-K fallback.
+- Ran a reduced long-context diagnostic: `/tmp/hipengine-hidden-bisect-L4-1024-1-splitk.json` reports `status=eq_ok`, `native_caware_decode=false`, `full_attention_decode_path=per_row_splitk_fallback`, and hidden/token equality vs independent c=1 for c=2 prompt_length=1024, decode_tokens=1, max_layers=4. C2.7 remains open until the split-K reducer itself is row-aware/native c>N.
+
+Validation:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 1024 --batch-size 2 --decode-tokens 1 --max-layers 4 --layer-limits 4 --max-sequence-length 1280 --json /tmp/hipengine-hidden-bisect-L4-1024-1-splitk.json
+# status=eq_ok; native_caware_decode=false; full_attention_decode_path=per_row_splitk_fallback; correctness.passed=true
+python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_dry_run_records_layer_commands tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_run_layers_batch_decode_uses_per_row_splitk_fallback_for_long_context tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_step_batch_native_accepts_long_context_for_splitk_fallback -q
+# 3 passed
+```
+
+Loop guard after C2.7 fallback progress:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```
