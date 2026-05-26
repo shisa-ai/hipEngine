@@ -27139,3 +27139,28 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY C1.1 server lock-scope audit
+
+Closed bite-sized packet C1.1 from `docs/CONCURRENCY.md`:
+
+- Added a C1 lock-scope audit to `docs/CONCURRENCY.md` tracing every current `generation_lock` use in `hipengine/server/api.py`: startup eager-load/warmup, non-streaming preparation, `_GenerationBatcher._run_group(...)`, and streaming chat.
+- Recorded why the current whole-generation lock is acceptable for C1: C1 is submission-time coalescing/static prompt-list batching only, while the resident Qwen/PARO session still mutates shared KV, linear-attention recurrent state, hidden buffers, scratch, and sampler state during `LLM.generate()`.
+- Named the exact C4 blocker: there is no long-lived single-owner engine loop for admission, slot mapping, KV mutation, token queues, cancellation, and reclaim at commit points. C4 must lower server endpoints to `submit/poll/cancel`, after which any remaining lock should protect only model/session initialization.
+- Marked C1.1 and the C1 phase-ladder safety-lock item complete.
+
+Validation: docs-only audit; re-read the new §C1 lock-scope audit and ran the loop guard below.
+
+Loop guard after C1.1:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 37
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```
