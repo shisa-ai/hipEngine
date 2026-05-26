@@ -654,10 +654,13 @@ roll-up/status view.
       routing c=2/4/8 to MMQ/GEMM/WMMA candidates only when they beat row-GEMV.
       Acceptance: dispatch tests prove thresholds and benchmark artifacts show
       aggregate/per-request ratios.
-- [ ] **C3.5 GGUF c>N template.** Port the Qwen/PARO equality template to
+- [x] **C3.5 GGUF c>N template.** Port the Qwen/PARO equality template to
       GGUF Q4_K/Q5_K/Q6_K/Q8_0. Acceptance: at least one GGUF c=2 diagnostic
       reaches an unambiguous `eq_ok`, `blocked`, or `rejected_correctness`
-      status with exact command.
+      status with exact command. Evidence: `scripts/qwen35_batch_gguf_diagnostic.py`
+      emitted `/tmp/hipengine-gguf-c2-diagnostic.json` with `status=blocked`
+      and exact command `python3 scripts/qwen35_batch_gguf_diagnostic.py --fixture tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json --rows 2 --backend hip_gfx1100 --quant gguf_q4_k_m --max-new-tokens 4`; covered by
+      `pytest -q tests/test_generation_batch_scheduler.py -q`.
 - [ ] **C3.6 native LM-head/sampler launch.** Replace the per-row
       `serial_lm_head` loop with a native row-aware LM-head/argmax only after
       C2 equality is green. Acceptance: c=2/4/8 equality stays green with

@@ -33,6 +33,7 @@ from hipengine.kvcache import ChunkedKVPool, FixedPagedKVPolicy
 from hipengine.speculative import AcceptResult, DraftBatch, TargetAcceptSummary, TargetStateCommitBuffers, TargetVerifyBuffers
 from scripts.qwen35_batch_artifact_schema import validate_cn_diagnostic_artifact_payload
 from scripts.qwen35_batch_c_sweep import build_parser as build_c_sweep_parser, build_sweep_commands, run_sweep
+from scripts.qwen35_batch_gguf_diagnostic import build_parser as build_gguf_diagnostic_parser, run as run_gguf_diagnostic
 from scripts.qwen35_batch_serial_bench import _load_prompt_slices, _summarize_samples
 
 
@@ -118,6 +119,34 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     assert all("git_dirty" in entry for entry in persisted["commands"])
     assert any("qwen35_batch_retained_bench.py" in entry["command"] for entry in persisted["commands"])
     assert any("qwen35_paro_bench.py" in entry["command"] for entry in persisted["commands"])
+
+
+def test_gguf_cN_diagnostic_template_records_blocked_c2_command(tmp_path: Path) -> None:
+    output = tmp_path / "gguf-c2.json"
+    args = build_gguf_diagnostic_parser().parse_args(
+        [
+            "--fixture",
+            "tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json",
+            "--rows",
+            "2",
+            "--quant",
+            "gguf_q4_k_m",
+            "--json",
+            str(output),
+        ]
+    )
+
+    payload = run_gguf_diagnostic(args)
+
+    assert payload["status"] == "blocked"
+    assert payload["mode"] == "gguf_cN_equality_template"
+    assert payload["rows"] == 2
+    assert payload["quant"] == "gguf_q4_k_m"
+    assert "scripts/qwen35_batch_gguf_diagnostic.py" in payload["command"]
+    assert "--rows 2" in payload["command"]
+    assert len(payload["independent_c1_commands"]) == 2
+    assert all("scripts/qwen35_gguf_e2e_correctness.py" in command for command in payload["independent_c1_commands"])
+    assert any("native GGUF c>N" in reason for reason in payload["blockers"])
 
 
 def test_submit_poll_text_generator_preserves_prompt_order_and_row_seeds() -> None:

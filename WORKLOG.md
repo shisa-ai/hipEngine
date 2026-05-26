@@ -27855,3 +27855,36 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY C3.5 GGUF c>N diagnostic template
+
+Closed bite-sized packet C3.5 from `docs/CONCURRENCY.md`:
+
+- Added `scripts/qwen35_batch_gguf_diagnostic.py`, a qwen35_batch-prefixed GGUF c>N equality diagnostic template.
+- The diagnostic emits an unambiguous terminal status from `{eq_ok, blocked, rejected_correctness}`; current GGUF c>N is `blocked` because the native resident equality runner is not wired yet.
+- The artifact records the exact c=2 command plus independent c=1 public-API GGUF commands that a future equality-green artifact must compare against.
+- Added a guard test in `tests/test_generation_batch_scheduler.py` proving the c=2 Q4_K_M diagnostic records `status=blocked`, the exact command, and two independent c=1 commands.
+- Marked C3.5 complete in `docs/CONCURRENCY.md`; left the broader phase-ladder all-quant GGUF validation row open.
+
+Validation:
+
+```bash
+python3 scripts/qwen35_batch_gguf_diagnostic.py --fixture tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json --rows 2 --quant gguf_q4_k_m --json /tmp/hipengine-gguf-c2-diagnostic.json
+# status=blocked; command=python3 scripts/qwen35_batch_gguf_diagnostic.py --fixture tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json --rows 2 --backend hip_gfx1100 --quant gguf_q4_k_m --max-new-tokens 4
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -q
+# 25 passed
+```
+
+Loop guard after C3.5:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 15
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```
