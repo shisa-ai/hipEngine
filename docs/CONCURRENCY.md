@@ -647,9 +647,14 @@ roll-up/status view.
       spans. Evidence: BF16/INT8 c>N `FixedPagedKVPolicy.batch_spans(...)`
       plus paged-KV-write/full-attention dispatch route checks in
       `pytest -q tests/test_kvcache_policy.py -q`.
-- [ ] **C3.3 linear-attention `[C]` state.** Remove c1 aliases from
+- [x] **C3.3 linear-attention `[C]` state.** Remove c1 aliases from
       conv/recurrent state update paths and use active masks + slot ids.
       Acceptance: c=2 state fixtures compare against two c=1 references.
+      Evidence: `_run_layers_batch_decode(...)` passes whole `[C]` conv/
+      recurrent state plus `state_indices` slot ids, and
+      `pytest -q tests/test_qwen35_resident_batch_layout.py -q` covers a
+      c=2 `(slots=(0, 2))` state-index fixture against `_slot_linear_state(...)`
+      c=1 reference views.
 - [ ] **C3.4 c-aware projection dispatch.** Keep c=1 on GEMV/Marlin-K while
       routing c=2/4/8 to MMQ/GEMM/WMMA candidates only when they beat row-GEMV.
       Acceptance: dispatch tests prove thresholds and benchmark artifacts show
@@ -879,7 +884,7 @@ matrix has at least one green retained c>N cell on the 512/128 protocol.
       BF16; require generated-token equality.
 - [x] Make full-attention decode consume per-row `KVLiveSpans` for all
       retained KV storage dtypes.
-- [ ] Make linear-attention conv/recurrent state updates consume
+- [x] Make linear-attention conv/recurrent state updates consume
       `[C, ...]` state, active masks, and slot ids; remove c1 aliases.
 - [ ] Replace selected-MoE c1 lane assumptions with token-row → routed-lane
       mapping; validate grouped-by-expert metadata for c=2/4/8.
