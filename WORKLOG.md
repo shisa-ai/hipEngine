@@ -26996,3 +26996,15 @@ Restored in this commit:
 
 Validation: docs-only change; re-read `docs/CONCURRENCY.md` end-to-end
 (911 lines).
+
+## 2026-05-27 — CONCURRENCY correctness notes aligned after planning pass
+
+Reviewed the post-planning-pass `docs/CONCURRENCY.md` and kept its new continuous-batching / dynamic-KV-pool / RadixCache shape intact. Updated only stale correctness/status details from the native c>N review:
+
+- Replaced the old "L8/L40 confirmation pending" language with the current evidence: `serial_lm_head` fixes the reduced 512/32 batched-LM-head drift, but full L40 c=2 512/128 still fails generated-token equality (`/tmp/hipengine-retained/guarded-L40-c2-512-128-current.json`, row 0 idx 87, `batch=271`, `c1=1165`, `throughput_claim_eligible=false`).
+- Carried the selected-MoE/native-row signal (`/tmp/hipengine-retained/eq-L8-selectedmoe.json`) into the readiness matrix and GPU evidence section so the next step is layer-level hidden-state bisection, not more token-only sweeps.
+- Marked the Qwen/PARO native-batch env-var documentation and CPU structural guard tests as done, and split remaining structural tests for sparse-slot / long-context rejection.
+- Tightened artifact-labeling language so `native_caware_decode` is explicitly an execution flag, not a correctness claim.
+- Removed the leftover prefix-LRU wording from the readiness blocker; this doc now consistently treats RadixCache as the prefix-sharing implementation and flat prefix-LRU as intentionally not a peer.
+
+Validation: docs-only change; re-read the changed Current answer, readiness matrix, C0/C2 checklist, and GPU0 diagnostic evidence sections.

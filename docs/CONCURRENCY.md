@@ -91,11 +91,14 @@ submission-time join, not a continuous-batching admission.
 
 An experimental native decode path (`step_batch_native`) is gated behind
 `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1`. With the default
-`HIPENGINE_QWEN35_BATCH_SAMPLE_MODE=serial_lm_head` workaround, layer-by-layer
-diagnostics (L1, L3, L4) pass generated-token equality vs independent c=1;
-the L8 / L40 production-shape gate is still pending a confirming retained
-artifact after the workaround was committed in `86e6fa2`. The path is not a
-throughput claim.
+`HIPENGINE_QWEN35_BATCH_SAMPLE_MODE=serial_lm_head` workaround, the earlier
+batched-LM-head drift is fixed for reduced 512/32 diagnostics: L1/L3/L4 and
+L40 c=2 512/32 pass generated-token equality vs independent c=1. The full
+40-layer c=2 512/128 gate still fails on current tip
+(`/tmp/hipengine-retained/guarded-L40-c2-512-128-current.json`, row 0 idx 87,
+`batch=271` vs `c1=1165`) and `throughput_claim_eligible=false`. A separate
+`eq-L8-selectedmoe.json` failure points at selected-MoE/native-row mapping.
+The path is not a throughput claim.
 
 The elastic KV pool, prefix sharing, per-row sampler, streaming routing,
 cancellation reclaim path, and `/metrics` observability are **not** in code
@@ -109,12 +112,12 @@ yet. The phase ladder below sequences them.
 | Public `LLM.generate()` | Prompt lists with `len(prompts)>1` use `ResidentBatchScheduler`, BF16 packed native prefill, request-id output routing, and the serial slot bridge for decode. Streaming is one prompt only. | `hipengine/generation/qwen35_paro.py:Qwen35ParoOneTokenGenerator._generate_batch`. | Lower `LLM.generate()` to `submit+poll` over the engine loop; native c-aware decode. |
 | Engine loop / scheduler | `ResidentBatchScheduler` owns pending/admitted queues, slots, active masks, compact prefill slabs, decode work, graph bucket keys, and completion routing within a single `_generate_batch` call. The loop does not persist beyond one call. | `hipengine/generation/batch_scheduler.py`; `_generate_batch`. | Promote to a long-lived background driver with submit/poll/cancel, work-class ticks, and commit-point semantics. |
 | Prefill | Single-request native prefill and prompt-list BF16 packed native prefill are live. INT8 packed prefill is not wired. Chunked prefill is not interleaved with decode. | `Qwen35ParoResidentSession.prefill_native`, `prefill_native_packed`, `ResidentBatchScheduler.next_compact_prefill_slabs`. | INT8 packed prefill; chunked prefill interleaved with decode under a policy. |
-| Decode runtime | Production c>N prompt-list decode uses `step_batch_serial`. Experimental `step_batch_native` is gated by `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1`; layer-by-layer L1/L3/L4 equality passes; L8/L40 confirmation pending after the `serial_lm_head` workaround. | `step_batch_serial`, `step_batch_native`, `_sample_batch_from_hidden`, `batch_execution_metadata`. | L8/L40 retained-shape generated-token equality; row-aware split-K full-attention; native sampler. |
-| Sampler | Greedy `argmax_f32` per row. Sampling parameters apply globally to the call, not per row. The coalescer requires identical sampling keys per batch. | `_sample_from_hidden`, `_sample_batch_from_hidden`. | Per-row temperature/top-k/top-p/rep-penalty/seed/stop tokens; per-row EOS handling. |
+| Decode runtime | Production c>N prompt-list decode uses `step_batch_serial`. Experimental `step_batch_native` is gated by `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1`; current default `serial_lm_head` passes L40 c=2 512/32 as a reduced diagnostic but fails full c=2 512/128 generated-token equality. | `step_batch_serial`, `step_batch_native`, `_sample_batch_from_hidden`, `batch_execution_metadata`; `/tmp/hipengine-retained/guarded-L40-{512-32,c2-512-128}-current.json`. | Layer-level hidden-state bisection; selected-MoE/native-row fix; c=2/4/8 512/128 equality; row-aware split-K full-attention; native sampler. |
+| Sampler | Greedy `argmax_f32` per row. Sampling parameters apply globally to the call, not per row. The coalescer requires identical sampling keys per batch. Experimental native decode currently defaults to `serial_lm_head`; `batched_lm_head` is diagnostic only. | `_sample_from_hidden`, `_sample_batch_from_hidden`. | Per-row temperature/top-k/top-p/rep-penalty/seed/stop tokens; per-row EOS handling; replace the per-row LM-head loop after equality is proven. |
 | Attention / KV primitives | BF16 batched paged KV append and batched full-attention context decode pass c=1/2/4/8 primitive correctness. Split-K reducer is c1-only. INT8 batched paths exist as wrappers but lack the end-to-end gate. | `scripts/qwen35_batch_correctness.py`; `hipengine/kernels/hip_gfx1100/attention/`. | Row-aware split-K reducer; INT8 batched end-to-end gate. |
 | MoE / quant kernels | Many wrappers accept `rows` or routed-lane counts; end-to-end selected-MoE decode still follows c1 assumptions. `eq-L8-selectedmoe.json` diverges from c=1 reference at idx 13. | `hipengine/kernels/hip_gfx1100/quant/*`, `hipengine/runtime/qwen35_paro.py`. | Token-row to routed-lane mapping; grouped-by-expert execution for c=4/8; c-aware dispatch thresholds. |
 | KV pool | Fixed-size pool sized at startup from `hipMemGetInfo()` after weights resident (v0.2.2). Pool does not grow or shrink during a session. Block ids reuse pointers across reallocation. | `hipengine/runtime/qwen35_paro_runner.py` startup path. | Append-only block id contract; chunked grow up to high water; idle shrink to low water; admission against current capacity. |
-| Prefix / radix cache | Not implemented in code today. `grep RadixCache hipengine` returns nothing. | — | Refcounted pages; RadixCache trie or prefix-LRU; copy-on-write fork; `n>1` lowering. |
+| Prefix / radix cache | Not implemented in code today. `grep RadixCache hipengine` returns nothing. | — | Refcounted pages; RadixCache trie; copy-on-write fork; `n>1` lowering. Flat prefix-LRU is intentionally not a peer implementation. |
 | Observability | Server emits standard FastAPI logs. No request-level timings, no pool counters, no `/metrics`. | — | Per-request timings; per-pool counters; per-bucket histograms; `/metrics` endpoint. |
 
 DMS / compact KV serving status lives in [`KVCACHE.md`](KVCACHE.md) and is not
@@ -532,7 +535,8 @@ Definition of done: every c>N number on disk is unambiguously labeled
 - [ ] Ensure every diagnostic artifact distinguishes
       `workload.native_compact_prefill`,
       `execution.batch_execution.native_compact_prefill`,
-      `native_caware_decode`, and `throughput_claim_eligible`.
+      `native_caware_decode` (execution flag, not correctness),
+      a correctness-pass/status field, and `throughput_claim_eligible`.
 
 ### C1 — server and generator integration
 
@@ -561,7 +565,7 @@ in place even though pool growth lands in C4.
       `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1` and default
       `_sample_batch_from_hidden` to `HIPENGINE_QWEN35_BATCH_SAMPLE_MODE=
       serial_lm_head` until row-aware sampler lands.
-- [ ] Document `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE` and
+- [x] Document `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE` and
       `HIPENGINE_QWEN35_BATCH_SAMPLE_MODE` in `docs/ENVS.md`.
 - [ ] Remove stale compatibility glue once the guarded native API is
       settled (for example the `batch_execution_metadata(...)` `TypeError`
@@ -570,18 +574,20 @@ in place even though pool growth lands in C4.
       require full 40 layers, so failures can be bisected in CI/dev
       environments with ROCm. Keep full 40-layer 512/128 as the retained
       benchmark gate.
-- [ ] Re-run guarded c=2 L=8 / L=40 retained-shape equality with the
-      committed `serial_lm_head` default; replace
-      `/tmp/hipengine-retained/guarded-L8-512-32.json` reference with a
-      stable artifact under `benchmarks/results/`.
+- [x] Re-run guarded current-default c=2 equality after `serial_lm_head`:
+      L40 512/32 passes as a reduced diagnostic, but full L40 512/128 is
+      still `rejected_correctness` at row 0 idx 87
+      (`/tmp/hipengine-retained/guarded-L40-c2-512-128-current.json`).
+- [ ] Promote current c=2 accepted/rejected diagnostic artifacts under
+      `benchmarks/results/` before using them as retained evidence.
 - [ ] Root-cause and fix the selected-MoE c>N divergence
       (`/tmp/hipengine-retained/eq-L8-selectedmoe.json`).
 - [ ] Add row-aware split-K full-attention decode/reduce before any
       long-context c>N claim (`max_context ≥ 1024`).
-- [ ] Add CPU-runnable structural tests for the experimental gates:
-      `NotImplementedError` unless the env flag is set, sparse slots
-      rejected, INT8 KV rejected, long-context rejected,
+- [x] Add CPU-runnable structural tests for the experimental env gate,
+      INT8 KV rejection, default/invalid sample mode, and
       `throughput_claim_eligible=false` for guarded diagnostics.
+- [ ] Extend structural tests for sparse-slot and long-context rejection.
 - [ ] **Append-only block id contract.** Make the KV allocator's block id
       permanent for its lifetime. Remove any path that reuses a block id at
       a different pointer. Add a debug check that fails on pointer mutation.
@@ -883,14 +889,23 @@ Aggregate decode stays flat while per-request falls as `1/c` — the signature
 of the serial bridge. Full per-row artifacts:
 `/tmp/hipengine-prebench/scheduler/qwen36-paro-cC-{512,4k}-128-serial-bridge.json`.
 
-Experimental native decode (commit `86e6fa2`), L=8 retained shape with the
-batched LM head (pre-workaround): `rejected_correctness` at row 0 idx 13
-(`/tmp/hipengine-retained/guarded-L8-512-32.json`). Layer-by-layer L1/L3/L4
-equality passes; L8 / L40 equality also pass with
-`HIPENGINE_QWEN35_BATCH_SAMPLE_MODE=serial_lm_head` set explicitly
-(`/tmp/hipengine-retained/eq-{L8,L40}-512-32-serialsample.json`). The
-committed default is `serial_lm_head`, so the next confirming retained-shape
-artifact is a C2 punchlist item.
+Experimental native decode (commit `86e6fa2`) currently has two distinct
+correctness signals:
+
+- Pre-workaround batched LM-head L8 512/32 rejected at row 0 idx 13
+  (`/tmp/hipengine-retained/guarded-L8-512-32.json`). Switching to
+  `HIPENGINE_QWEN35_BATCH_SAMPLE_MODE=serial_lm_head` fixes that reduced
+  512/32 drift: `/tmp/hipengine-retained/eq-{L8,L40}-512-32-serialsample.json`
+  passed, and the current-default rerun
+  `/tmp/hipengine-retained/guarded-L40-512-32-current.json` also passed
+  equality (`status=blocked` only because 32 decode tokens is reduced).
+- Full 40-layer c=2 512/128 still rejects on current tip with the
+  `serial_lm_head` default:
+  `/tmp/hipengine-retained/guarded-L40-c2-512-128-current.json`, row 0 idx 87
+  (`batch=271`, `c1=1165`), `throughput_claim_eligible=false`. The separate
+  `/tmp/hipengine-retained/eq-L8-selectedmoe.json` failure points at
+  selected-MoE/native-row mapping, so the next correctness step is layer-level
+  hidden-state bisection rather than more token-only sweeps.
 
 ## What not to claim yet
 
