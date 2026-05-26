@@ -27825,3 +27825,33 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY C4.6 streaming through batcher queues
+
+Closed bite-sized packet C4.6 from `docs/CONCURRENCY.md`:
+
+- Added `_GenerationBatcher.stream(...)`, which enqueues streaming requests into the same compatible prompt-list worker as non-streaming submissions and feeds each requester through a per-request async queue.
+- Routed single-row chat streaming through `_GenerationBatcher.stream(...)` instead of calling `engine.stream(...)` directly, so streaming now shares the same `LLM.generate()` / submit+poll path used by non-streaming server requests.
+- Added server tests proving streaming and non-streaming coalesce through one batcher worker queue and proving the chat streaming endpoint does not use the engine-level stream bypass.
+- Marked C4.6 and the C4 phase-ladder server-streaming row complete in `docs/CONCURRENCY.md`.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_server_api.py -q
+# 20 passed
+```
+
+Loop guard after C4.6:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 16
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```

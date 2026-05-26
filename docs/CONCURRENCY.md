@@ -695,9 +695,12 @@ roll-up/status view.
       Acceptance: CLI/env tests and docs agree on defaults. Evidence:
       `add_engine_loop_config_args(...)`, `docs/ENVS.md`, and
       `pytest -q tests/test_generation_batch_scheduler.py -q`.
-- [ ] **C4.6 streaming through loop.** Route streaming completions through
+- [x] **C4.6 streaming through loop.** Route streaming completions through
       per-request token queues instead of bypassing the batcher. Acceptance:
-      streaming and non-streaming share reclaim/cancel tests.
+      streaming and non-streaming share reclaim/cancel tests. Evidence:
+      `_GenerationBatcher.stream(...)` per-request queues, single-row chat
+      streaming routed through that batcher instead of `engine.stream`, and
+      `pytest -q tests/test_server_api.py -q`.
 - [x] **C4.7 unified reclaim.** Make cancel, disconnect, EOS, max-tokens, and
       timeout converge on one `RECLAIM` path. Acceptance: each finish reason
       frees KV/scratch exactly once in tests. Evidence:
@@ -917,7 +920,7 @@ becomes a `submit+poll` adapter.
 - [ ] Narrow or remove the coarse `generation_lock`; any remaining lock
       protects only non-reentrant session mutation, not the lifetime of a
       generated batch.
-- [ ] Route server streaming through the engine loop and the per-request
+- [x] Route server streaming through the engine loop and the per-request
       token queue; the streaming path no longer bypasses the batcher.
 - [x] Unify cancel / disconnect / EOS / max-tokens / timeout into one
       `RECLAIM` path.

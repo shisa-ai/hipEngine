@@ -170,15 +170,20 @@ class _ServerMetrics:
         self.request_failed_total += 1
 
 
+_STREAM_DONE = object()
+
+
 @dataclass
 class _QueuedGeneration:
     prompts: tuple[str, ...]
     sampling: SamplingParams
-    future: asyncio.Future[list[str]]
+    future: asyncio.Future[list[str]] | None = None
+    stream_queue: asyncio.Queue[object] | None = None
+    cancelled: bool = False
 
 
 class _GenerationBatcher:
-    """Coalesce compatible non-streaming HTTP generations into prompt-list calls."""
+    """Coalesce compatible HTTP generations into prompt-list calls."""
 
     def __init__(
         self,
@@ -207,20 +212,44 @@ class _GenerationBatcher:
             self._worker = loop.create_task(self._run())
         return await future
 
+    async def stream(self, prompts: Sequence[str], sampling: SamplingParams) -> AsyncIterator[str]:
+        """Yield generated text through a per-request queue owned by the batcher."""
+
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue[object] = asyncio.Queue()
+        item = _QueuedGeneration(
+            prompts=tuple(str(prompt) for prompt in prompts),
+            sampling=sampling,
+            stream_queue=queue,
+        )
+        self._queue.append(item)
+        if self._worker is None or self._worker.done():
+            self._worker = loop.create_task(self._run())
+        try:
+            while True:
+                event = await queue.get()
+                if event is _STREAM_DONE:
+                    break
+                if isinstance(event, BaseException):
+                    raise event
+                yield str(event)
+        finally:
+            item.cancelled = True
+
     async def _run(self) -> None:
         try:
             if self._batch_window_seconds > 0.0:
                 await asyncio.sleep(self._batch_window_seconds)
             while self._queue:
                 first = self._queue.popleft()
-                if first.future.cancelled():
+                if _queued_generation_cancelled(first):
                     continue
                 key = _sampling_key(first.sampling)
                 group = [first]
                 deferred: deque[_QueuedGeneration] = deque()
                 while self._queue:
                     item = self._queue.popleft()
-                    if item.future.cancelled():
+                    if _queued_generation_cancelled(item):
                         continue
                     if _sampling_key(item.sampling) == key:
                         group.append(item)
@@ -258,12 +287,35 @@ class _GenerationBatcher:
                 )
         except Exception as exc:
             for item in group:
-                if not item.future.done():
-                    item.future.set_exception(exc)
+                _finish_queued_generation(item, exception=exc)
             return
         for item, start, end in slices:
-            if not item.future.done():
-                item.future.set_result(outputs[start:end])
+            _finish_queued_generation(item, outputs=outputs[start:end])
+
+
+def _queued_generation_cancelled(item: _QueuedGeneration) -> bool:
+    return item.cancelled or (item.future is not None and item.future.cancelled())
+
+
+def _finish_queued_generation(
+    item: _QueuedGeneration,
+    *,
+    outputs: Sequence[str] | None = None,
+    exception: Exception | None = None,
+) -> None:
+    if item.future is not None and not item.future.done():
+        if exception is not None:
+            item.future.set_exception(exception)
+        else:
+            item.future.set_result(list(outputs or ()))
+    if item.stream_queue is None:
+        return
+    if exception is not None:
+        item.stream_queue.put_nowait(exception)
+    else:
+        for output in outputs or ():
+            item.stream_queue.put_nowait(str(output))
+    item.stream_queue.put_nowait(_STREAM_DONE)
 
 
 @dataclass(frozen=True)
@@ -719,43 +771,19 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         created = int(time.time())
         full_text: list[str] = []
         splitter = _ReasoningSplitter()
-        sentinel = object()
-
-        def next_or_done(iterator):
-            try:
-                return next(iterator)
-            except StopIteration:
-                return sentinel
 
         try:
             async with generation_lock:
                 await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
                 sampling = sampling_params(request, (prompt,), engine)
                 _validate_context_budget(effective_max_context_tokens(engine), engine, (prompt,), sampling)
-                streamer = getattr(engine, "stream", None)
-                if not callable(streamer):
-                    text = (await run_in_threadpool(engine.generate, (prompt,), sampling))[0]
-                    iterator = iter((text,))
-                else:
-                    iterator = await run_in_threadpool(streamer, prompt, sampling)
-                yield _chat_stream_role(response_id, created, config.model_id)
-                while True:
-                    token = await run_in_threadpool(next_or_done, iterator)
-                    if token is sentinel:
-                        break
-                    text = str(token)
-                    if not text:
-                        continue
-                    full_text.append(text)
-                    for field, chunk in splitter.feed(text):
-                        yield _chat_stream_delta(
-                            response_id,
-                            created,
-                            config.model_id,
-                            field,
-                            chunk,
-                        )
-                for field, chunk in splitter.finish():
+            yield _chat_stream_role(response_id, created, config.model_id)
+            async for token in generation_batcher.stream((prompt,), sampling):
+                text = str(token)
+                if not text:
+                    continue
+                full_text.append(text)
+                for field, chunk in splitter.feed(text):
                     yield _chat_stream_delta(
                         response_id,
                         created,
@@ -763,6 +791,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         field,
                         chunk,
                     )
+            for field, chunk in splitter.finish():
+                yield _chat_stream_delta(
+                    response_id,
+                    created,
+                    config.model_id,
+                    field,
+                    chunk,
+                )
         except OpenAIHTTPError as exc:
             app.state.hipengine_server_metrics.record_failure()
             yield _chat_stream_error(response_id, created, config.model_id, exc.message)

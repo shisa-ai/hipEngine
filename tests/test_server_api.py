@@ -22,6 +22,7 @@ class FakeLLM:
         self.outputs = outputs
         self.stream_chunks = stream_chunks
         self.calls: list[tuple[tuple[str, ...], SamplingParams]] = []
+        self.stream_calls: list[tuple[str, SamplingParams]] = []
         self.prepares: list[tuple[int | None, SamplingParams]] = []
         self.max_sequence_length: int | None = None
         self.kv_capacity_estimate = None
@@ -50,6 +51,7 @@ class FakeLLM:
         return [f"generated:{prompt}" for prompt in prompts]
 
     def stream(self, prompt: str, sampling_params: SamplingParams):
+        self.stream_calls.append((str(prompt), sampling_params))
         self.calls.append(((prompt,), sampling_params))
         if self.stream_chunks is not None:
             yield from self.stream_chunks
@@ -171,6 +173,33 @@ def test_generation_batcher_coalesces_compatible_submissions() -> None:
         assert first == ["generated:one"]
         assert second == ["generated:two", "generated:three"]
         assert fake.calls == [(("one", "two", "three"), sampling)]
+
+    asyncio.run(run())
+
+
+def test_generation_batcher_stream_uses_per_request_queue_and_coalesces() -> None:
+    async def run() -> None:
+        fake = FakeLLM()
+        sampling = SamplingParams(max_tokens=2)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            generation_lock=asyncio.Lock(),
+            batch_window_seconds=0.001,
+        )
+
+        async def collect_stream() -> list[str]:
+            return [chunk async for chunk in batcher.stream(("stream",), sampling)]
+
+        streamed, submitted = await asyncio.gather(
+            collect_stream(),
+            batcher.submit(("batch",), sampling),
+        )
+
+        assert streamed == ["generated:stream"]
+        assert submitted == ["generated:batch"]
+        assert len(fake.calls) == 1
+        assert set(fake.calls[0][0]) == {"stream", "batch"}
+        assert fake.calls[0][1] == sampling
 
     asyncio.run(run())
 
@@ -302,7 +331,10 @@ def test_chat_completion_segregates_reasoning_content() -> None:
 
 
 def test_streaming_chat_completion_returns_sse_done_marker() -> None:
-    fake = FakeLLM(stream_chunks=["<thi", "nk>scratch", " pad</think>", "streamed reply"])
+    fake = FakeLLM(
+        outputs=["<think>scratch pad</think>streamed reply"],
+        stream_chunks=["should-not-use-engine-stream"],
+    )
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
     client = TestClient(app)
 
@@ -320,12 +352,12 @@ def test_streaming_chat_completion_returns_sse_done_marker() -> None:
     assert '"object":"chat.completion.chunk"' in response.text
     assert "data: [DONE]" in response.text
     deltas = [payload["choices"][0]["delta"] for payload in _sse_payloads(response.text)]
-    assert deltas[:4] == [
+    assert deltas[:3] == [
         {"role": "assistant"},
-        {"reasoning_content": "scratch"},
-        {"reasoning_content": " pad"},
+        {"reasoning_content": "scratch pad"},
         {"content": "streamed reply"},
     ]
+    assert fake.stream_calls == []
     prompt = fake.calls[0][0][0]
     assert fake.calls[0][1].max_tokens == 131072 - fake.count_tokens(prompt) - 1
 
