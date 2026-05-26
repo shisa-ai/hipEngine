@@ -727,9 +727,11 @@ roll-up/status view.
 - [ ] **C5.6 per-row EOS/reclaim.** Finish rows independently inside a batch.
       Acceptance: one row can finish while others keep decoding and its KV is
       reclaimed at the next commit point.
-- [ ] **C5.7 metrics endpoint.** Add Prometheus `/metrics` behind
+- [x] **C5.7 metrics endpoint.** Add Prometheus `/metrics` behind
       `HIPENGINE_METRICS` / `--metrics`. Acceptance: metrics are additive and
-      include request, pool, and graph-bucket counters.
+      include request, pool, and graph-bucket counters. Evidence:
+      `ServerConfig(metrics="prometheus")`, `hipengine.server.__main__ --metrics`,
+      `docs/ENVS.md`, and `pytest -q tests/test_server_api.py -q`.
 - [x] **C5.8 retained-row enforcement.** Make the bench harness enforce gates
       for timestamps, p50/p95 latency, dynamic pool, stable block id, and
       prefix-sharing savings before `status=accepted`. Acceptance: a fixture
@@ -933,7 +935,7 @@ endpoint live; retained c>N rows include all gates above.
 - [ ] Per-row EOS handling drives `RECLAIM` per-row, not per-batch.
 - [ ] Remove or demote the submission-time coalescer
       (`_GenerationBatcher`) to a cold-path optimization.
-- [ ] Add Prometheus `/metrics` endpoint;
+- [x] Add Prometheus `/metrics` endpoint;
       knob `HIPENGINE_METRICS` / `--metrics` in `{off, prometheus}`;
       default `off` until coverage is broad.
 - [ ] Per-bucket graph-cache observability

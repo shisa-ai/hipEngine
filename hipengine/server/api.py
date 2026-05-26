@@ -21,7 +21,7 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 try:  # Pydantic v2; FastAPI's current default.
@@ -54,6 +54,7 @@ class ServerConfig:
     kv_scale_dtype: str = "fp16"
     kv_scale_granularity: str = "per_token_head"
     generation_batch_window_ms: float = 5.0
+    metrics: str = "off"
     created: int = field(default_factory=lambda: int(time.time()))
 
     @property
@@ -142,6 +143,27 @@ class ChatCompletionRequest(_OpenAIBaseModel):
 class _GeneratedBatch:
     outputs: list[str]
     usage: dict[str, int]
+
+
+@dataclass
+class _ServerMetrics:
+    """Additive server counters rendered by the opt-in Prometheus endpoint."""
+
+    request_total: int = 0
+    request_completed_total: int = 0
+    request_failed_total: int = 0
+    prompt_tokens_total: int = 0
+    completion_tokens_total: int = 0
+
+    def record_success(self, usage: Mapping[str, int]) -> None:
+        self.request_total += 1
+        self.request_completed_total += 1
+        self.prompt_tokens_total += int(usage.get("prompt_tokens", 0))
+        self.completion_tokens_total += int(usage.get("completion_tokens", 0))
+
+    def record_failure(self) -> None:
+        self.request_total += 1
+        self.request_failed_total += 1
 
 
 @dataclass
@@ -256,9 +278,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     """
 
     app = FastAPI(title="hipEngine OpenAI-compatible API", version="0.2.1")
+    metrics_mode = _metrics_mode(config.metrics)
     app.state.hipengine_config = config
     app.state.hipengine_llm = llm
     app.state.hipengine_effective_max_context_tokens = config.max_context_tokens
+    app.state.hipengine_server_metrics = _ServerMetrics()
     generation_lock = asyncio.Lock()
 
     def get_llm() -> Any:
@@ -472,21 +496,25 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         prompts: Sequence[str],
         request: CompletionRequest | ChatCompletionRequest,
     ) -> _GeneratedBatch:
-        _validate_generation_request(config, request)
-        engine = get_llm()
         try:
+            _validate_generation_request(config, request)
+            engine = get_llm()
             async with generation_lock:
                 await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
                 sampling = sampling_params(request, prompts, engine)
                 _validate_context_budget(effective_max_context_tokens(engine), engine, prompts, sampling)
             raw_outputs = await generation_batcher.submit(tuple(prompts), sampling)
         except OpenAIHTTPError:
+            app.state.hipengine_server_metrics.record_failure()
             raise
         except NotImplementedError as exc:
+            app.state.hipengine_server_metrics.record_failure()
             raise OpenAIHTTPError(400, str(exc), code="unsupported_parameter") from exc
         except ValueError as exc:
+            app.state.hipengine_server_metrics.record_failure()
             raise OpenAIHTTPError(400, str(exc), code="invalid_request") from exc
         except Exception as exc:  # pragma: no cover - exercised by real runtime failures
+            app.state.hipengine_server_metrics.record_failure()
             raise OpenAIHTTPError(
                 500,
                 f"generation failed: {exc}",
@@ -496,17 +524,32 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
 
         outputs = [str(item) for item in raw_outputs]
         if len(outputs) != len(prompts):
+            app.state.hipengine_server_metrics.record_failure()
             raise OpenAIHTTPError(
                 500,
                 f"generator returned {len(outputs)} outputs for {len(prompts)} prompts",
                 error_type="server_error",
                 code="bad_generator_output",
             )
-        return _GeneratedBatch(outputs=outputs, usage=_usage(engine, prompts, outputs))
+        batch = _GeneratedBatch(outputs=outputs, usage=_usage(engine, prompts, outputs))
+        app.state.hipengine_server_metrics.record_success(batch.usage)
+        return batch
 
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok", "model": config.model_id}
+
+    if metrics_mode == "prometheus":
+
+        @app.get("/metrics", response_class=PlainTextResponse)
+        async def prometheus_metrics() -> PlainTextResponse:
+            return PlainTextResponse(
+                _render_prometheus_metrics(
+                    app.state.hipengine_server_metrics,
+                    engine=getattr(app.state, "hipengine_llm", None),
+                ),
+                media_type="text/plain; version=0.0.4; charset=utf-8",
+            )
 
     @app.get("/v1/models")
     async def list_models(_auth: None = Depends(require_auth)) -> dict[str, Any]:
@@ -605,6 +648,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         try:
             _validate_generation_request(config, request)
         except OpenAIHTTPError as exc:
+            app.state.hipengine_server_metrics.record_failure()
             response_id = f"chatcmpl-{uuid.uuid4().hex}"
             created = int(time.time())
             yield _chat_stream_error(response_id, created, config.model_id, exc.message)
@@ -660,16 +704,20 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         chunk,
                     )
         except OpenAIHTTPError as exc:
+            app.state.hipengine_server_metrics.record_failure()
             yield _chat_stream_error(response_id, created, config.model_id, exc.message)
             yield "data: [DONE]\n\n"
             return
         except NotImplementedError as exc:
+            app.state.hipengine_server_metrics.record_failure()
             yield _chat_stream_error(response_id, created, config.model_id, str(exc))
             return
         except ValueError as exc:
+            app.state.hipengine_server_metrics.record_failure()
             yield _chat_stream_error(response_id, created, config.model_id, str(exc))
             return
         except Exception as exc:  # pragma: no cover - real runtime failures
+            app.state.hipengine_server_metrics.record_failure()
             message = f"generation failed: {exc}"
             yield _chat_stream_error(response_id, created, config.model_id, message)
             return
@@ -679,10 +727,151 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             # Stop strings can split across yielded chunks; current streaming keeps
             # transport simple and reports the stop after generation completes.
             finish_reason = "stop"
+        app.state.hipengine_server_metrics.record_success(_usage(engine, (prompt,), [text]))
         yield _chat_stream_done(response_id, created, config.model_id, finish_reason)
         yield "data: [DONE]\n\n"
 
     return app
+
+
+def _metrics_mode(raw: str | None) -> str:
+    value = "off" if raw is None or raw == "" else str(raw).strip().lower()
+    if value not in {"off", "prometheus"}:
+        raise ValueError("metrics must be one of: off, prometheus")
+    return value
+
+
+def _render_prometheus_metrics(metrics: _ServerMetrics, *, engine: Any | None) -> str:
+    pool = _pool_metric_values(engine)
+    graph = _graph_bucket_metric_values(engine)
+    values = {
+        "hipengine_requests_total": metrics.request_total,
+        "hipengine_request_completed_total": metrics.request_completed_total,
+        "hipengine_request_failed_total": metrics.request_failed_total,
+        "hipengine_prompt_tokens_total": metrics.prompt_tokens_total,
+        "hipengine_completion_tokens_total": metrics.completion_tokens_total,
+        "hipengine_kv_pool_current_bytes": pool["current_bytes"],
+        "hipengine_kv_pool_high_water_observed_bytes": pool["high_water_observed_bytes"],
+        "hipengine_kv_pool_grow_events_total": pool["grow_events"],
+        "hipengine_kv_pool_grow_failures_total": pool["grow_failures"],
+        "hipengine_kv_pool_shrink_events_total": pool["shrink_events"],
+        "hipengine_kv_pool_free_pages": pool["free_pages"],
+        "hipengine_kv_pool_refcounted_pages": pool["refcounted_pages"],
+        "hipengine_graph_bucket_entries": graph["entries"],
+        "hipengine_graph_bucket_hits_total": graph["hits"],
+        "hipengine_graph_bucket_misses_total": graph["misses"],
+    }
+    help_text = {
+        "hipengine_requests_total": "Total generation requests observed by the server.",
+        "hipengine_request_completed_total": "Generation requests that completed successfully.",
+        "hipengine_request_failed_total": "Generation requests that failed after reaching generation validation.",
+        "hipengine_prompt_tokens_total": "Prompt tokens counted for successful requests.",
+        "hipengine_completion_tokens_total": "Completion tokens counted for successful requests.",
+        "hipengine_kv_pool_current_bytes": "Current dynamic KV pool bytes, or 0 when unavailable.",
+        "hipengine_kv_pool_high_water_observed_bytes": "Peak observed dynamic KV pool bytes, or 0 when unavailable.",
+        "hipengine_kv_pool_grow_events_total": "Dynamic KV pool grow events, or 0 when unavailable.",
+        "hipengine_kv_pool_grow_failures_total": "Dynamic KV pool grow failures, or 0 when unavailable.",
+        "hipengine_kv_pool_shrink_events_total": "Dynamic KV pool shrink events, or 0 when unavailable.",
+        "hipengine_kv_pool_free_pages": "Current dynamic KV pool free pages, or 0 when unavailable.",
+        "hipengine_kv_pool_refcounted_pages": "Current dynamic KV pool refcounted pages, or 0 when unavailable.",
+        "hipengine_graph_bucket_entries": "Current graph bucket cache entries, or 0 when unavailable.",
+        "hipengine_graph_bucket_hits_total": "Graph bucket cache hits, or 0 when unavailable.",
+        "hipengine_graph_bucket_misses_total": "Graph bucket cache misses, or 0 when unavailable.",
+    }
+    counter_names = {
+        "hipengine_requests_total",
+        "hipengine_request_completed_total",
+        "hipengine_request_failed_total",
+        "hipengine_prompt_tokens_total",
+        "hipengine_completion_tokens_total",
+        "hipengine_kv_pool_grow_events_total",
+        "hipengine_kv_pool_grow_failures_total",
+        "hipengine_kv_pool_shrink_events_total",
+        "hipengine_graph_bucket_hits_total",
+        "hipengine_graph_bucket_misses_total",
+    }
+    lines: list[str] = []
+    for name, value in values.items():
+        lines.append(f"# HELP {name} {help_text[name]}")
+        lines.append(f"# TYPE {name} {'counter' if name in counter_names else 'gauge'}")
+        lines.append(f"{name} {_format_metric_value(value)}")
+    return "\n".join(lines) + "\n"
+
+
+def _pool_metric_values(engine: Any | None) -> dict[str, float]:
+    values = {
+        "current_bytes": 0.0,
+        "high_water_observed_bytes": 0.0,
+        "grow_events": 0.0,
+        "grow_failures": 0.0,
+        "shrink_events": 0.0,
+        "free_pages": 0.0,
+        "refcounted_pages": 0.0,
+    }
+    stats = _first_stats_object(engine, ("kv_pool", "kv_cache_pool", "pool", "kv_pool_stats"))
+    if stats is None:
+        return values
+    data = _stats_to_mapping(stats)
+    for key in values:
+        values[key] = float(data.get(key, 0) or 0)
+    return values
+
+
+def _graph_bucket_metric_values(engine: Any | None) -> dict[str, float]:
+    values = {"entries": 0.0, "hits": 0.0, "misses": 0.0}
+    stats = _first_stats_object(engine, ("graph_buckets", "graph_bucket_cache", "graph_bucket_stats"))
+    if stats is None:
+        return values
+    data = _stats_to_mapping(stats)
+    for key in values:
+        values[key] = float(data.get(key, 0) or 0)
+    return values
+
+
+def _first_stats_object(engine: Any | None, names: Sequence[str]) -> Any | None:
+    if engine is None:
+        return None
+    session = _resident_session_for_engine(engine)
+    for owner in (engine, session):
+        if owner is None:
+            continue
+        for name in names:
+            candidate = getattr(owner, name, None)
+            if candidate is None:
+                continue
+            stats = getattr(candidate, "stats", candidate)
+            return stats() if callable(stats) else stats
+    return None
+
+
+def _stats_to_mapping(stats: Any) -> Mapping[str, Any]:
+    if isinstance(stats, Mapping):
+        return stats
+    to_json = getattr(stats, "to_json_dict", None)
+    if callable(to_json):
+        data = to_json()
+        if isinstance(data, Mapping):
+            return data
+    keys = (
+        "current_bytes",
+        "high_water_observed_bytes",
+        "grow_events",
+        "grow_failures",
+        "shrink_events",
+        "free_pages",
+        "refcounted_pages",
+        "entries",
+        "hits",
+        "misses",
+    )
+    return {key: getattr(stats, key) for key in keys if hasattr(stats, key)}
+
+
+def _format_metric_value(value: float) -> str:
+    numeric = float(value)
+    if numeric.is_integer():
+        return str(int(numeric))
+    return repr(numeric)
 
 
 def render_chat_prompt(messages: Sequence[ChatMessage | Mapping[str, Any]]) -> str:

@@ -109,6 +109,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=_env_nonnegative_float("HIPENGINE_GENERATION_BATCH_WINDOW_MS", 5.0),
         help="Milliseconds to coalesce compatible non-streaming requests (default: 5)",
     )
+    parser.add_argument(
+        "--metrics",
+        choices=("off", "prometheus"),
+        default=os.environ.get("HIPENGINE_METRICS", "off"),
+        help="Metrics endpoint mode (env HIPENGINE_METRICS; default: off)",
+    )
     parser.add_argument("--host", default="127.0.0.1", help="Bind host")
     parser.add_argument("--port", type=int, default=8000, help="Bind port")
     parser.add_argument("--log-level", default="info", help="uvicorn log level")
@@ -131,6 +137,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         kv_scale_dtype=args.kv_scale_dtype,
         kv_scale_granularity=args.kv_scale_granularity,
         generation_batch_window_ms=args.generation_batch_window_ms,
+        metrics=args.metrics,
     )
     app = create_app(config)
     try:

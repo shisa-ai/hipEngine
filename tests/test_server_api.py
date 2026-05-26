@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from hipengine import SamplingParams
 from hipengine.server import ServerConfig, create_app, render_chat_prompt
+from hipengine.server.__main__ import build_parser
 from hipengine.server.api import ChatCompletionRequest, _GenerationBatcher
 
 
@@ -329,6 +330,66 @@ def test_streaming_chat_completion_returns_sse_done_marker() -> None:
     assert fake.calls[0][1].max_tokens == 131072 - fake.count_tokens(prompt) - 1
 
 
+def test_metrics_cli_env_defaults(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_METRICS", "prometheus")
+    env_args = build_parser().parse_args(["--model", "fake-path"])
+    assert env_args.metrics == "prometheus"
+
+    cli_args = build_parser().parse_args(["--model", "fake-path", "--metrics", "off"])
+    assert cli_args.metrics == "off"
+
+
+def test_metrics_endpoint_is_opt_in_and_additive() -> None:
+    disabled = create_app(ServerConfig(model="fake-path", eager_load=False), llm=FakeLLM())
+    assert TestClient(disabled).get("/metrics").status_code == 404
+
+    fake = FakeLLM(outputs=["alpha beta"])
+    fake.kv_pool_stats = SimpleNamespace(
+        current_bytes=4096,
+        high_water_observed_bytes=8192,
+        grow_events=2,
+        grow_failures=1,
+        shrink_events=3,
+        free_pages=4,
+        refcounted_pages=5,
+    )
+    fake.graph_bucket_stats = SimpleNamespace(entries=6, hits=7, misses=8)
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False, metrics="prometheus"),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    before = client.get("/metrics")
+    assert before.status_code == 200
+    assert _metric_value(before.text, "hipengine_requests_total") == 0
+
+    for prompt in ["one", "two three"]:
+        response = client.post(
+            "/v1/completions",
+            json={"model": "fake-model", "prompt": prompt, "max_tokens": 2},
+        )
+        assert response.status_code == 200
+
+    metrics = client.get("/metrics")
+    assert metrics.status_code == 200
+    assert metrics.headers["content-type"].startswith("text/plain")
+    assert _metric_value(metrics.text, "hipengine_requests_total") == 2
+    assert _metric_value(metrics.text, "hipengine_request_completed_total") == 2
+    assert _metric_value(metrics.text, "hipengine_request_failed_total") == 0
+    assert _metric_value(metrics.text, "hipengine_prompt_tokens_total") == 3
+    assert _metric_value(metrics.text, "hipengine_completion_tokens_total") == 4
+    assert _metric_value(metrics.text, "hipengine_kv_pool_current_bytes") == 4096
+    assert _metric_value(metrics.text, "hipengine_kv_pool_grow_events_total") == 2
+    assert _metric_value(metrics.text, "hipengine_kv_pool_grow_failures_total") == 1
+    assert _metric_value(metrics.text, "hipengine_kv_pool_shrink_events_total") == 3
+    assert _metric_value(metrics.text, "hipengine_kv_pool_free_pages") == 4
+    assert _metric_value(metrics.text, "hipengine_kv_pool_refcounted_pages") == 5
+    assert _metric_value(metrics.text, "hipengine_graph_bucket_entries") == 6
+    assert _metric_value(metrics.text, "hipengine_graph_bucket_hits_total") == 7
+    assert _metric_value(metrics.text, "hipengine_graph_bucket_misses_total") == 8
+
+
 def test_server_rejects_requests_beyond_preallocated_context() -> None:
     fake = FakeLLM()
     app = create_app(
@@ -426,6 +487,14 @@ def test_chat_endpoint_rejects_non_text_content_parts() -> None:
 
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "unsupported_content_type"
+
+
+def _metric_value(text: str, name: str) -> int:
+    prefix = f"{name} "
+    for line in text.splitlines():
+        if line.startswith(prefix):
+            return int(float(line.removeprefix(prefix)))
+    raise AssertionError(f"metric {name} not found in:\n{text}")
 
 
 def _sse_payloads(text: str) -> list[dict]:
