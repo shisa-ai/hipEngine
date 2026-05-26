@@ -437,6 +437,8 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
         "output_dir": str(output_dir),
         "git": git,
         "commands": entries,
+        "status_counts": _status_counts(entries),
+        "category_status_counts": _category_status_counts(entries),
         "skipped_preconditions": _skipped_preconditions(entries),
         "status": _summary_status(entries),
     }
@@ -445,6 +447,24 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(summary, indent=2) + "\n")
     return summary
+
+
+def _status_counts(entries: Sequence[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for entry in entries:
+        status = str(entry.get("status") or "unknown")
+        counts[status] = counts.get(status, 0) + 1
+    return counts
+
+
+def _category_status_counts(entries: Sequence[dict[str, Any]]) -> dict[str, dict[str, int]]:
+    counts: dict[str, dict[str, int]] = {}
+    for entry in entries:
+        category = str(entry.get("category") or "unknown")
+        status = str(entry.get("status") or "unknown")
+        category_counts = counts.setdefault(category, {})
+        category_counts[status] = category_counts.get(status, 0) + 1
+    return counts
 
 
 def _skipped_preconditions(entries: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:

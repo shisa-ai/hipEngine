@@ -132,6 +132,12 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     assert summary_path.exists()
     persisted = json.loads(summary_path.read_text())
     assert len(persisted["commands"]) == 6
+    assert persisted["status_counts"] == {"planned": 6}
+    assert persisted["category_status_counts"] == {
+        "primitive": {"planned": 2},
+        "serial_bridge": {"planned": 2},
+        "native_diagnostic": {"planned": 2},
+    }
     assert persisted["skipped_preconditions"] == []
     assert all(entry["status"] == "planned" for entry in persisted["commands"])
     assert all(entry["command"] for entry in persisted["commands"])
@@ -181,6 +187,12 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
     summary = run_sweep(args)
 
     assert summary["status"] == "blocked"
+    assert summary["status_counts"] == {"passed": 2, "skipped": 1}
+    assert summary["category_status_counts"] == {
+        "primitive": {"passed": 1},
+        "serial_bridge": {"passed": 1},
+        "native_diagnostic": {"skipped": 1},
+    }
     assert [entry["status"] for entry in summary["commands"]] == ["passed", "passed", "skipped"]
     skipped = summary["commands"][-1]
     assert skipped["category"] == "native_diagnostic"
@@ -269,6 +281,12 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_missing(
     summary = run_sweep(args)
 
     assert summary["status"] == "blocked"
+    assert summary["status_counts"] == {"passed": 2, "skipped": 1}
+    assert summary["category_status_counts"] == {
+        "primitive": {"passed": 1},
+        "serial_bridge": {"passed": 1},
+        "native_diagnostic": {"skipped": 1},
+    }
     assert [entry["status"] for entry in summary["commands"]] == ["passed", "passed", "skipped"]
     skipped = summary["commands"][-1]
     assert skipped["precondition"]["kind"] == expected_kind
@@ -352,6 +370,12 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     summary = run_sweep(args)
 
     assert summary["status"] == "passed"
+    assert summary["status_counts"] == {"passed": 3}
+    assert summary["category_status_counts"] == {
+        "primitive": {"passed": 1},
+        "serial_bridge": {"passed": 1},
+        "native_diagnostic": {"passed": 1},
+    }
     assert summary["skipped_preconditions"] == []
     assert [entry["status"] for entry in summary["commands"]] == ["passed", "passed", "passed"]
     assert len(calls) == 3
