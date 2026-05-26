@@ -686,9 +686,11 @@ roll-up/status view.
 - [ ] **C4.6 streaming through loop.** Route streaming completions through
       per-request token queues instead of bypassing the batcher. Acceptance:
       streaming and non-streaming share reclaim/cancel tests.
-- [ ] **C4.7 unified reclaim.** Make cancel, disconnect, EOS, max-tokens, and
+- [x] **C4.7 unified reclaim.** Make cancel, disconnect, EOS, max-tokens, and
       timeout converge on one `RECLAIM` path. Acceptance: each finish reason
-      frees KV/scratch exactly once in tests.
+      frees KV/scratch exactly once in tests. Evidence:
+      `ResidentBatchScheduler.cancel/disconnect/timeout(...)`, generated-token
+      `stop`/`length` reclaim, and `pytest -q tests/test_generation_batch_scheduler.py -q`.
 - [ ] **C4.8 non-compact-slot native decode.** Extend native decode beyond
       compact `0..C-1` slots after scheduler compaction/reclaim. Acceptance:
       generated-token equality passes with a deliberately sparse/compacted
@@ -886,7 +888,7 @@ becomes a `submit+poll` adapter.
       generated batch.
 - [ ] Route server streaming through the engine loop and the per-request
       token queue; the streaming path no longer bypasses the batcher.
-- [ ] Unify cancel / disconnect / EOS / max-tokens / timeout into one
+- [x] Unify cancel / disconnect / EOS / max-tokens / timeout into one
       `RECLAIM` path.
 - [ ] Per-request observability fields (queue/prefill/decode seconds,
       kv pages owned/peak, bucket key, admission_blocked_reason,

@@ -82,10 +82,20 @@ class ResidentEngineLoop:
     def submit(self, prompt_tokens: Iterable[int], *, max_new_tokens: int, request_id: int | None = None) -> int:
         return self.scheduler.submit(prompt_tokens, max_new_tokens=max_new_tokens, request_id=request_id)
 
-    def cancel(self, request_id: int) -> bool:
+    def cancel(self, request_id: int, *, reason: str = "cancel") -> bool:
         """Cancel a pending or active request and reclaim active scheduler state."""
 
-        return self.scheduler.cancel(request_id) is not None
+        return self.scheduler.cancel(request_id, reason=reason) is not None
+
+    def disconnect(self, request_id: int) -> bool:
+        """Reclaim a disconnected request through the unified cancel path."""
+
+        return self.cancel(request_id, reason="disconnect")
+
+    def timeout(self, request_id: int) -> bool:
+        """Reclaim a timed-out request through the unified cancel path."""
+
+        return self.cancel(request_id, reason="timeout")
 
     def poll(self, *, max_ticks: int = 1) -> tuple[EngineLoopEvent, ...]:
         """Advance the loop by up to ``max_ticks`` scheduler ticks."""

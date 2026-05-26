@@ -27333,3 +27333,35 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY C4.7 unified reclaim
+
+Closed bite-sized packet C4.7 from `docs/CONCURRENCY.md`:
+
+- Added `CompletedRequest.finish_reason` for scheduler-owned completions.
+- Routed active generated-token completion, pending cancel, active cancel, disconnect, and timeout through one scheduler completion/reclaim helper path.
+- In generated-token completion, `finished=True` records OpenAI-compatible `finish_reason="stop"`; decode-budget completion records `finish_reason="length"`.
+- Added `ResidentBatchScheduler.disconnect(...)` / `timeout(...)` and matching `ResidentEngineLoop.disconnect(...)` / `timeout(...)` wrappers over the same cancel/reclaim path.
+- Added CPU tests for cancel, disconnect, EOS/stop, max-tokens/length, timeout, and double-reclaim no-ops.
+- Marked C4.7 and the phase-ladder unified reclaim item complete in `docs/CONCURRENCY.md`.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -q
+# 16 passed
+```
+
+Loop guard after C4.7:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 31
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```

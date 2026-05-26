@@ -60,6 +60,7 @@ def test_resident_engine_loop_submit_poll_cancel_and_reclaim() -> None:
     assert loop.cancel(r3) is True
     assert loop.cancel(9999) is False
     assert loop.completed[r3].finished is True
+    assert loop.completed[r3].finish_reason == "cancel"
     assert loop.pending_count == 3
 
     events = loop.poll(max_ticks=8)
@@ -80,8 +81,11 @@ def test_resident_engine_loop_submit_poll_cancel_and_reclaim() -> None:
     assert loop.active_count == 0
     assert set(loop.completed) == {r0, r1, r2, r3}
     assert loop.completed[r0].generated_tokens == (1000, 1001)
+    assert loop.completed[r0].finish_reason == "length"
     assert loop.completed[r1].generated_tokens == (1010,)
+    assert loop.completed[r1].finish_reason == "length"
     assert loop.completed[r2].generated_tokens == (1020,)
+    assert loop.completed[r2].finish_reason == "length"
 
     active_cancel_loop = ResidentEngineLoop(_FakeSerialBridgeRunner(), capacity=1, prefill_chunk_size=8)
     active_id = active_cancel_loop.submit([50], max_new_tokens=4)
@@ -90,6 +94,56 @@ def test_resident_engine_loop_submit_poll_cancel_and_reclaim() -> None:
     assert active_cancel_loop.cancel(active_id) is True
     assert active_cancel_loop.active_count == 0
     assert active_cancel_loop.completed[active_id].finished is True
+    assert active_cancel_loop.completed[active_id].finish_reason == "cancel"
+
+
+def _prefilled_scheduler(*, max_new_tokens: int = 1) -> tuple[ResidentBatchScheduler, int]:
+    scheduler = ResidentBatchScheduler(capacity=1, context_bucket_size=4)
+    request_id = scheduler.submit([10], max_new_tokens=max_new_tokens)
+    scheduler.admit_pending()
+    scheduler.next_prefill_work(chunk_size=8)
+    return scheduler, request_id
+
+
+def test_resident_scheduler_unified_reclaim_finish_reasons() -> None:
+    pending = ResidentBatchScheduler(capacity=1, context_bucket_size=4)
+    pending_id = pending.submit([1], max_new_tokens=1)
+    done = pending.cancel(pending_id)
+    assert done is not None and done.finish_reason == "cancel"
+    assert pending.pending_count == 0
+    assert pending.cancel(pending_id) is None
+    assert len(pending.completed) == 1
+
+    disconnected, disconnected_id = _prefilled_scheduler(max_new_tokens=2)
+    done = disconnected.disconnect(disconnected_id)
+    assert done is not None and done.finish_reason == "disconnect"
+    assert disconnected.active_count == 0
+    assert disconnected.disconnect(disconnected_id) is None
+    assert len(disconnected.completed) == 1
+
+    timed_out, timeout_id = _prefilled_scheduler(max_new_tokens=2)
+    done = timed_out.timeout(timeout_id)
+    assert done is not None and done.finish_reason == "timeout"
+    assert timed_out.active_count == 0
+    assert timed_out.timeout(timeout_id) is None
+    assert len(timed_out.completed) == 1
+
+    eos, eos_id = _prefilled_scheduler(max_new_tokens=3)
+    done_items = eos.record_generated([GeneratedToken(eos_id, 99, finished=True)])
+    assert [item.finish_reason for item in done_items] == ["stop"]
+    assert eos.active_count == 0
+    assert eos.cancel(eos_id) is None
+    assert len(eos.completed) == 1
+
+    length, length_id = _prefilled_scheduler(max_new_tokens=1)
+    done_items = length.record_generated([GeneratedToken(length_id, 100)])
+    assert [item.finish_reason for item in done_items] == ["length"]
+    assert length.active_count == 0
+    assert length.cancel(length_id) is None
+    assert len(length.completed) == 1
+
+    with pytest.raises(ValueError, match="cancel reason"):
+        pending.cancel(123, reason="stop")
 
 
 def test_resident_engine_loop_prefill_decode_policies() -> None:
