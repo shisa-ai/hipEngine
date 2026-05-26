@@ -1451,6 +1451,13 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     accepted = {
         "status": "accepted",
         "performance_claim": True,
+        "hardware": {"gpu": "AMD Radeon Pro W7900", "arch": "gfx1100"},
+        "software": {"hipengine_commit": "abc1234", "hipengine_dirty": False},
+        "commands": {
+            "benchmark": "python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --json accepted.json",
+            "correctness_reference": "inline generated-token equality vs independent c=1",
+        },
+        "profiler": {"status": "captured", "expected_kernels_present": True},
         "workload": {
             "native_compact_prefill": True,
             "native_caware_decode": True,
@@ -1579,6 +1586,21 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     missing_scaling.pop("scaling")
     with pytest.raises(ValueError, match="scaling"):
         validate_cn_diagnostic_artifact_payload(missing_scaling)
+
+    missing_command = json.loads(json.dumps(accepted))
+    missing_command["commands"]["benchmark"] = ""
+    with pytest.raises(ValueError, match="commands.benchmark"):
+        validate_cn_diagnostic_artifact_payload(missing_command)
+
+    missing_profiler = dict(accepted)
+    missing_profiler.pop("profiler")
+    with pytest.raises(ValueError, match="profiler"):
+        validate_cn_diagnostic_artifact_payload(missing_profiler)
+
+    missing_dirty_state = json.loads(json.dumps(accepted))
+    missing_dirty_state["software"].pop("hipengine_dirty")
+    with pytest.raises(ValueError, match="hipengine_dirty"):
+        validate_cn_diagnostic_artifact_payload(missing_dirty_state)
 
     incomplete_scaling = dict(accepted)
     incomplete_scaling["scaling"] = {"complete": False}

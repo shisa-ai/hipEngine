@@ -107,6 +107,7 @@ def validate_cn_diagnostic_artifact_payload(payload: Mapping[str, Any]) -> None:
         _validate_accepted_retained_gates(payload, errors)
         _validate_accepted_correctness_gates(correctness, errors)
         _validate_accepted_scaling_gates(payload, errors)
+        _validate_accepted_evidence_fields(payload, errors)
 
     if errors:
         raise ValueError("invalid c>N diagnostic artifact payload: " + "; ".join(errors))
@@ -159,6 +160,23 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
             errors.append("memory.prefix_sharing.enabled must be a bool for accepted artifacts")
         if not _is_number(prefix_sharing.get("savings_bytes")):
             errors.append("memory.prefix_sharing.savings_bytes must be numeric for accepted artifacts")
+
+
+def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[str]) -> None:
+    hardware = _mapping_at(payload, "hardware", errors)
+    if not hardware:
+        errors.append("hardware must be a non-empty object for accepted artifacts")
+    software = _mapping_at(payload, "software", errors)
+    if not isinstance(software.get("hipengine_commit"), str) or not software.get("hipengine_commit"):
+        errors.append("software.hipengine_commit must be a non-empty string for accepted artifacts")
+    if not isinstance(software.get("hipengine_dirty"), bool):
+        errors.append("software.hipengine_dirty must be a bool for accepted artifacts")
+    commands = _mapping_at(payload, "commands", errors)
+    if not isinstance(commands.get("benchmark"), str) or not commands.get("benchmark"):
+        errors.append("commands.benchmark must be a non-empty string for accepted artifacts")
+    profiler = _mapping_at(payload, "profiler", errors)
+    if not isinstance(profiler.get("status"), str) or not profiler.get("status"):
+        errors.append("profiler.status must be a non-empty string for accepted artifacts")
 
 
 def _validate_accepted_correctness_gates(correctness: Mapping[str, Any], errors: list[str]) -> None:
