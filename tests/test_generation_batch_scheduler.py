@@ -132,6 +132,7 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     assert summary_path.exists()
     persisted = json.loads(summary_path.read_text())
     assert len(persisted["commands"]) == 6
+    assert persisted["skipped_preconditions"] == []
     assert all(entry["status"] == "planned" for entry in persisted["commands"])
     assert all(entry["command"] for entry in persisted["commands"])
     assert all(entry["artifact_path"] for entry in persisted["commands"])
@@ -148,12 +149,13 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
 
 
 def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: Path, monkeypatch) -> None:
+    output_dir = tmp_path / "artifacts"
     args = build_c_sweep_parser().parse_args(
         [
             "--batch-sizes",
             "2",
             "--output-dir",
-            str(tmp_path / "artifacts"),
+            str(output_dir),
             "--model",
             "/tmp/model",
             "--fixture",
@@ -185,6 +187,16 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
     assert skipped["precondition"]["kind"] == "primitive_correctness"
     assert skipped["precondition"]["passed"] is False
     assert skipped["precondition"]["reason"] == "primitive correctness artifact does not exist"
+    assert summary["skipped_preconditions"] == [
+        {
+            "category": "native_diagnostic",
+            "batch_size": 2,
+            "artifact_path": str(output_dir / "native-diagnostic-c2.json"),
+            "kind": "primitive_correctness",
+            "precondition_artifact_path": str(output_dir / "primitive-c2.json"),
+            "reason": "primitive correctness artifact does not exist",
+        }
+    ]
 
 
 @pytest.mark.parametrize(
@@ -262,6 +274,18 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_missing(
     assert skipped["precondition"]["kind"] == expected_kind
     assert skipped["precondition"]["passed"] is False
     assert skipped["precondition"]["reason"] == "scaling reference artifact does not exist"
+    assert summary["skipped_preconditions"] == [
+        {
+            "category": "native_diagnostic",
+            "batch_size": 2,
+            "artifact_path": str(output_dir / "native-diagnostic-c2.json"),
+            "kind": expected_kind,
+            "precondition_artifact_path": str(
+                output_dir / ("native-baseline-c1.json" if missing_artifact == "c1" else "serial-bridge-c2.json")
+            ),
+            "reason": "scaling reference artifact does not exist",
+        }
+    ]
 
 
 def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Path, monkeypatch) -> None:
@@ -328,6 +352,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     summary = run_sweep(args)
 
     assert summary["status"] == "passed"
+    assert summary["skipped_preconditions"] == []
     assert [entry["status"] for entry in summary["commands"]] == ["passed", "passed", "passed"]
     assert len(calls) == 3
     assert calls[-1][1] == "scripts/qwen35_batch_retained_bench.py"

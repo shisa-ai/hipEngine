@@ -437,6 +437,7 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
         "output_dir": str(output_dir),
         "git": git,
         "commands": entries,
+        "skipped_preconditions": _skipped_preconditions(entries),
         "status": _summary_status(entries),
     }
     if args.summary_json is not None:
@@ -444,6 +445,27 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(summary, indent=2) + "\n")
     return summary
+
+
+def _skipped_preconditions(entries: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    skipped: list[dict[str, Any]] = []
+    for entry in entries:
+        if entry.get("status") != "skipped":
+            continue
+        precondition = entry.get("precondition")
+        if not isinstance(precondition, dict):
+            continue
+        skipped.append(
+            {
+                "category": entry.get("category"),
+                "batch_size": entry.get("batch_size"),
+                "artifact_path": entry.get("artifact_path"),
+                "kind": precondition.get("kind"),
+                "precondition_artifact_path": precondition.get("artifact_path"),
+                "reason": precondition.get("reason"),
+            }
+        )
+    return skipped
 
 
 def _summary_status(entries: Sequence[dict[str, Any]]) -> str:
