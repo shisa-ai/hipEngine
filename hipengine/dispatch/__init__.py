@@ -13,6 +13,13 @@ from hipengine.dispatch.kv import (
     resolve_paged_attn_decode,
     resolve_paged_kv_write,
 )
+from hipengine.dispatch.projection import (
+    ProjectionDispatchCandidate,
+    ProjectionDispatchDecision,
+    ProjectionDispatchEvidence,
+    ProjectionKernelSelection,
+    plan_projection_dispatch,
+)
 
 __all__ = [
     "ActiveBatch",
@@ -24,6 +31,10 @@ __all__ = [
     "KernelPlanStep",
     "PagedAttnDecodeKind",
     "PagedKVWriteKind",
+    "ProjectionDispatchCandidate",
+    "ProjectionDispatchDecision",
+    "ProjectionDispatchEvidence",
+    "ProjectionKernelSelection",
     "RequestState",
     "SlotMove",
     "WorkItem",
@@ -32,6 +43,7 @@ __all__ = [
     "bind_paged_kv_write",
     "plan_paged_attn_decode",
     "plan_paged_kv_write",
+    "plan_projection_dispatch",
     "resolve_paged_attn_decode",
     "resolve_paged_kv_write",
     "resolve_plan",

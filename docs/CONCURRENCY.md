@@ -701,7 +701,13 @@ roll-up/status view.
 - [ ] **C3.4 c-aware projection dispatch.** Keep c=1 on GEMV/Marlin-K while
       routing c=2/4/8 to MMQ/GEMM/WMMA candidates only when they beat row-GEMV.
       Acceptance: dispatch tests prove thresholds and benchmark artifacts show
-      aggregate/per-request ratios.
+      aggregate/per-request ratios. Progress: `hipengine.dispatch.projection`
+      now exposes a tested c-aware projection policy: c=1 is pinned to row-GEMV,
+      c>N candidates require accepted benchmark evidence with aggregate and
+      per-request speedups over row-GEMV, and missing/slow/rejected evidence
+      falls back to row-GEMV with explicit blockers. The item remains open until
+      runtime projection call sites are wired to this policy and retained
+      benchmark artifacts provide the required ratios.
 - [x] **C3.5 GGUF c>N template.** Port the Qwen/PARO equality template to
       GGUF Q4_K/Q5_K/Q6_K/Q8_0. Acceptance: at least one GGUF c=2 diagnostic
       reaches an unambiguous `eq_ok`, `blocked`, or `rejected_correctness`

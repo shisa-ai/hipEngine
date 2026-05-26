@@ -10,7 +10,13 @@ import pytest
 
 from hipengine.core.device import Device
 from hipengine.core.tensor import Tensor
-from hipengine.dispatch import WorkKind
+from hipengine.dispatch import (
+    ProjectionDispatchCandidate,
+    ProjectionDispatchEvidence,
+    ProjectionKernelSelection,
+    WorkKind,
+    plan_projection_dispatch,
+)
 from hipengine.generation import (
     CompactPromptSlab,
     EngineLoopConfig,
@@ -160,6 +166,101 @@ def test_batch_c_sweep_can_plan_int8_blocked_diagnostics(tmp_path: Path) -> None
     assert "scripts/qwen35_batch_int8_diagnostic.py" in int8.command
     assert "--rows 2" in int8.command
     assert int8.artifact_path.name == "int8-native-diagnostic-c2.json"
+
+
+def test_projection_dispatch_keeps_c1_on_row_gemv_even_with_fast_candidate() -> None:
+    row_gemv = ProjectionKernelSelection("linear", "w4_paro", "row_gemv")
+    wmma = ProjectionDispatchCandidate(
+        "wmma_caware",
+        ProjectionKernelSelection("linear", "w4_paro", "wmma_caware"),
+        min_rows=1,
+        evidence=ProjectionDispatchEvidence(
+            "benchmarks/results/projection-wmma-c1.json",
+            aggregate_vs_row_gemv=3.0,
+            per_request_vs_row_gemv=3.0,
+        ),
+    )
+
+    decision = plan_projection_dispatch(rows=1, row_gemv=row_gemv, candidates=[wmma])
+
+    assert decision.selection == row_gemv
+    assert decision.selected_candidate == "row_gemv"
+    assert decision.path == "row_gemv_c1"
+    assert decision.throughput_claim_eligible is False
+    assert decision.blockers == ()
+
+
+def test_projection_dispatch_requires_accepted_cN_speedup_evidence() -> None:
+    row_gemv = ProjectionKernelSelection("linear", "w4_paro", "row_gemv")
+    missing = ProjectionDispatchCandidate(
+        "mmq_missing",
+        ProjectionKernelSelection("linear", "w4_paro", "mmq_caware"),
+        min_rows=2,
+    )
+    rejected = ProjectionDispatchCandidate(
+        "wmma_rejected",
+        ProjectionKernelSelection("linear", "w4_paro", "wmma_caware"),
+        min_rows=2,
+        evidence=ProjectionDispatchEvidence(
+            "benchmarks/results/rejected.json",
+            aggregate_vs_row_gemv=1.5,
+            per_request_vs_row_gemv=1.5,
+            accepted=False,
+        ),
+    )
+    too_slow = ProjectionDispatchCandidate(
+        "gemm_too_slow",
+        ProjectionKernelSelection("linear", "w4_paro", "gemm_caware"),
+        min_rows=2,
+        evidence=ProjectionDispatchEvidence(
+            "benchmarks/results/slow.json",
+            aggregate_vs_row_gemv=1.2,
+            per_request_vs_row_gemv=0.99,
+        ),
+    )
+
+    decision = plan_projection_dispatch(rows=4, row_gemv=row_gemv, candidates=[missing, rejected, too_slow])
+
+    assert decision.selection == row_gemv
+    assert decision.path == "row_gemv_until_caware_benchmark"
+    assert decision.throughput_claim_eligible is False
+    assert "mmq_missing: missing benchmark evidence" in decision.blockers
+    assert "wmma_rejected: benchmark artifact was not accepted" in decision.blockers
+    assert any("gemm_too_slow: per_request_vs_row_gemv" in blocker for blocker in decision.blockers)
+
+
+def test_projection_dispatch_selects_best_evidence_green_cN_candidate() -> None:
+    row_gemv = ProjectionKernelSelection("linear", "w4_paro", "row_gemv")
+    mmq = ProjectionDispatchCandidate(
+        "mmq_caware",
+        ProjectionKernelSelection("linear", "w4_paro", "mmq_caware"),
+        min_rows=2,
+        evidence=ProjectionDispatchEvidence(
+            "benchmarks/results/mmq-c4.json",
+            aggregate_vs_row_gemv=1.20,
+            per_request_vs_row_gemv=1.05,
+        ),
+    )
+    wmma = ProjectionDispatchCandidate(
+        "wmma_caware",
+        ProjectionKernelSelection("linear", "w4_paro", "wmma_caware"),
+        min_rows=4,
+        max_rows=8,
+        evidence=ProjectionDispatchEvidence(
+            "benchmarks/results/wmma-c4.json",
+            aggregate_vs_row_gemv=1.35,
+            per_request_vs_row_gemv=1.10,
+        ),
+    )
+
+    decision = plan_projection_dispatch(rows=4, row_gemv=row_gemv, candidates=[mmq, wmma])
+
+    assert decision.selection == wmma.selection
+    assert decision.selected_candidate == "wmma_caware"
+    assert decision.path == "benchmark_accepted_caware_projection"
+    assert decision.throughput_claim_eligible is True
+    assert decision.evidence == wmma.evidence
+    assert decision.to_json_dict()["evidence"]["aggregate_vs_row_gemv"] == 1.35
 
 
 def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
