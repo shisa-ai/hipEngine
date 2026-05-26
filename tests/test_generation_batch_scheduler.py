@@ -1540,6 +1540,19 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
                 }
             },
         },
+        "measurements": {
+            "decode_seconds": 1.0,
+            "decode_tok_s_aggregate": 100.0,
+            "decode_tok_s_per_request": 50.0,
+            "decode_step_seconds": {
+                "samples": [0.1, 0.2, 0.3],
+                "median": 0.2,
+                "p95": 0.3,
+                "min": 0.1,
+                "max": 0.3,
+                "stdev": 0.1,
+            },
+        },
         "scaling": {
             "complete": True,
             "native": {
@@ -1665,6 +1678,21 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     missing_scaling.pop("scaling")
     with pytest.raises(ValueError, match="scaling"):
         validate_cn_diagnostic_artifact_payload(missing_scaling)
+
+    missing_measurements = dict(accepted)
+    missing_measurements.pop("measurements")
+    with pytest.raises(ValueError, match="measurements"):
+        validate_cn_diagnostic_artifact_payload(missing_measurements)
+
+    missing_decode_rate = json.loads(json.dumps(accepted))
+    missing_decode_rate["measurements"].pop("decode_tok_s_per_request")
+    with pytest.raises(ValueError, match="decode_tok_s_per_request"):
+        validate_cn_diagnostic_artifact_payload(missing_decode_rate)
+
+    empty_samples = json.loads(json.dumps(accepted))
+    empty_samples["measurements"]["decode_step_seconds"]["samples"] = []
+    with pytest.raises(ValueError, match="samples"):
+        validate_cn_diagnostic_artifact_payload(empty_samples)
 
     missing_command = json.loads(json.dumps(accepted))
     missing_command["commands"]["benchmark"] = ""

@@ -107,6 +107,7 @@ def validate_cn_diagnostic_artifact_payload(payload: Mapping[str, Any]) -> None:
         _validate_accepted_retained_gates(payload, errors)
         _validate_accepted_execution_gates(payload, errors)
         _validate_accepted_correctness_gates(correctness, errors)
+        _validate_accepted_measurement_gates(payload, errors)
         _validate_accepted_scaling_gates(payload, errors)
         _validate_accepted_evidence_fields(payload, errors)
 
@@ -242,6 +243,25 @@ def _validate_accepted_correctness_gates(correctness: Mapping[str, Any], errors:
         errors.append("correctness.primitive_batch_correctness.artifact_path must be a non-empty string for accepted artifacts")
     if not isinstance(primitive.get("rows"), int):
         errors.append("correctness.primitive_batch_correctness.rows must be an int for accepted artifacts")
+
+
+def _validate_accepted_measurement_gates(payload: Mapping[str, Any], errors: list[str]) -> None:
+    measurements = _mapping_at(payload, "measurements", errors)
+    for field in ("decode_seconds", "decode_tok_s_aggregate", "decode_tok_s_per_request"):
+        if not _is_number(measurements.get(field)):
+            errors.append(f"measurements.{field} must be numeric for accepted artifacts")
+    decode_steps = measurements.get("decode_step_seconds")
+    if not isinstance(decode_steps, Mapping):
+        errors.append("measurements.decode_step_seconds must be an object for accepted artifacts")
+        return
+    samples = decode_steps.get("samples")
+    if not isinstance(samples, list) or not samples:
+        errors.append("measurements.decode_step_seconds.samples must be a non-empty list for accepted artifacts")
+    elif any(not _is_number(sample) for sample in samples):
+        errors.append("measurements.decode_step_seconds.samples must contain only numbers for accepted artifacts")
+    for field in ("median", "p95", "min", "max", "stdev"):
+        if not _is_number(decode_steps.get(field)):
+            errors.append(f"measurements.decode_step_seconds.{field} must be numeric for accepted artifacts")
 
 
 def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[str]) -> None:
