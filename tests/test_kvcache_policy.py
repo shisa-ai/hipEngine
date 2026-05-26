@@ -7,7 +7,16 @@ import pytest
 from hipengine.core.device import Device
 from hipengine.core.tensor import Tensor
 from hipengine.dispatch import WorkItem, WorkKind
-from hipengine.kvcache import ChunkedKVPool, FixedPagedKVPolicy, KVLiveSpans, KVScaleMetadata, KVTransaction, resolve_kv_policy
+from hipengine.kvcache import (
+    ChunkedKVPool,
+    FixedPagedKVPolicy,
+    KVLiveSpans,
+    KVScaleMetadata,
+    KVTransaction,
+    RadixCache,
+    resolve_kv_policy,
+    resolve_prefix_cache_mode,
+)
 
 
 def _tensor(ptr: int, shape: tuple[int, ...], dtype: str, device: Device | None = None) -> Tensor:
@@ -100,6 +109,51 @@ def test_resolve_kv_policy_records_explicit_and_admission_selection() -> None:
     assert gated.storage_dtype.value == "int8_per_token_head"
     assert gated.to_json_dict()["int8_explicit"] is False
     assert gated.to_json_dict()["int8_admission_gated"] is True
+
+
+def test_radix_cache_hits_full_blocks_and_misses_partial_edges() -> None:
+    assert resolve_prefix_cache_mode(None) == "off"
+    assert resolve_prefix_cache_mode("RADIX") == "radix"
+    with pytest.raises(ValueError, match="prefix cache"):
+        resolve_prefix_cache_mode("tree")
+
+    cache = RadixCache(block_size=4)
+    inserted = cache.insert(1, [10, 11, 12, 13, 14, 15], [100, 101])
+
+    assert inserted.cached_tokens == 4
+    assert inserted.cached_blocks == 1
+    assert cache.stats.entries == 1
+
+    hit = cache.match([10, 11, 12, 13, 99])
+    assert hit.hit is True
+    assert hit.matched_tokens == (10, 11, 12, 13)
+    assert hit.block_ids == (100,)
+    assert hit.remaining_tokens == (99,)
+
+    partial = cache.match([10, 11, 12, 99])
+    assert partial.hit is False
+    assert partial.matched_tokens == ()
+    assert partial.remaining_tokens == (10, 11, 12, 99)
+    assert cache.stats.partial_block_misses == 1
+
+
+def test_radix_cache_cancellation_removes_live_prefix_ownership() -> None:
+    cache = RadixCache(block_size=2)
+    cache.insert(1, [1, 2, 3, 4], [10, 11])
+    cache.insert(2, [1, 2], [10])
+
+    assert cache.match([1, 2, 5]).block_ids == (10,)
+    cancel_one = cache.cancel(1)
+    assert cancel_one.removed_entries == 2
+    assert cancel_one.removed_blocks == (10, 11)
+    assert cache.match([1, 2, 5]).block_ids == (10,)
+    assert cache.stats.entries == 1
+
+    cancel_two = cache.cancel(2)
+    assert cancel_two.removed_entries == 1
+    assert cancel_two.removed_blocks == (10,)
+    assert cache.match([1, 2, 5]).hit is False
+    assert cache.stats.entries == 0
 
 
 def test_chunked_kv_pool_grows_and_shrinks_on_burst_idle() -> None:

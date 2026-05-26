@@ -330,13 +330,21 @@ def test_streaming_chat_completion_returns_sse_done_marker() -> None:
     assert fake.calls[0][1].max_tokens == 131072 - fake.count_tokens(prompt) - 1
 
 
-def test_metrics_cli_env_defaults(monkeypatch) -> None:
+def test_metrics_and_prefix_cache_cli_env_defaults(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_METRICS", "prometheus")
+    monkeypatch.setenv("HIPENGINE_PREFIX_CACHE", "radix")
     env_args = build_parser().parse_args(["--model", "fake-path"])
     assert env_args.metrics == "prometheus"
+    assert env_args.prefix_cache == "radix"
 
-    cli_args = build_parser().parse_args(["--model", "fake-path", "--metrics", "off"])
+    cli_args = build_parser().parse_args(
+        ["--model", "fake-path", "--metrics", "off", "--prefix-cache", "off"]
+    )
     assert cli_args.metrics == "off"
+    assert cli_args.prefix_cache == "off"
+
+    app = create_app(ServerConfig(model="fake-path", eager_load=False, prefix_cache="radix"), llm=FakeLLM())
+    assert app.state.hipengine_prefix_cache_mode == "radix"
 
 
 def test_metrics_endpoint_is_opt_in_and_additive() -> None:

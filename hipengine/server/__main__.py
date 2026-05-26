@@ -6,6 +6,7 @@ import argparse
 import os
 from collections.abc import Sequence
 
+from hipengine.kvcache import PREFIX_CACHE_CHOICES
 from hipengine.server.api import ServerConfig, create_app
 
 
@@ -115,6 +116,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=os.environ.get("HIPENGINE_METRICS", "off"),
         help="Metrics endpoint mode (env HIPENGINE_METRICS; default: off)",
     )
+    parser.add_argument(
+        "--prefix-cache",
+        choices=PREFIX_CACHE_CHOICES,
+        default=os.environ.get("HIPENGINE_PREFIX_CACHE", "off"),
+        help="Prefix-cache mode (env HIPENGINE_PREFIX_CACHE; default: off)",
+    )
     parser.add_argument("--host", default="127.0.0.1", help="Bind host")
     parser.add_argument("--port", type=int, default=8000, help="Bind port")
     parser.add_argument("--log-level", default="info", help="uvicorn log level")
@@ -138,6 +145,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         kv_scale_granularity=args.kv_scale_granularity,
         generation_batch_window_ms=args.generation_batch_window_ms,
         metrics=args.metrics,
+        prefix_cache=args.prefix_cache,
     )
     app = create_app(config)
     try:

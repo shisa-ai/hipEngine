@@ -32,6 +32,7 @@ except ImportError:  # pragma: no cover - Pydantic v1 compatibility
 from starlette.concurrency import run_in_threadpool
 
 from hipengine import LLM, SamplingParams
+from hipengine.kvcache import resolve_prefix_cache_mode
 
 
 _LOGGER = logging.getLogger("uvicorn.error")
@@ -55,6 +56,7 @@ class ServerConfig:
     kv_scale_granularity: str = "per_token_head"
     generation_batch_window_ms: float = 5.0
     metrics: str = "off"
+    prefix_cache: str = "off"
     created: int = field(default_factory=lambda: int(time.time()))
 
     @property
@@ -279,9 +281,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
 
     app = FastAPI(title="hipEngine OpenAI-compatible API", version="0.2.1")
     metrics_mode = _metrics_mode(config.metrics)
+    prefix_cache_mode = resolve_prefix_cache_mode(config.prefix_cache)
     app.state.hipengine_config = config
     app.state.hipengine_llm = llm
     app.state.hipengine_effective_max_context_tokens = config.max_context_tokens
+    app.state.hipengine_prefix_cache_mode = prefix_cache_mode
     app.state.hipengine_server_metrics = _ServerMetrics()
     generation_lock = asyncio.Lock()
 

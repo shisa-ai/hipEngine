@@ -88,6 +88,7 @@ qwen35moe fast-path safety gate.
 | `HIPENGINE_AOTRITON_HOME` | AOTriton discovery | unset | Explicit cache root containing `<version>/lib/libaotriton_v2.so`. Missing explicit roots fail loudly instead of falling back silently. |
 | `HIPENGINE_API_KEY` | OpenAI-compatible server | unset | Optional bearer token used by `hipengine serve` when `--api-key` is omitted. |
 | `HIPENGINE_METRICS` | OpenAI-compatible server | `off` | Metrics endpoint mode used by `hipengine serve --metrics`: `off` or `prometheus`. When `prometheus`, `/metrics` exposes additive request counters plus KV-pool and graph-bucket counters. |
+| `HIPENGINE_PREFIX_CACHE` | OpenAI-compatible server / KV sharing | `off` | Prefix-cache mode used by `hipengine serve --prefix-cache`: `off` or `radix`. `radix` enables the token-id trie scaffold for block-aligned shared-prefix admission; default remains `off` until C5 acceptance is broader. |
 
 Removed historical AOTriton knobs (`HIPENGINE_AOTRITON_SOURCE_ROOT` and
 `HIPENGINE_AOTRITON_RUNTIME_ROOT`) are no longer read by the runtime.

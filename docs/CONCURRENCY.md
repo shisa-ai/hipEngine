@@ -714,9 +714,12 @@ roll-up/status view.
       reclaim only frees zero-refcount blocks. Evidence:
       `ChunkedKVPool.admit_with_shared_prefix(...)`, prefix reuse counters, and
       `pytest -q tests/test_kvcache_policy.py -q`.
-- [ ] **C5.2 RadixCache.** Implement the token-id trie with
+- [x] **C5.2 RadixCache.** Implement the token-id trie with
       `HIPENGINE_PREFIX_CACHE` / `--prefix-cache` in `{off, radix}`. Acceptance:
       prefix-hit/miss tests cover partial-block edges and cancellation.
+      Evidence: `hipengine/kvcache/radix.py`, `HIPENGINE_PREFIX_CACHE`,
+      `hipengine serve --prefix-cache`, and
+      `pytest -q tests/test_kvcache_policy.py tests/test_server_api.py -q`.
 - [ ] **C5.3 copy-on-write fork.** Fork fresh pages at the first divergent
       token while preserving shared prefix pages. Acceptance: two diverging
       requests keep prefix bytes shared and produce independent suffix KV.
@@ -921,7 +924,7 @@ endpoint live; retained c>N rows include all gates above.
 
 - [x] Add block-id refcounts; admission increments refcount when reusing
       an existing block on a matched prefix.
-- [ ] Implement RadixCache trie index over token ids; expose
+- [x] Implement RadixCache trie index over token ids; expose
       `HIPENGINE_PREFIX_CACHE` / `--prefix-cache` in `{off, radix}` with
       default `off` until acceptance gates pass.
 - [ ] Implement copy-on-write fork at first divergent token.

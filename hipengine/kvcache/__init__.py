@@ -13,6 +13,15 @@ from hipengine.kvcache.policy import (
     resolve_kv_policy,
 )
 from hipengine.kvcache.pool import ChunkedKVPool, KVPoolAllocation, KVPoolChunk, KVPoolSharedAdmission, KVPoolStats
+from hipengine.kvcache.radix import (
+    PREFIX_CACHE_CHOICES,
+    PrefixCacheCancel,
+    PrefixCacheInsert,
+    PrefixCacheMatch,
+    PrefixCacheStats,
+    RadixCache,
+    resolve_prefix_cache_mode,
+)
 from hipengine.kvcache.spans import KVLiveSpans, KVScaleMetadata
 
 __all__ = [
@@ -29,8 +38,15 @@ __all__ = [
     "KVTransaction",
     "KV_SCALE_DTYPE_CHOICES",
     "KV_SCALE_GRANULARITY_CHOICES",
+    "PREFIX_CACHE_CHOICES",
+    "PrefixCacheCancel",
+    "PrefixCacheInsert",
+    "PrefixCacheMatch",
+    "PrefixCacheStats",
+    "RadixCache",
     "KV_STORAGE_AUTO",
     "KV_STORAGE_CHOICES",
     "ResolvedKVPolicy",
     "resolve_kv_policy",
+    "resolve_prefix_cache_mode",
 ]
