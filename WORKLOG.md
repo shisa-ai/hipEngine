@@ -28373,3 +28373,31 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY retained primitive correctness gate
+
+Materially advanced c>N retained-claim safety without closing open correctness/perf work:
+
+- Added `--primitive-correctness-json` to `scripts/qwen35_batch_retained_bench.py` and parse/validate helper `_primitive_correctness_reference(...)`.
+- Retained native c>N artifacts now include `correctness.primitive_batch_correctness`, and `status=accepted` / `performance_claim=true` requires the primitive GPU correctness JSON to match the retained row count, pass, have zero KV append mismatches, and have `attn_batch_vs_c1_max_abs <= 1e-6`.
+- `scripts/qwen35_batch_c_sweep.py` now passes each retained c>N command its matching `primitive-cN.json` path.
+- Accepted-artifact schema validation now requires `correctness.primitive_batch_correctness` to be present and passed.
+- Updated C5.8/P1 notes. The open items remain open until generated-token equality and retained artifacts/rollups exist.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_batch_c_sweep_dry_run_records_commands_and_artifacts tests/test_generation_batch_scheduler.py::test_qwen35_retained_primitive_correctness_reference_requires_same_rows tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates tests/test_generation_batch_scheduler.py::test_qwen35_retained_payload_mirrors_fallback_native_decode_label -q
+# 4 passed
+python3 scripts/qwen35_batch_c_sweep.py --dry-run --batch-sizes 1,2 --model /tmp/model --fixture /tmp/fixture.json --prompt-length 16 --decode-tokens 2 --warmup-decode-tokens 1 --max-layers 3 --output-dir /tmp/hipengine-c-sweep-primitive-plan --summary-json /tmp/hipengine-c-sweep-primitive-plan/summary.json
+# planned 6 commands; c=2 retained command includes --primitive-correctness-json
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```

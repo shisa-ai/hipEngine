@@ -157,6 +157,64 @@ def _scaling_reference(path: Path | None) -> dict[str, Any]:
     }
 
 
+def _primitive_correctness_reference(path: Path | None, *, rows: int) -> dict[str, Any]:
+    if path is None:
+        return {
+            "artifact_path": None,
+            "status": "missing",
+            "passed": False,
+            "reason": "no primitive correctness artifact path provided",
+        }
+    path = Path(path)
+    if not path.exists():
+        return {
+            "artifact_path": str(path),
+            "status": "missing",
+            "passed": False,
+            "reason": "artifact path does not exist",
+        }
+    try:
+        payload = json.loads(path.read_text())
+    except Exception as exc:
+        return {
+            "artifact_path": str(path),
+            "status": "invalid_json",
+            "passed": False,
+            "reason": f"{type(exc).__name__}: {exc}",
+        }
+    if not isinstance(payload, Mapping):
+        return {
+            "artifact_path": str(path),
+            "status": "invalid_json",
+            "passed": False,
+            "reason": "artifact root is not an object",
+        }
+    reasons: list[str] = []
+    artifact_rows = payload.get("rows")
+    if not isinstance(artifact_rows, int) or isinstance(artifact_rows, bool) or artifact_rows != int(rows):
+        reasons.append(f"artifact rows={artifact_rows!r} does not match batch_size={rows}")
+    if payload.get("passed") is not True:
+        reasons.append("primitive correctness payload did not pass")
+    if payload.get("append_key_mismatch") != 0:
+        reasons.append("append_key_mismatch is non-zero")
+    if payload.get("append_value_mismatch") != 0:
+        reasons.append("append_value_mismatch is non-zero")
+    attn_vs_c1 = payload.get("attn_batch_vs_c1_max_abs")
+    if not _is_number(attn_vs_c1) or float(attn_vs_c1) > 1e-6:
+        reasons.append("attn_batch_vs_c1_max_abs is missing or above 1e-6")
+    return {
+        "artifact_path": str(path),
+        "status": "loaded",
+        "rows": payload.get("rows"),
+        "passed": not reasons,
+        "append_key_mismatch": payload.get("append_key_mismatch"),
+        "append_value_mismatch": payload.get("append_value_mismatch"),
+        "attn_batch_vs_c1_max_abs": attn_vs_c1,
+        "attn_batch_vs_numpy_max_abs": payload.get("attn_batch_vs_numpy_max_abs"),
+        "reason": None if not reasons else "; ".join(reasons),
+    }
+
+
 def _build_scaling_comparison(
     args: argparse.Namespace,
     *,
@@ -492,19 +550,35 @@ def _build_payload(
         native_decode_tok_s_aggregate=decode_tok_s,
         native_decode_tok_s_per_request=decode_tok_s_per_request,
     )
+    primitive_correctness = _primitive_correctness_reference(
+        getattr(args, "primitive_correctness_json", None),
+        rows=args.batch_size,
+    )
     batch_execution = dict(bench["batch_execution"])
     throughput_claim_eligible = bool(batch_execution.get("throughput_claim_eligible"))
     native_caware_decode = bool(batch_execution.get("native_caware_decode"))
     equality_passed = bool(equality.get("passed"))
     protocol_shape = args.max_layers == 40 and args.prompt_length >= 512 and args.decode_tokens >= 128
     scaling_complete = bool(scaling["complete"])
-    accepted = bool(bench["finite_logits"] and throughput_claim_eligible and equality_passed and protocol_shape and scaling_complete)
-    status = "accepted" if accepted else ("rejected_correctness" if bench["finite_logits"] and not equality_passed else "blocked")
+    primitive_passed = bool(primitive_correctness["passed"])
+    accepted = bool(
+        bench["finite_logits"]
+        and throughput_claim_eligible
+        and equality_passed
+        and primitive_passed
+        and protocol_shape
+        and scaling_complete
+    )
+    primitive_loaded = primitive_correctness.get("status") == "loaded"
+    correctness_rejected = bool(bench["finite_logits"] and (not equality_passed or (primitive_loaded and not primitive_passed)))
+    status = "accepted" if accepted else ("rejected_correctness" if correctness_rejected else "blocked")
     blocked_reasons: list[str] = []
     if not throughput_claim_eligible:
         blocked_reasons.append("batch_execution.throughput_claim_eligible=false")
     if not equality_passed:
         blocked_reasons.append("generated-token equality vs independent c=1 did not pass")
+    if not primitive_passed:
+        blocked_reasons.append(f"primitive c>N correctness gate did not pass: {primitive_correctness.get('reason')}")
     if args.prompt_length < 512 or args.decode_tokens < 128:
         blocked_reasons.append("workload is a reduced diagnostic shape, not the docs/BENCHMARK.md c=N 512/128 protocol")
     if args.max_layers != 40:
@@ -566,15 +640,16 @@ def _build_payload(
                 "rocm-smi --showmeminfo vram --showuse --showtemp",
                 "hipcc --version",
             ],
-            "correctness_reference": "inline generated-token equality vs independent c=1",
+            "correctness_reference": "inline generated-token equality vs independent c=1 plus primitive c>N GPU correctness JSON",
             "benchmark": _command(argv),
             "profiler": None,
         },
         "correctness": {
-            "passed": bool(bench["finite_logits"] and equality_passed),
-            "oracle": "generated-token ids equal independent c=1 resident runs through the same native packed prefill/decode path; primitive batch correctness required separately by docs/BENCHMARK.md",
+            "passed": bool(bench["finite_logits"] and equality_passed and primitive_passed),
+            "oracle": "generated-token ids equal independent c=1 resident runs through the same native packed prefill/decode path plus scripts/qwen35_batch_correctness.py primitive GPU correctness for the same c>N row count",
             "finite_logits": bool(bench["finite_logits"]),
             "generated_token_equality": equality,
+            "primitive_batch_correctness": primitive_correctness,
             "kl_mean": None,
             "top1_agreement": None,
         },
@@ -657,6 +732,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--skip-generated-equality", action="store_true")
     parser.add_argument("--c1-baseline-json", type=Path, help="c=1 baseline artifact used for retained scaling ratios")
     parser.add_argument("--serial-bridge-json", type=Path, help="scheduler serial-bridge artifact for retained scaling ratios")
+    parser.add_argument("--primitive-correctness-json", type=Path, help="scripts/qwen35_batch_correctness.py JSON for this c>N row count")
     add_kv_policy_args(parser, help_prefix="Resident KV storage for retained native c>N benchmark")
     parser.add_argument("--json", type=Path, help="Optional path to write JSON output")
     args = parser.parse_args(argv)

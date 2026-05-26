@@ -199,6 +199,16 @@ def _validate_accepted_correctness_gates(correctness: Mapping[str, Any], errors:
         errors.append("correctness.generated_token_equality.mismatches must be a list for accepted artifacts")
     elif mismatches:
         errors.append("correctness.generated_token_equality.mismatches must be empty for accepted artifacts")
+    primitive = correctness.get("primitive_batch_correctness")
+    if not isinstance(primitive, Mapping):
+        errors.append("correctness.primitive_batch_correctness must be an object for accepted artifacts")
+        return
+    if primitive.get("passed") is not True:
+        errors.append("correctness.primitive_batch_correctness.passed must be true for accepted artifacts")
+    if not isinstance(primitive.get("artifact_path"), str) or not primitive.get("artifact_path"):
+        errors.append("correctness.primitive_batch_correctness.artifact_path must be a non-empty string for accepted artifacts")
+    if not isinstance(primitive.get("rows"), int):
+        errors.append("correctness.primitive_batch_correctness.rows must be an int for accepted artifacts")
 
 
 def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[str]) -> None:

@@ -138,6 +138,8 @@ def build_sweep_commands(args: argparse.Namespace) -> tuple[SweepCommand, ...]:
                 str(output_dir / "native-baseline-c1.json"),
                 "--serial-bridge-json",
                 str(serial_json),
+                "--primitive-correctness-json",
+                str(primitive_json),
             ]
         )
         commands.append(

@@ -142,6 +142,8 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     assert str(tmp_path / "artifacts" / "native-baseline-c1.json") in retained_c2.argv
     assert "--serial-bridge-json" in retained_c2.argv
     assert str(tmp_path / "artifacts" / "serial-bridge-c2.json") in retained_c2.argv
+    assert "--primitive-correctness-json" in retained_c2.argv
+    assert str(tmp_path / "artifacts" / "primitive-c2.json") in retained_c2.argv
 
 
 def test_batch_c_sweep_can_plan_int8_blocked_diagnostics(tmp_path: Path) -> None:
@@ -1386,6 +1388,32 @@ def test_qwen35_retained_scaling_comparison_uses_c1_and_serial_artifacts(tmp_pat
     }
 
 
+def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_path: Path) -> None:
+    artifact = tmp_path / "primitive-c2.json"
+    artifact.write_text(
+        json.dumps(
+            {
+                "rows": 2,
+                "passed": True,
+                "append_key_mismatch": 0,
+                "append_value_mismatch": 0,
+                "attn_batch_vs_c1_max_abs": 0.0,
+                "attn_batch_vs_numpy_max_abs": 5.0e-8,
+            }
+        )
+    )
+
+    passed = retained_bench._primitive_correctness_reference(artifact, rows=2)
+    mismatched = retained_bench._primitive_correctness_reference(artifact, rows=4)
+    missing = retained_bench._primitive_correctness_reference(None, rows=2)
+
+    assert passed["passed"] is True
+    assert passed["artifact_path"] == str(artifact)
+    assert mismatched["passed"] is False
+    assert "does not match batch_size=4" in mismatched["reason"]
+    assert missing["status"] == "missing"
+
+
 def test_qwen35_retained_payload_mirrors_fallback_native_decode_label(monkeypatch) -> None:
     monkeypatch.setattr(retained_bench, "_hardware_context", lambda: {"gpu": "test"})
     monkeypatch.setattr(retained_bench, "_software_context", lambda: {"python": "test"})
@@ -1470,6 +1498,14 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
                 "batch_sequences": [[10, 11], [20, 21]],
                 "c1_sequences": [[10, 11], [20, 21]],
                 "mismatches": [],
+            },
+            "primitive_batch_correctness": {
+                "artifact_path": "benchmarks/results/primitive-c2.json",
+                "rows": 2,
+                "passed": True,
+                "append_key_mismatch": 0,
+                "append_value_mismatch": 0,
+                "attn_batch_vs_c1_max_abs": 0.0,
             },
         },
         "execution": {
@@ -1556,6 +1592,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     mismatch_equality["correctness"]["generated_token_equality"]["mismatches"] = [{"row": 0}]
     with pytest.raises(ValueError, match="mismatches must be empty"):
         validate_cn_diagnostic_artifact_payload(mismatch_equality)
+
+    missing_primitive = json.loads(json.dumps(accepted))
+    missing_primitive["correctness"].pop("primitive_batch_correctness")
+    with pytest.raises(ValueError, match="primitive_batch_correctness"):
+        validate_cn_diagnostic_artifact_payload(missing_primitive)
+
+    failed_primitive = json.loads(json.dumps(accepted))
+    failed_primitive["correctness"]["primitive_batch_correctness"]["passed"] = False
+    with pytest.raises(ValueError, match="primitive_batch_correctness.passed"):
+        validate_cn_diagnostic_artifact_payload(failed_primitive)
 
     missing_latency = dict(accepted)
     missing_latency["observability"] = {
