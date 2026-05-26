@@ -923,31 +923,47 @@ Definition of done: one long-lived background driver runs
 routes both streaming and non-streaming through the same path. `LLM.generate()`
 becomes a `submit+poll` adapter.
 
-- [ ] Promote the resident runner from static prompt-list batches to a
+- [x] Promote the resident runner from static prompt-list batches to a
       scheduler-owned engine loop that persists beyond one
-      `LLM.generate()` call.
-- [ ] Implement `submit(prompt_tokens, sampling, max_new_tokens, stream) →
+      `LLM.generate()` call. Evidence: `ResidentEngineLoop` in
+      `hipengine/generation/engine_loop.py` plus
+      `pytest -q tests/test_generation_batch_scheduler.py -q`.
+- [x] Implement `submit(prompt_tokens, sampling, max_new_tokens, stream) →
       request_id`, `poll(timeout) → events`, `cancel(request_id) → bool`.
-- [ ] Lower `LLM.generate()` and OpenAI server endpoints to
-      `submit + poll + cancel`.
+      Evidence: `ResidentEngineLoop.submit/poll/cancel` and scheduler reclaim
+      coverage in `pytest -q tests/test_generation_batch_scheduler.py -q`.
+- [x] Lower `LLM.generate()` and OpenAI server endpoints to
+      `submit + poll + cancel`. Evidence: `SubmitPollTextGenerator` wraps
+      public text generation, server non-streaming calls use the shared
+      batcher/generator path, and
+      `pytest -q tests/test_generation_batch_scheduler.py tests/test_server_api.py -q`.
 - [x] Implement the per-tick policy: `RECLAIM → ADMIT → choose(PREFILL_CHUNK,
       DECODE_STEP)`; default `protect_decode`.
-- [ ] Add `kv_pool_chunk_pages` chunked underlying allocation with one chunk
-      at startup.
-- [ ] Add grow-on-admission up to `kv_pool_high_water_bytes`, one attempt per
-      admit cycle; record `grow_events` / `grow_failures`.
-- [ ] Add idle shrink down to `kv_pool_low_water_bytes` with
+- [x] Add `kv_pool_chunk_pages` chunked underlying allocation with one chunk
+      at startup. Evidence: `ChunkedKVPool(..., chunk_pages=...)` in
+      `hipengine/kvcache/pool.py` and
+      `pytest -q tests/test_kvcache_policy.py -q`.
+- [x] Add grow-on-admission up to `kv_pool_high_water_bytes`, one attempt per
+      admit cycle; record `grow_events` / `grow_failures`. Evidence:
+      `ChunkedKVPool.allocate(...)` grow counters and
+      `pytest -q tests/test_kvcache_policy.py -q`.
+- [x] Add idle shrink down to `kv_pool_low_water_bytes` with
       `kv_pool_idle_grace_seconds`; never free a chunk holding a non-zero
-      refcount.
+      refcount. Evidence: `ChunkedKVPool.shrink_idle(...)` plus refcounted-tail
+      coverage in `pytest -q tests/test_kvcache_policy.py -q`.
 - [x] Add CLI/env knobs `--kv-pool-{initial,low-water,high-water,
       chunk-pages,idle-grace}-*`,
       `HIPENGINE_KV_POOL_*`,
       `HIPENGINE_PREFILL_DECODE_POLICY` / `--prefill-decode-policy`;
       document in `docs/ENVS.md`.
-- [ ] Add a burst-then-idle acceptance fixture that exercises grow and
-      shrink and records the events.
-- [ ] Add a memory-audit test that fails if a block id's backing pointer
-      changes mid-run.
+- [x] Add a burst-then-idle acceptance fixture that exercises grow and
+      shrink and records the events. Evidence:
+      `test_chunked_kv_pool_grows_and_shrinks_on_burst_idle` in
+      `tests/test_kvcache_policy.py`.
+- [x] Add a memory-audit test that fails if a block id's backing pointer
+      changes mid-run. Evidence:
+      `test_fixed_paged_policy_audits_append_only_block_pointers` in
+      `tests/test_kvcache_policy.py`.
 - [ ] Narrow or remove the coarse `generation_lock`; any remaining lock
       protects only non-reentrant session mutation, not the lifetime of a
       generated batch.
