@@ -636,6 +636,10 @@ roll-up/status view.
 - [ ] **C2.5 c=4/c=8 BF16 equality.** Extend the same gate to c=4 and c=8.
       Acceptance: generated-token equality passes for both shapes, with
       aggregate/per-request scaling fields recorded even if not yet optimized.
+      Progress: primitive GPU correctness now has a c=4 artifact at
+      `/tmp/hipengine-multiloop-c4-correctness.json` (`append_*_mismatch=0`,
+      `attn_batch_vs_c1_max_abs=0.0`, passed). This does not close C2.5 because
+      generated-token equality vs independent c=1 for c=4/c=8 is still missing.
 - [x] **C2.6 slot-validation and long-context fallback guards.** Add CPU
       structural tests for invalid slot orders/duplicates/out-of-range ids,
       INT8 KV rejection, and the current `max_context >= 1024` per-row split-K
