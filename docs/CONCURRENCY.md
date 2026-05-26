@@ -624,10 +624,11 @@ roll-up/status view.
 - [ ] **C2.5 c=4/c=8 BF16 equality.** Extend the same gate to c=4 and c=8.
       Acceptance: generated-token equality passes for both shapes, with
       aggregate/per-request scaling fields recorded even if not yet optimized.
-- [x] **C2.6 sparse-slot and long-context guards.** Add CPU structural tests
-      for sparse/non-contiguous slot rejection and `max_context >= 1024`
-      rejection until row-aware split-K is live. Acceptance: tests fail if the
-      experimental path silently accepts unsupported shapes. Evidence:
+- [x] **C2.6 slot-validation and long-context guards.** Add CPU structural
+      tests for invalid slot orders/duplicates/out-of-range ids and
+      `max_context >= 1024` rejection until row-aware split-K is live.
+      Acceptance: tests fail if the experimental path silently accepts
+      unsupported shapes. Evidence:
       `pytest -q tests/test_qwen35_resident_batch_layout.py -q`.
 - [ ] **C2.7 row-aware split-K full attention.** Make full-attention decode
       and reduction consume per-row spans for `max_context >= 1024` before any
@@ -722,10 +723,15 @@ roll-up/status view.
       frees KV/scratch exactly once in tests. Evidence:
       `ResidentBatchScheduler.cancel/disconnect/timeout(...)`, generated-token
       `stop`/`length` reclaim, and `pytest -q tests/test_generation_batch_scheduler.py -q`.
-- [ ] **C4.8 non-compact-slot native decode.** Extend native decode beyond
+- [x] **C4.8 non-compact-slot native decode.** Extend native decode beyond
       compact `0..C-1` slots after scheduler compaction/reclaim. Acceptance:
       generated-token equality passes with a deliberately sparse/compacted
-      slot schedule.
+      slot schedule. Evidence: `step_batch_native(...)` now accepts sorted
+      sparse physical slots, `_batch_full_spans(...)` maps slot ids into
+      row-relative KV block tables, `pytest -q tests/test_qwen35_resident_batch_layout.py -q`,
+      and `python3 scripts/qwen35_batch_sparse_slot_correctness.py --json /tmp/hipengine-sparse-slot-L1.json`
+      shows generated-token equality vs independent c=1 for a cancel-middle
+      active slot history `[[0, 2], [0, 2]]`.
 - [x] **C4.9 observability fields.** Record per-request and per-pool fields in
       completion/artifact metadata. Acceptance: tests assert queue/prefill/
       decode seconds, KV pages, bucket key, admission blocker, and finish
@@ -876,7 +882,8 @@ in place even though pool growth lands in C4.
 - [x] Add CPU-runnable structural tests for the experimental env gate,
       INT8 KV rejection, default/invalid sample mode, and
       `throughput_claim_eligible=false` for guarded diagnostics.
-- [x] Extend structural tests for sparse-slot and long-context rejection.
+- [x] Extend structural tests for invalid-slot and long-context rejection;
+      sorted sparse slots are now accepted and covered by C4.8.
 - [x] **Append-only block id contract.** Make the KV allocator's block id
       permanent for its lifetime. Remove any path that reuses a block id at
       a different pointer. Add a debug check that fails on pointer mutation.
@@ -946,9 +953,9 @@ becomes a `submit+poll` adapter.
 - [x] Per-pool observability counters
       (current_bytes, high_water_observed, grow/shrink events, free pages,
       refcounted pages).
-- [ ] Extend native decode correctness to non-compact slots after
-      scheduler compaction/reclaim moves requests; today only compact
-      `0..C-1` slots are supported.
+- [x] Extend native decode correctness to non-compact slots after
+      scheduler compaction/reclaim moves requests; sorted sparse slots are
+      supported by explicit physical slot ids.
 
 ### C5 — KV sharing, per-row sampler, `n>1`, `/metrics`
 

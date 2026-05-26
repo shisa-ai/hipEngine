@@ -27953,3 +27953,36 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY C4.8 sparse-slot native decode
+
+Closed bite-sized packet C4.8 from `docs/CONCURRENCY.md`:
+
+- Relaxed `Qwen35ParoResidentSession.step_batch_native(...)` from compact-only slots to sorted sparse physical slots, while keeping duplicate, out-of-range, and non-physical-order slot sets rejected.
+- Updated `_batch_full_spans(...)` to encode physical slot ids as row-relative block-table offsets for the existing row-base BF16 batch append/decode kernels, so retained KV pages do not need to move after reclaim leaves holes.
+- Added structural tests for sparse-slot acceptance, invalid slot rejection, and row-relative KV block-table mapping.
+- Added `scripts/qwen35_batch_sparse_slot_correctness.py`, a correctness-only HIP smoke that prefills three rows, cancels the middle row, decodes active slots `[0, 2]`, and compares generated-token IDs against independent c=1 sessions.
+- Marked C4.8 complete and updated the phase-ladder sparse-slot row in `docs/CONCURRENCY.md`; no throughput/scaling claim was made.
+
+Validation:
+
+```bash
+HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1 python3 scripts/qwen35_batch_sparse_slot_correctness.py --json /tmp/hipengine-sparse-slot-L1.json
+# status=eq_ok; active_slots_history=[[0, 2], [0, 2]]; generated-token equality vs independent c=1 passed
+python3 -m pytest -q tests/test_qwen35_resident_batch_layout.py -q
+# 47 passed
+```
+
+Loop guard after C4.8:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```

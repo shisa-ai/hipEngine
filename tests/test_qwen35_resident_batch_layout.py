@@ -967,16 +967,99 @@ def test_qwen35_resident_step_batch_native_rejects_int8_kv_when_experimental(mon
         session.step_batch_native([1], positions=[0], slots=[0])
 
 
-@pytest.mark.parametrize("slots", [(0, 2), (1, 0)])
-def test_qwen35_resident_step_batch_native_rejects_sparse_slots(monkeypatch, slots) -> None:
+def test_qwen35_resident_step_batch_native_accepts_sparse_slots(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE", "1")
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     session.closed = False
     session.kv_storage_dtype = DType.BF16
-    session.max_batch_size = 2
+    session.max_batch_size = 3
+    session.max_sequence_length = 16
+    calls: list[tuple[str, object]] = []
 
-    with pytest.raises(NotImplementedError, match="compact slots 0..C-1"):
+    class FakeRuntime:
+        def device_synchronize(self):
+            calls.append(("sync", None))
+
+    def fake_set_tokens(tokens, *, stream=0):
+        calls.append(("tokens", (tuple(tokens), stream)))
+
+    def fake_set_positions(positions, *, stream=0):
+        calls.append(("positions", (tuple(positions), stream)))
+
+    def fake_run_layers(*, rows, positions, slots, stream=0):
+        calls.append(("run", (rows, tuple(positions), tuple(slots), stream)))
+        return Tensor.from_handle(0x7000, (rows, 8), DType.FP16, Device("hip", 0))
+
+    session.runtime = FakeRuntime()
+    session._set_batch_token_embeddings = fake_set_tokens
+    session._set_batch_positions = fake_set_positions
+    session._run_layers_batch_decode = fake_run_layers
+
+    results = session.step_batch_native([10, 20], positions=[5, 6], slots=[0, 2], sample=False)
+
+    assert results == (None, None)
+    assert calls == [
+        ("tokens", ((10, 20), 0)),
+        ("positions", ((5, 6), 0)),
+        ("run", (2, (5, 6), (0, 2), 0)),
+        ("sync", None),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("slots", "match"),
+    [
+        ((1, 0), "physical-slot order"),
+        ((0, 0), "unique"),
+        ((0, 3), "within max_batch_size"),
+    ],
+)
+def test_qwen35_resident_step_batch_native_rejects_invalid_sparse_slots(monkeypatch, slots, match) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE", "1")
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.closed = False
+    session.kv_storage_dtype = DType.BF16
+    session.max_batch_size = 3
+
+    with pytest.raises((ValueError, NotImplementedError), match=match):
         session.step_batch_native([1, 2], positions=[0, 0], slots=slots)
+
+
+def test_qwen35_resident_batch_full_spans_maps_sparse_slots(monkeypatch) -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.blocks = 3
+    session.prefill_block_table_buf = DeviceBuffer(0x1000, 2 * 3 * DType.INT32.itemsize)
+    session.position_buf = DeviceBuffer(0x2000, 2 * DType.INT64.itemsize)
+    session.context_buf = DeviceBuffer(0x3000, 2 * DType.INT64.itemsize)
+    session.device = Device("hip", 0)
+    session.kv_storage_dtype = DType.BF16
+    session.runtime = object()
+    captured: list[np.ndarray] = []
+
+    def fake_host_array_ptr(array):
+        captured.append(np.asarray(array).copy())
+        return 0xDEADBEEF
+
+    def fake_copy_host_to_device(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(runner_module, "host_array_ptr", fake_host_array_ptr)
+    monkeypatch.setattr(runner_module, "copy_host_to_device", fake_copy_host_to_device)
+
+    position_tensor, append_spans, decode_spans = session._batch_full_spans(
+        0,
+        rows=2,
+        positions=(5, 6),
+        slots=(0, 2),
+    )
+
+    assert len(captured) == 1
+    assert np.array_equal(captured[0], np.array([[0, 1, 2], [3, 4, 5]], dtype=np.int32))
+    assert position_tensor.ptr == 0x2000
+    assert append_spans.base_offsets.ptr == 0x1000
+    assert decode_spans.base_offsets.ptr == 0x1000
+    assert append_spans.max_live_count == 6
+    assert decode_spans.max_live_count == 7
 
 
 def test_qwen35_resident_step_batch_native_rejects_long_context(monkeypatch) -> None:

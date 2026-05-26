@@ -1356,10 +1356,9 @@ class Qwen35ParoResidentSession:
     ) -> tuple[Qwen35ParoAutoregressiveStepResult | None, ...]:
         """Run one decode token per active row through native c-aware layer kernels.
 
-        This retained bring-up path supports dense, compact batch slots for the
-        c=N 512/128 protocol.  It intentionally rejects sparse/non-contiguous
-        slot sets and long-context split-K attention until those kernels are
-        row-aware as well.
+        This retained bring-up path runs compact active rows while addressing
+        retained KV/linear state through explicit physical slot ids.  Long
+        split-K contexts remain rejected until those reducers are row-aware.
         """
 
         if self.closed:
@@ -1381,8 +1380,14 @@ class Qwen35ParoResidentSession:
         if rows > self.max_batch_size:
             raise ValueError("token_ids exceed max_batch_size")
         slot_ids = tuple(range(rows)) if slots is None else tuple(int(slot) for slot in slots)
-        if slot_ids != tuple(range(rows)):
-            raise NotImplementedError("native c>N decode currently requires compact slots 0..C-1")
+        if len(slot_ids) != rows:
+            raise ValueError("slots must have the same length as token_ids")
+        if len(set(slot_ids)) != len(slot_ids):
+            raise ValueError("native c>N decode slots must be unique")
+        if any(slot < 0 or slot >= self.max_batch_size for slot in slot_ids):
+            raise ValueError("native c>N decode slots must be within max_batch_size")
+        if tuple(sorted(slot_ids)) != slot_ids:
+            raise NotImplementedError("native c>N decode currently requires slots in physical-slot order")
         for position in pos:
             self._check_position(position)
         max_context = max(position + 1 for position in pos)
@@ -3057,11 +3062,17 @@ class Qwen35ParoResidentSession:
         slots: tuple[int, ...],
     ) -> tuple[Tensor, KVLiveSpans, KVLiveSpans]:
         _ = layer_id
-        # BF16 batch append/decode kernels address the retained cache as
-        # row-major [active_row, block, ...] and add the row base internally.
-        # Compact native decode requires slots == rows, so the span table carries
-        # per-row local block ids rather than global physical-slot ids.
-        block_rows = np.tile(np.arange(self.blocks, dtype=np.int32), (rows, 1))
+        # BF16 batch append/decode kernels run compact active rows and add an
+        # active-row base internally.  Encode physical slot ids as row-relative
+        # block-table offsets so row ``r`` can address slot ``slots[r]`` without
+        # moving retained KV cache pages after reclaim/compaction.
+        logical_blocks = np.arange(self.blocks, dtype=np.int32)
+        block_rows = np.empty((rows, self.blocks), dtype=np.int32)
+        for row, slot in enumerate(slots):
+            delta_blocks = (int(slot) - row) * self.blocks
+            if delta_blocks < 0:
+                raise ValueError("batch full-attention slots must be in physical-slot order")
+            block_rows[row] = logical_blocks + np.int32(delta_blocks)
         copy_host_to_device(
             self.prefill_block_table_buf,
             host_array_ptr(block_rows),
