@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+from collections.abc import Mapping
 import os
 import shlex
 import statistics
@@ -71,6 +72,116 @@ def _summarize_samples(samples: Sequence[float]) -> dict[str, Any]:
 
 def _all_finite(rows: Iterable[dict[str, Any]]) -> bool:
     return all(math.isfinite(float(row["logit"])) for row in rows)
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _safe_ratio(numerator: Any, denominator: Any) -> float | None:
+    if not (_is_number(numerator) and _is_number(denominator)):
+        return None
+    denom = float(denominator)
+    if denom <= 0.0:
+        return None
+    return float(numerator) / denom
+
+
+def _extract_decode_rates(payload: Mapping[str, Any]) -> tuple[float | None, float | None]:
+    measurements = payload.get("measurements")
+    aggregate = None
+    per_request = None
+    if isinstance(measurements, Mapping):
+        if _is_number(measurements.get("decode_tok_s_aggregate")):
+            aggregate = float(measurements["decode_tok_s_aggregate"])
+        if _is_number(measurements.get("decode_tok_s_per_request")):
+            per_request = float(measurements["decode_tok_s_per_request"])
+    throughput = payload.get("throughput")
+    if isinstance(throughput, Mapping) and _is_number(throughput.get("warmed_decode_tok_s")):
+        aggregate = float(throughput["warmed_decode_tok_s"])
+        per_request = float(throughput["warmed_decode_tok_s"])
+    workload = payload.get("workload")
+    if aggregate is not None and per_request is None and isinstance(workload, Mapping):
+        concurrency = workload.get("concurrency")
+        if isinstance(concurrency, int) and concurrency > 0:
+            per_request = aggregate / concurrency
+    return aggregate, per_request
+
+
+def _scaling_reference(path: Path | None) -> dict[str, Any]:
+    if path is None:
+        return {
+            "artifact_path": None,
+            "status": "missing",
+            "decode_tok_s_aggregate": None,
+            "decode_tok_s_per_request": None,
+            "reason": "no artifact path provided",
+        }
+    path = Path(path)
+    if not path.exists():
+        return {
+            "artifact_path": str(path),
+            "status": "missing",
+            "decode_tok_s_aggregate": None,
+            "decode_tok_s_per_request": None,
+            "reason": "artifact path does not exist",
+        }
+    try:
+        payload = json.loads(path.read_text())
+    except Exception as exc:
+        return {
+            "artifact_path": str(path),
+            "status": "invalid_json",
+            "decode_tok_s_aggregate": None,
+            "decode_tok_s_per_request": None,
+            "reason": f"{type(exc).__name__}: {exc}",
+        }
+    if not isinstance(payload, Mapping):
+        return {
+            "artifact_path": str(path),
+            "status": "invalid_json",
+            "decode_tok_s_aggregate": None,
+            "decode_tok_s_per_request": None,
+            "reason": "artifact root is not an object",
+        }
+    aggregate, per_request = _extract_decode_rates(payload)
+    status = str(payload.get("status") or "loaded")
+    reason = None if aggregate is not None and per_request is not None else "decode throughput fields missing"
+    return {
+        "artifact_path": str(path),
+        "status": status,
+        "run_tag": payload.get("run_tag"),
+        "decode_tok_s_aggregate": aggregate,
+        "decode_tok_s_per_request": per_request,
+        "reason": reason,
+    }
+
+
+def _build_scaling_comparison(
+    args: argparse.Namespace,
+    *,
+    native_decode_tok_s_aggregate: float | None,
+    native_decode_tok_s_per_request: float | None,
+) -> dict[str, Any]:
+    c1 = _scaling_reference(getattr(args, "c1_baseline_json", None))
+    serial = _scaling_reference(getattr(args, "serial_bridge_json", None))
+    ratios = {
+        "aggregate_vs_c1": _safe_ratio(native_decode_tok_s_aggregate, c1.get("decode_tok_s_aggregate")),
+        "per_request_vs_c1": _safe_ratio(native_decode_tok_s_per_request, c1.get("decode_tok_s_per_request")),
+        "aggregate_vs_serial_bridge": _safe_ratio(native_decode_tok_s_aggregate, serial.get("decode_tok_s_aggregate")),
+        "per_request_vs_serial_bridge": _safe_ratio(native_decode_tok_s_per_request, serial.get("decode_tok_s_per_request")),
+    }
+    complete = all(value is not None for value in ratios.values())
+    return {
+        "complete": complete,
+        "native": {
+            "decode_tok_s_aggregate": native_decode_tok_s_aggregate,
+            "decode_tok_s_per_request": native_decode_tok_s_per_request,
+        },
+        "c1_baseline": c1,
+        "serial_bridge_baseline": serial,
+        "ratios": ratios,
+    }
 
 
 def _run_capture(command: Sequence[str], *, timeout: float = 5.0) -> dict[str, Any]:
@@ -375,12 +486,19 @@ def _build_payload(
     aggregate_decode_tokens = args.batch_size * args.decode_tokens
     prefill_tok_s = aggregate_prefill_tokens / bench["prefill_seconds"] if bench["prefill_seconds"] > 0 else None
     decode_tok_s = aggregate_decode_tokens / bench["decode_seconds"] if bench["decode_seconds"] > 0 and aggregate_decode_tokens else None
+    decode_tok_s_per_request = decode_tok_s / args.batch_size if decode_tok_s is not None else None
+    scaling = _build_scaling_comparison(
+        args,
+        native_decode_tok_s_aggregate=decode_tok_s,
+        native_decode_tok_s_per_request=decode_tok_s_per_request,
+    )
     batch_execution = dict(bench["batch_execution"])
     throughput_claim_eligible = bool(batch_execution.get("throughput_claim_eligible"))
     native_caware_decode = bool(batch_execution.get("native_caware_decode"))
     equality_passed = bool(equality.get("passed"))
     protocol_shape = args.max_layers == 40 and args.prompt_length >= 512 and args.decode_tokens >= 128
-    accepted = bool(bench["finite_logits"] and throughput_claim_eligible and equality_passed and protocol_shape)
+    scaling_complete = bool(scaling["complete"])
+    accepted = bool(bench["finite_logits"] and throughput_claim_eligible and equality_passed and protocol_shape and scaling_complete)
     status = "accepted" if accepted else ("rejected_correctness" if bench["finite_logits"] and not equality_passed else "blocked")
     blocked_reasons: list[str] = []
     if not throughput_claim_eligible:
@@ -391,6 +509,8 @@ def _build_payload(
         blocked_reasons.append("workload is a reduced diagnostic shape, not the docs/BENCHMARK.md c=N 512/128 protocol")
     if args.max_layers != 40:
         blocked_reasons.append("max_layers is not the full 40-layer Qwen3.5/PARO model")
+    if not scaling_complete:
+        blocked_reasons.append("scaling comparison vs c=1 and serial bridge baselines is incomplete")
     if not bench["finite_logits"]:
         blocked_reasons.append("non-finite seed or decode logits")
     per_request_observability = dict(bench.get("request_observability", {}))
@@ -482,10 +602,11 @@ def _build_payload(
             "decode_seconds": bench["decode_seconds"],
             "prefill_tok_s": prefill_tok_s,
             "decode_tok_s_aggregate": decode_tok_s,
-            "decode_tok_s_per_request": decode_tok_s / args.batch_size if decode_tok_s is not None else None,
+            "decode_tok_s_per_request": decode_tok_s_per_request,
             "decode_step_seconds": _summarize_samples(bench["decode_step_seconds"]),
             "warmup_step_seconds": _summarize_samples(bench["warmup_step_seconds"]),
         },
+        "scaling": scaling,
         "memory": {
             "max_batch_size": args.batch_size,
             "max_sequence_length": args.prompt_length + args.warmup_decode_tokens + args.decode_tokens + 1,
@@ -534,6 +655,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--skip-generated-equality", action="store_true")
+    parser.add_argument("--c1-baseline-json", type=Path, help="c=1 baseline artifact used for retained scaling ratios")
+    parser.add_argument("--serial-bridge-json", type=Path, help="scheduler serial-bridge artifact for retained scaling ratios")
     add_kv_policy_args(parser, help_prefix="Resident KV storage for retained native c>N benchmark")
     parser.add_argument("--json", type=Path, help="Optional path to write JSON output")
     args = parser.parse_args(argv)

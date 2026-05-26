@@ -41,6 +41,16 @@ _REQUIRED_ACCEPTED_POOL_COUNTER_FIELDS = (
     "free_pages",
     "refcounted_pages",
 )
+_REQUIRED_ACCEPTED_SCALING_BASELINES = (
+    "c1_baseline",
+    "serial_bridge_baseline",
+)
+_REQUIRED_ACCEPTED_SCALING_RATIOS = (
+    "aggregate_vs_c1",
+    "per_request_vs_c1",
+    "aggregate_vs_serial_bridge",
+    "per_request_vs_serial_bridge",
+)
 
 
 def _mapping_at(payload: Mapping[str, Any], key: str, errors: list[str]) -> Mapping[str, Any]:
@@ -95,6 +105,7 @@ def validate_cn_diagnostic_artifact_payload(payload: Mapping[str, Any]) -> None:
     accepted = bool(decision.get("accepted"))
     if accepted or status == "accepted" or performance_claim is True:
         _validate_accepted_retained_gates(payload, errors)
+        _validate_accepted_scaling_gates(payload, errors)
 
     if errors:
         raise ValueError("invalid c>N diagnostic artifact payload: " + "; ".join(errors))
@@ -147,6 +158,36 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
             errors.append("memory.prefix_sharing.enabled must be a bool for accepted artifacts")
         if not _is_number(prefix_sharing.get("savings_bytes")):
             errors.append("memory.prefix_sharing.savings_bytes must be numeric for accepted artifacts")
+
+
+def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[str]) -> None:
+    scaling = _mapping_at(payload, "scaling", errors)
+    if scaling.get("complete") is not True:
+        errors.append("scaling.complete must be true for accepted artifacts")
+    native = scaling.get("native")
+    if not isinstance(native, Mapping):
+        errors.append("scaling.native must be an object for accepted artifacts")
+    else:
+        for field in ("decode_tok_s_aggregate", "decode_tok_s_per_request"):
+            if not _is_number(native.get(field)):
+                errors.append(f"scaling.native.{field} must be numeric for accepted artifacts")
+    for baseline_name in _REQUIRED_ACCEPTED_SCALING_BASELINES:
+        baseline = scaling.get(baseline_name)
+        if not isinstance(baseline, Mapping):
+            errors.append(f"scaling.{baseline_name} must be an object for accepted artifacts")
+            continue
+        if not isinstance(baseline.get("artifact_path"), str) or not baseline.get("artifact_path"):
+            errors.append(f"scaling.{baseline_name}.artifact_path must be a non-empty string for accepted artifacts")
+        for field in ("decode_tok_s_aggregate", "decode_tok_s_per_request"):
+            if not _is_number(baseline.get(field)):
+                errors.append(f"scaling.{baseline_name}.{field} must be numeric for accepted artifacts")
+    ratios = scaling.get("ratios")
+    if not isinstance(ratios, Mapping):
+        errors.append("scaling.ratios must be an object for accepted artifacts")
+    else:
+        for field in _REQUIRED_ACCEPTED_SCALING_RATIOS:
+            if not _is_number(ratios.get(field)):
+                errors.append(f"scaling.ratios.{field} must be numeric for accepted artifacts")
 
 
 def _valid_request_observability(row: Any, errors: list[str]) -> bool:

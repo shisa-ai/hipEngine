@@ -126,19 +126,26 @@ def build_sweep_commands(args: argparse.Namespace) -> tuple[SweepCommand, ...]:
             continue
 
         native_json = output_dir / f"native-diagnostic-c{c}.json"
+        native_argv = _batch_bench_argv(
+            "scripts/qwen35_batch_retained_bench.py",
+            args,
+            batch_size=c,
+            artifact_path=native_json,
+        )
+        native_argv.extend(
+            [
+                "--c1-baseline-json",
+                str(output_dir / "native-baseline-c1.json"),
+                "--serial-bridge-json",
+                str(serial_json),
+            ]
+        )
         commands.append(
             SweepCommand(
                 category="native_diagnostic",
                 batch_size=c,
                 artifact_path=native_json,
-                argv=tuple(
-                    _batch_bench_argv(
-                        "scripts/qwen35_batch_retained_bench.py",
-                        args,
-                        batch_size=c,
-                        artifact_path=native_json,
-                    )
-                ),
+                argv=tuple(native_argv),
             )
         )
         if getattr(args, "include_int8", False):

@@ -823,7 +823,13 @@ roll-up/status view.
 - [ ] **P1 baseline bundle.** Establish c=1, serial bridge c=2/4/8, first
       green uncaptured native c>N, and primitive microbench baselines.
       Acceptance: artifacts include exact commands, hardware, correctness,
-      aggregate/per-request ratios, and dirty-state.
+      aggregate/per-request ratios, and dirty-state. Progress: retained native
+      c>N artifacts now require explicit c=1 and serial-bridge baseline JSONs
+      before `performance_claim=true`; `scripts/qwen35_batch_c_sweep.py` wires
+      those paths into the planned retained command (`--c1-baseline-json`,
+      `--serial-bridge-json`) so a green equality run without baselines remains
+      blocked for non-correctness reasons instead of becoming a throughput
+      claim.
 - [ ] **P2 graph replay buckets.** Add decode hipGraph capture/replay buckets
       by `(C, context bucket, active mask, KV dtype, layer plan, top-k/experts,
       replay length)`. Acceptance: bucket hit/miss stats and profiler evidence

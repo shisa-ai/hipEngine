@@ -129,6 +129,11 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     assert all("git_dirty" in entry for entry in persisted["commands"])
     assert any("qwen35_batch_retained_bench.py" in entry["command"] for entry in persisted["commands"])
     assert any("qwen35_paro_bench.py" in entry["command"] for entry in persisted["commands"])
+    retained_c2 = next(item for item in planned if item.category == "native_diagnostic" and item.batch_size == 2)
+    assert "--c1-baseline-json" in retained_c2.argv
+    assert str(tmp_path / "artifacts" / "native-baseline-c1.json") in retained_c2.argv
+    assert "--serial-bridge-json" in retained_c2.argv
+    assert str(tmp_path / "artifacts" / "serial-bridge-c2.json") in retained_c2.argv
 
 
 def test_batch_c_sweep_can_plan_int8_blocked_diagnostics(tmp_path: Path) -> None:
@@ -1217,6 +1222,41 @@ def test_qwen35_batch_diagnostic_artifact_schema_requires_label_fields() -> None
         validate_cn_diagnostic_artifact_payload(missing)
 
 
+def test_qwen35_retained_scaling_comparison_uses_c1_and_serial_artifacts(tmp_path: Path) -> None:
+    c1 = tmp_path / "native-baseline-c1.json"
+    c1.write_text(json.dumps({"run_tag": "c1", "throughput": {"warmed_decode_tok_s": 5.0}}))
+    serial = tmp_path / "serial-bridge-c2.json"
+    serial.write_text(
+        json.dumps(
+            {
+                "run_tag": "serial-c2",
+                "status": "blocked",
+                "measurements": {
+                    "decode_tok_s_aggregate": 8.0,
+                    "decode_tok_s_per_request": 4.0,
+                },
+            }
+        )
+    )
+    args = argparse.Namespace(c1_baseline_json=c1, serial_bridge_json=serial)
+
+    scaling = retained_bench._build_scaling_comparison(
+        args,
+        native_decode_tok_s_aggregate=16.0,
+        native_decode_tok_s_per_request=8.0,
+    )
+
+    assert scaling["complete"] is True
+    assert scaling["c1_baseline"]["decode_tok_s_aggregate"] == 5.0
+    assert scaling["serial_bridge_baseline"]["decode_tok_s_per_request"] == 4.0
+    assert scaling["ratios"] == {
+        "aggregate_vs_c1": 16.0 / 5.0,
+        "per_request_vs_c1": 8.0 / 5.0,
+        "aggregate_vs_serial_bridge": 2.0,
+        "per_request_vs_serial_bridge": 2.0,
+    }
+
+
 def test_qwen35_retained_payload_mirrors_fallback_native_decode_label(monkeypatch) -> None:
     monkeypatch.setattr(retained_bench, "_hardware_context", lambda: {"gpu": "test"})
     monkeypatch.setattr(retained_bench, "_software_context", lambda: {"python": "test"})
@@ -1311,6 +1351,29 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
                 }
             },
         },
+        "scaling": {
+            "complete": True,
+            "native": {
+                "decode_tok_s_aggregate": 100.0,
+                "decode_tok_s_per_request": 50.0,
+            },
+            "c1_baseline": {
+                "artifact_path": "benchmarks/results/c1.json",
+                "decode_tok_s_aggregate": 60.0,
+                "decode_tok_s_per_request": 60.0,
+            },
+            "serial_bridge_baseline": {
+                "artifact_path": "benchmarks/results/serial-c2.json",
+                "decode_tok_s_aggregate": 80.0,
+                "decode_tok_s_per_request": 40.0,
+            },
+            "ratios": {
+                "aggregate_vs_c1": 100.0 / 60.0,
+                "per_request_vs_c1": 50.0 / 60.0,
+                "aggregate_vs_serial_bridge": 1.25,
+                "per_request_vs_serial_bridge": 1.25,
+            },
+        },
         "memory": {
             "dynamic_pool": {
                 "evidence": "initial chunk sufficed",
@@ -1358,6 +1421,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     }
     with pytest.raises(ValueError, match="stable_block_id|pool_counters"):
         validate_cn_diagnostic_artifact_payload(missing_pool)
+
+    missing_scaling = dict(accepted)
+    missing_scaling.pop("scaling")
+    with pytest.raises(ValueError, match="scaling"):
+        validate_cn_diagnostic_artifact_payload(missing_scaling)
+
+    incomplete_scaling = dict(accepted)
+    incomplete_scaling["scaling"] = {"complete": False}
+    with pytest.raises(ValueError, match="scaling.complete|scaling.native"):
+        validate_cn_diagnostic_artifact_payload(incomplete_scaling)
 
     inconsistent = dict(accepted)
     inconsistent["status"] = "blocked"
