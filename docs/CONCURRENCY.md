@@ -641,10 +641,12 @@ roll-up/status view.
       end-to-end with the same generated-token gates as BF16. Acceptance:
       c=2 512/128 INT8 artifact is equality-green or explicitly
       `rejected_correctness` with first mismatch.
-- [ ] **C3.2 per-row `KVLiveSpans` everywhere.** Audit full-attention decode,
+- [x] **C3.2 per-row `KVLiveSpans` everywhere.** Audit full-attention decode,
       KV append, and storage-dtype wrappers for scalar `(block_table,
       context_len)` shortcuts. Acceptance: tests cover BF16 and INT8 per-row
-      spans.
+      spans. Evidence: BF16/INT8 c>N `FixedPagedKVPolicy.batch_spans(...)`
+      plus paged-KV-write/full-attention dispatch route checks in
+      `pytest -q tests/test_kvcache_policy.py -q`.
 - [ ] **C3.3 linear-attention `[C]` state.** Remove c1 aliases from
       conv/recurrent state update paths and use active masks + slot ids.
       Acceptance: c=2 state fixtures compare against two c=1 references.
@@ -864,7 +866,7 @@ matrix has at least one green retained c>N cell on the 512/128 protocol.
 
 - [ ] Validate batched INT8 KV append/decode paths with the same gates as
       BF16; require generated-token equality.
-- [ ] Make full-attention decode consume per-row `KVLiveSpans` for all
+- [x] Make full-attention decode consume per-row `KVLiveSpans` for all
       retained KV storage dtypes.
 - [ ] Make linear-attention conv/recurrent state updates consume
       `[C, ...]` state, active masks, and slot ids; remove c1 aliases.

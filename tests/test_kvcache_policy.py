@@ -6,7 +6,14 @@ import pytest
 
 from hipengine.core.device import Device
 from hipengine.core.tensor import Tensor
-from hipengine.dispatch import WorkItem, WorkKind
+from hipengine.dispatch import (
+    PagedAttnDecodeKind,
+    PagedKVWriteKind,
+    WorkItem,
+    WorkKind,
+    plan_paged_attn_decode,
+    plan_paged_kv_write,
+)
 from hipengine.kvcache import (
     ChunkedKVPool,
     FixedPagedKVPolicy,
@@ -463,6 +470,86 @@ def test_fixed_paged_policy_requires_packed_metadata_for_c_gt_1() -> None:
     assert spans.span_role == "prefill"
     assert spans.request_ids is not None and spans.request_ids.ptr == 0xC000
     assert spans.row_positions is not None and spans.row_positions.ptr == 0xD000
+
+
+def test_fixed_paged_policy_per_row_spans_route_bf16_and_int8_dispatch() -> None:
+    bf16 = FixedPagedKVPolicy(block_size=16, storage_dtype="bf16")
+    _register(bf16, 11, ptr_base=0x11000)
+    _register(bf16, 22, ptr_base=0x22000)
+    bf16_spans = bf16.batch_spans(
+        [11, 22],
+        role="decode",
+        block_table=_tensor(0xA000, (2, 4), "int32"),
+        live_counts=_tensor(0xB000, (2,), "int64"),
+        request_ids=_tensor(0xC000, (2,), "int64"),
+        row_positions=_tensor(0xD000, (2,), "int32"),
+        max_live_count=33,
+    )
+
+    assert bf16_spans.request_ids is not None and bf16_spans.request_ids.shape == (2,)
+    assert bf16_spans.row_positions is not None and bf16_spans.row_positions.shape == (2,)
+    bf16_write = plan_paged_kv_write(
+        bf16_spans,
+        kind=PagedKVWriteKind.BATCH,
+        source_dtype="bf16",
+        model_quant="w4_paro",
+    )
+    bf16_attn = plan_paged_attn_decode(
+        bf16_spans,
+        kind=PagedAttnDecodeKind.GQA_SPLITK,
+        model_quant="w4_paro",
+    )
+    assert (bf16_write.layer, bf16_write.quant, bf16_write.variant) == (
+        "paged_kv_write",
+        "w4_paro",
+        "mixed_bf16_batch_spans",
+    )
+    assert (bf16_attn.layer, bf16_attn.quant, bf16_attn.variant) == (
+        "paged_attn_decode",
+        "w4_paro",
+        "bf16_split_k_gqa_spans",
+    )
+
+    int8 = FixedPagedKVPolicy(block_size=16, storage_dtype="int8_per_token_head")
+    _register(int8, 33, ptr_base=0x33000)
+    _register(int8, 44, ptr_base=0x44000)
+    packed_scale = _scale_metadata(0x55000, shape=(2, 16, 2))
+    int8_spans = int8.batch_spans(
+        [33, 44],
+        role="decode",
+        block_table=_tensor(0xE000, (2, 4), "int32"),
+        live_counts=_tensor(0xF000, (2,), "int64"),
+        request_ids=_tensor(0xAB00, (2,), "int64"),
+        row_positions=_tensor(0xBC00, (2,), "int32"),
+        max_live_count=33,
+        scale_metadata=packed_scale,
+    )
+
+    assert int8_spans.storage_dtype.value == "int8_per_token_head"
+    assert int8_spans.scale_metadata is packed_scale
+    assert int8_spans.request_ids is not None and int8_spans.request_ids.ptr == 0xAB00
+    assert int8_spans.row_positions is not None and int8_spans.row_positions.ptr == 0xBC00
+    int8_write = plan_paged_kv_write(
+        int8_spans,
+        kind=PagedKVWriteKind.BATCH,
+        source_dtype="fp32",
+        model_quant="w4_paro",
+    )
+    int8_attn = plan_paged_attn_decode(
+        int8_spans,
+        kind=PagedAttnDecodeKind.GQA_SPLITK,
+        model_quant="w4_paro",
+    )
+    assert (int8_write.layer, int8_write.quant, int8_write.variant) == (
+        "paged_kv_write",
+        "int8_per_token_head",
+        "per_token_head_batch_spans",
+    )
+    assert (int8_attn.layer, int8_attn.quant, int8_attn.variant) == (
+        "paged_attn_decode",
+        "int8_per_token_head",
+        "per_token_head_gqa_splitk_spans",
+    )
 
 
 def test_fixed_paged_policy_rejects_duplicate_transaction_requests() -> None:
