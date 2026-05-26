@@ -13,6 +13,7 @@ from hipengine.generation import (
     GeneratedToken,
     GraphBucketCache,
     ResidentBatchScheduler,
+    ResidentEngineLoop,
     SpeculativeCommitPlan,
     SpeculativeStateCommitPlan,
     SpeculativeVerifyBufferPlan,
@@ -27,6 +28,66 @@ from scripts.qwen35_batch_serial_bench import _load_prompt_slices, _summarize_sa
 
 def _tensor(ptr: int, shape: tuple[int, ...], dtype: str) -> Tensor:
     return Tensor.from_handle(ptr, shape, dtype, Device("hip", 0))
+
+
+class _FakeSerialBridgeRunner:
+    def __init__(self) -> None:
+        self.prefills = []
+        self.decodes = []
+        self._counts: dict[int, int] = {}
+
+    def prefill(self, work) -> None:
+        self.prefills.append(work)
+
+    def decode(self, work) -> tuple[GeneratedToken, ...]:
+        self.decodes.append(work)
+        tokens: list[GeneratedToken] = []
+        for request_id in work.request_ids:
+            count = self._counts.get(request_id, 0)
+            self._counts[request_id] = count + 1
+            tokens.append(GeneratedToken(request_id, 1000 + request_id * 10 + count))
+        return tuple(tokens)
+
+
+def test_resident_engine_loop_submit_poll_cancel_and_reclaim() -> None:
+    runner = _FakeSerialBridgeRunner()
+    loop = ResidentEngineLoop(runner, capacity=2, prefill_chunk_size=8, context_bucket_size=4)
+    r0 = loop.submit([10, 11], max_new_tokens=2)
+    r1 = loop.submit([20], max_new_tokens=1)
+    r2 = loop.submit([30], max_new_tokens=1)
+    r3 = loop.submit([40], max_new_tokens=4)
+
+    assert loop.cancel(r3) is True
+    assert loop.cancel(9999) is False
+    assert loop.completed[r3].finished is True
+    assert loop.pending_count == 3
+
+    events = loop.poll(max_ticks=8)
+
+    assert [(work.kind, work.request_ids) for work in runner.prefills] == [
+        (WorkKind.PREFILL, (r0,)),
+        (WorkKind.PREFILL, (r1,)),
+        (WorkKind.PREFILL, (r2,)),
+    ]
+    assert [(work.kind, work.request_ids) for work in runner.decodes] == [
+        (WorkKind.DECODE, (r0, r1)),
+        (WorkKind.DECODE, (r0, r2)),
+    ]
+    assert [event.request_id for event in events if event.kind == "completed"] == [r1, r0, r2]
+    assert loop.pending_count == 0
+    assert loop.active_count == 0
+    assert set(loop.completed) == {r0, r1, r2, r3}
+    assert loop.completed[r0].generated_tokens == (1000, 1001)
+    assert loop.completed[r1].generated_tokens == (1010,)
+    assert loop.completed[r2].generated_tokens == (1020,)
+
+    active_cancel_loop = ResidentEngineLoop(_FakeSerialBridgeRunner(), capacity=1, prefill_chunk_size=8)
+    active_id = active_cancel_loop.submit([50], max_new_tokens=4)
+    assert active_cancel_loop.poll(max_ticks=1)[0].kind == "admitted"
+    assert active_cancel_loop.active_count == 1
+    assert active_cancel_loop.cancel(active_id) is True
+    assert active_cancel_loop.active_count == 0
+    assert active_cancel_loop.completed[active_id].finished is True
 
 
 def test_resident_batch_scheduler_admits_compacts_and_routes_decode() -> None:

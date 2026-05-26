@@ -15,6 +15,7 @@ from hipengine.generation.batch_scheduler import (
     SpeculativeVerifyPlan,
     SpeculativeVerifyWork,
 )
+from hipengine.generation.engine_loop import EngineLoopEvent, EngineLoopRunner, ResidentEngineLoop
 from hipengine.generation.registry import (
     DuplicateGeneratorError,
     GenerationKey,
@@ -52,6 +53,8 @@ __all__ = [
     "CompactPromptSlab",
     "CompletedRequest",
     "DuplicateGeneratorError",
+    "EngineLoopEvent",
+    "EngineLoopRunner",
     "GeneratedToken",
     "GenerationKey",
     "GraphBucketCache",
@@ -59,6 +62,7 @@ __all__ = [
     "GenerationRequest",
     "MissingGeneratorError",
     "ResidentBatchScheduler",
+    "ResidentEngineLoop",
     "SpeculativeCommitPlan",
     "SpeculativeStateCommitPlan",
     "SpeculativeVerifyBufferPlan",

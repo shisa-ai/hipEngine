@@ -478,6 +478,34 @@ class ResidentBatchScheduler:
                 completed.append(done)
         return tuple(completed)
 
+    def cancel(self, request_id: int) -> CompletedRequest | None:
+        """Cancel a pending or active request and return reclaimed state."""
+
+        rid = int(request_id)
+        for pending in tuple(self._pending):
+            if pending.request_id == rid:
+                self._pending = deque(item for item in self._pending if item.request_id != rid)
+                done = CompletedRequest(
+                    request_id=pending.request_id,
+                    prompt_tokens=pending.prompt_tokens,
+                    generated_tokens=pending.generated_tokens,
+                    finished=True,
+                )
+                self._completed[done.request_id] = done
+                return done
+        if rid not in self.active_batch.requests:
+            return None
+        self.active_batch.finish(rid)
+        reclaimed = self.active_batch.reclaim(rid)
+        done = CompletedRequest(
+            request_id=reclaimed.request_id,
+            prompt_tokens=reclaimed.prompt_tokens,
+            generated_tokens=reclaimed.generated_tokens,
+            finished=reclaimed.finished,
+        )
+        self._completed[done.request_id] = done
+        return done
+
     def record_speculative_accept(self, summary: TargetAcceptSummary) -> tuple[CompletedRequest, ...]:
         """Record accepted speculative tokens plus optional target next tokens."""
 

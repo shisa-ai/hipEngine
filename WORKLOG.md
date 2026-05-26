@@ -27269,3 +27269,36 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY C4.1 engine-loop skeleton
+
+Closed bite-sized packet C4.1 from `docs/CONCURRENCY.md`:
+
+- Added `hipengine/generation/engine_loop.py`, a torch-free `ResidentEngineLoop` around `ResidentBatchScheduler` with persistent `submit(...)`, `poll(...)`, `tick(...)`, and `cancel(...)` methods.
+- Added a minimal `EngineLoopRunner` protocol for fake/serial-bridge runners: `prefill(work)` records/runs prompt chunks and `decode(work)` returns one generated token per request row.
+- Added scheduler-side `cancel(request_id)` for pending or active requests; active cancel goes through `finish` + `reclaim`, pending cancel records a completed request without admission.
+- Added a CPU fake-runner test that submits four requests, cancels one pending request, polls across multiple ticks, verifies admitted/prefill/decode order, and proves all completed requests are reclaimed from active/pending state.
+- Marked C4.1 complete in `docs/CONCURRENCY.md` without marking the broader phase-ladder resident-runner/server adapter items complete.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -q
+# 14 passed
+```
+
+Loop guard after C4.1:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 33
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```
+
+C4.1 pre-commit follow-up: added active-cancel coverage to the fake-runner test and reran the same targeted/full guard. Results unchanged: `tests/test_generation_batch_scheduler.py` 14 passed; queue metric 33; full loop guard passed with c=2/c=8 primitive correctness.

@@ -661,10 +661,12 @@ roll-up/status view.
 
 ### C4 packets — continuous scheduler and dynamic KV pool
 
-- [ ] **C4.1 engine-loop skeleton.** Introduce long-lived
+- [x] **C4.1 engine-loop skeleton.** Introduce long-lived
       `submit/poll/cancel` driver around existing resident sessions, initially
       using fake/CPU tests and the serial bridge. Acceptance: requests can be
       admitted, decoded, finished, and reclaimed without a one-call lifetime.
+      Evidence: `hipengine/generation/engine_loop.py` plus
+      `pytest -q tests/test_generation_batch_scheduler.py -q`.
 - [ ] **C4.2 adapter migration.** Lower `LLM.generate()` and non-streaming
       server endpoints onto `submit+poll` while preserving current outputs.
       Acceptance: existing generator/server tests pass and prompt-list
