@@ -180,10 +180,24 @@ def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:
     first = _first_hidden_mismatch(
         [
             {"layer_limit": 1, "steps": [{"decode_step": 0, "generated_index": 1, "rows": [{"row": 0, "hidden_comparison": passed}]}]},
-            {"layer_limit": 2, "steps": [{"decode_step": 3, "generated_index": 4, "rows": [{"row": 1, "hidden_comparison": failed}]}]},
+            {
+                "layer_limit": 2,
+                "last_layer_index": 1,
+                "last_layer_type": "linear_attention",
+                "steps": [{"decode_step": 3, "generated_index": 4, "rows": [{"row": 1, "hidden_comparison": failed}]}],
+            },
         ]
     )
-    assert first == {"layer_limit": 2, "decode_step": 3, "generated_index": 4, "row": 1, "max_abs": failed["max_abs"], "bit_mismatch": 1}
+    assert first == {
+        "layer_limit": 2,
+        "decode_step": 3,
+        "generated_index": 4,
+        "row": 1,
+        "max_abs": failed["max_abs"],
+        "bit_mismatch": 1,
+        "last_layer_index": 1,
+        "last_layer_type": "linear_attention",
+    }
 
 
 def test_gguf_cN_diagnostic_template_records_blocked_c2_command(tmp_path: Path) -> None:

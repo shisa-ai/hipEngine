@@ -28111,3 +28111,30 @@ python3 -m pytest -q tests/test_qwen35_resident_batch_layout.py::test_qwen35_res
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY C2.3 hidden-bisect layer metadata
+
+Materially advanced C2.3 diagnostics without claiming a fix:
+
+- Added `last_layer_index` / `last_layer_type` metadata to `scripts/qwen35_batch_hidden_bisect.py` layer summaries and first-hidden-mismatch records.
+- This keeps mismatch artifacts actionable when a layer-limit boundary fails, because the JSON now identifies which model layer was last included.
+- Re-ran a reduced C2.3 probe: `/tmp/hipengine-hidden-bisect-L6-512-1-layer-type.json` reports `status=mismatch_found`, `first_hidden_mismatch.layer_limit=6`, `last_layer_index=5`, `last_layer_type=linear_attention`, row 0, generated index 1, max_abs 0.00146484375. Token equality still passes at this reduced one-token shape, so this remains a hidden-state root-cause diagnostic only.
+- Updated `docs/CONCURRENCY.md` C2.3 progress text; C2.3 remains open until hidden equality is green and the old row-0 token idx-13 failure progresses.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_dry_run_records_layer_commands tests/test_generation_batch_scheduler.py::test_hidden_bisect_helpers_find_first_hidden_mismatch -q
+# 2 passed
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 1 --max-layers 8 --layer-limits 6 --max-sequence-length 1024 --json /tmp/hipengine-hidden-bisect-L6-512-1-layer-type.json
+# status=mismatch_found; first_hidden_mismatch last_layer_index=5 last_layer_type=linear_attention
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```

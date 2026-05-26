@@ -623,7 +623,11 @@ roll-up/status view.
       scratch for `tokens>1` instead of selected-MoE c1 wrappers, but
       `/tmp/hipengine-hidden-bisect-L1-8-512-1-grouped.json` still reports the
       first hidden mismatch at layer-limit 6 (row 0, generated index 1), and the
-      old row-0 token idx-13 mismatch remains.
+      old row-0 token idx-13 mismatch remains. New diagnostic metadata in
+      `/tmp/hipengine-hidden-bisect-L6-512-1-layer-type.json` tags that reduced
+      first mismatch to `last_layer_index=5`, `last_layer_type=linear_attention`,
+      keeping C2.3 focused on the linear-attention+MoE layer rather than sampler
+      or split-K paths.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

@@ -98,7 +98,7 @@ def _first_hidden_mismatch(layer_summaries: Sequence[dict[str, Any]]) -> dict[st
             for row in step.get("rows", []):
                 comparison = row.get("hidden_comparison", {})
                 if not comparison.get("passed", False):
-                    return {
+                    result: dict[str, Any] = {
                         "layer_limit": int(summary["layer_limit"]),
                         "decode_step": int(step["decode_step"]),
                         "generated_index": int(step["generated_index"]),
@@ -106,6 +106,11 @@ def _first_hidden_mismatch(layer_summaries: Sequence[dict[str, Any]]) -> dict[st
                         "max_abs": float(comparison.get("max_abs", 0.0)),
                         "bit_mismatch": int(comparison.get("bit_mismatch", 0)),
                     }
+                    if "last_layer_index" in summary:
+                        result["last_layer_index"] = int(summary["last_layer_index"])
+                    if "last_layer_type" in summary:
+                        result["last_layer_type"] = str(summary["last_layer_type"])
+                    return result
     return None
 
 
@@ -260,7 +265,21 @@ def _token_mismatches(batch: HiddenRun, c1: HiddenRun) -> list[dict[str, Any]]:
     return mismatches
 
 
-def _summarize_layer_limit(batch: HiddenRun, c1: HiddenRun, *, layer_limit: int, atol: float) -> dict[str, Any]:
+def _layer_limit_metadata(layer_limit: int, layer_types: Sequence[str] | None) -> dict[str, Any]:
+    metadata: dict[str, Any] = {"last_layer_index": int(layer_limit) - 1}
+    if layer_types is not None and 0 <= metadata["last_layer_index"] < len(layer_types):
+        metadata["last_layer_type"] = str(layer_types[metadata["last_layer_index"]])
+    return metadata
+
+
+def _summarize_layer_limit(
+    batch: HiddenRun,
+    c1: HiddenRun,
+    *,
+    layer_limit: int,
+    atol: float,
+    layer_types: Sequence[str] | None = None,
+) -> dict[str, Any]:
     steps: list[dict[str, Any]] = []
     for step, (batch_bits, c1_bits) in enumerate(zip(batch.hidden_bits_by_step, c1.hidden_bits_by_step, strict=True)):
         rows: list[dict[str, Any]] = []
@@ -279,6 +298,7 @@ def _summarize_layer_limit(batch: HiddenRun, c1: HiddenRun, *, layer_limit: int,
     token_mismatches = _token_mismatches(batch, c1)
     return {
         "layer_limit": int(layer_limit),
+        **_layer_limit_metadata(layer_limit, layer_types),
         "hidden_passed": all(row["hidden_comparison"]["passed"] for step in steps for row in step["rows"]),
         "token_passed": not token_mismatches,
         "seed_tokens": {"batch": batch.seed_tokens, "c1": c1.seed_tokens},
@@ -358,6 +378,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
 
     os.environ.setdefault("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE", "1")
     runner = Qwen35ParoNextTokenRunner(args.model)
+    layer_types = tuple(str(layer_type) for layer_type in getattr(runner.config, "layer_types", ()))
     compiler_version = _compiler_version(args.compiler_version_file)
     layer_summaries: list[dict[str, Any]] = []
     for layer_limit in layer_limits:
@@ -379,7 +400,9 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
         )
-        layer_summaries.append(_summarize_layer_limit(batch, c1, layer_limit=layer_limit, atol=args.hidden_atol))
+        layer_summaries.append(
+            _summarize_layer_limit(batch, c1, layer_limit=layer_limit, atol=args.hidden_atol, layer_types=layer_types)
+        )
 
     hidden_mismatch = _first_hidden_mismatch(layer_summaries)
     token_mismatch = _first_token_mismatch(layer_summaries)
