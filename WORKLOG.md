@@ -28214,3 +28214,30 @@ python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_int8_cN_diag
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY C3.1 INT8 diagnostic in c-sweep plan
+
+Materially advanced C3.1 orchestration without closing it:
+
+- Added `--include-int8` to `scripts/qwen35_batch_c_sweep.py`.
+- When enabled, the c-sweep planner appends `int8_native_diagnostic` commands for c>1 rows using `scripts/qwen35_batch_int8_diagnostic.py` and artifact names like `int8-native-diagnostic-c2.json`.
+- Generated `/tmp/hipengine-c-sweep-int8-plan/summary.json` in dry-run mode; it contains seven planned commands for c=1,2 and includes the c=2 `int8_native_diagnostic` command.
+- Updated the C3.1 queue note. C3.1 remains open because the planned INT8 diagnostic is still blocked-before-execution, not `eq_ok` or `rejected_correctness` from an executed generated-token gate.
+
+Validation:
+
+```bash
+python3 scripts/qwen35_batch_c_sweep.py --dry-run --include-int8 --batch-sizes 1,2 --model /tmp/model --fixture /tmp/fixture.json --prompt-length 16 --decode-tokens 2 --warmup-decode-tokens 1 --max-layers 3 --output-dir /tmp/hipengine-c-sweep-int8-plan --summary-json /tmp/hipengine-c-sweep-int8-plan/summary.json
+# planned 7 commands including int8_native_diagnostic for c=2
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_batch_c_sweep_dry_run_records_commands_and_artifacts tests/test_generation_batch_scheduler.py::test_batch_c_sweep_can_plan_int8_blocked_diagnostics tests/test_generation_batch_scheduler.py::test_int8_cN_diagnostic_template_records_blocked_c2_gate -q
+# 3 passed
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```

@@ -679,8 +679,11 @@ roll-up/status view.
       `scripts/qwen35_batch_int8_diagnostic.py` emits the schema-checked
       blocked template `/tmp/hipengine-int8-c2-diagnostic.json` with the future
       retained-bench command and explicit blockers (`compact c>N native prefill`
-      and `step_batch_native` INT8 rejection). The item remains open because
-      blocked-before-execution is not an accepted C3.1 terminal status.
+      and `step_batch_native` INT8 rejection). The c-sweep planner includes this
+      template behind `--include-int8`, producing an `int8_native_diagnostic`
+      command in `/tmp/hipengine-c-sweep-int8-plan/summary.json`. The item remains
+      open because blocked-before-execution is not an accepted C3.1 terminal
+      status.
 - [x] **C3.2 per-row `KVLiveSpans` everywhere.** Audit full-attention decode,
       KV append, and storage-dtype wrappers for scalar `(block_table,
       context_len)` shortcuts. Acceptance: tests cover BF16 and INT8 per-row

@@ -141,6 +141,35 @@ def build_sweep_commands(args: argparse.Namespace) -> tuple[SweepCommand, ...]:
                 ),
             )
         )
+        if getattr(args, "include_int8", False):
+            int8_json = output_dir / f"int8-native-diagnostic-c{c}.json"
+            commands.append(
+                SweepCommand(
+                    category="int8_native_diagnostic",
+                    batch_size=c,
+                    artifact_path=int8_json,
+                    argv=(
+                        sys.executable,
+                        "scripts/qwen35_batch_int8_diagnostic.py",
+                        "--model",
+                        str(args.model),
+                        "--fixture",
+                        str(args.fixture),
+                        "--prompt-length",
+                        str(args.prompt_length),
+                        "--rows",
+                        str(c),
+                        "--decode-tokens",
+                        str(args.decode_tokens),
+                        "--warmup-decode-tokens",
+                        str(args.warmup_decode_tokens),
+                        "--max-layers",
+                        str(args.max_layers),
+                        "--json",
+                        str(int8_json),
+                    ),
+                )
+            )
     return tuple(commands)
 
 
@@ -276,6 +305,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed", type=int, default=1234)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
+    parser.add_argument("--include-int8", action="store_true", help="Plan blocked INT8 KV c>N diagnostics for c>1 rows")
     parser.add_argument("--output-dir", type=Path, default=Path("/tmp/hipengine-batch-c-sweep"))
     parser.add_argument("--summary-json", type=Path)
     parser.add_argument("--dry-run", action="store_true", help="Write the command summary without executing commands")

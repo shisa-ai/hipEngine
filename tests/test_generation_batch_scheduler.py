@@ -131,6 +131,32 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     assert any("qwen35_paro_bench.py" in entry["command"] for entry in persisted["commands"])
 
 
+def test_batch_c_sweep_can_plan_int8_blocked_diagnostics(tmp_path: Path) -> None:
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--dry-run",
+            "--include-int8",
+            "--batch-sizes",
+            "1,2",
+            "--output-dir",
+            str(tmp_path / "artifacts"),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+        ]
+    )
+
+    planned = build_sweep_commands(args)
+
+    assert [(item.category, item.batch_size) for item in planned].count(("int8_native_diagnostic", 2)) == 1
+    assert ("int8_native_diagnostic", 1) not in [(item.category, item.batch_size) for item in planned]
+    int8 = next(item for item in planned if item.category == "int8_native_diagnostic")
+    assert "scripts/qwen35_batch_int8_diagnostic.py" in int8.command
+    assert "--rows 2" in int8.command
+    assert int8.artifact_path.name == "int8-native-diagnostic-c2.json"
+
+
 def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     output = tmp_path / "hidden-bisect.json"
     args = build_hidden_bisect_parser().parse_args(
