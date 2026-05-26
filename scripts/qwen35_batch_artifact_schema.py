@@ -12,6 +12,16 @@ _REQUIRED_BATCH_EXECUTION_FLAGS = (
     "native_caware_decode",
     "throughput_claim_eligible",
 )
+_REQUIRED_ACCEPTED_OBSERVABILITY_FIELDS = (
+    "admission_timestamps",
+    "completion_timestamps",
+    "request_latency_seconds",
+)
+_REQUIRED_ACCEPTED_POOL_FIELDS = (
+    "dynamic_pool",
+    "stable_block_id",
+    "prefix_sharing",
+)
 
 
 def _mapping_at(payload: Mapping[str, Any], key: str, errors: list[str]) -> Mapping[str, Any]:
@@ -63,8 +73,51 @@ def validate_cn_diagnostic_artifact_payload(payload: Mapping[str, Any]) -> None:
     if not isinstance(performance_claim, bool):
         errors.append("performance_claim must be a bool")
 
+    accepted = bool(decision.get("accepted"))
+    if accepted or status == "accepted" or performance_claim is True:
+        _validate_accepted_retained_gates(payload, errors)
+
     if errors:
         raise ValueError("invalid c>N diagnostic artifact payload: " + "; ".join(errors))
+
+
+def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[str]) -> None:
+    if payload.get("status") != "accepted":
+        errors.append("accepted retained artifact must have status='accepted'")
+    if payload.get("performance_claim") is not True:
+        errors.append("accepted retained artifact must set performance_claim=true")
+
+    observability = _mapping_at(payload, "observability", errors)
+    for field in _REQUIRED_ACCEPTED_OBSERVABILITY_FIELDS:
+        if not isinstance(observability.get(field), Mapping):
+            errors.append(f"observability.{field} must be an object for accepted artifacts")
+    latency = observability.get("request_latency_seconds")
+    if isinstance(latency, Mapping):
+        if not _is_number(latency.get("p50")):
+            errors.append("observability.request_latency_seconds.p50 must be numeric for accepted artifacts")
+        if not _is_number(latency.get("p95")):
+            errors.append("observability.request_latency_seconds.p95 must be numeric for accepted artifacts")
+
+    memory = _mapping_at(payload, "memory", errors)
+    for field in _REQUIRED_ACCEPTED_POOL_FIELDS:
+        if not isinstance(memory.get(field), Mapping):
+            errors.append(f"memory.{field} must be an object for accepted artifacts")
+    dynamic_pool = memory.get("dynamic_pool")
+    if isinstance(dynamic_pool, Mapping) and not isinstance(dynamic_pool.get("evidence"), str):
+        errors.append("memory.dynamic_pool.evidence must be a string for accepted artifacts")
+    stable_block_id = memory.get("stable_block_id")
+    if isinstance(stable_block_id, Mapping) and stable_block_id.get("passed") is not True:
+        errors.append("memory.stable_block_id.passed must be true for accepted artifacts")
+    prefix_sharing = memory.get("prefix_sharing")
+    if isinstance(prefix_sharing, Mapping):
+        if not isinstance(prefix_sharing.get("enabled"), bool):
+            errors.append("memory.prefix_sharing.enabled must be a bool for accepted artifacts")
+        if not _is_number(prefix_sharing.get("savings_bytes")):
+            errors.append("memory.prefix_sharing.savings_bytes must be numeric for accepted artifacts")
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
 __all__ = ["validate_cn_diagnostic_artifact_payload"]

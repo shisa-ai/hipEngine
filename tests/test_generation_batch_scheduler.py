@@ -776,6 +776,59 @@ def test_qwen35_batch_diagnostic_artifact_schema_requires_label_fields() -> None
         validate_cn_diagnostic_artifact_payload(missing)
 
 
+def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -> None:
+    accepted = {
+        "status": "accepted",
+        "performance_claim": True,
+        "workload": {
+            "native_compact_prefill": True,
+            "native_caware_decode": True,
+        },
+        "correctness": {"passed": True},
+        "execution": {
+            "batch_execution": {
+                "native_compact_prefill": True,
+                "native_caware_decode": True,
+                "throughput_claim_eligible": True,
+            }
+        },
+        "observability": {
+            "admission_timestamps": {"0": 1.0},
+            "completion_timestamps": {"0": 2.0},
+            "request_latency_seconds": {"p50": 1.0, "p95": 1.25},
+        },
+        "memory": {
+            "dynamic_pool": {"evidence": "initial chunk sufficed", "grow_events": 0, "shrink_events": 0},
+            "stable_block_id": {"passed": True, "audit": "debug check passed"},
+            "prefix_sharing": {"enabled": False, "savings_bytes": 0},
+        },
+        "decision": {"accepted": True},
+    }
+
+    validate_cn_diagnostic_artifact_payload(accepted)
+
+    missing_latency = dict(accepted)
+    missing_latency["observability"] = {
+        "admission_timestamps": {"0": 1.0},
+        "completion_timestamps": {"0": 2.0},
+    }
+    with pytest.raises(ValueError, match="request_latency_seconds"):
+        validate_cn_diagnostic_artifact_payload(missing_latency)
+
+    missing_pool = dict(accepted)
+    missing_pool["memory"] = {
+        "dynamic_pool": {"evidence": "initial chunk sufficed"},
+        "prefix_sharing": {"enabled": False, "savings_bytes": 0},
+    }
+    with pytest.raises(ValueError, match="stable_block_id"):
+        validate_cn_diagnostic_artifact_payload(missing_pool)
+
+    inconsistent = dict(accepted)
+    inconsistent["status"] = "blocked"
+    with pytest.raises(ValueError, match="status='accepted'"):
+        validate_cn_diagnostic_artifact_payload(inconsistent)
+
+
 def test_qwen35_batch_diagnostic_artifact_schema_rejects_missing_correctness() -> None:
     payload = {
         "status": "blocked",

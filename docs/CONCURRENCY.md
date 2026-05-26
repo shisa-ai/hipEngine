@@ -725,10 +725,12 @@ roll-up/status view.
 - [ ] **C5.7 metrics endpoint.** Add Prometheus `/metrics` behind
       `HIPENGINE_METRICS` / `--metrics`. Acceptance: metrics are additive and
       include request, pool, and graph-bucket counters.
-- [ ] **C5.8 retained-row enforcement.** Make the bench harness enforce gates
+- [x] **C5.8 retained-row enforcement.** Make the bench harness enforce gates
       for timestamps, p50/p95 latency, dynamic pool, stable block id, and
       prefix-sharing savings before `status=accepted`. Acceptance: a fixture
-      missing any required field cannot be accepted.
+      missing any required field cannot be accepted. Evidence:
+      `scripts/qwen35_batch_artifact_schema.py` accepted-row gates plus
+      `pytest -q tests/test_generation_batch_scheduler.py -q`.
 
 ### Performance packets — run only after correctness is green
 
@@ -931,7 +933,7 @@ endpoint live; retained c>N rows include all gates above.
       default `off` until coverage is broad.
 - [ ] Per-bucket graph-cache observability
       (entries, hits, misses, miss reason, kernel-time histogram).
-- [ ] Retained-row gates 4 (admission/completion timestamps + p50/p95) and
+- [x] Retained-row gates 4 (admission/completion timestamps + p50/p95) and
       6/7/8 (dynamic pool + stable block id + prefix sharing artifact)
       enforced by the bench harness.
 
