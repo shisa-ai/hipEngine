@@ -27008,3 +27008,19 @@ Reviewed the post-planning-pass `docs/CONCURRENCY.md` and kept its new continuou
 - Removed the leftover prefix-LRU wording from the readiness blocker; this doc now consistently treats RadixCache as the prefix-sharing implementation and flat prefix-LRU as intentionally not a peer.
 
 Validation: docs-only change; re-read the changed Current answer, readiness matrix, C0/C2 checklist, and GPU0 diagnostic evidence sections.
+
+## 2026-05-27 — CONCURRENCY bite-sized packet queue
+
+Expanded `docs/CONCURRENCY.md` with a `Bite-sized implementation queue` for the planned multiloop. The new queue keeps the C0..C5 phase ladder as the roll-up/status view, but adds 42 implementation-sized packets with acceptance criteria:
+
+- C0 diagnostics/artifact durability.
+- C1 current server/generator safety contracts.
+- C2 correctness-first BF16 native c>N work, including hidden-state bisection, selected-MoE lane mapping, c=2/4/8 equality gates, sparse/long-context guards, append-only block ids, and live admission capacity.
+- C3 kernel/model coverage across INT8 KV, per-row `KVLiveSpans`, linear-attention state, projection dispatch, GGUF, and native LM-head/sampler.
+- C4 continuous scheduler, dynamic KV pool, streaming, reclaim, non-compact slots, and observability.
+- C5 RadixCache/prefix sharing, `n>1`, per-row sampler/EOS, metrics, and retained-row enforcement.
+- Performance packets P1..P5, explicitly after correctness is green.
+
+For the multiloop metric, count open/partial checkboxes in the bite-sized queue only; current queue count is 42 open/partial items. This avoids double-counting the phase-ladder summary checkboxes.
+
+Validation: docs-only change; re-read the inserted queue and counted queue vs whole-doc checkboxes with a small Python regex helper.

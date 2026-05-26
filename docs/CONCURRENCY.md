@@ -513,6 +513,205 @@ A c>N row is not eligible for `accepted` status until all of these pass:
    KV-byte savings *and* per-request TTFT drop vs the same workload with
    prefix sharing off.
 
+## Bite-sized implementation queue
+
+The phase ladder below is the source of truth for C0..C5. This queue expands
+those phase items into implementation-sized packets for a multiloop or a human
+coder. A good packet is one logical commit with a narrow test/bench gate and a
+WORKLOG entry when it changes runtime behavior, correctness, or performance.
+Do not check a packet merely because code exists; check it only when the
+listed acceptance gate has passed and the parent phase item can cite it.
+
+Recommended order: finish the C2 correctness packets before C3/C4/C5 feature
+work, because continuous batching and KV sharing only matter once native c>N
+emits the same tokens as independent c=1. For multiloop progress, count open
+or partial checkboxes in this queue only; the phase ladder below stays as the
+roll-up/status view.
+
+### C0 packets — make diagnostics durable
+
+- [ ] **C0.1 c-sweep CLI.** Add `hipengine bench c-sweep` (or an equivalent
+      `scripts/qwen35_batch_c_sweep.py`) that runs c=1/2/4/8 primitive,
+      serial-bridge, and native-diagnostic commands from one config without
+      copy/paste loops. Acceptance: JSON summary records every command,
+      status, artifact path, and dirty git state.
+- [ ] **C0.2 artifact schema guard.** Add a CPU test/helper that rejects c>N
+      diagnostic JSON missing `workload.native_compact_prefill`,
+      `execution.batch_execution.native_compact_prefill`,
+      `native_caware_decode` as an execution flag, a correctness/status field,
+      and `throughput_claim_eligible`. Acceptance: failing fixture proves the
+      guard catches a missing field.
+- [ ] **C0.3 promote current diagnostics.** Move or regenerate the current
+      c=2 accepted/rejected diagnostic JSONs under `benchmarks/results/` with
+      `status=blocked` or `rejected_correctness` as appropriate. Acceptance:
+      `WORKLOG.md` links exact commands and no scoreboard row is added unless
+      `status=accepted`.
+
+### C1 packets — keep current integration safe
+
+- [ ] **C1.1 lock scope audit.** Trace the server/generator mutation paths
+      protected by `generation_lock`; document which session state is still
+      non-reentrant. Acceptance: a focused test or review note proves the lock
+      is narrow enough for C1 and names the exact blocker for C4 removal.
+- [ ] **C1.2 API rejection contract.** Keep `n>1` rejected until C5 and add
+      regression coverage if missing for completions and chat. Acceptance:
+      server tests prove `n>1` returns the intended 4xx while prompt-list
+      batching still works.
+
+### C2 packets — native BF16 c>N correctness first
+
+- [ ] **C2.1 remove compatibility shim.** Remove the generator
+      `batch_execution_metadata(...)` `TypeError` compatibility path once all
+      call sites use the settled signature. Acceptance: targeted generator and
+      resident-layout tests pass.
+- [ ] **C2.2 hidden-state bisection harness.** Add a HIP-guarded diagnostic
+      that compares c=2 native vs independent c=1 hidden tensors after each
+      layer and optionally after sub-stages (attention, selected MoE, shared
+      expert, combine, LM head). Acceptance: the harness can reproduce the
+      current L40 c=2 512/128 divergence earlier than generated-token idx 87.
+- [ ] **C2.3 selected-MoE lane-map fix.** Root-cause
+      `/tmp/hipengine-retained/eq-L8-selectedmoe.json`; fix token-row → routed
+      lane mapping or grouped metadata so selected MoE is hidden-equality green
+      at c=2. Acceptance: C2.2 reports selected-MoE hidden equality for the
+      failing fixture and generated-token equality progresses past the old
+      idx-13 failure.
+- [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
+      512/128 retained protocol with `serial_lm_head` default and no serial
+      decode bridge. Acceptance: generated-token equality vs two c=1 sessions
+      passes; if timing is still not retained, artifact is `blocked` for a
+      non-correctness reason.
+- [ ] **C2.5 c=4/c=8 BF16 equality.** Extend the same gate to c=4 and c=8.
+      Acceptance: generated-token equality passes for both shapes, with
+      aggregate/per-request scaling fields recorded even if not yet optimized.
+- [ ] **C2.6 sparse-slot and long-context guards.** Add CPU structural tests
+      for sparse/non-contiguous slot rejection and `max_context >= 1024`
+      rejection until row-aware split-K is live. Acceptance: tests fail if the
+      experimental path silently accepts unsupported shapes.
+- [ ] **C2.7 row-aware split-K full attention.** Make full-attention decode
+      and reduction consume per-row spans for `max_context >= 1024` before any
+      long-context c>N claim. Acceptance: primitive correctness plus a
+      generated-token diagnostic at a long-context shape.
+- [ ] **C2.8 append-only block-id contract.** Prevent block ids from changing
+      backing pointer during a live request; add a debug/memory-audit test.
+      Acceptance: the test would fail on pointer mutation or id reuse.
+- [ ] **C2.9 live admission cap.** Make `KVPolicy.admission_cap()` return
+      current free capacity rather than startup capacity. Acceptance: fake
+      policy/scheduler tests show reclaim changes admission capacity before the
+      next admit.
+
+### C3 packets — widen kernel/model coverage
+
+- [ ] **C3.1 INT8 KV c>N parity.** Validate batched INT8 KV append/decode
+      end-to-end with the same generated-token gates as BF16. Acceptance:
+      c=2 512/128 INT8 artifact is equality-green or explicitly
+      `rejected_correctness` with first mismatch.
+- [ ] **C3.2 per-row `KVLiveSpans` everywhere.** Audit full-attention decode,
+      KV append, and storage-dtype wrappers for scalar `(block_table,
+      context_len)` shortcuts. Acceptance: tests cover BF16 and INT8 per-row
+      spans.
+- [ ] **C3.3 linear-attention `[C]` state.** Remove c1 aliases from
+      conv/recurrent state update paths and use active masks + slot ids.
+      Acceptance: c=2 state fixtures compare against two c=1 references.
+- [ ] **C3.4 c-aware projection dispatch.** Keep c=1 on GEMV/Marlin-K while
+      routing c=2/4/8 to MMQ/GEMM/WMMA candidates only when they beat row-GEMV.
+      Acceptance: dispatch tests prove thresholds and benchmark artifacts show
+      aggregate/per-request ratios.
+- [ ] **C3.5 GGUF c>N template.** Port the Qwen/PARO equality template to
+      GGUF Q4_K/Q5_K/Q6_K/Q8_0. Acceptance: at least one GGUF c=2 diagnostic
+      reaches an unambiguous `eq_ok`, `blocked`, or `rejected_correctness`
+      status with exact command.
+- [ ] **C3.6 native LM-head/sampler launch.** Replace the per-row
+      `serial_lm_head` loop with a native row-aware LM-head/argmax only after
+      C2 equality is green. Acceptance: c=2/4/8 equality stays green with
+      `HIPENGINE_QWEN35_BATCH_SAMPLE_MODE=batched_lm_head` or successor.
+
+### C4 packets — continuous scheduler and dynamic KV pool
+
+- [ ] **C4.1 engine-loop skeleton.** Introduce long-lived
+      `submit/poll/cancel` driver around existing resident sessions, initially
+      using fake/CPU tests and the serial bridge. Acceptance: requests can be
+      admitted, decoded, finished, and reclaimed without a one-call lifetime.
+- [ ] **C4.2 adapter migration.** Lower `LLM.generate()` and non-streaming
+      server endpoints onto `submit+poll` while preserving current outputs.
+      Acceptance: existing generator/server tests pass and prompt-list
+      batching still routes by request id.
+- [ ] **C4.3 tick policy.** Implement `RECLAIM → ADMIT → choose(PREFILL_CHUNK,
+      DECODE_STEP)` with `protect_decode` default. Acceptance: scheduler tests
+      cover decode protection and TTFT/fair alternatives.
+- [ ] **C4.4 chunked KV pool.** Add chunked allocation, grow-on-admission,
+      idle shrink, and high/low-water knobs behind fake-runtime tests first.
+      Acceptance: burst+idle fixture records at least one grow and shrink or
+      explicitly records that the initial chunk sufficed.
+- [ ] **C4.5 pool/env docs.** Add CLI/env knobs for `HIPENGINE_KV_POOL_*` and
+      `HIPENGINE_PREFILL_DECODE_POLICY` and document them in `docs/ENVS.md`.
+      Acceptance: CLI/env tests and docs agree on defaults.
+- [ ] **C4.6 streaming through loop.** Route streaming completions through
+      per-request token queues instead of bypassing the batcher. Acceptance:
+      streaming and non-streaming share reclaim/cancel tests.
+- [ ] **C4.7 unified reclaim.** Make cancel, disconnect, EOS, max-tokens, and
+      timeout converge on one `RECLAIM` path. Acceptance: each finish reason
+      frees KV/scratch exactly once in tests.
+- [ ] **C4.8 non-compact-slot native decode.** Extend native decode beyond
+      compact `0..C-1` slots after scheduler compaction/reclaim. Acceptance:
+      generated-token equality passes with a deliberately sparse/compacted
+      slot schedule.
+- [ ] **C4.9 observability fields.** Record per-request and per-pool fields in
+      completion/artifact metadata. Acceptance: tests assert queue/prefill/
+      decode seconds, KV pages, bucket key, admission blocker, and finish
+      reason are present.
+
+### C5 packets — prefix sharing, per-row sampling, `n>1`, metrics
+
+- [ ] **C5.1 block refcounts.** Add block-id refcounts and reuse accounting.
+      Acceptance: shared-prefix admission increments/decrements refcounts and
+      reclaim only frees zero-refcount blocks.
+- [ ] **C5.2 RadixCache.** Implement the token-id trie with
+      `HIPENGINE_PREFIX_CACHE` / `--prefix-cache` in `{off, radix}`. Acceptance:
+      prefix-hit/miss tests cover partial-block edges and cancellation.
+- [ ] **C5.3 copy-on-write fork.** Fork fresh pages at the first divergent
+      token while preserving shared prefix pages. Acceptance: two diverging
+      requests keep prefix bytes shared and produce independent suffix KV.
+- [ ] **C5.4 `n>1` lowering.** Replace API rejection with N scheduler
+      requests sharing a prompt prefix and distinct seeds. Acceptance:
+      OpenAI-compatible responses preserve `n` semantics and request IDs.
+- [ ] **C5.5 per-row sampler.** Land per-row temperature/top-k/top-p/
+      repetition-penalty/seed/stop-token handling. Acceptance: incompatible
+      sampling params decode together and deterministic seeds are stable.
+- [ ] **C5.6 per-row EOS/reclaim.** Finish rows independently inside a batch.
+      Acceptance: one row can finish while others keep decoding and its KV is
+      reclaimed at the next commit point.
+- [ ] **C5.7 metrics endpoint.** Add Prometheus `/metrics` behind
+      `HIPENGINE_METRICS` / `--metrics`. Acceptance: metrics are additive and
+      include request, pool, and graph-bucket counters.
+- [ ] **C5.8 retained-row enforcement.** Make the bench harness enforce gates
+      for timestamps, p50/p95 latency, dynamic pool, stable block id, and
+      prefix-sharing savings before `status=accepted`. Acceptance: a fixture
+      missing any required field cannot be accepted.
+
+### Performance packets — run only after correctness is green
+
+- [ ] **P1 baseline bundle.** Establish c=1, serial bridge c=2/4/8, first
+      green uncaptured native c>N, and primitive microbench baselines.
+      Acceptance: artifacts include exact commands, hardware, correctness,
+      aggregate/per-request ratios, and dirty-state.
+- [ ] **P2 graph replay buckets.** Add decode hipGraph capture/replay buckets
+      by `(C, context bucket, active mask, KV dtype, layer plan, top-k/experts,
+      replay length)`. Acceptance: bucket hit/miss stats and profiler evidence
+      show replay for common shapes.
+- [ ] **P3 remove residual serial loops.** Remove full-attention per-row
+      fallback, per-row metadata allocation, per-row LM-head launches, and
+      Python per-layer dispatch from steady-state native decode. Acceptance:
+      profiler summaries show the removed bottleneck and equality remains
+      green.
+- [ ] **P4 MoE/projection scaling.** Group routed lanes by expert and switch
+      c=2/4/8 projections/MoE to kernels that beat row-GEMV. Acceptance:
+      c=8 aggregate decode improves vs both c=1 and the serial bridge, with
+      per-request ratios reported.
+- [ ] **P5 retained scoreboard update.** Only after accepted artifacts exist,
+      update `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, and compact
+      JSON artifacts under `benchmarks/results/`. Acceptance: every perf claim
+      cites correctness gate, profiler status, exact command, and hardware.
+
 ## Phase ladder
 
 The phase ladder is the ground truth for c>N progress. Each phase has a
