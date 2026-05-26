@@ -720,9 +720,11 @@ roll-up/status view.
       Evidence: `hipengine/kvcache/radix.py`, `HIPENGINE_PREFIX_CACHE`,
       `hipengine serve --prefix-cache`, and
       `pytest -q tests/test_kvcache_policy.py tests/test_server_api.py -q`.
-- [ ] **C5.3 copy-on-write fork.** Fork fresh pages at the first divergent
+- [x] **C5.3 copy-on-write fork.** Fork fresh pages at the first divergent
       token while preserving shared prefix pages. Acceptance: two diverging
       requests keep prefix bytes shared and produce independent suffix KV.
+      Evidence: `ChunkedKVPool.fork_copy_on_write(...)`, COW fork counters,
+      and `pytest -q tests/test_kvcache_policy.py -q`.
 - [ ] **C5.4 `n>1` lowering.** Replace API rejection with N scheduler
       requests sharing a prompt prefix and distinct seeds. Acceptance:
       OpenAI-compatible responses preserve `n` semantics and request IDs.
@@ -927,7 +929,7 @@ endpoint live; retained c>N rows include all gates above.
 - [x] Implement RadixCache trie index over token ids; expose
       `HIPENGINE_PREFIX_CACHE` / `--prefix-cache` in `{off, radix}` with
       default `off` until acceptance gates pass.
-- [ ] Implement copy-on-write fork at first divergent token.
+- [x] Implement copy-on-write fork at first divergent token.
 - [ ] **KVTC ABI guardrail.** Block ids returned by the allocator must be
       stable across hypothetical tier moves; refcount and eviction state
       must attach to the radix node rather than the block pointer. KVTC

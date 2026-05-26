@@ -191,6 +191,57 @@ def test_chunked_kv_pool_grows_and_shrinks_on_burst_idle() -> None:
     assert again.pointers == (pool.pointer_for(0),)
 
 
+def test_chunked_kv_pool_copy_on_write_fork_preserves_prefix_and_splits_suffix() -> None:
+    pool = ChunkedKVPool(
+        page_bytes=2048,
+        initial_pages=4,
+        low_water_pages=2,
+        high_water_pages=8,
+        chunk_pages=2,
+        idle_grace_seconds=0.0,
+    )
+    prefix = pool.allocate(2, now_seconds=1.0)
+    prefix_pointers = prefix.pointers
+
+    left = pool.fork_copy_on_write(prefix.block_ids, suffix_pages=1, first_divergent_token=512, now_seconds=2.0)
+    right = pool.fork_copy_on_write(prefix.block_ids, suffix_pages=1, first_divergent_token=512, now_seconds=3.0)
+
+    assert left.shared_block_ids == prefix.block_ids
+    assert right.shared_block_ids == prefix.block_ids
+    assert left.shared_pointers == prefix_pointers
+    assert right.shared_pointers == prefix_pointers
+    assert left.forked_block_ids != right.forked_block_ids
+    assert set(left.forked_block_ids).isdisjoint(right.forked_block_ids)
+    assert set(left.forked_pointers).isdisjoint(right.forked_pointers)
+    assert pool.refcount(prefix.block_ids[0]) == 3
+    assert pool.refcount(prefix.block_ids[1]) == 3
+    assert pool.refcount(left.forked_block_ids[0]) == 1
+    assert pool.refcount(right.forked_block_ids[0]) == 1
+    assert pool.stats.cow_fork_events == 2
+    assert pool.stats.cow_forked_pages == 2
+
+    pool.release(prefix.block_ids, now_seconds=4.0)
+    assert pool.refcount(prefix.block_ids[0]) == 2
+    assert pool.refcount(prefix.block_ids[1]) == 2
+    assert pool.stats.free_pages == 0
+
+    pool.release(left.block_ids, now_seconds=5.0)
+    assert pool.refcount(prefix.block_ids[0]) == 1
+    assert pool.refcount(prefix.block_ids[1]) == 1
+    assert pool.refcount(left.forked_block_ids[0]) == 0
+    probe = pool.allocate(1, now_seconds=6.0)
+    assert probe.block_ids == left.forked_block_ids
+    pool.release(probe.block_ids, now_seconds=6.5)
+
+    pool.release(right.block_ids, now_seconds=7.0)
+    assert pool.refcount(prefix.block_ids[0]) == 0
+    assert pool.refcount(prefix.block_ids[1]) == 0
+    assert pool.refcount(right.forked_block_ids[0]) == 0
+
+    with pytest.raises(ValueError, match="copy-on-write"):
+        pool.fork_copy_on_write(prefix.block_ids, suffix_pages=0, first_divergent_token=512)
+
+
 def test_chunked_kv_pool_shared_prefix_refcounts_reclaim_zero_only() -> None:
     pool = ChunkedKVPool(
         page_bytes=2048,

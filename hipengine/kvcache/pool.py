@@ -30,6 +30,19 @@ class KVPoolSharedAdmission:
 
 
 @dataclass(frozen=True, slots=True)
+class KVPoolCopyOnWriteFork:
+    """Copy-on-write fork preserving shared prefix blocks and private suffix."""
+
+    first_divergent_token: int
+    block_ids: tuple[int, ...]
+    pointers: tuple[int, ...]
+    shared_block_ids: tuple[int, ...]
+    shared_pointers: tuple[int, ...]
+    forked_block_ids: tuple[int, ...]
+    forked_pointers: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class KVPoolStats:
     """Observable fake KV-pool counters used by scheduler/bench tests."""
 
@@ -44,6 +57,8 @@ class KVPoolStats:
     shrink_events: int
     prefix_reuse_events: int
     prefix_reused_pages: int
+    cow_fork_events: int
+    cow_forked_pages: int
 
     def to_json_dict(self) -> dict[str, int]:
         return {
@@ -58,6 +73,8 @@ class KVPoolStats:
             "shrink_events": self.shrink_events,
             "prefix_reuse_events": self.prefix_reuse_events,
             "prefix_reused_pages": self.prefix_reused_pages,
+            "cow_fork_events": self.cow_fork_events,
+            "cow_forked_pages": self.cow_forked_pages,
         }
 
 
@@ -124,6 +141,8 @@ class ChunkedKVPool:
         self._shrink_events = 0
         self._prefix_reuse_events = 0
         self._prefix_reused_pages = 0
+        self._cow_fork_events = 0
+        self._cow_forked_pages = 0
         self._last_active_seconds = 0.0
         self._high_water_observed_pages = 0
         self._append_chunk(int(initial_pages))
@@ -149,6 +168,8 @@ class ChunkedKVPool:
             shrink_events=self._shrink_events,
             prefix_reuse_events=self._prefix_reuse_events,
             prefix_reused_pages=self._prefix_reused_pages,
+            cow_fork_events=self._cow_fork_events,
+            cow_forked_pages=self._cow_forked_pages,
         )
 
     @property
@@ -243,6 +264,42 @@ class ChunkedKVPool:
             allocated_block_ids=suffix.block_ids,
         )
 
+    def fork_copy_on_write(
+        self,
+        prefix_block_ids: tuple[int, ...] | list[int],
+        *,
+        suffix_pages: int,
+        first_divergent_token: int,
+        now_seconds: float = 0.0,
+    ) -> KVPoolCopyOnWriteFork:
+        """Fork a request at the first divergent token.
+
+        Prefix blocks remain shared and get an additional reference.  Divergent
+        suffix pages are freshly allocated, so two forks from the same prefix
+        keep prefix pointers identical while writing independent suffix KV.
+        """
+
+        if first_divergent_token < 0:
+            raise ValueError("first_divergent_token must be non-negative")
+        if suffix_pages <= 0:
+            raise ValueError("suffix_pages must be positive for copy-on-write fork")
+        admission = self.admit_with_shared_prefix(
+            prefix_block_ids,
+            suffix_pages=int(suffix_pages),
+            now_seconds=now_seconds,
+        )
+        self._cow_fork_events += 1
+        self._cow_forked_pages += len(admission.allocated_block_ids)
+        return KVPoolCopyOnWriteFork(
+            first_divergent_token=int(first_divergent_token),
+            block_ids=admission.block_ids,
+            pointers=admission.pointers,
+            shared_block_ids=admission.reused_block_ids,
+            shared_pointers=tuple(self.pointer_for(block_id) for block_id in admission.reused_block_ids),
+            forked_block_ids=admission.allocated_block_ids,
+            forked_pointers=tuple(self.pointer_for(block_id) for block_id in admission.allocated_block_ids),
+        )
+
     def release(self, block_ids: tuple[int, ...] | list[int], *, now_seconds: float = 0.0) -> None:
         """Drop one reference per block and return zero-refcount pages to free list."""
 
@@ -316,4 +373,11 @@ class ChunkedKVPool:
         return known
 
 
-__all__ = ["ChunkedKVPool", "KVPoolAllocation", "KVPoolChunk", "KVPoolSharedAdmission", "KVPoolStats"]
+__all__ = [
+    "ChunkedKVPool",
+    "KVPoolAllocation",
+    "KVPoolChunk",
+    "KVPoolCopyOnWriteFork",
+    "KVPoolSharedAdmission",
+    "KVPoolStats",
+]

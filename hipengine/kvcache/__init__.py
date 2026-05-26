@@ -12,7 +12,14 @@ from hipengine.kvcache.policy import (
     ResolvedKVPolicy,
     resolve_kv_policy,
 )
-from hipengine.kvcache.pool import ChunkedKVPool, KVPoolAllocation, KVPoolChunk, KVPoolSharedAdmission, KVPoolStats
+from hipengine.kvcache.pool import (
+    ChunkedKVPool,
+    KVPoolAllocation,
+    KVPoolChunk,
+    KVPoolCopyOnWriteFork,
+    KVPoolSharedAdmission,
+    KVPoolStats,
+)
 from hipengine.kvcache.radix import (
     PREFIX_CACHE_CHOICES,
     PrefixCacheCancel,
@@ -31,6 +38,7 @@ __all__ = [
     "KVPolicy",
     "KVPoolAllocation",
     "KVPoolChunk",
+    "KVPoolCopyOnWriteFork",
     "KVPoolSharedAdmission",
     "KVPoolStats",
     "KVReservation",
