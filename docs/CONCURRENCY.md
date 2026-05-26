@@ -563,6 +563,13 @@ in place even though pool growth lands in C4.
       serial_lm_head` until row-aware sampler lands.
 - [ ] Document `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE` and
       `HIPENGINE_QWEN35_BATCH_SAMPLE_MODE` in `docs/ENVS.md`.
+- [ ] Remove stale compatibility glue once the guarded native API is
+      settled (for example the `batch_execution_metadata(...)` `TypeError`
+      shim in the generator).
+- [ ] Add HIP-guarded reduced-shape equality diagnostics that do **not**
+      require full 40 layers, so failures can be bisected in CI/dev
+      environments with ROCm. Keep full 40-layer 512/128 as the retained
+      benchmark gate.
 - [ ] Re-run guarded c=2 L=8 / L=40 retained-shape equality with the
       committed `serial_lm_head` default; replace
       `/tmp/hipengine-retained/guarded-L8-512-32.json` reference with a
@@ -644,6 +651,9 @@ becomes a `submit+poll` adapter.
 - [ ] Per-pool observability counters
       (current_bytes, high_water_observed, grow/shrink events, free pages,
       refcounted pages).
+- [ ] Extend native decode correctness to non-compact slots after
+      scheduler compaction/reclaim moves requests; today only compact
+      `0..C-1` slots are supported.
 
 ### C5 — KV sharing, per-row sampler, `n>1`, `/metrics`
 
@@ -677,6 +687,84 @@ endpoint live; retained c>N rows include all gates above.
 - [ ] Retained-row gates 4 (admission/completion timestamps + p50/p95) and
       6/7/8 (dynamic pool + stable block id + prefix sharing artifact)
       enforced by the bench harness.
+
+## Performance gates and optimization work
+
+The phase ladder above is organized by *what is enabled* (correctness,
+engine loop, sharing). Performance-scaling work runs **inside** each phase
+after the correctness gate for that phase is green. This section collects
+the shared performance contract; cite a specific phase when scheduling a
+performance item.
+
+### Baseline artifacts
+
+Establish these before optimizing anything:
+
+- c=1 native prefill/decode for the retained shapes.
+- c=2/4/8 serial bridge diagnostics.
+- First green uncaptured native c>N rows (no graph replay).
+- Primitive/kernel microbenchmarks for attention, KV append, MoE,
+  projection, and LM-head sampling.
+
+### Scaling reported on every retained c>N row
+
+- `prefill_tok_s_aggregate / c1_prefill_tok_s`.
+- `decode_tok_s_aggregate / c1_decode_tok_s`.
+- `decode_tok_s_per_request / c1_decode_tok_s`.
+- p50/p95 first-token latency and inter-token latency.
+- Active-batch occupancy over time.
+
+### Target throughput envelope
+
+- Decode aggregate speedup vs c=1 and vs the serial bridge. Per
+  [`PLAN.md`](PLAN.md), c=8 decode plausibly lands around 2-4× c=1
+  aggregate when kernels reuse enough work; do not promise 8×.
+- Prefill aggregate scaling vs c=1 by keeping prompt rows packed, avoiding
+  per-request Python loops, and using AOTriton/WMMA paths where they beat
+  row-GEMV.
+
+### Optimization checklist (overlay onto C2-C5)
+
+- [ ] Add hipGraph capture/replay buckets for decode by `(C, context
+      bucket, active mask, KV dtype, layer plan, top-k/experts, replay
+      length)`, with an uncaptured fallback for rare shapes.
+- [ ] Add graph-bucket cache hit/miss and replay statistics to artifacts.
+- [ ] Eliminate residual serial loops on the native path after correctness
+      is green:
+  - full-attention per-row fallback;
+  - per-row host metadata allocation/free;
+  - per-row LM-head/argmax launches where a batched launch is correct;
+  - Python per-layer dispatch overhead inside steady-state decode.
+- [ ] c-aware projection dispatch thresholds:
+  - c=1 stays on tuned GEMV/Marlin-K paths;
+  - c=2/4/8 use MMQ/GEMM/WMMA-style kernels when they beat row-GEMV;
+  - c>16 prefers GEMM/WMMA and grouped MoE designs over widening c1
+    GEMV wrappers.
+- [ ] MoE routed-lane reuse:
+  - group lanes by expert;
+  - use compact/WMMA grouped kernels when routed lanes justify it;
+  - measure router, group-scatter, gate/up, down, shared expert, and
+    combine time separately.
+- [ ] Memory traffic and workspace reuse:
+  - preallocate per-bucket scratch instead of allocating per step;
+  - avoid host-device copies for metadata that can be updated on device;
+  - keep JIT builds out of profiler runs with `require_cached`;
+  - track peak allocator/KV/workspace bytes in artifacts.
+- [ ] Backpressure and fairness policies once the scheduler is continuous:
+  - max active requests, max queued requests, max prefill chunk tokens;
+  - prefill-vs-decode policy to protect decode latency (default
+    `protect_decode`, see §Engine-loop contract);
+  - sampling-parameter grouping without starving incompatible requests
+    once the per-row sampler is live.
+- [ ] Profiler summaries for accepted rows: expected kernel names,
+      duration/share for attention, MoE, projection, sampling, graph
+      replay, and any CPU-side bottleneck.
+- [ ] Only update `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, and
+      `benchmarks/results/` for retained rows with correctness green,
+      protocol shape satisfied, and profiler evidence. Rejected/blocked
+      diagnostics stay useful but are not scoreboard entries.
+
+## Out of scope (C6 onward)
 
 C6 onward is out of scope for this doc:
 

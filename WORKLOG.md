@@ -26968,3 +26968,31 @@ the doc match what `hipengine/server/api.py` already exposes today, plus
 the new `HIPENGINE_KV_POOL_*` / `HIPENGINE_PREFIX_CACHE` /
 `HIPENGINE_METRICS` / `HIPENGINE_PREFILL_DECODE_POLICY` /
 `HIPENGINE_STREAM_QUEUE_DEPTH` knobs that land in C4/C5.
+
+## 2026-05-27 — restore performance-scaling overlay clobbered from 8d15da9
+
+The previous `docs: scope CONCURRENCY ...` commit was based on a pre-`8d15da9`
+read of `docs/CONCURRENCY.md` and unintentionally clobbered the
+performance-scaling work overlay (his section B), the `batch_execution_metadata`
+TypeError-shim cleanup item (his A.1), the HIP-guarded reduced-shape equality
+diagnostics item (his A.3), and the "extend native decode correctness to
+non-compact slots after scheduler compaction/reclaim" item (his A.6).
+
+Restored in this commit:
+
+- New `## Performance gates and optimization work` section that overlays
+  the C0..C5 phase ladder: baseline artifacts, per-row scaling reporting,
+  target throughput envelope (2-4× c=1 plausible at c=8, not 8×), and the
+  full optimization checklist (hipGraph capture/replay buckets, eliminating
+  residual serial loops, c-aware projection dispatch thresholds, MoE
+  routed-lane reuse, memory/workspace reuse, backpressure/fairness,
+  profiler discipline, benchmarks/* update rules).
+- C2 bullets for TypeError-shim removal and HIP-guarded reduced-shape
+  equality diagnostics.
+- C4 bullet for non-compact-slot native decode after scheduler
+  compaction/reclaim.
+- Renamed the "C6 onward is out of scope" paragraph as its own
+  `## Out of scope (C6 onward)` heading for visibility.
+
+Validation: docs-only change; re-read `docs/CONCURRENCY.md` end-to-end
+(911 lines).
