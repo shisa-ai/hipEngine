@@ -43,6 +43,7 @@ from scripts.qwen35_batch_hidden_bisect import (
     hidden_comparison,
     run as run_hidden_bisect,
 )
+from scripts.qwen35_batch_int8_diagnostic import build_parser as build_int8_diagnostic_parser, run as run_int8_diagnostic
 from scripts.qwen35_batch_serial_bench import _load_prompt_slices, _summarize_samples
 
 
@@ -227,6 +228,37 @@ def test_gguf_cN_diagnostic_template_records_blocked_c2_command(tmp_path: Path) 
     assert len(payload["independent_c1_commands"]) == 2
     assert all("scripts/qwen35_gguf_e2e_correctness.py" in command for command in payload["independent_c1_commands"])
     assert any("native GGUF c>N" in reason for reason in payload["blockers"])
+
+
+def test_int8_cN_diagnostic_template_records_blocked_c2_gate(tmp_path: Path) -> None:
+    output = tmp_path / "int8-c2.json"
+    args = build_int8_diagnostic_parser().parse_args(
+        [
+            "--fixture",
+            "fixtures/qwen35_paro/parent_512_32_seed1234.json",
+            "--rows",
+            "2",
+            "--prompt-length",
+            "512",
+            "--decode-tokens",
+            "128",
+            "--json",
+            str(output),
+        ]
+    )
+
+    payload = run_int8_diagnostic(args)
+
+    assert payload["status"] == "blocked"
+    assert payload["mode"] == "qwen35_paro_int8_cN_equality_template"
+    assert payload["performance_claim"] is False
+    assert payload["workload"]["kv_storage_dtype"] == "int8_per_token_head"
+    assert payload["workload"]["native_compact_prefill"] is False
+    assert payload["workload"]["native_caware_decode"] is False
+    assert payload["execution"]["batch_execution"]["throughput_claim_eligible"] is False
+    assert "--kv-storage int8_per_token_head" in payload["commands"]["future_generated_token_gate"]
+    assert any("compact c>N native prefill" in reason for reason in payload["blockers"])
+    validate_cn_diagnostic_artifact_payload(payload)
 
 
 def test_submit_poll_text_generator_preserves_prompt_order_and_row_seeds() -> None:

@@ -28187,3 +28187,30 @@ python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_retai
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY C3.1 INT8 c>N blocked diagnostic template
+
+Materially advanced C3.1 without closing it:
+
+- Added `scripts/qwen35_batch_int8_diagnostic.py`, a correctness-only INT8 KV c>N generated-token equality template.
+- The template emits a schema-checked `status=blocked` artifact with `performance_claim=false`, `native_compact_prefill=false`, `native_caware_decode=false`, `throughput_claim_eligible=false`, and the exact future retained-bench command using `--kv-storage int8_per_token_head`.
+- Generated `/tmp/hipengine-int8-c2-diagnostic.json` for c=2, prompt 512, decode 128, max_layers 40. It records blockers: compact c>N native prefill is not wired for INT8 retained KV, and `step_batch_native` still rejects non-BF16 KV before generated-token equality can run.
+- Updated `docs/CONCURRENCY.md` C3.1 progress text. C3.1 remains open because its acceptance requires `eq_ok` or `rejected_correctness` with the generated-token gate executed; blocked-before-execution is not terminal for that item.
+
+Validation:
+
+```bash
+python3 scripts/qwen35_batch_int8_diagnostic.py --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --rows 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json /tmp/hipengine-int8-c2-diagnostic.json
+# status=blocked; performance_claim=false; future command includes --kv-storage int8_per_token_head
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_int8_cN_diagnostic_template_records_blocked_c2_gate -q
+# 1 passed
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```
