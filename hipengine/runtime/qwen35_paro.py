@@ -7276,19 +7276,18 @@ def _w4_multi_row_single_site_enabled(prefix: str) -> bool:
 def _w4_down_proj_small_batch_mode(site: str) -> str:
     """Dispatch mode for verifier-sized W4 down projections.
 
-    Defaults to ``gemv`` because the standard pack8 GEMV arithmetic path passed
-    the 27B DFlash exact-suite gate and avoids the slow prefill projection
-    kernel at B+1<=8.  ``multi_row`` remains diagnostic only: it is faster, but
-    currently fails branch-copy exactness for dense down because it follows the
-    FP16 prefill-WMMA dequantization path.  ``multi_row_decode`` keeps the
-    weight-sharing launch shape but matches row-wise GEMV dequantization for
-    exactness experiments.  Site filtering
+    Defaults to ``multi_row_decode`` because it passed the 27B DFlash
+    exact-suite gate while preserving the standard row-wise pack8 GEMV
+    dequantization and sharing weights across verifier rows.  ``gemv`` keeps the
+    old row-wise exact fallback.  ``multi_row`` remains diagnostic only: it is
+    faster, but currently fails branch-copy exactness for dense down because it
+    follows the FP16 prefill-WMMA dequantization path.  Site filtering
     reuses ``HIPENGINE_W4_MULTI_ROW_PACK8_SITES`` so experiments can isolate
     ``single_shared_down`` vs ``single_dense_down``.
     """
 
     raw = os.environ.get("HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH")
-    mode = "gemv" if raw is None or raw.strip() == "" else raw.strip().lower()
+    mode = "multi_row_decode" if raw is None or raw.strip() == "" else raw.strip().lower()
     aliases = {
         "0": "prefill",
         "off": "prefill",
@@ -7298,10 +7297,10 @@ def _w4_down_proj_small_batch_mode(site: str) -> str:
         "decode_gemv": "gemv",
         "single": "gemv",
         "single_gemv": "gemv",
-        "1": "gemv",
-        "on": "gemv",
-        "true": "gemv",
-        "yes": "gemv",
+        "1": "multi_row_decode",
+        "on": "multi_row_decode",
+        "true": "multi_row_decode",
+        "yes": "multi_row_decode",
         "multi_row_exact": "multi_row_decode",
         "decode_multi_row": "multi_row_decode",
         "multi_row_gemv": "multi_row_decode",

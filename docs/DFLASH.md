@@ -305,6 +305,31 @@ unit test for the kernel arithmetic gate.
 Retained artifact:
 [`2026-05-26-hipengine-dflash-gpu1-multi-row-decode-profile-route.json`](../benchmarks/results/2026-05-26-hipengine-dflash-gpu1-multi-row-decode-profile-route.json).
 
+### 2026-05-26 W7900 27B multi-row-decode default
+
+The real 27B dense lane was validated on GPU0/W7900 (`HIP_VISIBLE_DEVICES=0`)
+after the GPU1 OOM.  `multi_row_decode` passed the B=4/D64 9-prompt
+branch-copy exact gate and is now the default verifier-sized W4 down-projection
+mode for `B+1<=8`.  Force the prior row-wise path with
+`HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=gemv`, roll back further with `prefill`, and
+keep `multi_row` as the rejected prefill-dequant diagnostic.
+
+| Metric | Prior row-wise default | `multi_row_decode` default |
+| --- | ---: | ---: |
+| exact rows | 9/9 | 9/9 |
+| AR decode | 32.71 tok/s | 32.50 tok/s |
+| DFlash decode | 30.20 tok/s | 31.74 tok/s |
+| vs AR | 0.923x | 0.977x |
+| target verify sum | 15.75 s | 14.83 s |
+| target verify rows/output | 1.40 | 1.40 |
+| avg accept length | 2.56 | 2.56 |
+
+An explicit env-on run measured `31.95 tok/s` and summed verifier `14.72 s`, so
+the retained no-env default run is within normal same-session variance.  This is
+default-on exact speed work, not a speculative throughput claim: aggregate speed
+is still below AR and below the `>1.10x` promotion gate.  Retained artifact:
+[`2026-05-26-hipengine-dflash-27b-multi-row-decode-default.json`](../benchmarks/results/2026-05-26-hipengine-dflash-27b-multi-row-decode-default.json).
+
 ### 2026-05-25 adaptive D64 probe guard
 
 On the same 27B B=4/D64 suite, the old adaptive default

@@ -1,0 +1,444 @@
+{
+  "commands": {
+    "env_multi_row_decode": "HIP_VISIBLE_DEVICES=0 HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=multi_row_decode HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-w7900-multi-row-decode-9prompt-20260526.json",
+    "new_default": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-w7900-multi-row-decode-default-9prompt-20260526.json",
+    "prior_rowwise_default": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-w7900-default-9prompt-20260526.json"
+  },
+  "correctness_gate": {
+    "env_multi_row_decode_exact": true,
+    "new_default_exact": true,
+    "oracle": "same-session greedy AR equality plus finite logits from dflash_chain_e2e_bench",
+    "prior_rowwise_default_exact": true
+  },
+  "decision": {
+    "accepted": false,
+    "defaulted": true,
+    "reason": "Default-on exact speed work: multi_row_decode preserves row-wise GEMV dequantization, passes the 27B 9-prompt exact gate, and reduces verifier cost. It remains diagnostic/performance_claim=false because aggregate speed is still below AR and below the >1.10x promotion gate."
+  },
+  "deltas": {
+    "env_multi_row_decode_vs_prior_spec_tok_s_percent": 5.787955008790258,
+    "env_multi_row_decode_vs_prior_summed_target_verify_seconds_percent": -6.564079617306473,
+    "new_default_vs_prior_spec_tok_s_percent": 5.104743952170554,
+    "new_default_vs_prior_speedup_relative_percent": 5.771012110135532,
+    "new_default_vs_prior_summed_target_verify_seconds_percent": -5.829126467444324
+  },
+  "hardware": {
+    "arch": "gfx1100",
+    "backend": "hip_gfx1100",
+    "gpu": "AMD Radeon Pro W7900",
+    "selection": "HIP_VISIBLE_DEVICES=0"
+  },
+  "measurements": {
+    "env_multi_row_decode": {
+      "acceptance": {
+        "accept_histogram": {
+          "0": 34,
+          "1": 14,
+          "2": 22,
+          "3": 10,
+          "4": 81
+        },
+        "accepted_output_tokens": 412,
+        "avg_accept_length": 2.559006211180124,
+        "exact_rate_0_to_n": {
+          "0": 0.2111801242236025,
+          "1": 0.08695652173913043,
+          "10": 0.0,
+          "2": 0.13664596273291926,
+          "3": 0.062111801242236024,
+          "4": 0.5031055900621118,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "ge_rate_1_to_n": {
+          "1": 0.7888198757763976,
+          "10": 0.0,
+          "2": 0.7018633540372671,
+          "3": 0.5652173913043478,
+          "4": 0.5031055900621118,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "multi_token_acceptance_rate": 0.7018633540372671,
+        "steps": 161
+      },
+      "all_correctness_passed": true,
+      "all_exact_match_ar": true,
+      "ar_decode_tok_s": 32.471056188803274,
+      "decode_tokens": 576,
+      "row_speedups": [
+        {
+          "ar_decode_tok_s": 32.56572911038449,
+          "prompt_id": "code:quicksort_prefix",
+          "spec_decode_tok_s": 31.351448756907768,
+          "speedup_vs_ar": 0.9627129382130274,
+          "target_verify_rows_per_output_token": 1.421875,
+          "target_verify_seconds": 1.6686542250099592
+        },
+        {
+          "ar_decode_tok_s": 32.64475255181179,
+          "prompt_id": "code:function_continuation",
+          "spec_decode_tok_s": 26.326143918412498,
+          "speedup_vs_ar": 0.8064433595148017,
+          "target_verify_rows_per_output_token": 1.71875,
+          "target_verify_seconds": 1.9798156900214963
+        },
+        {
+          "ar_decode_tok_s": 32.47405472479196,
+          "prompt_id": "code:class_continuation",
+          "spec_decode_tok_s": 36.990276361446995,
+          "speedup_vs_ar": 1.1390716889199295,
+          "target_verify_rows_per_output_token": 1.1875,
+          "target_verify_seconds": 1.4220696339325514
+        },
+        {
+          "ar_decode_tok_s": 32.36205425221877,
+          "prompt_id": "code:json_yaml_continuation",
+          "spec_decode_tok_s": 33.603947939273674,
+          "speedup_vs_ar": 1.0383749955233377,
+          "target_verify_rows_per_output_token": 1.328125,
+          "target_verify_seconds": 1.5558100659982301
+        },
+        {
+          "ar_decode_tok_s": 32.531880351849075,
+          "prompt_id": "code:humaneval_add",
+          "spec_decode_tok_s": 39.99601607211017,
+          "speedup_vs_ar": 1.2294406483588596,
+          "target_verify_rows_per_output_token": 1.09375,
+          "target_verify_seconds": 1.3145072549232282
+        },
+        {
+          "ar_decode_tok_s": 32.220647169194535,
+          "prompt_id": "code:humaneval_sort_third",
+          "spec_decode_tok_s": 21.54133165685473,
+          "speedup_vs_ar": 0.668556765596252,
+          "target_verify_rows_per_output_token": 2.046875,
+          "target_verify_seconds": 2.4227868660818785
+        },
+        {
+          "ar_decode_tok_s": 32.35277516160358,
+          "prompt_id": "math:short_gsm8k_style",
+          "spec_decode_tok_s": 32.37578174905794,
+          "speedup_vs_ar": 1.000711116352135,
+          "target_verify_rows_per_output_token": 1.40625,
+          "target_verify_seconds": 1.6109249839209951
+        },
+        {
+          "ar_decode_tok_s": 32.544231488150025,
+          "prompt_id": "instruct:simple_qa_no_template",
+          "spec_decode_tok_s": 39.39472559881098,
+          "speedup_vs_ar": 1.2104979530137423,
+          "target_verify_rows_per_output_token": 1.171875,
+          "target_verify_seconds": 1.3190436139702797
+        },
+        {
+          "ar_decode_tok_s": 32.54778541249215,
+          "prompt_id": "instruct:simple_qa_qwen_static_chat",
+          "spec_decode_tok_s": 36.58738964263099,
+          "speedup_vs_ar": 1.1241130288572074,
+          "target_verify_rows_per_output_token": 1.25,
+          "target_verify_seconds": 1.424433684995165
+        }
+      ],
+      "rows": 9,
+      "spec_decode_tok_s": 31.948639381649777,
+      "speedup_vs_ar": 0.9839113084552624,
+      "summed_phase_seconds": {
+        "commit": 0.02279133495176211,
+        "draft": 3.277744387916755,
+        "target_verify": 14.718046018853784
+      },
+      "target_verify_rows_per_output_token": 1.4027777777777777
+    },
+    "new_multi_row_decode_default": {
+      "acceptance": {
+        "accept_histogram": {
+          "0": 34,
+          "1": 14,
+          "2": 22,
+          "3": 10,
+          "4": 81
+        },
+        "accepted_output_tokens": 412,
+        "avg_accept_length": 2.559006211180124,
+        "exact_rate_0_to_n": {
+          "0": 0.2111801242236025,
+          "1": 0.08695652173913043,
+          "10": 0.0,
+          "2": 0.13664596273291926,
+          "3": 0.062111801242236024,
+          "4": 0.5031055900621118,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "ge_rate_1_to_n": {
+          "1": 0.7888198757763976,
+          "10": 0.0,
+          "2": 0.7018633540372671,
+          "3": 0.5652173913043478,
+          "4": 0.5031055900621118,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "multi_token_acceptance_rate": 0.7018633540372671,
+        "steps": 161
+      },
+      "all_correctness_passed": true,
+      "all_exact_match_ar": true,
+      "ar_decode_tok_s": 32.4995450580766,
+      "decode_tokens": 576,
+      "row_speedups": [
+        {
+          "ar_decode_tok_s": 32.70676386149434,
+          "prompt_id": "code:quicksort_prefix",
+          "spec_decode_tok_s": 31.010780432367305,
+          "speedup_vs_ar": 0.9481457891612531,
+          "target_verify_rows_per_output_token": 1.421875,
+          "target_verify_seconds": 1.6918457261053845
+        },
+        {
+          "ar_decode_tok_s": 32.60050332517433,
+          "prompt_id": "code:function_continuation",
+          "spec_decode_tok_s": 26.170350034643352,
+          "speedup_vs_ar": 0.8027590793187058,
+          "target_verify_rows_per_output_token": 1.71875,
+          "target_verify_seconds": 1.9949234299710952
+        },
+        {
+          "ar_decode_tok_s": 32.4177278880131,
+          "prompt_id": "code:class_continuation",
+          "spec_decode_tok_s": 37.589942475371515,
+          "speedup_vs_ar": 1.1595489543630513,
+          "target_verify_rows_per_output_token": 1.1875,
+          "target_verify_seconds": 1.3933788540307432
+        },
+        {
+          "ar_decode_tok_s": 32.35461026540696,
+          "prompt_id": "code:json_yaml_continuation",
+          "spec_decode_tok_s": 34.57774773612639,
+          "speedup_vs_ar": 1.0687116133522514,
+          "target_verify_rows_per_output_token": 1.328125,
+          "target_verify_seconds": 1.5006208919512574
+        },
+        {
+          "ar_decode_tok_s": 32.4056415719505,
+          "prompt_id": "code:humaneval_add",
+          "spec_decode_tok_s": 39.30445637683941,
+          "speedup_vs_ar": 1.2128893140279733,
+          "target_verify_rows_per_output_token": 1.09375,
+          "target_verify_seconds": 1.3412966790492646
+        },
+        {
+          "ar_decode_tok_s": 32.35892352935899,
+          "prompt_id": "code:humaneval_sort_third",
+          "spec_decode_tok_s": 21.305789620511018,
+          "speedup_vs_ar": 0.6584208402724042,
+          "target_verify_rows_per_output_token": 2.046875,
+          "target_verify_seconds": 2.454919766052626
+        },
+        {
+          "ar_decode_tok_s": 32.60122592440366,
+          "prompt_id": "math:short_gsm8k_style",
+          "spec_decode_tok_s": 31.73049172237863,
+          "speedup_vs_ar": 0.9732913662803938,
+          "target_verify_rows_per_output_token": 1.40625,
+          "target_verify_seconds": 1.6506635239056777
+        },
+        {
+          "ar_decode_tok_s": 32.529915363143814,
+          "prompt_id": "instruct:simple_qa_no_template",
+          "spec_decode_tok_s": 38.27055706655014,
+          "speedup_vs_ar": 1.176472691039044,
+          "target_verify_rows_per_output_token": 1.171875,
+          "target_verify_seconds": 1.3676278430211823
+        },
+        {
+          "ar_decode_tok_s": 32.524322621194706,
+          "prompt_id": "instruct:simple_qa_qwen_static_chat",
+          "spec_decode_tok_s": 36.32549546030654,
+          "speedup_vs_ar": 1.1168716988631386,
+          "target_verify_rows_per_output_token": 1.25,
+          "target_verify_seconds": 1.4385392809926998
+        }
+      ],
+      "rows": 9,
+      "spec_decode_tok_s": 31.742305270477246,
+      "speedup_vs_ar": 0.9766999880691817,
+      "summed_phase_seconds": {
+        "commit": 0.023013641854049638,
+        "draft": 3.2789819859026466,
+        "target_verify": 14.83381599507993
+      },
+      "target_verify_rows_per_output_token": 1.4027777777777777
+    },
+    "prior_rowwise_default": {
+      "acceptance": {
+        "accept_histogram": {
+          "0": 34,
+          "1": 14,
+          "2": 22,
+          "3": 10,
+          "4": 81
+        },
+        "accepted_output_tokens": 412,
+        "avg_accept_length": 2.559006211180124,
+        "exact_rate_0_to_n": {
+          "0": 0.2111801242236025,
+          "1": 0.08695652173913043,
+          "10": 0.0,
+          "2": 0.13664596273291926,
+          "3": 0.062111801242236024,
+          "4": 0.5031055900621118,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "ge_rate_1_to_n": {
+          "1": 0.7888198757763976,
+          "10": 0.0,
+          "2": 0.7018633540372671,
+          "3": 0.5652173913043478,
+          "4": 0.5031055900621118,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "multi_token_acceptance_rate": 0.7018633540372671,
+        "steps": 161
+      },
+      "all_correctness_passed": true,
+      "all_exact_match_ar": true,
+      "ar_decode_tok_s": 32.7055625146283,
+      "decode_tokens": 576,
+      "row_speedups": [
+        {
+          "ar_decode_tok_s": 32.88320728593049,
+          "prompt_id": "code:quicksort_prefix",
+          "spec_decode_tok_s": 29.73639598424894,
+          "speedup_vs_ar": 0.9043033949116043,
+          "target_verify_rows_per_output_token": 1.421875,
+          "target_verify_seconds": 1.77992189800716
+        },
+        {
+          "ar_decode_tok_s": 32.94527446284415,
+          "prompt_id": "code:function_continuation",
+          "spec_decode_tok_s": 25.021975364138644,
+          "speedup_vs_ar": 0.7595011962143026,
+          "target_verify_rows_per_output_token": 1.71875,
+          "target_verify_seconds": 2.1053790250152815
+        },
+        {
+          "ar_decode_tok_s": 32.649058233229624,
+          "prompt_id": "code:class_continuation",
+          "spec_decode_tok_s": 35.97642884641517,
+          "speedup_vs_ar": 1.1019132187341014,
+          "target_verify_rows_per_output_token": 1.1875,
+          "target_verify_seconds": 1.4699249510013033
+        },
+        {
+          "ar_decode_tok_s": 32.604212943878075,
+          "prompt_id": "code:json_yaml_continuation",
+          "spec_decode_tok_s": 31.999203299915948,
+          "speedup_vs_ar": 0.9814438200056068,
+          "target_verify_rows_per_output_token": 1.328125,
+          "target_verify_seconds": 1.649095482978737
+        },
+        {
+          "ar_decode_tok_s": 32.70623460329443,
+          "prompt_id": "code:humaneval_add",
+          "spec_decode_tok_s": 38.55235536930615,
+          "speedup_vs_ar": 1.1787463716603699,
+          "target_verify_rows_per_output_token": 1.09375,
+          "target_verify_seconds": 1.3711651419871487
+        },
+        {
+          "ar_decode_tok_s": 32.560692404232576,
+          "prompt_id": "code:humaneval_sort_third",
+          "spec_decode_tok_s": 20.242481222263685,
+          "speedup_vs_ar": 0.6216846058111577,
+          "target_verify_rows_per_output_token": 2.046875,
+          "target_verify_seconds": 2.611936792032793
+        },
+        {
+          "ar_decode_tok_s": 32.58421138412022,
+          "prompt_id": "math:short_gsm8k_style",
+          "spec_decode_tok_s": 30.006413495653288,
+          "speedup_vs_ar": 0.9208881302027394,
+          "target_verify_rows_per_output_token": 1.40625,
+          "target_verify_seconds": 1.765576523001073
+        },
+        {
+          "ar_decode_tok_s": 32.772478635480795,
+          "prompt_id": "instruct:simple_qa_no_template",
+          "spec_decode_tok_s": 36.43573527258651,
+          "speedup_vs_ar": 1.1117784430604443,
+          "target_verify_rows_per_output_token": 1.171875,
+          "target_verify_seconds": 1.4519687419815455
+        },
+        {
+          "ar_decode_tok_s": 32.649140012962064,
+          "prompt_id": "instruct:simple_qa_qwen_static_chat",
+          "spec_decode_tok_s": 34.18233267722131,
+          "speedup_vs_ar": 1.04695966459302,
+          "target_verify_rows_per_output_token": 1.25,
+          "target_verify_seconds": 1.5470526779827196
+        }
+      ],
+      "rows": 9,
+      "spec_decode_tok_s": 30.200639930127267,
+      "speedup_vs_ar": 0.9234098914097365,
+      "summed_phase_seconds": {
+        "commit": 0.02147752619930543,
+        "draft": 3.2891070821497124,
+        "target_verify": 15.752021233987762
+      },
+      "target_verify_rows_per_output_token": 1.4027777777777777
+    }
+  },
+  "models": {
+    "drafter_name": "z-lab/Qwen3.6-27B-DFlash",
+    "drafter_path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106",
+    "drafter_revision": "0919688658996800f86b895034249700e9481106",
+    "target_name": "z-lab/Qwen3.6-27B-PARO",
+    "target_path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207",
+    "target_revision": "84f86409151d4f2ec86dc0b6a096d5f6daa7f207"
+  },
+  "notes": [
+    "Set HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=gemv to force the old row-wise down-projection path; set prefill to roll back further; old multi_row remains the rejected prefill-dequant diagnostic."
+  ],
+  "performance_claim": false,
+  "run_tag": "dflash-27b-w7900-multi-row-decode-default",
+  "schema_version": 1,
+  "status": "diagnostic",
+  "summary": "27B DFlash B=4/D64 W7900 validation of exact-dequant multi-row down projection; exact 9/9 and promoted as the default down-projection small-batch mode, but still below AR.",
+  "timestamp": "2026-05-26T19:48:10.200324+00:00",
+  "validation": [
+    "python3 -m py_compile hipengine/runtime/qwen35_paro.py",
+    "full 27B B=4/D64 9-prompt new-default command above: exact 9/9"
+  ],
+  "workload": {
+    "canonical_commit_mode": "branch_copy",
+    "decode_tokens": 64,
+    "draft_budget": 4,
+    "full_attn_chain_mode": "batched",
+    "prompt_suite": "fixtures/dflash/stable_prompts.jsonl",
+    "shape": "DFlash chain B=4 D64 9-prompt stable suite",
+    "verifier_mode": "native_bulk_bplus1"
+  }
+}

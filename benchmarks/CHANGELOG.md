@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-05-26
 
+- [diagnostic retained] hipEngine / DFlash 27B multi-row-decode down-projection default / Qwen3.6-27B-PARO dense + z-lab DFlash / W7900/gfx1100 B=4 D64 9-prompt branch-copy: exact `9/9`; prior row-wise default `0.923x -> 0.977x` AR (`30.20 -> 31.74 tok/s`, +5.1% spec tok/s) by defaulting `HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH` to `multi_row_decode`, which shares W4 down-projection weights across verifier rows while preserving row-wise GEMV dequantization; summed target verify `15.75 -> 14.83 s` (-5.8%); artifact `benchmarks/results/2026-05-26-hipengine-dflash-27b-multi-row-decode-default.json`.
 - [diagnostic retained] hipEngine / DFlash GPU1 exact-dequant multi-row + profile route / Qwen3.6-35B-A3B-PARO packed + z-lab DFlash / RX 7900 XTX/gfx1100 B=4 D16 4-prompt branch-copy: exact `4/4`; opt-in `HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=multi_row_decode` all-chain DFlash `44.97 -> 46.87 tok/s` (+4.2%) and summed target verify seconds `1.200 -> 1.144` (-4.6%) while still below AR; generated zero-probe profile route selects AR for all four prompts and measures exact `1.021x` AR (plain-AR variance, no speculative speed claim); 27B dense target+drafter OOMs on GPU1; artifact `benchmarks/results/2026-05-26-hipengine-dflash-gpu1-multi-row-decode-profile-route.json`.
 
 ## 2026-05-25

@@ -24006,3 +24006,61 @@ Docs/rollup updated:
 
 Next: run the `multi_row_decode` mode on W7900 for the 27B dense 9-prompt D64
 suite before even considering a default; GPU1 cannot hold that lane.
+
+## 2026-05-26 — 27B W7900 multi_row_decode default validation
+
+Ran the real 27B dense DFlash B=4/D64 9-prompt branch-copy validation on GPU0
+(W7900) after the GPU1 OOM noted above.  GPU selection: `HIP_VISIBLE_DEVICES=0`.
+
+Prior row-wise down-GEMV default baseline:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-w7900-default-9prompt-20260526.json
+```
+
+Result: exact `9/9`, DFlash `30.20 tok/s` vs AR `32.71 tok/s`, `0.923x` AR,
+rows/output `1.403`, avg accept `2.559`, summed target verify `15.752 s`.
+
+Opt-in `multi_row_decode` check:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=multi_row_decode HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-w7900-multi-row-decode-9prompt-20260526.json
+```
+
+Result: exact `9/9`, DFlash `31.95 tok/s` vs AR `32.47 tok/s`, `0.984x` AR,
+rows/output and acceptance unchanged, summed target verify `14.718 s` (-6.6% vs
+prior baseline).  This validates the kernel on the real 27B suite.
+
+Promoted `multi_row_decode` to the default
+`HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH` mode.  Explicit rollback knobs now are:
+`gemv` for the previous row-wise exact path, `prefill` for the older WMMA prefill
+path, and `multi_row` for the rejected FP16-prefill-dequant diagnostic.
+
+Retained no-env default command after the code change:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-b4-d64-w7900-multi-row-decode-default-9prompt-20260526.json
+```
+
+Result: exact `9/9`, DFlash `31.74 tok/s` vs AR `32.50 tok/s`, `0.977x` AR,
+rows/output `1.403`, avg accept `2.559`, summed target verify `14.834 s`.  This
+is default-on exact speed work, but `performance_claim=false`: still below AR
+and below the `>1.10x` speed gate.
+
+Retained artifact:
+- `benchmarks/results/2026-05-26-hipengine-dflash-27b-multi-row-decode-default.json`
+
+Validation:
+```bash
+python3 -m py_compile hipengine/runtime/qwen35_paro.py
+python3 -m json.tool benchmarks/results/2026-05-26-hipengine-dflash-27b-multi-row-decode-default.json >/tmp/hipengine-dflash-27b-multirow-artifact-check.json
+```
+
+Docs/rollup updated:
+- `docs/DFLASH.md` W7900 27B multi_row_decode default section.
+- `benchmarks/README.md` and `benchmarks/CHANGELOG.md` retained diagnostic row.
+
+Next: run the zero-probe route manifest on the new 27B default rows.  The new
+all-chain row is near break-even (`0.977x`) and has five prompt winners, so a
+profile route may now exceed AR more convincingly than the earlier `1.015x`
+oracle, though still likely below the `>1.10x` promotion gate.
