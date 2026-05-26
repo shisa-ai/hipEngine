@@ -32,6 +32,7 @@ from hipengine.generation import (
 )
 from hipengine.kvcache import ChunkedKVPool, FixedPagedKVPolicy
 from hipengine.speculative import AcceptResult, DraftBatch, TargetAcceptSummary, TargetStateCommitBuffers, TargetVerifyBuffers
+from scripts import qwen35_batch_retained_bench as retained_bench
 from scripts.qwen35_batch_artifact_schema import validate_cn_diagnostic_artifact_payload
 from scripts.qwen35_batch_c_sweep import build_parser as build_c_sweep_parser, build_sweep_commands, run_sweep
 from scripts.qwen35_batch_gguf_diagnostic import build_parser as build_gguf_diagnostic_parser, run as run_gguf_diagnostic
@@ -1156,6 +1157,67 @@ def test_qwen35_batch_diagnostic_artifact_schema_requires_label_fields() -> None
 
     with pytest.raises(ValueError, match="native_caware_decode"):
         validate_cn_diagnostic_artifact_payload(missing)
+
+
+def test_qwen35_retained_payload_mirrors_fallback_native_decode_label(monkeypatch) -> None:
+    monkeypatch.setattr(retained_bench, "_hardware_context", lambda: {"gpu": "test"})
+    monkeypatch.setattr(retained_bench, "_software_context", lambda: {"python": "test"})
+    args = argparse.Namespace(
+        batch_size=2,
+        prompt_length=512,
+        decode_tokens=128,
+        warmup_decode_tokens=0,
+        max_layers=40,
+        model="/tmp/model",
+        kv_storage="bf16",
+        kv_scale_dtype="fp16",
+        kv_scale_granularity="per_token_head",
+    )
+    bench = {
+        "load_seconds": 0.1,
+        "prefill_seconds": 1.0,
+        "warmup_seconds": 0.0,
+        "decode_seconds": 2.0,
+        "warmup_step_seconds": [],
+        "decode_step_seconds": [0.25, 0.5],
+        "seed_tokens": {
+            "0": {"token_id": 10, "token_text": "a", "logit": 1.0},
+            "1": {"token_id": 20, "token_text": "b", "logit": 1.0},
+        },
+        "generated_tokens": {"0": [], "1": []},
+        "scheduler_metadata": {},
+        "batch_execution": {
+            "path": "scheduler_native_compact_batch",
+            "scheduler_owned": True,
+            "row_execution": "native_linear_batch_with_per_row_full_attention_fallback",
+            "native_prefill_plan": {"full_layer_limit_native": True},
+            "native_compact_prefill": True,
+            "native_caware_decode": False,
+            "throughput_claim_eligible": False,
+            "blockers": ["full-attention decode used a per-row fallback"],
+            "decode_execution": {
+                "full_attention_decode_path": "per_row_splitk_fallback",
+                "native_caware_decode": False,
+            },
+        },
+        "completed": [],
+        "request_observability": {},
+        "finite_logits": True,
+    }
+
+    payload = retained_bench._build_payload(
+        args,
+        ["--batch-size", "2"],
+        bench,
+        [512, 512],
+        {"passed": True, "skipped": False, "batch_sequences": [[10], [20]], "c1_sequences": [[10], [20]], "mismatches": []},
+    )
+
+    assert payload["status"] == "blocked"
+    assert payload["performance_claim"] is False
+    assert payload["workload"]["native_caware_decode"] is False
+    assert payload["execution"]["batch_execution"]["native_caware_decode"] is False
+    assert payload["execution"]["batch_execution"]["decode_execution"]["full_attention_decode_path"] == "per_row_splitk_fallback"
 
 
 def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -> None:

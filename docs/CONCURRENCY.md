@@ -656,9 +656,10 @@ roll-up/status view.
       showing reduced L4 1024/1 generated-token and hidden equality vs
       independent c=1. Batch execution metadata now records
       `decode_execution.full_attention_decode_path=per_row_splitk_fallback` and
-      forces `native_caware_decode=false` when that fallback is used, so retained
-      artifacts cannot overclaim long-context native decode. The item remains
-      open until the split-K reducer itself is row-aware/native c>N.
+      forces `native_caware_decode=false` when that fallback is used; the retained
+      bench payload mirrors that execution flag, so artifacts cannot overclaim
+      long-context native decode. The item remains open until the split-K reducer
+      itself is row-aware/native c>N.
 - [x] **C2.8 append-only block-id contract.** Prevent block ids from changing
       backing pointer during a live request; add a debug/memory-audit test.
       Acceptance: the test would fail on pointer mutation or id reuse.

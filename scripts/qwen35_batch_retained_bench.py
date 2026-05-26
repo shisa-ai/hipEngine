@@ -375,7 +375,9 @@ def _build_payload(
     aggregate_decode_tokens = args.batch_size * args.decode_tokens
     prefill_tok_s = aggregate_prefill_tokens / bench["prefill_seconds"] if bench["prefill_seconds"] > 0 else None
     decode_tok_s = aggregate_decode_tokens / bench["decode_seconds"] if bench["decode_seconds"] > 0 and aggregate_decode_tokens else None
-    throughput_claim_eligible = bool(bench["batch_execution"].get("throughput_claim_eligible"))
+    batch_execution = dict(bench["batch_execution"])
+    throughput_claim_eligible = bool(batch_execution.get("throughput_claim_eligible"))
+    native_caware_decode = bool(batch_execution.get("native_caware_decode"))
     equality_passed = bool(equality.get("passed"))
     protocol_shape = args.max_layers == 40 and args.prompt_length >= 512 and args.decode_tokens >= 128
     accepted = bool(bench["finite_logits"] and throughput_claim_eligible and equality_passed and protocol_shape)
@@ -436,7 +438,7 @@ def _build_payload(
             "kv_storage_dtype": kv_policy.storage_dtype.value,
             "scheduler_path": "scheduler_native_compact_batch",
             "native_compact_prefill": True,
-            "native_caware_decode": True,
+            "native_caware_decode": native_caware_decode,
         },
         "commands": {
             "environment": [
@@ -457,7 +459,7 @@ def _build_payload(
             "top1_agreement": None,
         },
         "execution": {
-            "batch_execution": bench["batch_execution"],
+            "batch_execution": batch_execution,
             "scheduler_metadata": bench["scheduler_metadata"],
             "completed": bench["completed"],
             "seed_tokens": bench["seed_tokens"],
