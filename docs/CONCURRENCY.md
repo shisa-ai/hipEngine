@@ -632,12 +632,17 @@ roll-up/status view.
 - [ ] **C2.5 c=4/c=8 BF16 equality.** Extend the same gate to c=4 and c=8.
       Acceptance: generated-token equality passes for both shapes, with
       aggregate/per-request scaling fields recorded even if not yet optimized.
-- [x] **C2.6 slot-validation and long-context guards.** Add CPU structural
-      tests for invalid slot orders/duplicates/out-of-range ids and
-      `max_context >= 1024` rejection until row-aware split-K is live.
-      Acceptance: tests fail if the experimental path silently accepts
-      unsupported shapes. Evidence:
-      `pytest -q tests/test_qwen35_resident_batch_layout.py -q`.
+- [x] **C2.6 slot-validation and long-context fallback guards.** Add CPU
+      structural tests for invalid slot orders/duplicates/out-of-range ids,
+      INT8 KV rejection, and the current `max_context >= 1024` per-row split-K
+      fallback until row-aware split-K is live. Acceptance: tests fail if the
+      experimental path silently accepts unsupported shapes or routes long
+      contexts through a false native c>N reducer. Evidence:
+      `test_qwen35_resident_step_batch_native_rejects_invalid_sparse_slots`,
+      `test_qwen35_resident_step_batch_native_rejects_int8_kv_when_experimental`,
+      `test_qwen35_resident_step_batch_native_accepts_long_context_for_splitk_fallback`,
+      `test_qwen35_resident_run_layers_batch_decode_uses_per_row_splitk_fallback_for_long_context`,
+      and `pytest -q tests/test_qwen35_resident_batch_layout.py -q`.
 - [ ] **C2.7 row-aware split-K full attention.** Make full-attention decode
       and reduction consume per-row spans for `max_context >= 1024` before any
       long-context c>N claim. Acceptance: primitive correctness plus a
