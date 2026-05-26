@@ -626,10 +626,10 @@ roll-up/status view.
 - [ ] **C2.8 append-only block-id contract.** Prevent block ids from changing
       backing pointer during a live request; add a debug/memory-audit test.
       Acceptance: the test would fail on pointer mutation or id reuse.
-- [ ] **C2.9 live admission cap.** Make `KVPolicy.admission_cap()` return
+- [x] **C2.9 live admission cap.** Make `KVPolicy.admission_cap()` return
       current free capacity rather than startup capacity. Acceptance: fake
       policy/scheduler tests show reclaim changes admission capacity before the
-      next admit.
+      next admit. Evidence: `pytest -q tests/test_kvcache_policy.py -q`.
 
 ### C3 packets — widen kernel/model coverage
 
@@ -822,7 +822,7 @@ in place even though pool growth lands in C4.
 - [ ] **Append-only block id contract.** Make the KV allocator's block id
       permanent for its lifetime. Remove any path that reuses a block id at
       a different pointer. Add a debug check that fails on pointer mutation.
-- [ ] **Live admission cap.** `KVPolicy.admission_cap()` returns *current*
+- [x] **Live admission cap.** `KVPolicy.admission_cap()` returns *current*
       free capacity, not startup capacity.
 
 ### C3 — kernel coverage

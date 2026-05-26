@@ -27207,3 +27207,34 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY C2.9 live KV admission cap
+
+Closed bite-sized packet C2.9 from `docs/CONCURRENCY.md`:
+
+- Extended `FixedPagedKVPolicy` with an optional `total_capacity_tokens` pool-capacity mode.
+- In pool-capacity mode, `admission_cap()` now reports current free reservation capacity (`total_capacity_tokens - live reservation capacities`) rather than per-request remaining context; reclaim immediately increases the next admission cap.
+- Kept legacy per-reservation behavior for existing callers when no total capacity is configured.
+- Added a CPU policy test that registers two reservations, verifies current free capacity, reclaims one, verifies capacity increases before the next admit, then fills the pool and rejects over-capacity registration.
+- Marked C2.9 and the phase-ladder live-admission-cap item complete in `docs/CONCURRENCY.md`.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_kvcache_policy.py -q
+# 13 passed
+```
+
+Loop guard after C2.9:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 35
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```

@@ -116,6 +116,50 @@ def test_fixed_paged_policy_c1_spans_and_admission_cap() -> None:
     assert policy.admission_cap(req) == 64 - 3
 
 
+def test_fixed_paged_policy_global_admission_cap_tracks_reclaim() -> None:
+    policy = FixedPagedKVPolicy(block_size=16, storage_dtype="bf16", total_capacity_tokens=128)
+    assert policy.admission_cap() == 128
+
+    policy.register(
+        101,
+        block_table=_tensor(0x1000, (4,), "int32"),
+        live_counts=_tensor(0x2000, (1,), "int64"),
+        max_live_count=3,
+        capacity_tokens=64,
+    )
+    policy.register(
+        202,
+        block_table=_tensor(0x3000, (2,), "int32"),
+        live_counts=_tensor(0x4000, (1,), "int64"),
+        max_live_count=2,
+        capacity_tokens=32,
+    )
+
+    assert policy.admission_cap() == 32
+    assert policy.admission_cap(SimpleNamespace(request_id=101)) == 32
+
+    policy.reclaim(101)
+
+    assert policy.admission_cap() == 96
+    policy.register(
+        303,
+        block_table=_tensor(0x5000, (6,), "int32"),
+        live_counts=_tensor(0x6000, (1,), "int64"),
+        max_live_count=0,
+        capacity_tokens=96,
+    )
+    assert policy.admission_cap() == 0
+
+    with pytest.raises(ValueError, match="admission capacity"):
+        policy.register(
+            404,
+            block_table=_tensor(0x7000, (1,), "int32"),
+            live_counts=_tensor(0x8000, (1,), "int64"),
+            max_live_count=0,
+            capacity_tokens=16,
+        )
+
+
 def test_fixed_paged_policy_accepts_int8_scale_metadata() -> None:
     policy = FixedPagedKVPolicy(block_size=16, storage_dtype="int8_per_token_head")
     metadata = _scale_metadata(0x3000)

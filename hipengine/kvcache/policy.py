@@ -220,7 +220,7 @@ class KVPolicy(Protocol):
     spans_mode: str
     storage_dtype: DType
 
-    def admission_cap(self, seq: Any) -> int: ...
+    def admission_cap(self, seq: Any | None = None) -> int: ...
 
     def batch_spans(self, batch: Sequence[Any], *, role: str = "decode", **metadata: Any) -> KVLiveSpans: ...
 
@@ -244,11 +244,20 @@ class FixedPagedKVPolicy:
 
     spans_mode = "uniform"
 
-    def __init__(self, *, block_size: int = 256, storage_dtype: str | DType = DType.BF16) -> None:
+    def __init__(
+        self,
+        *,
+        block_size: int = 256,
+        storage_dtype: str | DType = DType.BF16,
+        total_capacity_tokens: int | None = None,
+    ) -> None:
         if block_size <= 0:
             raise ValueError("block_size must be positive")
+        if total_capacity_tokens is not None and int(total_capacity_tokens) <= 0:
+            raise ValueError("total_capacity_tokens must be positive")
         self.block_size = int(block_size)
         self.storage_dtype = DType.parse(storage_dtype)
+        self.total_capacity_tokens = None if total_capacity_tokens is None else int(total_capacity_tokens)
         self._reservations: dict[int, KVReservation] = {}
         self._transactions: dict[int, KVTransaction] = {}
         self._next_transaction_id = 0
@@ -275,6 +284,11 @@ class FixedPagedKVPolicy:
         if rid in self._reservations:
             raise ValueError(f"request_id {rid} already has a KV reservation")
         capacity = int(capacity_tokens) if capacity_tokens is not None else block_table.numel * self.block_size
+        if (
+            self.total_capacity_tokens is not None
+            and self._reserved_capacity_tokens() + capacity > self.total_capacity_tokens
+        ):
+            raise ValueError("KV reservation exceeds current policy admission capacity")
         reservation = KVReservation(
             request_id=rid,
             block_table=block_table,
@@ -287,7 +301,14 @@ class FixedPagedKVPolicy:
         self._reservations[rid] = reservation
         return reservation
 
-    def admission_cap(self, seq: Any) -> int:
+    def admission_cap(self, seq: Any | None = None) -> int:
+        if self.total_capacity_tokens is not None:
+            return max(0, self.total_capacity_tokens - self._reserved_capacity_tokens())
+        if seq is None:
+            return sum(
+                reservation.capacity_tokens - reservation.max_live_count
+                for reservation in self._reservations.values()
+            )
         reservation = self._reservation_for(seq)
         return reservation.capacity_tokens - reservation.max_live_count
 
@@ -412,6 +433,9 @@ class FixedPagedKVPolicy:
             return self._reservations[rid]
         except KeyError as exc:
             raise KeyError(f"no KV reservation for request_id {rid}") from exc
+
+    def _reserved_capacity_tokens(self) -> int:
+        return sum(reservation.capacity_tokens for reservation in self._reservations.values())
 
     def _current_transaction(self, txn: KVTransaction) -> KVTransaction:
         try:
