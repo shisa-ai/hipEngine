@@ -26907,3 +26907,64 @@ pytest -q tests/test_qwen35_resident_batch_layout.py tests/test_generation_qwen3
 ```
 
 Next correctness action remains layer-level hidden-state bisection (not more generated-token sweeps): compare c=2 vs independent c=1 after each layer and isolate linear-attention state, full-attention KV/attention, selected-MoE routed-lane mapping, shared expert, O projection, and sampling separately before promoting `step_batch_native` beyond experimental diagnostics.
+
+## 2026-05-27 — CONCURRENCY scope: continuous batching + dynamic KV pool
+
+Restructured `docs/CONCURRENCY.md` as the complete punchlist for vLLM-style
+continuous batching on a single GPU. The destination is one long-lived engine
+loop with mid-stream admission, chunked prefill interleaved with decode,
+refcounted prefix sharing, per-row sampling, unified streaming/cancellation
+reclaim, and `/metrics` observability. Primary target workloads are agentic
+loops and long-context multi-turn chat; `n>1` lowering is the third major
+prefix-sharing consumer.
+
+Major doc changes:
+
+- **Destination state + target workloads** stated explicitly.
+- **Engine-loop contract**: `submit/poll/cancel` interface, work classes
+  (`ADMIT`, `PREFILL_CHUNK`, `DECODE_STEP`, `RECLAIM`, future `VERIFY_STEP` /
+  `PACK_STEP`), commit-point semantics, prefill-vs-decode policy with
+  `protect_decode` default.
+- **Dynamic KV pool** as a first-class concurrency feature: append-only
+  block-id contract (id and pointer permanent for lifetime), chunked grow
+  up to `kv_pool_high_water_bytes`, idle shrink to
+  `kv_pool_low_water_bytes`, scheduler-owned admission against *current*
+  capacity (not startup capacity). New knobs `HIPENGINE_KV_POOL_*` and
+  `HIPENGINE_PREFILL_DECODE_POLICY` to be documented in `docs/ENVS.md`
+  during C4.
+- **KV sharing**: RadixCache is the sole prefix index. Flat block-LRU is
+  explicitly not implemented as a peer; rationale (target workloads are
+  tree-structured, ~200 LoC delta is well-spent, dual-scheme surface area
+  is risky) recorded inline. `HIPENGINE_PREFIX_CACHE` simplified to
+  `{off, radix}`.
+- **KVTC** (KV tiered cache, HBM → pinned host RAM → NVMe / disk) called
+  out as a future feature branch with ABI guardrails so C2 / C4 / C5
+  contracts do not preclude it. Reference designs: vLLM v0.6+ CPU offload,
+  SGLang hierarchical cache. Block id stays stable across tier moves;
+  refcount/eviction live on the radix node, not the block pointer; tier
+  moves happen only at scheduler commit points; `/metrics` schema must be
+  additive.
+- **Streaming / cancellation / EOS / max-tokens / timeout** unified into
+  one `RECLAIM` path.
+- **Per-row sampler** (per-row temperature, top-k, top-p, repetition
+  penalty, seed, stop tokens) and `n>1` lowering to N scheduler requests
+  with a shared prefix.
+- **Observability**: per-request fields, per-pool counters, per-bucket
+  graph-cache stats, Prometheus `/metrics` endpoint behind
+  `HIPENGINE_METRICS`.
+- **Quant/model coverage matrix** under c>N (Qwen3.5/PARO × {w4_paro,
+  INT8 KV}, GGUF Q4_K/Q5_K/Q6_K/Q8_0, W8A16 dense) — GGUF c>N coverage is
+  required for the namesake quant path.
+- **Phase ladder C0..C5** absorbs prior C0..C4 plus the flat Punchlist
+  A/B/C. C6 onward (TP / EP, DMS, KVTC, SpecDec) is explicit out-of-scope.
+- **Forward-compatibility guardrails** for TP, DMS, SpecDec, and KVTC —
+  the work in C0..C5 must already satisfy these; they are not new tasks.
+- Existing GPU0 diagnostic numbers compressed; `/tmp/...` artifact paths
+  flagged as "pending promotion to `benchmarks/results/`" (C0 item).
+
+Validation: docs-only change; re-read `docs/CONCURRENCY.md` end-to-end
+(823 lines). Did not modify any code, tests, or knobs; CLI/env strings in
+the doc match what `hipengine/server/api.py` already exposes today, plus
+the new `HIPENGINE_KV_POOL_*` / `HIPENGINE_PREFIX_CACHE` /
+`HIPENGINE_METRICS` / `HIPENGINE_PREFILL_DECODE_POLICY` /
+`HIPENGINE_STREAM_QUEUE_DEPTH` knobs that land in C4/C5.

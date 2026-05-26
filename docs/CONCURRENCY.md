@@ -1,370 +1,808 @@
 # Concurrency and Continuous Batching
 
-Last updated: 2026-05-26
+Last updated: see git log.
 
-This document is the working guide for turning the current Qwen/PARO resident
-runtime into a vLLM-style `c=1..8` concurrent serving path. It captures what is
-actually implemented today, what the GPU0 diagnostic sweep showed, and the gates
-that must pass before any c>N number is a retained benchmark claim.
+This document is the working guide for turning the current single-request
+resident runtime into a vLLM-style continuous-batching serving path on a
+single GPU. It covers what serving looks like when this work is done, what is
+implemented today, the contracts the implementation must satisfy (engine loop,
+elastic KV pool, prefix sharing, per-row sampler, streaming, observability),
+and the benchmark gates a retained c>N row must pass.
+
+Tensor parallelism (TP), expert parallelism (EP), compact DMS, and speculative
+decoding (MTP / DFlash / EAGLE3) are **out of scope here** and live in their
+own feature branches and docs. Concurrency-side decisions that must not paint
+those follow-ons into a corner are called out in
+§[Forward-compatibility guardrails](#forward-compatibility-guardrails).
 
 Related source-of-truth docs:
 
-- [`PLAN.md`](PLAN.md) — architecture invariants and the long-form concurrent
-  decode design.
+- [`PLAN.md`](PLAN.md) — architecture invariants, long-form concurrent decode
+  design, and §Multi-GPU Strategy for the TP/EP follow-on.
 - [`BENCHMARK.md`](BENCHMARK.md) — evidence policy and c=N benchmark gates.
-- [`KVCACHE.md`](KVCACHE.md) — dense INT8 KV and compact DMS roadmap.
+- [`KVCACHE.md`](KVCACHE.md) — dense INT8 KV capacity path and the compact DMS
+  roadmap (the next-feature DMS plan).
 - [`PREFILL.md`](PREFILL.md) — native/compact prefill details.
+- [`ENVS.md`](ENVS.md) — knobs introduced by this doc.
 
 ## Definitions
 
 | Term | Meaning |
 | --- | --- |
 | HTTP concurrency | Multiple client requests are in flight at the server at once. This can still be serialized internally. |
-| Prompt-list batching | One API call carries multiple prompts, e.g. OpenAI completions `prompt=[...]`. This only counts as true c>N if the generator advances those prompts together. |
+| Prompt-list batching | One API call carries multiple prompts, e.g. OpenAI completions `prompt=[...]`. Counts as true c>N only if the generator advances those prompts together. |
 | c>N decode | `N` independent live requests each advance one target token in the same model step. |
-| Continuous batching | The scheduler can admit, prefill, decode, finish, compact, and reclaim requests while other requests keep running. |
-| Packed/native prefill | Multiple prompt rows are packed into one prefill slab and launched through row-shaped kernels. |
-| Serial bridge | A correctness-first path with batch-shaped slots/KV metadata but active rows execute through the c=1 layer path. Useful for diagnostics; not a throughput claim. |
+| Continuous batching | The scheduler can admit, prefill, decode, finish, compact, and reclaim requests while other requests keep running, under a single long-lived engine loop. |
+| Engine loop | One long-lived scheduler tick driving admission, prefill, decode, verify, reclaim, and pool resize across all active requests. |
+| Elastic KV pool | Dense paged KV backed by an allocator that can grow and shrink between admission cycles up to a high-water cap. |
+| Append-only block id | Allocator contract: a block id, once issued, keeps a fixed device pointer until freed; growth issues fresh ids past the current high water. |
+| Prefix sharing | Multiple requests share refcounted KV pages for a common token prefix via a radix-tree index; the first divergent token forces a copy-on-write fork. |
+| KVTC (KV tiered cache) | Future-direction multi-tier KV storage: hot HBM pages → pinned host RAM → optional NVMe spill, behind the same `KVLiveSpans` and block-id contracts so block ids stay stable across tier moves. KVTC is a follow-on feature branch, not in CONCURRENCY scope. |
+| Per-row sampler | Sampling parameters (temperature, top-k, top-p, repetition penalty, seed, stop tokens) are independent per active row. |
+| Packed/native prefill | Multiple prompt rows packed into one prefill slab and launched through row-shaped kernels. |
+| Serial bridge | A correctness-first path with batch-shaped slots/KV metadata but active rows execute through the c=1 layer path. Diagnostics only; not a throughput claim. |
+
+## Destination state
+
+When this work is done, hipEngine on a single W7900 (or any single supported
+GPU) runs as:
+
+- One long-lived **engine loop** (one background driver thread under `hipengine
+  serve` and `LLM.generate()`) admits new HTTP requests mid-stream up to
+  *current* pool capacity, grows the **elastic KV pool** toward a high-water
+  cap when load demands, and shrinks back toward a low-water floor when idle.
+- The loop interleaves **chunked prefill** with **decode** under an explicit
+  prefill-vs-decode policy; finished requests are reclaimed at the next commit
+  point without waiting for the longest active request.
+- Common token prefixes are shared via **refcounted KV pages**; the first
+  divergent token forks a request onto fresh pages. `n>1` lowers to N
+  scheduler requests with a shared prefix.
+- The **per-row sampler** lets requests with different temperature, top-k,
+  top-p, repetition penalty, and stop tokens decode together in one step.
+- **Streaming** and non-streaming traffic share the same loop and the same
+  reclaim path; cancellation, client disconnect, EOS, and max-tokens are one
+  unified path.
+- **Per-request and per-pool observability** is exported on `/metrics`
+  (Prometheus) and recorded in retained benchmark artifacts.
+
+Primary target workloads are agentic loops and long-context multi-turn
+chat; both depend on heavy prefix sharing across requests and across turns.
+`n>1` lowering is the third major prefix-sharing consumer.
+
+Single-GPU, single-process, single-rank. Multi-GPU TP, DMS compact KV,
+RadixCache eviction policies under variable-span KV, multi-tier KV storage
+(KVTC), and speculative decoding are explicit follow-on feature branches.
 
 ## Current answer
 
 **hipEngine does not yet support true vLLM-style c>N serving.**
 
-The public Qwen/PARO generator now has a first prompt-list c>N path: it admits
-all prompt rows into `ResidentBatchScheduler`, uses native compact packed prefill
-for BF16 KV prompt lists, and routes output by request id. Decode after the
-seed token still uses `step_batch_serial`. The OpenAI server now coalesces
-compatible non-streaming HTTP generations over a short configurable batch window
-(`--generation-batch-window-ms`, default 5 ms) before one prompt-list
-`LLM.generate()` call, but streaming remains one request at a time
-and production decode is still serial. An experimental native decode diagnostic
-exists behind `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1`, but it is
-currently rejected on generated-token equality and is not a retained throughput
-path. This is not continuous batching yet.
+The public Qwen/PARO generator has a first prompt-list c>N path: it admits all
+prompt rows into `ResidentBatchScheduler`, uses native compact packed prefill
+for BF16 KV prompt lists, and routes output by request id. Production decode
+after the seed token still uses `step_batch_serial` — batch-shaped slots/KV
+metadata but rows execute serially through the c=1 layer path.
+
+The OpenAI server coalesces compatible non-streaming HTTP generations over a
+short configurable batch window (`--generation-batch-window-ms`, default 5 ms)
+before one prompt-list `LLM.generate()` call. Streaming remains
+one-request-at-a-time and `n>1` is still rejected. The coalescer is a
+submission-time join, not a continuous-batching admission.
+
+An experimental native decode path (`step_batch_native`) is gated behind
+`HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1`. With the default
+`HIPENGINE_QWEN35_BATCH_SAMPLE_MODE=serial_lm_head` workaround, layer-by-layer
+diagnostics (L1, L3, L4) pass generated-token equality vs independent c=1;
+the L8 / L40 production-shape gate is still pending a confirming retained
+artifact after the workaround was committed in `86e6fa2`. The path is not a
+throughput claim.
+
+The elastic KV pool, prefix sharing, per-row sampler, streaming routing,
+cancellation reclaim path, and `/metrics` observability are **not** in code
+yet. The phase ladder below sequences them.
 
 ## Readiness matrix
 
 | Layer | Current status | Evidence / code | Blocks true c>N |
 | --- | --- | --- | --- |
-| OpenAI server | Compatible non-streaming HTTP generations are coalesced into one prompt-list `LLM.generate()` call behind a grouped safety lock; `n>1` is still rejected and streaming remains one request at a time. | `hipengine/server/api.py:_GenerationBatcher`, `create_app`, `_validate_generation_request`. | Add continuous admission/completion timestamps, streaming routing, and latency/occupancy accounting. |
-| Public `LLM.generate()` | Prompt lists with `len(prompts)>1` now use `ResidentBatchScheduler`, BF16 packed native prefill, request-id output routing, and serial slot-bridge decode. Streaming is one prompt only. | `hipengine/generation/qwen35_paro.py:Qwen35ParoOneTokenGenerator._generate_batch`. | Replace serial slot-bridge decode with native c-aware decode; add generated-token equality gates. |
-| Scheduler | `ResidentBatchScheduler` owns pending/admitted queues, slots, active masks, compact prefill slabs, decode work, graph bucket keys, and completion routing in the prompt-list generator. | `hipengine/generation/batch_scheduler.py`; `Qwen35ParoOneTokenGenerator._generate_batch`. | Wire independent HTTP request admission and latency/occupancy accounting. |
-| Prefill | Single-request native prefill is active. Prompt-list BF16 c>N uses `next_compact_prefill_slabs(...)` plus `prefill_native_packed(...)`. INT8 packed prefill is still not wired. | `Qwen35ParoResidentSession.prefill_native`, `prefill_native_packed`, `ResidentBatchScheduler.next_compact_prefill_slabs`. | Validate generated-token equality and add INT8 packed prefill before retained c>N claims. |
-| Decode runtime | Production c>N prompt-list decode uses `step_batch_serial`: batch-shaped slots/KV, but row execution is serial c=1. An experimental `step_batch_native` diagnostic is guarded by `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1` and is currently `rejected_correctness` on L8 512/32 generated-token equality. | `Qwen35ParoOneTokenGenerator._generate_batch`, `Qwen35ParoResidentSession.step_batch_serial`, `step_batch_native`, `batch_execution_metadata`, `/tmp/hipengine-retained/guarded-L8-512-32.json`. | Audit row-aware decode kernels until generated-token equality vs independent c=1 passes; then wire graph replay. |
-| Attention/KV primitives | BF16 batched paged KV append and batched full-attention context decode pass c=1/2/4/8 primitive correctness. | `scripts/qwen35_batch_correctness.py`. | Extend/validate the exact kernel families used by the resident runner, including INT8 KV paths and graph replay. |
-| MoE/quant kernels | Many wrappers accept `rows` or routed-lane counts, but end-to-end selected-MoE decode still follows c1 assumptions in the current bridge. | `hipengine/kernels/hip_gfx1100/quant/*`, `hipengine/runtime/qwen35_paro.py`. | Token-row to routed-lane mapping, grouped-by-expert execution, c-aware dispatch thresholds. |
-| KV cache | Dense fixed paged KV with uniform `KVLiveSpans`; BF16 and INT8-per-token/head storage are supported. c>1 metadata must be packed by the caller. | `hipengine/kvcache/policy.py`, `hipengine/kvcache/spans.py`. | Scheduler-owned allocation/admission/reclaim for multiple live requests; transactional scratch/journal for verify rows. |
-| Prefix/radix cache | Not implemented in code today. `PLAN.md` mentions RadixCache as a target, but there is no runtime `RadixCache`/prefix cache implementation. | `grep RadixCache hipengine` returns no implementation. | Add only after dense c>N correctness is green; disable initially for DMS/eviction work. |
-| DMS/compact KV | Planned, not active. | `docs/KVCACHE.md` Phase K2. | DMS metadata/checkpoint gate, compact allocator, streaming pack, compact attention, scheduler admission by compact live rows. |
+| OpenAI server | Compatible non-streaming HTTP generations are coalesced into one prompt-list `LLM.generate()` call behind a grouped safety lock; `n>1` rejected; streaming is one request at a time. | `hipengine/server/api.py:_GenerationBatcher`, `create_app`, `_validate_generation_request`. | Replace coalescer with engine-loop `submit/poll/cancel`; route streaming through the loop; remove the coarse lock. |
+| Public `LLM.generate()` | Prompt lists with `len(prompts)>1` use `ResidentBatchScheduler`, BF16 packed native prefill, request-id output routing, and the serial slot bridge for decode. Streaming is one prompt only. | `hipengine/generation/qwen35_paro.py:Qwen35ParoOneTokenGenerator._generate_batch`. | Lower `LLM.generate()` to `submit+poll` over the engine loop; native c-aware decode. |
+| Engine loop / scheduler | `ResidentBatchScheduler` owns pending/admitted queues, slots, active masks, compact prefill slabs, decode work, graph bucket keys, and completion routing within a single `_generate_batch` call. The loop does not persist beyond one call. | `hipengine/generation/batch_scheduler.py`; `_generate_batch`. | Promote to a long-lived background driver with submit/poll/cancel, work-class ticks, and commit-point semantics. |
+| Prefill | Single-request native prefill and prompt-list BF16 packed native prefill are live. INT8 packed prefill is not wired. Chunked prefill is not interleaved with decode. | `Qwen35ParoResidentSession.prefill_native`, `prefill_native_packed`, `ResidentBatchScheduler.next_compact_prefill_slabs`. | INT8 packed prefill; chunked prefill interleaved with decode under a policy. |
+| Decode runtime | Production c>N prompt-list decode uses `step_batch_serial`. Experimental `step_batch_native` is gated by `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1`; layer-by-layer L1/L3/L4 equality passes; L8/L40 confirmation pending after the `serial_lm_head` workaround. | `step_batch_serial`, `step_batch_native`, `_sample_batch_from_hidden`, `batch_execution_metadata`. | L8/L40 retained-shape generated-token equality; row-aware split-K full-attention; native sampler. |
+| Sampler | Greedy `argmax_f32` per row. Sampling parameters apply globally to the call, not per row. The coalescer requires identical sampling keys per batch. | `_sample_from_hidden`, `_sample_batch_from_hidden`. | Per-row temperature/top-k/top-p/rep-penalty/seed/stop tokens; per-row EOS handling. |
+| Attention / KV primitives | BF16 batched paged KV append and batched full-attention context decode pass c=1/2/4/8 primitive correctness. Split-K reducer is c1-only. INT8 batched paths exist as wrappers but lack the end-to-end gate. | `scripts/qwen35_batch_correctness.py`; `hipengine/kernels/hip_gfx1100/attention/`. | Row-aware split-K reducer; INT8 batched end-to-end gate. |
+| MoE / quant kernels | Many wrappers accept `rows` or routed-lane counts; end-to-end selected-MoE decode still follows c1 assumptions. `eq-L8-selectedmoe.json` diverges from c=1 reference at idx 13. | `hipengine/kernels/hip_gfx1100/quant/*`, `hipengine/runtime/qwen35_paro.py`. | Token-row to routed-lane mapping; grouped-by-expert execution for c=4/8; c-aware dispatch thresholds. |
+| KV pool | Fixed-size pool sized at startup from `hipMemGetInfo()` after weights resident (v0.2.2). Pool does not grow or shrink during a session. Block ids reuse pointers across reallocation. | `hipengine/runtime/qwen35_paro_runner.py` startup path. | Append-only block id contract; chunked grow up to high water; idle shrink to low water; admission against current capacity. |
+| Prefix / radix cache | Not implemented in code today. `grep RadixCache hipengine` returns nothing. | — | Refcounted pages; RadixCache trie or prefix-LRU; copy-on-write fork; `n>1` lowering. |
+| Observability | Server emits standard FastAPI logs. No request-level timings, no pool counters, no `/metrics`. | — | Per-request timings; per-pool counters; per-bucket histograms; `/metrics` endpoint. |
 
-## GPU0 diagnostic evidence
+DMS / compact KV serving status lives in [`KVCACHE.md`](KVCACHE.md) and is not
+mirrored in this matrix.
 
-Temporary fixtures generated for the sweep:
+## Engine-loop contract
 
-| Fixture | Shape | Path |
+The engine loop is the single owner of admission, work scheduling, KV
+allocation, sampling, completion, reclaim, and pool resize. The
+`generation_lock` in `hipengine/server/api.py` exists today as a guard against
+non-reentrant session mutation; by the end of C4 the lock should protect only
+brief mutation regions (not whole generations) or be removed entirely.
+
+### Public interface (target)
+
+```python
+request_id = engine.submit(
+    prompt_tokens: Sequence[int],
+    sampling: SamplingParams,
+    max_new_tokens: int,
+    stream: bool = False,
+) -> int
+
+events = engine.poll(timeout: float | None = None) -> list[Event]
+# Event(request_id, kind: 'token' | 'finish' | 'error', payload)
+
+ok = engine.cancel(request_id: int) -> bool
+```
+
+`LLM.generate()` and the OpenAI server become thin adapters over this surface.
+Both streaming and non-streaming traffic call the same `submit/poll/cancel`.
+
+### Work classes
+
+Each engine tick picks **one** of the following work classes for the next
+kernel-launch sequence:
+
+| Class | Action | Commit at end |
 | --- | --- | --- |
-| 8 x 512 token rows | c≤8 512/128 diagnostics | `/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json` |
-| 8 x 4096 token rows | c≤8 4K/128 diagnostics | `/tmp/hipengine-prebench/fixtures/qwen36_paro_8x4096_prompt_ids.json` |
+| `ADMIT` | Move pending requests into active slots up to current pool capacity. Try one pool grow per cycle if grow-on-admission is enabled. | New slot table |
+| `PREFILL_CHUNK` | Run one chunked prefill step over one or more admitted requests. | Per-request prompt cursor; KV append |
+| `DECODE_STEP` | One token of decode for every active request whose prefill is done. | Per-request token; KV append |
+| `RECLAIM` | Free KV pages, refcounts, scratch from finished/cancelled requests. | Free list; pool shrink eligibility |
+| `VERIFY_STEP` *(SpecDec, later)* | One target-verify pass over draft rows. | Accept-list; transactional KV commit |
+| `PACK_STEP` *(DMS, later)* | One streaming-pack sweep over a finished prefill layer/chunk. | Compact KV append; dense scratch release |
 
-### Primitive pre-bench
+Default per-tick policy: `RECLAIM` → `ADMIT` → choose between `PREFILL_CHUNK`
+and `DECODE_STEP` under the **prefill-vs-decode policy** (see below). Verify
+and pack classes are inserted by SpecDec / DMS feature branches without
+changing the loop contract.
 
-Command shape:
+### Commit points
 
-```bash
-export HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0
-for c in 1 2 4 8; do
-  python3 scripts/qwen35_batch_correctness.py \
-    --rows "$c" \
-    --json "/tmp/hipengine-prebench/correctness/qwen35-batch-c${c}-correctness.json"
-done
-```
+KV mutation, generated-token delivery, streaming event emission, and
+cancellation are honored **only at commit points**. A commit point is the
+boundary between two work-class steps. Mid-step mutations are scratch.
 
-Result:
+This is what protects KV writes from being torn by mid-step cancellations,
+gives SpecDec a clean accept/rollback gate, and lets DMS pack between active
+requests' decode steps without races.
 
-| c | append key mismatch | append value mismatch | attention batch-vs-c1 max abs | attention batch-vs-NumPy max abs |
-| ---: | ---: | ---: | ---: | ---: |
-| 1 | 0 | 0 | 0.0 | 0.0 |
-| 2 | 0 | 0 | 0.0 | 2.2351741790771484e-08 |
-| 4 | 0 | 0 | 0.0 | 2.9802322387695312e-08 |
-| 8 | 0 | 0 | 0.0 | 5.960464477539063e-08 |
+### Prefill-vs-decode policy
 
-Interpretation: the tested BF16 batched KV append and batched paged attention
-primitive wrappers are correct for rows 1/2/4/8. This is necessary, not
-sufficient, for end-to-end c>N serving.
+| Policy | Behavior | Default |
+| --- | --- | --- |
+| `protect_decode` | Decode always wins when any active request can decode. Prefill chunks fill remaining cycles up to a token budget. | yes |
+| `protect_ttft` | Prefill wins for any newly admitted request until its first decode token. | — |
+| `fair` | Round-robin between prefill and decode by token-equivalent budget. | — |
 
-### Scheduler serial bridge sweep
+Knob: `HIPENGINE_PREFILL_DECODE_POLICY` / `--prefill-decode-policy`. Default
+`protect_decode` (vLLM-equivalent default; minimizes inter-token-latency
+regressions for active requests).
 
-Command shape:
+## Dynamic KV pool
 
-```bash
-export HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0
-MODEL=/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16
-python3 scripts/qwen35_batch_serial_bench.py \
-  --model "$MODEL" \
-  --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
-  --batch-size C \
-  --prompt-length 512 \
-  --decode-tokens 128 \
-  --warmup-decode-tokens 8 \
-  --max-layers 40 \
-  --kv-storage int8_per_token_head \
-  --compiler-version-file /tmp/hipengine-prebench/hipcc-version.txt \
-  --json /tmp/hipengine-prebench/scheduler/qwen36-paro-cC-512-128-serial-bridge.json
-```
+Continuous batching's admission policy is a function of current KV capacity.
+A fixed startup-sized pool either wastes VRAM that could hold extra slots or
+caps `C` for no reason. The pool must size against actual load.
 
-All rows are `status=blocked`, `performance_claim=false`, and
-`native_caware_decode=false`.
+### Allocator contract
 
-| Shape | Correctness | Prefill tok/s | Decode aggregate tok/s | Decode per-request tok/s |
-| --- | --- | ---: | ---: | ---: |
-| c=1 512/128 | passed | 111.91 | 102.12 | 102.12 |
-| c=2 512/128 | passed | 114.24 | 102.32 | 51.16 |
-| c=4 512/128 | passed | 114.11 | 101.47 | 25.37 |
-| c=8 512/128 | passed | 114.01 | 100.30 | 12.54 |
-| c=1 4K/128 | passed | 111.24 | 99.98 | 99.98 |
-| c=2 4K/128 | passed | 111.66 | 98.82 | 49.41 |
-| c=4 4K/128 | passed | 111.41 | 98.76 | 24.69 |
-| c=8 4K/128 | passed | 111.18 | 98.88 | 12.36 |
+- **Block id is permanent.** Once a block id `b` is allocated, its backing
+  device pointer never changes. `KVLiveSpans` and captured `hipGraph` buckets
+  that reference `b` stay valid until `b` is freed.
+- **Growth is append-only.** New block ids come from chunks allocated past the
+  current high-water mark. Existing live blocks are never relocated.
+- **Shrink frees from the free list only.** A block is freeable iff its
+  refcount is zero *and* no captured graph bucket has recorded a pointer for
+  it. Shrink trims tail chunks; the high-water mark is monotonic during steady
+  state.
+- **Allocation granularity is a chunk.** `hipMalloc` happens in chunks of
+  `kv_pool_chunk_pages` (default 128 pages or ≥ 64 MiB equivalent, whichever
+  is larger), then sub-allocated into block ids. Avoids `hipMalloc` storms
+  under bursty admission.
+- **All allocation goes through the scheduler.** No path in dispatch / model /
+  kernel code allocates KV pages directly. Admission is the only producer.
 
-Interpretation: aggregate decode tok/s stays roughly flat while per-request
-tok/s falls roughly as `1/c`. That is the signature of the serial bridge, not
-native batched serving.
+### Sizing policy
+
+| Knob | Default | Notes |
+| --- | --- | --- |
+| `kv_pool_initial_bytes` | auto = v0.2.2 startup estimate | First chunk allocation. |
+| `kv_pool_low_water_bytes` | `kv_pool_initial_bytes` | Pool never shrinks below this. |
+| `kv_pool_high_water_bytes` | `min(free_after_weights * 0.9, kv_pool_initial_bytes * 4)` | Pool never grows above this. |
+| `kv_pool_chunk_pages` | 128 (or ≥ 64 MiB equivalent) | Grow granularity. |
+| `kv_pool_idle_grace_seconds` | 60 | Time below `low_water + chunk` before shrinking. |
+| `kv_pool_grow_on_admission` | true | If false, admission rejects when the pool is full instead of trying to grow. |
+
+CLI: `--kv-pool-{initial,low-water,high-water,chunk-pages,idle-grace}-*`.
+Env: `HIPENGINE_KV_POOL_*`. Document in `docs/ENVS.md`.
+
+### Admission rule (every cycle)
+
+1. If the request fits in free pages → admit.
+2. Else if `kv_pool_grow_on_admission` and `current_bytes + chunk_bytes ≤
+   high_water_bytes` and `hipMemGetInfo()` permits → grow one chunk; admit.
+3. Else queue with an explicit `admission_blocked_reason`
+   (`kv_capacity_high_water_reached` / `device_oom` / etc.).
+
+### Shrink rule (background, between scheduler ticks)
+
+1. If `free_bytes > low_water_bytes + chunk_bytes` continuously for
+   `idle_grace_seconds` → free one tail chunk.
+2. Never free a chunk containing a non-zero-refcount block, regardless of idle
+   time (protects refcounted prefix pages).
+
+### Admission accounting
+
+- `KVPolicy.admission_cap()` returns **current** free-page equivalents, not
+  startup capacity. Dense fixed-page policy returns `free_pages`; DMS (later)
+  returns compact-live-token capacity over current free pages.
+- The pending queue carries a `kv_pages_needed_estimate` per request, computed
+  from `prompt_tokens + max_new_tokens` at submit time and revised as actual
+  decode positions advance.
+- Admission decisions run after the current step's `RECLAIM` so that finishing
+  requests free pages before the next admit attempt.
+
+### Acceptance for a dynamic-pool-enabled c>N row
+
+In addition to the existing benchmark gates:
+
+- Pool grew and shrank on a designed burst+idle workload (artifact records
+  ≥1 `grow_event` and ≥1 `shrink_event`), or the run fit in the initial chunk
+  and the artifact says so explicitly.
+- `kv_pool_grow_events ≤ ceil((peak_bytes - initial_bytes) / chunk_bytes)`
+  (no `hipMalloc` storms).
+- Debug check: no block-id pointer changed during the run.
+- Memory audit: tracked allocator peak ≤
+  `kv_pool_high_water_bytes + non_kv_baseline_bytes`.
+
+## KV sharing: RadixCache (+ KVTC forward-compat)
+
+Refcounted block ids unlock prefix sharing across requests. Prefix sharing is
+the first non-trivial reduction of KV bytes per active request and a
+prerequisite for cheap `n>1` lowering. The structure is RadixCache; flat
+block-LRU is explicitly not implemented as a peer (rationale below).
+Multi-tier KV storage (KVTC) is a follow-on feature branch; CONCURRENCY work
+must honor the KVTC ABI guardrails so that branch lands cleanly later.
+
+### Refcount semantics
+
+- Every block id carries a refcount; default 1 when first written by a
+  request.
+- A second request that walks the same prompt prefix into an existing
+  refcounted block increments the refcount and reuses the block id.
+- A request finishing (`RECLAIM`) decrements refcounts on its block ids.
+- A block is freeable when refcount reaches zero.
+- A captured graph bucket holding a pointer for a block keeps the *chunk*
+  alive against shrink (but not against free).
+
+### Copy-on-write fork
+
+- Two requests share a block until one of them writes a token that diverges
+  from the other's path.
+- At divergence, the diverging request gets a fresh block id (allocated under
+  the same admission rule as any new write), copies the shared prefix's last
+  partial block if needed, and continues independently.
+- The original shared block stays refcounted on the non-diverging path.
+
+### Why radix and not flat block-hash LRU
+
+The primary target workloads — agentic loops, multi-turn chat, `n>1`
+sampling — are all tree-structured: branches off a common root, where flat
+block-hash LRU only catches one path at a time. RadixCache catches sharing
+at every branch point, including partial-block edges. The ~200 LoC delta
+over a flat structure (per [`PLAN.md`](PLAN.md)) is well-spent for this
+workload mix; carrying two prefix schemes also doubles the surface area
+where prefix sharing × dynamic pool × cancellation can interact badly, so
+flat prefix-LRU is not implemented as a peer.
+
+### Prefix index
+
+Knob: `HIPENGINE_PREFIX_CACHE` / `--prefix-cache` in `{off, radix}`.
+Default `off` until correctness gates pass; then `radix`. Pick `off` to
+disable prefix reuse entirely.
+
+### Tiered storage (KVTC, future feature branch)
+
+KVTC (KV tiered cache) is the planned multi-tier storage layer that sits
+under prefix sharing: hot pages stay in HBM, cold but refcounted prefix
+pages spill to pinned host RAM, and very cold session state spills to
+NVMe / disk. KVTC is **not** in CONCURRENCY scope; it is called out here
+so that the contracts in C2 / C4 / C5 do not preclude it. The reference
+designs are vLLM v0.6+ CPU offload and SGLang hierarchical cache.
+
+Rough tier roadmap (sketch, not committed in this doc):
+
+| Tier | Storage | Latency | Use |
+| --- | --- | --- | --- |
+| T0 | Device HBM | ns | Active live KV; hot prefix nodes. |
+| T1 | Pinned host RAM | µs (PCIe DMA) | Refcounted but cold prefix pages; admission-eligible without recompute. |
+| T2 | NVMe / disk | ms | Session save/restore; very cold long prefixes. |
+
+ABI requirements that CONCURRENCY work must already honor for KVTC to
+land cleanly later are listed in
+§[Forward-compatibility guardrails](#forward-compatibility-guardrails)
+under "Don't break KVTC."
+
+### `n>1` lowering
+
+- The API layer accepts `n > 1` by submitting N scheduler requests with the
+  same prompt tokens and a per-call seed offset.
+- The prefix cache shares prompt KV across the N requests until the first
+  divergent sampled token (immediate, for distinct seeds).
+- Output is collected via N `request_id`s and returned to the client under the
+  OpenAI `n` schema.
+- This is the first user of prefix sharing in production and the natural
+  staging ground for the contract.
+
+### What's deliberately deferred
+
+- **Eviction under variable-span KV (DMS).** Per-sequence eviction overlays
+  for shared prefix blocks are an open design point; until then DMS disables
+  prefix sharing (see [`KVCACHE.md`](KVCACHE.md) Phase K2).
+- **Disk session save/restore.** Possible follow-on; ABI-compatible with the
+  block-id-stable contract.
+
+## Streaming, cancellation, and reclaim
+
+### Per-request output queue
+
+- Each active request owns a bounded token queue (default 64 tokens).
+- The streaming adapter (SSE for `/v1/chat/completions` and
+  `/v1/completions`) pulls from the queue and emits OpenAI-format events.
+- When the queue is full (slow client), the request's slot is paused at the
+  next commit point. It does not block other requests' decode steps.
+- Knob: `HIPENGINE_STREAM_QUEUE_DEPTH` / `--stream-queue-depth`.
+
+### Cancellation paths
+
+| Trigger | Effect |
+| --- | --- |
+| `engine.cancel(request_id)` | Marked at next commit; slot is reclaimed. |
+| Client disconnect (SSE) | Same as `cancel`. |
+| EOS token sampled | Same as `cancel` with `finish_reason="stop"`. |
+| `max_new_tokens` reached | Same as `cancel` with `finish_reason="length"`. |
+| Per-request timeout (optional) | Same as `cancel` with `finish_reason="timeout"`. |
+
+All five funnel through the same `RECLAIM` work class. There is one reclaim
+implementation, not five.
+
+### In-flight semantics
+
+- Cancel during prefill: drop at the next chunk boundary.
+- Cancel during decode: drop at the next step boundary.
+- Cancel during verify (SpecDec, later): discard the verify journal; no
+  canonical KV mutation.
+- Cancel during pack (DMS, later): finish the in-flight pack; drop at its
+  natural boundary.
+
+Mid-step cancellation is never honored. This is what keeps KV mutation atomic
+and what lets graph capture buckets stay valid across cancels.
+
+## Per-row sampler and `n>1`
+
+The coalescer's "compatible sampling key" requirement is a current-runtime
+limitation, not a target architecture. Continuous batching needs the sampler
+to accept per-row parameters in one kernel launch.
+
+- Logits computed per row in one `w8a16_linear_bf16_f32_out` launch (current
+  code path; already row-shaped).
+- Sampling reads a **per-row params block** instead of scalar params:
+  - `temperature[C]`
+  - `top_k[C]` (or `0` = greedy)
+  - `top_p[C]` (or `1.0` = no top-p)
+  - `repetition_penalty[C]`
+  - `seed[C]`
+  - `stop_token_id[C][K_STOP_MAX]`
+- Per-row EOS handling: the sampler emits a `done` flag per row when a stop
+  token matches; the scheduler reclaims that row at the next commit.
+- The submission-time coalescer (`_GenerationBatcher`) becomes redundant once
+  the engine loop is live; remove it or keep it as a cold-path latency
+  optimization for empty-pool startup bursts only.
+
+`n>1` then lowers naturally: N submissions of the same prompt with distinct
+seeds, shared prefix until the first divergent token.
+
+## Observability contract
+
+### Per-request fields (recorded in completion event and `/metrics`)
+
+| Field | Meaning |
+| --- | --- |
+| `queue_seconds` | Time between `submit` and first `ADMIT`. |
+| `prefill_seconds` | Wall time spent in `PREFILL_CHUNK` ticks owned by this request. |
+| `decode_seconds` | Wall time spent in `DECODE_STEP` ticks where this row is active. |
+| `tokens_generated` | Sampled tokens (excluding seed). |
+| `kv_pages_owned` | Pages currently refcounted to this request at finish. |
+| `kv_pages_peak` | Peak pages referenced by this request during its lifetime. |
+| `kv_pool_bytes_at_admit` | Pool size when the request was admitted. |
+| `bucket_key` | Decode graph bucket the request ran under most. |
+| `admission_blocked_reason` | If queued; one of `kv_capacity_high_water_reached`, `pending_queue_full`, `device_oom`, …. |
+| `finish_reason` | `stop`, `length`, `cancel`, `timeout`, `error`. |
+
+### Per-pool counters
+
+| Field | Meaning |
+| --- | --- |
+| `kv_pool_current_bytes` | Allocator-visible KV pool size right now. |
+| `kv_pool_high_water_observed` | Largest size the pool has reached. |
+| `kv_pool_grow_events` | Successful chunk allocations. |
+| `kv_pool_grow_failures` | Allocations that hit `device_oom` or `high_water`. |
+| `kv_pool_shrink_events` | Tail-chunk frees. |
+| `kv_pool_free_pages` | Free pages right now. |
+| `kv_pool_refcounted_pages` | Pages whose refcount > 1 (prefix sharing). |
+
+### Per-bucket counters
+
+| Field | Meaning |
+| --- | --- |
+| `graph_bucket_entries` | Distinct keys currently captured. |
+| `graph_bucket_hits` | Replays since last reset. |
+| `graph_bucket_misses` | Uncaptured fallbacks. |
+| `graph_bucket_miss_reason` | `new_shape`, `chunk_added`, `mask_changed`, …. |
+| `step_kernel_seconds` | Histogram of kernel-wall time per step. |
+
+### `/metrics` endpoint
+
+- Prometheus text format, when running `hipengine serve`.
+- Knob: `HIPENGINE_METRICS` / `--metrics` in `{off, prometheus}`. Default `off`
+  until C5.
+- Per-request fields are exposed as histograms; per-pool / per-bucket as
+  gauges and counters.
+
+## Quant / model coverage matrix under c>N
+
+The four-axis registry means every `(model, quant, KV dtype)` triple needs its
+own c>N validation. This matrix tracks coverage; rows without a green retained
+cell at c=2/4/8 are not c>N-eligible regardless of the engine-loop work.
+
+| (model, quant, KV) | c=1 long | c=2 512/128 | c=4 512/128 | c=8 512/128 |
+| --- | --- | --- | --- | --- |
+| Qwen3.5/PARO × w4_paro × BF16 | retained | rejected_correctness *(experimental)* | not_started | not_started |
+| Qwen3.5/PARO × w4_paro × INT8/per-token-head | retained (capacity) | not_started | not_started | not_started |
+| GGUF × Q4_K × BF16 | retained | not_started | not_started | not_started |
+| GGUF × Q5_K × BF16 | retained | not_started | not_started | not_started |
+| GGUF × Q6_K × BF16 | retained | not_started | not_started | not_started |
+| GGUF × Q8_0 × BF16 | retained | not_started | not_started | not_started |
+| W8A16 dense × BF16 | partial | not_started | not_started | not_started |
+
+Status legend: `not_started`, `primitive_ok` (kernel correctness only),
+`eq_ok` (generated-token equality vs c=1, blocked on protocol shape),
+`retained` (accepted retained row), `rejected_correctness` (equality failed).
+
+GGUF c>N coverage is required for the repo's namesake quant path. It can
+follow the Qwen3.5/PARO equality template once the engine loop and per-row
+sampler are live.
 
 ## Benchmark eligibility gates
 
 A c>N row is not eligible for `accepted` status until all of these pass:
 
-1. `scripts/qwen35_batch_correctness.py --rows N` passes for the exact primitive
-   families used by the runner: `append_key_mismatch=0`,
-   `append_value_mismatch=0`, and `attn_batch_vs_c1_max_abs <= 1e-6`.
+1. `scripts/qwen35_batch_correctness.py --rows N` passes for the exact
+   primitive families used by the runner: `append_key_mismatch=0`,
+   `append_value_mismatch=0`, `attn_batch_vs_c1_max_abs <= 1e-6`.
 2. The resident batch runner emits generated-token IDs equal to N independent
-   c=1 resident runs for the same fixed prompts with greedy sampling and SpecDec
-   disabled.
-3. The artifact records scheduler occupancy, active mask shape, graph bucket key,
-   KV policy, packed-prefill status, compaction events, and whether any serial
-   bridge remains.
+   c=1 resident runs for the same fixed prompts with greedy sampling and
+   SpecDec disabled.
+3. The artifact records scheduler occupancy, active mask shape, graph bucket
+   key, KV policy, packed-prefill status, compaction events, and whether any
+   serial bridge remains.
 4. Continuous-batching rows include admission/completion timestamps and
    per-request p50/p95 latency in addition to aggregate tok/s.
-5. Performance summaries show both aggregate tok/s and per-request tok/s. Never
-   compare c=N aggregate to c=1 without also showing aggregate/c1 and
+5. Performance summaries show both aggregate tok/s and per-request tok/s.
+   Never compare c=N aggregate to c=1 without also showing aggregate/c1 and
    per-request/c1 ratios.
+6. **(dynamic pool)** Pool grew and shrank on a burst+idle workload, or the
+   run fit in the initial chunk and the artifact says so. `grow_events ≤
+   ceil((peak_bytes - initial_bytes) / chunk_bytes)`.
+7. **(stable block id)** Debug check asserts no block-id pointer changed
+   during the run.
+8. **(prefix sharing, when enabled)** Shared-prefix workload artifact shows
+   KV-byte savings *and* per-request TTFT drop vs the same workload with
+   prefix sharing off.
 
-## Implementation checklist
+## Phase ladder
 
-### Phase C0 — keep diagnostics honest
+The phase ladder is the ground truth for c>N progress. Each phase has a
+"definition of done" and a checklist. Boxes that are checked have shipped
+commits in `git log`; unchecked are open work.
+
+### C0 — keep diagnostics honest
+
+Definition of done: every c>N number on disk is unambiguously labeled
+`serial_bridge`, `experimental`, or `retained`.
 
 - [x] Generate c≤8 prompt fixtures for 512/128 and 4K/128 diagnostics.
 - [x] Run c=1/2/4/8 primitive correctness on GPU0.
 - [x] Run c=1/2/4/8 scheduler serial bridge diagnostics and record blocked
       status.
-- [ ] Add a small script or `hipengine bench` subcommand that runs the full
+- [x] Promote `rejected_correctness` as a distinct status in the retained
+      bench harness so failing-equality rows are not silently `blocked`.
+- [ ] Add a `hipengine bench c-sweep` subcommand that runs the full
       diagnostic sweep without copy/paste loops.
-- [ ] Ensure every diagnostic artifact clearly distinguishes:
-  - `workload.native_compact_prefill`
-  - `execution.batch_execution.native_compact_prefill`
-  - `native_caware_decode`
-  - `throughput_claim_eligible`
+- [ ] Ensure every diagnostic artifact distinguishes
+      `workload.native_compact_prefill`,
+      `execution.batch_execution.native_compact_prefill`,
+      `native_caware_decode`, and `throughput_claim_eligible`.
 
-### Phase C1 — server and generator integration
+### C1 — server and generator integration
 
-- [x] Add a batch-capable Qwen/PARO generator path for prompt lists that owns
-      scheduler request ids, physical slots, packed prefill slabs, and output
-      routing. It still receives public prompt strings rather than full server
-      request metadata.
-- [x] Coalesce compatible non-streaming server generations into one prompt-list
-      `LLM.generate()` call so the generator-owned scheduler can admit c>N rows;
-      keep a grouped safety lock around the non-reentrant engine call.
-- [ ] Preserve a narrow safety lock only around non-reentrant model/session
-      mutation until the session is proven concurrency-safe.
-- [ ] Add request IDs, enqueue/admit timestamps, finish timestamps, and output
-      routing for `/v1/completions` and `/v1/chat/completions`.
-- [ ] Keep `n>1` rejected until it is represented as multiple scheduler requests
-      with independent outputs and accounting.
+Definition of done: prompt-list and short-window HTTP coalescing reach the
+batch generator; `n>1` rejected; streaming unchanged.
 
-### Phase C2 — native c>N prefill/decode
+- [x] Batch-capable Qwen/PARO generator path for prompt lists with scheduler
+      request ids, physical slots, packed prefill slabs, and output routing.
+- [x] Coalesce compatible non-streaming server generations into one
+      prompt-list `LLM.generate()` call.
+- [ ] Preserve a narrow safety lock only around non-reentrant
+      model/session mutation until the session is proven concurrency-safe.
+- [ ] Keep `n>1` rejected at the API layer until C5 lowers it to N
+      scheduler requests.
 
-- [x] Use `ResidentBatchScheduler.next_compact_prefill_slabs(...)` and
-      `Qwen35ParoResidentSession.prefill_native_packed(...)` for BF16 prompt-list
-      concurrent prefill in `Qwen35ParoOneTokenGenerator._generate_batch`.
-- [ ] Add generated-token equality vs independent c=1 for c=2/4/8 512/128.
-- [ ] Replace `step_batch_serial` in the benchmark path with a native c-aware
-      decode step.
-- [ ] Capture/replay decode graphs by active `C`, context bucket, active mask,
-      top-k/experts, and replay length.
-- [ ] Add graph-bucket cache hit/miss and replay statistics to artifacts.
+### C2 — native c>N prefill/decode green
 
-### Phase C3 — kernel coverage
+Definition of done: full 40-layer Qwen/PARO BF16 c=2/4/8 512/128 emits
+generated-token IDs equal to independent c=1 runs, with no serial decode
+bridge and `throughput_claim_eligible=true`. Append-only block-id contract
+in place even though pool growth lands in C4.
 
-- [ ] Validate batched INT8 KV append/decode paths with the same gates as BF16.
-- [ ] Make full-attention decode consume per-row `KVLiveSpans` for all retained
-      KV storage dtypes.
-- [ ] Make linear-attention recurrent/conv state updates consume `[C, ...]`
-      state and active masks.
-- [ ] Replace c1 selected-MoE lane assumptions with token-row to routed-lane
-      mapping.
-- [ ] Add grouped-by-expert execution where c=4/8 routed lanes justify it.
+- [x] Native compact packed BF16 prefill via `next_compact_prefill_slabs(...)`
+      + `prefill_native_packed(...)`.
+- [x] Guard `step_batch_native` behind
+      `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1` and default
+      `_sample_batch_from_hidden` to `HIPENGINE_QWEN35_BATCH_SAMPLE_MODE=
+      serial_lm_head` until row-aware sampler lands.
+- [ ] Document `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE` and
+      `HIPENGINE_QWEN35_BATCH_SAMPLE_MODE` in `docs/ENVS.md`.
+- [ ] Re-run guarded c=2 L=8 / L=40 retained-shape equality with the
+      committed `serial_lm_head` default; replace
+      `/tmp/hipengine-retained/guarded-L8-512-32.json` reference with a
+      stable artifact under `benchmarks/results/`.
+- [ ] Root-cause and fix the selected-MoE c>N divergence
+      (`/tmp/hipengine-retained/eq-L8-selectedmoe.json`).
+- [ ] Add row-aware split-K full-attention decode/reduce before any
+      long-context c>N claim (`max_context ≥ 1024`).
+- [ ] Add CPU-runnable structural tests for the experimental gates:
+      `NotImplementedError` unless the env flag is set, sparse slots
+      rejected, INT8 KV rejected, long-context rejected,
+      `throughput_claim_eligible=false` for guarded diagnostics.
+- [ ] **Append-only block id contract.** Make the KV allocator's block id
+      permanent for its lifetime. Remove any path that reuses a block id at
+      a different pointer. Add a debug check that fails on pointer mutation.
+- [ ] **Live admission cap.** `KVPolicy.admission_cap()` returns *current*
+      free capacity, not startup capacity.
+
+### C3 — kernel coverage
+
+Definition of done: every retained `(model, quant, KV)` row in the coverage
+matrix has at least one green retained c>N cell on the 512/128 protocol.
+
+- [ ] Validate batched INT8 KV append/decode paths with the same gates as
+      BF16; require generated-token equality.
+- [ ] Make full-attention decode consume per-row `KVLiveSpans` for all
+      retained KV storage dtypes.
+- [ ] Make linear-attention conv/recurrent state updates consume
+      `[C, ...]` state, active masks, and slot ids; remove c1 aliases.
+- [ ] Replace selected-MoE c1 lane assumptions with token-row → routed-lane
+      mapping; validate grouped-by-expert metadata for c=2/4/8.
 - [ ] Keep c=1 GEMV dispatch separate from c>N MMQ/GEMM/WMMA candidates.
+- [ ] Validate GGUF Q4_K/Q5_K/Q6_K/Q8_0 c=2/4/8 with the same gates.
+- [ ] Native row-aware LM-head + sampler: replace the per-row argmax loop
+      and prepare for per-row sampling params (C5 finishes this).
 
-### Phase C4 — KV policy and prefix cache
+### C4 — scheduler-owned engine loop + dynamic KV pool
 
-- [ ] Add scheduler-owned KV allocation/admission/reclaim for multiple live
-      requests with dense fixed pages first.
-- [ ] Keep `KVLiveSpans` as the only attention/KV-write ABI.
-- [ ] Add transactional scratch/journal semantics before speculative verify rows
-      can mutate canonical KV.
-- [ ] Add prefix/radix caching only after dense c>N correctness is green.
-- [ ] Disable prefix/radix cache initially for DMS or any policy with eviction;
-      shared prefixes need per-sequence eviction overlays before they are safe.
-- [ ] Port compact DMS after dense c>N is stable, following [`KVCACHE.md`](KVCACHE.md).
+Definition of done: one long-lived background driver runs
+`submit/poll/cancel`, ticks the work classes, grows/shrinks the KV pool, and
+routes both streaming and non-streaming through the same path. `LLM.generate()`
+becomes a `submit+poll` adapter.
 
-## Remaining punchlist to vLLM-style c>N continuous batching
-
-This is the working punchlist for the target pipeline. The order matters:
-first make the basic c>N pipeline correct and observable, then make the green
-path fast enough to scale against c=1 prefill and decode.
-
-### Definition of done
-
-| Milestone | Done when |
-| --- | --- |
-| Basic native c>N correctness | Full 40-layer Qwen/PARO dense fixed-page BF16 c=2/4/8 512/128 emits generated token IDs equal to independent c=1 runs, with no serial decode bridge and `throughput_claim_eligible=true` only after that gate passes. |
-| Basic continuous batching | One long-lived scheduler loop can admit new HTTP requests while other requests decode, interleave chunked prefill with decode, finish/reclaim/compact slots independently, and route both streaming and non-streaming outputs by request id. |
-| Performant c>N | Accepted artifacts show aggregate prefill and decode scaling versus the c=1 baseline and the serial bridge, with aggregate/c1 and per-request/c1 ratios, latency p50/p95, occupancy, graph-bucket stats, and profiler evidence. |
-
-### A. Correctness and basic implementation first
-
-- [ ] Remove stale compatibility glue once the guarded native API is settled
-      (for example the `batch_execution_metadata(... )` `TypeError` shim in the
-      generator).
-- [ ] Add CPU-runnable structural tests for the current guardrails:
-  - `step_batch_native` raises unless
-    `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1`.
-  - sparse/non-contiguous slots are rejected.
-  - INT8 KV and long-context split-K native decode are rejected until wired.
-  - metadata reports `throughput_claim_eligible=false` for guarded diagnostics.
-- [ ] Add HIP-guarded reduced-shape equality diagnostics that do **not** require
-      full 40 layers, so failures can be bisected in CI/dev environments with
-      ROCm. Keep full 40-layer 512/128 as the retained benchmark gate.
-- [ ] Triage the current native decode equality failures before enabling the
-      path by default:
-  - compare c=2 native vs independent c=1 after every layer for L1/L3/L8/full
-    model slices;
-  - isolate linear-attention state update, full-attention KV append/decode,
-    MoE routing/selected-lane mapping, shared expert, O projection, and LM-head
-    sampling;
-  - verify `_batch_full_spans` block-table layout against the exact
-    `qwen35_paged_full_attn_decode_context_bf16_batch_spans` cache addressing;
-  - audit scratch aliasing and row views so row 0 cannot overwrite row 1
-    temporaries or vice versa.
-- [ ] Make native BF16 compact-slot decode correct for the smallest retained
-      scope: dense fixed-page KV, compact physical slots `0..C-1`, context
-      `<1024`, greedy sampling, SpecDec disabled.
-- [ ] Extend native decode correctness to non-compact slots after scheduler
-      compaction/reclaim moves requests.
-- [ ] Add row-aware split-K full-attention decode/reduce before any long-context
-      native c>N claim (`max_context >= 1024`).
-- [ ] Add INT8-per-token/head native c>N append/decode coverage after BF16 is
-      green; require the same generated-token equality gate.
-- [ ] Make linear-attention conv/recurrent state updates consume `[C, ...]`
-      state, active masks, and slot ids without c1 aliases.
-- [ ] Replace selected-MoE c1 lane assumptions with explicit token-row to
-      routed-lane mapping (`tokens=C`, `lanes=C*top_k`) and validate grouped
-      by-expert metadata for c=2/4/8.
-- [ ] Make batched sampling deterministic and isolated per row:
-  - one row's argmax/logit buffers cannot be overwritten by another row;
-  - EOS/stop-token handling is per request;
-  - `n>1` remains separate scheduler requests, not one shared output stream.
 - [ ] Promote the resident runner from static prompt-list batches to a
-      scheduler-owned engine loop:
-  - pending queue, active table, and physical slots live beyond one
-    `LLM.generate()` call;
-  - `next_prefill_work` and `next_decode_work` are interleaved;
-  - completed requests are reclaimed without waiting for the longest request;
-  - active masks, context lengths, positions, and output queues are updated at
-    every commit point.
-- [ ] Add scheduler-owned dense KV allocation/admission/reclaim for multiple
-      live requests. The scheduler should reject or queue work based on KV page
-      capacity before device allocation fails.
-- [ ] Add cancellation, timeout, EOS, max-token, and client disconnect handling
-      to the same completion/reclaim path used by normal generation.
-- [ ] Route server streaming through the same scheduler loop instead of the
-      current one-request-at-a-time path.
-- [ ] Narrow or remove the coarse `generation_lock`; any remaining lock should
-      protect only non-reentrant session mutation, not the whole lifetime of a
+      scheduler-owned engine loop that persists beyond one
+      `LLM.generate()` call.
+- [ ] Implement `submit(prompt_tokens, sampling, max_new_tokens, stream) →
+      request_id`, `poll(timeout) → events`, `cancel(request_id) → bool`.
+- [ ] Lower `LLM.generate()` and OpenAI server endpoints to
+      `submit + poll + cancel`.
+- [ ] Implement the per-tick policy: `RECLAIM → ADMIT → choose(PREFILL_CHUNK,
+      DECODE_STEP)`; default `protect_decode`.
+- [ ] Add `kv_pool_chunk_pages` chunked underlying allocation with one chunk
+      at startup.
+- [ ] Add grow-on-admission up to `kv_pool_high_water_bytes`, one attempt per
+      admit cycle; record `grow_events` / `grow_failures`.
+- [ ] Add idle shrink down to `kv_pool_low_water_bytes` with
+      `kv_pool_idle_grace_seconds`; never free a chunk holding a non-zero
+      refcount.
+- [ ] Add CLI/env knobs `--kv-pool-{initial,low-water,high-water,
+      chunk-pages,idle-grace}-*`,
+      `HIPENGINE_KV_POOL_*`,
+      `HIPENGINE_PREFILL_DECODE_POLICY` / `--prefill-decode-policy`;
+      document in `docs/ENVS.md`.
+- [ ] Add a burst-then-idle acceptance fixture that exercises grow and
+      shrink and records the events.
+- [ ] Add a memory-audit test that fails if a block id's backing pointer
+      changes mid-run.
+- [ ] Narrow or remove the coarse `generation_lock`; any remaining lock
+      protects only non-reentrant session mutation, not the lifetime of a
       generated batch.
-- [ ] Add request-level observability: enqueue/admit/start-prefill/start-decode/
-      first-token/finish timestamps, queue time, prefill time, decode time,
-      tokens generated, slot moves, and final status.
-- [ ] Keep prefix/radix cache, DMS/compact KV, and SpecDec disabled on the c>N
-      correctness path until dense fixed-page c>N is green.
+- [ ] Route server streaming through the engine loop and the per-request
+      token queue; the streaming path no longer bypasses the batcher.
+- [ ] Unify cancel / disconnect / EOS / max-tokens / timeout into one
+      `RECLAIM` path.
+- [ ] Per-request observability fields (queue/prefill/decode seconds,
+      kv pages owned/peak, bucket key, admission_blocked_reason,
+      finish_reason).
+- [ ] Per-pool observability counters
+      (current_bytes, high_water_observed, grow/shrink events, free pages,
+      refcounted pages).
 
-### B. Then make the green path fast
+### C5 — KV sharing, per-row sampler, `n>1`, `/metrics`
 
-- [ ] Establish baseline artifacts before optimizing:
-  - c=1 native prefill/decode for the retained shapes;
-  - c=2/4/8 serial bridge diagnostics;
-  - first green uncaptured native c>N rows;
-  - primitive/kernel microbenchmarks for attention, KV append, MoE, projection,
-    and LM-head sampling.
-- [ ] Report scaling explicitly for every retained row:
-  - `prefill_tok_s_aggregate / c1_prefill_tok_s`;
-  - `decode_tok_s_aggregate / c1_decode_tok_s`;
-  - `decode_tok_s_per_request / c1_decode_tok_s`;
-  - p50/p95 first-token latency and inter-token latency;
-  - active-batch occupancy over time.
-- [ ] Target decode aggregate speedup versus c=1 and versus the serial bridge.
-      Per [`PLAN.md`](PLAN.md), c=8 decode plausibly lands around 2-4x c=1
-      aggregate when kernels reuse enough work; do not promise 8x.
-- [ ] Target prefill aggregate scaling versus c=1 by keeping prompt rows packed,
-      avoiding per-request Python loops, and using AOTriton/WMMA paths where they
-      beat row-GEMV.
-- [ ] Add hipGraph capture/replay buckets for decode by `(C, context bucket,
-      active mask, KV dtype, layer plan, top_k/experts, replay length)`, with an
-      uncaptured fallback for rare shapes.
-- [ ] Eliminate residual serial loops on the native path after correctness is
-      green:
-  - full-attention per-row fallback;
-  - per-row host metadata allocation/free;
-  - per-row LM-head/argmax launches where a batched launch is correct;
-  - Python per-layer dispatch overhead inside steady-state decode.
-- [ ] Add c-aware projection dispatch thresholds:
-  - c=1 stays on tuned GEMV/Marlin-K paths;
-  - c=2/4/8 can use MMQ/GEMM/WMMA-style kernels when they beat row-GEMV;
-  - c>16 should prefer GEMM/WMMA and grouped MoE designs over widening c1
-    GEMV wrappers.
-- [ ] Optimize MoE for routed-lane reuse:
-  - group lanes by expert;
-  - use compact/WMMA grouped kernels when routed lanes justify it;
-  - measure router, group-scatter, gate/up, down, shared expert, and combine
-    time separately.
-- [ ] Optimize memory traffic and workspace reuse:
-  - preallocate per-bucket scratch instead of allocating per step;
-  - avoid host-device copies for metadata that can be updated on device;
-  - keep JIT builds out of profiler runs with `require_cached`;
-  - track peak allocator/KV/workspace bytes in artifacts.
-- [ ] Add backpressure and fairness policies once the scheduler is continuous:
-  - max active requests, max queued requests, max prefill chunk tokens;
-  - prefill-vs-decode scheduling policy to protect decode latency;
-  - sampling-parameter grouping without starving incompatible requests.
-- [ ] Capture profiler summaries for accepted rows: expected kernel names,
-      duration/share for attention, MoE, projection, sampling, graph replay, and
-      any CPU-side bottleneck.
-- [ ] Only update `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, and
-      `benchmarks/results/` for retained rows with correctness green, protocol
-      shape satisfied, and profiler evidence. Rejected/blocked diagnostics stay
-      useful but are not scoreboard entries.
+Definition of done: refcounted prefix sharing on by default; per-row sampler
+in code; `n>1` lowered to N scheduler requests; Prometheus `/metrics`
+endpoint live; retained c>N rows include all gates above.
 
-### C. After dense c>N is correct and fast
+- [ ] Add block-id refcounts; admission increments refcount when reusing
+      an existing block on a matched prefix.
+- [ ] Implement RadixCache trie index over token ids; expose
+      `HIPENGINE_PREFIX_CACHE` / `--prefix-cache` in `{off, radix}` with
+      default `off` until acceptance gates pass.
+- [ ] Implement copy-on-write fork at first divergent token.
+- [ ] **KVTC ABI guardrail.** Block ids returned by the allocator must be
+      stable across hypothetical tier moves; refcount and eviction state
+      must attach to the radix node rather than the block pointer. KVTC
+      itself ships in a separate feature branch.
+- [ ] Lower `n > 1` at the API layer to N `submit()` calls with the same
+      prompt tokens and distinct seeds; collect output by `request_id`;
+      remove the `n>1 → 400` rejection.
+- [ ] Land the per-row sampler params block (temperature, top-k, top-p,
+      repetition penalty, seed, stop tokens) in one launch.
+- [ ] Per-row EOS handling drives `RECLAIM` per-row, not per-batch.
+- [ ] Remove or demote the submission-time coalescer
+      (`_GenerationBatcher`) to a cold-path optimization.
+- [ ] Add Prometheus `/metrics` endpoint;
+      knob `HIPENGINE_METRICS` / `--metrics` in `{off, prometheus}`;
+      default `off` until coverage is broad.
+- [ ] Per-bucket graph-cache observability
+      (entries, hits, misses, miss reason, kernel-time histogram).
+- [ ] Retained-row gates 4 (admission/completion timestamps + p50/p95) and
+      6/7/8 (dynamic pool + stable block id + prefix sharing artifact)
+      enforced by the bench harness.
 
-- [ ] Add prefix/radix cache with per-request ownership and invalidation; keep it
-      disabled for eviction policies until prefix overlays are designed.
-- [ ] Wire SpecDec/MTP verification through the same batch runner with
-      transactional KV scratch/journals and accepted-token commit semantics.
-- [ ] Port compact DMS/variable-span KV after dense fixed-page continuous
-      batching is stable, using `KVLiveSpans` and `KVPolicy.admission_cap()` as
-      the scheduler/kernel boundary.
-- [ ] Revisit multi-GPU admission, TP/PP/EP, and cross-GPU KV ownership only
-      after single-GPU W7900 c>N serving has retained c=2/4/8 rows.
+C6 onward is out of scope for this doc:
+
+- **TP / EP** (separate feature branch). Design in [`PLAN.md`](PLAN.md)
+  §Multi-GPU Strategy. CONCURRENCY contracts are designed to be TP-safe;
+  see §Forward-compatibility guardrails.
+- **DMS compact KV serving** (separate feature branch). Roadmap in
+  [`KVCACHE.md`](KVCACHE.md) Phase K2. CONCURRENCY contracts are designed to
+  be DMS-safe; see §Forward-compatibility guardrails.
+- **KVTC tiered KV storage** (separate feature branch). HBM → pinned host
+  RAM → NVMe / disk. CONCURRENCY contracts are designed to be KVTC-safe;
+  see §Forward-compatibility guardrails.
+- **Speculative decoding** (separate feature branches). MTP, DFlash,
+  EAGLE3; designs in [`MTP.md`](MTP.md), [`DFLASH.md`](DFLASH.md),
+  [`SPECULATIVE-DECODE.md`](SPECULATIVE-DECODE.md).
+
+## Forward-compatibility guardrails
+
+CONCURRENCY-side decisions that the TP, DMS, SpecDec, and KVTC feature
+branches depend on. The work in C0..C5 must already satisfy these; they are
+not new tasks.
+
+### Don't break TP
+
+- **Scheduler / admission / sampler are single-owner.** TP rank-0 will own
+  the engine loop; workers tick in lockstep. Do not put admission, sampling,
+  or pool-resize decisions inside per-rank code.
+- **hipGraph bucket keys are rank-agnostic.** Same
+  `(C, context bucket, active mask, KV dtype, layer plan, top-k/experts,
+  replay length)`. Per-rank capture/replay is fine; key derivation isn't
+  per-rank.
+- **All-reduce points are loop-visible.** Reductions happen after `o_proj`,
+  after `down_proj`, after the shared expert
+  (per [`PLAN.md`](PLAN.md) §Multi-GPU Strategy). Don't fold reductions into
+  kernel internals where the loop can't see them.
+- **KV is replicated per rank first, sharded later.** `KVLiveSpans` is
+  per-rank; the scheduler does not assume rank-shared KV. The dynamic pool
+  is per-rank; admission uses `min(per_rank_admission_cap)`.
+- **No `if backend == "hip_tp_*"` branches in dispatch.** TP variants
+  register as `(backend, layer, quant, variant)` tuples.
+
+### Don't break DMS
+
+- **`KVLiveSpans` stays the only attention / KV-write ABI.** No
+  `(block_table, context_len)` shortcuts anywhere in the c>N decode path.
+- **`KVPolicy.admission_cap()` is the scheduler's capacity unit.** Today
+  returns dense-page capacity; DMS will return compact-live-token capacity.
+  Continuous batching must not assume page == 1-token equivalent.
+- **KV mutation is transactional.** Canonical KV updates only at scheduler
+  commit points; verify/spec rows write scratch/journal. DMS evictions need
+  the same commit-point gate.
+- **Eviction-aware prefix sharing is a separate decision.** When prefix
+  sharing lands in C5, either disable it under DMS or design per-sequence
+  eviction overlays. Don't blind-share under variable-span eviction.
+- **The engine loop must allow a `PACK_STEP` work class to be inserted
+  between active requests' decode steps.** Don't model the loop as a strict
+  `prefill ; decode_until_done` macro-pattern.
+
+### Don't break SpecDec
+
+- **Verify rows commit only at scheduler commit points.** Canonical KV (dense
+  or compact) is updated only on accept; rejects discard scratch.
+- **`DraftBatch` metadata is the verify ABI.** Verification kernels consume
+  `request_id`, candidate token(s), parent position, draft depth, optional
+  tree parent, and active mask. No c=1 chain shortcuts.
+- **`VERIFY_STEP` is a peer work class.** The loop's per-tick policy can
+  schedule verify steps without changing the contract.
+
+### Don't break KVTC
+
+- **Block id stays stable across tier moves.** A block id `b`'s id and
+  refcount are preserved when its backing pointer moves between HBM,
+  pinned host RAM, or NVMe. Consumers ask the allocator for the current
+  pointer rather than caching it. This is a strict extension of the
+  append-only block-id contract in §Dynamic KV pool.
+- **Refcount and eviction state live on the radix node, not the block
+  pointer.** Tier moves do not change prefix-sharing topology.
+- **Tier moves happen only at scheduler commit points.** No mid-kernel
+  tier promotion or demotion; no torn `KVLiveSpans` reads.
+- **`KVLiveSpans` is unchanged by tiering.** A tier move is a pointer swap
+  inside the allocator, not a span rewrite.
+- **The `/metrics` schema is extensible.** When KVTC lands it adds
+  counters like `kv_tier_promotions_total{tier}` and
+  `kv_tier_demotions_total{tier}`; CONCURRENCY's per-pool counter block
+  must be additive, not restructured.
+
+## GPU0 diagnostic evidence
+
+Fixtures and artifacts live under `/tmp/hipengine-prebench/` and
+`/tmp/hipengine-retained/` pending stable promotion to `benchmarks/results/`
+(C0 punchlist item).
+
+Primitive c=1/2/4/8 correctness (BF16 batched KV append + batched paged
+full-attention decode):
+
+| c | append key mismatch | append value mismatch | attn batch-vs-c1 max abs |
+| ---: | ---: | ---: | ---: |
+| 1 | 0 | 0 | 0.0 |
+| 2 | 0 | 0 | 0.0 |
+| 4 | 0 | 0 | 0.0 |
+| 8 | 0 | 0 | 0.0 |
+
+Scheduler serial bridge sweep (Qwen3.6/PARO-35B-A3B, W7900, 40 layers, INT8
+KV, prompt 512 + 4K, decode 128):
+
+| Shape | Decode aggregate tok/s | Decode per-request tok/s |
+| --- | ---: | ---: |
+| c=1 512/128 | 102.12 | 102.12 |
+| c=2 512/128 | 102.32 | 51.16 |
+| c=4 512/128 | 101.47 | 25.37 |
+| c=8 512/128 | 100.30 | 12.54 |
+| c=1 4K/128 | 99.98 | 99.98 |
+| c=8 4K/128 | 98.88 | 12.36 |
+
+Aggregate decode stays flat while per-request falls as `1/c` — the signature
+of the serial bridge. Full per-row artifacts:
+`/tmp/hipengine-prebench/scheduler/qwen36-paro-cC-{512,4k}-128-serial-bridge.json`.
+
+Experimental native decode (commit `86e6fa2`), L=8 retained shape with the
+batched LM head (pre-workaround): `rejected_correctness` at row 0 idx 13
+(`/tmp/hipengine-retained/guarded-L8-512-32.json`). Layer-by-layer L1/L3/L4
+equality passes; L8 / L40 equality also pass with
+`HIPENGINE_QWEN35_BATCH_SAMPLE_MODE=serial_lm_head` set explicitly
+(`/tmp/hipengine-retained/eq-{L8,L40}-512-32-serialsample.json`). The
+committed default is `serial_lm_head`, so the next confirming retained-shape
+artifact is a C2 punchlist item.
 
 ## What not to claim yet
 
@@ -374,10 +812,12 @@ Do not describe any current row as:
 - continuous batching;
 - radix/prefix-cache reuse;
 - compact/DMS KV serving;
-- c-aware decode graph replay.
+- c-aware decode graph replay;
+- dynamic KV pool growth/shrink;
+- KVTC / tiered KV storage.
 
 The correct phrasing for current diagnostics is:
 
 > c>N scheduler serial bridge diagnostic: batch-shaped slots and KV metadata,
-> but active rows execute serially through the c=1 layer path. Aggregate decode
-> throughput remains roughly c=1, so the row is blocked/non-retained.
+> but active rows execute serially through the c=1 layer path. Aggregate
+> decode throughput remains roughly c=1, so the row is blocked/non-retained.
