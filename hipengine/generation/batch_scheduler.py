@@ -32,6 +32,98 @@ class BatchGenerateRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class PerRowSamplingParams:
+    """Torch-free per-request sampling row for native sampler launches."""
+
+    temperature: float = 0.0
+    top_k: int = 0
+    top_p: float = 1.0
+    repetition_penalty: float = 1.0
+    seed: int | None = None
+    stop_tokens: tuple[int, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.temperature < 0.0:
+            raise ValueError("temperature must be non-negative")
+        if self.top_k < 0:
+            raise ValueError("top_k must be non-negative")
+        if self.top_p < 0.0 or self.top_p > 1.0:
+            raise ValueError("top_p must be between 0 and 1")
+        if self.repetition_penalty <= 0.0:
+            raise ValueError("repetition_penalty must be positive")
+        if self.seed is not None and self.seed < 0:
+            raise ValueError("seed must be non-negative")
+        stops = tuple(int(token) for token in self.stop_tokens)
+        if any(token < 0 for token in stops):
+            raise ValueError("stop_tokens must be non-negative")
+        object.__setattr__(self, "temperature", float(self.temperature))
+        object.__setattr__(self, "top_k", int(self.top_k))
+        object.__setattr__(self, "top_p", float(self.top_p))
+        object.__setattr__(self, "repetition_penalty", float(self.repetition_penalty))
+        object.__setattr__(self, "seed", None if self.seed is None else int(self.seed))
+        object.__setattr__(self, "stop_tokens", stops)
+
+    def resolved_seed(self, *, request_id: int, row_index: int) -> int:
+        base = int(self.seed) if self.seed is not None else 0
+        return _stable_sampler_seed(base_seed=base, request_id=int(request_id), row_index=int(row_index))
+
+
+@dataclass(frozen=True, slots=True)
+class SamplerParamsBlock:
+    """Columnar per-row sampler params aligned with a decode work item."""
+
+    request_ids: tuple[int, ...]
+    temperatures: tuple[float, ...]
+    top_ks: tuple[int, ...]
+    top_ps: tuple[float, ...]
+    repetition_penalties: tuple[float, ...]
+    seeds: tuple[int, ...]
+    stop_token_rows: tuple[tuple[int, ...], ...]
+
+    def __post_init__(self) -> None:
+        rows = len(self.request_ids)
+        if rows <= 0:
+            raise ValueError("sampler params block must include at least one row")
+        _check_len("temperatures", self.temperatures, rows)
+        _check_len("top_ks", self.top_ks, rows)
+        _check_len("top_ps", self.top_ps, rows)
+        _check_len("repetition_penalties", self.repetition_penalties, rows)
+        _check_len("seeds", self.seeds, rows)
+        _check_len("stop_token_rows", self.stop_token_rows, rows)
+        if len(set(self.request_ids)) != rows:
+            raise ValueError("sampler params block request_ids must be unique")
+
+    @classmethod
+    def from_rows(
+        cls,
+        request_ids: Sequence[int],
+        rows: Mapping[int, PerRowSamplingParams],
+    ) -> "SamplerParamsBlock":
+        ids = tuple(int(request_id) for request_id in request_ids)
+        params = tuple(rows[request_id] for request_id in ids)
+        return cls(
+            request_ids=ids,
+            temperatures=tuple(row.temperature for row in params),
+            top_ks=tuple(row.top_k for row in params),
+            top_ps=tuple(row.top_p for row in params),
+            repetition_penalties=tuple(row.repetition_penalty for row in params),
+            seeds=tuple(row.resolved_seed(request_id=request_id, row_index=index) for index, (request_id, row) in enumerate(zip(ids, params, strict=True))),
+            stop_token_rows=tuple(row.stop_tokens for row in params),
+        )
+
+    def params_for(self, request_id: int) -> PerRowSamplingParams:
+        index = self.request_ids.index(int(request_id))
+        return PerRowSamplingParams(
+            temperature=self.temperatures[index],
+            top_k=self.top_ks[index],
+            top_p=self.top_ps[index],
+            repetition_penalty=self.repetition_penalties[index],
+            seed=self.seeds[index],
+            stop_tokens=self.stop_token_rows[index],
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class GeneratedToken:
     request_id: int
     token_id: int
@@ -364,6 +456,7 @@ class ResidentBatchScheduler:
         self._pending: deque[RequestState] = deque()
         self._completed: dict[int, CompletedRequest] = {}
         self._observability: dict[int, _RequestObservabilityState] = {}
+        self._sampling: dict[int, PerRowSamplingParams] = {}
         self._next_request_id = 0
         self._clock = time.monotonic if clock is None else clock
         self._reclaim_callback = reclaim_callback
@@ -380,11 +473,19 @@ class ResidentBatchScheduler:
     def completed(self) -> Mapping[int, CompletedRequest]:
         return self._completed
 
-    def submit(self, prompt_tokens: Iterable[int], *, max_new_tokens: int, request_id: int | None = None) -> int:
+    def submit(
+        self,
+        prompt_tokens: Iterable[int],
+        *,
+        max_new_tokens: int,
+        request_id: int | None = None,
+        sampling: PerRowSamplingParams | None = None,
+    ) -> int:
         rid = self._allocate_request_id() if request_id is None else int(request_id)
         if rid in self.active_batch.requests or any(req.request_id == rid for req in self._pending) or rid in self._completed:
             raise ValueError(f"request_id {rid} already exists")
         self._pending.append(RequestState.from_tokens(rid, prompt_tokens, max_new_tokens=max_new_tokens))
+        self._sampling[rid] = sampling or PerRowSamplingParams()
         self._observability[rid] = _RequestObservabilityState(
             submitted_at=self._clock(),
             admission_blocked_reason="capacity" if self.active_batch.active_count >= self.capacity else None,
@@ -531,6 +632,15 @@ class ResidentBatchScheduler:
             return None
         self._set_bucket_key(request_ids, self._bucket_key(self.shape_key(mode=WorkKind.DECODE)))
         return WorkItem(kind=WorkKind.DECODE, request_ids=request_ids, row_to_request=request_ids)
+
+    def sampler_params_block(self, request_ids: Sequence[int]) -> SamplerParamsBlock:
+        """Return a columnar per-row sampler block for a native decode launch."""
+
+        ids = tuple(int(request_id) for request_id in request_ids)
+        for request_id in ids:
+            if request_id not in self._sampling:
+                raise KeyError(f"no sampler params for request_id {request_id}")
+        return SamplerParamsBlock.from_rows(ids, self._sampling)
 
     def record_work_duration(self, work: WorkItem, seconds: float) -> None:
         """Attach measured runner time to the request observability rows."""
@@ -959,10 +1069,21 @@ class ResidentBatchScheduler:
             finish_reason=finish_reason,
             observability=observability,
         )
+        self._sampling.pop(done.request_id, None)
         self._completed[done.request_id] = done
         if self._reclaim_callback is not None:
             self._reclaim_callback(done)
         return done
+
+
+def _stable_sampler_seed(*, base_seed: int, request_id: int, row_index: int) -> int:
+    """Derive a deterministic uint64-ish row seed without process-random hash()."""
+
+    value = (int(base_seed) + 0x9E3779B97F4A7C15) & ((1 << 64) - 1)
+    value ^= (int(request_id) + 0xBF58476D1CE4E5B9) & ((1 << 64) - 1)
+    value = (value * 0x94D049BB133111EB) & ((1 << 64) - 1)
+    value ^= (int(row_index) + 0xD6E8FEB86659FD93) & ((1 << 64) - 1)
+    return value & ((1 << 63) - 1)
 
 
 def _coerce_generated_token(item: GeneratedToken | tuple[int, int] | tuple[int, int, bool]) -> GeneratedToken:
@@ -988,8 +1109,10 @@ __all__ = [
     "GeneratedToken",
     "GraphBucketCache",
     "GraphBucketStats",
+    "PerRowSamplingParams",
     "RequestObservability",
     "ResidentBatchScheduler",
+    "SamplerParamsBlock",
     "SpeculativeCommitPlan",
     "SpeculativeStateCommitPlan",
     "SpeculativeVerifyBufferPlan",

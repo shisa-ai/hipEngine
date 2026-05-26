@@ -15,6 +15,7 @@ from hipengine.generation import (
     EngineLoopConfig,
     GeneratedToken,
     GraphBucketCache,
+    PerRowSamplingParams,
     ResidentBatchScheduler,
     ResidentEngineLoop,
     SpeculativeCommitPlan,
@@ -336,6 +337,49 @@ def test_resident_scheduler_unified_reclaim_finish_reasons() -> None:
 
     with pytest.raises(ValueError, match="cancel reason"):
         pending.cancel(123, reason="stop")
+
+
+def test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_together() -> None:
+    scheduler = ResidentBatchScheduler(capacity=3, context_bucket_size=4)
+    r0 = scheduler.submit(
+        [10],
+        max_new_tokens=2,
+        sampling=PerRowSamplingParams(temperature=0.0, top_k=1, top_p=1.0, seed=7, stop_tokens=(99,)),
+    )
+    r1 = scheduler.submit(
+        [20],
+        max_new_tokens=2,
+        sampling=PerRowSamplingParams(temperature=0.7, top_k=40, top_p=0.9, repetition_penalty=1.1, seed=7),
+    )
+    r2 = scheduler.submit(
+        [30],
+        max_new_tokens=2,
+        sampling=PerRowSamplingParams(temperature=1.0, top_k=0, top_p=0.8, repetition_penalty=1.2, seed=99),
+    )
+    scheduler.admit_pending()
+    for _ in range(3):
+        assert scheduler.next_prefill_work(chunk_size=8) is not None
+
+    decode = scheduler.next_decode_work()
+    assert decode is not None
+    assert decode.request_ids == (r0, r1, r2)
+
+    block = scheduler.sampler_params_block(decode.request_ids)
+    again = scheduler.sampler_params_block(decode.request_ids)
+
+    assert block.request_ids == (r0, r1, r2)
+    assert block.temperatures == (0.0, 0.7, 1.0)
+    assert block.top_ks == (1, 40, 0)
+    assert block.top_ps == (1.0, 0.9, 0.8)
+    assert block.repetition_penalties == (1.0, 1.1, 1.2)
+    assert block.stop_token_rows == ((99,), (), ())
+    assert block.seeds == again.seeds
+    assert len(set(block.seeds)) == 3
+    assert block.params_for(r1).temperature == 0.7
+
+    scheduler.record_generated([GeneratedToken(r0, 100, finished=True)])
+    with pytest.raises(KeyError, match="sampler params"):
+        scheduler.sampler_params_block((r0,))
 
 
 def test_resident_scheduler_per_row_eos_reclaims_finished_rows_only() -> None:
