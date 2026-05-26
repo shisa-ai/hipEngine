@@ -272,6 +272,11 @@ def _run_native_bench(
         scheduler_metadata["slot_to_request_after_completion"] = list(scheduler.active_batch.slot_to_request)
         batch_execution = session.batch_execution_metadata(scheduler_owned=True, native_decode=True).to_json_dict()
 
+    completed_payload = [done.to_json_dict() for done in completed]
+    request_observability = {
+        str(done.request_id): done.observability.to_json_dict()
+        for done in completed
+    }
     seed_rows = [_result_payload(seed_by_request[request_id]) for request_id in request_ids]
     generated_rows = [row for rows in generated_by_request.values() for row in rows]
     finite_logits = _all_finite(seed_rows) and _all_finite(generated_rows)
@@ -286,15 +291,8 @@ def _run_native_bench(
         "generated_tokens": {str(request_id): generated_by_request[request_id] for request_id in request_ids},
         "scheduler_metadata": scheduler_metadata,
         "batch_execution": batch_execution,
-        "completed": [
-            {
-                "request_id": done.request_id,
-                "prompt_tokens": list(done.prompt_tokens),
-                "generated_tokens": list(done.generated_tokens),
-                "finished": done.finished,
-            }
-            for done in completed
-        ],
+        "completed": completed_payload,
+        "request_observability": request_observability,
         "finite_logits": finite_logits,
     }
 
@@ -393,6 +391,25 @@ def _build_payload(
         blocked_reasons.append("max_layers is not the full 40-layer Qwen3.5/PARO model")
     if not bench["finite_logits"]:
         blocked_reasons.append("non-finite seed or decode logits")
+    per_request_observability = dict(bench.get("request_observability", {}))
+    admission_timestamps = {
+        request_id: row.get("admitted_timestamp")
+        for request_id, row in per_request_observability.items()
+        if isinstance(row, dict)
+    }
+    completion_timestamps = {
+        request_id: row.get("completion_timestamp")
+        for request_id, row in per_request_observability.items()
+        if isinstance(row, dict)
+    }
+    request_latencies = [
+        float(row["completion_timestamp"]) - float(row["submitted_timestamp"])
+        for row in per_request_observability.values()
+        if isinstance(row, dict)
+        and row.get("completion_timestamp") is not None
+        and row.get("submitted_timestamp") is not None
+    ]
+    latency_summary = _summarize_samples(request_latencies)
     payload = {
         "schema": 3,
         "status": status,
@@ -446,6 +463,16 @@ def _build_payload(
             "seed_tokens": bench["seed_tokens"],
             "generated_tokens": bench["generated_tokens"],
         },
+        "observability": {
+            "admission_timestamps": admission_timestamps,
+            "completion_timestamps": completion_timestamps,
+            "request_latency_seconds": {
+                "p50": latency_summary["median"],
+                "p95": latency_summary["p95"],
+                "samples": latency_summary["samples"],
+            },
+            "per_request": per_request_observability,
+        },
         "measurements": {
             "load_seconds": bench["load_seconds"],
             "prefill_seconds": bench["prefill_seconds"],
@@ -463,6 +490,21 @@ def _build_payload(
             "kv_policy": kv_policy_json(kv_policy),
             "kv_storage_dtype": kv_policy.storage_dtype.value,
             "allocator_reserved_peak_bytes": None,
+            "dynamic_pool": {
+                "enabled": False,
+                "evidence": "resident retained bench still uses fixed session allocation; C4 pool counters are unavailable here",
+                "pool_counters": {
+                    "current_bytes": 0,
+                    "high_water_observed_bytes": 0,
+                    "grow_events": 0,
+                    "grow_failures": 0,
+                    "shrink_events": 0,
+                    "free_pages": 0,
+                    "refcounted_pages": 0,
+                },
+            },
+            "stable_block_id": {"passed": False, "audit": "not captured in retained bench"},
+            "prefix_sharing": {"enabled": False, "savings_bytes": 0},
         },
         "profiler": {"status": "not_captured", "notes": "E2E retained c>N row; profiler trace not captured in this iteration."},
         "decision": {

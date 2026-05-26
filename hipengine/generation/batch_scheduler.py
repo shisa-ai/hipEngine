@@ -8,7 +8,9 @@ back through ``record_generated``.
 
 from __future__ import annotations
 
+import time
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
 from math import ceil
 from typing import Iterable, Mapping, Sequence
@@ -37,12 +39,68 @@ class GeneratedToken:
 
 
 @dataclass(frozen=True, slots=True)
+class RequestObservability:
+    """Per-request timing/KV fields emitted with completion metadata."""
+
+    queue_seconds: float
+    prefill_seconds: float
+    decode_seconds: float
+    kv_pages_owned: int
+    kv_pages_peak: int
+    bucket_key: str | None
+    admission_blocked_reason: str | None
+    finish_reason: str
+    submitted_timestamp: float
+    admitted_timestamp: float | None
+    completion_timestamp: float
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "queue_seconds": self.queue_seconds,
+            "prefill_seconds": self.prefill_seconds,
+            "decode_seconds": self.decode_seconds,
+            "kv_pages_owned": self.kv_pages_owned,
+            "kv_pages_peak": self.kv_pages_peak,
+            "bucket_key": self.bucket_key,
+            "admission_blocked_reason": self.admission_blocked_reason,
+            "finish_reason": self.finish_reason,
+            "submitted_timestamp": self.submitted_timestamp,
+            "admitted_timestamp": self.admitted_timestamp,
+            "completion_timestamp": self.completion_timestamp,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class CompletedRequest:
     request_id: int
     prompt_tokens: tuple[int, ...]
     generated_tokens: tuple[int, ...]
     finished: bool
     finish_reason: str
+    observability: RequestObservability
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "request_id": self.request_id,
+            "prompt_tokens": list(self.prompt_tokens),
+            "generated_tokens": list(self.generated_tokens),
+            "finished": self.finished,
+            "finish_reason": self.finish_reason,
+            "observability": self.observability.to_json_dict(),
+        }
+
+
+@dataclass(slots=True)
+class _RequestObservabilityState:
+    submitted_at: float
+    admitted_at: float | None = None
+    queue_seconds: float = 0.0
+    prefill_seconds: float = 0.0
+    decode_seconds: float = 0.0
+    kv_pages_owned: int = 0
+    kv_pages_peak: int = 0
+    bucket_key: str | None = None
+    admission_blocked_reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -287,7 +345,13 @@ class GraphBucketCache:
 class ResidentBatchScheduler:
     """Continuous-batching scheduler shell for resident decode runners."""
 
-    def __init__(self, *, capacity: int, context_bucket_size: int = 256) -> None:
+    def __init__(
+        self,
+        *,
+        capacity: int,
+        context_bucket_size: int = 256,
+        clock: Callable[[], float] | None = None,
+    ) -> None:
         if capacity <= 0:
             raise ValueError("capacity must be positive")
         if context_bucket_size <= 0:
@@ -298,7 +362,9 @@ class ResidentBatchScheduler:
         self.graph_buckets = GraphBucketCache()
         self._pending: deque[RequestState] = deque()
         self._completed: dict[int, CompletedRequest] = {}
+        self._observability: dict[int, _RequestObservabilityState] = {}
         self._next_request_id = 0
+        self._clock = time.monotonic if clock is None else clock
 
     @property
     def pending_count(self) -> int:
@@ -317,6 +383,10 @@ class ResidentBatchScheduler:
         if rid in self.active_batch.requests or any(req.request_id == rid for req in self._pending) or rid in self._completed:
             raise ValueError(f"request_id {rid} already exists")
         self._pending.append(RequestState.from_tokens(rid, prompt_tokens, max_new_tokens=max_new_tokens))
+        self._observability[rid] = _RequestObservabilityState(
+            submitted_at=self._clock(),
+            admission_blocked_reason="capacity" if self.active_batch.active_count >= self.capacity else None,
+        )
         return rid
 
     def admit_pending(self) -> tuple[int, ...]:
@@ -326,7 +396,17 @@ class ResidentBatchScheduler:
         while self._pending and self.active_batch.active_count < self.capacity:
             request = self._pending.popleft()
             self.active_batch.admit(request)
+            state = self._observability.get(request.request_id)
+            if state is not None:
+                now = self._clock()
+                state.admitted_at = now
+                state.queue_seconds = max(0.0, now - state.submitted_at)
             admitted.append(request.request_id)
+        if self._pending and self.active_batch.active_count >= self.capacity:
+            for request in self._pending:
+                state = self._observability.get(request.request_id)
+                if state is not None and state.admission_blocked_reason is None:
+                    state.admission_blocked_reason = "capacity"
         return tuple(admitted)
 
     def compact(self, order: Sequence[int] | None = None):
@@ -343,6 +423,8 @@ class ResidentBatchScheduler:
                 continue
             updated, chunk = request.take_prefill(chunk_size)
             self.active_batch.update_request(updated)
+            self._update_kv_pages(updated)
+            self._set_bucket_key((request_id,), self._bucket_key(self.shape_key(mode=WorkKind.PREFILL)))
             return WorkItem(
                 kind=WorkKind.PREFILL,
                 request_ids=(request_id,),
@@ -408,17 +490,21 @@ class ResidentBatchScheduler:
                 start_positions.append(request.next_prompt_index)
                 updated, chunk = request.take_prefill(chunk_size)
                 self.active_batch.update_request(updated)
+                self._update_kv_pages(updated, block_size=block_size)
                 token_rows.append(chunk)
-            slabs.append(
-                CompactPromptSlab.from_token_rows(
-                    request_ids=bucket.request_ids,
-                    token_rows=token_rows,
-                    start_positions=start_positions,
-                    block_count=bucket.block_count,
-                    block_size=block_size,
-                    slot_ids=tuple(self.active_batch.slot_for(request_id) for request_id in bucket.request_ids),
-                )
+            slab = CompactPromptSlab.from_token_rows(
+                request_ids=bucket.request_ids,
+                token_rows=token_rows,
+                start_positions=start_positions,
+                block_count=bucket.block_count,
+                block_size=block_size,
+                slot_ids=tuple(self.active_batch.slot_for(request_id) for request_id in bucket.request_ids),
             )
+            self._set_bucket_key(
+                bucket.request_ids,
+                f"prefill:compact:blocks={slab.block_count}:rows={slab.rows}:block_size={slab.block_size}",
+            )
+            slabs.append(slab)
         return tuple(slabs)
 
     def has_prefill_work(self) -> bool:
@@ -441,7 +527,29 @@ class ResidentBatchScheduler:
         )
         if not request_ids:
             return None
+        self._set_bucket_key(request_ids, self._bucket_key(self.shape_key(mode=WorkKind.DECODE)))
         return WorkItem(kind=WorkKind.DECODE, request_ids=request_ids, row_to_request=request_ids)
+
+    def record_work_duration(self, work: WorkItem, seconds: float) -> None:
+        """Attach measured runner time to the request observability rows."""
+
+        elapsed = float(seconds)
+        if elapsed < 0.0:
+            raise ValueError("work duration must be non-negative")
+        if work.kind is WorkKind.PREFILL:
+            field = "prefill_seconds"
+        elif work.kind is WorkKind.DECODE:
+            field = "decode_seconds"
+        else:
+            return
+        for request_id in work.request_ids:
+            state = self._observability.get(request_id)
+            if state is None:
+                continue
+            if field == "prefill_seconds":
+                state.prefill_seconds += elapsed
+            elif field == "decode_seconds":
+                state.decode_seconds += elapsed
 
     def next_speculative_verify_work(
         self,
@@ -770,6 +878,28 @@ class ResidentBatchScheduler:
             replay_steps=replay_steps,
         )
 
+    def _bucket_key(self, key: BatchShapeKey) -> str:
+        mask = "".join("1" if active else "0" for active in key.active_mask)
+        return (
+            f"{key.mode.value}:c={key.active_c}:ctx={key.context_bucket}:mask={mask}:"
+            f"top_k={key.top_k}:experts={key.experts_per_token}:replay={key.replay_steps}:"
+            f"draft={key.draft_depth}"
+        )
+
+    def _set_bucket_key(self, request_ids: Sequence[int], bucket_key: str) -> None:
+        for request_id in request_ids:
+            state = self._observability.get(int(request_id))
+            if state is not None:
+                state.bucket_key = bucket_key
+
+    def _update_kv_pages(self, request: RequestState, *, block_size: int = 256) -> None:
+        state = self._observability.get(request.request_id)
+        if state is None:
+            return
+        pages = max(0, ceil(request.context_len / int(block_size)))
+        state.kv_pages_owned = pages
+        state.kv_pages_peak = max(state.kv_pages_peak, pages)
+
     def _allocate_request_id(self) -> int:
         rid = self._next_request_id
         self._next_request_id += 1
@@ -780,6 +910,7 @@ class ResidentBatchScheduler:
         finish_reason = "stop" if token.finished else "length"
         updated = request.append_generated(token.token_id, finished=token.finished)
         self.active_batch.update_request(updated)
+        self._update_kv_pages(updated)
         if not updated.finished:
             return None
         return self._reclaim_active_request(updated.request_id, finish_reason=finish_reason)
@@ -797,12 +928,34 @@ class ResidentBatchScheduler:
         return self._complete_request(reclaimed, finish_reason=finish_reason)
 
     def _complete_request(self, request: RequestState, *, finish_reason: str) -> CompletedRequest:
+        now = self._clock()
+        self._update_kv_pages(request)
+        state = self._observability.pop(
+            request.request_id,
+            _RequestObservabilityState(submitted_at=now, admitted_at=now),
+        )
+        if state.admitted_at is None:
+            state.queue_seconds = max(0.0, now - state.submitted_at)
+        observability = RequestObservability(
+            queue_seconds=state.queue_seconds,
+            prefill_seconds=state.prefill_seconds,
+            decode_seconds=state.decode_seconds,
+            kv_pages_owned=state.kv_pages_owned,
+            kv_pages_peak=state.kv_pages_peak,
+            bucket_key=state.bucket_key,
+            admission_blocked_reason=state.admission_blocked_reason,
+            finish_reason=finish_reason,
+            submitted_timestamp=state.submitted_at,
+            admitted_timestamp=state.admitted_at,
+            completion_timestamp=now,
+        )
         done = CompletedRequest(
             request_id=request.request_id,
             prompt_tokens=request.prompt_tokens,
             generated_tokens=request.generated_tokens,
             finished=True,
             finish_reason=finish_reason,
+            observability=observability,
         )
         self._completed[done.request_id] = done
         return done
@@ -831,6 +984,7 @@ __all__ = [
     "GeneratedToken",
     "GraphBucketCache",
     "GraphBucketStats",
+    "RequestObservability",
     "ResidentBatchScheduler",
     "SpeculativeCommitPlan",
     "SpeculativeStateCommitPlan",

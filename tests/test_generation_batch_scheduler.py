@@ -26,7 +26,7 @@ from hipengine.generation import (
     engine_loop_config_from_args,
     engine_loop_config_from_env,
 )
-from hipengine.kvcache import FixedPagedKVPolicy
+from hipengine.kvcache import ChunkedKVPool, FixedPagedKVPolicy
 from hipengine.speculative import AcceptResult, DraftBatch, TargetAcceptSummary, TargetStateCommitBuffers, TargetVerifyBuffers
 from scripts.qwen35_batch_artifact_schema import validate_cn_diagnostic_artifact_payload
 from scripts.qwen35_batch_c_sweep import build_parser as build_c_sweep_parser, build_sweep_commands, run_sweep
@@ -180,6 +180,65 @@ def test_engine_loop_cli_env_overrides() -> None:
     assert cli_config.kv_pool_high_water_pages == 96
     assert cli_config.kv_pool_chunk_pages == 8
     assert cli_config.kv_pool_idle_grace_seconds == 2.5
+
+
+def test_resident_scheduler_completion_observability_and_pool_counters() -> None:
+    now = 100.0
+
+    def clock() -> float:
+        return now
+
+    scheduler = ResidentBatchScheduler(capacity=1, context_bucket_size=4, clock=clock)
+    r0 = scheduler.submit([1, 2, 3, 4, 5], max_new_tokens=1)
+    now = 101.0
+    assert scheduler.admit_pending() == (r0,)
+    r1 = scheduler.submit([8], max_new_tokens=1)
+    assert scheduler.admit_pending() == ()
+
+    prefill = scheduler.next_prefill_work(chunk_size=8)
+    assert prefill is not None
+    scheduler.record_work_duration(prefill, 0.25)
+    decode = scheduler.next_decode_work()
+    assert decode is not None
+    scheduler.record_work_duration(decode, 0.5)
+    now = 102.0
+    done = scheduler.record_generated([GeneratedToken(r0, 9)])[0]
+
+    observed = done.to_json_dict()["observability"]
+    assert observed["queue_seconds"] == 1.0
+    assert observed["prefill_seconds"] == 0.25
+    assert observed["decode_seconds"] == 0.5
+    assert observed["kv_pages_owned"] == 1
+    assert observed["kv_pages_peak"] == 1
+    assert str(observed["bucket_key"]).startswith("decode:c=1:ctx=8")
+    assert observed["admission_blocked_reason"] is None
+    assert observed["finish_reason"] == "length"
+    assert observed["completion_timestamp"] == 102.0
+
+    now = 103.0
+    assert scheduler.admit_pending() == (r1,)
+    assert scheduler.next_prefill_work(chunk_size=8) is not None
+    blocked_done = scheduler.cancel(r1)
+    assert blocked_done is not None
+    assert blocked_done.observability.admission_blocked_reason == "capacity"
+    assert blocked_done.observability.finish_reason == "cancel"
+
+    pool = ChunkedKVPool(page_bytes=4096, initial_pages=2, low_water_pages=1, chunk_pages=2)
+    allocation = pool.allocate(3)
+    pool.release(allocation.block_ids)
+    counters = pool.stats.to_json_dict()
+    for field in [
+        "current_bytes",
+        "high_water_observed_bytes",
+        "grow_events",
+        "grow_failures",
+        "shrink_events",
+        "free_pages",
+        "refcounted_pages",
+    ]:
+        assert field in counters
+    assert counters["current_bytes"] == pool.stats.current_bytes
+    assert counters["grow_events"] == 1
 
 
 def test_resident_engine_loop_submit_poll_cancel_and_reclaim() -> None:
@@ -876,9 +935,34 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
             "admission_timestamps": {"0": 1.0},
             "completion_timestamps": {"0": 2.0},
             "request_latency_seconds": {"p50": 1.0, "p95": 1.25},
+            "per_request": {
+                "0": {
+                    "queue_seconds": 0.1,
+                    "prefill_seconds": 0.2,
+                    "decode_seconds": 0.3,
+                    "kv_pages_owned": 2,
+                    "kv_pages_peak": 3,
+                    "bucket_key": "decode:c=2:ctx=512:mask=11",
+                    "admission_blocked_reason": None,
+                    "finish_reason": "length",
+                }
+            },
         },
         "memory": {
-            "dynamic_pool": {"evidence": "initial chunk sufficed", "grow_events": 0, "shrink_events": 0},
+            "dynamic_pool": {
+                "evidence": "initial chunk sufficed",
+                "grow_events": 0,
+                "shrink_events": 0,
+                "pool_counters": {
+                    "current_bytes": 8192,
+                    "high_water_observed_bytes": 8192,
+                    "grow_events": 0,
+                    "grow_failures": 0,
+                    "shrink_events": 0,
+                    "free_pages": 2,
+                    "refcounted_pages": 0,
+                },
+            },
             "stable_block_id": {"passed": True, "audit": "debug check passed"},
             "prefix_sharing": {"enabled": False, "savings_bytes": 0},
         },
@@ -895,12 +979,21 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     with pytest.raises(ValueError, match="request_latency_seconds"):
         validate_cn_diagnostic_artifact_payload(missing_latency)
 
+    missing_per_request = dict(accepted)
+    missing_per_request["observability"] = {
+        "admission_timestamps": {"0": 1.0},
+        "completion_timestamps": {"0": 2.0},
+        "request_latency_seconds": {"p50": 1.0, "p95": 1.25},
+    }
+    with pytest.raises(ValueError, match="per_request"):
+        validate_cn_diagnostic_artifact_payload(missing_per_request)
+
     missing_pool = dict(accepted)
     missing_pool["memory"] = {
         "dynamic_pool": {"evidence": "initial chunk sufficed"},
         "prefix_sharing": {"enabled": False, "savings_bytes": 0},
     }
-    with pytest.raises(ValueError, match="stable_block_id"):
+    with pytest.raises(ValueError, match="stable_block_id|pool_counters"):
         validate_cn_diagnostic_artifact_payload(missing_pool)
 
     inconsistent = dict(accepted)

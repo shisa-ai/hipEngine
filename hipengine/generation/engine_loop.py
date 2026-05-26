@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Iterable, Protocol, Sequence
@@ -300,12 +301,16 @@ class ResidentEngineLoop:
         return self._last_work_kind is WorkKind.PREFILL
 
     def _run_prefill(self, work: WorkItem) -> tuple[EngineLoopEvent, ...]:
+        start = time.perf_counter()
         self.runner.prefill(work)
+        self.scheduler.record_work_duration(work, time.perf_counter() - start)
         self._last_work_kind = work.kind
         return (EngineLoopEvent(kind="work", request_ids=work.request_ids, work_kind=work.kind),)
 
     def _run_decode(self, work: WorkItem) -> tuple[EngineLoopEvent, ...]:
+        start = time.perf_counter()
         generated = tuple(self.runner.decode(work))
+        self.scheduler.record_work_duration(work, time.perf_counter() - start)
         completed = self.scheduler.record_generated(generated)
         self._last_work_kind = work.kind
         events = [EngineLoopEvent(kind="work", request_ids=work.request_ids, work_kind=work.kind)]

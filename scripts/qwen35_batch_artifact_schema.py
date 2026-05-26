@@ -22,6 +22,25 @@ _REQUIRED_ACCEPTED_POOL_FIELDS = (
     "stable_block_id",
     "prefix_sharing",
 )
+_REQUIRED_ACCEPTED_PER_REQUEST_OBSERVABILITY_FIELDS = (
+    "queue_seconds",
+    "prefill_seconds",
+    "decode_seconds",
+    "kv_pages_owned",
+    "kv_pages_peak",
+    "bucket_key",
+    "admission_blocked_reason",
+    "finish_reason",
+)
+_REQUIRED_ACCEPTED_POOL_COUNTER_FIELDS = (
+    "current_bytes",
+    "high_water_observed_bytes",
+    "grow_events",
+    "grow_failures",
+    "shrink_events",
+    "free_pages",
+    "refcounted_pages",
+)
 
 
 def _mapping_at(payload: Mapping[str, Any], key: str, errors: list[str]) -> Mapping[str, Any]:
@@ -97,14 +116,28 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
             errors.append("observability.request_latency_seconds.p50 must be numeric for accepted artifacts")
         if not _is_number(latency.get("p95")):
             errors.append("observability.request_latency_seconds.p95 must be numeric for accepted artifacts")
+    per_request = observability.get("per_request")
+    if not isinstance(per_request, Mapping) or not per_request:
+        errors.append("observability.per_request must be a non-empty object for accepted artifacts")
+    else:
+        for row in per_request.values():
+            _valid_request_observability(row, errors)
 
     memory = _mapping_at(payload, "memory", errors)
     for field in _REQUIRED_ACCEPTED_POOL_FIELDS:
         if not isinstance(memory.get(field), Mapping):
             errors.append(f"memory.{field} must be an object for accepted artifacts")
     dynamic_pool = memory.get("dynamic_pool")
-    if isinstance(dynamic_pool, Mapping) and not isinstance(dynamic_pool.get("evidence"), str):
-        errors.append("memory.dynamic_pool.evidence must be a string for accepted artifacts")
+    if isinstance(dynamic_pool, Mapping):
+        if not isinstance(dynamic_pool.get("evidence"), str):
+            errors.append("memory.dynamic_pool.evidence must be a string for accepted artifacts")
+        pool_counters = dynamic_pool.get("pool_counters")
+        if not isinstance(pool_counters, Mapping):
+            errors.append("memory.dynamic_pool.pool_counters must be an object for accepted artifacts")
+        else:
+            for field in _REQUIRED_ACCEPTED_POOL_COUNTER_FIELDS:
+                if not _is_number(pool_counters.get(field)):
+                    errors.append(f"memory.dynamic_pool.pool_counters.{field} must be numeric for accepted artifacts")
     stable_block_id = memory.get("stable_block_id")
     if isinstance(stable_block_id, Mapping) and stable_block_id.get("passed") is not True:
         errors.append("memory.stable_block_id.passed must be true for accepted artifacts")
@@ -114,6 +147,35 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
             errors.append("memory.prefix_sharing.enabled must be a bool for accepted artifacts")
         if not _is_number(prefix_sharing.get("savings_bytes")):
             errors.append("memory.prefix_sharing.savings_bytes must be numeric for accepted artifacts")
+
+
+def _valid_request_observability(row: Any, errors: list[str]) -> bool:
+    if not isinstance(row, Mapping):
+        errors.append("observability.per_request entries must be objects for accepted artifacts")
+        return False
+    ok = True
+    for field in _REQUIRED_ACCEPTED_PER_REQUEST_OBSERVABILITY_FIELDS:
+        if field not in row:
+            errors.append(f"observability.per_request.*.{field} is required for accepted artifacts")
+            ok = False
+    for field in ("queue_seconds", "prefill_seconds", "decode_seconds"):
+        if field in row and not _is_number(row.get(field)):
+            errors.append(f"observability.per_request.*.{field} must be numeric for accepted artifacts")
+            ok = False
+    for field in ("kv_pages_owned", "kv_pages_peak"):
+        if field in row and not isinstance(row.get(field), int):
+            errors.append(f"observability.per_request.*.{field} must be an int for accepted artifacts")
+            ok = False
+    if "bucket_key" in row and row.get("bucket_key") is not None and not isinstance(row.get("bucket_key"), str):
+        errors.append("observability.per_request.*.bucket_key must be a string or null for accepted artifacts")
+        ok = False
+    if "admission_blocked_reason" in row and row.get("admission_blocked_reason") is not None and not isinstance(row.get("admission_blocked_reason"), str):
+        errors.append("observability.per_request.*.admission_blocked_reason must be a string or null for accepted artifacts")
+        ok = False
+    if "finish_reason" in row and not isinstance(row.get("finish_reason"), str):
+        errors.append("observability.per_request.*.finish_reason must be a string for accepted artifacts")
+        ok = False
+    return ok
 
 
 def _is_number(value: Any) -> bool:

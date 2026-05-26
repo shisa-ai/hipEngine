@@ -33,6 +33,19 @@ class KVPoolStats:
     grow_failures: int
     shrink_events: int
 
+    def to_json_dict(self) -> dict[str, int]:
+        return {
+            "current_pages": self.current_pages,
+            "current_bytes": self.current_bytes,
+            "high_water_observed_pages": self.high_water_observed_pages,
+            "high_water_observed_bytes": self.high_water_observed_bytes,
+            "free_pages": self.free_pages,
+            "refcounted_pages": self.refcounted_pages,
+            "grow_events": self.grow_events,
+            "grow_failures": self.grow_failures,
+            "shrink_events": self.shrink_events,
+        }
+
 
 @dataclass(frozen=True, slots=True)
 class KVPoolChunk:

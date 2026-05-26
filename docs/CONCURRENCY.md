@@ -700,10 +700,12 @@ roll-up/status view.
       compact `0..C-1` slots after scheduler compaction/reclaim. Acceptance:
       generated-token equality passes with a deliberately sparse/compacted
       slot schedule.
-- [ ] **C4.9 observability fields.** Record per-request and per-pool fields in
+- [x] **C4.9 observability fields.** Record per-request and per-pool fields in
       completion/artifact metadata. Acceptance: tests assert queue/prefill/
       decode seconds, KV pages, bucket key, admission blocker, and finish
-      reason are present.
+      reason are present. Evidence: `CompletedRequest.to_json_dict()`,
+      `KVPoolStats.to_json_dict()`, accepted-artifact schema checks, and
+      `pytest -q tests/test_generation_batch_scheduler.py -q`.
 
 ### C5 packets — prefix sharing, per-row sampling, `n>1`, metrics
 
@@ -897,10 +899,10 @@ becomes a `submit+poll` adapter.
       token queue; the streaming path no longer bypasses the batcher.
 - [x] Unify cancel / disconnect / EOS / max-tokens / timeout into one
       `RECLAIM` path.
-- [ ] Per-request observability fields (queue/prefill/decode seconds,
+- [x] Per-request observability fields (queue/prefill/decode seconds,
       kv pages owned/peak, bucket key, admission_blocked_reason,
       finish_reason).
-- [ ] Per-pool observability counters
+- [x] Per-pool observability counters
       (current_bytes, high_water_observed, grow/shrink events, free pages,
       refcounted pages).
 - [ ] Extend native decode correctness to non-compact slots after
