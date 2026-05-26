@@ -29,6 +29,7 @@ if str(REPO_ROOT) not in sys.path:
 from hipengine.generation import GeneratedToken, ResidentBatchScheduler
 from hipengine.kvcache import ResolvedKVPolicy
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
+from scripts.qwen35_batch_artifact_schema import validate_cn_diagnostic_artifact_payload
 from scripts.qwen35_kv_policy_args import add_kv_policy_args, kv_policy_json, resolve_args_kv_policy
 
 DEFAULT_MODEL = (
@@ -320,7 +321,7 @@ def _build_payload(args: argparse.Namespace, argv: Sequence[str] | None, bench: 
         blocked_reasons.append("max_layers is not the full 40-layer Qwen3.5/PARO model")
     if not bench["finite_logits"]:
         blocked_reasons.append("non-finite seed or decode logits")
-    return {
+    payload = {
         "schema": 2,
         "status": "accepted" if accepted else "blocked",
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -401,6 +402,8 @@ def _build_payload(args: argparse.Namespace, argv: Sequence[str] | None, bench: 
             "The c>N path uses step_batch_serial over batch-shaped state/KV slots and is blocked on native compact prefill plus c-aware decode kernels.",
         ],
     }
+    validate_cn_diagnostic_artifact_payload(payload)
+    return payload
 
 
 def main(argv: list[str] | None = None) -> int:

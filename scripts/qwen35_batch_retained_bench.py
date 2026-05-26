@@ -29,6 +29,7 @@ if str(REPO_ROOT) not in sys.path:
 from hipengine.generation import GeneratedToken, ResidentBatchScheduler
 from hipengine.kvcache import ResolvedKVPolicy
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
+from scripts.qwen35_batch_artifact_schema import validate_cn_diagnostic_artifact_payload
 from scripts.qwen35_kv_policy_args import add_kv_policy_args, kv_policy_json, resolve_args_kv_policy
 
 DEFAULT_MODEL = "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16"
@@ -392,7 +393,7 @@ def _build_payload(
         blocked_reasons.append("max_layers is not the full 40-layer Qwen3.5/PARO model")
     if not bench["finite_logits"]:
         blocked_reasons.append("non-finite seed or decode logits")
-    return {
+    payload = {
         "schema": 3,
         "status": status,
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -473,6 +474,8 @@ def _build_payload(
             "Batch split-K decode remains out of scope; this accepted protocol keeps context < 1024.",
         ],
     }
+    validate_cn_diagnostic_artifact_payload(payload)
+    return payload
 
 
 def main(argv: list[str] | None = None) -> int:

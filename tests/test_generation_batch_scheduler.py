@@ -21,6 +21,7 @@ from hipengine.generation import (
 )
 from hipengine.kvcache import FixedPagedKVPolicy
 from hipengine.speculative import AcceptResult, DraftBatch, TargetAcceptSummary, TargetStateCommitBuffers, TargetVerifyBuffers
+from scripts.qwen35_batch_artifact_schema import validate_cn_diagnostic_artifact_payload
 from scripts.qwen35_batch_serial_bench import _load_prompt_slices, _summarize_samples
 
 
@@ -521,3 +522,53 @@ def test_qwen35_batch_serial_bench_helpers_summarize_and_slice(tmp_path) -> None
     assert stats["min"] == 1.0
     assert stats["max"] == 10.0
     assert stats["stdev"] > 0.0
+
+
+def test_qwen35_batch_diagnostic_artifact_schema_requires_label_fields() -> None:
+    payload = {
+        "status": "blocked",
+        "performance_claim": False,
+        "workload": {
+            "native_compact_prefill": True,
+            "native_caware_decode": False,
+        },
+        "correctness": {"passed": True},
+        "execution": {
+            "batch_execution": {
+                "native_compact_prefill": True,
+                "native_caware_decode": False,
+                "throughput_claim_eligible": False,
+            }
+        },
+        "decision": {"accepted": False},
+    }
+
+    validate_cn_diagnostic_artifact_payload(payload)
+
+    missing = dict(payload)
+    missing["execution"] = {"batch_execution": {"native_compact_prefill": True}}
+
+    with pytest.raises(ValueError, match="native_caware_decode"):
+        validate_cn_diagnostic_artifact_payload(missing)
+
+
+def test_qwen35_batch_diagnostic_artifact_schema_rejects_missing_correctness() -> None:
+    payload = {
+        "status": "blocked",
+        "performance_claim": False,
+        "workload": {
+            "native_compact_prefill": False,
+            "native_caware_decode": False,
+        },
+        "execution": {
+            "batch_execution": {
+                "native_compact_prefill": False,
+                "native_caware_decode": False,
+                "throughput_claim_eligible": False,
+            }
+        },
+        "decision": {"accepted": False},
+    }
+
+    with pytest.raises(ValueError, match="correctness"):
+        validate_cn_diagnostic_artifact_payload(payload)

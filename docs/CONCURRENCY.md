@@ -535,12 +535,13 @@ roll-up/status view.
       serial-bridge, and native-diagnostic commands from one config without
       copy/paste loops. Acceptance: JSON summary records every command,
       status, artifact path, and dirty git state.
-- [ ] **C0.2 artifact schema guard.** Add a CPU test/helper that rejects c>N
+- [x] **C0.2 artifact schema guard.** Add a CPU test/helper that rejects c>N
       diagnostic JSON missing `workload.native_compact_prefill`,
       `execution.batch_execution.native_compact_prefill`,
       `native_caware_decode` as an execution flag, a correctness/status field,
       and `throughput_claim_eligible`. Acceptance: failing fixture proves the
-      guard catches a missing field.
+      guard catches a missing field. Evidence: `scripts/qwen35_batch_artifact_schema.py`
+      plus `pytest -q tests/test_generation_batch_scheduler.py -q`.
 - [ ] **C0.3 promote current diagnostics.** Move or regenerate the current
       c=2 accepted/rejected diagnostic JSONs under `benchmarks/results/` with
       `status=blocked` or `rejected_correctness` as appropriate. Acceptance:
@@ -733,7 +734,7 @@ Definition of done: every c>N number on disk is unambiguously labeled
       bench harness so failing-equality rows are not silently `blocked`.
 - [ ] Add a `hipengine bench c-sweep` subcommand that runs the full
       diagnostic sweep without copy/paste loops.
-- [ ] Ensure every diagnostic artifact distinguishes
+- [x] Ensure every diagnostic artifact distinguishes
       `workload.native_compact_prefill`,
       `execution.batch_execution.native_compact_prefill`,
       `native_caware_decode` (execution flag, not correctness),
