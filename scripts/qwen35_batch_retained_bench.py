@@ -554,6 +554,8 @@ def _build_payload(
         getattr(args, "primitive_correctness_json", None),
         rows=args.batch_size,
     )
+    profiler = {"status": "not_captured", "notes": "E2E retained c>N row; profiler trace not captured in this iteration."}
+    profiler_captured = profiler.get("status") == "captured" and profiler.get("expected_kernels_present") is True
     batch_execution = dict(bench["batch_execution"])
     throughput_claim_eligible = bool(batch_execution.get("throughput_claim_eligible"))
     native_caware_decode = bool(batch_execution.get("native_caware_decode"))
@@ -568,6 +570,7 @@ def _build_payload(
         and primitive_passed
         and protocol_shape
         and scaling_complete
+        and profiler_captured
     )
     primitive_loaded = primitive_correctness.get("status") == "loaded"
     correctness_rejected = bool(bench["finite_logits"] and (not equality_passed or (primitive_loaded and not primitive_passed)))
@@ -585,6 +588,8 @@ def _build_payload(
         blocked_reasons.append("max_layers is not the full 40-layer Qwen3.5/PARO model")
     if not scaling_complete:
         blocked_reasons.append("scaling comparison vs c=1 and serial bridge baselines is incomplete")
+    if not profiler_captured:
+        blocked_reasons.append("profiler trace was not captured with expected kernels present")
     if not bench["finite_logits"]:
         blocked_reasons.append("non-finite seed or decode logits")
     per_request_observability = dict(bench.get("request_observability", {}))
@@ -704,7 +709,7 @@ def _build_payload(
             "stable_block_id": {"passed": False, "audit": "not captured in retained bench"},
             "prefix_sharing": {"enabled": False, "savings_bytes": 0},
         },
-        "profiler": {"status": "not_captured", "notes": "E2E retained c>N row; profiler trace not captured in this iteration."},
+        "profiler": profiler,
         "decision": {
             "accepted": accepted,
             "reason": "correctness/protocol passed" if accepted else "; ".join(blocked_reasons),

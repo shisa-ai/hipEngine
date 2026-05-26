@@ -1484,6 +1484,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
         "commands": {
             "benchmark": "python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --json accepted.json",
             "correctness_reference": "inline generated-token equality vs independent c=1",
+            "profiler": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile -- python3 scripts/qwen35_batch_retained_bench.py ...",
         },
         "profiler": {"status": "captured", "expected_kernels_present": True},
         "workload": {
@@ -1642,6 +1643,21 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     missing_profiler.pop("profiler")
     with pytest.raises(ValueError, match="profiler"):
         validate_cn_diagnostic_artifact_payload(missing_profiler)
+
+    missing_profiler_command = json.loads(json.dumps(accepted))
+    missing_profiler_command["commands"]["profiler"] = None
+    with pytest.raises(ValueError, match="commands.profiler"):
+        validate_cn_diagnostic_artifact_payload(missing_profiler_command)
+
+    not_captured_profiler = json.loads(json.dumps(accepted))
+    not_captured_profiler["profiler"]["status"] = "not_captured"
+    with pytest.raises(ValueError, match="profiler.status"):
+        validate_cn_diagnostic_artifact_payload(not_captured_profiler)
+
+    missing_expected_kernel = json.loads(json.dumps(accepted))
+    missing_expected_kernel["profiler"]["expected_kernels_present"] = False
+    with pytest.raises(ValueError, match="expected_kernels_present"):
+        validate_cn_diagnostic_artifact_payload(missing_expected_kernel)
 
     missing_dirty_state = json.loads(json.dumps(accepted))
     missing_dirty_state["software"].pop("hipengine_dirty")

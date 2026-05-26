@@ -174,9 +174,13 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     commands = _mapping_at(payload, "commands", errors)
     if not isinstance(commands.get("benchmark"), str) or not commands.get("benchmark"):
         errors.append("commands.benchmark must be a non-empty string for accepted artifacts")
+    if not isinstance(commands.get("profiler"), str) or not commands.get("profiler"):
+        errors.append("commands.profiler must be a non-empty string for accepted artifacts")
     profiler = _mapping_at(payload, "profiler", errors)
-    if not isinstance(profiler.get("status"), str) or not profiler.get("status"):
-        errors.append("profiler.status must be a non-empty string for accepted artifacts")
+    if profiler.get("status") != "captured":
+        errors.append("profiler.status must be 'captured' for accepted artifacts")
+    if profiler.get("expected_kernels_present") is not True:
+        errors.append("profiler.expected_kernels_present must be true for accepted artifacts")
 
 
 def _validate_accepted_correctness_gates(correctness: Mapping[str, Any], errors: list[str]) -> None:

@@ -862,10 +862,11 @@ roll-up/status view.
       JSON artifacts under `benchmarks/results/`. Acceptance: every perf claim
       cites correctness gate, profiler status, exact command, and hardware.
       Progress: accepted/performance-claim c>N artifacts now fail schema
-      validation unless they include a non-empty `commands.benchmark`, non-empty
-      hardware, profiler status, and commit/dirty-state software fields. The
-      scoreboard item remains open until accepted artifacts exist and the
-      benchmark rollups are updated.
+      validation unless they include non-empty benchmark and profiler commands,
+      non-empty hardware, commit/dirty-state software fields, and captured
+      profiler evidence with expected kernels present. The scoreboard item
+      remains open until accepted artifacts exist and the benchmark rollups are
+      updated.
 
 ## Phase ladder
 
