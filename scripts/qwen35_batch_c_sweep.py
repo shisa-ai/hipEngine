@@ -216,20 +216,33 @@ def _batch_bench_argv(
     return argv
 
 
-def _native_retained_precondition(command: SweepCommand) -> dict[str, Any] | None:
-    if command.category != "native_diagnostic" or command.batch_size <= 1:
-        return None
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _command_arg_path(command: SweepCommand, flag: str, *, kind: str) -> tuple[Path | None, dict[str, Any] | None]:
     argv = list(command.argv)
     try:
-        idx = argv.index("--primitive-correctness-json")
-        primitive_path = Path(argv[idx + 1])
+        idx = argv.index(flag)
+        return Path(argv[idx + 1]), None
     except (ValueError, IndexError):
-        return {
-            "kind": "primitive_correctness",
+        return None, {
+            "kind": kind,
             "artifact_path": None,
             "passed": False,
-            "reason": "retained native diagnostic is missing --primitive-correctness-json",
+            "reason": f"retained native diagnostic is missing {flag}",
         }
+
+
+def _primitive_correctness_precondition(command: SweepCommand) -> dict[str, Any]:
+    primitive_path, error = _command_arg_path(
+        command,
+        "--primitive-correctness-json",
+        kind="primitive_correctness",
+    )
+    if error is not None:
+        return error
+    assert primitive_path is not None
     if not primitive_path.exists():
         return {
             "kind": "primitive_correctness",
@@ -259,7 +272,7 @@ def _native_retained_precondition(command: SweepCommand) -> dict[str, Any] | Non
         if payload.get("append_value_mismatch") != 0:
             reasons.append("append_value_mismatch is non-zero")
         attn_vs_c1 = payload.get("attn_batch_vs_c1_max_abs")
-        if not isinstance(attn_vs_c1, (int, float)) or isinstance(attn_vs_c1, bool) or float(attn_vs_c1) > 1e-6:
+        if not _is_number(attn_vs_c1) or float(attn_vs_c1) > 1e-6:
             reasons.append("attn_batch_vs_c1_max_abs is missing or above 1e-6")
     return {
         "kind": "primitive_correctness",
@@ -267,6 +280,99 @@ def _native_retained_precondition(command: SweepCommand) -> dict[str, Any] | Non
         "passed": not reasons,
         "reason": None if not reasons else "; ".join(reasons),
     }
+
+
+def _extract_decode_rates(payload: dict[str, Any]) -> tuple[float | None, float | None]:
+    measurements = payload.get("measurements")
+    aggregate = None
+    per_request = None
+    if isinstance(measurements, dict):
+        if _is_number(measurements.get("decode_tok_s_aggregate")):
+            aggregate = float(measurements["decode_tok_s_aggregate"])
+        if _is_number(measurements.get("decode_tok_s_per_request")):
+            per_request = float(measurements["decode_tok_s_per_request"])
+    throughput = payload.get("throughput")
+    if isinstance(throughput, dict) and _is_number(throughput.get("warmed_decode_tok_s")):
+        aggregate = float(throughput["warmed_decode_tok_s"])
+        per_request = float(throughput["warmed_decode_tok_s"])
+    workload = payload.get("workload")
+    if aggregate is not None and per_request is None and isinstance(workload, dict):
+        concurrency = workload.get("concurrency")
+        if isinstance(concurrency, int) and not isinstance(concurrency, bool) and concurrency > 0:
+            per_request = aggregate / concurrency
+    return aggregate, per_request
+
+
+def _scaling_reference_precondition(
+    command: SweepCommand,
+    *,
+    flag: str,
+    kind: str,
+    expected_concurrency: int | None = None,
+) -> dict[str, Any]:
+    path, error = _command_arg_path(command, flag, kind=kind)
+    if error is not None:
+        return error
+    assert path is not None
+    if not path.exists():
+        return {
+            "kind": kind,
+            "artifact_path": str(path),
+            "passed": False,
+            "reason": "scaling reference artifact does not exist",
+        }
+    try:
+        payload = json.loads(path.read_text())
+    except Exception as exc:
+        return {
+            "kind": kind,
+            "artifact_path": str(path),
+            "passed": False,
+            "reason": f"scaling reference artifact is invalid JSON: {type(exc).__name__}: {exc}",
+        }
+    reasons: list[str] = []
+    if not isinstance(payload, dict):
+        reasons.append("scaling reference artifact root is not an object")
+    else:
+        status = payload.get("status")
+        if status in {"failed", "rejected", "rejected_correctness"}:
+            reasons.append(f"status={status!r} is not usable as a scaling reference")
+        aggregate, per_request = _extract_decode_rates(payload)
+        if aggregate is None or per_request is None:
+            reasons.append("decode throughput fields are missing")
+        workload = payload.get("workload")
+        if expected_concurrency is not None:
+            concurrency = workload.get("concurrency") if isinstance(workload, dict) else None
+            if concurrency != expected_concurrency:
+                reasons.append(f"workload.concurrency={concurrency!r} does not match batch_size={expected_concurrency}")
+    return {
+        "kind": kind,
+        "artifact_path": str(path),
+        "passed": not reasons,
+        "reason": None if not reasons else "; ".join(reasons),
+    }
+
+
+def _native_retained_precondition(command: SweepCommand) -> dict[str, Any] | None:
+    if command.category != "native_diagnostic" or command.batch_size <= 1:
+        return None
+    for precondition in (
+        _primitive_correctness_precondition(command),
+        _scaling_reference_precondition(
+            command,
+            flag="--c1-baseline-json",
+            kind="c1_baseline",
+        ),
+        _scaling_reference_precondition(
+            command,
+            flag="--serial-bridge-json",
+            kind="serial_bridge",
+            expected_concurrency=command.batch_size,
+        ),
+    ):
+        if not precondition["passed"]:
+            return precondition
+    return precondition
 
 
 def run_sweep(args: argparse.Namespace) -> dict[str, Any]:

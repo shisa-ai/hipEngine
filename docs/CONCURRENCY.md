@@ -848,7 +848,8 @@ roll-up/status view.
       `--primitive-correctness-json` path (`primitive-cN.json`) so a green
       generated-token run without primitive GPU correctness remains blocked
       instead of becoming a throughput claim. Real c-sweep runs now skip retained
-      native diagnostics if the matching primitive artifact is missing or failed.
+      native diagnostics if the matching primitive, c=1 baseline, or serial-
+      bridge artifact is missing or failed.
 - [ ] **P2 graph replay buckets.** Add decode hipGraph capture/replay buckets
       by `(C, context bucket, active mask, KV dtype, layer plan, top-k/experts,
       replay length)`. Acceptance: bucket hit/miss stats and profiler evidence
