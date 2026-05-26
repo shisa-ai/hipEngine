@@ -623,9 +623,11 @@ roll-up/status view.
       and reduction consume per-row spans for `max_context >= 1024` before any
       long-context c>N claim. Acceptance: primitive correctness plus a
       generated-token diagnostic at a long-context shape.
-- [ ] **C2.8 append-only block-id contract.** Prevent block ids from changing
+- [x] **C2.8 append-only block-id contract.** Prevent block ids from changing
       backing pointer during a live request; add a debug/memory-audit test.
       Acceptance: the test would fail on pointer mutation or id reuse.
+      Evidence: `FixedPagedKVPolicy(...).register(block_pointer_map=...)` plus
+      `pytest -q tests/test_kvcache_policy.py -q`.
 - [x] **C2.9 live admission cap.** Make `KVPolicy.admission_cap()` return
       current free capacity rather than startup capacity. Acceptance: fake
       policy/scheduler tests show reclaim changes admission capacity before the
@@ -819,7 +821,7 @@ in place even though pool growth lands in C4.
       INT8 KV rejection, default/invalid sample mode, and
       `throughput_claim_eligible=false` for guarded diagnostics.
 - [x] Extend structural tests for sparse-slot and long-context rejection.
-- [ ] **Append-only block id contract.** Make the KV allocator's block id
+- [x] **Append-only block id contract.** Make the KV allocator's block id
       permanent for its lifetime. Remove any path that reuses a block id at
       a different pointer. Add a debug check that fails on pointer mutation.
 - [x] **Live admission cap.** `KVPolicy.admission_cap()` returns *current*

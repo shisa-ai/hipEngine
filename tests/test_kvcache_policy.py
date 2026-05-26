@@ -160,6 +160,45 @@ def test_fixed_paged_policy_global_admission_cap_tracks_reclaim() -> None:
         )
 
 
+def test_fixed_paged_policy_audits_append_only_block_pointers() -> None:
+    policy = FixedPagedKVPolicy(block_size=16, storage_dtype="bf16")
+    policy.register(
+        101,
+        block_table=_tensor(0x1000, (2,), "int32"),
+        live_counts=_tensor(0x2000, (1,), "int64"),
+        max_live_count=1,
+        block_pointer_map={0: 0xA000, 1: 0xB000},
+    )
+
+    with pytest.raises(ValueError, match="already live"):
+        policy.register(
+            202,
+            block_table=_tensor(0x3000, (2,), "int32"),
+            live_counts=_tensor(0x4000, (1,), "int64"),
+            max_live_count=1,
+            block_pointer_map={1: 0xB000, 2: 0xC000},
+        )
+
+    policy.reclaim(101)
+    policy.register(
+        303,
+        block_table=_tensor(0x5000, (1,), "int32"),
+        live_counts=_tensor(0x6000, (1,), "int64"),
+        max_live_count=0,
+        block_pointer_map={0: 0xA000},
+    )
+    policy.reclaim(303)
+
+    with pytest.raises(ValueError, match="backing pointer changed"):
+        policy.register(
+            404,
+            block_table=_tensor(0x7000, (1,), "int32"),
+            live_counts=_tensor(0x8000, (1,), "int64"),
+            max_live_count=0,
+            block_pointer_map={0: 0xD000},
+        )
+
+
 def test_fixed_paged_policy_accepts_int8_scale_metadata() -> None:
     policy = FixedPagedKVPolicy(block_size=16, storage_dtype="int8_per_token_head")
     metadata = _scale_metadata(0x3000)

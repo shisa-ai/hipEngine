@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Any, Protocol, Sequence, runtime_checkable
+from typing import Any, Mapping, Protocol, Sequence, runtime_checkable
 
 from hipengine.core.dtype import DType
 from hipengine.core.tensor import Tensor
@@ -260,6 +260,9 @@ class FixedPagedKVPolicy:
         self.total_capacity_tokens = None if total_capacity_tokens is None else int(total_capacity_tokens)
         self._reservations: dict[int, KVReservation] = {}
         self._transactions: dict[int, KVTransaction] = {}
+        self._block_pointer_by_id: dict[int, int] = {}
+        self._live_block_owner_by_id: dict[int, int] = {}
+        self._reservation_block_ids: dict[int, tuple[int, ...]] = {}
         self._next_transaction_id = 0
 
     @property
@@ -279,6 +282,7 @@ class FixedPagedKVPolicy:
         max_live_count: int,
         capacity_tokens: int | None = None,
         scale_metadata: KVScaleMetadata | None = None,
+        block_pointer_map: Mapping[int, int] | None = None,
     ) -> KVReservation:
         rid = int(request_id)
         if rid in self._reservations:
@@ -298,6 +302,7 @@ class FixedPagedKVPolicy:
             storage_dtype=self.storage_dtype,
             scale_metadata=scale_metadata,
         )
+        self._reserve_block_pointers(rid, block_pointer_map)
         self._reservations[rid] = reservation
         return reservation
 
@@ -425,7 +430,10 @@ class FixedPagedKVPolicy:
 
     def reclaim(self, seq: Any) -> KVReservation:
         rid = _request_id(seq)
-        return self._reservations.pop(rid)
+        reservation = self._reservations.pop(rid)
+        for block_id in self._reservation_block_ids.pop(rid, ()):
+            self._live_block_owner_by_id.pop(block_id, None)
+        return reservation
 
     def _reservation_for(self, seq: Any) -> KVReservation:
         rid = _request_id(seq)
@@ -436,6 +444,32 @@ class FixedPagedKVPolicy:
 
     def _reserved_capacity_tokens(self) -> int:
         return sum(reservation.capacity_tokens for reservation in self._reservations.values())
+
+    def _reserve_block_pointers(self, request_id: int, block_pointer_map: Mapping[int, int] | None) -> None:
+        if block_pointer_map is None:
+            return
+        normalized: dict[int, int] = {}
+        for raw_block_id, raw_pointer in block_pointer_map.items():
+            block_id = int(raw_block_id)
+            pointer = int(raw_pointer)
+            if block_id < 0:
+                raise ValueError("block ids must be non-negative")
+            if pointer < 0:
+                raise ValueError("block backing pointers must be non-negative")
+            normalized[block_id] = pointer
+        for block_id, pointer in normalized.items():
+            live_owner = self._live_block_owner_by_id.get(block_id)
+            if live_owner is not None:
+                raise ValueError(f"block id {block_id} is already live for request_id {live_owner}")
+            known_pointer = self._block_pointer_by_id.get(block_id)
+            if known_pointer is not None and known_pointer != pointer:
+                raise ValueError(
+                    f"block id {block_id} backing pointer changed from {known_pointer} to {pointer}"
+                )
+        for block_id, pointer in normalized.items():
+            self._block_pointer_by_id.setdefault(block_id, pointer)
+            self._live_block_owner_by_id[block_id] = request_id
+        self._reservation_block_ids[request_id] = tuple(sorted(normalized))
 
     def _current_transaction(self, txn: KVTransaction) -> KVTransaction:
         try:
