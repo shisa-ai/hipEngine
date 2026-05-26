@@ -211,7 +211,7 @@ requests' decode steps without races.
 | --- | --- | --- |
 | `protect_decode` | Decode always wins when any active request can decode. Prefill chunks fill remaining cycles up to a token budget. | yes |
 | `protect_ttft` | Prefill wins for any newly admitted request until its first decode token. | — |
-| `fair` | Round-robin between prefill and decode by token-equivalent budget. | — |
+| `fair` | Round-robin between prefill and decode. Token-equivalent budgets are a later latency/metrics refinement. | — |
 
 Knob: `HIPENGINE_PREFILL_DECODE_POLICY` / `--prefill-decode-policy`. Default
 `protect_decode` (vLLM-equivalent default; minimizes inter-token-latency
@@ -671,9 +671,11 @@ roll-up/status view.
       server endpoints onto `submit+poll` while preserving current outputs.
       Acceptance: existing generator/server tests pass and prompt-list
       batching still routes by request id.
-- [ ] **C4.3 tick policy.** Implement `RECLAIM → ADMIT → choose(PREFILL_CHUNK,
+- [x] **C4.3 tick policy.** Implement `RECLAIM → ADMIT → choose(PREFILL_CHUNK,
       DECODE_STEP)` with `protect_decode` default. Acceptance: scheduler tests
-      cover decode protection and TTFT/fair alternatives.
+      cover decode protection and TTFT/fair alternatives. Evidence:
+      `ResidentEngineLoop(prefill_decode_policy=...)` plus
+      `pytest -q tests/test_generation_batch_scheduler.py -q`.
 - [ ] **C4.4 chunked KV pool.** Add chunked allocation, grow-on-admission,
       idle shrink, and high/low-water knobs behind fake-runtime tests first.
       Acceptance: burst+idle fixture records at least one grow and shrink or
@@ -861,7 +863,7 @@ becomes a `submit+poll` adapter.
       request_id`, `poll(timeout) → events`, `cancel(request_id) → bool`.
 - [ ] Lower `LLM.generate()` and OpenAI server endpoints to
       `submit + poll + cancel`.
-- [ ] Implement the per-tick policy: `RECLAIM → ADMIT → choose(PREFILL_CHUNK,
+- [x] Implement the per-tick policy: `RECLAIM → ADMIT → choose(PREFILL_CHUNK,
       DECODE_STEP)`; default `protect_decode`.
 - [ ] Add `kv_pool_chunk_pages` chunked underlying allocation with one chunk
       at startup.

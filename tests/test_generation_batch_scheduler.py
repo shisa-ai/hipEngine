@@ -66,14 +66,16 @@ def test_resident_engine_loop_submit_poll_cancel_and_reclaim() -> None:
 
     assert [(work.kind, work.request_ids) for work in runner.prefills] == [
         (WorkKind.PREFILL, (r0,)),
-        (WorkKind.PREFILL, (r1,)),
         (WorkKind.PREFILL, (r2,)),
+        (WorkKind.PREFILL, (r1,)),
     ]
     assert [(work.kind, work.request_ids) for work in runner.decodes] == [
-        (WorkKind.DECODE, (r0, r1)),
-        (WorkKind.DECODE, (r0, r2)),
+        (WorkKind.DECODE, (r0,)),
+        (WorkKind.DECODE, (r0,)),
+        (WorkKind.DECODE, (r2,)),
+        (WorkKind.DECODE, (r1,)),
     ]
-    assert [event.request_id for event in events if event.kind == "completed"] == [r1, r0, r2]
+    assert [event.request_id for event in events if event.kind == "completed"] == [r0, r2, r1]
     assert loop.pending_count == 0
     assert loop.active_count == 0
     assert set(loop.completed) == {r0, r1, r2, r3}
@@ -88,6 +90,60 @@ def test_resident_engine_loop_submit_poll_cancel_and_reclaim() -> None:
     assert active_cancel_loop.cancel(active_id) is True
     assert active_cancel_loop.active_count == 0
     assert active_cancel_loop.completed[active_id].finished is True
+
+
+def test_resident_engine_loop_prefill_decode_policies() -> None:
+    protect_runner = _FakeSerialBridgeRunner()
+    protect_loop = ResidentEngineLoop(
+        protect_runner,
+        capacity=2,
+        prefill_chunk_size=8,
+        prefill_decode_policy="protect_decode",
+    )
+    r0 = protect_loop.submit([10], max_new_tokens=2)
+    r1 = protect_loop.submit([20], max_new_tokens=1)
+    protect_loop.poll(max_ticks=1)
+    protect_loop.poll(max_ticks=1)
+    assert [(work.kind, work.request_ids) for work in protect_runner.decodes] == [(WorkKind.DECODE, (r0,))]
+    assert [(work.kind, work.request_ids) for work in protect_runner.prefills] == [(WorkKind.PREFILL, (r0,))]
+
+    ttft_runner = _FakeSerialBridgeRunner()
+    ttft_loop = ResidentEngineLoop(
+        ttft_runner,
+        capacity=2,
+        prefill_chunk_size=8,
+        prefill_decode_policy="protect_ttft",
+    )
+    r0 = ttft_loop.submit([10], max_new_tokens=2)
+    r1 = ttft_loop.submit([20], max_new_tokens=1)
+    ttft_loop.poll(max_ticks=1)
+    ttft_loop.poll(max_ticks=1)
+    assert ttft_runner.decodes == []
+    assert [(work.kind, work.request_ids) for work in ttft_runner.prefills] == [
+        (WorkKind.PREFILL, (r0,)),
+        (WorkKind.PREFILL, (r1,)),
+    ]
+
+    fair_runner = _FakeSerialBridgeRunner()
+    fair_loop = ResidentEngineLoop(
+        fair_runner,
+        capacity=2,
+        prefill_chunk_size=8,
+        prefill_decode_policy="fair",
+    )
+    r0 = fair_loop.submit([10], max_new_tokens=2)
+    r1 = fair_loop.submit([20], max_new_tokens=1)
+    fair_loop.poll(max_ticks=1)
+    fair_loop.poll(max_ticks=1)
+    fair_loop.poll(max_ticks=1)
+    assert [(work.kind, work.request_ids) for work in fair_runner.decodes] == [(WorkKind.DECODE, (r0,))]
+    assert [(work.kind, work.request_ids) for work in fair_runner.prefills] == [
+        (WorkKind.PREFILL, (r0,)),
+        (WorkKind.PREFILL, (r1,)),
+    ]
+
+    with pytest.raises(ValueError, match="prefill_decode_policy"):
+        ResidentEngineLoop(_FakeSerialBridgeRunner(), capacity=1, prefill_decode_policy="unknown")
 
 
 def test_resident_batch_scheduler_admits_compacts_and_routes_decode() -> None:

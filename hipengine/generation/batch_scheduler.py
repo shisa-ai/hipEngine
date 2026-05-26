@@ -420,6 +420,14 @@ class ResidentBatchScheduler:
             )
         return tuple(slabs)
 
+    def has_prefill_work(self) -> bool:
+        """Return whether any active request still needs prompt prefill."""
+
+        return any(
+            request.remaining_prefill > 0 and not request.finished
+            for request in self.active_batch.requests.values()
+        )
+
     def next_decode_work(self) -> WorkItem | None:
         """Emit one decode step over active requests with completed prefill."""
 

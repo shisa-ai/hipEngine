@@ -14,6 +14,8 @@ from typing import Iterable, Protocol, Sequence
 from hipengine.dispatch import WorkItem, WorkKind
 from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToken, ResidentBatchScheduler
 
+PREFILL_DECODE_POLICIES = ("protect_decode", "protect_ttft", "fair")
+
 
 @dataclass(frozen=True, slots=True)
 class EngineLoopEvent:
@@ -42,8 +44,8 @@ class ResidentEngineLoop:
 
     The loop currently executes at most one scheduler work item per tick.  It is
     deliberately conservative: requests stay resident across polls, admission
-    fills free slots, prefill chunks run before decode for newly admitted work,
-    and completion reclaim is delegated to ``ResidentBatchScheduler``.
+    fills free slots, the prefill/decode choice is explicit, and completion
+    reclaim is delegated to ``ResidentBatchScheduler``.
     """
 
     def __init__(
@@ -53,11 +55,16 @@ class ResidentEngineLoop:
         capacity: int,
         prefill_chunk_size: int = 256,
         context_bucket_size: int = 256,
+        prefill_decode_policy: str = "protect_decode",
     ) -> None:
         if prefill_chunk_size <= 0:
             raise ValueError("prefill_chunk_size must be positive")
+        if prefill_decode_policy not in PREFILL_DECODE_POLICIES:
+            raise ValueError(f"prefill_decode_policy must be one of {PREFILL_DECODE_POLICIES!r}")
         self.runner = runner
         self.prefill_chunk_size = int(prefill_chunk_size)
+        self.prefill_decode_policy = prefill_decode_policy
+        self._last_work_kind: WorkKind | None = None
         self.scheduler = ResidentBatchScheduler(capacity=capacity, context_bucket_size=context_bucket_size)
 
     @property
@@ -103,30 +110,45 @@ class ResidentEngineLoop:
             for request_id in admitted
         )
 
-        prefill = self.scheduler.next_prefill_work(chunk_size=self.prefill_chunk_size)
-        if prefill is not None:
-            self.runner.prefill(prefill)
-            events.append(
-                EngineLoopEvent(
-                    kind="work",
-                    request_ids=prefill.request_ids,
-                    work_kind=prefill.kind,
-                )
-            )
+        decode = self.scheduler.next_decode_work()
+        prefill_available = self.scheduler.has_prefill_work()
+        if self._choose_decode_first(decode_available=decode is not None, prefill_available=prefill_available):
+            assert decode is not None
+            events.extend(self._run_decode(decode))
             return tuple(events)
 
-        decode = self.scheduler.next_decode_work()
+        if prefill_available:
+            prefill = self.scheduler.next_prefill_work(chunk_size=self.prefill_chunk_size)
+            assert prefill is not None
+            events.extend(self._run_prefill(prefill))
+            return tuple(events)
+
         if decode is None:
             return tuple(events)
-        generated = tuple(self.runner.decode(decode))
+        events.extend(self._run_decode(decode))
+        return tuple(events)
+
+    def _choose_decode_first(self, *, decode_available: bool, prefill_available: bool) -> bool:
+        if not decode_available:
+            return False
+        if not prefill_available:
+            return True
+        if self.prefill_decode_policy == "protect_decode":
+            return True
+        if self.prefill_decode_policy == "protect_ttft":
+            return False
+        return self._last_work_kind is WorkKind.PREFILL
+
+    def _run_prefill(self, work: WorkItem) -> tuple[EngineLoopEvent, ...]:
+        self.runner.prefill(work)
+        self._last_work_kind = work.kind
+        return (EngineLoopEvent(kind="work", request_ids=work.request_ids, work_kind=work.kind),)
+
+    def _run_decode(self, work: WorkItem) -> tuple[EngineLoopEvent, ...]:
+        generated = tuple(self.runner.decode(work))
         completed = self.scheduler.record_generated(generated)
-        events.append(
-            EngineLoopEvent(
-                kind="work",
-                request_ids=decode.request_ids,
-                work_kind=decode.kind,
-            )
-        )
+        self._last_work_kind = work.kind
+        events = [EngineLoopEvent(kind="work", request_ids=work.request_ids, work_kind=work.kind)]
         for token in generated:
             events.append(
                 EngineLoopEvent(
@@ -148,4 +170,4 @@ class ResidentEngineLoop:
         return tuple(events)
 
 
-__all__ = ["EngineLoopEvent", "EngineLoopRunner", "ResidentEngineLoop"]
+__all__ = ["EngineLoopEvent", "EngineLoopRunner", "PREFILL_DECODE_POLICIES", "ResidentEngineLoop"]

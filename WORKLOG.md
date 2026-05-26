@@ -27302,3 +27302,34 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 C4.1 pre-commit follow-up: added active-cancel coverage to the fake-runner test and reran the same targeted/full guard. Results unchanged: `tests/test_generation_batch_scheduler.py` 14 passed; queue metric 33; full loop guard passed with c=2/c=8 primitive correctness.
+
+## 2026-05-27 — CONCURRENCY C4.3 tick policy
+
+Closed bite-sized packet C4.3 from `docs/CONCURRENCY.md`:
+
+- Added explicit `ResidentEngineLoop(prefill_decode_policy=...)` support with choices `protect_decode` (default), `protect_ttft`, and `fair`.
+- Added scheduler `has_prefill_work()` so the engine loop can choose between `PREFILL_CHUNK` and `DECODE_STEP` without speculatively advancing prompt cursors.
+- `protect_decode` runs decode whenever any active request is decode-ready; `protect_ttft` prefers pending prefill chunks; `fair` alternates based on the previous work class when both are available.
+- Added CPU fake-runner tests for the default decode-protection path, TTFT-first path, fair alternation, and invalid policy rejection.
+- Marked C4.3 and the phase-ladder per-tick policy item complete in `docs/CONCURRENCY.md`.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -q
+# 15 passed
+```
+
+Loop guard after C4.3:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 32
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```
