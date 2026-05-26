@@ -935,6 +935,69 @@ def test_qwen35_resident_batch_execution_metadata_labels_serial_fallback() -> No
     assert payload["blockers"] == list(metadata.blockers)
 
 
+def test_qwen35_resident_batch_execution_metadata_keeps_native_diagnostics_ineligible() -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.layer_limit = 3
+    session.config = SimpleNamespace(layer_types=("linear_attention", "linear_attention", "full_attention"))
+
+    metadata = session.batch_execution_metadata(scheduler_owned=True, native_decode=True)
+
+    assert metadata.path == "scheduler_native_compact_batch"
+    assert metadata.native_caware_decode
+    assert not metadata.throughput_claim_eligible
+    assert any("generated-token equality" in blocker for blocker in metadata.blockers)
+
+
+def test_qwen35_resident_step_batch_native_requires_experimental_env(monkeypatch) -> None:
+    monkeypatch.delenv("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE", raising=False)
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.closed = False
+
+    with pytest.raises(NotImplementedError, match="HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"):
+        session.step_batch_native([1], positions=[0], slots=[0])
+
+
+def test_qwen35_resident_step_batch_native_rejects_int8_kv_when_experimental(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE", "1")
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.closed = False
+    session.kv_storage_dtype = DType.INT8_PER_TOKEN_HEAD
+
+    with pytest.raises(NotImplementedError, match="BF16 KV"):
+        session.step_batch_native([1], positions=[0], slots=[0])
+
+
+def test_qwen35_resident_sample_batch_defaults_to_serial_lm_head(monkeypatch) -> None:
+    monkeypatch.delenv("HIPENGINE_QWEN35_BATCH_SAMPLE_MODE", raising=False)
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.max_batch_size = 2
+    session.hidden_nbytes = 8 * DType.FP16.itemsize
+    session.config = SimpleNamespace(hidden_size=8)
+    hidden = Tensor.from_handle(0x5000, (2, 8), DType.FP16, Device("hip", 0))
+    sampled_ptrs: list[int] = []
+
+    def fake_sample(row_hidden):
+        sampled_ptrs.append(row_hidden.ptr)
+        return SimpleNamespace(token_id=row_hidden.ptr)
+
+    session._sample_from_hidden = fake_sample
+
+    results = session._sample_batch_from_hidden(hidden, rows=2)
+
+    assert [result.token_id for result in results] == [0x5000, 0x5000 + session.hidden_nbytes]
+    assert sampled_ptrs == [0x5000, 0x5000 + session.hidden_nbytes]
+
+
+def test_qwen35_resident_sample_batch_rejects_unknown_mode(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_SAMPLE_MODE", "surprise")
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.max_batch_size = 1
+    hidden = Tensor.from_handle(0x6000, (1, 8), DType.FP16, Device("hip", 0))
+
+    with pytest.raises(ValueError, match="HIPENGINE_QWEN35_BATCH_SAMPLE_MODE"):
+        session._sample_batch_from_hidden(hidden, rows=1)
+
+
 class _FakePrefillRuntime:
     def __init__(self) -> None:
         self.memcpy_async_calls = []

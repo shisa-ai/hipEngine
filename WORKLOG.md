@@ -26884,3 +26884,26 @@ Next action: audit row-aware linear-attention decode and full-attention/MoE batc
 Updated `docs/CONCURRENCY.md` with a detailed remaining punchlist for the full vLLM-style c>N serving target. The new section separates correctness/basic implementation from performance/scaling work, defines done criteria for native c>N correctness, basic continuous batching, and performant c>N, and calls out required scaling evidence against c=1 prefill/decode and the serial bridge before any retained throughput claim.
 
 Validation: docs-only change; re-read `docs/CONCURRENCY.md` end-to-end after editing.
+
+## 2026-05-26 — Native c>N correctness review follow-up
+
+Reviewed the `/tmp/hipengine-retained/eq-*` matrix and reran focused equality checks on current `concurrency` tip (`8d15da9` + native decode commit `86e6fa2`). Key correction to the prior handoff: `HIPENGINE_QWEN35_BATCH_SAMPLE_MODE=serial_lm_head` did fix an earlier batched-LM-head failure mode (`eq-L8-512-32-serialsample.json` and `eq-L40-512-32-serialsample.json` passed), but it does **not** make the retained native c>N path green.
+
+Evidence summary:
+
+- Historical matrix: `eq-L1-512-32.json`, `eq-L3-512-32.json`, and `eq-L4-512-32.json` passed; `eq-L8-512-32.json` and `eq-L40-512-32.json` failed before serial LM-head sampling; `eq-L8-512-32-serialsample.json` and `eq-L40-512-32-serialsample.json` passed after serial sampling; `eq-L8-selectedmoe.json` still failed at row 0 / sequence index 13, pointing to a separate selected-MoE/native-row issue.
+- Current tip, reduced decode length:
+  - command: `HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 32 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-retained/guarded-L40-512-32-current.json`
+  - result: `status=blocked`, generated-token equality passed, `throughput_claim_eligible=false`, aggregate decode diagnostic ~86.20 tok/s. This remains a reduced diagnostic, not a retained row.
+- Current tip, retained decode length:
+  - command: `HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 python3 scripts/qwen35_batch_retained_bench.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt --require-cached-build --json /tmp/hipengine-retained/guarded-L40-c2-512-128-current.json`
+  - result: `status=rejected_correctness`, generated-token equality failed at row 0 / sequence index 87 (`batch=271`, `c1=1165`), `throughput_claim_eligible=false`, aggregate decode diagnostic ~85.45 tok/s.
+
+Added CPU guard tests for the experimental native decode contract and documented the two Qwen/PARO native-batch env vars in `docs/ENVS.md`:
+
+```bash
+pytest -q tests/test_qwen35_resident_batch_layout.py tests/test_generation_qwen35_paro.py -q
+# ................................................                         [100%]
+```
+
+Next correctness action remains layer-level hidden-state bisection (not more generated-token sweeps): compare c=2 vs independent c=1 after each layer and isolate linear-attention state, full-attention KV/attention, selected-MoE routed-lane mapping, shared expert, O projection, and sampling separately before promoting `step_batch_native` beyond experimental diagnostics.
