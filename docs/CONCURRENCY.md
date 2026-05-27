@@ -886,7 +886,8 @@ roll-up/status view.
       cites correctness gate, profiler status, exact command, and hardware.
       Progress: accepted/performance-claim c>N artifacts now fail schema
       validation unless they include fully native batch-execution metadata,
-      numeric aggregate/per-request throughput plus decode-step timing samples,
+      numeric aggregate/per-request throughput, all required scaling ratios vs
+      both c=1 and the serial bridge, decode-step timing samples,
       non-empty benchmark and profiler commands, non-empty hardware,
       commit/dirty-state software fields, and captured profiler evidence with
       expected kernels present. The scoreboard item remains open until accepted

@@ -2118,6 +2118,17 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     with pytest.raises(ValueError, match="scaling"):
         validate_cn_diagnostic_artifact_payload(missing_scaling)
 
+    for ratio_field in (
+        "aggregate_vs_c1",
+        "per_request_vs_c1",
+        "aggregate_vs_serial_bridge",
+        "per_request_vs_serial_bridge",
+    ):
+        missing_ratio = json.loads(json.dumps(accepted))
+        missing_ratio["scaling"]["ratios"].pop(ratio_field)
+        with pytest.raises(ValueError, match=ratio_field):
+            validate_cn_diagnostic_artifact_payload(missing_ratio)
+
     missing_measurements = dict(accepted)
     missing_measurements.pop("measurements")
     with pytest.raises(ValueError, match="measurements"):
