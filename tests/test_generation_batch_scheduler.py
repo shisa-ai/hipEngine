@@ -2070,6 +2070,51 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     assert missing["status"] == "missing"
 
 
+def test_qwen35_retained_profiler_reference_loads_captured_summary(tmp_path: Path) -> None:
+    profiler_path = tmp_path / "profiler-summary.json"
+    profiler_path.write_text(
+        json.dumps(
+            {
+                "profiler": {
+                    "status": "captured",
+                    "expected_kernels_present": True,
+                    "expected_kernel_names": ["qwen35_batch_decode"],
+                    "kernel_durations_ns": {"qwen35_batch_decode": 12345.0},
+                }
+            }
+        )
+    )
+    args = argparse.Namespace(profiler_json=profiler_path, profiler_command=None)
+
+    loaded = retained_bench._profiler_reference(profiler_path)
+    command = retained_bench._profiled_command(
+        args,
+        [
+            "--batch-size",
+            "2",
+            "--prompt-length",
+            "512",
+            "--decode-tokens",
+            "128",
+            "--max-layers",
+            "40",
+            "--json",
+            "benchmarks/results/native-c2.json",
+            "--profiler-json",
+            str(profiler_path),
+        ],
+    )
+
+    assert loaded["status"] == "captured"
+    assert loaded["expected_kernels_present"] is True
+    assert loaded["artifact_path"] == str(profiler_path)
+    assert command is not None
+    assert command.startswith("rocprofv3 --kernel-trace")
+    assert "scripts/qwen35_batch_retained_bench.py" in command
+    assert "--json benchmarks/results/native-c2.json" in command
+    assert retained_bench._profiler_reference(tmp_path / "missing.json")["status"] == "missing"
+
+
 def test_qwen35_retained_payload_mirrors_fallback_native_decode_label(monkeypatch) -> None:
     monkeypatch.setattr(retained_bench, "_hardware_context", lambda: {"gpu": "test"})
     monkeypatch.setattr(retained_bench, "_software_context", lambda: {"python": "test"})

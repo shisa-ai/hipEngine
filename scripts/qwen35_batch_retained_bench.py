@@ -242,6 +242,36 @@ def _primitive_correctness_reference(path: Path | None, *, rows: int) -> dict[st
     }
 
 
+def _profiler_reference(path: Path | None) -> dict[str, Any]:
+    if path is None:
+        return {"status": "not_captured", "notes": "E2E retained c>N row; profiler trace not captured in this iteration."}
+    path = Path(path)
+    if not path.exists():
+        return {"artifact_path": str(path), "status": "missing", "reason": "artifact path does not exist"}
+    try:
+        payload = json.loads(path.read_text())
+    except Exception as exc:
+        return {"artifact_path": str(path), "status": "invalid_json", "reason": f"{type(exc).__name__}: {exc}"}
+    if not isinstance(payload, Mapping):
+        return {"artifact_path": str(path), "status": "invalid_json", "reason": "artifact root is not an object"}
+    profiler = payload.get("profiler") if isinstance(payload.get("profiler"), Mapping) else payload
+    if not isinstance(profiler, Mapping):
+        return {"artifact_path": str(path), "status": "invalid_json", "reason": "profiler summary is not an object"}
+    result = dict(profiler)
+    result.setdefault("artifact_path", str(path))
+    result.setdefault("status", "loaded")
+    return result
+
+
+def _profiled_command(args: argparse.Namespace, argv: Sequence[str] | None) -> str | None:
+    explicit = getattr(args, "profiler_command", None)
+    if isinstance(explicit, str) and explicit:
+        return explicit
+    if getattr(args, "profiler_json", None) is None:
+        return None
+    return f"rocprofv3 --kernel-trace --output-format csv -d <profile-dir> -- {_command(argv)}"
+
+
 def _build_scaling_comparison(
     args: argparse.Namespace,
     *,
@@ -589,7 +619,7 @@ def _build_payload(
         rows=args.batch_size,
     )
     correctness_reference_command = _primitive_correctness_command(primitive_correctness_path, rows=args.batch_size)
-    profiler = {"status": "not_captured", "notes": "E2E retained c>N row; profiler trace not captured in this iteration."}
+    profiler = _profiler_reference(getattr(args, "profiler_json", None))
     profiler_captured = profiler.get("status") == "captured" and profiler.get("expected_kernels_present") is True
     batch_execution = dict(bench["batch_execution"])
     throughput_claim_eligible = bool(batch_execution.get("throughput_claim_eligible"))
@@ -682,7 +712,7 @@ def _build_payload(
             ],
             "correctness_reference": f"inline generated-token equality vs independent c=1 plus {correctness_reference_command}",
             "benchmark": _command(argv),
-            "profiler": None,
+            "profiler": _profiled_command(args, argv),
         },
         "correctness": {
             "passed": bool(bench["finite_logits"] and equality_passed and primitive_passed),
@@ -773,6 +803,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--c1-baseline-json", type=Path, help="c=1 baseline artifact used for retained scaling ratios")
     parser.add_argument("--serial-bridge-json", type=Path, help="scheduler serial-bridge artifact for retained scaling ratios")
     parser.add_argument("--primitive-correctness-json", type=Path, help="scripts/qwen35_batch_correctness.py JSON for this c>N row count")
+    parser.add_argument("--profiler-json", type=Path, help="Captured rocprofv3 summary JSON to attach to retained evidence")
+    parser.add_argument("--profiler-command", help="Exact rocprofv3 --kernel-trace command that produced --profiler-json")
     add_kv_policy_args(parser, help_prefix="Resident KV storage for retained native c>N benchmark")
     parser.add_argument("--json", type=Path, help="Optional path to write JSON output")
     args = parser.parse_args(argv)
