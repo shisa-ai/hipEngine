@@ -2951,6 +2951,26 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="decode_shape_key.active_c must match workload.concurrency"):
         validate_cn_diagnostic_artifact_payload(mismatched_decode_shape_key)
 
+    missing_decode_context_bucket = json.loads(json.dumps(accepted))
+    missing_decode_context_bucket["execution"]["scheduler_metadata"]["decode_shape_key"].pop("context_bucket")
+    with pytest.raises(ValueError, match="decode_shape_key.context_bucket must be a positive int"):
+        validate_cn_diagnostic_artifact_payload(missing_decode_context_bucket)
+
+    invalid_decode_top_k = json.loads(json.dumps(accepted))
+    invalid_decode_top_k["execution"]["scheduler_metadata"]["decode_shape_key"]["top_k"] = -1
+    with pytest.raises(ValueError, match="decode_shape_key.top_k must be a non-negative int"):
+        validate_cn_diagnostic_artifact_payload(invalid_decode_top_k)
+
+    invalid_decode_replay_steps = json.loads(json.dumps(accepted))
+    invalid_decode_replay_steps["execution"]["scheduler_metadata"]["decode_shape_key"]["replay_steps"] = 0
+    with pytest.raises(ValueError, match="decode_shape_key.replay_steps must be a positive int"):
+        validate_cn_diagnostic_artifact_payload(invalid_decode_replay_steps)
+
+    invalid_decode_tree_shape = json.loads(json.dumps(accepted))
+    invalid_decode_tree_shape["execution"]["scheduler_metadata"]["decode_shape_key"]["tree_shape"] = [2, -1]
+    with pytest.raises(ValueError, match="decode_shape_key.tree_shape must be a list of non-negative ints"):
+        validate_cn_diagnostic_artifact_payload(invalid_decode_tree_shape)
+
     missing_graph_bucket_stats = json.loads(json.dumps(accepted))
     missing_graph_bucket_stats["execution"]["scheduler_metadata"].pop("graph_bucket_stats")
     with pytest.raises(ValueError, match="execution.scheduler_metadata.graph_bucket_stats"):

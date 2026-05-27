@@ -891,8 +891,10 @@ roll-up/status view.
       show replay for common shapes. Progress: graph-bucket stats now serialize
       `entries`, `hits`, `misses`, miss-reason counts, and kernel-time
       histogram buckets; retained accepted-artifact schema requires those
-      observability fields before a c>N row can be promoted; `/metrics` exposes
-      the labeled miss-reason and kernel-time-bucket counters for live runs.
+      observability fields plus replay shape-key axes (`context_bucket`,
+      `top_k`, `experts_per_token`, `replay_steps`, `draft_depth`, and
+      `tree_shape`) before a c>N row can be promoted; `/metrics` exposes the
+      labeled miss-reason and kernel-time-bucket counters for live runs.
 - [ ] **P3 remove residual serial loops.** Remove full-attention per-row
       fallback, per-row metadata allocation, per-row LM-head launches, and
       Python per-layer dispatch from steady-state native decode. Acceptance:

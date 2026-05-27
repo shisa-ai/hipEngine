@@ -568,6 +568,19 @@ def _validate_accepted_scheduler_metadata(
         active_mask = decode_shape_key.get("active_mask")
         if not isinstance(active_mask, list) or not active_mask or any(not isinstance(item, bool) for item in active_mask):
             errors.append("execution.scheduler_metadata.decode_shape_key.active_mask must be a non-empty bool list for accepted artifacts")
+        context_bucket = decode_shape_key.get("context_bucket")
+        if not isinstance(context_bucket, int) or isinstance(context_bucket, bool) or context_bucket <= 0:
+            errors.append("execution.scheduler_metadata.decode_shape_key.context_bucket must be a positive int for accepted artifacts")
+        for field in ("top_k", "experts_per_token", "draft_depth"):
+            value = decode_shape_key.get(field)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                errors.append(f"execution.scheduler_metadata.decode_shape_key.{field} must be a non-negative int for accepted artifacts")
+        replay_steps = decode_shape_key.get("replay_steps")
+        if not isinstance(replay_steps, int) or isinstance(replay_steps, bool) or replay_steps <= 0:
+            errors.append("execution.scheduler_metadata.decode_shape_key.replay_steps must be a positive int for accepted artifacts")
+        tree_shape = decode_shape_key.get("tree_shape")
+        if not isinstance(tree_shape, list) or any(not isinstance(item, int) or isinstance(item, bool) or item < 0 for item in tree_shape):
+            errors.append("execution.scheduler_metadata.decode_shape_key.tree_shape must be a list of non-negative ints for accepted artifacts")
     graph_stats = scheduler_metadata.get("graph_bucket_stats")
     if not isinstance(graph_stats, Mapping):
         errors.append("execution.scheduler_metadata.graph_bucket_stats must be an object for accepted artifacts")
