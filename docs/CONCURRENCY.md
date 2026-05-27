@@ -888,8 +888,8 @@ roll-up/status view.
       blocked instead of becoming a throughput claim. Real c-sweep runs now skip
       retained native diagnostics if the matching primitive, c=1 baseline,
       serial-bridge, or profiler-summary artifact is missing, failed, has a
-      mismatched profiler artifact path, or lacks required row/shape/kernel
-      labels; the c=1 PARO bench now emits a
+      mismatched profiler artifact path or row count, or lacks required
+      row/shape/kernel labels; the c=1 PARO bench now emits a
       first-class `workload` object with `concurrency=1`, prompt/decode token
       counts, and KV policy, and retained scaling summaries carry c=1/serial
       baseline `status`/`reason`, `workload_concurrency`, and prompt/decode

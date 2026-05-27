@@ -104,6 +104,7 @@ def _write_c_sweep_profiler_summary(output_dir: Path, *, rows: int = 2) -> None:
             {
                 "profiler": {
                     "artifact_path": str(profiler_path),
+                    "rows": rows,
                     "status": "captured",
                     "expected_kernels_present": True,
                     "expected_kernel_names": ["qwen35_batch_decode"],
@@ -123,6 +124,7 @@ def test_batch_c_sweep_profiler_precondition_rejects_mismatched_artifact_path(tm
             {
                 "profiler": {
                     "artifact_path": str(output_dir / "profiler-c4.json"),
+                    "rows": 2,
                     "status": "captured",
                     "expected_kernels_present": True,
                     "expected_kernel_names": ["qwen35_batch_decode"],
@@ -152,6 +154,38 @@ def test_batch_c_sweep_profiler_precondition_rejects_mismatched_artifact_path(tm
         "artifact_path": str(profiler_path),
         "passed": False,
         "reason": "artifact_path does not match --profiler-json path",
+    }
+
+
+def test_batch_c_sweep_profiler_precondition_rejects_wrong_row_count(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"]["rows"] = 4
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "rows=4 does not match batch_size=2",
     }
 
 

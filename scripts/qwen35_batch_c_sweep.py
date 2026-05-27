@@ -454,6 +454,15 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
     else:
         if profiler.get("artifact_path") != str(profiler_path):
             reasons.append("artifact_path does not match --profiler-json path")
+        raw_rows = profiler.get("rows")
+        if raw_rows is None:
+            workload = profiler.get("workload")
+            if not isinstance(workload, dict) and isinstance(payload, dict):
+                workload = payload.get("workload")
+            if isinstance(workload, dict):
+                raw_rows = workload.get("concurrency")
+        if raw_rows != command.batch_size:
+            reasons.append(f"rows={raw_rows!r} does not match batch_size={command.batch_size}")
         if profiler.get("status") != "captured":
             reasons.append("status is not 'captured'")
         if profiler.get("expected_kernels_present") is not True:
