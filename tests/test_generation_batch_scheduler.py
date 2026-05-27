@@ -3147,6 +3147,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="c1_baseline.status must be usable"):
         validate_cn_diagnostic_artifact_payload(failed_c1_status)
 
+    rejected_c1_status = json.loads(json.dumps(accepted))
+    rejected_c1_status["scaling"]["c1_baseline"]["status"] = "rejected_correctness"
+    with pytest.raises(ValueError, match="c1_baseline.status must be usable"):
+        validate_cn_diagnostic_artifact_payload(rejected_c1_status)
+
+    failed_serial_status = json.loads(json.dumps(accepted))
+    failed_serial_status["scaling"]["serial_bridge_baseline"]["status"] = "failed"
+    with pytest.raises(ValueError, match="serial_bridge_baseline.status must be usable"):
+        validate_cn_diagnostic_artifact_payload(failed_serial_status)
+
     missing_c1_concurrency = json.loads(json.dumps(accepted))
     missing_c1_concurrency["scaling"]["c1_baseline"].pop("workload_concurrency")
     with pytest.raises(ValueError, match="c1_baseline.workload_concurrency"):

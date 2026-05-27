@@ -83,6 +83,13 @@ _REQUIRED_ACCEPTED_SCALING_RATIOS = (
     "aggregate_vs_serial_bridge",
     "per_request_vs_serial_bridge",
 )
+_UNUSABLE_ACCEPTED_SCALING_BASELINE_STATUSES = {
+    "failed",
+    "invalid_json",
+    "missing",
+    "rejected",
+    "rejected_correctness",
+}
 _COMMAND_BATCH_SIZE_RE = re.compile(r"(?:^|\s)--batch-size(?:=|\s+)(\d+)(?=\s|$)")
 _COMMAND_DECODE_TOKENS_RE = re.compile(r"(?:^|\s)--decode-tokens(?:=|\s+)(\d+)(?=\s|$)")
 _COMMAND_MAX_LAYERS_RE = re.compile(r"(?:^|\s)--max-layers(?:=|\s+)(\d+)(?=\s|$)")
@@ -954,7 +961,7 @@ def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[st
         status = baseline.get("status")
         if not isinstance(status, str) or not status:
             errors.append(f"scaling.{baseline_name}.status must be a non-empty string for accepted artifacts")
-        elif status in {"missing", "invalid_json"}:
+        elif status in _UNUSABLE_ACCEPTED_SCALING_BASELINE_STATUSES:
             errors.append(f"scaling.{baseline_name}.status must be usable for accepted artifacts")
         if baseline.get("reason") is not None:
             errors.append(f"scaling.{baseline_name}.reason must be null for accepted artifacts")

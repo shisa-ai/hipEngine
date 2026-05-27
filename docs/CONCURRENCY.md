@@ -886,7 +886,10 @@ roll-up/status view.
       for planned/passed/skipped/failed rows, has persisted-summary coverage for
       skipped retained rows retaining both the complete `preconditions` list and
       singular first-failed `precondition`, and has unit coverage confirming
-      usable references allow the retained command to run.
+      usable references allow the retained command to run. Accepted artifact
+      schema also rejects baseline statuses known to be unusable for claims
+      (`missing`, `invalid_json`, `failed`, `rejected`, and
+      `rejected_correctness`) before a c>N row can be promoted.
 - [ ] **P2 graph replay buckets.** Add decode hipGraph capture/replay buckets
       by `(C, context bucket, active mask, KV dtype, layer plan, top-k/experts,
       replay length)`. Acceptance: bucket hit/miss stats and profiler evidence
