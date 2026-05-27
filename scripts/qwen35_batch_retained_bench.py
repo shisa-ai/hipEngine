@@ -403,6 +403,36 @@ def _attach_profiler_cpu_side_bottlenecks(profiler: Mapping[str, Any], bench: Ma
     return result
 
 
+def _command_arg_value(command: str, flag: str) -> str | None:
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        parts = command.split()
+    prefix = f"{flag}="
+    for idx, part in enumerate(parts):
+        if part == flag and idx + 1 < len(parts):
+            return parts[idx + 1]
+        if part.startswith(prefix):
+            return part[len(prefix):]
+    return None
+
+
+def _profiler_command_label(profiler: Mapping[str, Any], payload: Mapping[str, Any] | None) -> str | None:
+    for source in (profiler, payload):
+        if not isinstance(source, Mapping):
+            continue
+        for key in ("command", "profiler_command"):
+            value = source.get(key)
+            if isinstance(value, str) and value:
+                return value
+        commands = source.get("commands")
+        if isinstance(commands, Mapping):
+            value = commands.get("profiler")
+            if isinstance(value, str) and value:
+                return value
+    return None
+
+
 def _profiler_reference(path: Path | None) -> dict[str, Any]:
     if path is None:
         return {"status": "not_captured", "notes": "E2E retained c>N row; profiler trace not captured in this iteration."}
@@ -435,6 +465,12 @@ def _profiler_reference(path: Path | None) -> dict[str, Any]:
         kernel_duration_category_shares = _synthesized_profiler_kernel_duration_category_shares(result)
         if kernel_duration_category_shares is not None:
             result["kernel_duration_category_shares"] = kernel_duration_category_shares
+    if "output_format" not in result:
+        profiler_command = _profiler_command_label(profiler, payload)
+        if profiler_command is not None:
+            output_format = _command_arg_value(profiler_command, "--output-format")
+            if output_format is not None:
+                result["output_format"] = output_format
     result.setdefault("artifact_path", str(path))
     result.setdefault("status", "loaded")
     return result

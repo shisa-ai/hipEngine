@@ -3196,6 +3196,7 @@ def test_qwen35_retained_profiler_reference_loads_captured_summary(tmp_path: Pat
             {
                 "profiler": {
                     "status": "captured",
+                    "command": "rocprofv3 --kernel-trace --output-format csv -- python3 scripts/qwen35_batch_retained_bench.py",
                     "expected_kernels_present": True,
                     "expected_kernel_names": ["qwen35_batch_decode"],
                     "kernel_durations_ns": {"qwen35_batch_decode": 12345.0},
@@ -3225,6 +3226,7 @@ def test_qwen35_retained_profiler_reference_loads_captured_summary(tmp_path: Pat
     )
 
     assert loaded["status"] == "captured"
+    assert loaded["output_format"] == "csv"
     assert loaded["expected_kernels_present"] is True
     assert loaded["total_kernel_duration_ns"] == 12345.0
     assert loaded["kernel_duration_shares"] == {"qwen35_batch_decode": 1.0}
@@ -3389,6 +3391,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         "profiler": {
             "artifact_path": "benchmarks/results/profiler-c2.json",
             "status": "captured",
+            "output_format": "csv",
             "expected_kernels_present": True,
             "expected_kernel_names": ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"],
             "kernel_durations_ns": {
@@ -4540,6 +4543,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     not_captured_profiler["profiler"]["status"] = "not_captured"
     with pytest.raises(ValueError, match="profiler.status"):
         validate_cn_diagnostic_artifact_payload(not_captured_profiler)
+
+    missing_profiler_output_format = json.loads(json.dumps(accepted))
+    missing_profiler_output_format["profiler"].pop("output_format")
+    with pytest.raises(ValueError, match="profiler.output_format must be 'csv'"):
+        validate_cn_diagnostic_artifact_payload(missing_profiler_output_format)
+
+    wrong_profiler_output_format = json.loads(json.dumps(accepted))
+    wrong_profiler_output_format["profiler"]["output_format"] = "json"
+    with pytest.raises(ValueError, match="profiler.output_format must be 'csv'"):
+        validate_cn_diagnostic_artifact_payload(wrong_profiler_output_format)
 
     missing_expected_kernel = json.loads(json.dumps(accepted))
     missing_expected_kernel["profiler"]["expected_kernels_present"] = False

@@ -856,11 +856,14 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
                 errors=errors,
             )
     profiler_command = commands.get("profiler")
+    profiler_command_output_format: str | None = None
     if isinstance(profiler_command, str):
         if "rocprofv3" not in profiler_command or "--kernel-trace" not in profiler_command:
             errors.append("commands.profiler must include rocprofv3 --kernel-trace for accepted artifacts")
         output_format_match = _COMMAND_OUTPUT_FORMAT_RE.search(profiler_command)
-        if output_format_match is None or output_format_match.group(1).strip("'\"") != "csv":
+        if output_format_match is not None:
+            profiler_command_output_format = output_format_match.group(1).strip("'\"")
+        if profiler_command_output_format != "csv":
             errors.append("commands.profiler must include --output-format csv for accepted artifacts")
         if "qwen35_batch_retained_bench.py" not in profiler_command:
             errors.append("commands.profiler must target scripts/qwen35_batch_retained_bench.py for accepted artifacts")
@@ -889,6 +892,11 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             _validate_profiler_command_artifact_reference(profiler_command, profiler_artifact_path, errors)
     if profiler.get("status") != "captured":
         errors.append("profiler.status must be 'captured' for accepted artifacts")
+    profiler_output_format = profiler.get("output_format")
+    if profiler_output_format != "csv":
+        errors.append("profiler.output_format must be 'csv' for accepted artifacts")
+    elif profiler_command_output_format is not None and profiler_output_format != profiler_command_output_format:
+        errors.append("profiler.output_format must match commands.profiler --output-format for accepted artifacts")
     if profiler.get("expected_kernels_present") is not True:
         errors.append("profiler.expected_kernels_present must be true for accepted artifacts")
     expected_kernel_names = profiler.get("expected_kernel_names")

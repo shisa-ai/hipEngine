@@ -32089,3 +32089,29 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY structured profiler output-format field
+
+Materially advanced P1/P5 retained-evidence plumbing without closing any queue item or adding a retained c>N performance claim:
+
+- `scripts/qwen35_batch_artifact_schema.py` now requires accepted/performance-claim artifacts to carry `profiler.output_format == "csv"` and checks it against the validated `commands.profiler --output-format csv` flag.
+- `scripts/qwen35_batch_retained_bench.py` now synthesizes `profiler.output_format` from captured profiler summary command labels when the summary omits the structured field, so retained payload consumers do not need to parse command text.
+- Added tests for retained-profiler output-format synthesis and schema rejection of missing/wrong structured profiler output-format fields.
+- Updated `docs/CONCURRENCY.md` P1 notes to call out the schema-checked profiler output-format field.
+- No retained c>N performance claim was added; C2.4/C2.5 generated-token equality artifacts are still missing.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -k 'retained_profiler_reference or artifact_schema_enforces_accepted_row_gates or batch_c_sweep' -q
+# 28 passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```
