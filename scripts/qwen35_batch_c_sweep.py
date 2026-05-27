@@ -1315,6 +1315,20 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             errors.append("commands entries must be objects")
             break
     if entries:
+        if summary.get("completed_command_count") != len(entries):
+            errors.append("completed_command_count must match len(commands)")
+        command_count = summary.get("command_count")
+        if not isinstance(command_count, int) or isinstance(command_count, bool) or command_count < len(entries):
+            errors.append("command_count must be an int greater than or equal to completed_command_count")
+        expected_status_counts = _status_counts(entries)
+        if summary.get("status_counts") != expected_status_counts:
+            errors.append("status_counts must match commands")
+        expected_category_status_counts = _category_status_counts(entries)
+        if summary.get("category_status_counts") != expected_category_status_counts:
+            errors.append("category_status_counts must match commands")
+        expected_status = _summary_status(entries)
+        if summary.get("status") != expected_status:
+            errors.append("status must match commands")
         expected_precondition_counts = _retained_precondition_counts(entries)
         if summary.get("retained_precondition_counts") != expected_precondition_counts:
             errors.append("retained_precondition_counts must match commands.preconditions")

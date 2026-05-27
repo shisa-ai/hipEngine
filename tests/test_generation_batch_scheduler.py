@@ -1999,6 +1999,22 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     ]
     persisted = json.loads(summary_path.read_text())
     c_sweep.validate_sweep_summary(persisted)
+    tampered_completed_count = json.loads(json.dumps(persisted))
+    tampered_completed_count["completed_command_count"] = 2
+    with pytest.raises(ValueError, match=r"completed_command_count must match len\(commands\)"):
+        c_sweep.validate_sweep_summary(tampered_completed_count)
+    tampered_status_counts = json.loads(json.dumps(persisted))
+    tampered_status_counts["status_counts"] = {}
+    with pytest.raises(ValueError, match="status_counts must match commands"):
+        c_sweep.validate_sweep_summary(tampered_status_counts)
+    tampered_category_status_counts = json.loads(json.dumps(persisted))
+    tampered_category_status_counts["category_status_counts"] = {}
+    with pytest.raises(ValueError, match="category_status_counts must match commands"):
+        c_sweep.validate_sweep_summary(tampered_category_status_counts)
+    tampered_status = json.loads(json.dumps(persisted))
+    tampered_status["status"] = "blocked"
+    with pytest.raises(ValueError, match="status must match commands"):
+        c_sweep.validate_sweep_summary(tampered_status)
     assert persisted["retained_postcondition_counts"] == summary["retained_postcondition_counts"]
     assert persisted["failed_postconditions"] == summary["failed_postconditions"]
     assert persisted["commands"][-1]["postconditions"] == native["postconditions"]
