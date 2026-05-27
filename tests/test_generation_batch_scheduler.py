@@ -46,6 +46,7 @@ from scripts.qwen35_batch_artifact_schema import (
     main as validate_cn_diagnostic_artifact_main,
     validate_cn_diagnostic_artifact_payload,
     validate_cn_diagnostic_rollup_evidence,
+    validate_cn_diagnostic_validation_summary,
 )
 from scripts.qwen35_batch_c_sweep import build_parser as build_c_sweep_parser, build_sweep_commands, run_sweep
 from scripts.qwen35_batch_gguf_diagnostic import build_parser as build_gguf_diagnostic_parser, run as run_gguf_diagnostic
@@ -2452,6 +2453,12 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         "benchmark_rollup": accepted["benchmark_rollup"],
         "error": None,
     }
+    validate_cn_diagnostic_validation_summary(summary)
+
+    invalid_summary = dict(summary)
+    invalid_summary["error"] = "unexpected warning"
+    with pytest.raises(ValueError, match="summary.error must be null"):
+        validate_cn_diagnostic_validation_summary(invalid_summary)
 
     missing_rollup_artifact = json.loads(json.dumps(accepted))
     missing_rollup_artifact.pop("benchmark_rollup")
@@ -2468,6 +2475,12 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     assert failed_summary["artifact_path"] == "benchmarks/results/accepted-c2.json"
     assert failed_summary["benchmark_rollup"] is None
     assert "benchmark_rollup must be an object" in failed_summary["error"]
+    validate_cn_diagnostic_validation_summary(failed_summary)
+
+    invalid_failed_summary = dict(failed_summary)
+    invalid_failed_summary["error"] = None
+    with pytest.raises(ValueError, match="summary.error must be a non-empty string"):
+        validate_cn_diagnostic_validation_summary(invalid_failed_summary)
 
     bad_summary_file = rollup_root / "tmp" / "accepted-c2-rollup-check.json"
     assert validate_cn_diagnostic_artifact_main(

@@ -1096,20 +1096,65 @@ def _validation_summary(
     error: str | None = None,
 ) -> dict[str, Any]:
     payload = payload or {}
+    artifact_path = payload.get("artifact_path")
+    status = payload.get("status")
+    performance_claim = payload.get("performance_claim")
+    benchmark_rollup = payload.get("benchmark_rollup")
     return {
         "schema": 1,
         "mode": mode,
         "passed": passed,
         "artifact_json": str(artifact_json),
-        "artifact_path": payload.get("artifact_path"),
-        "status": payload.get("status"),
-        "performance_claim": payload.get("performance_claim"),
-        "benchmark_rollup": payload.get("benchmark_rollup"),
+        "artifact_path": artifact_path if isinstance(artifact_path, str) else None,
+        "status": status if isinstance(status, str) else None,
+        "performance_claim": performance_claim if isinstance(performance_claim, bool) else None,
+        "benchmark_rollup": benchmark_rollup if isinstance(benchmark_rollup, Mapping) else None,
         "error": error,
     }
 
 
+def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> None:
+    errors: list[str] = []
+    if summary.get("schema") != 1:
+        errors.append("summary.schema must be 1")
+    mode = summary.get("mode")
+    if mode not in {"artifact_schema", "rollup_evidence"}:
+        errors.append("summary.mode must be artifact_schema or rollup_evidence")
+    passed = summary.get("passed")
+    if not isinstance(passed, bool):
+        errors.append("summary.passed must be a bool")
+    artifact_json = summary.get("artifact_json")
+    if not isinstance(artifact_json, str) or not artifact_json:
+        errors.append("summary.artifact_json must be a non-empty string")
+    artifact_path = summary.get("artifact_path")
+    if artifact_path is not None:
+        if not isinstance(artifact_path, str) or not artifact_path:
+            errors.append("summary.artifact_path must be a non-empty string or null")
+        else:
+            _validate_benchmark_results_artifact_path("summary.artifact_path", artifact_path, errors)
+    status = summary.get("status")
+    if status is not None and (not isinstance(status, str) or not status):
+        errors.append("summary.status must be a non-empty string or null")
+    performance_claim = summary.get("performance_claim")
+    if performance_claim is not None and not isinstance(performance_claim, bool):
+        errors.append("summary.performance_claim must be a bool or null")
+    benchmark_rollup = summary.get("benchmark_rollup")
+    if benchmark_rollup is not None:
+        if not isinstance(benchmark_rollup, Mapping):
+            errors.append("summary.benchmark_rollup must be an object or null")
+        elif isinstance(artifact_path, str) and benchmark_rollup.get("artifact_path") != artifact_path:
+            errors.append("summary.benchmark_rollup.artifact_path must match summary.artifact_path")
+    error = summary.get("error")
+    if passed is True and error is not None:
+        errors.append("summary.error must be null when summary.passed is true")
+    if passed is False and (not isinstance(error, str) or not error):
+        errors.append("summary.error must be a non-empty string when summary.passed is false")
+    if errors:
+        raise ValueError("invalid c>N validation summary: " + "; ".join(errors))
+
+
 def _write_validation_summary(path: Path, summary: Mapping[str, Any]) -> None:
+    validate_cn_diagnostic_validation_summary(summary)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
 
@@ -1167,7 +1212,12 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-__all__ = ["main", "validate_cn_diagnostic_artifact_payload", "validate_cn_diagnostic_rollup_evidence"]
+__all__ = [
+    "main",
+    "validate_cn_diagnostic_artifact_payload",
+    "validate_cn_diagnostic_rollup_evidence",
+    "validate_cn_diagnostic_validation_summary",
+]
 
 
 if __name__ == "__main__":
