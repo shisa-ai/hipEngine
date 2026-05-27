@@ -12,6 +12,11 @@ _REQUIRED_BATCH_EXECUTION_FLAGS = (
     "native_caware_decode",
     "throughput_claim_eligible",
 )
+_REQUIRED_ACCEPTED_WORKLOAD_LABELS = (
+    "model",
+    "quant",
+    "kv_storage_dtype",
+)
 _REQUIRED_ACCEPTED_OBSERVABILITY_FIELDS = (
     "admission_timestamps",
     "completion_timestamps",
@@ -332,6 +337,9 @@ def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[st
     scaling = _mapping_at(payload, "scaling", errors)
     measurements = _mapping_at(payload, "measurements", errors)
     workload = _mapping_at(payload, "workload", errors)
+    for field in _REQUIRED_ACCEPTED_WORKLOAD_LABELS:
+        if not isinstance(workload.get(field), str) or not workload.get(field):
+            errors.append(f"workload.{field} must be a non-empty string for accepted artifacts")
     concurrency = workload.get("concurrency")
     concurrency_valid = isinstance(concurrency, int) and not isinstance(concurrency, bool) and concurrency > 1
     prompt_tokens = workload.get("prompt_tokens_per_request")

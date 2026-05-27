@@ -2149,6 +2149,9 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
             "kernel_durations_ns": {"qwen35_batch_decode": 12345.0},
         },
         "workload": {
+            "model": "Qwen3.5/3.6-35B-A3B-PARO",
+            "quant": "w4_paro",
+            "kv_storage_dtype": "bf16",
             "concurrency": 2,
             "prompt_tokens_per_request": 512,
             "prompt_tokens_aggregate": 1024,
@@ -2361,6 +2364,12 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     reduced_max_layers["workload"]["max_layers"] = 8
     with pytest.raises(ValueError, match="workload.max_layers must be 40"):
         validate_cn_diagnostic_artifact_payload(reduced_max_layers)
+
+    for workload_label in ("model", "quant", "kv_storage_dtype"):
+        missing_workload_label = json.loads(json.dumps(accepted))
+        missing_workload_label["workload"].pop(workload_label)
+        with pytest.raises(ValueError, match=f"workload.{workload_label}"):
+            validate_cn_diagnostic_artifact_payload(missing_workload_label)
 
     serial_bridge_execution = json.loads(json.dumps(accepted))
     serial_bridge_execution["execution"]["batch_execution"]["path"] = "scheduler_serial_slot_bridge"
