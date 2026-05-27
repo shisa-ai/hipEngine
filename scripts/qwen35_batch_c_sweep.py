@@ -140,6 +140,8 @@ def build_sweep_commands(args: argparse.Namespace) -> tuple[SweepCommand, ...]:
                 str(serial_json),
                 "--primitive-correctness-json",
                 str(primitive_json),
+                "--profiler-json",
+                str(output_dir / f"profiler-c{c}.json"),
             ]
         )
         commands.append(
@@ -416,6 +418,70 @@ def _scaling_reference_precondition(
     }
 
 
+def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
+    profiler_path, error = _command_arg_path(
+        command,
+        "--profiler-json",
+        kind="profiler_summary",
+    )
+    if error is not None:
+        return error
+    assert profiler_path is not None
+    if not profiler_path.exists():
+        return {
+            "kind": "profiler_summary",
+            "artifact_path": str(profiler_path),
+            "passed": False,
+            "reason": "profiler summary artifact does not exist",
+        }
+    try:
+        payload = json.loads(profiler_path.read_text())
+    except Exception as exc:
+        return {
+            "kind": "profiler_summary",
+            "artifact_path": str(profiler_path),
+            "passed": False,
+            "reason": f"profiler summary artifact is invalid JSON: {type(exc).__name__}: {exc}",
+        }
+    profiler = (
+        payload.get("profiler")
+        if isinstance(payload, dict) and isinstance(payload.get("profiler"), dict)
+        else payload
+    )
+    reasons: list[str] = []
+    if not isinstance(profiler, dict):
+        reasons.append("profiler summary root is not an object")
+    else:
+        if profiler.get("status") != "captured":
+            reasons.append("status is not 'captured'")
+        if profiler.get("expected_kernels_present") is not True:
+            reasons.append("expected_kernels_present is not true")
+        expected_kernel_names = profiler.get("expected_kernel_names")
+        if not isinstance(expected_kernel_names, list) or not expected_kernel_names:
+            reasons.append("expected_kernel_names is missing or empty")
+        elif not all(isinstance(name, str) and name for name in expected_kernel_names):
+            reasons.append("expected_kernel_names contains a non-string entry")
+        elif not any("batch" in name.lower() for name in expected_kernel_names):
+            reasons.append("expected_kernel_names does not include a native batch kernel")
+        kernel_durations = profiler.get("kernel_durations_ns")
+        if not isinstance(kernel_durations, dict) or not kernel_durations:
+            reasons.append("kernel_durations_ns is missing or empty")
+        elif isinstance(expected_kernel_names, list):
+            for kernel_name in expected_kernel_names:
+                duration_ns = kernel_durations.get(kernel_name)
+                if isinstance(kernel_name, str) and kernel_name and (
+                    not _is_number(duration_ns) or float(duration_ns) <= 0.0
+                ):
+                    reasons.append(f"kernel_durations_ns.{kernel_name} is missing or non-positive numeric")
+                    break
+    return {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": not reasons,
+        "reason": None if not reasons else "; ".join(reasons),
+    }
+
+
 def _native_retained_preconditions(command: SweepCommand) -> tuple[dict[str, Any], ...] | None:
     if command.category != "native_diagnostic" or command.batch_size <= 1:
         return None
@@ -433,6 +499,7 @@ def _native_retained_preconditions(command: SweepCommand) -> tuple[dict[str, Any
             kind="serial_bridge",
             expected_concurrency=command.batch_size,
         ),
+        _profiler_summary_precondition(command),
     )
 
 

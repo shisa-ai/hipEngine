@@ -97,6 +97,21 @@ class _FakeTextGenerator:
         return [f"generated:{prompt}:{seed}" for prompt, seed in zip(request.prompts, seeds, strict=True)]
 
 
+def _write_c_sweep_profiler_summary(output_dir: Path, *, rows: int = 2) -> None:
+    (output_dir / f"profiler-c{rows}.json").write_text(
+        json.dumps(
+            {
+                "profiler": {
+                    "status": "captured",
+                    "expected_kernels_present": True,
+                    "expected_kernel_names": ["qwen35_batch_decode"],
+                    "kernel_durations_ns": {"qwen35_batch_decode": 12345.0},
+                }
+            }
+        )
+    )
+
+
 def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) -> None:
     summary_path = tmp_path / "summary.json"
     args = build_c_sweep_parser().parse_args(
@@ -170,6 +185,8 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     assert str(tmp_path / "artifacts" / "serial-bridge-c2.json") in retained_c2.argv
     assert "--primitive-correctness-json" in retained_c2.argv
     assert str(tmp_path / "artifacts" / "primitive-c2.json") in retained_c2.argv
+    assert "--profiler-json" in retained_c2.argv
+    assert str(tmp_path / "artifacts" / "profiler-c2.json") in retained_c2.argv
 
 
 def test_batch_c_sweep_stops_and_counts_failed_command(tmp_path: Path, monkeypatch) -> None:
@@ -228,6 +245,8 @@ def test_batch_c_sweep_stops_and_counts_failed_command(tmp_path: Path, monkeypat
 
 def test_batch_c_sweep_no_stop_counts_failed_and_skipped_rows(tmp_path: Path, monkeypatch) -> None:
     output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir)
     args = build_c_sweep_parser().parse_args(
         [
             "--batch-sizes",
@@ -282,6 +301,7 @@ def test_batch_c_sweep_no_stop_counts_failed_and_skipped_rows(tmp_path: Path, mo
         "primitive_correctness": {"failed": 1},
         "c1_baseline": {"failed": 1},
         "serial_bridge": {"failed": 1},
+        "profiler_summary": {"passed": 1},
     }
     assert [entry["status"] for entry in summary["commands"]] == ["failed", "passed", "skipped"]
     assert summary["skipped_preconditions"] == [
@@ -301,6 +321,8 @@ def test_batch_c_sweep_no_stop_counts_failed_and_skipped_rows(tmp_path: Path, mo
 
 def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: Path, monkeypatch) -> None:
     output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir)
     summary_path = tmp_path / "summary.json"
     args = build_c_sweep_parser().parse_args(
         [
@@ -345,6 +367,7 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
         "primitive_correctness": {"failed": 1},
         "c1_baseline": {"failed": 1},
         "serial_bridge": {"failed": 1},
+        "profiler_summary": {"passed": 1},
     }
     assert [entry["status"] for entry in summary["commands"]] == ["passed", "passed", "skipped"]
     skipped = summary["commands"][-1]
@@ -353,6 +376,7 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
         "primitive_correctness",
         "c1_baseline",
         "serial_bridge",
+        "profiler_summary",
     ]
     assert skipped["preconditions"][0]["passed"] is False
     assert skipped["precondition"] == skipped["preconditions"][0]
@@ -402,6 +426,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_missing(
             }
         )
     )
+    _write_c_sweep_profiler_summary(output_dir)
     if missing_artifact != "c1":
         (output_dir / "native-baseline-c1.json").write_text(
             json.dumps(
@@ -465,6 +490,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_missing(
         "primitive_correctness": {"passed": 1},
         "c1_baseline": {"failed" if missing_artifact == "c1" else "passed": 1},
         "serial_bridge": {"failed" if missing_artifact == "serial" else "passed": 1},
+        "profiler_summary": {"passed": 1},
     }
     assert summary["retained_precondition_counts"] == expected_counts
     assert [entry["status"] for entry in summary["commands"]] == ["passed", "passed", "skipped"]
@@ -473,6 +499,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_missing(
         "primitive_correctness",
         "c1_baseline",
         "serial_bridge",
+        "profiler_summary",
     ]
     assert skipped["preconditions"][0]["passed"] is True
     assert skipped["precondition"]["kind"] == expected_kind
@@ -510,6 +537,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_shape_missing(
             }
         )
     )
+    _write_c_sweep_profiler_summary(output_dir)
     (output_dir / "native-baseline-c1.json").write_text(
         json.dumps({"schema": 1, "throughput": {"warmed_decode_tok_s": 10.0}})
     )
@@ -563,6 +591,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_shape_missing(
         "primitive_correctness": {"passed": 1},
         "c1_baseline": {"failed": 1},
         "serial_bridge": {"passed": 1},
+        "profiler_summary": {"passed": 1},
     }
 
 
@@ -584,6 +613,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_reason_is_non_null(
             }
         )
     )
+    _write_c_sweep_profiler_summary(output_dir)
     (output_dir / "native-baseline-c1.json").write_text(
         json.dumps(
             {
@@ -645,6 +675,86 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_reason_is_non_null(
         "primitive_correctness": {"passed": 1},
         "c1_baseline": {"passed": 1},
         "serial_bridge": {"failed": 1},
+        "profiler_summary": {"passed": 1},
+    }
+
+
+def test_batch_c_sweep_skips_retained_when_profiler_summary_missing(tmp_path: Path, monkeypatch) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    (output_dir / "primitive-c2.json").write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "rows": 2,
+                "passed": True,
+                "append_key_mismatch": 0,
+                "append_value_mismatch": 0,
+                "attn_batch_vs_c1_max_abs": 0.0,
+            }
+        )
+    )
+    (output_dir / "native-baseline-c1.json").write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "prompt_length": 16,
+                "decode_tokens": 2,
+                "throughput": {"warmed_decode_tok_s": 10.0},
+            }
+        )
+    )
+    (output_dir / "serial-bridge-c2.json").write_text(
+        json.dumps(
+            {
+                "schema": 2,
+                "status": "blocked",
+                "workload": {"concurrency": 2, "prompt_tokens_per_request": 16, "gen_tokens_per_request": 2},
+                "measurements": {"decode_tok_s_aggregate": 20.0, "decode_tok_s_per_request": 10.0},
+            }
+        )
+    )
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+            "--warmup-decode-tokens",
+            "1",
+            "--max-layers",
+            "3",
+        ]
+    )
+    monkeypatch.setattr(c_sweep, "_git_state", lambda: {"commit": "test", "dirty": False, "status_short": []})
+
+    class FakeProc:
+        returncode = 0
+        stdout = "ok"
+
+    monkeypatch.setattr(c_sweep.subprocess, "run", lambda *args, **kwargs: FakeProc())
+
+    summary = run_sweep(args)
+
+    assert summary["status"] == "blocked"
+    assert summary["status_counts"] == {"passed": 2, "skipped": 1}
+    skipped = summary["commands"][-1]
+    assert skipped["status"] == "skipped"
+    assert skipped["precondition"]["kind"] == "profiler_summary"
+    assert skipped["precondition"]["reason"] == "profiler summary artifact does not exist"
+    assert summary["retained_precondition_counts"] == {
+        "primitive_correctness": {"passed": 1},
+        "c1_baseline": {"passed": 1},
+        "serial_bridge": {"passed": 1},
+        "profiler_summary": {"failed": 1},
     }
 
 
@@ -663,6 +773,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
             }
         )
     )
+    _write_c_sweep_profiler_summary(output_dir)
     (output_dir / "native-baseline-c1.json").write_text(
         json.dumps(
             {
@@ -731,6 +842,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         "primitive_correctness": {"passed": 1},
         "c1_baseline": {"passed": 1},
         "serial_bridge": {"passed": 1},
+        "profiler_summary": {"passed": 1},
     }
     assert summary["skipped_preconditions"] == []
     assert [entry["status"] for entry in summary["commands"]] == ["passed", "passed", "passed"]
@@ -742,6 +854,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         "primitive_correctness",
         "c1_baseline",
         "serial_bridge",
+        "profiler_summary",
     ]
     assert all(item["passed"] is True for item in native["preconditions"])
     preconditions_by_kind = {item["kind"]: item for item in native["preconditions"]}
@@ -770,6 +883,12 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         "gen_tokens_per_request": 2,
         "decode_tok_s_aggregate": 20.0,
         "decode_tok_s_per_request": 10.0,
+    }
+    assert preconditions_by_kind["profiler_summary"] == {
+        "kind": "profiler_summary",
+        "artifact_path": str(output_dir / "profiler-c2.json"),
+        "passed": True,
+        "reason": None,
     }
     assert "precondition" not in native
 

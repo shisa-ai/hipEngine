@@ -882,11 +882,13 @@ roll-up/status view.
       before `performance_claim=true`; `scripts/qwen35_batch_c_sweep.py` wires
       those paths into the planned retained command (`--c1-baseline-json`,
       `--serial-bridge-json`) and now also passes the matching
-      `--primitive-correctness-json` path (`primitive-cN.json`) so a green
-      generated-token run without primitive GPU correctness remains blocked
-      instead of becoming a throughput claim. Real c-sweep runs now skip retained
-      native diagnostics if the matching primitive, c=1 baseline, or serial-
-      bridge artifact is missing, failed, or lacks required row/shape labels; the c=1 PARO bench now emits a
+      `--primitive-correctness-json` path (`primitive-cN.json`) plus the planned
+      `--profiler-json` path (`profiler-cN.json`) so a green generated-token run
+      without primitive GPU correctness or captured profiler evidence remains
+      blocked instead of becoming a throughput claim. Real c-sweep runs now skip
+      retained native diagnostics if the matching primitive, c=1 baseline,
+      serial-bridge, or profiler-summary artifact is missing, failed, or lacks
+      required row/shape/kernel labels; the c=1 PARO bench now emits a
       first-class `workload` object with `concurrency=1`, prompt/decode token
       counts, and KV policy, and retained scaling summaries carry c=1/serial
       baseline `status`/`reason`, `workload_concurrency`, and prompt/decode
