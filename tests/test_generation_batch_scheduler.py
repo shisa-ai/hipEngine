@@ -1955,7 +1955,9 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         "serial_bridge": {"passed": 1},
         "profiler_summary": {"passed": 1},
     }
+    assert summary["retained_postcondition_counts"] == {"retained_profiler_synthesis": {"passed": 1}}
     assert summary["skipped_preconditions"] == []
+    assert summary["failed_postconditions"] == []
     assert [entry["status"] for entry in summary["commands"]] == ["passed", "passed", "passed"]
     assert len(calls) == 3
     assert calls[-1][1] == "scripts/qwen35_batch_retained_bench.py"
@@ -2110,6 +2112,25 @@ def test_batch_c_sweep_rejects_retained_profiler_synthesis_mismatch(tmp_path: Pa
         "profiler_synthesized_fields": ["trace_kernel_names"],
         "profiler_precondition_synthesized_fields": [],
     }
+    entries = [
+        {
+            "category": "native_diagnostic",
+            "batch_size": 2,
+            "artifact_path": str(artifact_path),
+            "postconditions": [postcondition],
+        }
+    ]
+    assert c_sweep._retained_postcondition_counts(entries) == {"retained_profiler_synthesis": {"failed": 1}}
+    assert c_sweep._failed_postconditions(entries) == [
+        {
+            "category": "native_diagnostic",
+            "batch_size": 2,
+            "artifact_path": str(artifact_path),
+            "kind": "retained_profiler_synthesis",
+            "profiler_precondition_artifact_path": str(profiler_path),
+            "reason": "retained artifact profiler.synthesized_fields does not match profiler precondition synthesized fields",
+        }
+    ]
 
 
 def test_batch_c_sweep_can_plan_int8_blocked_diagnostics(tmp_path: Path) -> None:

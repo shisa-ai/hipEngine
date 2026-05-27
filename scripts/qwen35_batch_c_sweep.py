@@ -1284,7 +1284,9 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
         "status_counts": _status_counts(entries),
         "category_status_counts": _category_status_counts(entries),
         "retained_precondition_counts": _retained_precondition_counts(entries),
+        "retained_postcondition_counts": _retained_postcondition_counts(entries),
         "skipped_preconditions": _skipped_preconditions(entries),
+        "failed_postconditions": _failed_postconditions(entries),
         "status": _summary_status(entries),
     }
     if args.summary_json is not None:
@@ -1335,6 +1337,44 @@ def _retained_precondition_counts(entries: Sequence[dict[str, Any]]) -> dict[str
             kind_counts = counts.setdefault(kind, {})
             kind_counts[status] = kind_counts.get(status, 0) + 1
     return counts
+
+
+def _retained_postcondition_counts(entries: Sequence[dict[str, Any]]) -> dict[str, dict[str, int]]:
+    counts: dict[str, dict[str, int]] = {}
+    for entry in entries:
+        postconditions = entry.get("postconditions")
+        if not isinstance(postconditions, list):
+            continue
+        for postcondition in postconditions:
+            if not isinstance(postcondition, dict):
+                continue
+            kind = str(postcondition.get("kind") or "unknown")
+            status = "passed" if postcondition.get("passed") is True else "failed"
+            kind_counts = counts.setdefault(kind, {})
+            kind_counts[status] = kind_counts.get(status, 0) + 1
+    return counts
+
+
+def _failed_postconditions(entries: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    failed: list[dict[str, Any]] = []
+    for entry in entries:
+        postconditions = entry.get("postconditions")
+        if not isinstance(postconditions, list):
+            continue
+        for postcondition in postconditions:
+            if not isinstance(postcondition, dict) or postcondition.get("passed") is True:
+                continue
+            failed.append(
+                {
+                    "category": entry.get("category"),
+                    "batch_size": entry.get("batch_size"),
+                    "artifact_path": entry.get("artifact_path"),
+                    "kind": postcondition.get("kind"),
+                    "profiler_precondition_artifact_path": postcondition.get("profiler_precondition_artifact_path"),
+                    "reason": postcondition.get("reason"),
+                }
+            )
+    return failed
 
 
 def _skipped_preconditions(entries: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
