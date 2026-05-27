@@ -1,6 +1,35 @@
 from __future__ import annotations
 
-from scripts.qwen35_paro_bench import _memory_summary
+from pathlib import Path
+
+from scripts.qwen35_paro_bench import _memory_summary, _workload_summary
+
+
+def test_qwen35_paro_bench_workload_summary_labels_c1_shape() -> None:
+    workload = _workload_summary(
+        model=Path("/models/qwen-paro"),
+        prompt_length=512,
+        decode_tokens=128,
+        warmup_decode_tokens=4,
+        max_layers=40,
+        kv_policy_summary={"storage_dtype": "bf16"},
+    )
+
+    assert workload == {
+        "shape": "c=1 prompt=512 decode=128",
+        "model": "Qwen3.5-35B-A3B-PARO",
+        "model_path": "/models/qwen-paro",
+        "quant": "w4_paro",
+        "prompt_tokens_per_request": 512,
+        "prompt_tokens_aggregate": 512,
+        "gen_tokens_per_request": 128,
+        "gen_tokens_aggregate": 128,
+        "warmup_decode_tokens": 4,
+        "concurrency": 1,
+        "prompt_lengths": [512],
+        "max_layers": 40,
+        "kv_policy": {"storage_dtype": "bf16"},
+    }
 
 
 def test_qwen35_paro_bench_memory_summary_embeds_kv_audit_and_peaks() -> None:

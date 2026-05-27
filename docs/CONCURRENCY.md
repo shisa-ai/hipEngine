@@ -857,10 +857,11 @@ roll-up/status view.
       generated-token run without primitive GPU correctness remains blocked
       instead of becoming a throughput claim. Real c-sweep runs now skip retained
       native diagnostics if the matching primitive, c=1 baseline, or serial-
-      bridge artifact is missing or failed; retained scaling summaries carry c=1
-      and serial-bridge baseline `status`/`reason`, `workload_concurrency`, and
-      prompt/decode token counts (including c=1 `prompt_length`/`decode_tokens`
-      artifacts) so schema validation rejects c>N rows compared against missing,
+      bridge artifact is missing or failed; the c=1 PARO bench now emits a
+      first-class `workload` object with `concurrency=1`, prompt/decode token
+      counts, and KV policy, and retained scaling summaries carry c=1/serial
+      baseline `status`/`reason`, `workload_concurrency`, and prompt/decode
+      labels so schema validation rejects c>N rows compared against missing,
       failed, ambiguous, or wrong-shape baselines; the sweep writes `command_count`,
       `completed_command_count`, an `options` block, per-retained-command
       `preconditions`, `status_counts`, `category_status_counts`,

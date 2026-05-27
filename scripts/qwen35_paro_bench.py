@@ -35,6 +35,32 @@ DEFAULT_MODEL = (
 )
 
 
+def _workload_summary(
+    *,
+    model: Path,
+    prompt_length: int,
+    decode_tokens: int,
+    warmup_decode_tokens: int,
+    max_layers: int,
+    kv_policy_summary: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "shape": f"c=1 prompt={int(prompt_length)} decode={int(decode_tokens)}",
+        "model": "Qwen3.5-35B-A3B-PARO",
+        "model_path": str(model),
+        "quant": "w4_paro",
+        "prompt_tokens_per_request": int(prompt_length),
+        "prompt_tokens_aggregate": int(prompt_length),
+        "gen_tokens_per_request": int(decode_tokens),
+        "gen_tokens_aggregate": int(decode_tokens),
+        "warmup_decode_tokens": int(warmup_decode_tokens),
+        "concurrency": 1,
+        "prompt_lengths": [int(prompt_length)],
+        "max_layers": int(max_layers),
+        "kv_policy": kv_policy_summary,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", default=DEFAULT_MODEL)
@@ -297,6 +323,14 @@ def main() -> int:
         "decode_tokens": args.decode_tokens,
         "warmup_decode_tokens": args.warmup_decode_tokens,
         "max_layers": args.max_layers or runner.config.num_hidden_layers,
+        "workload": _workload_summary(
+            model=model,
+            prompt_length=len(prompt_tokens),
+            decode_tokens=args.decode_tokens,
+            warmup_decode_tokens=args.warmup_decode_tokens,
+            max_layers=args.max_layers or runner.config.num_hidden_layers,
+            kv_policy_summary=kv_policy_json(kv_policy),
+        ),
         "shared_expert_format": args.shared_expert_format,
         "tokens_per_step": 1,
         "native_batched_prefill": not bool(args.serial_prefill_diagnostic),
