@@ -1450,6 +1450,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if status == "passed" and failed_postconditions:
                 errors.append("commands[].status passed cannot include failed postconditions")
                 break
+            if status == "passed" and entry.get("category") == "native_diagnostic" and not Path(entry["artifact_path"]).is_file():
+                errors.append("commands[].artifact_path must exist for passed native diagnostics")
+                break
             if status == "failed" and returncode == 0 and not failed_postconditions:
                 errors.append("commands[].status failed with returncode 0 requires a failed postcondition")
                 break

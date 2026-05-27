@@ -2057,6 +2057,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_passed_returncode["commands"][-1]["returncode"] = 1
     with pytest.raises(ValueError, match=r"commands\[\]\.status passed requires returncode 0"):
         c_sweep.validate_sweep_summary(tampered_passed_returncode)
+    tampered_passed_artifact = json.loads(json.dumps(persisted))
+    retained_row = tampered_passed_artifact["commands"][-1]
+    missing_artifact = str(output_dir / "missing-native-diagnostic-c2.json")
+    retained_row["artifact_path"] = missing_artifact
+    retained_row["argv"][retained_row["argv"].index("--json") + 1] = missing_artifact
+    retained_row["command"] = shlex.join(retained_row["argv"])
+    with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must exist for passed native diagnostics"):
+        c_sweep.validate_sweep_summary(tampered_passed_artifact)
     tampered_duration = json.loads(json.dumps(persisted))
     tampered_duration["commands"][-1]["duration_seconds"] = -1.0
     with pytest.raises(ValueError, match=r"commands\[\]\.duration_seconds must be a non-negative number"):
