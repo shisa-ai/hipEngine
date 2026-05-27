@@ -897,9 +897,9 @@ roll-up/status view.
       validation unless they include fully native batch-execution metadata,
       generated-token equality sequence lists matching `workload.concurrency`,
       `workload.concurrency` matching the primitive correctness row count,
-      numeric aggregate/per-request throughput, all required scaling ratios vs
-      usable same-shape c=1 and usable same-shape/same-concurrency serial bridge
-      baselines, decode-step timing samples,
+      numeric aggregate/per-request throughput, all required scaling ratios that
+      mathematically match usable same-shape c=1 and usable same-shape/same-
+      concurrency serial bridge baselines, decode-step timing samples,
       non-empty benchmark, correctness-reference, and profiler commands,
       concrete non-empty hardware `gpu`/`arch` fields,
       commit/dirty-state software fields, and captured profiler evidence with

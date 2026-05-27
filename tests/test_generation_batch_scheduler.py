@@ -2379,6 +2379,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
         with pytest.raises(ValueError, match=ratio_field):
             validate_cn_diagnostic_artifact_payload(missing_ratio)
 
+    inconsistent_ratio = json.loads(json.dumps(accepted))
+    inconsistent_ratio["scaling"]["ratios"]["aggregate_vs_serial_bridge"] = 99.0
+    with pytest.raises(ValueError, match="aggregate_vs_serial_bridge must match scaling throughput fields"):
+        validate_cn_diagnostic_artifact_payload(inconsistent_ratio)
+
     missing_c1_status = json.loads(json.dumps(accepted))
     missing_c1_status["scaling"]["c1_baseline"].pop("status")
     with pytest.raises(ValueError, match="c1_baseline.status"):

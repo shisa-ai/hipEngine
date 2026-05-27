@@ -362,6 +362,67 @@ def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[st
         for field in _REQUIRED_ACCEPTED_SCALING_RATIOS:
             if not _is_number(ratios.get(field)):
                 errors.append(f"scaling.ratios.{field} must be numeric for accepted artifacts")
+        if isinstance(native, Mapping) and isinstance(c1_baseline, Mapping) and isinstance(serial_baseline, Mapping):
+            _validate_scaling_ratio(
+                "aggregate_vs_c1",
+                ratios,
+                native,
+                "decode_tok_s_aggregate",
+                c1_baseline,
+                "decode_tok_s_aggregate",
+                errors,
+            )
+            _validate_scaling_ratio(
+                "per_request_vs_c1",
+                ratios,
+                native,
+                "decode_tok_s_per_request",
+                c1_baseline,
+                "decode_tok_s_per_request",
+                errors,
+            )
+            _validate_scaling_ratio(
+                "aggregate_vs_serial_bridge",
+                ratios,
+                native,
+                "decode_tok_s_aggregate",
+                serial_baseline,
+                "decode_tok_s_aggregate",
+                errors,
+            )
+            _validate_scaling_ratio(
+                "per_request_vs_serial_bridge",
+                ratios,
+                native,
+                "decode_tok_s_per_request",
+                serial_baseline,
+                "decode_tok_s_per_request",
+                errors,
+            )
+
+
+def _validate_scaling_ratio(
+    field: str,
+    ratios: Mapping[str, Any],
+    numerator_payload: Mapping[str, Any],
+    numerator_field: str,
+    denominator_payload: Mapping[str, Any],
+    denominator_field: str,
+    errors: list[str],
+) -> None:
+    numerator = numerator_payload.get(numerator_field)
+    denominator = denominator_payload.get(denominator_field)
+    actual = ratios.get(field)
+    if not (_is_number(numerator) and _is_number(denominator) and _is_number(actual)):
+        return
+    denominator_value = float(denominator)
+    if denominator_value <= 0.0:
+        errors.append(f"scaling.ratios.{field} denominator must be positive for accepted artifacts")
+        return
+    expected = float(numerator) / denominator_value
+    tolerance = max(1e-9, abs(expected) * 1e-6)
+    if abs(float(actual) - expected) > tolerance:
+        errors.append(f"scaling.ratios.{field} must match scaling throughput fields for accepted artifacts")
 
 
 def _valid_request_observability(row: Any, errors: list[str]) -> bool:
