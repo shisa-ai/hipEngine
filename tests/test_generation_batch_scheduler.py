@@ -2623,6 +2623,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     with pytest.raises(ValueError, match="commands.correctness_reference must reference scripts/qwen35_batch_correctness.py"):
         validate_cn_diagnostic_artifact_payload(wrong_correctness_command)
 
+    missing_correctness_rows = json.loads(json.dumps(accepted))
+    missing_correctness_rows["commands"]["correctness_reference"] = "python3 scripts/qwen35_batch_correctness.py --json primitive-c2.json"
+    with pytest.raises(ValueError, match="commands.correctness_reference must include --rows"):
+        validate_cn_diagnostic_artifact_payload(missing_correctness_rows)
+
+    wrong_correctness_rows = json.loads(json.dumps(accepted))
+    wrong_correctness_rows["commands"]["correctness_reference"] = "python3 scripts/qwen35_batch_correctness.py --rows 8 --json primitive-c8.json"
+    with pytest.raises(ValueError, match="commands.correctness_reference --rows must match workload.concurrency"):
+        validate_cn_diagnostic_artifact_payload(wrong_correctness_rows)
+
     missing_profiler = dict(accepted)
     missing_profiler.pop("profiler")
     with pytest.raises(ValueError, match="profiler"):

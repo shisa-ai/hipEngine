@@ -912,8 +912,9 @@ roll-up/status view.
       baselines,
       positive decode-step timing samples,
       a retained-benchmark command referencing `scripts/qwen35_batch_retained_bench.py`,
-      a correctness-reference command naming `scripts/qwen35_batch_correctness.py`,
-      and a concrete `rocprofv3 --kernel-trace` profiler command,
+      a correctness-reference command naming `scripts/qwen35_batch_correctness.py`
+      with `--rows` matching `workload.concurrency`, and a concrete
+      `rocprofv3 --kernel-trace` profiler command,
       concrete non-empty hardware `gpu`/`arch` fields,
       commit/dirty-state software fields, and captured profiler evidence with
       expected kernel names present and positive per-kernel duration evidence.

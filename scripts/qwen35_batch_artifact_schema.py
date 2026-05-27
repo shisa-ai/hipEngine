@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -65,6 +66,7 @@ _REQUIRED_ACCEPTED_SCALING_RATIOS = (
     "aggregate_vs_serial_bridge",
     "per_request_vs_serial_bridge",
 )
+_CORRECTNESS_ROWS_RE = re.compile(r"(?:^|\s)--rows(?:=|\s+)(\d+)(?=\s|$)")
 
 
 def _mapping_at(payload: Mapping[str, Any], key: str, errors: list[str]) -> Mapping[str, Any]:
@@ -255,8 +257,18 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     if isinstance(benchmark_command, str) and "qwen35_batch_retained_bench.py" not in benchmark_command:
         errors.append("commands.benchmark must reference scripts/qwen35_batch_retained_bench.py for accepted artifacts")
     correctness_command = commands.get("correctness_reference")
-    if isinstance(correctness_command, str) and "qwen35_batch_correctness.py" not in correctness_command:
-        errors.append("commands.correctness_reference must reference scripts/qwen35_batch_correctness.py for accepted artifacts")
+    if isinstance(correctness_command, str):
+        if "qwen35_batch_correctness.py" not in correctness_command:
+            errors.append("commands.correctness_reference must reference scripts/qwen35_batch_correctness.py for accepted artifacts")
+        else:
+            rows_match = _CORRECTNESS_ROWS_RE.search(correctness_command)
+            if rows_match is None:
+                errors.append("commands.correctness_reference must include --rows <workload.concurrency> for accepted artifacts")
+            else:
+                workload = payload.get("workload")
+                concurrency = workload.get("concurrency") if isinstance(workload, Mapping) else None
+                if isinstance(concurrency, int) and not isinstance(concurrency, bool) and int(rows_match.group(1)) != concurrency:
+                    errors.append("commands.correctness_reference --rows must match workload.concurrency for accepted artifacts")
     profiler_command = commands.get("profiler")
     if isinstance(profiler_command, str) and ("rocprofv3" not in profiler_command or "--kernel-trace" not in profiler_command):
         errors.append("commands.profiler must include rocprofv3 --kernel-trace for accepted artifacts")
