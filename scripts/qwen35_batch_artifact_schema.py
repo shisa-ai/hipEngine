@@ -239,6 +239,18 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         errors.append("profiler.status must be 'captured' for accepted artifacts")
     if profiler.get("expected_kernels_present") is not True:
         errors.append("profiler.expected_kernels_present must be true for accepted artifacts")
+    expected_kernel_names = profiler.get("expected_kernel_names")
+    if not _is_nonempty_string_list(expected_kernel_names):
+        errors.append("profiler.expected_kernel_names must be a non-empty string list for accepted artifacts")
+    kernel_durations = profiler.get("kernel_durations_ns")
+    if not isinstance(kernel_durations, Mapping) or not kernel_durations:
+        errors.append("profiler.kernel_durations_ns must be a non-empty object for accepted artifacts")
+    elif isinstance(expected_kernel_names, list):
+        for kernel_name in expected_kernel_names:
+            if not isinstance(kernel_name, str) or not kernel_name:
+                continue
+            if not _is_positive_number(kernel_durations.get(kernel_name)):
+                errors.append(f"profiler.kernel_durations_ns.{kernel_name} must be positive numeric for accepted artifacts")
 
 
 def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness: Mapping[str, Any], errors: list[str]) -> None:
@@ -483,6 +495,10 @@ def _is_positive_number(value: Any) -> bool:
 
 def _is_nonnegative_number(value: Any) -> bool:
     return _is_number(value) and float(value) >= 0.0
+
+
+def _is_nonempty_string_list(value: Any) -> bool:
+    return isinstance(value, list) and bool(value) and all(isinstance(item, str) and bool(item) for item in value)
 
 
 __all__ = ["validate_cn_diagnostic_artifact_payload"]

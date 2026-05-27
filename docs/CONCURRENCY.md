@@ -906,7 +906,8 @@ roll-up/status view.
       non-empty benchmark, correctness-reference, and profiler commands,
       concrete non-empty hardware `gpu`/`arch` fields,
       commit/dirty-state software fields, and captured profiler evidence with
-      expected kernels present. The scoreboard item remains open until accepted
+      expected kernel names present and positive per-kernel duration evidence.
+      The scoreboard item remains open until accepted
       artifacts exist and the benchmark rollups are updated.
 
 ## Phase ladder

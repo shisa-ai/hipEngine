@@ -2142,7 +2142,12 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
             "correctness_reference": "inline generated-token equality vs independent c=1",
             "profiler": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile -- python3 scripts/qwen35_batch_retained_bench.py ...",
         },
-        "profiler": {"status": "captured", "expected_kernels_present": True},
+        "profiler": {
+            "status": "captured",
+            "expected_kernels_present": True,
+            "expected_kernel_names": ["qwen35_batch_decode"],
+            "kernel_durations_ns": {"qwen35_batch_decode": 12345.0},
+        },
         "workload": {
             "concurrency": 2,
             "prompt_tokens_per_request": 512,
@@ -2528,6 +2533,21 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     missing_expected_kernel["profiler"]["expected_kernels_present"] = False
     with pytest.raises(ValueError, match="expected_kernels_present"):
         validate_cn_diagnostic_artifact_payload(missing_expected_kernel)
+
+    missing_expected_kernel_names = json.loads(json.dumps(accepted))
+    missing_expected_kernel_names["profiler"].pop("expected_kernel_names")
+    with pytest.raises(ValueError, match="expected_kernel_names"):
+        validate_cn_diagnostic_artifact_payload(missing_expected_kernel_names)
+
+    missing_kernel_durations = json.loads(json.dumps(accepted))
+    missing_kernel_durations["profiler"].pop("kernel_durations_ns")
+    with pytest.raises(ValueError, match="kernel_durations_ns"):
+        validate_cn_diagnostic_artifact_payload(missing_kernel_durations)
+
+    zero_kernel_duration = json.loads(json.dumps(accepted))
+    zero_kernel_duration["profiler"]["kernel_durations_ns"]["qwen35_batch_decode"] = 0.0
+    with pytest.raises(ValueError, match="qwen35_batch_decode must be positive numeric"):
+        validate_cn_diagnostic_artifact_payload(zero_kernel_duration)
 
     empty_hardware = json.loads(json.dumps(accepted))
     empty_hardware["hardware"] = {}
