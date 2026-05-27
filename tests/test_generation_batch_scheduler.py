@@ -2816,6 +2816,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     with pytest.raises(ValueError, match="hardware.rocm_smi.returncode must be 0"):
         validate_cn_diagnostic_artifact_payload(failed_rocm_smi)
 
+    wrong_rocminfo_command = json.loads(json.dumps(accepted))
+    wrong_rocminfo_command["hardware"]["rocminfo"]["command"] = "cat /tmp/hw.txt"
+    with pytest.raises(ValueError, match="hardware.rocminfo.command must include rocminfo"):
+        validate_cn_diagnostic_artifact_payload(wrong_rocminfo_command)
+
+    wrong_rocm_smi_command = json.loads(json.dumps(accepted))
+    wrong_rocm_smi_command["hardware"]["rocm_smi"]["command"] = "cat /tmp/hw.txt"
+    with pytest.raises(ValueError, match="hardware.rocm_smi.command must include rocm-smi"):
+        validate_cn_diagnostic_artifact_payload(wrong_rocm_smi_command)
+
     mismatched_rocminfo_arch = json.loads(json.dumps(accepted))
     mismatched_rocminfo_arch["hardware"]["rocminfo"]["output"] = "Name: gfx0000"
     with pytest.raises(ValueError, match="hardware.rocminfo.output must include hardware.arch"):
