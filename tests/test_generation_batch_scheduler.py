@@ -2209,7 +2209,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
             ],
             "benchmark": "python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json benchmarks/results/accepted-c2.json",
             "correctness_reference": "inline generated-token equality vs independent c=1 plus python3 scripts/qwen35_batch_correctness.py --rows 2 --json primitive-c2.json",
-            "profiler": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile -- python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json benchmarks/results/accepted-c2.json --profiler-json benchmarks/results/profiler-c2.json",
+            "profiler": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile -- python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --compiler-version-file benchmarks/results/hipcc-version.txt --require-cached-build --json benchmarks/results/accepted-c2.json --profiler-json benchmarks/results/profiler-c2.json",
         },
         "profiler": {
             "artifact_path": "benchmarks/results/profiler-c2.json",
@@ -2817,9 +2817,19 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
         validate_cn_diagnostic_artifact_payload(missing_profiler_json_reference)
 
     mismatched_profiler_json_reference = json.loads(json.dumps(accepted))
-    mismatched_profiler_json_reference["commands"]["profiler"] = "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json benchmarks/results/accepted-c2.json --profiler-json benchmarks/results/other-profiler-c2.json"
+    mismatched_profiler_json_reference["commands"]["profiler"] = "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --compiler-version-file benchmarks/results/hipcc-version.txt --require-cached-build --json benchmarks/results/accepted-c2.json --profiler-json benchmarks/results/other-profiler-c2.json"
     with pytest.raises(ValueError, match="commands.profiler --profiler-json path must match profiler.artifact_path"):
         validate_cn_diagnostic_artifact_payload(mismatched_profiler_json_reference)
+
+    profiler_without_require_cached = json.loads(json.dumps(accepted))
+    profiler_without_require_cached["commands"]["profiler"] = profiler_without_require_cached["commands"]["profiler"].replace(" --require-cached-build", "")
+    with pytest.raises(ValueError, match="commands.profiler must include --require-cached-build"):
+        validate_cn_diagnostic_artifact_payload(profiler_without_require_cached)
+
+    profiler_without_compiler_version = json.loads(json.dumps(accepted))
+    profiler_without_compiler_version["commands"]["profiler"] = profiler_without_compiler_version["commands"]["profiler"].replace(" --compiler-version-file benchmarks/results/hipcc-version.txt", "")
+    with pytest.raises(ValueError, match="commands.profiler must include --compiler-version-file"):
+        validate_cn_diagnostic_artifact_payload(profiler_without_compiler_version)
 
     profiler_missing_batch_size = json.loads(json.dumps(accepted))
     profiler_missing_batch_size["commands"]["profiler"] = "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_retained_bench.py --prompt-length 512 --decode-tokens 128 --max-layers 40"

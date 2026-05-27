@@ -917,7 +917,8 @@ roll-up/status view.
       a correctness-reference command naming `scripts/qwen35_batch_correctness.py`
       with `--rows` matching `workload.concurrency`, and a concrete
       `rocprofv3 --kernel-trace` profiler command targeting
-      `scripts/qwen35_batch_retained_bench.py` with the same retained shape flags,
+      `scripts/qwen35_batch_retained_bench.py` with the same retained shape flags
+      plus cached-build flags (`--compiler-version-file`, `--require-cached-build`),
       benchmark/profiler `--json` outputs plus primitive/scaling artifact paths
       under `benchmarks/results/`, and the retained bench can now attach a
       captured profiler summary via `--profiler-json` / `--profiler-command`

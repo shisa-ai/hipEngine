@@ -81,6 +81,7 @@ _COMMAND_MAX_LAYERS_RE = re.compile(r"(?:^|\s)--max-layers(?:=|\s+)(\d+)(?=\s|$)
 _COMMAND_PROMPT_LENGTH_RE = re.compile(r"(?:^|\s)--prompt-length(?:=|\s+)(\d+)(?=\s|$)")
 _COMMAND_JSON_RE = re.compile(r"(?:^|\s)--json(?:=|\s+)(\S+)(?=\s|$)")
 _COMMAND_PROFILER_JSON_RE = re.compile(r"(?:^|\s)--profiler-json(?:=|\s+)(\S+)(?=\s|$)")
+_COMMAND_COMPILER_VERSION_FILE_RE = re.compile(r"(?:^|\s)--compiler-version-file(?:=|\s+)(\S+)(?=\s|$)")
 _CORRECTNESS_ROWS_RE = re.compile(r"(?:^|\s)--rows(?:=|\s+)(\d+)(?=\s|$)")
 _FULL_COMMIT_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", re.IGNORECASE)
 _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = ("serial", "fallback", "per_row", "per-row")
@@ -414,6 +415,10 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         else:
             _validate_command_workload_shape(profiler_command, field="profiler", payload=payload, errors=errors)
             _validate_command_json_artifact_path(profiler_command, field="profiler", errors=errors)
+            if "--require-cached-build" not in profiler_command:
+                errors.append("commands.profiler must include --require-cached-build for accepted artifacts")
+            if _COMMAND_COMPILER_VERSION_FILE_RE.search(profiler_command) is None:
+                errors.append("commands.profiler must include --compiler-version-file for accepted artifacts")
     profiler = _mapping_at(payload, "profiler", errors)
     profiler_artifact_path = profiler.get("artifact_path")
     if not isinstance(profiler_artifact_path, str) or not profiler_artifact_path:
