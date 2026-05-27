@@ -2152,6 +2152,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
             "concurrency": 2,
             "prompt_tokens_per_request": 512,
             "prompt_tokens_aggregate": 1024,
+            "prompt_lengths": [512, 512],
             "gen_tokens_per_request": 128,
             "gen_tokens_aggregate": 256,
             "native_compact_prefill": True,
@@ -2339,6 +2340,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     mismatched_decode_aggregate["workload"]["gen_tokens_aggregate"] = 128
     with pytest.raises(ValueError, match="gen_tokens_aggregate must equal per-request tokens times workload.concurrency"):
         validate_cn_diagnostic_artifact_payload(mismatched_decode_aggregate)
+
+    missing_prompt_lengths = json.loads(json.dumps(accepted))
+    missing_prompt_lengths["workload"].pop("prompt_lengths")
+    with pytest.raises(ValueError, match="workload.prompt_lengths"):
+        validate_cn_diagnostic_artifact_payload(missing_prompt_lengths)
+
+    mismatched_prompt_lengths = json.loads(json.dumps(accepted))
+    mismatched_prompt_lengths["workload"]["prompt_lengths"] = [512, 256]
+    with pytest.raises(ValueError, match="prompt_lengths entries must match workload.prompt_tokens_per_request"):
+        validate_cn_diagnostic_artifact_payload(mismatched_prompt_lengths)
 
     serial_bridge_execution = json.loads(json.dumps(accepted))
     serial_bridge_execution["execution"]["batch_execution"]["path"] = "scheduler_serial_slot_bridge"

@@ -357,6 +357,7 @@ def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[st
             errors,
         )
     if concurrency_valid:
+        _validate_prompt_lengths(workload, int(concurrency), int(prompt_tokens) if prompt_tokens_valid else None, errors)
         _validate_aggregate_per_request_rate("measurements", measurements, int(concurrency), errors)
     if scaling.get("complete") is not True:
         errors.append("scaling.complete must be true for accepted artifacts")
@@ -464,6 +465,24 @@ def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[st
                 "decode_tok_s_per_request",
                 errors,
             )
+
+
+def _validate_prompt_lengths(
+    workload: Mapping[str, Any],
+    concurrency: int,
+    prompt_tokens_per_request: int | None,
+    errors: list[str],
+) -> None:
+    prompt_lengths = workload.get("prompt_lengths")
+    if not isinstance(prompt_lengths, list):
+        errors.append("workload.prompt_lengths must be a list for accepted artifacts")
+        return
+    if len(prompt_lengths) != concurrency:
+        errors.append("workload.prompt_lengths length must match workload.concurrency for accepted artifacts")
+    if any(not isinstance(length, int) or isinstance(length, bool) or length <= 0 for length in prompt_lengths):
+        errors.append("workload.prompt_lengths entries must be positive ints for accepted artifacts")
+    elif prompt_tokens_per_request is not None and any(length != prompt_tokens_per_request for length in prompt_lengths):
+        errors.append("workload.prompt_lengths entries must match workload.prompt_tokens_per_request for accepted artifacts")
 
 
 def _validate_aggregate_per_request_rate(
