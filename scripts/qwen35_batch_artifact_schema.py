@@ -976,6 +976,7 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
         )
         _validate_execution_completed_tokens(
             payload,
+            workload,
             int(concurrency) if concurrency_valid else None,
             int(gen_tokens),
             errors,
@@ -1096,6 +1097,7 @@ def _validate_execution_generated_tokens(
 
 def _validate_execution_completed_tokens(
     payload: Mapping[str, Any],
+    workload: Mapping[str, Any],
     concurrency: int | None,
     gen_tokens_per_request: int,
     errors: list[str],
@@ -1107,6 +1109,9 @@ def _validate_execution_completed_tokens(
         return
     if concurrency is not None and len(completed) != concurrency:
         errors.append("execution.completed length must match workload.concurrency for accepted artifacts")
+    prompt_lengths = workload.get("prompt_lengths")
+    observability = payload.get("observability")
+    per_request = observability.get("per_request") if isinstance(observability, Mapping) else None
     completed_by_request: dict[int, list[int]] = {}
     for index, row in enumerate(completed):
         if not isinstance(row, Mapping):
@@ -1116,6 +1121,18 @@ def _validate_execution_completed_tokens(
         if not isinstance(request_id, int) or isinstance(request_id, bool):
             errors.append(f"execution.completed[{index}].request_id must be an int for accepted artifacts")
             continue
+        if concurrency is not None and (request_id < 0 or request_id >= concurrency):
+            errors.append(f"execution.completed[{index}].request_id must be in workload.concurrency range for accepted artifacts")
+        prompt_token_ids = _extract_generated_token_ids(row.get("prompt_tokens"), f"execution.completed[{index}].prompt_tokens", errors)
+        if (
+            prompt_token_ids is not None
+            and isinstance(prompt_lengths, list)
+            and 0 <= request_id < len(prompt_lengths)
+            and isinstance(prompt_lengths[request_id], int)
+            and not isinstance(prompt_lengths[request_id], bool)
+            and len(prompt_token_ids) != prompt_lengths[request_id]
+        ):
+            errors.append(f"execution.completed[{index}].prompt_tokens length must match workload.prompt_lengths for accepted artifacts")
         token_ids = _extract_generated_token_ids(row.get("generated_tokens"), f"execution.completed[{index}].generated_tokens", errors)
         if token_ids is None:
             continue
@@ -1126,8 +1143,15 @@ def _validate_execution_completed_tokens(
         completed_by_request[int(request_id)] = token_ids
         if row.get("finished") is not True:
             errors.append(f"execution.completed[{index}].finished must be true for accepted artifacts")
-        if not isinstance(row.get("finish_reason"), str) or not row.get("finish_reason"):
+        finish_reason = row.get("finish_reason")
+        if not isinstance(finish_reason, str) or not finish_reason:
             errors.append(f"execution.completed[{index}].finish_reason must be a non-empty string for accepted artifacts")
+        elif isinstance(per_request, Mapping):
+            observed = per_request.get(str(request_id))
+            if isinstance(observed, Mapping):
+                observed_finish_reason = observed.get("finish_reason")
+                if isinstance(observed_finish_reason, str) and observed_finish_reason != finish_reason:
+                    errors.append(f"execution.completed request_id {request_id} finish_reason must match observability.per_request for accepted artifacts")
     if concurrency is None:
         return
     generated_tokens = execution.get("generated_tokens") if isinstance(execution, Mapping) else None

@@ -2568,12 +2568,14 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             "completed": [
                 {
                     "request_id": 0,
+                    "prompt_tokens": list(range(512)),
                     "generated_tokens": list(range(9, 137)),
                     "finished": True,
                     "finish_reason": "length",
                 },
                 {
                     "request_id": 1,
+                    "prompt_tokens": list(range(512, 1024)),
                     "generated_tokens": list(range(109, 237)),
                     "finished": True,
                     "finish_reason": "length",
@@ -2893,6 +2895,21 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     mismatched_completed_tokens["execution"]["completed"][0]["generated_tokens"][0] = 999
     with pytest.raises(ValueError, match="execution.completed request_id 0 generated_tokens must match execution.generated_tokens"):
         validate_cn_diagnostic_artifact_payload(mismatched_completed_tokens)
+
+    missing_completed_prompt_tokens = json.loads(json.dumps(accepted))
+    missing_completed_prompt_tokens["execution"]["completed"][0].pop("prompt_tokens")
+    with pytest.raises(ValueError, match=r"execution.completed\[0\].prompt_tokens must be a list"):
+        validate_cn_diagnostic_artifact_payload(missing_completed_prompt_tokens)
+
+    mismatched_completed_prompt_length = json.loads(json.dumps(accepted))
+    mismatched_completed_prompt_length["execution"]["completed"][0]["prompt_tokens"] = [1, 2]
+    with pytest.raises(ValueError, match=r"execution.completed\[0\].prompt_tokens length must match workload.prompt_lengths"):
+        validate_cn_diagnostic_artifact_payload(mismatched_completed_prompt_length)
+
+    mismatched_completion_finish_reason = json.loads(json.dumps(accepted))
+    mismatched_completion_finish_reason["execution"]["completed"][0]["finish_reason"] = "stop"
+    with pytest.raises(ValueError, match="execution.completed request_id 0 finish_reason must match observability.per_request"):
+        validate_cn_diagnostic_artifact_payload(mismatched_completion_finish_reason)
 
     missing_warmup_decode_tokens = json.loads(json.dumps(accepted))
     missing_warmup_decode_tokens["workload"].pop("warmup_decode_tokens")
