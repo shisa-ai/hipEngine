@@ -4599,6 +4599,26 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="kernel_duration_category_shares.projection must match"):
         validate_cn_diagnostic_artifact_payload(mismatched_duration_category)
 
+    miscategorized_duration_categories = json.loads(json.dumps(accepted))
+    miscategorized_duration_categories["profiler"]["kernel_duration_categories_ns"] = {
+        "attention": 0.0,
+        "moe": 0.0,
+        "projection": 0.0,
+        "sampling": 0.0,
+        "graph_replay": 0.0,
+        "other": 14690.0,
+    }
+    miscategorized_duration_categories["profiler"]["kernel_duration_category_shares"] = {
+        "attention": 0.0,
+        "moe": 0.0,
+        "projection": 0.0,
+        "sampling": 0.0,
+        "graph_replay": 0.0,
+        "other": 1.0,
+    }
+    with pytest.raises(ValueError, match="kernel_duration_categories_ns must match categorized"):
+        validate_cn_diagnostic_artifact_payload(miscategorized_duration_categories)
+
     missing_cpu_bottlenecks = json.loads(json.dumps(accepted))
     missing_cpu_bottlenecks["profiler"].pop("cpu_side_bottlenecks_seconds")
     with pytest.raises(ValueError, match="cpu_side_bottlenecks_seconds must be a non-empty object"):

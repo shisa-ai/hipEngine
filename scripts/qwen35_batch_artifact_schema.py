@@ -269,6 +269,31 @@ def _has_disallowed_profiler_kernel_fragment(name: str) -> bool:
     return any(fragment in lowered for fragment in _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS)
 
 
+def _profiler_kernel_duration_category(kernel_name: str) -> str:
+    lowered = kernel_name.lower()
+    if "graph" in lowered or "replay" in lowered:
+        return "graph_replay"
+    if "moe" in lowered or "expert" in lowered or "router" in lowered:
+        return "moe"
+    if "attn" in lowered or "attention" in lowered or "paged" in lowered or "kv" in lowered:
+        return "attention"
+    if "lm_head" in lowered or "sample" in lowered or "argmax" in lowered:
+        return "sampling"
+    projection_fragments = ("projection", "linear", "matmul", "gemm", "gemv", "mmq", "wmma")
+    if any(fragment in lowered for fragment in projection_fragments):
+        return "projection"
+    return "other"
+
+
+def _profiler_kernel_duration_category_sums(kernel_durations: Mapping[Any, Any]) -> dict[str, float]:
+    categories = dict.fromkeys(_REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES, 0.0)
+    for kernel_name, duration_ns in kernel_durations.items():
+        if not isinstance(kernel_name, str) or not kernel_name or not _is_positive_number(duration_ns):
+            continue
+        categories[_profiler_kernel_duration_category(kernel_name)] += float(duration_ns)
+    return categories
+
+
 def _validate_expected_profiler_kernel_names(expected_kernel_names: list[Any], errors: list[str]) -> None:
     if not any(isinstance(name, str) and "batch" in name.lower() for name in expected_kernel_names):
         errors.append("profiler.expected_kernel_names must include at least one native batch kernel name for accepted artifacts")
@@ -879,7 +904,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
                 errors.append(f"profiler.kernel_durations_ns.{kernel_name} must be positive numeric for accepted artifacts")
         _validate_profiler_kernel_duration_total(profiler, kernel_durations, errors)
         _validate_profiler_kernel_duration_shares(profiler, kernel_durations, errors)
-        _validate_profiler_kernel_duration_categories(profiler, errors)
+        _validate_profiler_kernel_duration_categories(profiler, kernel_durations, errors)
         _validate_profiler_cpu_side_bottlenecks(profiler, errors)
         if isinstance(expected_kernel_names, list):
             for kernel_name in expected_kernel_names:
@@ -956,7 +981,11 @@ def _validate_profiler_kernel_duration_shares(
         errors.append("profiler.kernel_duration_shares must sum to 1.0 for accepted artifacts")
 
 
-def _validate_profiler_kernel_duration_categories(profiler: Mapping[str, Any], errors: list[str]) -> None:
+def _validate_profiler_kernel_duration_categories(
+    profiler: Mapping[str, Any],
+    kernel_durations: Mapping[Any, Any],
+    errors: list[str],
+) -> None:
     duration_categories = profiler.get("kernel_duration_categories_ns")
     category_shares = profiler.get("kernel_duration_category_shares")
     if not isinstance(duration_categories, Mapping) or not duration_categories:
@@ -972,6 +1001,17 @@ def _validate_profiler_kernel_duration_categories(profiler: Mapping[str, Any], e
         errors.append("profiler.kernel_duration_categories_ns keys must match required kernel duration categories")
     if share_keys != expected_keys:
         errors.append("profiler.kernel_duration_category_shares keys must match required kernel duration categories")
+    if duration_keys == expected_keys:
+        expected_categories = _profiler_kernel_duration_category_sums(kernel_durations)
+        if any(
+            _is_nonnegative_number(duration_categories.get(category))
+            and abs(float(duration_categories[category]) - expected_duration) > max(1.0, expected_duration * 1e-6)
+            for category, expected_duration in expected_categories.items()
+        ):
+            errors.append(
+                "profiler.kernel_duration_categories_ns must match categorized profiler.kernel_durations_ns "
+                "for accepted artifacts"
+            )
 
     total_duration = profiler.get("total_kernel_duration_ns")
     duration_sum = 0.0
