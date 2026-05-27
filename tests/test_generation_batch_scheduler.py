@@ -98,10 +98,12 @@ class _FakeTextGenerator:
 
 
 def _write_c_sweep_profiler_summary(output_dir: Path, *, rows: int = 2) -> None:
-    (output_dir / f"profiler-c{rows}.json").write_text(
+    profiler_path = output_dir / f"profiler-c{rows}.json"
+    profiler_path.write_text(
         json.dumps(
             {
                 "profiler": {
+                    "artifact_path": str(profiler_path),
                     "status": "captured",
                     "expected_kernels_present": True,
                     "expected_kernel_names": ["qwen35_batch_decode"],
@@ -110,6 +112,47 @@ def _write_c_sweep_profiler_summary(output_dir: Path, *, rows: int = 2) -> None:
             }
         )
     )
+
+
+def test_batch_c_sweep_profiler_precondition_rejects_mismatched_artifact_path(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    profiler_path = output_dir / "profiler-c2.json"
+    profiler_path.write_text(
+        json.dumps(
+            {
+                "profiler": {
+                    "artifact_path": str(output_dir / "profiler-c4.json"),
+                    "status": "captured",
+                    "expected_kernels_present": True,
+                    "expected_kernel_names": ["qwen35_batch_decode"],
+                    "kernel_durations_ns": {"qwen35_batch_decode": 12345.0},
+                }
+            }
+        )
+    )
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+        ]
+    )
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "artifact_path does not match --profiler-json path",
+    }
 
 
 def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) -> None:

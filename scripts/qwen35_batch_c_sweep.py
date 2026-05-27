@@ -452,6 +452,8 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
     if not isinstance(profiler, dict):
         reasons.append("profiler summary root is not an object")
     else:
+        if profiler.get("artifact_path") != str(profiler_path):
+            reasons.append("artifact_path does not match --profiler-json path")
         if profiler.get("status") != "captured":
             reasons.append("status is not 'captured'")
         if profiler.get("expected_kernels_present") is not True:
