@@ -727,10 +727,12 @@ roll-up/status view.
       projection speedup evidence must reference an artifact under
       `benchmarks/results/` and, when accepted, must beat row-GEMV on both
       aggregate and per-request ratios; accepted c>N artifact schema rejects
-      malformed optional `projection_dispatch_candidates` metadata; and retained
-      native batch metadata now records a `projection_dispatch` row-GEMV fallback
-      with an explicit blocker when no c-aware projection candidate is available.
-      The item remains open until runtime projection call sites are wired to this
+      malformed optional `projection_dispatch_candidates` metadata; accepted c>N
+      artifact schema now requires `execution.batch_execution.projection_dispatch`
+      to name an evidence-backed non-row-GEMV c-aware path; and retained native
+      batch metadata records a `projection_dispatch` row-GEMV fallback with an
+      explicit blocker when no c-aware projection candidate is available. The
+      item remains open until runtime projection call sites are wired to this
       policy and retained benchmark artifacts provide the required ratios.
 - [x] **C3.5 GGUF c>N template.** Port the Qwen/PARO equality template to
       GGUF Q4_K/Q5_K/Q6_K/Q8_0. Acceptance: at least one GGUF c=2 diagnostic
@@ -974,7 +976,8 @@ roll-up/status view.
       `profiler.artifact_path` under `benchmarks/results/`, native batch
       expected kernel names and duration-map keys (no
       serial/per-row/fallback labels) present with every duration-map entry
-      carrying positive numeric evidence.
+      carrying positive numeric evidence, plus an accepted non-row-GEMV
+      `projection_dispatch` decision with retained speedup evidence.
       The scoreboard item remains open until accepted
       artifacts exist and the benchmark rollups are updated.
 

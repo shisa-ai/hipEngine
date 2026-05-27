@@ -2509,6 +2509,20 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                 "native_compact_prefill": True,
                 "native_caware_decode": True,
                 "throughput_claim_eligible": True,
+                "projection_dispatch": {
+                    "rows": 2,
+                    "selected_candidate": "wmma_caware",
+                    "path": "benchmark_accepted_caware_projection",
+                    "selection": {"layer": "linear", "quant": "w4_paro", "variant": "wmma_caware"},
+                    "throughput_claim_eligible": True,
+                    "blockers": [],
+                    "evidence": {
+                        "artifact_path": "benchmarks/results/projection-wmma-c2.json",
+                        "aggregate_vs_row_gemv": 1.35,
+                        "per_request_vs_row_gemv": 1.10,
+                        "accepted": True,
+                    },
+                },
                 "decode_execution": {
                     "full_attention_decode_path": "native_batch",
                     "native_caware_decode": True,
@@ -2957,6 +2971,25 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     blocked_sampler["execution"]["batch_execution"]["decode_execution"]["sampler_execution"]["blockers"] = ["missing retained sampler evidence"]
     with pytest.raises(ValueError, match="sampler_execution.blockers must be empty"):
         validate_cn_diagnostic_artifact_payload(blocked_sampler)
+
+    missing_projection_dispatch = json.loads(json.dumps(accepted))
+    missing_projection_dispatch["execution"]["batch_execution"].pop("projection_dispatch")
+    with pytest.raises(ValueError, match="projection_dispatch must be an object"):
+        validate_cn_diagnostic_artifact_payload(missing_projection_dispatch)
+
+    row_gemv_projection_dispatch = json.loads(json.dumps(accepted))
+    row_gemv_projection_dispatch["execution"]["batch_execution"]["projection_dispatch"].update(
+        {
+            "selected_candidate": "row_gemv",
+            "path": "row_gemv_until_caware_benchmark",
+            "selection": {"layer": "linear", "quant": "w4_paro", "variant": "row_gemv"},
+            "throughput_claim_eligible": False,
+            "blockers": ["no c-aware projection candidate applies to this row count"],
+            "evidence": None,
+        }
+    )
+    with pytest.raises(ValueError, match="projection_dispatch.path must be benchmark_accepted_caware_projection"):
+        validate_cn_diagnostic_artifact_payload(row_gemv_projection_dispatch)
 
     missing_decode_shape_key = json.loads(json.dumps(accepted))
     missing_decode_shape_key["execution"]["scheduler_metadata"].pop("decode_shape_key")

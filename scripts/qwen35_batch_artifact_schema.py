@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from hipengine.dispatch import projection_dispatch_candidates_from_artifact
+from hipengine.dispatch import ProjectionDispatchEvidence, projection_dispatch_candidates_from_artifact
 
 _REQUIRED_WORKLOAD_FLAGS = (
     "native_compact_prefill",
@@ -529,11 +529,60 @@ def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[
             errors.append("execution.batch_execution.decode_execution.sampler_execution must be an object for accepted artifacts")
         else:
             _validate_accepted_sampler_execution(sampler_execution, errors)
+    _validate_accepted_projection_dispatch(batch_execution, workload, errors)
     scheduler_metadata = execution.get("scheduler_metadata")
     if not isinstance(scheduler_metadata, Mapping):
         errors.append("execution.scheduler_metadata must be an object for accepted artifacts")
     else:
         _validate_accepted_scheduler_metadata(scheduler_metadata, workload, errors)
+
+
+def _validate_accepted_projection_dispatch(
+    batch_execution: Mapping[str, Any],
+    workload: Mapping[str, Any],
+    errors: list[str],
+) -> None:
+    projection_dispatch = batch_execution.get("projection_dispatch")
+    if not isinstance(projection_dispatch, Mapping):
+        errors.append("execution.batch_execution.projection_dispatch must be an object for accepted artifacts")
+        return
+    rows = projection_dispatch.get("rows")
+    concurrency = workload.get("concurrency")
+    if not isinstance(rows, int) or isinstance(rows, bool) or rows <= 1:
+        errors.append("execution.batch_execution.projection_dispatch.rows must be an int > 1 for accepted artifacts")
+    elif isinstance(concurrency, int) and not isinstance(concurrency, bool) and rows != concurrency:
+        errors.append("execution.batch_execution.projection_dispatch.rows must match workload.concurrency for accepted artifacts")
+    if projection_dispatch.get("path") != "benchmark_accepted_caware_projection":
+        errors.append("execution.batch_execution.projection_dispatch.path must be benchmark_accepted_caware_projection for accepted artifacts")
+    selected_candidate = projection_dispatch.get("selected_candidate")
+    if not isinstance(selected_candidate, str) or not selected_candidate:
+        errors.append("execution.batch_execution.projection_dispatch.selected_candidate must be a non-empty string for accepted artifacts")
+    elif selected_candidate == "row_gemv":
+        errors.append("execution.batch_execution.projection_dispatch.selected_candidate must not be row_gemv for accepted artifacts")
+    if projection_dispatch.get("throughput_claim_eligible") is not True:
+        errors.append("execution.batch_execution.projection_dispatch.throughput_claim_eligible must be true for accepted artifacts")
+    if projection_dispatch.get("blockers") != []:
+        errors.append("execution.batch_execution.projection_dispatch.blockers must be empty for accepted artifacts")
+    selection = projection_dispatch.get("selection")
+    if not isinstance(selection, Mapping):
+        errors.append("execution.batch_execution.projection_dispatch.selection must be an object for accepted artifacts")
+    else:
+        for field in ("layer", "quant", "variant"):
+            if not isinstance(selection.get(field), str) or not selection.get(field):
+                errors.append(f"execution.batch_execution.projection_dispatch.selection.{field} must be a non-empty string for accepted artifacts")
+        if selection.get("variant") == "row_gemv":
+            errors.append("execution.batch_execution.projection_dispatch.selection.variant must not be row_gemv for accepted artifacts")
+    evidence = projection_dispatch.get("evidence")
+    if not isinstance(evidence, Mapping):
+        errors.append("execution.batch_execution.projection_dispatch.evidence must be an object for accepted artifacts")
+    else:
+        try:
+            dispatch_evidence = ProjectionDispatchEvidence.from_json_dict(evidence)
+        except ValueError as exc:
+            errors.append(str(exc))
+        else:
+            if dispatch_evidence.accepted is not True:
+                errors.append("execution.batch_execution.projection_dispatch.evidence.accepted must be true for accepted artifacts")
 
 
 def _validate_accepted_sampler_execution(sampler_execution: Mapping[str, Any], errors: list[str]) -> None:

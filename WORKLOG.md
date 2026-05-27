@@ -31048,3 +31048,29 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY accepted projection dispatch schema gate
+
+Materially advanced C3.4/P4/P5 retained projection safety without closing the item:
+
+- Accepted/performance-claim c>N artifact schema now requires `execution.batch_execution.projection_dispatch` metadata.
+- The accepted projection dispatch must match `workload.concurrency`, use `benchmark_accepted_caware_projection`, avoid the row-GEMV fallback, be throughput-claim eligible, have empty blockers, and carry accepted retained speedup evidence under `benchmarks/results/`.
+- Extended accepted artifact schema tests for missing projection-dispatch metadata and a row-GEMV fallback projection decision.
+- Updated C3.4/P5 progress notes. Runtime projection call sites still need real c-aware candidates and retained benchmark artifacts before C3.4/P4/P5 can close.
+- No queue item was marked complete and no c>N performance claim was added.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q
+# passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```
