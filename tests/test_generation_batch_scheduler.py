@@ -2140,7 +2140,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
         "hardware": {"gpu": "AMD Radeon Pro W7900", "arch": "gfx1100"},
         "software": {"hipengine_commit": "abc1234", "hipengine_dirty": False},
         "commands": {
-            "benchmark": "python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --json accepted.json",
+            "benchmark": "python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json accepted.json",
             "correctness_reference": "inline generated-token equality vs independent c=1 plus python3 scripts/qwen35_batch_correctness.py --rows 2 --json primitive-c2.json",
             "profiler": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile -- python3 scripts/qwen35_batch_retained_bench.py ...",
         },
@@ -2614,34 +2614,44 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
         validate_cn_diagnostic_artifact_payload(wrong_benchmark_command)
 
     missing_benchmark_batch_size = json.loads(json.dumps(accepted))
-    missing_benchmark_batch_size["commands"]["benchmark"] = "python3 scripts/qwen35_batch_retained_bench.py --prompt-length 512 --decode-tokens 128 --json accepted.json"
+    missing_benchmark_batch_size["commands"]["benchmark"] = "python3 scripts/qwen35_batch_retained_bench.py --prompt-length 512 --decode-tokens 128 --max-layers 40 --json accepted.json"
     with pytest.raises(ValueError, match="commands.benchmark must include --batch-size"):
         validate_cn_diagnostic_artifact_payload(missing_benchmark_batch_size)
 
     wrong_benchmark_batch_size = json.loads(json.dumps(accepted))
-    wrong_benchmark_batch_size["commands"]["benchmark"] = "python3 scripts/qwen35_batch_retained_bench.py --batch-size 8 --prompt-length 512 --decode-tokens 128 --json accepted.json"
+    wrong_benchmark_batch_size["commands"]["benchmark"] = "python3 scripts/qwen35_batch_retained_bench.py --batch-size 8 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json accepted.json"
     with pytest.raises(ValueError, match="commands.benchmark --batch-size must match workload.concurrency"):
         validate_cn_diagnostic_artifact_payload(wrong_benchmark_batch_size)
 
     missing_benchmark_prompt_length = json.loads(json.dumps(accepted))
-    missing_benchmark_prompt_length["commands"]["benchmark"] = "python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --decode-tokens 128 --json accepted.json"
+    missing_benchmark_prompt_length["commands"]["benchmark"] = "python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --decode-tokens 128 --max-layers 40 --json accepted.json"
     with pytest.raises(ValueError, match="commands.benchmark must include --prompt-length"):
         validate_cn_diagnostic_artifact_payload(missing_benchmark_prompt_length)
 
     wrong_benchmark_prompt_length = json.loads(json.dumps(accepted))
-    wrong_benchmark_prompt_length["commands"]["benchmark"] = "python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 128 --decode-tokens 128 --json accepted.json"
+    wrong_benchmark_prompt_length["commands"]["benchmark"] = "python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 128 --decode-tokens 128 --max-layers 40 --json accepted.json"
     with pytest.raises(ValueError, match="commands.benchmark --prompt-length must match workload.prompt_tokens_per_request"):
         validate_cn_diagnostic_artifact_payload(wrong_benchmark_prompt_length)
 
     missing_benchmark_decode_tokens = json.loads(json.dumps(accepted))
-    missing_benchmark_decode_tokens["commands"]["benchmark"] = "python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --json accepted.json"
+    missing_benchmark_decode_tokens["commands"]["benchmark"] = "python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --max-layers 40 --json accepted.json"
     with pytest.raises(ValueError, match="commands.benchmark must include --decode-tokens"):
         validate_cn_diagnostic_artifact_payload(missing_benchmark_decode_tokens)
 
     wrong_benchmark_decode_tokens = json.loads(json.dumps(accepted))
-    wrong_benchmark_decode_tokens["commands"]["benchmark"] = "python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 32 --json accepted.json"
+    wrong_benchmark_decode_tokens["commands"]["benchmark"] = "python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 32 --max-layers 40 --json accepted.json"
     with pytest.raises(ValueError, match="commands.benchmark --decode-tokens must match workload.gen_tokens_per_request"):
         validate_cn_diagnostic_artifact_payload(wrong_benchmark_decode_tokens)
+
+    missing_benchmark_max_layers = json.loads(json.dumps(accepted))
+    missing_benchmark_max_layers["commands"]["benchmark"] = "python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --json accepted.json"
+    with pytest.raises(ValueError, match="commands.benchmark must include --max-layers"):
+        validate_cn_diagnostic_artifact_payload(missing_benchmark_max_layers)
+
+    wrong_benchmark_max_layers = json.loads(json.dumps(accepted))
+    wrong_benchmark_max_layers["commands"]["benchmark"] = "python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 4 --json accepted.json"
+    with pytest.raises(ValueError, match="commands.benchmark --max-layers must match workload.max_layers"):
+        validate_cn_diagnostic_artifact_payload(wrong_benchmark_max_layers)
 
     missing_correctness_command = json.loads(json.dumps(accepted))
     missing_correctness_command["commands"]["correctness_reference"] = ""

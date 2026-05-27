@@ -68,6 +68,7 @@ _REQUIRED_ACCEPTED_SCALING_RATIOS = (
 )
 _COMMAND_BATCH_SIZE_RE = re.compile(r"(?:^|\s)--batch-size(?:=|\s+)(\d+)(?=\s|$)")
 _COMMAND_DECODE_TOKENS_RE = re.compile(r"(?:^|\s)--decode-tokens(?:=|\s+)(\d+)(?=\s|$)")
+_COMMAND_MAX_LAYERS_RE = re.compile(r"(?:^|\s)--max-layers(?:=|\s+)(\d+)(?=\s|$)")
 _COMMAND_PROMPT_LENGTH_RE = re.compile(r"(?:^|\s)--prompt-length(?:=|\s+)(\d+)(?=\s|$)")
 _CORRECTNESS_ROWS_RE = re.compile(r"(?:^|\s)--rows(?:=|\s+)(\d+)(?=\s|$)")
 
@@ -285,6 +286,14 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
                 gen_tokens = workload.get("gen_tokens_per_request") if isinstance(workload, Mapping) else None
                 if isinstance(gen_tokens, int) and not isinstance(gen_tokens, bool) and int(decode_match.group(1)) != gen_tokens:
                     errors.append("commands.benchmark --decode-tokens must match workload.gen_tokens_per_request for accepted artifacts")
+            max_layers_match = _COMMAND_MAX_LAYERS_RE.search(benchmark_command)
+            if max_layers_match is None:
+                errors.append("commands.benchmark must include --max-layers <workload.max_layers> for accepted artifacts")
+            else:
+                workload = payload.get("workload")
+                max_layers = workload.get("max_layers") if isinstance(workload, Mapping) else None
+                if isinstance(max_layers, int) and not isinstance(max_layers, bool) and int(max_layers_match.group(1)) != max_layers:
+                    errors.append("commands.benchmark --max-layers must match workload.max_layers for accepted artifacts")
     correctness_command = commands.get("correctness_reference")
     if isinstance(correctness_command, str):
         if "qwen35_batch_correctness.py" not in correctness_command:
