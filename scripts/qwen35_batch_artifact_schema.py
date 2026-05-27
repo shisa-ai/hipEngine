@@ -308,8 +308,11 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
                 if isinstance(concurrency, int) and not isinstance(concurrency, bool) and int(rows_match.group(1)) != concurrency:
                     errors.append("commands.correctness_reference --rows must match workload.concurrency for accepted artifacts")
     profiler_command = commands.get("profiler")
-    if isinstance(profiler_command, str) and ("rocprofv3" not in profiler_command or "--kernel-trace" not in profiler_command):
-        errors.append("commands.profiler must include rocprofv3 --kernel-trace for accepted artifacts")
+    if isinstance(profiler_command, str):
+        if "rocprofv3" not in profiler_command or "--kernel-trace" not in profiler_command:
+            errors.append("commands.profiler must include rocprofv3 --kernel-trace for accepted artifacts")
+        if "qwen35_batch_retained_bench.py" not in profiler_command:
+            errors.append("commands.profiler must target scripts/qwen35_batch_retained_bench.py for accepted artifacts")
     profiler = _mapping_at(payload, "profiler", errors)
     if profiler.get("status") != "captured":
         errors.append("profiler.status must be 'captured' for accepted artifacts")
