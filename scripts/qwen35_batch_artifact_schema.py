@@ -113,6 +113,14 @@ _REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES = (
     "graph_replay",
     "other",
 )
+_REQUIRED_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES = (
+    "load",
+    "prefill",
+    "warmup_decode",
+    "decode",
+    "validation",
+    "other",
+)
 
 
 def _mapping_at(payload: Mapping[str, Any], key: str, errors: list[str]) -> Mapping[str, Any]:
@@ -872,6 +880,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         _validate_profiler_kernel_duration_total(profiler, kernel_durations, errors)
         _validate_profiler_kernel_duration_shares(profiler, kernel_durations, errors)
         _validate_profiler_kernel_duration_categories(profiler, errors)
+        _validate_profiler_cpu_side_bottlenecks(profiler, errors)
         if isinstance(expected_kernel_names, list):
             for kernel_name in expected_kernel_names:
                 if not isinstance(kernel_name, str) or not kernel_name:
@@ -992,6 +1001,54 @@ def _validate_profiler_kernel_duration_categories(profiler: Mapping[str, Any], e
             errors.append("profiler.kernel_duration_categories_ns must sum to profiler.total_kernel_duration_ns for accepted artifacts")
         if abs(share_sum - 1.0) > 1e-6:
             errors.append("profiler.kernel_duration_category_shares must sum to 1.0 for accepted artifacts")
+
+
+def _validate_profiler_cpu_side_bottlenecks(profiler: Mapping[str, Any], errors: list[str]) -> None:
+    cpu_total = profiler.get("cpu_side_total_seconds")
+    durations = profiler.get("cpu_side_bottlenecks_seconds")
+    shares = profiler.get("cpu_side_bottleneck_shares")
+    if not _is_positive_number(cpu_total):
+        errors.append("profiler.cpu_side_total_seconds must be positive numeric for accepted artifacts")
+        return
+    if not isinstance(durations, Mapping) or not durations:
+        errors.append("profiler.cpu_side_bottlenecks_seconds must be a non-empty object for accepted artifacts")
+        return
+    if not isinstance(shares, Mapping) or not shares:
+        errors.append("profiler.cpu_side_bottleneck_shares must be a non-empty object for accepted artifacts")
+        return
+    expected_keys = set(_REQUIRED_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES)
+    duration_keys = {key for key in durations if isinstance(key, str)}
+    share_keys = {key for key in shares if isinstance(key, str)}
+    if duration_keys != expected_keys:
+        errors.append("profiler.cpu_side_bottlenecks_seconds keys must match required CPU-side bottleneck categories")
+    if share_keys != expected_keys:
+        errors.append("profiler.cpu_side_bottleneck_shares keys must match required CPU-side bottleneck categories")
+
+    duration_sum = 0.0
+    share_sum = 0.0
+    for category in _REQUIRED_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES:
+        duration_seconds = durations.get(category)
+        duration_share = shares.get(category)
+        if not _is_nonnegative_number(duration_seconds):
+            errors.append(f"profiler.cpu_side_bottlenecks_seconds.{category} must be non-negative numeric for accepted artifacts")
+            continue
+        duration_sum += float(duration_seconds)
+        if not _is_nonnegative_number(duration_share):
+            errors.append(f"profiler.cpu_side_bottleneck_shares.{category} must be non-negative numeric for accepted artifacts")
+            continue
+        share_sum += float(duration_share)
+        expected_share = float(duration_seconds) / float(cpu_total)
+        tolerance = max(1e-6, expected_share * 1e-6)
+        if abs(float(duration_share) - expected_share) > tolerance:
+            errors.append(
+                f"profiler.cpu_side_bottleneck_shares.{category} must match "
+                "profiler.cpu_side_bottlenecks_seconds/cpu total for accepted artifacts"
+            )
+    tolerance = max(1e-9, float(cpu_total) * 1e-6)
+    if abs(duration_sum - float(cpu_total)) > tolerance:
+        errors.append("profiler.cpu_side_bottlenecks_seconds must sum to profiler.cpu_side_total_seconds for accepted artifacts")
+    if abs(share_sum - 1.0) > 1e-6:
+        errors.append("profiler.cpu_side_bottleneck_shares must sum to 1.0 for accepted artifacts")
 
 
 def _validate_projection_dispatch_profiler_evidence(

@@ -2358,6 +2358,27 @@ def test_qwen35_retained_profiler_reference_loads_captured_summary(tmp_path: Pat
         "graph_replay": 0.0,
         "other": 1.0,
     }
+    enriched = retained_bench._attach_profiler_cpu_side_bottlenecks(
+        loaded,
+        {"load_seconds": 1.0, "prefill_seconds": 2.0, "warmup_seconds": 0.0, "decode_seconds": 7.0},
+    )
+    assert enriched["cpu_side_total_seconds"] == 10.0
+    assert enriched["cpu_side_bottlenecks_seconds"] == {
+        "load": 1.0,
+        "prefill": 2.0,
+        "warmup_decode": 0.0,
+        "decode": 7.0,
+        "validation": 0.0,
+        "other": 0.0,
+    }
+    assert enriched["cpu_side_bottleneck_shares"] == {
+        "load": 0.1,
+        "prefill": 0.2,
+        "warmup_decode": 0.0,
+        "decode": 0.7,
+        "validation": 0.0,
+        "other": 0.0,
+    }
     assert loaded["artifact_path"] == str(profiler_path)
     assert command is not None
     assert command.startswith("rocprofv3 --kernel-trace")
@@ -2508,6 +2529,23 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                 "sampling": 0.0,
                 "graph_replay": 0.0,
                 "other": 12345.0 / 14690.0,
+            },
+            "cpu_side_total_seconds": 10.0,
+            "cpu_side_bottlenecks_seconds": {
+                "load": 1.0,
+                "prefill": 2.0,
+                "warmup_decode": 0.0,
+                "decode": 7.0,
+                "validation": 0.0,
+                "other": 0.0,
+            },
+            "cpu_side_bottleneck_shares": {
+                "load": 0.1,
+                "prefill": 0.2,
+                "warmup_decode": 0.0,
+                "decode": 0.7,
+                "validation": 0.0,
+                "other": 0.0,
             },
         },
         "workload": {
@@ -3674,6 +3712,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     mismatched_duration_category["profiler"]["kernel_duration_categories_ns"]["projection"] = 1.0
     with pytest.raises(ValueError, match="kernel_duration_category_shares.projection must match"):
         validate_cn_diagnostic_artifact_payload(mismatched_duration_category)
+
+    missing_cpu_bottlenecks = json.loads(json.dumps(accepted))
+    missing_cpu_bottlenecks["profiler"].pop("cpu_side_bottlenecks_seconds")
+    with pytest.raises(ValueError, match="cpu_side_bottlenecks_seconds must be a non-empty object"):
+        validate_cn_diagnostic_artifact_payload(missing_cpu_bottlenecks)
+
+    mismatched_cpu_bottleneck_share = json.loads(json.dumps(accepted))
+    mismatched_cpu_bottleneck_share["profiler"]["cpu_side_bottleneck_shares"]["decode"] = 0.25
+    with pytest.raises(ValueError, match="cpu_side_bottleneck_shares.decode must match"):
+        validate_cn_diagnostic_artifact_payload(mismatched_cpu_bottleneck_share)
 
     fallback_kernel_duration = json.loads(json.dumps(accepted))
     fallback_kernel_duration["profiler"]["kernel_durations_ns"]["qwen35_per_row_fallback_decode"] = 12345.0

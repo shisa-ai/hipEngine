@@ -43,6 +43,14 @@ _PROFILER_KERNEL_DURATION_CATEGORIES = (
     "graph_replay",
     "other",
 )
+_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES = (
+    "load",
+    "prefill",
+    "warmup_decode",
+    "decode",
+    "validation",
+    "other",
+)
 
 
 def _load_prompt_slices(path: Path, *, prompt_length: int, batch_size: int) -> list[list[int]]:
@@ -272,13 +280,17 @@ def _primitive_correctness_reference(path: Path | None, *, rows: int) -> dict[st
     }
 
 
-def _is_finite_positive_number(value: Any) -> bool:
+def _is_finite_nonnegative_number(value: Any) -> bool:
     return (
         not isinstance(value, bool)
         and isinstance(value, (int, float))
         and math.isfinite(float(value))
-        and float(value) > 0.0
+        and float(value) >= 0.0
     )
+
+
+def _is_finite_positive_number(value: Any) -> bool:
+    return _is_finite_nonnegative_number(value) and float(value) > 0.0
 
 
 def _synthesized_profiler_total_kernel_duration(profiler: Mapping[str, Any]) -> float | None:
@@ -347,6 +359,48 @@ def _synthesized_profiler_kernel_duration_category_shares(profiler: Mapping[str,
         category: float(duration_categories.get(category, 0.0)) / float(total_duration)
         for category in _PROFILER_KERNEL_DURATION_CATEGORIES
     }
+
+
+def _cpu_side_bottlenecks_from_bench(bench: Mapping[str, Any]) -> dict[str, float] | None:
+    durations = {
+        "load": bench.get("load_seconds"),
+        "prefill": bench.get("prefill_seconds"),
+        "warmup_decode": bench.get("warmup_seconds"),
+        "decode": bench.get("decode_seconds"),
+        "validation": 0.0,
+        "other": 0.0,
+    }
+    if not all(_is_finite_nonnegative_number(duration) for duration in durations.values()):
+        return None
+    return {category: float(durations[category]) for category in _PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES}
+
+
+def _attach_profiler_cpu_side_bottlenecks(profiler: Mapping[str, Any], bench: Mapping[str, Any]) -> dict[str, Any]:
+    result = dict(profiler)
+    if "cpu_side_bottlenecks_seconds" not in result:
+        durations = _cpu_side_bottlenecks_from_bench(bench)
+        if durations is not None:
+            result["cpu_side_bottlenecks_seconds"] = durations
+    durations = result.get("cpu_side_bottlenecks_seconds")
+    if "cpu_side_total_seconds" not in result and isinstance(durations, Mapping):
+        total_seconds = sum(
+            float(duration_seconds)
+            for duration_seconds in durations.values()
+            if _is_finite_nonnegative_number(duration_seconds)
+        )
+        if total_seconds > 0.0:
+            result["cpu_side_total_seconds"] = total_seconds
+    total_seconds = result.get("cpu_side_total_seconds")
+    if (
+        "cpu_side_bottleneck_shares" not in result
+        and isinstance(durations, Mapping)
+        and _is_finite_positive_number(total_seconds)
+    ):
+        result["cpu_side_bottleneck_shares"] = {
+            category: float(durations.get(category, 0.0)) / float(total_seconds)
+            for category in _PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES
+        }
+    return result
 
 
 def _profiler_reference(path: Path | None) -> dict[str, Any]:
@@ -748,7 +802,10 @@ def _build_payload(
         rows=args.batch_size,
     )
     correctness_reference_command = _primitive_correctness_command(primitive_correctness_path, rows=args.batch_size)
-    profiler = _profiler_reference(getattr(args, "profiler_json", None))
+    profiler = _attach_profiler_cpu_side_bottlenecks(
+        _profiler_reference(getattr(args, "profiler_json", None)),
+        bench,
+    )
     profiler_captured = profiler.get("status") == "captured" and profiler.get("expected_kernels_present") is True
     batch_execution = dict(bench["batch_execution"])
     throughput_claim_eligible = bool(batch_execution.get("throughput_claim_eligible"))
