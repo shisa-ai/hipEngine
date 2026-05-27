@@ -861,8 +861,9 @@ roll-up/status view.
       `batch_sequences == c1_sequences` lists whose row count matches
       `workload.concurrency`, whose per-row token counts match seed +
       `workload.warmup_decode_tokens` + `workload.gen_tokens_per_request`, and
-      whose measured-decode suffixes match `execution.generated_tokens`, no
-      mismatches, and a passing primitive c>N GPU
+      whose seed prefixes and measured-decode suffixes match
+      `execution.seed_tokens` / `execution.generated_tokens`, no mismatches, and
+      a passing primitive c>N GPU
       correctness JSON whose `rows` value matches `workload.concurrency`, plus
       `pytest -q tests/test_generation_batch_scheduler.py -q`.
 
@@ -931,7 +932,8 @@ roll-up/status view.
       workload scheduler labels matching the execution path,
       generated-token equality sequence lists matching `workload.concurrency`
       rows and seed + warmup + measured decode token counts per row, with
-      `execution.generated_tokens` matching the measured-decode equality suffixes,
+      `execution.seed_tokens` / `execution.generated_tokens` matching the seed
+      prefix and measured-decode equality suffixes,
       primitive GPU correctness row count matching `workload.concurrency` with
       zero append mismatches and zero batch-vs-c1 attention error,
       full 40-layer workload labels with concrete model/quant/KV storage dtype

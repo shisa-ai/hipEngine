@@ -2560,6 +2560,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                     "kernel_time_histogram_ns": {},
                 },
             },
+            "seed_tokens": {"0": {"token_id": 0}, "1": {"token_id": 100}},
             "generated_tokens": {
                 "0": [{"token_id": token} for token in range(9, 137)],
                 "1": [{"token_id": token} for token in range(109, 237)],
@@ -2848,6 +2849,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     truncated_decode_equality["correctness"]["generated_token_equality"]["c1_sequences"][0] = [10, 11]
     with pytest.raises(ValueError, match=r"batch_sequences\[0\] length must match seed plus workload.warmup_decode_tokens plus workload.gen_tokens_per_request"):
         validate_cn_diagnostic_artifact_payload(truncated_decode_equality)
+
+    missing_execution_seed_tokens = json.loads(json.dumps(accepted))
+    missing_execution_seed_tokens["execution"].pop("seed_tokens")
+    with pytest.raises(ValueError, match="execution.seed_tokens must be an object"):
+        validate_cn_diagnostic_artifact_payload(missing_execution_seed_tokens)
+
+    mismatched_execution_seed_tokens = json.loads(json.dumps(accepted))
+    mismatched_execution_seed_tokens["execution"]["seed_tokens"]["0"]["token_id"] = 999
+    with pytest.raises(ValueError, match="execution.seed_tokens.0 must match correctness.generated_token_equality.batch_sequences first token"):
+        validate_cn_diagnostic_artifact_payload(mismatched_execution_seed_tokens)
 
     missing_execution_generated_tokens = json.loads(json.dumps(accepted))
     missing_execution_generated_tokens["execution"].pop("generated_tokens")

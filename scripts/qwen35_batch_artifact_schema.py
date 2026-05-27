@@ -961,6 +961,12 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
             expected_equality_tokens,
             errors,
         )
+        _validate_execution_seed_tokens(
+            payload,
+            batch_sequences,
+            int(concurrency) if concurrency_valid else None,
+            errors,
+        )
         _validate_execution_generated_tokens(
             payload,
             batch_sequences,
@@ -1026,6 +1032,32 @@ def _validate_generated_token_sequence_lengths(
             errors.append(f"{label}[{index}] must contain only token ids for accepted artifacts")
 
 
+def _validate_execution_seed_tokens(
+    payload: Mapping[str, Any],
+    batch_sequences: Any,
+    concurrency: int | None,
+    errors: list[str],
+) -> None:
+    execution = payload.get("execution")
+    seed_tokens = execution.get("seed_tokens") if isinstance(execution, Mapping) else None
+    if not isinstance(seed_tokens, Mapping):
+        errors.append("execution.seed_tokens must be an object for accepted artifacts")
+        return
+    if concurrency is not None and len(seed_tokens) != concurrency:
+        errors.append("execution.seed_tokens length must match workload.concurrency for accepted artifacts")
+    if concurrency is None:
+        return
+    for row_index in range(concurrency):
+        row_key = str(row_index)
+        token_id = _extract_token_id(seed_tokens.get(row_key), f"execution.seed_tokens.{row_key}", errors)
+        if token_id is None:
+            continue
+        if isinstance(batch_sequences, list) and row_index < len(batch_sequences) and isinstance(batch_sequences[row_index], list) and batch_sequences[row_index]:
+            if token_id != batch_sequences[row_index][0]:
+                errors.append(f"execution.seed_tokens.{row_key} must match correctness.generated_token_equality.batch_sequences first token for accepted artifacts")
+
+
+
 def _validate_execution_generated_tokens(
     payload: Mapping[str, Any],
     batch_sequences: Any,
@@ -1062,17 +1094,22 @@ def _extract_generated_token_ids(row: Any, label: str, errors: list[str]) -> lis
         return None
     token_ids: list[int] = []
     for index, item in enumerate(row):
-        if isinstance(item, int) and not isinstance(item, bool):
-            token_ids.append(item)
-            continue
-        if isinstance(item, Mapping):
-            token_id = item.get("token_id")
-            if isinstance(token_id, int) and not isinstance(token_id, bool):
-                token_ids.append(token_id)
-                continue
-        errors.append(f"{label}[{index}] must be a token id or object with token_id for accepted artifacts")
-        return None
+        token_id = _extract_token_id(item, f"{label}[{index}]", errors)
+        if token_id is None:
+            return None
+        token_ids.append(token_id)
     return token_ids
+
+
+def _extract_token_id(item: Any, label: str, errors: list[str]) -> int | None:
+    if isinstance(item, int) and not isinstance(item, bool):
+        return item
+    if isinstance(item, Mapping):
+        token_id = item.get("token_id")
+        if isinstance(token_id, int) and not isinstance(token_id, bool):
+            return token_id
+    errors.append(f"{label} must be a token id or object with token_id for accepted artifacts")
+    return None
 
 
 def _validate_accepted_measurement_gates(payload: Mapping[str, Any], errors: list[str]) -> None:
