@@ -254,6 +254,9 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     benchmark_command = commands.get("benchmark")
     if isinstance(benchmark_command, str) and "qwen35_batch_retained_bench.py" not in benchmark_command:
         errors.append("commands.benchmark must reference scripts/qwen35_batch_retained_bench.py for accepted artifacts")
+    correctness_command = commands.get("correctness_reference")
+    if isinstance(correctness_command, str) and "qwen35_batch_correctness.py" not in correctness_command:
+        errors.append("commands.correctness_reference must reference scripts/qwen35_batch_correctness.py for accepted artifacts")
     profiler_command = commands.get("profiler")
     if isinstance(profiler_command, str) and ("rocprofv3" not in profiler_command or "--kernel-trace" not in profiler_command):
         errors.append("commands.profiler must include rocprofv3 --kernel-trace for accepted artifacts")

@@ -2129,6 +2129,8 @@ def test_qwen35_retained_payload_mirrors_fallback_native_decode_label(monkeypatc
     assert payload["workload"]["native_caware_decode"] is False
     assert payload["execution"]["batch_execution"]["native_caware_decode"] is False
     assert payload["execution"]["batch_execution"]["decode_execution"]["full_attention_decode_path"] == "per_row_splitk_fallback"
+    assert "scripts/qwen35_batch_correctness.py" in payload["commands"]["correctness_reference"]
+    assert "--rows 2" in payload["commands"]["correctness_reference"]
 
 
 def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -> None:
@@ -2139,7 +2141,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
         "software": {"hipengine_commit": "abc1234", "hipengine_dirty": False},
         "commands": {
             "benchmark": "python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --json accepted.json",
-            "correctness_reference": "inline generated-token equality vs independent c=1",
+            "correctness_reference": "inline generated-token equality vs independent c=1 plus python3 scripts/qwen35_batch_correctness.py --rows 2 --json primitive-c2.json",
             "profiler": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile -- python3 scripts/qwen35_batch_retained_bench.py ...",
         },
         "profiler": {
@@ -2615,6 +2617,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     missing_correctness_command["commands"]["correctness_reference"] = ""
     with pytest.raises(ValueError, match="commands.correctness_reference"):
         validate_cn_diagnostic_artifact_payload(missing_correctness_command)
+
+    wrong_correctness_command = json.loads(json.dumps(accepted))
+    wrong_correctness_command["commands"]["correctness_reference"] = "inline generated-token equality only"
+    with pytest.raises(ValueError, match="commands.correctness_reference must reference scripts/qwen35_batch_correctness.py"):
+        validate_cn_diagnostic_artifact_payload(wrong_correctness_command)
 
     missing_profiler = dict(accepted)
     missing_profiler.pop("profiler")

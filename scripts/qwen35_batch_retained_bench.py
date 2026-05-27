@@ -324,6 +324,12 @@ def _command(argv: Sequence[str] | None) -> str:
     return " ".join(shlex.quote(part) for part in parts)
 
 
+def _primitive_correctness_command(path: Path | None, *, rows: int) -> str:
+    parts = ["python3", "scripts/qwen35_batch_correctness.py", "--rows", str(rows), "--json"]
+    parts.append(str(path) if path is not None else "<primitive-correctness-json>")
+    return " ".join(shlex.quote(part) for part in parts)
+
+
 def _compiler_version(path: Path | None) -> str | None:
     if path is None:
         return None
@@ -577,10 +583,12 @@ def _build_payload(
         native_decode_tok_s_aggregate=decode_tok_s,
         native_decode_tok_s_per_request=decode_tok_s_per_request,
     )
+    primitive_correctness_path = getattr(args, "primitive_correctness_json", None)
     primitive_correctness = _primitive_correctness_reference(
-        getattr(args, "primitive_correctness_json", None),
+        primitive_correctness_path,
         rows=args.batch_size,
     )
+    correctness_reference_command = _primitive_correctness_command(primitive_correctness_path, rows=args.batch_size)
     profiler = {"status": "not_captured", "notes": "E2E retained c>N row; profiler trace not captured in this iteration."}
     profiler_captured = profiler.get("status") == "captured" and profiler.get("expected_kernels_present") is True
     batch_execution = dict(bench["batch_execution"])
@@ -672,7 +680,7 @@ def _build_payload(
                 "rocm-smi --showmeminfo vram --showuse --showtemp",
                 "hipcc --version",
             ],
-            "correctness_reference": "inline generated-token equality vs independent c=1 plus primitive c>N GPU correctness JSON",
+            "correctness_reference": f"inline generated-token equality vs independent c=1 plus {correctness_reference_command}",
             "benchmark": _command(argv),
             "profiler": None,
         },
