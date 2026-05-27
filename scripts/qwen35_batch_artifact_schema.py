@@ -8,6 +8,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from hipengine.dispatch import projection_dispatch_candidates_from_artifact
+
 _REQUIRED_WORKLOAD_FLAGS = (
     "native_compact_prefill",
     "native_caware_decode",
@@ -699,6 +701,16 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
                     continue
                 if not _is_positive_number(kernel_durations.get(kernel_name)):
                     errors.append(f"profiler.kernel_durations_ns.{kernel_name} must be positive numeric for accepted artifacts")
+    _validate_optional_projection_dispatch_candidates(payload, errors)
+
+
+def _validate_optional_projection_dispatch_candidates(payload: Mapping[str, Any], errors: list[str]) -> None:
+    if "projection_dispatch_candidates" not in payload:
+        return
+    try:
+        projection_dispatch_candidates_from_artifact(payload)
+    except ValueError as exc:
+        errors.append(str(exc))
 
 
 def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness: Mapping[str, Any], errors: list[str]) -> None:

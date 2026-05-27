@@ -2574,6 +2574,27 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
 
     validate_cn_diagnostic_artifact_payload(accepted)
 
+    projection_candidate = {
+        "name": "wmma_caware",
+        "selection": {"layer": "linear", "quant": "w4_paro", "variant": "wmma_caware"},
+        "min_rows": 2,
+        "max_rows": 8,
+        "evidence": {
+            "artifact_path": "benchmarks/results/projection-wmma-c2.json",
+            "aggregate_vs_row_gemv": 1.35,
+            "per_request_vs_row_gemv": 1.10,
+            "accepted": True,
+        },
+    }
+    with_projection_candidates = json.loads(json.dumps(accepted))
+    with_projection_candidates["projection_dispatch_candidates"] = [projection_candidate]
+    validate_cn_diagnostic_artifact_payload(with_projection_candidates)
+
+    malformed_projection_candidates = json.loads(json.dumps(with_projection_candidates))
+    malformed_projection_candidates["projection_dispatch_candidates"][0]["evidence"]["per_request_vs_row_gemv"] = 0.0
+    with pytest.raises(ValueError, match="invalid projection_dispatch_candidates"):
+        validate_cn_diagnostic_artifact_payload(malformed_projection_candidates)
+
     rollup_root = tmp_path / "rollup-repo"
     (rollup_root / "benchmarks").mkdir(parents=True)
     (rollup_root / "benchmarks" / "README.md").write_text(
