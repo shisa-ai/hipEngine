@@ -353,10 +353,10 @@ def _scaling_reference_precondition(
     }
 
 
-def _native_retained_precondition(command: SweepCommand) -> dict[str, Any] | None:
+def _native_retained_preconditions(command: SweepCommand) -> tuple[dict[str, Any], ...] | None:
     if command.category != "native_diagnostic" or command.batch_size <= 1:
         return None
-    for precondition in (
+    return (
         _primitive_correctness_precondition(command),
         _scaling_reference_precondition(
             command,
@@ -369,10 +369,16 @@ def _native_retained_precondition(command: SweepCommand) -> dict[str, Any] | Non
             kind="serial_bridge",
             expected_concurrency=command.batch_size,
         ),
-    ):
+    )
+
+
+def _first_failed_precondition(preconditions: Sequence[dict[str, Any]] | None) -> dict[str, Any] | None:
+    if preconditions is None:
+        return None
+    for precondition in preconditions:
         if not precondition["passed"]:
             return precondition
-    return precondition
+    return None
 
 
 def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
@@ -393,8 +399,11 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
         if args.dry_run:
             entry.update({"status": "planned", "returncode": None, "duration_seconds": 0.0})
         else:
-            precondition = _native_retained_precondition(command)
-            if precondition is not None and not precondition["passed"]:
+            preconditions = _native_retained_preconditions(command)
+            if preconditions is not None:
+                entry["preconditions"] = list(preconditions)
+            precondition = _first_failed_precondition(preconditions)
+            if precondition is not None:
                 entry.update(
                     {
                         "status": "skipped",

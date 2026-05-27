@@ -326,6 +326,13 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
     assert [entry["status"] for entry in summary["commands"]] == ["passed", "passed", "skipped"]
     skipped = summary["commands"][-1]
     assert skipped["category"] == "native_diagnostic"
+    assert [item["kind"] for item in skipped["preconditions"]] == [
+        "primitive_correctness",
+        "c1_baseline",
+        "serial_bridge",
+    ]
+    assert skipped["preconditions"][0]["passed"] is False
+    assert skipped["precondition"] == skipped["preconditions"][0]
     assert skipped["precondition"]["kind"] == "primitive_correctness"
     assert skipped["precondition"]["passed"] is False
     assert skipped["precondition"]["reason"] == "primitive correctness artifact does not exist"
@@ -419,6 +426,12 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_missing(
     }
     assert [entry["status"] for entry in summary["commands"]] == ["passed", "passed", "skipped"]
     skipped = summary["commands"][-1]
+    assert [item["kind"] for item in skipped["preconditions"]] == [
+        "primitive_correctness",
+        "c1_baseline",
+        "serial_bridge",
+    ]
+    assert skipped["preconditions"][0]["passed"] is True
     assert skipped["precondition"]["kind"] == expected_kind
     assert skipped["precondition"]["passed"] is False
     assert skipped["precondition"]["reason"] == "scaling reference artifact does not exist"
@@ -514,6 +527,12 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     assert calls[-1][1] == "scripts/qwen35_batch_retained_bench.py"
     native = summary["commands"][-1]
     assert native["category"] == "native_diagnostic"
+    assert [item["kind"] for item in native["preconditions"]] == [
+        "primitive_correctness",
+        "c1_baseline",
+        "serial_bridge",
+    ]
+    assert all(item["passed"] is True for item in native["preconditions"])
     assert "precondition" not in native
 
 
