@@ -725,8 +725,9 @@ roll-up/status view.
       `plan_projection_dispatch_from_artifact(...)` schema-check retained
       artifact candidate/evidence lists before the policy can consume them;
       projection speedup evidence must reference an artifact under
-      `benchmarks/results/`; and accepted c>N artifact schema rejects malformed
-      optional `projection_dispatch_candidates` metadata. The item remains open
+      `benchmarks/results/` and, when accepted, must beat row-GEMV on both
+      aggregate and per-request ratios; and accepted c>N artifact schema rejects
+      malformed optional `projection_dispatch_candidates` metadata. The item remains open
       until runtime projection call sites are wired to this policy and retained
       benchmark artifacts provide the required ratios.
 - [x] **C3.5 GGUF c>N template.** Port the Qwen/PARO equality template to

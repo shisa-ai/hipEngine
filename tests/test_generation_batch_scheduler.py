@@ -859,6 +859,14 @@ def test_projection_dispatch_evidence_loads_schema_checked_artifact_blocks() -> 
         ProjectionDispatchEvidence.from_json_dict({**payload, "artifact_path": "/tmp/projection-wmma-c4.json"})
     with pytest.raises(ValueError, match="artifact_path must be under benchmarks/results"):
         ProjectionDispatchEvidence.from_json_dict({**payload, "artifact_path": "benchmarks/results/../tmp/projection-wmma-c4.json"})
+    with pytest.raises(ValueError, match="accepted aggregate_vs_row_gemv must be > 1.0"):
+        ProjectionDispatchEvidence.from_json_dict({**payload, "aggregate_vs_row_gemv": 1.0})
+    with pytest.raises(ValueError, match="accepted per_request_vs_row_gemv must be > 1.0"):
+        ProjectionDispatchEvidence.from_json_dict({**payload, "per_request_vs_row_gemv": 0.99})
+    rejected_non_winning = ProjectionDispatchEvidence.from_json_dict(
+        {**payload, "aggregate_vs_row_gemv": 0.95, "per_request_vs_row_gemv": 0.90, "accepted": False}
+    )
+    assert rejected_non_winning.accepted is False
 
 
 def test_projection_dispatch_candidate_loads_schema_checked_artifact_blocks() -> None:
@@ -2651,6 +2659,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     malformed_projection_candidates["projection_dispatch_candidates"][0]["evidence"]["per_request_vs_row_gemv"] = 0.0
     with pytest.raises(ValueError, match="invalid projection_dispatch_candidates"):
         validate_cn_diagnostic_artifact_payload(malformed_projection_candidates)
+
+    slow_projection_candidates = json.loads(json.dumps(with_projection_candidates))
+    slow_projection_candidates["projection_dispatch_candidates"][0]["evidence"]["per_request_vs_row_gemv"] = 1.0
+    with pytest.raises(ValueError, match="accepted per_request_vs_row_gemv must be > 1.0"):
+        validate_cn_diagnostic_artifact_payload(slow_projection_candidates)
 
     rollup_root = tmp_path / "rollup-repo"
     (rollup_root / "benchmarks").mkdir(parents=True)

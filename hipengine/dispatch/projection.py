@@ -80,6 +80,11 @@ class ProjectionDispatchEvidence:
         accepted = payload.get("accepted", True)
         if not isinstance(accepted, bool):
             errors.append("accepted must be a bool")
+        elif accepted:
+            if _is_positive_number(aggregate_vs_row_gemv) and float(aggregate_vs_row_gemv) <= 1.0:
+                errors.append("accepted aggregate_vs_row_gemv must be > 1.0")
+            if _is_positive_number(per_request_vs_row_gemv) and float(per_request_vs_row_gemv) <= 1.0:
+                errors.append("accepted per_request_vs_row_gemv must be > 1.0")
         if errors:
             raise ValueError("invalid projection dispatch evidence: " + "; ".join(errors))
         return cls(
