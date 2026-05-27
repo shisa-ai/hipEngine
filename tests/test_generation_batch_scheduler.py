@@ -2185,7 +2185,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
         "observability": {
             "admission_timestamps": {"0": 1.0, "1": 1.1},
             "completion_timestamps": {"0": 2.0, "1": 2.2},
-            "request_latency_seconds": {"p50": 1.0, "p95": 1.25},
+            "request_latency_seconds": {"p50": 1.0, "p95": 1.25, "samples": [1.0, 1.1]},
             "per_request": {
                 "0": {
                     "queue_seconds": 0.1,
@@ -2360,10 +2360,25 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     missing_per_request["observability"] = {
         "admission_timestamps": {"0": 1.0, "1": 1.1},
         "completion_timestamps": {"0": 2.0, "1": 2.2},
-        "request_latency_seconds": {"p50": 1.0, "p95": 1.25},
+        "request_latency_seconds": {"p50": 1.0, "p95": 1.25, "samples": [1.0, 1.1]},
     }
     with pytest.raises(ValueError, match="per_request"):
         validate_cn_diagnostic_artifact_payload(missing_per_request)
+
+    missing_latency_samples = json.loads(json.dumps(accepted))
+    missing_latency_samples["observability"]["request_latency_seconds"].pop("samples")
+    with pytest.raises(ValueError, match="request_latency_seconds.samples"):
+        validate_cn_diagnostic_artifact_payload(missing_latency_samples)
+
+    short_latency_samples = json.loads(json.dumps(accepted))
+    short_latency_samples["observability"]["request_latency_seconds"]["samples"] = [1.0]
+    with pytest.raises(ValueError, match="request_latency_seconds.samples length must match workload.concurrency"):
+        validate_cn_diagnostic_artifact_payload(short_latency_samples)
+
+    zero_latency_sample = json.loads(json.dumps(accepted))
+    zero_latency_sample["observability"]["request_latency_seconds"]["samples"][0] = 0.0
+    with pytest.raises(ValueError, match="request_latency_seconds.samples must contain only positive numbers"):
+        validate_cn_diagnostic_artifact_payload(zero_latency_sample)
 
     short_admission_timestamps = json.loads(json.dumps(accepted))
     short_admission_timestamps["observability"]["admission_timestamps"].pop("1")

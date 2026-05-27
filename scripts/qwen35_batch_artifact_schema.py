@@ -143,10 +143,18 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
             errors.append(f"observability.{field} length must match workload.concurrency for accepted artifacts")
     latency = observability.get("request_latency_seconds")
     if isinstance(latency, Mapping):
-        if not _is_number(latency.get("p50")):
-            errors.append("observability.request_latency_seconds.p50 must be numeric for accepted artifacts")
-        if not _is_number(latency.get("p95")):
-            errors.append("observability.request_latency_seconds.p95 must be numeric for accepted artifacts")
+        if not _is_positive_number(latency.get("p50")):
+            errors.append("observability.request_latency_seconds.p50 must be positive numeric for accepted artifacts")
+        if not _is_positive_number(latency.get("p95")):
+            errors.append("observability.request_latency_seconds.p95 must be positive numeric for accepted artifacts")
+        samples = latency.get("samples")
+        if not isinstance(samples, list) or not samples:
+            errors.append("observability.request_latency_seconds.samples must be a non-empty list for accepted artifacts")
+        else:
+            if any(not _is_positive_number(sample) for sample in samples):
+                errors.append("observability.request_latency_seconds.samples must contain only positive numbers for accepted artifacts")
+            if concurrency_valid and len(samples) != concurrency:
+                errors.append("observability.request_latency_seconds.samples length must match workload.concurrency for accepted artifacts")
     per_request = observability.get("per_request")
     if not isinstance(per_request, Mapping) or not per_request:
         errors.append("observability.per_request must be a non-empty object for accepted artifacts")
