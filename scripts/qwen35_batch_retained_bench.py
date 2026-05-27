@@ -294,7 +294,7 @@ def _run_capture(command: Sequence[str], *, timeout: float = 5.0) -> dict[str, A
 
 
 def _software_context() -> dict[str, Any]:
-    commit = _run_capture(["git", "rev-parse", "--short", "HEAD"])
+    commit = _run_capture(["git", "rev-parse", "HEAD"])
     dirty = subprocess.run(["git", "diff", "--quiet"], cwd=REPO_ROOT, check=False).returncode != 0
     return {
         "python": sys.version.split()[0],

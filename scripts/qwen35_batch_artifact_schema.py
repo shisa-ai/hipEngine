@@ -71,6 +71,7 @@ _COMMAND_DECODE_TOKENS_RE = re.compile(r"(?:^|\s)--decode-tokens(?:=|\s+)(\d+)(?
 _COMMAND_MAX_LAYERS_RE = re.compile(r"(?:^|\s)--max-layers(?:=|\s+)(\d+)(?=\s|$)")
 _COMMAND_PROMPT_LENGTH_RE = re.compile(r"(?:^|\s)--prompt-length(?:=|\s+)(\d+)(?=\s|$)")
 _CORRECTNESS_ROWS_RE = re.compile(r"(?:^|\s)--rows(?:=|\s+)(\d+)(?=\s|$)")
+_FULL_COMMIT_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", re.IGNORECASE)
 _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = ("serial", "fallback", "per_row", "per-row")
 
 
@@ -293,8 +294,11 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         if not isinstance(hardware.get(field), str) or not hardware.get(field):
             errors.append(f"hardware.{field} must be a non-empty string for accepted artifacts")
     software = _mapping_at(payload, "software", errors)
-    if not isinstance(software.get("hipengine_commit"), str) or not software.get("hipengine_commit"):
+    hipengine_commit = software.get("hipengine_commit")
+    if not isinstance(hipengine_commit, str) or not hipengine_commit:
         errors.append("software.hipengine_commit must be a non-empty string for accepted artifacts")
+    elif not _FULL_COMMIT_RE.fullmatch(hipengine_commit):
+        errors.append("software.hipengine_commit must be a full commit hash for accepted artifacts")
     hipengine_dirty = software.get("hipengine_dirty")
     if not isinstance(hipengine_dirty, bool):
         errors.append("software.hipengine_dirty must be a bool for accepted artifacts")

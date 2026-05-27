@@ -2138,7 +2138,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
         "status": "accepted",
         "performance_claim": True,
         "hardware": {"gpu": "AMD Radeon Pro W7900", "arch": "gfx1100"},
-        "software": {"hipengine_commit": "abc1234", "hipengine_dirty": False},
+        "software": {"hipengine_commit": "0123456789abcdef0123456789abcdef01234567", "hipengine_dirty": False},
         "commands": {
             "benchmark": "python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json accepted.json",
             "correctness_reference": "inline generated-token equality vs independent c=1 plus python3 scripts/qwen35_batch_correctness.py --rows 2 --json primitive-c2.json",
@@ -2763,6 +2763,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
         missing_hardware_field["hardware"].pop(hardware_field)
         with pytest.raises(ValueError, match=f"hardware.{hardware_field}"):
             validate_cn_diagnostic_artifact_payload(missing_hardware_field)
+
+    short_commit = json.loads(json.dumps(accepted))
+    short_commit["software"]["hipengine_commit"] = "abc1234"
+    with pytest.raises(ValueError, match="software.hipengine_commit must be a full commit hash"):
+        validate_cn_diagnostic_artifact_payload(short_commit)
 
     missing_dirty_state = json.loads(json.dumps(accepted))
     missing_dirty_state["software"].pop("hipengine_dirty")
