@@ -2137,7 +2137,20 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     accepted = {
         "status": "accepted",
         "performance_claim": True,
-        "hardware": {"gpu": "AMD Radeon Pro W7900", "arch": "gfx1100"},
+        "hardware": {
+            "gpu": "AMD Radeon Pro W7900",
+            "arch": "gfx1100",
+            "rocminfo": {
+                "command": "rocminfo | grep -E 'Name:|gfx' | head -4",
+                "returncode": 0,
+                "output": "Name: gfx1100",
+            },
+            "rocm_smi": {
+                "command": "rocm-smi --showmeminfo vram --showuse --showtemp",
+                "returncode": 0,
+                "output": "GPU[0] VRAM Total Memory",
+            },
+        },
         "software": {
             "hipengine_commit": "0123456789abcdef0123456789abcdef01234567",
             "hipengine_dirty": False,
@@ -2782,6 +2795,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
         missing_hardware_field["hardware"].pop(hardware_field)
         with pytest.raises(ValueError, match=f"hardware.{hardware_field}"):
             validate_cn_diagnostic_artifact_payload(missing_hardware_field)
+
+    missing_rocminfo = json.loads(json.dumps(accepted))
+    missing_rocminfo["hardware"].pop("rocminfo")
+    with pytest.raises(ValueError, match="hardware.rocminfo"):
+        validate_cn_diagnostic_artifact_payload(missing_rocminfo)
+
+    failed_rocm_smi = json.loads(json.dumps(accepted))
+    failed_rocm_smi["hardware"]["rocm_smi"]["returncode"] = 1
+    with pytest.raises(ValueError, match="hardware.rocm_smi.returncode must be 0"):
+        validate_cn_diagnostic_artifact_payload(failed_rocm_smi)
 
     short_commit = json.loads(json.dumps(accepted))
     short_commit["software"]["hipengine_commit"] = "abc1234"

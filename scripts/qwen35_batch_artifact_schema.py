@@ -51,6 +51,10 @@ _REQUIRED_ACCEPTED_HARDWARE_FIELDS = (
     "gpu",
     "arch",
 )
+_REQUIRED_ACCEPTED_HARDWARE_CAPTURE_FIELDS = (
+    "rocminfo",
+    "rocm_smi",
+)
 _REQUIRED_ACCEPTED_COMMAND_FIELDS = (
     "benchmark",
     "correctness_reference",
@@ -129,6 +133,18 @@ def _is_benchmark_results_path(value: str) -> bool:
 def _validate_benchmark_results_artifact_path(field: str, value: Any, errors: list[str]) -> None:
     if isinstance(value, str) and value and not _is_benchmark_results_path(value):
         errors.append(f"{field} must be under benchmarks/results for accepted artifacts")
+
+
+def _validate_capture_context(field: str, value: Any, errors: list[str]) -> None:
+    if not isinstance(value, Mapping):
+        errors.append(f"{field} must be an object for accepted artifacts")
+        return
+    if not isinstance(value.get("command"), str) or not value.get("command"):
+        errors.append(f"{field}.command must be a non-empty string for accepted artifacts")
+    if value.get("returncode") != 0:
+        errors.append(f"{field}.returncode must be 0 for accepted artifacts")
+    if not isinstance(value.get("output"), str) or not value.get("output"):
+        errors.append(f"{field}.output must be a non-empty string for accepted artifacts")
 
 
 def validate_cn_diagnostic_artifact_payload(payload: Mapping[str, Any]) -> None:
@@ -298,6 +314,8 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     for field in _REQUIRED_ACCEPTED_HARDWARE_FIELDS:
         if not isinstance(hardware.get(field), str) or not hardware.get(field):
             errors.append(f"hardware.{field} must be a non-empty string for accepted artifacts")
+    for field in _REQUIRED_ACCEPTED_HARDWARE_CAPTURE_FIELDS:
+        _validate_capture_context(f"hardware.{field}", hardware.get(field), errors)
     software = _mapping_at(payload, "software", errors)
     hipengine_commit = software.get("hipengine_commit")
     if not isinstance(hipengine_commit, str) or not hipengine_commit:

@@ -920,7 +920,8 @@ roll-up/status view.
       `scripts/qwen35_batch_retained_bench.py` with the same retained shape flags,
       primitive/scaling artifact paths under `benchmarks/results/`,
       environment capture commands for `rocminfo`, `rocm-smi`, and `hipcc --version`,
-      concrete non-empty hardware `gpu`/`arch` fields,
+      concrete non-empty hardware `gpu`/`arch` fields plus successful
+      `hardware.rocminfo`/`hardware.rocm_smi` capture objects,
       clean full-commit software fields (`software.hipengine_dirty == false`)
       plus non-empty `hipcc_version`, and captured profiler evidence with
       native batch expected kernel names (no serial/per-row/fallback labels)
