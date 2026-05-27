@@ -854,10 +854,10 @@ roll-up/status view.
       generated-token run without primitive GPU correctness remains blocked
       instead of becoming a throughput claim. Real c-sweep runs now skip retained
       native diagnostics if the matching primitive, c=1 baseline, or serial-
-      bridge artifact is missing or failed, writes `status_counts`,
-      `category_status_counts`, and `skipped_preconditions` summary rollups for
-      planned/passed/skipped/failed rows, and has unit coverage confirming usable
-      references allow the retained command to run.
+      bridge artifact is missing or failed, writes an `options` block plus
+      `status_counts`, `category_status_counts`, and `skipped_preconditions`
+      summary rollups for planned/passed/skipped/failed rows, and has unit
+      coverage confirming usable references allow the retained command to run.
 - [ ] **P2 graph replay buckets.** Add decode hipGraph capture/replay buckets
       by `(C, context bucket, active mask, KV dtype, layer plan, top-k/experts,
       replay length)`. Acceptance: bucket hit/miss stats and profiler evidence

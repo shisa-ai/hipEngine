@@ -435,6 +435,7 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
         "dry_run": bool(args.dry_run),
         "batch_sizes": list(args.batch_sizes),
         "output_dir": str(output_dir),
+        "options": _summary_options(args),
         "git": git,
         "commands": entries,
         "status_counts": _status_counts(entries),
@@ -447,6 +448,15 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(summary, indent=2) + "\n")
     return summary
+
+
+def _summary_options(args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        "stop_on_failure": bool(args.stop_on_failure),
+        "include_int8": bool(getattr(args, "include_int8", False)),
+        "require_cached_build": bool(args.require_cached_build),
+        "compiler_version_file": None if args.compiler_version_file is None else str(args.compiler_version_file),
+    }
 
 
 def _status_counts(entries: Sequence[dict[str, Any]]) -> dict[str, int]:
