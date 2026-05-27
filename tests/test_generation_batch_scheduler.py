@@ -2035,6 +2035,18 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_command_category["commands"][-1]["category"] = "serial_bridge"
     with pytest.raises(ValueError, match=r"commands\[\]\.category must match commands\[\]\.argv script"):
         c_sweep.validate_sweep_summary(tampered_command_category)
+    tampered_returncode = json.loads(json.dumps(persisted))
+    tampered_returncode["commands"][-1]["returncode"] = None
+    with pytest.raises(ValueError, match=r"commands\[\]\.returncode must be an int"):
+        c_sweep.validate_sweep_summary(tampered_returncode)
+    tampered_duration = json.loads(json.dumps(persisted))
+    tampered_duration["commands"][-1]["duration_seconds"] = -1.0
+    with pytest.raises(ValueError, match=r"commands\[\]\.duration_seconds must be a non-negative number"):
+        c_sweep.validate_sweep_summary(tampered_duration)
+    tampered_output_tail = json.loads(json.dumps(persisted))
+    tampered_output_tail["commands"][-1]["output_tail"] = ["ok"]
+    with pytest.raises(ValueError, match=r"commands\[\]\.output_tail must be a string"):
+        c_sweep.validate_sweep_summary(tampered_output_tail)
     tampered_git_dirty = json.loads(json.dumps(persisted))
     tampered_git_dirty["commands"][-1]["git_dirty"] = True
     with pytest.raises(ValueError, match=r"commands\[\]\.git_dirty must match git.dirty"):

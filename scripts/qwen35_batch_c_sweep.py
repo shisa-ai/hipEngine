@@ -1415,8 +1415,28 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if expected_scripts is not None and (len(argv) < 2 or argv[1] not in expected_scripts):
                 errors.append("commands[].category must match commands[].argv script")
                 break
-            if entry.get("status") not in {"planned", "passed", "skipped", "failed"}:
+            status = entry.get("status")
+            if status not in {"planned", "passed", "skipped", "failed"}:
                 errors.append("commands[].status must be planned, passed, skipped, or failed")
+                break
+            returncode = entry.get("returncode")
+            if status in {"planned", "skipped"}:
+                if returncode is not None:
+                    errors.append("commands[].returncode must be null for planned/skipped rows")
+                    break
+            elif not isinstance(returncode, int) or isinstance(returncode, bool):
+                errors.append("commands[].returncode must be an int for passed/failed rows")
+                break
+            duration_seconds = entry.get("duration_seconds")
+            if (
+                not isinstance(duration_seconds, (int, float))
+                or isinstance(duration_seconds, bool)
+                or float(duration_seconds) < 0.0
+            ):
+                errors.append("commands[].duration_seconds must be a non-negative number")
+                break
+            if status != "planned" and not isinstance(entry.get("output_tail"), str):
+                errors.append("commands[].output_tail must be a string for non-planned rows")
                 break
             if git_dirty is not None and entry.get("git_dirty") is not git_dirty:
                 errors.append("commands[].git_dirty must match git.dirty")
