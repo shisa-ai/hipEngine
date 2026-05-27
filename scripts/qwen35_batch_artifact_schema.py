@@ -514,13 +514,36 @@ def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[
         if decode_execution.get("full_attention_decode_path") in {"per_row_splitk_fallback", "per_row_context_fallback"}:
             errors.append("execution.batch_execution.decode_execution.full_attention_decode_path must not be a per-row fallback for accepted artifacts")
         sampler_execution = decode_execution.get("sampler_execution")
-        if isinstance(sampler_execution, Mapping) and sampler_execution.get("native_row_aware_lm_head") is not True:
-            errors.append("execution.batch_execution.decode_execution.sampler_execution.native_row_aware_lm_head must be true for accepted artifacts")
+        if not isinstance(sampler_execution, Mapping):
+            errors.append("execution.batch_execution.decode_execution.sampler_execution must be an object for accepted artifacts")
+        else:
+            _validate_accepted_sampler_execution(sampler_execution, errors)
     scheduler_metadata = execution.get("scheduler_metadata")
     if not isinstance(scheduler_metadata, Mapping):
         errors.append("execution.scheduler_metadata must be an object for accepted artifacts")
     else:
         _validate_accepted_scheduler_metadata(scheduler_metadata, workload, errors)
+
+
+def _validate_accepted_sampler_execution(sampler_execution: Mapping[str, Any], errors: list[str]) -> None:
+    if sampler_execution.get("native_row_aware_lm_head") is not True:
+        errors.append("execution.batch_execution.decode_execution.sampler_execution.native_row_aware_lm_head must be true for accepted artifacts")
+    if sampler_execution.get("mode") != "batched_lm_head":
+        errors.append("execution.batch_execution.decode_execution.sampler_execution.mode must be batched_lm_head for accepted artifacts")
+    if sampler_execution.get("c2_equality_green") is not True:
+        errors.append("execution.batch_execution.decode_execution.sampler_execution.c2_equality_green must be true for accepted artifacts")
+    equality_artifact = sampler_execution.get("equality_artifact")
+    if not isinstance(equality_artifact, str) or not equality_artifact:
+        errors.append("execution.batch_execution.decode_execution.sampler_execution.equality_artifact must be a non-empty string for accepted artifacts")
+    else:
+        _validate_benchmark_results_artifact_path(
+            "execution.batch_execution.decode_execution.sampler_execution.equality_artifact",
+            equality_artifact,
+            errors,
+        )
+    blockers = sampler_execution.get("blockers")
+    if blockers != []:
+        errors.append("execution.batch_execution.decode_execution.sampler_execution.blockers must be empty for accepted artifacts")
 
 
 def _validate_accepted_scheduler_metadata(

@@ -30842,3 +30842,29 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY accepted sampler schema evidence gate
+
+Materially advanced C3.6/P5 native sampler safety without closing the item:
+
+- Accepted/performance-claim c>N artifact schema now requires `execution.batch_execution.decode_execution.sampler_execution` to be an object.
+- A schema-green native sampler claim must report `mode=batched_lm_head`, `native_row_aware_lm_head=true`, `c2_equality_green=true`, a non-empty `equality_artifact` under `benchmarks/results/`, and an empty `blockers` list.
+- Extended `test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates` with missing sampler metadata, serial/native false mode, non-green equality, `/tmp` equality artifact, and blocker rejection cases.
+- Kept the runtime sampler retained-path guard from the prior iteration covered with targeted tests and updated the C3.6 progress note.
+- No queue item was marked complete and no c>N performance claim was added.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates tests/test_generation_batch_scheduler.py::test_batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_sample_batch_requires_retained_equality_artifact -q
+# 3 passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```

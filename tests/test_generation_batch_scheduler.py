@@ -2500,7 +2500,14 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                 "decode_execution": {
                     "full_attention_decode_path": "native_batch",
                     "native_caware_decode": True,
-                    "sampler_execution": {"native_row_aware_lm_head": True},
+                    "sampler_execution": {
+                        "requested_mode": "batched_lm_head",
+                        "mode": "batched_lm_head",
+                        "native_row_aware_lm_head": True,
+                        "c2_equality_green": True,
+                        "equality_artifact": "benchmarks/results/qwen35-c2-sampler-eq.json",
+                        "blockers": [],
+                    },
                 },
             },
             "scheduler_metadata": {
@@ -2894,10 +2901,35 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="per-row fallback"):
         validate_cn_diagnostic_artifact_payload(per_row_splitk)
 
+    missing_sampler_execution = json.loads(json.dumps(accepted))
+    missing_sampler_execution["execution"]["batch_execution"]["decode_execution"].pop("sampler_execution")
+    with pytest.raises(ValueError, match="sampler_execution must be an object"):
+        validate_cn_diagnostic_artifact_payload(missing_sampler_execution)
+
     serial_sampler = json.loads(json.dumps(accepted))
     serial_sampler["execution"]["batch_execution"]["decode_execution"]["sampler_execution"]["native_row_aware_lm_head"] = False
     with pytest.raises(ValueError, match="native_row_aware_lm_head"):
         validate_cn_diagnostic_artifact_payload(serial_sampler)
+
+    serial_sampler_mode = json.loads(json.dumps(accepted))
+    serial_sampler_mode["execution"]["batch_execution"]["decode_execution"]["sampler_execution"]["mode"] = "serial_lm_head"
+    with pytest.raises(ValueError, match="sampler_execution.mode must be batched_lm_head"):
+        validate_cn_diagnostic_artifact_payload(serial_sampler_mode)
+
+    missing_sampler_equality = json.loads(json.dumps(accepted))
+    missing_sampler_equality["execution"]["batch_execution"]["decode_execution"]["sampler_execution"]["c2_equality_green"] = False
+    with pytest.raises(ValueError, match="sampler_execution.c2_equality_green must be true"):
+        validate_cn_diagnostic_artifact_payload(missing_sampler_equality)
+
+    tmp_sampler_artifact = json.loads(json.dumps(accepted))
+    tmp_sampler_artifact["execution"]["batch_execution"]["decode_execution"]["sampler_execution"]["equality_artifact"] = "/tmp/qwen35-c2-sampler-eq.json"
+    with pytest.raises(ValueError, match="sampler_execution.equality_artifact must be under benchmarks/results"):
+        validate_cn_diagnostic_artifact_payload(tmp_sampler_artifact)
+
+    blocked_sampler = json.loads(json.dumps(accepted))
+    blocked_sampler["execution"]["batch_execution"]["decode_execution"]["sampler_execution"]["blockers"] = ["missing retained sampler evidence"]
+    with pytest.raises(ValueError, match="sampler_execution.blockers must be empty"):
+        validate_cn_diagnostic_artifact_payload(blocked_sampler)
 
     missing_decode_shape_key = json.loads(json.dumps(accepted))
     missing_decode_shape_key["execution"]["scheduler_metadata"].pop("decode_shape_key")
