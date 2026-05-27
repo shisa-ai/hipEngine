@@ -1033,6 +1033,10 @@ def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[st
                 "decode_tok_s_per_request",
                 errors,
             )
+        for field in ("aggregate_vs_c1", "aggregate_vs_serial_bridge"):
+            value = ratios.get(field)
+            if _is_number(value) and float(value) <= 1.0:
+                errors.append(f"scaling.ratios.{field} must be > 1.0 for accepted artifacts")
 
 
 def _validate_prompt_lengths(

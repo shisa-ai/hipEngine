@@ -3100,6 +3100,22 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="aggregate_vs_serial_bridge must match scaling throughput fields"):
         validate_cn_diagnostic_artifact_payload(inconsistent_ratio)
 
+    non_winning_c1_aggregate = json.loads(json.dumps(accepted))
+    non_winning_c1_aggregate["scaling"]["c1_baseline"]["decode_tok_s_aggregate"] = 100.0
+    non_winning_c1_aggregate["scaling"]["c1_baseline"]["decode_tok_s_per_request"] = 100.0
+    non_winning_c1_aggregate["scaling"]["ratios"]["aggregate_vs_c1"] = 1.0
+    non_winning_c1_aggregate["scaling"]["ratios"]["per_request_vs_c1"] = 0.5
+    with pytest.raises(ValueError, match="aggregate_vs_c1 must be > 1.0"):
+        validate_cn_diagnostic_artifact_payload(non_winning_c1_aggregate)
+
+    non_winning_serial_aggregate = json.loads(json.dumps(accepted))
+    non_winning_serial_aggregate["scaling"]["serial_bridge_baseline"]["decode_tok_s_aggregate"] = 100.0
+    non_winning_serial_aggregate["scaling"]["serial_bridge_baseline"]["decode_tok_s_per_request"] = 50.0
+    non_winning_serial_aggregate["scaling"]["ratios"]["aggregate_vs_serial_bridge"] = 1.0
+    non_winning_serial_aggregate["scaling"]["ratios"]["per_request_vs_serial_bridge"] = 1.0
+    with pytest.raises(ValueError, match="aggregate_vs_serial_bridge must be > 1.0"):
+        validate_cn_diagnostic_artifact_payload(non_winning_serial_aggregate)
+
     inconsistent_native_rate = json.loads(json.dumps(accepted))
     inconsistent_native_rate["scaling"]["native"]["decode_tok_s_aggregate"] = 99.0
     with pytest.raises(ValueError, match="scaling.native.decode_tok_s_aggregate must match measurements.decode_tok_s_aggregate"):
