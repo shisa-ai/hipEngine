@@ -137,36 +137,37 @@ mirrored in this matrix.
 ## Engine-loop contract
 
 The engine loop is the single owner of admission, work scheduling, KV
-allocation, sampling, completion, reclaim, and pool resize. The
-`generation_lock` in `hipengine/server/api.py` exists today as a guard against
-non-reentrant session mutation; by the end of C4 the lock should protect only
-brief mutation regions (not whole generations) or be removed entirely.
+allocation, sampling, completion, reclaim, and pool resize in the host-side
+scheduler contract. The FastAPI adapter still keeps `generation_lock` in
+`hipengine/server/api.py` because the retained Qwen/PARO resident session is not
+yet proven reentrant under native c>N decode; that lock is now an adapter safety
+rail, not evidence that the C4 loop scaffolding is absent.
 
 ### C1 lock-scope audit
 
-The current lock is acceptable for C1 because C1 is only submission-time HTTP
-coalescing plus static prompt-list batching, not continuous batching:
+Current server lock scope after the C4/C5 host work:
 
 - Startup eager-load/warmup holds `generation_lock` around resident-session
   preparation and the one warmup `engine.generate(...)` call.
 - Non-streaming requests call `generate(...)`, which holds the lock only for
-  resident-context preparation, sampling construction, and context-budget
-  validation, then enqueue into `_GenerationBatcher`.
-- `_GenerationBatcher._run_group(...)` holds the lock around one grouped
-  `engine.generate(tuple(prompts), sampling)` call. This is intentionally a
-  whole-generation lock in C1 because the resident Qwen/PARO session mutates
-  shared KV, linear-attention recurrent state, hidden buffers, scratch, and
-  sampler state during `LLM.generate()`.
-- Streaming chat still holds the lock while it drives `engine.stream(...)` or
-  fallback `engine.generate(...)`. This is not C4-ready, but it matches the C1
-  contract that streaming is one request at a time.
+  resident-context preparation, sampling construction, optional `n>1` row-seed
+  lowering, and context-budget validation, then enqueue into
+  `_GenerationBatcher`.
+- `_GenerationBatcher._run_group(...)` still holds the lock around one grouped
+  `engine.generate(tuple(prompts), sampling)` call. This deliberately serializes
+  resident-session mutation while retaining prompt-list/coalescing behavior; it
+  is not retained native c>N throughput evidence.
+- Streaming chat holds the lock for preparation only, then routes through
+  `_GenerationBatcher.stream(...)`. The batcher owns a per-request queue and the
+  grouped `engine.generate(...)` lock, so streaming no longer directly bypasses
+  the batcher through `engine.stream(...)`.
 
-The exact C4 blocker is ownership: the resident session is not reentrant and
-there is no long-lived engine loop that owns request admission, slot mapping,
-KV mutation, token queues, cancellation, and reclaim at commit points. Once C4
-adds that single-owner loop, server endpoints should call `submit/poll/cancel`
-instead of holding `generation_lock` across generation. Any remaining lock
-should then protect only process-level model/session initialization.
+The remaining lock-removal blocker is correctness/performance, not host API
+shape: server endpoints can be thinned further only after the resident path has
+native c>N generated-token equality, retained execution metadata, and accepted
+benchmark evidence. Until then, the grouped lock prevents concurrent mutation of
+shared KV, linear-attention recurrent state, hidden buffers, scratch, and
+sampler state.
 
 ### Public interface (target)
 
