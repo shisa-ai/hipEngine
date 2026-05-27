@@ -2266,7 +2266,21 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
                     "native_caware_decode": True,
                     "sampler_execution": {"native_row_aware_lm_head": True},
                 },
-            }
+            },
+            "scheduler_metadata": {
+                "decode_shape_key": {
+                    "mode": "decode",
+                    "active_c": 2,
+                    "context_bucket": 512,
+                    "active_mask": [True, True],
+                    "top_k": 0,
+                    "experts_per_token": 0,
+                    "replay_steps": 1,
+                    "draft_depth": 0,
+                    "tree_shape": [],
+                },
+                "graph_bucket_stats": {"entries": 0, "hits": 0, "misses": 0},
+            },
         },
         "observability": {
             "admission_timestamps": {"0": 1.0, "1": 1.1},
@@ -2504,6 +2518,26 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     serial_sampler["execution"]["batch_execution"]["decode_execution"]["sampler_execution"]["native_row_aware_lm_head"] = False
     with pytest.raises(ValueError, match="native_row_aware_lm_head"):
         validate_cn_diagnostic_artifact_payload(serial_sampler)
+
+    missing_decode_shape_key = json.loads(json.dumps(accepted))
+    missing_decode_shape_key["execution"]["scheduler_metadata"].pop("decode_shape_key")
+    with pytest.raises(ValueError, match="execution.scheduler_metadata.decode_shape_key"):
+        validate_cn_diagnostic_artifact_payload(missing_decode_shape_key)
+
+    mismatched_decode_shape_key = json.loads(json.dumps(accepted))
+    mismatched_decode_shape_key["execution"]["scheduler_metadata"]["decode_shape_key"]["active_c"] = 8
+    with pytest.raises(ValueError, match="decode_shape_key.active_c must match workload.concurrency"):
+        validate_cn_diagnostic_artifact_payload(mismatched_decode_shape_key)
+
+    missing_graph_bucket_stats = json.loads(json.dumps(accepted))
+    missing_graph_bucket_stats["execution"]["scheduler_metadata"].pop("graph_bucket_stats")
+    with pytest.raises(ValueError, match="execution.scheduler_metadata.graph_bucket_stats"):
+        validate_cn_diagnostic_artifact_payload(missing_graph_bucket_stats)
+
+    negative_graph_bucket_hits = json.loads(json.dumps(accepted))
+    negative_graph_bucket_hits["execution"]["scheduler_metadata"]["graph_bucket_stats"]["hits"] = -1
+    with pytest.raises(ValueError, match="graph_bucket_stats.hits must be a non-negative int"):
+        validate_cn_diagnostic_artifact_payload(negative_graph_bucket_hits)
 
     missing_latency = dict(accepted)
     missing_latency["observability"] = {

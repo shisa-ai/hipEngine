@@ -54,6 +54,20 @@ def _result_payload(result) -> dict[str, Any]:
     return {"token_id": int(result.token_id), "token_text": result.token_text, "logit": float(result.logit)}
 
 
+def _shape_key_payload(key) -> dict[str, Any]:
+    return {
+        "mode": key.mode.value,
+        "active_c": key.active_c,
+        "context_bucket": key.context_bucket,
+        "active_mask": list(key.active_mask),
+        "top_k": key.top_k,
+        "experts_per_token": key.experts_per_token,
+        "replay_steps": key.replay_steps,
+        "draft_depth": key.draft_depth,
+        "tree_shape": list(key.tree_shape),
+    }
+
+
 def _summarize_samples(samples: Sequence[float]) -> dict[str, Any]:
     values = [float(sample) for sample in samples]
     if not values:
@@ -471,6 +485,9 @@ def _run_native_bench(
         if set(seed_by_request) != set(request_ids):
             raise RuntimeError("missing one or more prefill seed tokens")
 
+        scheduler_metadata["decode_shape_key"] = _shape_key_payload(
+            scheduler.shape_key(mode="decode", top_k=0, experts_per_token=0, replay_steps=1)
+        )
         next_token_by_request = {request_id: seed_by_request[request_id].token_id for request_id in request_ids}
         warmup_start = time.perf_counter()
         for _ in range(warmup_decode_tokens):
@@ -502,6 +519,12 @@ def _run_native_bench(
         completed = list(scheduler.completed.values())
         scheduler_metadata["active_count_after_completion"] = scheduler.active_count
         scheduler_metadata["slot_to_request_after_completion"] = list(scheduler.active_batch.slot_to_request)
+        graph_stats = scheduler.graph_buckets.stats
+        scheduler_metadata["graph_bucket_stats"] = {
+            "entries": graph_stats.entries,
+            "hits": graph_stats.hits,
+            "misses": graph_stats.misses,
+        }
         batch_execution = session.batch_execution_metadata(scheduler_owned=True, native_decode=True).to_json_dict()
 
     completed_payload = [done.to_json_dict() for done in completed]

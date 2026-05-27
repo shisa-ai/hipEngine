@@ -372,6 +372,38 @@ def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[
         sampler_execution = decode_execution.get("sampler_execution")
         if isinstance(sampler_execution, Mapping) and sampler_execution.get("native_row_aware_lm_head") is not True:
             errors.append("execution.batch_execution.decode_execution.sampler_execution.native_row_aware_lm_head must be true for accepted artifacts")
+    scheduler_metadata = execution.get("scheduler_metadata")
+    if not isinstance(scheduler_metadata, Mapping):
+        errors.append("execution.scheduler_metadata must be an object for accepted artifacts")
+    else:
+        _validate_accepted_scheduler_metadata(scheduler_metadata, workload, errors)
+
+
+def _validate_accepted_scheduler_metadata(
+    scheduler_metadata: Mapping[str, Any],
+    workload: Mapping[str, Any],
+    errors: list[str],
+) -> None:
+    decode_shape_key = scheduler_metadata.get("decode_shape_key")
+    if not isinstance(decode_shape_key, Mapping):
+        errors.append("execution.scheduler_metadata.decode_shape_key must be an object for accepted artifacts")
+    else:
+        if decode_shape_key.get("mode") != "decode":
+            errors.append("execution.scheduler_metadata.decode_shape_key.mode must be decode for accepted artifacts")
+        active_c = decode_shape_key.get("active_c")
+        concurrency = workload.get("concurrency")
+        if isinstance(concurrency, int) and not isinstance(concurrency, bool) and active_c != concurrency:
+            errors.append("execution.scheduler_metadata.decode_shape_key.active_c must match workload.concurrency for accepted artifacts")
+        active_mask = decode_shape_key.get("active_mask")
+        if not isinstance(active_mask, list) or not active_mask or any(not isinstance(item, bool) for item in active_mask):
+            errors.append("execution.scheduler_metadata.decode_shape_key.active_mask must be a non-empty bool list for accepted artifacts")
+    graph_stats = scheduler_metadata.get("graph_bucket_stats")
+    if not isinstance(graph_stats, Mapping):
+        errors.append("execution.scheduler_metadata.graph_bucket_stats must be an object for accepted artifacts")
+    else:
+        for field in ("entries", "hits", "misses"):
+            if not isinstance(graph_stats.get(field), int) or isinstance(graph_stats.get(field), bool) or graph_stats.get(field) < 0:
+                errors.append(f"execution.scheduler_metadata.graph_bucket_stats.{field} must be a non-negative int for accepted artifacts")
 
 
 def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[str]) -> None:

@@ -904,7 +904,8 @@ roll-up/status view.
       aggregate token labels and per-row prompt lengths matching per-request
       shape times concurrency, full-row admission/completion/per-request
       observability with matching row ids and latency samples for every row in
-      `workload.concurrency`, positive
+      `workload.concurrency`, execution scheduler metadata with decode shape-key
+      and graph-bucket stats, positive
       aggregate/per-request throughput whose rates match `workload.concurrency`
       and whose native scaling copy matches the primary measurements, all
       required positive scaling ratios that mathematically match usable same-shape
