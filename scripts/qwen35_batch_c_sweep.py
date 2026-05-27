@@ -463,6 +463,22 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                 raw_rows = workload.get("concurrency")
         if raw_rows != command.batch_size:
             reasons.append(f"rows={raw_rows!r} does not match batch_size={command.batch_size}")
+        raw_prompt_tokens = _reference_label(profiler, "prompt_tokens_per_request", "prompt_length")
+        if raw_prompt_tokens is None and isinstance(payload, dict):
+            raw_prompt_tokens = _reference_label(payload, "prompt_tokens_per_request", "prompt_length")
+        expected_prompt_length = _command_arg_int(command, "--prompt-length")
+        if not isinstance(raw_prompt_tokens, int) or isinstance(raw_prompt_tokens, bool):
+            reasons.append("prompt token count label is missing")
+        elif expected_prompt_length is not None and raw_prompt_tokens != expected_prompt_length:
+            reasons.append(f"prompt_tokens_per_request={raw_prompt_tokens!r} does not match prompt_length={expected_prompt_length}")
+        raw_gen_tokens = _reference_label(profiler, "gen_tokens_per_request", "decode_tokens")
+        if raw_gen_tokens is None and isinstance(payload, dict):
+            raw_gen_tokens = _reference_label(payload, "gen_tokens_per_request", "decode_tokens")
+        expected_decode_tokens = _command_arg_int(command, "--decode-tokens")
+        if not isinstance(raw_gen_tokens, int) or isinstance(raw_gen_tokens, bool):
+            reasons.append("decode token count label is missing")
+        elif expected_decode_tokens is not None and raw_gen_tokens != expected_decode_tokens:
+            reasons.append(f"gen_tokens_per_request={raw_gen_tokens!r} does not match decode_tokens={expected_decode_tokens}")
         if profiler.get("status") != "captured":
             reasons.append("status is not 'captured'")
         if profiler.get("expected_kernels_present") is not True:
