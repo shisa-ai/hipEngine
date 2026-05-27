@@ -2070,6 +2070,12 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_argv_batch_size["commands"][-1]["command"] = shlex.join(retained_argv)
     with pytest.raises(ValueError, match=r"commands\[\]\.batch_size must match commands\[\]\.argv"):
         c_sweep.validate_sweep_summary(tampered_argv_batch_size)
+    tampered_argv_shape = json.loads(json.dumps(persisted))
+    retained_argv = tampered_argv_shape["commands"][-1]["argv"]
+    retained_argv[retained_argv.index("--decode-tokens") + 1] = "two"
+    tampered_argv_shape["commands"][-1]["command"] = shlex.join(retained_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv --decode-tokens must have an int value"):
+        c_sweep.validate_sweep_summary(tampered_argv_shape)
     tampered_command_category = json.loads(json.dumps(persisted))
     retained_row = tampered_command_category["commands"][-1]
     retained_row["category"] = "serial_bridge"

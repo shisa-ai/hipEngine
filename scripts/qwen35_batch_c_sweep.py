@@ -1434,6 +1434,26 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if declared_batch_size is not None and declared_batch_size != entry.get("batch_size"):
                 errors.append("commands[].batch_size must match commands[].argv --batch-size/--rows")
                 break
+            if entry.get("category") in {"serial_bridge", "native_diagnostic", "int8_native_diagnostic"}:
+                shape_arg_error = False
+                for shape_flag in ("--prompt-length", "--decode-tokens", "--warmup-decode-tokens", "--max-layers"):
+                    try:
+                        shape_value = int(argv[argv.index(shape_flag) + 1])
+                    except (IndexError, ValueError):
+                        errors.append(f"commands[].argv {shape_flag} must have an int value")
+                        shape_arg_error = True
+                        break
+                    if shape_flag == "--warmup-decode-tokens":
+                        if shape_value < 0:
+                            errors.append(f"commands[].argv {shape_flag} must be non-negative")
+                            shape_arg_error = True
+                            break
+                    elif shape_value <= 0:
+                        errors.append(f"commands[].argv {shape_flag} must be positive")
+                        shape_arg_error = True
+                        break
+                if shape_arg_error:
+                    break
             expected_scripts_by_category = {
                 "primitive": {"scripts/qwen35_batch_correctness.py"},
                 "serial_bridge": {"scripts/qwen35_batch_serial_bench.py"},
