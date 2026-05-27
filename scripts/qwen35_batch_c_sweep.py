@@ -685,6 +685,9 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
             command_fixture = _command_text_arg(profiler_command, "--fixture")
             if expected_fixture is not None and command_fixture != expected_fixture:
                 reasons.append(f"profiler command fixture={command_fixture!r} does not match fixture={expected_fixture}")
+            command_output_path = _command_text_arg(profiler_command, "--json")
+            if command_output_path != str(command.artifact_path):
+                reasons.append("profiler command --json path does not match retained artifact_path")
             command_profiler_path = _command_text_arg(profiler_command, "--profiler-json")
             if command_profiler_path != str(profiler_path):
                 reasons.append("profiler command --profiler-json path does not match artifact_path")

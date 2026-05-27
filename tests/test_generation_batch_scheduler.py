@@ -107,6 +107,7 @@ def _write_c_sweep_profiler_summary(
     max_layers: int = 40,
 ) -> None:
     profiler_path = output_dir / f"profiler-c{rows}.json"
+    retained_path = output_dir / f"native-diagnostic-c{rows}.json"
     profiler_path.write_text(
         json.dumps(
             {
@@ -120,7 +121,7 @@ def _write_c_sweep_profiler_summary(
                         f"--model {model} --fixture {fixture} --batch-size {rows} "
                         "--prompt-length 16 --decode-tokens 2 "
                         f"--warmup-decode-tokens {warmup_decode_tokens} --max-layers {max_layers} "
-                        f"--profiler-json {profiler_path}"
+                        f"--json {retained_path} --profiler-json {profiler_path}"
                     ),
                     "expected_kernels_present": True,
                     "expected_kernel_names": ["qwen35_batch_decode"],
@@ -182,7 +183,8 @@ def test_batch_c_sweep_profiler_precondition_rejects_mismatched_artifact_path(tm
                         "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_retained_bench.py "
                         "--model /tmp/model --fixture /tmp/fixture.json --batch-size 2 "
                         "--prompt-length 16 --decode-tokens 2 "
-                        f"--warmup-decode-tokens 8 --max-layers 40 --profiler-json {profiler_path}"
+                        f"--warmup-decode-tokens 8 --max-layers 40 --json {output_dir / 'native-diagnostic-c2.json'} "
+                        f"--profiler-json {profiler_path}"
                     ),
                     "expected_kernels_present": True,
                     "expected_kernel_names": ["qwen35_batch_decode"],
@@ -392,6 +394,45 @@ def test_batch_c_sweep_profiler_precondition_rejects_wrong_workload_command(tmp_
         "artifact_path": str(profiler_path),
         "passed": False,
         "reason": "profiler command model='/tmp/model' does not match model=/tmp/other-model",
+    }
+
+
+def test_batch_c_sweep_profiler_precondition_rejects_wrong_retained_artifact_command(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"]["command"] = payload["profiler"]["command"].replace(
+        str(output_dir / "native-diagnostic-c2.json"),
+        str(output_dir / "native-diagnostic-c4.json"),
+    )
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler command --json path does not match retained artifact_path",
     }
 
 
@@ -1326,7 +1367,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
             "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_retained_bench.py "
             "--model /tmp/model --fixture /tmp/fixture.json --batch-size 2 "
             "--prompt-length 16 --decode-tokens 2 --warmup-decode-tokens 1 --max-layers 3 "
-            f"--profiler-json {output_dir / 'profiler-c2.json'}"
+            f"--json {output_dir / 'native-diagnostic-c2.json'} --profiler-json {output_dir / 'profiler-c2.json'}"
         ),
         "profiler_model": "/tmp/model",
         "profiler_fixture": "/tmp/fixture.json",
