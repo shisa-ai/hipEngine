@@ -718,8 +718,9 @@ roll-up/status view.
       back to row-GEMV with explicit blockers, and
       `ProjectionDispatchEvidence.from_json_dict(...)`,
       `ProjectionDispatchCandidate.from_json_dict(...)`,
-      `projection_dispatch_candidates_from_json(...)`, and
-      `projection_dispatch_candidates_from_artifact(...)` schema-check retained
+      `projection_dispatch_candidates_from_json(...)`,
+      `projection_dispatch_candidates_from_artifact(...)`, and
+      `plan_projection_dispatch_from_artifact(...)` schema-check retained
       artifact candidate/evidence lists before the policy can consume them. The
       item remains open until runtime projection call sites are wired to this
       policy and retained benchmark artifacts provide the required ratios.

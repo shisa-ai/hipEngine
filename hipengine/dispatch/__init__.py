@@ -19,6 +19,7 @@ from hipengine.dispatch.projection import (
     ProjectionDispatchEvidence,
     ProjectionKernelSelection,
     plan_projection_dispatch,
+    plan_projection_dispatch_from_artifact,
     projection_dispatch_candidates_from_artifact,
     projection_dispatch_candidates_from_json,
 )
@@ -49,6 +50,7 @@ __all__ = [
     "plan_paged_attn_decode",
     "plan_paged_kv_write",
     "plan_projection_dispatch",
+    "plan_projection_dispatch_from_artifact",
     "projection_dispatch_candidates_from_artifact",
     "projection_dispatch_candidates_from_json",
     "plan_batch_sampler_dispatch",

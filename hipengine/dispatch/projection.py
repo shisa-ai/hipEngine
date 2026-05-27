@@ -323,12 +323,34 @@ def plan_projection_dispatch(
     )
 
 
+def plan_projection_dispatch_from_artifact(
+    *,
+    payload: Mapping[str, Any],
+    rows: int,
+    row_gemv: ProjectionKernelSelection,
+    field: str = "projection_dispatch_candidates",
+    min_aggregate_speedup: float = 1.0,
+    min_per_request_speedup: float = 1.0,
+) -> ProjectionDispatchDecision:
+    """Plan c-aware projection dispatch directly from retained artifact metadata."""
+
+    candidates = projection_dispatch_candidates_from_artifact(payload, field=field)
+    return plan_projection_dispatch(
+        rows=rows,
+        row_gemv=row_gemv,
+        candidates=candidates,
+        min_aggregate_speedup=min_aggregate_speedup,
+        min_per_request_speedup=min_per_request_speedup,
+    )
+
+
 __all__ = [
     "ProjectionDispatchCandidate",
     "ProjectionDispatchDecision",
     "ProjectionDispatchEvidence",
     "ProjectionKernelSelection",
     "plan_projection_dispatch",
+    "plan_projection_dispatch_from_artifact",
     "projection_dispatch_candidates_from_artifact",
     "projection_dispatch_candidates_from_json",
 ]

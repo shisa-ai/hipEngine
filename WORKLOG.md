@@ -30655,3 +30655,29 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY projection artifact dispatch planner
+
+Materially advanced C3.4 c-aware projection dispatch without closing the item:
+
+- `plan_projection_dispatch_from_artifact(...)` now combines schema-checked artifact candidate extraction with the existing evidence-gated projection dispatch decision.
+- Exported the helper through `hipengine.dispatch` so future runtime projection call sites can pass retained artifact metadata plus the row-GEMV fallback directly, without ad-hoc candidate extraction.
+- Extended projection-dispatch tests to cover accepted artifact metadata selecting a c-aware candidate, absent metadata falling back to row-GEMV, and malformed artifact metadata raising validation errors.
+- Updated the C3.4 progress note. The item remains open until runtime projection call sites are wired to this policy and retained benchmark artifacts provide the required ratios.
+- No queue item was marked complete and no c>N performance claim was added.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_projection_dispatch_plans_directly_from_artifact_payload tests/test_generation_batch_scheduler.py::test_projection_dispatch_candidate_list_loads_from_artifact_payload tests/test_generation_batch_scheduler.py::test_projection_dispatch_selects_best_evidence_green_cN_candidate -q
+# 3 passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```

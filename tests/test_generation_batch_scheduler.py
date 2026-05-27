@@ -18,6 +18,7 @@ from hipengine.dispatch import (
     WorkKind,
     plan_batch_sampler_dispatch,
     plan_projection_dispatch,
+    plan_projection_dispatch_from_artifact,
     projection_dispatch_candidates_from_artifact,
     projection_dispatch_candidates_from_json,
 )
@@ -948,6 +949,42 @@ def test_projection_dispatch_candidate_list_loads_from_artifact_payload() -> Non
         projection_dispatch_candidates_from_artifact(artifact, field="")
     with pytest.raises(ValueError, match="invalid projection_dispatch_candidates"):
         projection_dispatch_candidates_from_artifact({"projection_dispatch_candidates": ["not-a-candidate"]})
+
+
+def test_projection_dispatch_plans_directly_from_artifact_payload() -> None:
+    row_gemv = ProjectionKernelSelection("linear", "w4_paro", "row_gemv")
+    candidate = {
+        "name": "wmma_caware",
+        "selection": {"layer": "linear", "quant": "w4_paro", "variant": "wmma_caware"},
+        "min_rows": 4,
+        "max_rows": 8,
+        "evidence": {
+            "artifact_path": "benchmarks/results/projection-wmma-c4.json",
+            "aggregate_vs_row_gemv": 1.35,
+            "per_request_vs_row_gemv": 1.10,
+            "accepted": True,
+        },
+    }
+
+    decision = plan_projection_dispatch_from_artifact(
+        payload={"projection_dispatch_candidates": [candidate]},
+        rows=4,
+        row_gemv=row_gemv,
+    )
+
+    assert decision.selected_candidate == "wmma_caware"
+    assert decision.path == "benchmark_accepted_caware_projection"
+    assert decision.throughput_claim_eligible is True
+    fallback = plan_projection_dispatch_from_artifact(payload={}, rows=4, row_gemv=row_gemv)
+    assert fallback.selected_candidate == "row_gemv"
+    assert fallback.throughput_claim_eligible is False
+    assert "no c-aware projection candidate applies" in fallback.blockers[0]
+    with pytest.raises(ValueError, match="invalid projection_dispatch_candidates"):
+        plan_projection_dispatch_from_artifact(
+            payload={"projection_dispatch_candidates": [{**candidate, "min_rows": 0}]},
+            rows=4,
+            row_gemv=row_gemv,
+        )
 
 
 def test_projection_dispatch_requires_accepted_cN_speedup_evidence() -> None:
