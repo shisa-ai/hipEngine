@@ -2002,6 +2002,7 @@ def test_resident_batch_scheduler_shape_key_graph_bucket_and_completion() -> Non
     assert scheduler.graph_buckets.stats.entries == 1
     assert scheduler.graph_buckets.stats.hits == 0
     assert scheduler.graph_buckets.stats.misses == 1
+    assert scheduler.graph_buckets.stats.miss_reasons == {"cache_absent": 1}
     assert scheduler.graph_buckets.get(key) is graph
     assert scheduler.graph_buckets.stats.hits == 1
 
@@ -2023,13 +2024,28 @@ def test_graph_bucket_cache_clear_resets_entries_and_counters() -> None:
     scheduler.next_prefill_work(chunk_size=1)
     key = scheduler.shape_key(mode="decode")
 
-    assert cache.get(key) is None
+    assert cache.get(key, miss_reason="shape_changed") is None
     cache.put(key, object())
+    cache.record_kernel_time_ns(5_000)
+    cache.record_kernel_time_ns(50_000)
     assert cache.stats.entries == 1
+    assert cache.stats.miss_reasons == {"shape_changed": 1}
+    assert cache.stats.kernel_time_histogram_ns == {"le_10us": 1, "le_100us": 1}
+    assert cache.stats.to_json_dict() == {
+        "entries": 1,
+        "hits": 0,
+        "misses": 1,
+        "miss_reasons": {"shape_changed": 1},
+        "kernel_time_histogram_ns": {"le_100us": 1, "le_10us": 1},
+    }
+    with pytest.raises(ValueError, match="duration_ns"):
+        cache.record_kernel_time_ns(-1)
     cache.clear()
     assert cache.stats.entries == 0
     assert cache.stats.hits == 0
     assert cache.stats.misses == 0
+    assert cache.stats.miss_reasons == {}
+    assert cache.stats.kernel_time_histogram_ns == {}
 
 
 def test_compact_prompt_slab_tracks_optional_physical_slots() -> None:
@@ -2248,7 +2264,13 @@ def test_qwen35_retained_records_decode_graph_bucket_metadata() -> None:
         "draft_depth": 0,
         "tree_shape": [],
     }
-    assert metadata["graph_bucket_stats"] == {"entries": 1, "hits": 1, "misses": 1}
+    assert metadata["graph_bucket_stats"] == {
+        "entries": 1,
+        "hits": 1,
+        "misses": 1,
+        "miss_reasons": {"cache_absent": 1},
+        "kernel_time_histogram_ns": {},
+    }
 
 
 def test_qwen35_retained_profiler_reference_loads_captured_summary(tmp_path: Path) -> None:
@@ -2475,7 +2497,13 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                     "draft_depth": 0,
                     "tree_shape": [],
                 },
-                "graph_bucket_stats": {"entries": 1, "hits": 1, "misses": 1},
+                "graph_bucket_stats": {
+                    "entries": 1,
+                    "hits": 1,
+                    "misses": 1,
+                    "miss_reasons": {"cache_absent": 1},
+                    "kernel_time_histogram_ns": {},
+                },
             },
         },
         "observability": {
@@ -2877,6 +2905,21 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     empty_graph_bucket_cache["execution"]["scheduler_metadata"]["graph_bucket_stats"]["entries"] = 0
     with pytest.raises(ValueError, match="graph_bucket_stats.entries must be positive"):
         validate_cn_diagnostic_artifact_payload(empty_graph_bucket_cache)
+
+    missing_graph_bucket_miss_reasons = json.loads(json.dumps(accepted))
+    missing_graph_bucket_miss_reasons["execution"]["scheduler_metadata"]["graph_bucket_stats"].pop("miss_reasons")
+    with pytest.raises(ValueError, match="graph_bucket_stats.miss_reasons"):
+        validate_cn_diagnostic_artifact_payload(missing_graph_bucket_miss_reasons)
+
+    mismatched_graph_bucket_miss_reasons = json.loads(json.dumps(accepted))
+    mismatched_graph_bucket_miss_reasons["execution"]["scheduler_metadata"]["graph_bucket_stats"]["miss_reasons"] = {"cache_absent": 2}
+    with pytest.raises(ValueError, match="miss_reasons counts must sum to misses"):
+        validate_cn_diagnostic_artifact_payload(mismatched_graph_bucket_miss_reasons)
+
+    invalid_graph_bucket_histogram = json.loads(json.dumps(accepted))
+    invalid_graph_bucket_histogram["execution"]["scheduler_metadata"]["graph_bucket_stats"]["kernel_time_histogram_ns"] = {"le_10us": -1}
+    with pytest.raises(ValueError, match="kernel_time_histogram_ns.le_10us must be a non-negative int"):
+        validate_cn_diagnostic_artifact_payload(invalid_graph_bucket_histogram)
 
     missing_latency = dict(accepted)
     missing_latency["observability"] = {

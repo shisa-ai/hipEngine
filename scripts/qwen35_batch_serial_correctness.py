@@ -227,7 +227,7 @@ def _run_batch_serial_scheduler(
         scheduler.graph_buckets.get(shape_key)
         stats = scheduler.graph_buckets.stats
         metadata["decode_shape_key"] = _shape_key_payload(shape_key)
-        metadata["graph_bucket_stats"] = {"entries": stats.entries, "hits": stats.hits, "misses": stats.misses}
+        metadata["graph_bucket_stats"] = stats.to_json_dict()
         metadata["slot_to_request_at_decode"] = list(scheduler.active_batch.slot_to_request)
         metadata["active_count_at_decode"] = scheduler.active_count
         decode_request_ids = decode_work.request_ids

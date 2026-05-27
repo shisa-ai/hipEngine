@@ -551,6 +551,43 @@ def _validate_accepted_scheduler_metadata(
         entries = graph_stats.get("entries")
         if isinstance(entries, int) and not isinstance(entries, bool) and entries <= 0:
             errors.append("execution.scheduler_metadata.graph_bucket_stats.entries must be positive for accepted artifacts")
+        miss_reasons = graph_stats.get("miss_reasons")
+        if not isinstance(miss_reasons, Mapping):
+            errors.append("execution.scheduler_metadata.graph_bucket_stats.miss_reasons must be an object for accepted artifacts")
+        else:
+            miss_reason_total = _validate_non_negative_int_mapping(
+                "execution.scheduler_metadata.graph_bucket_stats.miss_reasons",
+                miss_reasons,
+                errors,
+            )
+            misses = graph_stats.get("misses")
+            if isinstance(misses, int) and not isinstance(misses, bool):
+                if misses > 0 and not miss_reasons:
+                    errors.append("execution.scheduler_metadata.graph_bucket_stats.miss_reasons must be non-empty when misses is positive")
+                if miss_reason_total is not None and miss_reason_total != misses:
+                    errors.append("execution.scheduler_metadata.graph_bucket_stats.miss_reasons counts must sum to misses")
+        kernel_time_histogram = graph_stats.get("kernel_time_histogram_ns")
+        if not isinstance(kernel_time_histogram, Mapping):
+            errors.append("execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns must be an object for accepted artifacts")
+        else:
+            _validate_non_negative_int_mapping(
+                "execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns",
+                kernel_time_histogram,
+                errors,
+            )
+
+
+def _validate_non_negative_int_mapping(label: str, values: Mapping[str, Any], errors: list[str]) -> int | None:
+    total = 0
+    for key, value in values.items():
+        if not isinstance(key, str) or not key:
+            errors.append(f"{label} keys must be non-empty strings")
+            return None
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            errors.append(f"{label}.{key} must be a non-negative int")
+            return None
+        total += value
+    return total
 
 
 def _validate_accepted_payload_artifact_path(payload: Mapping[str, Any], errors: list[str]) -> Any:

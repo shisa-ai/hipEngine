@@ -9,9 +9,9 @@ back through ``record_generated``.
 from __future__ import annotations
 
 import time
-from collections import deque
+from collections import Counter, deque
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from math import ceil
 from typing import Iterable, Mapping, Sequence
 
@@ -396,6 +396,17 @@ class GraphBucketStats:
     entries: int
     hits: int
     misses: int
+    miss_reasons: Mapping[str, int] = field(default_factory=dict)
+    kernel_time_histogram_ns: Mapping[str, int] = field(default_factory=dict)
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "entries": int(self.entries),
+            "hits": int(self.hits),
+            "misses": int(self.misses),
+            "miss_reasons": {str(key): int(value) for key, value in sorted(self.miss_reasons.items())},
+            "kernel_time_histogram_ns": {str(key): int(value) for key, value in sorted(self.kernel_time_histogram_ns.items())},
+        }
 
 
 class GraphBucketCache:
@@ -405,33 +416,64 @@ class GraphBucketCache:
         self._cache: dict[BatchShapeKey, object] = {}
         self._hits = 0
         self._misses = 0
+        self._miss_reasons: Counter[str] = Counter()
+        self._kernel_time_histogram_ns: Counter[str] = Counter()
 
     @property
     def stats(self) -> GraphBucketStats:
-        return GraphBucketStats(entries=len(self._cache), hits=self._hits, misses=self._misses)
+        return GraphBucketStats(
+            entries=len(self._cache),
+            hits=self._hits,
+            misses=self._misses,
+            miss_reasons=dict(self._miss_reasons),
+            kernel_time_histogram_ns=dict(self._kernel_time_histogram_ns),
+        )
 
-    def get(self, key: BatchShapeKey) -> object | None:
+    def get(self, key: BatchShapeKey, *, miss_reason: str = "cache_absent") -> object | None:
         if key in self._cache:
             self._hits += 1
             return self._cache[key]
         self._misses += 1
+        self._miss_reasons[str(miss_reason or "unspecified")] += 1
         return None
 
     def put(self, key: BatchShapeKey, graph: object) -> None:
         self._cache[key] = graph
 
-    def get_or_create(self, key: BatchShapeKey, factory) -> object:
-        cached = self.get(key)
+    def get_or_create(self, key: BatchShapeKey, factory, *, miss_reason: str = "cache_absent") -> object:
+        cached = self.get(key, miss_reason=miss_reason)
         if cached is not None:
             return cached
         graph = factory(key)
         self.put(key, graph)
         return graph
 
+    def record_kernel_time_ns(self, duration_ns: int) -> None:
+        if isinstance(duration_ns, bool):
+            raise ValueError("duration_ns must be a non-negative integer")
+        ns = int(duration_ns)
+        if ns < 0:
+            raise ValueError("duration_ns must be a non-negative integer")
+        self._kernel_time_histogram_ns[_kernel_time_histogram_bucket_ns(ns)] += 1
+
     def clear(self) -> None:
         self._cache.clear()
         self._hits = 0
         self._misses = 0
+        self._miss_reasons.clear()
+        self._kernel_time_histogram_ns.clear()
+
+
+def _kernel_time_histogram_bucket_ns(duration_ns: int) -> str:
+    if duration_ns <= 10_000:
+        return "le_10us"
+    if duration_ns <= 100_000:
+        return "le_100us"
+    if duration_ns <= 1_000_000:
+        return "le_1ms"
+    if duration_ns <= 10_000_000:
+        return "le_10ms"
+    return "gt_10ms"
 
 
 class ResidentBatchScheduler:

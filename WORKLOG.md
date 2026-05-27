@@ -30707,3 +30707,30 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY graph-bucket miss-reason schema
+
+Materially advanced P2/C5 graph-cache observability without closing the items:
+
+- `GraphBucketStats` now serializes `entries`, `hits`, `misses`, per-reason miss counts, and kernel-time histogram buckets via `to_json_dict()`.
+- `GraphBucketCache` records miss reasons (default `cache_absent`) and exposes `record_kernel_time_ns(...)` for future replay/profiler plumbing; `clear()` resets the extended counters.
+- Retained and serial Qwen3.5 batch scripts now emit the extended `graph_bucket_stats` shape instead of hand-built entry/hit/miss dicts.
+- Accepted c>N artifact schema now requires `miss_reasons` and `kernel_time_histogram_ns`, validates non-negative integer counts, and rejects miss-reason totals that do not sum to `misses`.
+- Updated P2/C5 progress notes. The items remain open until actual graph replay and profiler evidence populate retained kernel-time buckets.
+- No queue item was marked complete and no c>N performance claim was added.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_resident_batch_scheduler_shape_key_graph_bucket_and_completion tests/test_generation_batch_scheduler.py::test_graph_bucket_cache_clear_resets_entries_and_counters tests/test_generation_batch_scheduler.py::test_qwen35_retained_records_decode_graph_bucket_metadata tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q
+# 4 passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```

@@ -883,7 +883,10 @@ roll-up/status view.
 - [ ] **P2 graph replay buckets.** Add decode hipGraph capture/replay buckets
       by `(C, context bucket, active mask, KV dtype, layer plan, top-k/experts,
       replay length)`. Acceptance: bucket hit/miss stats and profiler evidence
-      show replay for common shapes.
+      show replay for common shapes. Progress: graph-bucket stats now serialize
+      `entries`, `hits`, `misses`, miss-reason counts, and kernel-time
+      histogram buckets, and retained accepted-artifact schema requires those
+      observability fields before a c>N row can be promoted.
 - [ ] **P3 remove residual serial loops.** Remove full-attention per-row
       fallback, per-row metadata allocation, per-row LM-head launches, and
       Python per-layer dispatch from steady-state native decode. Acceptance:
@@ -1153,7 +1156,11 @@ endpoint live; retained c>N rows include all gates above.
       knob `HIPENGINE_METRICS` / `--metrics` in `{off, prometheus}`;
       default `off` until coverage is broad.
 - [ ] Per-bucket graph-cache observability
-      (entries, hits, misses, miss reason, kernel-time histogram).
+      (entries, hits, misses, miss reason, kernel-time histogram). Progress:
+      `GraphBucketCache.stats.to_json_dict()` now includes miss-reason counts
+      and kernel-time histogram buckets, retained/serial scripts emit that
+      shape, and accepted-artifact schema validates it; the item remains open
+      until real replay profiler evidence populates kernel-time buckets.
 - [x] Retained-row gates 4 (admission/completion timestamps + p50/p95) and
       6/7/8 (dynamic pool + stable block id + prefix sharing artifact)
       enforced by the bench harness.

@@ -228,7 +228,7 @@ def _run_scheduler_serial_bench(
         scheduler.graph_buckets.get(shape_key)
         stats = scheduler.graph_buckets.stats
         scheduler_metadata["decode_shape_key"] = _shape_key_payload(shape_key)
-        scheduler_metadata["graph_bucket_stats"] = {"entries": stats.entries, "hits": stats.hits, "misses": stats.misses}
+        scheduler_metadata["graph_bucket_stats"] = stats.to_json_dict()
 
         next_token_by_request = {request_id: seed_by_request[request_id].token_id for request_id in request_ids}
         warmup_start = time.perf_counter()

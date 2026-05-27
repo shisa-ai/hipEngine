@@ -73,12 +73,7 @@ def _record_decode_graph_bucket_metadata(scheduler: ResidentBatchScheduler, sche
     scheduler_metadata["decode_shape_key"] = _shape_key_payload(key)
     scheduler.graph_buckets.get_or_create(key, lambda bucket: _shape_key_payload(bucket))
     scheduler.graph_buckets.get(key)
-    stats = scheduler.graph_buckets.stats
-    scheduler_metadata["graph_bucket_stats"] = {
-        "entries": stats.entries,
-        "hits": stats.hits,
-        "misses": stats.misses,
-    }
+    scheduler_metadata["graph_bucket_stats"] = scheduler.graph_buckets.stats.to_json_dict()
 
 
 def _summarize_samples(samples: Sequence[float]) -> dict[str, Any]:
@@ -530,12 +525,7 @@ def _run_native_bench(
         completed = list(scheduler.completed.values())
         scheduler_metadata["active_count_after_completion"] = scheduler.active_count
         scheduler_metadata["slot_to_request_after_completion"] = list(scheduler.active_batch.slot_to_request)
-        graph_stats = scheduler.graph_buckets.stats
-        scheduler_metadata["graph_bucket_stats"] = {
-            "entries": graph_stats.entries,
-            "hits": graph_stats.hits,
-            "misses": graph_stats.misses,
-        }
+        scheduler_metadata["graph_bucket_stats"] = scheduler.graph_buckets.stats.to_json_dict()
         batch_execution = session.batch_execution_metadata(scheduler_owned=True, native_decode=True).to_json_dict()
 
     completed_payload = [done.to_json_dict() for done in completed]
