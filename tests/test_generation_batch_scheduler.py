@@ -2170,6 +2170,91 @@ def test_batch_c_sweep_rejects_retained_profiler_synthesis_mismatch(tmp_path: Pa
     ]
 
 
+def test_batch_c_sweep_fails_retained_row_on_profiler_synthesis_mismatch(tmp_path: Path, monkeypatch) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    (output_dir / "primitive-c2.json").write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "rows": 2,
+                "passed": True,
+                "append_key_mismatch": 0,
+                "append_value_mismatch": 0,
+                "attn_batch_vs_c1_max_abs": 0.0,
+            }
+        )
+    )
+    _write_c_sweep_profiler_summary(output_dir, warmup_decode_tokens=1, max_layers=3)
+    (output_dir / "native-baseline-c1.json").write_text(
+        json.dumps({"schema": 1, "prompt_length": 16, "decode_tokens": 2, "throughput": {"warmed_decode_tok_s": 10.0}})
+    )
+    (output_dir / "serial-bridge-c2.json").write_text(
+        json.dumps(
+            {
+                "schema": 2,
+                "status": "blocked",
+                "workload": {"concurrency": 2, "prompt_tokens_per_request": 16, "gen_tokens_per_request": 2},
+                "measurements": {"decode_tok_s_aggregate": 20.0, "decode_tok_s_per_request": 10.0},
+            }
+        )
+    )
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+            "--warmup-decode-tokens",
+            "1",
+            "--max-layers",
+            "3",
+        ]
+    )
+    monkeypatch.setattr(c_sweep, "_git_state", lambda: {"commit": "test", "dirty": False, "status_short": []})
+
+    class FakeProc:
+        returncode = 0
+        stdout = "ok"
+
+    def fake_run(argv, **kwargs):
+        if len(argv) > 1 and argv[1] == "scripts/qwen35_batch_retained_bench.py":
+            (output_dir / "native-diagnostic-c2.json").write_text(
+                json.dumps({"profiler": {"synthesized_fields": ["trace_kernel_names"]}})
+            )
+        return FakeProc()
+
+    monkeypatch.setattr(c_sweep.subprocess, "run", fake_run)
+
+    summary = run_sweep(args)
+
+    assert summary["status"] == "failed"
+    assert summary["status_counts"] == {"passed": 2, "failed": 1}
+    assert summary["retained_postcondition_counts"] == {"retained_profiler_synthesis": {"failed": 1}}
+    assert summary["failed_postconditions"] == [
+        {
+            "category": "native_diagnostic",
+            "batch_size": 2,
+            "artifact_path": str(output_dir / "native-diagnostic-c2.json"),
+            "kind": "retained_profiler_synthesis",
+            "profiler_precondition_artifact_path": str(output_dir / "profiler-c2.json"),
+            "reason": "retained artifact profiler.synthesized_fields does not match profiler precondition synthesized fields",
+        }
+    ]
+    native = summary["commands"][-1]
+    assert native["status"] == "failed"
+    assert native["postcondition"] == native["postconditions"][0]
+    assert native["output_tail"] == "retained artifact profiler.synthesized_fields does not match profiler precondition synthesized fields"
+
+
 def test_batch_c_sweep_can_plan_int8_blocked_diagnostics(tmp_path: Path) -> None:
     args = build_c_sweep_parser().parse_args(
         [

@@ -1268,6 +1268,7 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
                     entry["postconditions"] = [postcondition]
                     if postcondition["passed"] is not True:
                         entry["status"] = "failed"
+                        entry["postcondition"] = postcondition
                         entry["output_tail"] = str(postcondition["reason"])
         entries.append(entry)
         if entry["status"] == "failed" and args.stop_on_failure:
