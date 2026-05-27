@@ -2004,6 +2004,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_command_argv["commands"][-1]["argv"] = []
     with pytest.raises(ValueError, match=r"commands\[\]\.argv must be a non-empty string list"):
         c_sweep.validate_sweep_summary(tampered_command_argv)
+    tampered_command_text = json.loads(json.dumps(persisted))
+    tampered_command_text["commands"][-1]["command"] = "python3 scripts/qwen35_batch_retained_bench.py --tampered"
+    with pytest.raises(ValueError, match=r"commands\[\]\.command must match"):
+        c_sweep.validate_sweep_summary(tampered_command_text)
     tampered_completed_count = json.loads(json.dumps(persisted))
     tampered_completed_count["completed_command_count"] = 2
     with pytest.raises(ValueError, match=r"completed_command_count must match len\(commands\)"):

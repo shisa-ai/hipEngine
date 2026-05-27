@@ -1325,12 +1325,16 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if not isinstance(entry.get("artifact_path"), str) or not entry.get("artifact_path"):
                 errors.append("commands[].artifact_path must be a non-empty string")
                 break
-            if not isinstance(entry.get("command"), str) or not entry.get("command"):
+            command_text = entry.get("command")
+            if not isinstance(command_text, str) or not command_text:
                 errors.append("commands[].command must be a non-empty string")
                 break
             argv = entry.get("argv")
             if not isinstance(argv, list) or not argv or not all(isinstance(item, str) and item for item in argv):
                 errors.append("commands[].argv must be a non-empty string list")
+                break
+            if command_text != shlex.join(argv):
+                errors.append("commands[].command must match shlex.join(commands[].argv)")
                 break
             if entry.get("status") not in {"planned", "passed", "skipped", "failed"}:
                 errors.append("commands[].status must be planned, passed, skipped, or failed")
