@@ -80,6 +80,8 @@ _REQUIRED_ACCEPTED_SCALING_RATIOS = (
 _COMMAND_BATCH_SIZE_RE = re.compile(r"(?:^|\s)--batch-size(?:=|\s+)(\d+)(?=\s|$)")
 _COMMAND_DECODE_TOKENS_RE = re.compile(r"(?:^|\s)--decode-tokens(?:=|\s+)(\d+)(?=\s|$)")
 _COMMAND_MAX_LAYERS_RE = re.compile(r"(?:^|\s)--max-layers(?:=|\s+)(\d+)(?=\s|$)")
+_COMMAND_MODEL_RE = re.compile(r"(?:^|\s)--model(?:=|\s+)(\S+)(?=\s|$)")
+_COMMAND_FIXTURE_RE = re.compile(r"(?:^|\s)--fixture(?:=|\s+)(\S+)(?=\s|$)")
 _COMMAND_PROMPT_LENGTH_RE = re.compile(r"(?:^|\s)--prompt-length(?:=|\s+)(\d+)(?=\s|$)")
 _COMMAND_JSON_RE = re.compile(r"(?:^|\s)--json(?:=|\s+)(\S+)(?=\s|$)")
 _COMMAND_PROFILER_JSON_RE = re.compile(r"(?:^|\s)--profiler-json(?:=|\s+)(\S+)(?=\s|$)")
@@ -125,6 +127,13 @@ def _validate_command_json_artifact_path(command: str, *, field: str, errors: li
         return
     json_path = json_match.group(1).strip("'\"")
     _validate_benchmark_results_artifact_path(f"commands.{field} --json path", json_path, errors)
+
+
+def _validate_command_model_fixture_flags(command: str, *, field: str, errors: list[str]) -> None:
+    if _COMMAND_MODEL_RE.search(command) is None:
+        errors.append(f"commands.{field} must include --model for accepted artifacts")
+    if _COMMAND_FIXTURE_RE.search(command) is None:
+        errors.append(f"commands.{field} must include --fixture for accepted artifacts")
 
 
 def _validate_profiler_command_artifact_reference(command: str, profiler_artifact_path: str, errors: list[str]) -> None:
@@ -393,6 +402,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         if "qwen35_batch_retained_bench.py" not in benchmark_command:
             errors.append("commands.benchmark must reference scripts/qwen35_batch_retained_bench.py for accepted artifacts")
         else:
+            _validate_command_model_fixture_flags(benchmark_command, field="benchmark", errors=errors)
             _validate_command_workload_shape(benchmark_command, field="benchmark", payload=payload, errors=errors)
             _validate_command_json_artifact_path(benchmark_command, field="benchmark", errors=errors)
     correctness_command = commands.get("correctness_reference")
@@ -415,6 +425,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         if "qwen35_batch_retained_bench.py" not in profiler_command:
             errors.append("commands.profiler must target scripts/qwen35_batch_retained_bench.py for accepted artifacts")
         else:
+            _validate_command_model_fixture_flags(profiler_command, field="profiler", errors=errors)
             _validate_command_workload_shape(profiler_command, field="profiler", payload=payload, errors=errors)
             _validate_command_json_artifact_path(profiler_command, field="profiler", errors=errors)
             if "--require-cached-build" not in profiler_command:
