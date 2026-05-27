@@ -896,8 +896,8 @@ roll-up/status view.
       baseline `status`/`reason`, `workload_concurrency`, and prompt/decode
       labels, and the retained precondition records include the resolved baseline
       status/reason, row/shape labels, aggregate/per-request rates, profiler
-      native-batch kernel durations/shares, and CPU-side bottleneck totals/shares,
-      so schema
+      native-batch kernel durations/shares and category totals/shares, and
+      CPU-side bottleneck totals/shares, so schema
       validation rejects c>N rows compared against missing, failed/unusable,
       reason-bearing, ambiguous, or wrong-shape baselines; the sweep writes `command_count`,
       `completed_command_count`, an `options` block, per-retained-command

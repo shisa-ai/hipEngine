@@ -28,6 +28,14 @@ DEFAULT_MODEL = (
 )
 DEFAULT_FIXTURE = "fixtures/qwen35_paro/parent_512_32_seed1234.json"
 DEFAULT_BATCH_SIZES = (1, 2, 4, 8)
+_PROFILER_KERNEL_DURATION_CATEGORIES = (
+    "attention",
+    "moe",
+    "projection",
+    "sampling",
+    "graph_replay",
+    "other",
+)
 _PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES = (
     "load",
     "prefill",
@@ -378,6 +386,49 @@ def _validate_profiler_kernel_durations(profiler: dict[str, Any], reasons: list[
         reasons.append("kernel_duration_shares does not sum to 1.0")
 
 
+def _validate_profiler_kernel_duration_categories(profiler: dict[str, Any], reasons: list[str]) -> None:
+    total_duration = profiler.get("total_kernel_duration_ns")
+    if not _is_number(total_duration) or float(total_duration) <= 0.0:
+        return
+    duration_categories = profiler.get("kernel_duration_categories_ns")
+    category_shares = profiler.get("kernel_duration_category_shares")
+    if not isinstance(duration_categories, dict) or not duration_categories:
+        reasons.append("kernel_duration_categories_ns is missing or empty")
+        return
+    if not isinstance(category_shares, dict) or not category_shares:
+        reasons.append("kernel_duration_category_shares is missing or empty")
+        return
+    expected_keys = set(_PROFILER_KERNEL_DURATION_CATEGORIES)
+    duration_keys = {key for key in duration_categories if isinstance(key, str)}
+    share_keys = {key for key in category_shares if isinstance(key, str)}
+    if duration_keys != expected_keys:
+        reasons.append("kernel_duration_categories_ns keys do not match required categories")
+    if share_keys != expected_keys:
+        reasons.append("kernel_duration_category_shares keys do not match required categories")
+
+    duration_sum = 0.0
+    share_sum = 0.0
+    for category in _PROFILER_KERNEL_DURATION_CATEGORIES:
+        duration_ns = duration_categories.get(category)
+        duration_share = category_shares.get(category)
+        if not _is_number(duration_ns) or float(duration_ns) < 0.0:
+            reasons.append(f"kernel_duration_categories_ns.{category} is missing or negative numeric")
+            continue
+        duration_sum += float(duration_ns)
+        if not _is_number(duration_share) or float(duration_share) < 0.0:
+            reasons.append(f"kernel_duration_category_shares.{category} is missing or negative numeric")
+            continue
+        share_sum += float(duration_share)
+        expected_share = float(duration_ns) / float(total_duration)
+        if abs(float(duration_share) - expected_share) > 1e-6:
+            reasons.append(f"kernel_duration_category_shares.{category} does not match kernel category duration share")
+    tolerance = max(1.0, float(total_duration) * 1e-6)
+    if abs(duration_sum - float(total_duration)) > tolerance:
+        reasons.append("kernel_duration_categories_ns does not sum to total_kernel_duration_ns")
+    if abs(share_sum - 1.0) > 1e-6:
+        reasons.append("kernel_duration_category_shares does not sum to 1.0")
+
+
 def _validate_profiler_cpu_side_bottlenecks(profiler: dict[str, Any], reasons: list[str]) -> None:
     cpu_total = profiler.get("cpu_side_total_seconds")
     durations = profiler.get("cpu_side_bottlenecks_seconds")
@@ -593,6 +644,7 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                     reasons.append(f"kernel_durations_ns.{kernel_name} is missing or non-positive numeric")
                     break
         _validate_profiler_kernel_durations(profiler, reasons)
+        _validate_profiler_kernel_duration_categories(profiler, reasons)
         _validate_profiler_cpu_side_bottlenecks(profiler, reasons)
     result: dict[str, Any] = {
         "kind": "profiler_summary",
@@ -615,6 +667,14 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                     kernel_name: float(profiler["kernel_duration_shares"][kernel_name])
                     for kernel_name in kernel_durations
                     if isinstance(kernel_name, str) and kernel_name
+                },
+                "kernel_duration_categories_ns": {
+                    category: float(profiler["kernel_duration_categories_ns"][category])
+                    for category in _PROFILER_KERNEL_DURATION_CATEGORIES
+                },
+                "kernel_duration_category_shares": {
+                    category: float(profiler["kernel_duration_category_shares"][category])
+                    for category in _PROFILER_KERNEL_DURATION_CATEGORIES
                 },
                 "cpu_side_total_seconds": float(profiler["cpu_side_total_seconds"]),
                 "cpu_side_bottlenecks_seconds": {
