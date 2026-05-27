@@ -684,6 +684,7 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
     reasons: list[str] = []
     profiler_command: str | None = None
     profiler_output_format: str | None = None
+    profiler_trace_dir: str | None = None
     if not isinstance(profiler, dict):
         reasons.append("profiler summary root is not an object")
     else:
@@ -714,6 +715,9 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
             reasons.append("decode token count label is missing")
         elif expected_decode_tokens is not None and raw_gen_tokens != expected_decode_tokens:
             reasons.append(f"gen_tokens_per_request={raw_gen_tokens!r} does not match decode_tokens={expected_decode_tokens}")
+        raw_trace_dir = profiler.get("trace_dir")
+        if isinstance(raw_trace_dir, str) and raw_trace_dir:
+            profiler_trace_dir = raw_trace_dir
         profiler_command = _profiler_command_label(profiler, payload if isinstance(payload, dict) else None)
         if profiler_command is None:
             reasons.append("profiler command is missing")
@@ -723,6 +727,11 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
             command_output_format = _command_text_arg(profiler_command, "--output-format")
             if command_output_format != "csv":
                 reasons.append(f"profiler command output-format={command_output_format!r} does not match 'csv'")
+            command_trace_dir = _command_text_arg(profiler_command, "-d")
+            if command_trace_dir is None:
+                reasons.append("profiler command is missing -d <trace_dir>")
+            elif profiler_trace_dir is not None and command_trace_dir != profiler_trace_dir:
+                reasons.append(f"profiler command trace-dir={command_trace_dir!r} does not match profiler.trace_dir={profiler_trace_dir}")
             if "scripts/qwen35_batch_retained_bench.py" not in profiler_command:
                 reasons.append("profiler command does not target qwen35_batch_retained_bench.py")
             expected_model = _command_arg_value(command, "--model")
@@ -794,6 +803,8 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
             profiler_output_format = raw_output_format
         if profiler_output_format != "csv":
             reasons.append(f"profiler.output_format={profiler_output_format!r} does not match 'csv'")
+        if profiler_trace_dir is None:
+            reasons.append("profiler.trace_dir is missing")
         if profiler.get("expected_kernels_present") is not True:
             reasons.append("expected_kernels_present is not true")
         expected_kernel_names = profiler.get("expected_kernel_names")
@@ -838,6 +849,7 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                 "profiler_status": str(profiler["status"]),
                 "profiler_command": profiler_command,
                 "profiler_output_format": str(profiler["output_format"]),
+                "profiler_trace_dir": str(profiler["trace_dir"]),
                 "retained_artifact_path": str(command.artifact_path),
                 "c1_baseline_artifact_path": _command_arg_value(command, "--c1-baseline-json"),
                 "serial_bridge_artifact_path": _command_arg_value(command, "--serial-bridge-json"),

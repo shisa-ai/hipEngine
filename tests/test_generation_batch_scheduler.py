@@ -108,6 +108,7 @@ def _write_c_sweep_profiler_summary(
 ) -> None:
     profiler_path = output_dir / f"profiler-c{rows}.json"
     retained_path = output_dir / f"native-diagnostic-c{rows}.json"
+    trace_dir = output_dir / f"profile-c{rows}"
     profiler_path.write_text(
         json.dumps(
             {
@@ -117,8 +118,9 @@ def _write_c_sweep_profiler_summary(
                     "rows": rows,
                     "status": "captured",
                     "output_format": "csv",
+                    "trace_dir": str(trace_dir),
                     "command": (
-                        "rocprofv3 --kernel-trace --output-format csv -- python3 scripts/qwen35_batch_retained_bench.py "
+                        f"rocprofv3 --kernel-trace --output-format csv -d {trace_dir} -- python3 scripts/qwen35_batch_retained_bench.py "
                         f"--model {model} --fixture {fixture} --batch-size {rows} "
                         "--prompt-length 16 --decode-tokens 2 "
                         f"--warmup-decode-tokens {warmup_decode_tokens} --max-layers {max_layers} "
@@ -184,8 +186,9 @@ def test_batch_c_sweep_profiler_precondition_rejects_mismatched_artifact_path(tm
                     "rows": 2,
                     "status": "captured",
                     "output_format": "csv",
+                    "trace_dir": str(output_dir / "profile-c2"),
                     "command": (
-                        "rocprofv3 --kernel-trace --output-format csv -- python3 scripts/qwen35_batch_retained_bench.py "
+                        f"rocprofv3 --kernel-trace --output-format csv -d {output_dir / 'profile-c2'} -- python3 scripts/qwen35_batch_retained_bench.py "
                         "--model /tmp/model --fixture /tmp/fixture.json --batch-size 2 "
                         "--prompt-length 16 --decode-tokens 2 "
                         f"--warmup-decode-tokens 8 --max-layers 40 --json {output_dir / 'native-diagnostic-c2.json'} "
@@ -369,6 +372,78 @@ def test_batch_c_sweep_profiler_precondition_rejects_missing_command(tmp_path: P
         "artifact_path": str(profiler_path),
         "passed": False,
         "reason": "profiler command is missing",
+    }
+
+
+def test_batch_c_sweep_profiler_precondition_rejects_missing_trace_dir(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"].pop("trace_dir")
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler.trace_dir is missing",
+    }
+
+
+def test_batch_c_sweep_profiler_precondition_rejects_missing_command_trace_dir(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"]["command"] = payload["profiler"]["command"].replace(f" -d {output_dir / 'profile-c2'}", "")
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler command is missing -d <trace_dir>",
     }
 
 
@@ -1672,7 +1747,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         "reason": None,
         "profiler_status": "captured",
         "profiler_command": (
-            "rocprofv3 --kernel-trace --output-format csv -- python3 scripts/qwen35_batch_retained_bench.py "
+            f"rocprofv3 --kernel-trace --output-format csv -d {output_dir / 'profile-c2'} -- python3 scripts/qwen35_batch_retained_bench.py "
             "--model /tmp/model --fixture /tmp/fixture.json --batch-size 2 "
             "--prompt-length 16 --decode-tokens 2 --warmup-decode-tokens 1 --max-layers 3 "
             f"--json {output_dir / 'native-diagnostic-c2.json'} --c1-baseline-json {output_dir / 'native-baseline-c1.json'} "
@@ -1680,6 +1755,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
             f"--primitive-correctness-json {output_dir / 'primitive-c2.json'} --profiler-json {output_dir / 'profiler-c2.json'}"
         ),
         "profiler_output_format": "csv",
+        "profiler_trace_dir": str(output_dir / "profile-c2"),
         "retained_artifact_path": str(output_dir / "native-diagnostic-c2.json"),
         "c1_baseline_artifact_path": str(output_dir / "native-baseline-c1.json"),
         "serial_bridge_artifact_path": str(output_dir / "serial-bridge-c2.json"),
