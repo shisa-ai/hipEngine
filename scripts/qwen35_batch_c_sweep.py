@@ -683,6 +683,7 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
     )
     reasons: list[str] = []
     profiler_command: str | None = None
+    profiler_output_format: str | None = None
     if not isinstance(profiler, dict):
         reasons.append("profiler summary root is not an object")
     else:
@@ -788,6 +789,11 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                 reasons.append("profiler command is missing --require-cached-build")
         if profiler.get("status") != "captured":
             reasons.append("status is not 'captured'")
+        raw_output_format = profiler.get("output_format")
+        if isinstance(raw_output_format, str):
+            profiler_output_format = raw_output_format
+        if profiler_output_format != "csv":
+            reasons.append(f"profiler.output_format={profiler_output_format!r} does not match 'csv'")
         if profiler.get("expected_kernels_present") is not True:
             reasons.append("expected_kernels_present is not true")
         expected_kernel_names = profiler.get("expected_kernel_names")
@@ -831,7 +837,7 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
             {
                 "profiler_status": str(profiler["status"]),
                 "profiler_command": profiler_command,
-                "profiler_output_format": _command_text_arg(profiler_command, "--output-format"),
+                "profiler_output_format": str(profiler["output_format"]),
                 "retained_artifact_path": str(command.artifact_path),
                 "c1_baseline_artifact_path": _command_arg_value(command, "--c1-baseline-json"),
                 "serial_bridge_artifact_path": _command_arg_value(command, "--serial-bridge-json"),

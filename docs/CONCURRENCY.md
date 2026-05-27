@@ -895,7 +895,7 @@ roll-up/status view.
       counts, and KV policy, and retained scaling summaries carry c=1/serial
       baseline `status`/`reason`, `workload_concurrency`, and prompt/decode
       labels, and the retained precondition records include the resolved baseline
-      and profiler status/reason/schema-checked command/output-format field, structured retained/c=1/serial/primitive reference artifact paths,
+      and profiler status/reason/c-sweep-and-schema-checked command/output-format field, structured retained/c=1/serial/primitive reference artifact paths,
       structured cached-build flags, structured model/fixture/run-shape labels, aggregate/per-request rates, profiler native-batch-only kernel duration/share keys and schema-checked kernel-row-derived category totals/shares, and
       CPU-side bottleneck totals/shares, so c-sweep preconditions and artifact schema
       validation reject c>N rows compared against missing, failed/unusable,

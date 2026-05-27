@@ -116,6 +116,7 @@ def _write_c_sweep_profiler_summary(
                     "artifact_path": str(profiler_path),
                     "rows": rows,
                     "status": "captured",
+                    "output_format": "csv",
                     "command": (
                         "rocprofv3 --kernel-trace --output-format csv -- python3 scripts/qwen35_batch_retained_bench.py "
                         f"--model {model} --fixture {fixture} --batch-size {rows} "
@@ -182,6 +183,7 @@ def test_batch_c_sweep_profiler_precondition_rejects_mismatched_artifact_path(tm
                     "artifact_path": str(output_dir / "profiler-c4.json"),
                     "rows": 2,
                     "status": "captured",
+                    "output_format": "csv",
                     "command": (
                         "rocprofv3 --kernel-trace --output-format csv -- python3 scripts/qwen35_batch_retained_bench.py "
                         "--model /tmp/model --fixture /tmp/fixture.json --batch-size 2 "
@@ -403,6 +405,42 @@ def test_batch_c_sweep_profiler_precondition_rejects_missing_output_format(tmp_p
         "artifact_path": str(profiler_path),
         "passed": False,
         "reason": "profiler command output-format=None does not match 'csv'",
+    }
+
+
+def test_batch_c_sweep_profiler_precondition_rejects_missing_structured_output_format(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"].pop("output_format")
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler.output_format=None does not match 'csv'",
     }
 
 
