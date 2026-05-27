@@ -2152,6 +2152,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
             "model": "Qwen3.5/3.6-35B-A3B-PARO",
             "quant": "w4_paro",
             "kv_storage_dtype": "bf16",
+            "kv_policy": {"policy_class": "FixedPagedKVPolicy", "storage_dtype": "bf16"},
             "concurrency": 2,
             "prompt_tokens_per_request": 512,
             "prompt_tokens_aggregate": 1024,
@@ -2370,6 +2371,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
         missing_workload_label["workload"].pop(workload_label)
         with pytest.raises(ValueError, match=f"workload.{workload_label}"):
             validate_cn_diagnostic_artifact_payload(missing_workload_label)
+
+    missing_kv_policy = json.loads(json.dumps(accepted))
+    missing_kv_policy["workload"].pop("kv_policy")
+    with pytest.raises(ValueError, match="workload.kv_policy"):
+        validate_cn_diagnostic_artifact_payload(missing_kv_policy)
+
+    mismatched_kv_policy = json.loads(json.dumps(accepted))
+    mismatched_kv_policy["workload"]["kv_policy"]["storage_dtype"] = "int8_per_token_head"
+    with pytest.raises(ValueError, match="kv_policy.storage_dtype must match workload.kv_storage_dtype"):
+        validate_cn_diagnostic_artifact_payload(mismatched_kv_policy)
 
     serial_bridge_execution = json.loads(json.dumps(accepted))
     serial_bridge_execution["execution"]["batch_execution"]["path"] = "scheduler_serial_slot_bridge"

@@ -897,7 +897,8 @@ roll-up/status view.
       validation unless they include fully native batch-execution metadata,
       generated-token equality sequence lists matching `workload.concurrency`,
       `workload.concurrency` matching the primitive correctness row count,
-      full 40-layer workload labels with concrete model/quant/KV storage dtype,
+      full 40-layer workload labels with concrete model/quant/KV storage dtype
+      plus matching KV policy metadata,
       aggregate token labels and per-row prompt lengths matching per-request
       shape times concurrency, full-row admission/completion/per-request
       observability with matching row ids and latency samples for every row in

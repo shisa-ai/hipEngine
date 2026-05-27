@@ -340,6 +340,13 @@ def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[st
     for field in _REQUIRED_ACCEPTED_WORKLOAD_LABELS:
         if not isinstance(workload.get(field), str) or not workload.get(field):
             errors.append(f"workload.{field} must be a non-empty string for accepted artifacts")
+    kv_policy = workload.get("kv_policy")
+    if not isinstance(kv_policy, Mapping) or not kv_policy:
+        errors.append("workload.kv_policy must be a non-empty object for accepted artifacts")
+    else:
+        policy_storage_dtype = kv_policy.get("storage_dtype")
+        if policy_storage_dtype != workload.get("kv_storage_dtype"):
+            errors.append("workload.kv_policy.storage_dtype must match workload.kv_storage_dtype for accepted artifacts")
     concurrency = workload.get("concurrency")
     concurrency_valid = isinstance(concurrency, int) and not isinstance(concurrency, bool) and concurrency > 1
     prompt_tokens = workload.get("prompt_tokens_per_request")
