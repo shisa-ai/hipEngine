@@ -1098,7 +1098,15 @@ matrix has at least one green retained c>N cell on the 512/128 protocol.
       `[C, ...]` state, active masks, and slot ids; remove c1 aliases.
 - [ ] Replace selected-MoE c1 lane assumptions with token-row → routed-lane
       mapping; validate grouped-by-expert metadata for c=2/4/8.
-- [ ] Keep c=1 GEMV dispatch separate from c>N MMQ/GEMM/WMMA candidates.
+- [x] Keep c=1 GEMV dispatch separate from c>N MMQ/GEMM/WMMA candidates.
+      Evidence: `plan_projection_dispatch(...)` pins c=1 to `row_gemv_c1`
+      even when a faster c-aware candidate is supplied, c>N candidates require
+      accepted benchmark evidence with aggregate and per-request speedups over
+      row-GEMV, missing/slow/rejected evidence falls back to row-GEMV, and
+      accepted c>N artifacts must record an evidence-backed non-row-GEMV
+      `execution.batch_execution.projection_dispatch` decision before any
+      projection throughput claim; covered by
+      `pytest -q tests/test_generation_batch_scheduler.py -q`.
 - [ ] Validate GGUF Q4_K/Q5_K/Q6_K/Q8_0 c=2/4/8 with the same gates.
 - [ ] Native row-aware LM-head + sampler: replace the per-row argmax loop
       and prepare for per-row sampling params (C5 finishes this).
