@@ -2453,6 +2453,28 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         "error": None,
     }
 
+    missing_rollup_artifact = json.loads(json.dumps(accepted))
+    missing_rollup_artifact.pop("benchmark_rollup")
+    missing_rollup_file = rollup_root / "benchmarks" / "results" / "accepted-c2-missing-rollup.json"
+    missing_rollup_file.write_text(json.dumps(missing_rollup_artifact), encoding="utf-8")
+    failed_summary_file = rollup_root / "benchmarks" / "results" / "accepted-c2-missing-rollup-check.json"
+    assert validate_cn_diagnostic_artifact_main(
+        [str(missing_rollup_file), "--rollup-evidence", "--summary-json", str(failed_summary_file)]
+    ) == 1
+    failed_summary = json.loads(failed_summary_file.read_text())
+    assert failed_summary["passed"] is False
+    assert failed_summary["mode"] == "rollup_evidence"
+    assert failed_summary["artifact_json"] == str(missing_rollup_file)
+    assert failed_summary["artifact_path"] == "benchmarks/results/accepted-c2.json"
+    assert failed_summary["benchmark_rollup"] is None
+    assert "benchmark_rollup must be an object" in failed_summary["error"]
+
+    bad_summary_file = rollup_root / "tmp" / "accepted-c2-rollup-check.json"
+    assert validate_cn_diagnostic_artifact_main(
+        [str(artifact_file), "--rollup-evidence", "--summary-json", str(bad_summary_file)]
+    ) == 1
+    assert not bad_summary_file.exists()
+
     missing_rollup = json.loads(json.dumps(accepted))
     missing_rollup.pop("benchmark_rollup")
     with pytest.raises(ValueError, match="benchmark_rollup must be an object"):

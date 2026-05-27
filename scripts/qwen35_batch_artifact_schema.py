@@ -1114,6 +1114,11 @@ def _write_validation_summary(path: Path, summary: Mapping[str, Any]) -> None:
     path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
 
 
+def _validate_summary_json_path(path: Path) -> None:
+    if not _is_benchmark_results_path(str(path)):
+        raise ValueError("--summary-json path must be under benchmarks/results for retained validation evidence")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Validate Qwen3.5 c>N diagnostic/retained benchmark artifacts")
     parser.add_argument("artifact_json", type=Path, help="Artifact JSON to validate")
@@ -1131,6 +1136,12 @@ def main(argv: list[str] | None = None) -> int:
 
     mode = "rollup_evidence" if args.rollup_evidence else "artifact_schema"
     payload: Mapping[str, Any] | None = None
+    if args.summary_json is not None:
+        try:
+            _validate_summary_json_path(args.summary_json)
+        except ValueError as exc:
+            print(f"invalid c>N diagnostic artifact: {exc}", file=sys.stderr)
+            return 1
     try:
         payload = _load_payload(args.artifact_json)
         if args.rollup_evidence:
