@@ -1423,6 +1423,8 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         "c1_baseline_artifact_path": str(output_dir / "native-baseline-c1.json"),
         "serial_bridge_artifact_path": str(output_dir / "serial-bridge-c2.json"),
         "primitive_correctness_artifact_path": str(output_dir / "primitive-c2.json"),
+        "profiler_compiler_version_file": None,
+        "profiler_require_cached_build": False,
         "profiler_model": "/tmp/model",
         "profiler_fixture": "/tmp/fixture.json",
         "profiler_warmup_decode_tokens": 1,

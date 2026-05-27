@@ -780,6 +780,8 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                 "c1_baseline_artifact_path": _command_arg_value(command, "--c1-baseline-json"),
                 "serial_bridge_artifact_path": _command_arg_value(command, "--serial-bridge-json"),
                 "primitive_correctness_artifact_path": _command_arg_value(command, "--primitive-correctness-json"),
+                "profiler_compiler_version_file": _command_text_arg(profiler_command, "--compiler-version-file"),
+                "profiler_require_cached_build": _command_text_has_flag(profiler_command, "--require-cached-build"),
                 "profiler_model": _command_text_arg(profiler_command, "--model"),
                 "profiler_fixture": _command_text_arg(profiler_command, "--fixture"),
                 "profiler_warmup_decode_tokens": int(_command_text_arg(profiler_command, "--warmup-decode-tokens")),
