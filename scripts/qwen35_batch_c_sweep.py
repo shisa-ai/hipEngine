@@ -1438,6 +1438,21 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if status != "planned" and not isinstance(entry.get("output_tail"), str):
                 errors.append("commands[].output_tail must be a string for non-planned rows")
                 break
+            postconditions = entry.get("postconditions")
+            failed_postconditions = [
+                postcondition
+                for postcondition in postconditions
+                if isinstance(postcondition, dict) and postcondition.get("passed") is not True
+            ] if isinstance(postconditions, list) else []
+            if status == "passed" and returncode != 0:
+                errors.append("commands[].status passed requires returncode 0")
+                break
+            if status == "passed" and failed_postconditions:
+                errors.append("commands[].status passed cannot include failed postconditions")
+                break
+            if status == "failed" and returncode == 0 and not failed_postconditions:
+                errors.append("commands[].status failed with returncode 0 requires a failed postcondition")
+                break
             if status == "skipped":
                 preconditions = entry.get("preconditions")
                 if not isinstance(preconditions, list):

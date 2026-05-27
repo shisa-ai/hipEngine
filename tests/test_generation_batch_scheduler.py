@@ -1347,6 +1347,11 @@ def test_batch_c_sweep_stops_and_counts_failed_command(tmp_path: Path, monkeypat
     assert failed["category"] == "primitive"
     assert failed["returncode"] == 42
     assert failed["output_tail"] == "primitive failed\n"
+    c_sweep.validate_sweep_summary(summary)
+    tampered_failed_returncode = json.loads(json.dumps(summary))
+    tampered_failed_returncode["commands"][0]["returncode"] = 0
+    with pytest.raises(ValueError, match=r"commands\[\]\.status failed with returncode 0 requires a failed postcondition"):
+        c_sweep.validate_sweep_summary(tampered_failed_returncode)
     assert len(calls) == 1
     assert calls[0][1] == "scripts/qwen35_batch_correctness.py"
 
@@ -2048,6 +2053,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_returncode["commands"][-1]["returncode"] = None
     with pytest.raises(ValueError, match=r"commands\[\]\.returncode must be an int"):
         c_sweep.validate_sweep_summary(tampered_returncode)
+    tampered_passed_returncode = json.loads(json.dumps(persisted))
+    tampered_passed_returncode["commands"][-1]["returncode"] = 1
+    with pytest.raises(ValueError, match=r"commands\[\]\.status passed requires returncode 0"):
+        c_sweep.validate_sweep_summary(tampered_passed_returncode)
     tampered_duration = json.loads(json.dumps(persisted))
     tampered_duration["commands"][-1]["duration_seconds"] = -1.0
     with pytest.raises(ValueError, match=r"commands\[\]\.duration_seconds must be a non-negative number"):
