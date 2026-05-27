@@ -1380,6 +1380,14 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if command_text != shlex.join(argv):
                 errors.append("commands[].command must match shlex.join(commands[].argv)")
                 break
+            try:
+                json_path = argv[argv.index("--json") + 1]
+            except (ValueError, IndexError):
+                errors.append("commands[].argv must include --json <artifact_path>")
+                break
+            if json_path != entry.get("artifact_path"):
+                errors.append("commands[].artifact_path must match commands[].argv --json")
+                break
             if entry.get("status") not in {"planned", "passed", "skipped", "failed"}:
                 errors.append("commands[].status must be planned, passed, skipped, or failed")
                 break

@@ -2020,6 +2020,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_command_text["commands"][-1]["command"] = "python3 scripts/qwen35_batch_retained_bench.py --tampered"
     with pytest.raises(ValueError, match=r"commands\[\]\.command must match"):
         c_sweep.validate_sweep_summary(tampered_command_text)
+    tampered_artifact_path = json.loads(json.dumps(persisted))
+    tampered_artifact_path["commands"][-1]["artifact_path"] = str(output_dir / "other-native-diagnostic-c2.json")
+    with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match commands\[\]\.argv --json"):
+        c_sweep.validate_sweep_summary(tampered_artifact_path)
     tampered_git_dirty = json.loads(json.dumps(persisted))
     tampered_git_dirty["commands"][-1]["git_dirty"] = True
     with pytest.raises(ValueError, match=r"commands\[\]\.git_dirty must match git.dirty"):
