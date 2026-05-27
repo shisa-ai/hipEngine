@@ -465,12 +465,16 @@ def _profiler_reference(path: Path | None) -> dict[str, Any]:
         kernel_duration_category_shares = _synthesized_profiler_kernel_duration_category_shares(result)
         if kernel_duration_category_shares is not None:
             result["kernel_duration_category_shares"] = kernel_duration_category_shares
-    if "output_format" not in result:
-        profiler_command = _profiler_command_label(profiler, payload)
-        if profiler_command is not None:
+    profiler_command = _profiler_command_label(profiler, payload)
+    if profiler_command is not None:
+        if "output_format" not in result:
             output_format = _command_arg_value(profiler_command, "--output-format")
             if output_format is not None:
                 result["output_format"] = output_format
+        if "trace_dir" not in result:
+            trace_dir = _command_arg_value(profiler_command, "-d")
+            if trace_dir is not None:
+                result["trace_dir"] = trace_dir
     result.setdefault("artifact_path", str(path))
     result.setdefault("status", "loaded")
     return result

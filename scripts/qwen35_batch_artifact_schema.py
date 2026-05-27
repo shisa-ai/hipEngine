@@ -103,6 +103,7 @@ _COMMAND_SERIAL_BRIDGE_JSON_RE = re.compile(r"(?:^|\s)--serial-bridge-json(?:=|\
 _COMMAND_PRIMITIVE_CORRECTNESS_JSON_RE = re.compile(r"(?:^|\s)--primitive-correctness-json(?:=|\s+)(\S+)(?=\s|$)")
 _COMMAND_COMPILER_VERSION_FILE_RE = re.compile(r"(?:^|\s)--compiler-version-file(?:=|\s+)(\S+)(?=\s|$)")
 _COMMAND_OUTPUT_FORMAT_RE = re.compile(r"(?:^|\s)--output-format(?:=|\s+)(\S+)(?=\s|$)")
+_COMMAND_TRACE_DIR_RE = re.compile(r"(?:^|\s)-d(?:=|\s+)(\S+)(?=\s|$)")
 _CORRECTNESS_ROWS_RE = re.compile(r"(?:^|\s)--rows(?:=|\s+)(\d+)(?=\s|$)")
 _FULL_COMMIT_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", re.IGNORECASE)
 _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = ("serial", "fallback", "per_row", "per-row")
@@ -857,6 +858,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             )
     profiler_command = commands.get("profiler")
     profiler_command_output_format: str | None = None
+    profiler_command_trace_dir: str | None = None
     if isinstance(profiler_command, str):
         if "rocprofv3" not in profiler_command or "--kernel-trace" not in profiler_command:
             errors.append("commands.profiler must include rocprofv3 --kernel-trace for accepted artifacts")
@@ -865,6 +867,11 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             profiler_command_output_format = output_format_match.group(1).strip("'\"")
         if profiler_command_output_format != "csv":
             errors.append("commands.profiler must include --output-format csv for accepted artifacts")
+        trace_dir_match = _COMMAND_TRACE_DIR_RE.search(profiler_command)
+        if trace_dir_match is not None:
+            profiler_command_trace_dir = trace_dir_match.group(1).strip("'\"")
+        if profiler_command_trace_dir is None:
+            errors.append("commands.profiler must include -d <profiler.trace_dir> for accepted artifacts")
         if "qwen35_batch_retained_bench.py" not in profiler_command:
             errors.append("commands.profiler must target scripts/qwen35_batch_retained_bench.py for accepted artifacts")
         else:
@@ -897,6 +904,11 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         errors.append("profiler.output_format must be 'csv' for accepted artifacts")
     elif profiler_command_output_format is not None and profiler_output_format != profiler_command_output_format:
         errors.append("profiler.output_format must match commands.profiler --output-format for accepted artifacts")
+    profiler_trace_dir = profiler.get("trace_dir")
+    if not isinstance(profiler_trace_dir, str) or not profiler_trace_dir:
+        errors.append("profiler.trace_dir must be a non-empty string for accepted artifacts")
+    elif profiler_command_trace_dir is not None and profiler_trace_dir != profiler_command_trace_dir:
+        errors.append("profiler.trace_dir must match commands.profiler -d for accepted artifacts")
     if profiler.get("expected_kernels_present") is not True:
         errors.append("profiler.expected_kernels_present must be true for accepted artifacts")
     expected_kernel_names = profiler.get("expected_kernel_names")

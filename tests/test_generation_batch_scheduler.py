@@ -3346,7 +3346,7 @@ def test_qwen35_retained_profiler_reference_loads_captured_summary(tmp_path: Pat
             {
                 "profiler": {
                     "status": "captured",
-                    "command": "rocprofv3 --kernel-trace --output-format csv -- python3 scripts/qwen35_batch_retained_bench.py",
+                    "command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile-c2 -- python3 scripts/qwen35_batch_retained_bench.py",
                     "expected_kernels_present": True,
                     "expected_kernel_names": ["qwen35_batch_decode"],
                     "kernel_durations_ns": {"qwen35_batch_decode": 12345.0},
@@ -3377,6 +3377,7 @@ def test_qwen35_retained_profiler_reference_loads_captured_summary(tmp_path: Pat
 
     assert loaded["status"] == "captured"
     assert loaded["output_format"] == "csv"
+    assert loaded["trace_dir"] == "/tmp/hipengine-profile-c2"
     assert loaded["expected_kernels_present"] is True
     assert loaded["total_kernel_duration_ns"] == 12345.0
     assert loaded["kernel_duration_shares"] == {"qwen35_batch_decode": 1.0}
@@ -3542,6 +3543,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             "artifact_path": "benchmarks/results/profiler-c2.json",
             "status": "captured",
             "output_format": "csv",
+            "trace_dir": "/tmp/hipengine-profile",
             "expected_kernels_present": True,
             "expected_kernel_names": ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"],
             "kernel_durations_ns": {
@@ -4641,6 +4643,24 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     )
     with pytest.raises(ValueError, match="profiler.output_format must match commands.profiler --output-format"):
         validate_cn_diagnostic_artifact_payload(profiler_mismatched_output_format)
+
+    profiler_without_trace_dir = json.loads(json.dumps(accepted))
+    profiler_without_trace_dir["commands"]["profiler"] = profiler_without_trace_dir["commands"]["profiler"].replace(
+        " -d /tmp/hipengine-profile",
+        "",
+    )
+    with pytest.raises(ValueError, match="commands.profiler must include -d"):
+        validate_cn_diagnostic_artifact_payload(profiler_without_trace_dir)
+
+    profiler_missing_trace_dir = json.loads(json.dumps(accepted))
+    profiler_missing_trace_dir["profiler"].pop("trace_dir")
+    with pytest.raises(ValueError, match="profiler.trace_dir must be a non-empty string"):
+        validate_cn_diagnostic_artifact_payload(profiler_missing_trace_dir)
+
+    profiler_mismatched_trace_dir = json.loads(json.dumps(accepted))
+    profiler_mismatched_trace_dir["profiler"]["trace_dir"] = "/tmp/other-profile"
+    with pytest.raises(ValueError, match="profiler.trace_dir must match commands.profiler -d"):
+        validate_cn_diagnostic_artifact_payload(profiler_mismatched_trace_dir)
 
     profiler_wrong_target = json.loads(json.dumps(accepted))
     profiler_wrong_target["commands"]["profiler"] = "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_serial_bench.py --batch-size 2"
