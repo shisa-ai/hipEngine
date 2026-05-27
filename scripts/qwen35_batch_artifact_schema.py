@@ -867,7 +867,42 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
                     continue
                 if not _is_positive_number(kernel_durations.get(kernel_name)):
                     errors.append(f"profiler.kernel_durations_ns.{kernel_name} must be positive numeric for accepted artifacts")
+    _validate_projection_dispatch_profiler_evidence(payload, profiler, errors)
     _validate_optional_projection_dispatch_candidates(payload, errors)
+
+
+def _validate_projection_dispatch_profiler_evidence(
+    payload: Mapping[str, Any],
+    profiler: Mapping[str, Any],
+    errors: list[str],
+) -> None:
+    execution = payload.get("execution")
+    batch_execution = execution.get("batch_execution") if isinstance(execution, Mapping) else None
+    projection_dispatch = batch_execution.get("projection_dispatch") if isinstance(batch_execution, Mapping) else None
+    if not isinstance(projection_dispatch, Mapping):
+        return
+    fragments: list[str] = []
+    selected_candidate = projection_dispatch.get("selected_candidate")
+    if isinstance(selected_candidate, str) and selected_candidate and selected_candidate != "row_gemv":
+        fragments.append(selected_candidate.lower())
+    selection = projection_dispatch.get("selection")
+    variant = selection.get("variant") if isinstance(selection, Mapping) else None
+    if isinstance(variant, str) and variant and variant != "row_gemv":
+        fragments.append(variant.lower())
+    if not fragments:
+        return
+    profiler_names: list[str] = []
+    expected_kernel_names = profiler.get("expected_kernel_names")
+    if isinstance(expected_kernel_names, list):
+        profiler_names.extend(name for name in expected_kernel_names if isinstance(name, str) and name)
+    kernel_durations = profiler.get("kernel_durations_ns")
+    if isinstance(kernel_durations, Mapping):
+        profiler_names.extend(name for name in kernel_durations if isinstance(name, str) and name)
+    if not profiler_names:
+        return
+    lowered_names = [name.lower() for name in profiler_names]
+    if not any(fragment in name for fragment in fragments for name in lowered_names):
+        errors.append("profiler kernel names must include selected projection_dispatch candidate or variant for accepted artifacts")
 
 
 def _validate_optional_projection_dispatch_candidates(payload: Mapping[str, Any], errors: list[str]) -> None:

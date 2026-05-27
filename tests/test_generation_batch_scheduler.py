@@ -2465,8 +2465,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             "artifact_path": "benchmarks/results/profiler-c2.json",
             "status": "captured",
             "expected_kernels_present": True,
-            "expected_kernel_names": ["qwen35_batch_decode"],
-            "kernel_durations_ns": {"qwen35_batch_decode": 12345.0},
+            "expected_kernel_names": ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"],
+            "kernel_durations_ns": {
+                "qwen35_batch_decode": 12345.0,
+                "qwen35_batch_decode_wmma_caware": 2345.0,
+            },
         },
         "workload": {
             "model": "Qwen3.5/3.6-35B-A3B-PARO",
@@ -3504,6 +3507,12 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     non_batch_expected_kernel["profiler"]["kernel_durations_ns"] = {"qwen35_decode": 12345.0}
     with pytest.raises(ValueError, match="expected_kernel_names must include at least one native batch kernel"):
         validate_cn_diagnostic_artifact_payload(non_batch_expected_kernel)
+
+    missing_projection_profiler_kernel = json.loads(json.dumps(accepted))
+    missing_projection_profiler_kernel["profiler"]["expected_kernel_names"] = ["qwen35_batch_decode"]
+    missing_projection_profiler_kernel["profiler"]["kernel_durations_ns"] = {"qwen35_batch_decode": 12345.0}
+    with pytest.raises(ValueError, match="profiler kernel names must include selected projection_dispatch candidate or variant"):
+        validate_cn_diagnostic_artifact_payload(missing_projection_profiler_kernel)
 
     fallback_expected_kernel = json.loads(json.dumps(accepted))
     fallback_expected_kernel["profiler"]["expected_kernel_names"] = ["qwen35_batch_decode", "qwen35_per_row_fallback_decode"]
