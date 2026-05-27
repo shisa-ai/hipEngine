@@ -974,6 +974,12 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
             int(gen_tokens),
             errors,
         )
+        _validate_execution_completed_tokens(
+            payload,
+            int(concurrency) if concurrency_valid else None,
+            int(gen_tokens),
+            errors,
+        )
     if isinstance(batch_sequences, list) and isinstance(c1_sequences, list) and batch_sequences != c1_sequences:
         errors.append("correctness.generated_token_equality.batch_sequences must equal c1_sequences for accepted artifacts")
     mismatches = equality.get("mismatches")
@@ -1086,6 +1092,57 @@ def _validate_execution_generated_tokens(
             expected_suffix = batch_sequences[row_index][-len(token_ids) :] if token_ids else []
             if token_ids != expected_suffix:
                 errors.append(f"execution.generated_tokens.{row_key} must match correctness.generated_token_equality.batch_sequences suffix for accepted artifacts")
+
+
+def _validate_execution_completed_tokens(
+    payload: Mapping[str, Any],
+    concurrency: int | None,
+    gen_tokens_per_request: int,
+    errors: list[str],
+) -> None:
+    execution = payload.get("execution")
+    completed = execution.get("completed") if isinstance(execution, Mapping) else None
+    if not isinstance(completed, list):
+        errors.append("execution.completed must be a list for accepted artifacts")
+        return
+    if concurrency is not None and len(completed) != concurrency:
+        errors.append("execution.completed length must match workload.concurrency for accepted artifacts")
+    completed_by_request: dict[int, list[int]] = {}
+    for index, row in enumerate(completed):
+        if not isinstance(row, Mapping):
+            errors.append(f"execution.completed[{index}] must be an object for accepted artifacts")
+            continue
+        request_id = row.get("request_id")
+        if not isinstance(request_id, int) or isinstance(request_id, bool):
+            errors.append(f"execution.completed[{index}].request_id must be an int for accepted artifacts")
+            continue
+        token_ids = _extract_generated_token_ids(row.get("generated_tokens"), f"execution.completed[{index}].generated_tokens", errors)
+        if token_ids is None:
+            continue
+        if len(token_ids) != gen_tokens_per_request:
+            errors.append(f"execution.completed[{index}].generated_tokens length must match workload.gen_tokens_per_request for accepted artifacts")
+        if request_id in completed_by_request:
+            errors.append("execution.completed request_id values must be unique for accepted artifacts")
+        completed_by_request[int(request_id)] = token_ids
+        if row.get("finished") is not True:
+            errors.append(f"execution.completed[{index}].finished must be true for accepted artifacts")
+        if not isinstance(row.get("finish_reason"), str) or not row.get("finish_reason"):
+            errors.append(f"execution.completed[{index}].finish_reason must be a non-empty string for accepted artifacts")
+    if concurrency is None:
+        return
+    generated_tokens = execution.get("generated_tokens") if isinstance(execution, Mapping) else None
+    for request_id in range(concurrency):
+        if request_id not in completed_by_request:
+            errors.append("execution.completed must include every request_id for accepted artifacts")
+            continue
+        if isinstance(generated_tokens, Mapping):
+            token_ids = _extract_generated_token_ids(
+                generated_tokens.get(str(request_id)),
+                f"execution.generated_tokens.{request_id}",
+                errors,
+            )
+            if token_ids is not None and completed_by_request[request_id] != token_ids:
+                errors.append(f"execution.completed request_id {request_id} generated_tokens must match execution.generated_tokens for accepted artifacts")
 
 
 def _extract_generated_token_ids(row: Any, label: str, errors: list[str]) -> list[int] | None:

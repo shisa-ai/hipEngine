@@ -2565,6 +2565,20 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                 "0": [{"token_id": token} for token in range(9, 137)],
                 "1": [{"token_id": token} for token in range(109, 237)],
             },
+            "completed": [
+                {
+                    "request_id": 0,
+                    "generated_tokens": list(range(9, 137)),
+                    "finished": True,
+                    "finish_reason": "length",
+                },
+                {
+                    "request_id": 1,
+                    "generated_tokens": list(range(109, 237)),
+                    "finished": True,
+                    "finish_reason": "length",
+                },
+            ],
         },
         "observability": {
             "admission_timestamps": {"0": 1.0, "1": 1.1},
@@ -2869,6 +2883,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     mismatched_execution_generated_tokens["execution"]["generated_tokens"]["0"][0]["token_id"] = 999
     with pytest.raises(ValueError, match="execution.generated_tokens.0 must match correctness.generated_token_equality.batch_sequences suffix"):
         validate_cn_diagnostic_artifact_payload(mismatched_execution_generated_tokens)
+
+    missing_completed_requests = json.loads(json.dumps(accepted))
+    missing_completed_requests["execution"].pop("completed")
+    with pytest.raises(ValueError, match="execution.completed must be a list"):
+        validate_cn_diagnostic_artifact_payload(missing_completed_requests)
+
+    mismatched_completed_tokens = json.loads(json.dumps(accepted))
+    mismatched_completed_tokens["execution"]["completed"][0]["generated_tokens"][0] = 999
+    with pytest.raises(ValueError, match="execution.completed request_id 0 generated_tokens must match execution.generated_tokens"):
+        validate_cn_diagnostic_artifact_payload(mismatched_completed_tokens)
 
     missing_warmup_decode_tokens = json.loads(json.dumps(accepted))
     missing_warmup_decode_tokens["workload"].pop("warmup_decode_tokens")
