@@ -911,7 +911,8 @@ roll-up/status view.
       c=1 and usable same-shape/same-concurrency serial bridge
       baselines,
       positive decode-step timing samples,
-      non-empty benchmark/correctness-reference commands and a concrete
+      a retained-benchmark command referencing `scripts/qwen35_batch_retained_bench.py`,
+      a non-empty correctness-reference command, and a concrete
       `rocprofv3 --kernel-trace` profiler command,
       concrete non-empty hardware `gpu`/`arch` fields,
       commit/dirty-state software fields, and captured profiler evidence with
