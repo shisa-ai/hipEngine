@@ -1901,12 +1901,15 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
             }
         )
     )
+    summary_path = tmp_path / "summary.json"
     args = build_c_sweep_parser().parse_args(
         [
             "--batch-sizes",
             "2",
             "--output-dir",
             str(output_dir),
+            "--summary-json",
+            str(summary_path),
             "--model",
             "/tmp/model",
             "--fixture",
@@ -1981,6 +1984,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
             "profiler_precondition_synthesized_fields": [],
         }
     ]
+    persisted = json.loads(summary_path.read_text())
+    assert persisted["retained_postcondition_counts"] == summary["retained_postcondition_counts"]
+    assert persisted["failed_postconditions"] == summary["failed_postconditions"]
+    assert persisted["commands"][-1]["postconditions"] == native["postconditions"]
     preconditions_by_kind = {item["kind"]: item for item in native["preconditions"]}
     assert preconditions_by_kind["c1_baseline"] == {
         "kind": "c1_baseline",
