@@ -75,57 +75,61 @@ RadixCache eviction policies under variable-span KV, multi-tier KV storage
 
 ## Current answer
 
-**hipEngine does not yet support true vLLM-style c>N serving.**
+**hipEngine now has most host-side continuous-batching scaffolding in code, but
+it still must not claim true retained c>N throughput.** The remaining hard gate
+is Qwen/PARO native c>N generated-token equality vs independent c=1, followed by
+profiler/timing evidence and benchmark rollups.
 
-The public Qwen/PARO generator has a first prompt-list c>N path: it admits all
-prompt rows into `ResidentBatchScheduler`, uses native compact packed prefill
-for BF16 KV prompt lists, and routes output by request id. Production decode
-after the seed token still uses `step_batch_serial` — batch-shaped slots/KV
-metadata but rows execute serially through the c=1 layer path.
+What is in place:
 
-The OpenAI server coalesces compatible non-streaming HTTP generations over a
-short configurable batch window (`--generation-batch-window-ms`, default 5 ms)
-before one prompt-list `LLM.generate()` call. Streaming remains
-one-request-at-a-time and `n>1` is still rejected. The coalescer is a
-submission-time join, not a continuous-batching admission.
+- The server and `LLM.generate()` paths have prompt-list batching, `n>1`
+  lowering, streaming through per-request queues, request ids, per-row seeds,
+  and Prometheus metrics hooks.
+- `SubmitPollTextGenerator` and `ResidentEngineLoop` provide a persistent
+  `submit`/`poll`/`cancel` driver around `ResidentBatchScheduler` for tests and
+  host integration, with `RECLAIM → ADMIT → PREFILL/DECODE` tick policy,
+  per-request completion metadata, graph-bucket bookkeeping, and unified cancel,
+  disconnect, EOS, max-token, and timeout reclaim.
+- The KV/prefix scaffolding exists: `ChunkedKVPool` grows/shrinks in chunks,
+  keeps append-only block ids, reports current admission capacity, supports
+  shared-prefix refcounts and copy-on-write forks, and `RadixCache` indexes
+  block-aligned token prefixes.
+- Per-row sampling parameters and per-row EOS/reclaim are represented in the
+  scheduler; artifact/schema gates prevent serial bridges, fallback execution,
+  non-native sampler metadata, or incomplete timing/profiler payloads from being
+  promoted as accepted retained c>N rows.
 
-An experimental native decode path (`step_batch_native`) is gated behind
-`HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1`. With the default
-`HIPENGINE_QWEN35_BATCH_SAMPLE_MODE=serial_lm_head` workaround, the earlier
-batched-LM-head drift is fixed for reduced 512/32 diagnostics: L1/L3/L4 and
-L40 c=2 512/32 pass generated-token equality vs independent c=1. The full
-40-layer c=2 512/128 gate still fails on current tip
-(`/tmp/hipengine-retained/guarded-L40-c2-512-128-current.json`, row 0 idx 87,
-`batch=271` vs `c1=1165`) and `throughput_claim_eligible=false`. A separate
-`eq-L8-selectedmoe.json` failure points at selected-MoE/native-row mapping.
-The path is not a throughput claim. The hidden-state bisection harness now
-reproduces an L8 c=2 512/16 hidden mismatch at generated index 1 and a token
-mismatch at index 13 (`/tmp/hipengine-hidden-bisect-L8-512-16.json`). Decode
-batch rows now use grouped MoE metadata instead of selected-MoE c1 wrappers, but
-`/tmp/hipengine-hidden-bisect-L1-8-512-1-grouped.json` still first diverges at
-layer-limit 6, so the active root-cause target has narrowed to the layer-6
-linear/full-prefix state or grouped metadata boundary rather than the old
-selected-MoE wrapper alone.
+What is still not green:
 
-The elastic KV pool, prefix sharing, per-row sampler, streaming routing,
-cancellation reclaim path, and `/metrics` observability are **not** in code
-yet. The phase ladder below sequences them.
+- The retained Qwen/PARO native c>N decode path is experimental. BF16 primitive
+  c=2/4/8 KV append/full-attention correctness passes, but generated-token
+  equality is still missing for the full c=2 512/128 gate and therefore for
+  c=4/c=8.
+- Hidden-state bisection narrowed the active mismatch to the linear-attention +
+  grouped-MoE boundary (`/tmp/hipengine-hidden-bisect-L1-8-512-1-grouped.json`,
+  first mismatch at layer-limit 6). C2.3/C2.4/C2.5 remain the correctness
+  priority.
+- Long-context c>N still uses a per-row split-K fallback label; no long-context
+  native c>N claim is allowed until the split-K reducer is row-aware.
+- INT8 c>N parity, runtime projection dispatch evidence, native LM-head/sampler,
+  graph replay buckets, residual-serial-loop removal, and retained scoreboard
+  updates remain open performance/coverage work.
 
 ## Readiness matrix
 
-| Layer | Current status | Evidence / code | Blocks true c>N |
+| Layer | Current status | Evidence / code | Blocks retained c>N |
 | --- | --- | --- | --- |
-| OpenAI server | Compatible non-streaming HTTP generations are coalesced into one prompt-list `LLM.generate()` call behind a grouped safety lock; `n>1` rejected; streaming is one request at a time. | `hipengine/server/api.py:_GenerationBatcher`, `create_app`, `_validate_generation_request`. | Replace coalescer with engine-loop `submit/poll/cancel`; route streaming through the loop; remove the coarse lock. |
-| Public `LLM.generate()` | Prompt lists with `len(prompts)>1` use `ResidentBatchScheduler`, BF16 packed native prefill, request-id output routing, and the serial slot bridge for decode. Streaming is one prompt only. | `hipengine/generation/qwen35_paro.py:Qwen35ParoOneTokenGenerator._generate_batch`. | Lower `LLM.generate()` to `submit+poll` over the engine loop; native c-aware decode. |
-| Engine loop / scheduler | `ResidentBatchScheduler` owns pending/admitted queues, slots, active masks, compact prefill slabs, decode work, graph bucket keys, and completion routing within a single `_generate_batch` call. The loop does not persist beyond one call. | `hipengine/generation/batch_scheduler.py`; `_generate_batch`. | Promote to a long-lived background driver with submit/poll/cancel, work-class ticks, and commit-point semantics. |
-| Prefill | Single-request native prefill and prompt-list BF16 packed native prefill are live. INT8 packed prefill is not wired. Chunked prefill is not interleaved with decode. | `Qwen35ParoResidentSession.prefill_native`, `prefill_native_packed`, `ResidentBatchScheduler.next_compact_prefill_slabs`. | INT8 packed prefill; chunked prefill interleaved with decode under a policy. |
-| Decode runtime | Production c>N prompt-list decode uses `step_batch_serial`. Experimental `step_batch_native` is gated by `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1`; current default `serial_lm_head` passes L40 c=2 512/32 as a reduced diagnostic but fails full c=2 512/128 generated-token equality. Hidden bisection reproduces the reduced L8 failure at generated index 1. | `step_batch_serial`, `step_batch_native`, `_sample_batch_from_hidden`, `batch_execution_metadata`; `/tmp/hipengine-retained/guarded-L40-{512-32,c2-512-128}-current.json`; `/tmp/hipengine-hidden-bisect-L8-512-16.json`. | selected-MoE/native-row fix; c=2/4/8 512/128 equality; row-aware split-K full-attention; native sampler. |
-| Sampler | Greedy `argmax_f32` per row. Sampling parameters apply globally to the call, not per row. The coalescer requires identical sampling keys per batch. Experimental native decode currently defaults to `serial_lm_head`; `batched_lm_head` is diagnostic only. | `_sample_from_hidden`, `_sample_batch_from_hidden`. | Per-row temperature/top-k/top-p/rep-penalty/seed/stop tokens; per-row EOS handling; replace the per-row LM-head loop after equality is proven. |
-| Attention / KV primitives | BF16 batched paged KV append and batched full-attention context decode pass c=1/2/4/8 primitive correctness. Split-K reducer is c1-only. INT8 batched paths exist as wrappers but lack the end-to-end gate. | `scripts/qwen35_batch_correctness.py`; `hipengine/kernels/hip_gfx1100/attention/`. | Row-aware split-K reducer; INT8 batched end-to-end gate. |
-| MoE / quant kernels | Many wrappers accept `rows` or routed-lane counts; native decode batch rows now use grouped compact MoE scratch instead of selected-MoE c1 wrappers for `tokens>1`, but reduced L8 hidden bisection still diverges at layer-limit 6 and token idx 13. | `hipengine/kernels/hip_gfx1100/quant/*`, `hipengine/runtime/qwen35_paro.py`; `/tmp/hipengine-hidden-bisect-L1-8-512-1-grouped.json`. | Token-row/grouped metadata root cause; c=2/4/8 equality; c-aware dispatch thresholds. |
-| KV pool | Fixed-size pool sized at startup from `hipMemGetInfo()` after weights resident (v0.2.2). Pool does not grow or shrink during a session. Block ids reuse pointers across reallocation. | `hipengine/runtime/qwen35_paro_runner.py` startup path. | Append-only block id contract; chunked grow up to high water; idle shrink to low water; admission against current capacity. |
-| Prefix / radix cache | Not implemented in code today. `grep RadixCache hipengine` returns nothing. | — | Refcounted pages; RadixCache trie; copy-on-write fork; `n>1` lowering. Flat prefix-LRU is intentionally not a peer implementation. |
-| Observability | Server emits standard FastAPI logs. No request-level timings, no pool counters, no `/metrics`. | — | Per-request timings; per-pool counters; per-bucket histograms; `/metrics` endpoint. |
+| OpenAI server | Non-streaming compatible requests still coalesce through `_GenerationBatcher`; streaming and non-streaming now share request accounting, `n>1` lowers to multiple choices with request ids, and `/metrics` is available behind `--metrics prometheus` / `HIPENGINE_METRICS=prometheus`. | `hipengine/server/api.py:_GenerationBatcher`, `_choice_request_id`, `_row_seeds_for_request`, `_render_prometheus_metrics`; `pytest -q tests/test_server_api.py -q`. | Coalescer can be demoted once native c>N equality/perf is green; no retained throughput claim comes from HTTP coalescing alone. |
+| Public `LLM.generate()` / loop adapter | The public generator can be wrapped by `SubmitPollTextGenerator`, preserving outputs while exercising submit/poll semantics in tests. | `hipengine/generation/engine_loop.py:SubmitPollTextGenerator`; `pytest -q tests/test_generation_batch_scheduler.py -q`. | Native Qwen/PARO c>N decode equality and retained benchmark evidence. |
+| Engine loop / scheduler | `ResidentEngineLoop` and `ResidentBatchScheduler` own pending/admitted queues, slots, active masks, compact prefill slabs, decode work, graph bucket keys, completion routing, and unified reclaim. | `hipengine/generation/engine_loop.py:ResidentEngineLoop`; `hipengine/generation/batch_scheduler.py`; scheduler tests. | Runtime equality/perf gates, not host-loop shape. |
+| Prefill | BF16 compact/native prompt-list prefill is live; scheduler tests cover chunk/policy plumbing. INT8 retained c>N prefill remains blocked. | `prefill_native_packed`, `CompactPromptSlab`, `scripts/qwen35_batch_packed_prefill_correctness.py`; `tests/test_generation_batch_scheduler.py`. | INT8 c>N parity and retained end-to-end equality. |
+| Decode runtime | Safe/diagnostic paths remain non-claiming: serial bridge rows and experimental native rows are blocked/rejected unless generated-token equality and native execution metadata pass. Full c=2 512/128 equality is still open. | `step_batch_serial`, `step_batch_native`, `_sample_batch_from_hidden`, `batch_execution_metadata`; retained/hidden-bisect artifacts cited in C2. | C2.3 selected-MoE/linear-attention mismatch; C2.4 c=2 equality; C2.5 c=4/c=8 equality. |
+| Sampler | `PerRowSamplingParams` and sampler blocks exist; native `batched_lm_head` dispatch is evidence-gated and falls back before C2 equality. | `hipengine/generation/batch_scheduler.py:PerRowSamplingParams`; `hipengine.dispatch.sampling`; sampler dispatch tests. | C3.6 native row-aware LM-head/sampler after C2 equality is green. |
+| Attention / KV primitives | BF16 batched paged KV append and batched full-attention context decode pass c=1/2/4/8 primitive correctness. Split-K long-context decode is labeled per-row fallback. | `scripts/qwen35_batch_correctness.py`; `/tmp/hipengine-multiloop-c{2,4,8}-correctness.json`; attention dispatch tests. | Row-aware split-K reducer; INT8 end-to-end gate. |
+| MoE / quant kernels | Grouped compact MoE scratch replaced selected-MoE c1 wrappers for `tokens>1`, but reduced hidden bisection still diverges near layer-limit 6. | `hipengine/runtime/qwen35_paro.py`; `/tmp/hipengine-hidden-bisect-L1-8-512-1-grouped.json`. | Token-row/grouped metadata root cause; c=2/4/8 equality; c-aware projection/MoE evidence. |
+| KV pool | Chunked grow/shrink, append-only block ids, current admission capacity, prefix refcounts, and copy-on-write forks are implemented in host tests. | `hipengine/kvcache/pool.py:ChunkedKVPool`, `admit_with_shared_prefix`, `fork_copy_on_write`; `pytest -q tests/test_kvcache_policy.py -q`. | Device/runtime retained equality and perf, not the host allocator contract. |
+| Prefix / radix cache | `RadixCache` indexes block-aligned token prefixes; server exposes prefix-cache mode and `n>1` lowering uses distinct row seeds/request ids. | `hipengine/kvcache/radix.py:RadixCache`; `hipengine/server/api.py`; kvcache/server tests. | Broader retained coverage and future DMS/KVTC policy work; no flat prefix-LRU peer path. |
+| Observability | Completion artifacts and `/metrics` include request/pool counters; graph-bucket stats exist for scheduler observability. | `CompletedRequest.to_json_dict`, `KVPoolStats.to_json_dict`, `GraphBucketCache`, `_render_prometheus_metrics`; server/scheduler tests. | Accepted retained rows still need captured profiler summaries and benchmark rollup updates. |
 
 DMS / compact KV serving status lives in [`KVCACHE.md`](KVCACHE.md) and is not
 mirrored in this matrix.
