@@ -108,7 +108,7 @@ def _extract_decode_rates(payload: Mapping[str, Any]) -> tuple[float | None, flo
     return aggregate, per_request
 
 
-def _scaling_reference(path: Path | None) -> dict[str, Any]:
+def _scaling_reference(path: Path | None, *, default_workload_concurrency: int | None = None) -> dict[str, Any]:
     if path is None:
         return {
             "artifact_path": None,
@@ -167,6 +167,8 @@ def _scaling_reference(path: Path | None) -> dict[str, Any]:
         gen_tokens = payload.get("decode_tokens")
         if isinstance(gen_tokens, int) and not isinstance(gen_tokens, bool):
             gen_tokens_per_request = gen_tokens
+    if workload_concurrency is None and default_workload_concurrency is not None:
+        workload_concurrency = int(default_workload_concurrency)
     status = str(payload.get("status") or "loaded")
     reason = None if aggregate is not None and per_request is not None else "decode throughput fields missing"
     return {
@@ -246,7 +248,7 @@ def _build_scaling_comparison(
     native_decode_tok_s_aggregate: float | None,
     native_decode_tok_s_per_request: float | None,
 ) -> dict[str, Any]:
-    c1 = _scaling_reference(getattr(args, "c1_baseline_json", None))
+    c1 = _scaling_reference(getattr(args, "c1_baseline_json", None), default_workload_concurrency=1)
     serial = _scaling_reference(getattr(args, "serial_bridge_json", None))
     ratios = {
         "aggregate_vs_c1": _safe_ratio(native_decode_tok_s_aggregate, c1.get("decode_tok_s_aggregate")),

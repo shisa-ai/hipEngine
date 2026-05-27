@@ -859,8 +859,9 @@ roll-up/status view.
       native diagnostics if the matching primitive, c=1 baseline, or serial-
       bridge artifact is missing or failed; retained scaling summaries carry c=1
       and serial-bridge baseline `status`/`reason`, `workload_concurrency`, and
-      prompt/decode token counts so schema validation rejects c>N rows compared
-      against missing, failed, ambiguous, or wrong-shape baselines; the sweep writes `command_count`,
+      prompt/decode token counts (including c=1 `prompt_length`/`decode_tokens`
+      artifacts) so schema validation rejects c>N rows compared against missing,
+      failed, ambiguous, or wrong-shape baselines; the sweep writes `command_count`,
       `completed_command_count`, an `options` block, per-retained-command
       `preconditions`, `status_counts`, `category_status_counts`,
       `retained_precondition_counts`, and `skipped_preconditions` summary rollups

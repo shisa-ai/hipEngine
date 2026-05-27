@@ -1800,7 +1800,6 @@ def test_qwen35_retained_scaling_comparison_uses_c1_and_serial_artifacts(tmp_pat
                 "run_tag": "c1",
                 "prompt_length": 512,
                 "decode_tokens": 128,
-                "workload": {"concurrency": 1},
                 "throughput": {"warmed_decode_tok_s": 5.0},
             }
         )
