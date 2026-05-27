@@ -105,6 +105,14 @@ _COMMAND_COMPILER_VERSION_FILE_RE = re.compile(r"(?:^|\s)--compiler-version-file
 _CORRECTNESS_ROWS_RE = re.compile(r"(?:^|\s)--rows(?:=|\s+)(\d+)(?=\s|$)")
 _FULL_COMMIT_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", re.IGNORECASE)
 _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = ("serial", "fallback", "per_row", "per-row")
+_REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES = (
+    "attention",
+    "moe",
+    "projection",
+    "sampling",
+    "graph_replay",
+    "other",
+)
 
 
 def _mapping_at(payload: Mapping[str, Any], key: str, errors: list[str]) -> Mapping[str, Any]:
@@ -863,6 +871,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
                 errors.append(f"profiler.kernel_durations_ns.{kernel_name} must be positive numeric for accepted artifacts")
         _validate_profiler_kernel_duration_total(profiler, kernel_durations, errors)
         _validate_profiler_kernel_duration_shares(profiler, kernel_durations, errors)
+        _validate_profiler_kernel_duration_categories(profiler, errors)
         if isinstance(expected_kernel_names, list):
             for kernel_name in expected_kernel_names:
                 if not isinstance(kernel_name, str) or not kernel_name:
@@ -936,6 +945,53 @@ def _validate_profiler_kernel_duration_shares(
                 )
     if share_sum > 0.0 and abs(share_sum - 1.0) > 1e-6:
         errors.append("profiler.kernel_duration_shares must sum to 1.0 for accepted artifacts")
+
+
+def _validate_profiler_kernel_duration_categories(profiler: Mapping[str, Any], errors: list[str]) -> None:
+    duration_categories = profiler.get("kernel_duration_categories_ns")
+    category_shares = profiler.get("kernel_duration_category_shares")
+    if not isinstance(duration_categories, Mapping) or not duration_categories:
+        errors.append("profiler.kernel_duration_categories_ns must be a non-empty object for accepted artifacts")
+        return
+    if not isinstance(category_shares, Mapping) or not category_shares:
+        errors.append("profiler.kernel_duration_category_shares must be a non-empty object for accepted artifacts")
+        return
+    expected_keys = set(_REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES)
+    duration_keys = {key for key in duration_categories if isinstance(key, str)}
+    share_keys = {key for key in category_shares if isinstance(key, str)}
+    if duration_keys != expected_keys:
+        errors.append("profiler.kernel_duration_categories_ns keys must match required kernel duration categories")
+    if share_keys != expected_keys:
+        errors.append("profiler.kernel_duration_category_shares keys must match required kernel duration categories")
+
+    total_duration = profiler.get("total_kernel_duration_ns")
+    duration_sum = 0.0
+    share_sum = 0.0
+    for category in _REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES:
+        duration_ns = duration_categories.get(category)
+        duration_share = category_shares.get(category)
+        if not _is_nonnegative_number(duration_ns):
+            errors.append(f"profiler.kernel_duration_categories_ns.{category} must be non-negative numeric for accepted artifacts")
+            continue
+        duration_sum += float(duration_ns)
+        if not _is_nonnegative_number(duration_share):
+            errors.append(f"profiler.kernel_duration_category_shares.{category} must be non-negative numeric for accepted artifacts")
+            continue
+        share_sum += float(duration_share)
+        if _is_positive_number(total_duration):
+            expected_share = float(duration_ns) / float(total_duration)
+            tolerance = max(1e-6, expected_share * 1e-6)
+            if abs(float(duration_share) - expected_share) > tolerance:
+                errors.append(
+                    f"profiler.kernel_duration_category_shares.{category} must match "
+                    "profiler.kernel_duration_categories_ns/kernel total for accepted artifacts"
+                )
+    if _is_positive_number(total_duration):
+        tolerance = max(1.0, float(total_duration) * 1e-6)
+        if abs(duration_sum - float(total_duration)) > tolerance:
+            errors.append("profiler.kernel_duration_categories_ns must sum to profiler.total_kernel_duration_ns for accepted artifacts")
+        if abs(share_sum - 1.0) > 1e-6:
+            errors.append("profiler.kernel_duration_category_shares must sum to 1.0 for accepted artifacts")
 
 
 def _validate_projection_dispatch_profiler_evidence(

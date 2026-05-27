@@ -2342,6 +2342,22 @@ def test_qwen35_retained_profiler_reference_loads_captured_summary(tmp_path: Pat
     assert loaded["expected_kernels_present"] is True
     assert loaded["total_kernel_duration_ns"] == 12345.0
     assert loaded["kernel_duration_shares"] == {"qwen35_batch_decode": 1.0}
+    assert loaded["kernel_duration_categories_ns"] == {
+        "attention": 0.0,
+        "moe": 0.0,
+        "projection": 0.0,
+        "sampling": 0.0,
+        "graph_replay": 0.0,
+        "other": 12345.0,
+    }
+    assert loaded["kernel_duration_category_shares"] == {
+        "attention": 0.0,
+        "moe": 0.0,
+        "projection": 0.0,
+        "sampling": 0.0,
+        "graph_replay": 0.0,
+        "other": 1.0,
+    }
     assert loaded["artifact_path"] == str(profiler_path)
     assert command is not None
     assert command.startswith("rocprofv3 --kernel-trace")
@@ -2476,6 +2492,22 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             "kernel_duration_shares": {
                 "qwen35_batch_decode": 12345.0 / 14690.0,
                 "qwen35_batch_decode_wmma_caware": 2345.0 / 14690.0,
+            },
+            "kernel_duration_categories_ns": {
+                "attention": 0.0,
+                "moe": 0.0,
+                "projection": 2345.0,
+                "sampling": 0.0,
+                "graph_replay": 0.0,
+                "other": 12345.0,
+            },
+            "kernel_duration_category_shares": {
+                "attention": 0.0,
+                "moe": 0.0,
+                "projection": 2345.0 / 14690.0,
+                "sampling": 0.0,
+                "graph_replay": 0.0,
+                "other": 12345.0 / 14690.0,
             },
         },
         "workload": {
@@ -3632,6 +3664,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     mismatched_profiler_share["profiler"]["kernel_duration_shares"]["qwen35_batch_decode"] = 0.25
     with pytest.raises(ValueError, match="qwen35_batch_decode must match profiler.kernel_durations_ns/kernel total"):
         validate_cn_diagnostic_artifact_payload(mismatched_profiler_share)
+
+    missing_duration_categories = json.loads(json.dumps(accepted))
+    missing_duration_categories["profiler"].pop("kernel_duration_categories_ns")
+    with pytest.raises(ValueError, match="kernel_duration_categories_ns must be a non-empty object"):
+        validate_cn_diagnostic_artifact_payload(missing_duration_categories)
+
+    mismatched_duration_category = json.loads(json.dumps(accepted))
+    mismatched_duration_category["profiler"]["kernel_duration_categories_ns"]["projection"] = 1.0
+    with pytest.raises(ValueError, match="kernel_duration_category_shares.projection must match"):
+        validate_cn_diagnostic_artifact_payload(mismatched_duration_category)
 
     fallback_kernel_duration = json.loads(json.dumps(accepted))
     fallback_kernel_duration["profiler"]["kernel_durations_ns"]["qwen35_per_row_fallback_decode"] = 12345.0

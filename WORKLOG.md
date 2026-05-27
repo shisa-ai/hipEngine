@@ -31437,3 +31437,29 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY profiler category summary gate
+
+Materially advanced the open profiler-summary checklist without closing any queue item:
+
+- Accepted/performance-claim c>N artifact schema now requires `profiler.kernel_duration_categories_ns` and `profiler.kernel_duration_category_shares` for attention/MoE/projection/sampling/graph/other buckets.
+- Category durations must sum to `profiler.total_kernel_duration_ns`, category shares must match category duration divided by total, and category shares must sum to 1.0.
+- `scripts/qwen35_batch_retained_bench.py` now synthesizes those category summaries from positive finite per-kernel duration entries when an attached profiler summary omits them.
+- Extended retained profiler reference and accepted-artifact schema tests for synthesized categories, missing categories, and mismatched category shares.
+- Updated `docs/CONCURRENCY.md` P5/profiler-summary progress notes. CPU-side bottleneck summary remains open. No retained c>N performance claim was added; C2.4/C2.5 generated-token equality artifacts are still missing.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_retained_profiler_reference_loads_captured_summary tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q
+# passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```

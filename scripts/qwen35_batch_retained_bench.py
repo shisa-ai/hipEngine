@@ -35,6 +35,14 @@ from scripts.qwen35_kv_policy_args import add_kv_policy_args, kv_policy_json, re
 
 DEFAULT_MODEL = "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16"
 DEFAULT_FIXTURE = "fixtures/qwen35_paro/parent_512_32_seed1234.json"
+_PROFILER_KERNEL_DURATION_CATEGORIES = (
+    "attention",
+    "moe",
+    "projection",
+    "sampling",
+    "graph_replay",
+    "other",
+)
 
 
 def _load_prompt_slices(path: Path, *, prompt_length: int, batch_size: int) -> list[list[int]]:
@@ -300,6 +308,47 @@ def _synthesized_profiler_kernel_duration_shares(profiler: Mapping[str, Any]) ->
     return shares or None
 
 
+def _profiler_kernel_duration_category(kernel_name: str) -> str:
+    lowered = kernel_name.lower()
+    if "graph" in lowered or "replay" in lowered:
+        return "graph_replay"
+    if "moe" in lowered or "expert" in lowered or "router" in lowered:
+        return "moe"
+    if "attn" in lowered or "attention" in lowered or "paged" in lowered or "kv" in lowered:
+        return "attention"
+    if "lm_head" in lowered or "sample" in lowered or "argmax" in lowered:
+        return "sampling"
+    projection_fragments = ("projection", "linear", "matmul", "gemm", "gemv", "mmq", "wmma")
+    if any(fragment in lowered for fragment in projection_fragments):
+        return "projection"
+    return "other"
+
+
+def _synthesized_profiler_kernel_duration_categories(profiler: Mapping[str, Any]) -> dict[str, float] | None:
+    kernel_durations = profiler.get("kernel_durations_ns")
+    if not isinstance(kernel_durations, Mapping):
+        return None
+    categories = dict.fromkeys(_PROFILER_KERNEL_DURATION_CATEGORIES, 0.0)
+    saw_duration = False
+    for kernel_name, duration_ns in kernel_durations.items():
+        if not isinstance(kernel_name, str) or not kernel_name or not _is_finite_positive_number(duration_ns):
+            continue
+        categories[_profiler_kernel_duration_category(kernel_name)] += float(duration_ns)
+        saw_duration = True
+    return categories if saw_duration else None
+
+
+def _synthesized_profiler_kernel_duration_category_shares(profiler: Mapping[str, Any]) -> dict[str, float] | None:
+    duration_categories = profiler.get("kernel_duration_categories_ns")
+    total_duration = profiler.get("total_kernel_duration_ns")
+    if not isinstance(duration_categories, Mapping) or not _is_finite_positive_number(total_duration):
+        return None
+    return {
+        category: float(duration_categories.get(category, 0.0)) / float(total_duration)
+        for category in _PROFILER_KERNEL_DURATION_CATEGORIES
+    }
+
+
 def _profiler_reference(path: Path | None) -> dict[str, Any]:
     if path is None:
         return {"status": "not_captured", "notes": "E2E retained c>N row; profiler trace not captured in this iteration."}
@@ -324,6 +373,14 @@ def _profiler_reference(path: Path | None) -> dict[str, Any]:
         kernel_duration_shares = _synthesized_profiler_kernel_duration_shares(result)
         if kernel_duration_shares is not None:
             result["kernel_duration_shares"] = kernel_duration_shares
+    if "kernel_duration_categories_ns" not in result:
+        kernel_duration_categories_ns = _synthesized_profiler_kernel_duration_categories(result)
+        if kernel_duration_categories_ns is not None:
+            result["kernel_duration_categories_ns"] = kernel_duration_categories_ns
+    if "kernel_duration_category_shares" not in result:
+        kernel_duration_category_shares = _synthesized_profiler_kernel_duration_category_shares(result)
+        if kernel_duration_category_shares is not None:
+            result["kernel_duration_category_shares"] = kernel_duration_category_shares
     result.setdefault("artifact_path", str(path))
     result.setdefault("status", "loaded")
     return result
