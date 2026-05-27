@@ -1087,6 +1087,33 @@ def _load_payload(path: Path) -> Mapping[str, Any]:
     return payload
 
 
+def _validation_summary(
+    *,
+    artifact_json: Path,
+    mode: str,
+    passed: bool,
+    payload: Mapping[str, Any] | None = None,
+    error: str | None = None,
+) -> dict[str, Any]:
+    payload = payload or {}
+    return {
+        "schema": 1,
+        "mode": mode,
+        "passed": passed,
+        "artifact_json": str(artifact_json),
+        "artifact_path": payload.get("artifact_path"),
+        "status": payload.get("status"),
+        "performance_claim": payload.get("performance_claim"),
+        "benchmark_rollup": payload.get("benchmark_rollup"),
+        "error": error,
+    }
+
+
+def _write_validation_summary(path: Path, summary: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Validate Qwen3.5 c>N diagnostic/retained benchmark artifacts")
     parser.add_argument("artifact_json", type=Path, help="Artifact JSON to validate")
@@ -1095,8 +1122,15 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Also require benchmark_rollup metadata and live README/CHANGELOG links for promotion",
     )
+    parser.add_argument(
+        "--summary-json",
+        type=Path,
+        help="Optional JSON file recording pass/fail status for automation evidence",
+    )
     args = parser.parse_args(argv)
 
+    mode = "rollup_evidence" if args.rollup_evidence else "artifact_schema"
+    payload: Mapping[str, Any] | None = None
     try:
         payload = _load_payload(args.artifact_json)
         if args.rollup_evidence:
@@ -1104,8 +1138,20 @@ def main(argv: list[str] | None = None) -> int:
         else:
             validate_cn_diagnostic_artifact_payload(payload)
     except Exception as exc:
+        summary = _validation_summary(
+            artifact_json=args.artifact_json,
+            mode=mode,
+            passed=False,
+            payload=payload,
+            error=str(exc),
+        )
+        if args.summary_json is not None:
+            _write_validation_summary(args.summary_json, summary)
         print(f"invalid c>N diagnostic artifact: {exc}", file=sys.stderr)
         return 1
+    summary = _validation_summary(artifact_json=args.artifact_json, mode=mode, passed=True, payload=payload)
+    if args.summary_json is not None:
+        _write_validation_summary(args.summary_json, summary)
     print("OK")
     return 0
 

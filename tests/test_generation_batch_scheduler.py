@@ -2436,7 +2436,22 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     artifact_file.write_text(json.dumps(accepted), encoding="utf-8")
     monkeypatch.chdir(rollup_root)
     validate_cn_diagnostic_rollup_evidence(accepted)
-    assert validate_cn_diagnostic_artifact_main([str(artifact_file), "--rollup-evidence"]) == 0
+    summary_file = rollup_root / "benchmarks" / "results" / "accepted-c2-rollup-check.json"
+    assert validate_cn_diagnostic_artifact_main(
+        [str(artifact_file), "--rollup-evidence", "--summary-json", str(summary_file)]
+    ) == 0
+    summary = json.loads(summary_file.read_text())
+    assert summary == {
+        "schema": 1,
+        "mode": "rollup_evidence",
+        "passed": True,
+        "artifact_json": str(artifact_file),
+        "artifact_path": "benchmarks/results/accepted-c2.json",
+        "status": "accepted",
+        "performance_claim": True,
+        "benchmark_rollup": accepted["benchmark_rollup"],
+        "error": None,
+    }
 
     missing_rollup = json.loads(json.dumps(accepted))
     missing_rollup.pop("benchmark_rollup")

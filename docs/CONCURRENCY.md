@@ -929,10 +929,12 @@ roll-up/status view.
       captured profiler summary via `--profiler-json` / `--profiler-command`
       with `--profiler-json` matching `profiler.artifact_path`, and the retained
       payload declares benchmark rollup files while the post-run
-      `validate_cn_diagnostic_rollup_evidence` gate (or
-      `python3 scripts/qwen35_batch_artifact_schema.py <artifact> --rollup-evidence`)
-      verifies live `benchmarks/README.md` and `benchmarks/CHANGELOG.md` both
-      mention the retained artifact path before promotion,
+      `validate_cn_diagnostic_rollup_evidence` gate (or the CLI
+      `python3 scripts/qwen35_batch_artifact_schema.py <artifact>
+      --rollup-evidence --summary-json
+      benchmarks/results/<artifact>-rollup-check.json`) verifies live
+      `benchmarks/README.md` and `benchmarks/CHANGELOG.md` both mention the
+      retained artifact path before promotion,
       environment capture commands for `rocminfo`, `rocm-smi`, `hipcc --version`,
       `git rev-parse HEAD`, and `git diff --quiet`,
       concrete non-empty hardware `gpu`/`arch` fields plus successful
