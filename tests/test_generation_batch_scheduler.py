@@ -4473,6 +4473,14 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="commands.profiler must include rocprofv3 --kernel-trace"):
         validate_cn_diagnostic_artifact_payload(profiler_without_kernel_trace)
 
+    profiler_without_output_format = json.loads(json.dumps(accepted))
+    profiler_without_output_format["commands"]["profiler"] = profiler_without_output_format["commands"]["profiler"].replace(
+        " --output-format csv",
+        "",
+    )
+    with pytest.raises(ValueError, match="commands.profiler must include --output-format csv"):
+        validate_cn_diagnostic_artifact_payload(profiler_without_output_format)
+
     profiler_wrong_target = json.loads(json.dumps(accepted))
     profiler_wrong_target["commands"]["profiler"] = "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_serial_bench.py --batch-size 2"
     with pytest.raises(ValueError, match="commands.profiler must target scripts/qwen35_batch_retained_bench.py"):

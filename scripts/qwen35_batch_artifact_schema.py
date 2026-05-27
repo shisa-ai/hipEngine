@@ -102,6 +102,7 @@ _COMMAND_C1_BASELINE_JSON_RE = re.compile(r"(?:^|\s)--c1-baseline-json(?:=|\s+)(
 _COMMAND_SERIAL_BRIDGE_JSON_RE = re.compile(r"(?:^|\s)--serial-bridge-json(?:=|\s+)(\S+)(?=\s|$)")
 _COMMAND_PRIMITIVE_CORRECTNESS_JSON_RE = re.compile(r"(?:^|\s)--primitive-correctness-json(?:=|\s+)(\S+)(?=\s|$)")
 _COMMAND_COMPILER_VERSION_FILE_RE = re.compile(r"(?:^|\s)--compiler-version-file(?:=|\s+)(\S+)(?=\s|$)")
+_COMMAND_OUTPUT_FORMAT_RE = re.compile(r"(?:^|\s)--output-format(?:=|\s+)(\S+)(?=\s|$)")
 _CORRECTNESS_ROWS_RE = re.compile(r"(?:^|\s)--rows(?:=|\s+)(\d+)(?=\s|$)")
 _FULL_COMMIT_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", re.IGNORECASE)
 _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = ("serial", "fallback", "per_row", "per-row")
@@ -858,6 +859,9 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     if isinstance(profiler_command, str):
         if "rocprofv3" not in profiler_command or "--kernel-trace" not in profiler_command:
             errors.append("commands.profiler must include rocprofv3 --kernel-trace for accepted artifacts")
+        output_format_match = _COMMAND_OUTPUT_FORMAT_RE.search(profiler_command)
+        if output_format_match is None or output_format_match.group(1).strip("'\"") != "csv":
+            errors.append("commands.profiler must include --output-format csv for accepted artifacts")
         if "qwen35_batch_retained_bench.py" not in profiler_command:
             errors.append("commands.profiler must target scripts/qwen35_batch_retained_bench.py for accepted artifacts")
         else:
