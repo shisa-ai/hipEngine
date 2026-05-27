@@ -909,6 +909,21 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         errors.append("profiler.trace_dir must be a non-empty string for accepted artifacts")
     elif profiler_command_trace_dir is not None and profiler_trace_dir != profiler_command_trace_dir:
         errors.append("profiler.trace_dir must match commands.profiler -d for accepted artifacts")
+    profiler_trace_files = profiler.get("trace_files")
+    if not _is_nonempty_string_list(profiler_trace_files):
+        errors.append("profiler.trace_files must be a non-empty string list for accepted artifacts")
+    elif isinstance(profiler_trace_files, list) and isinstance(profiler_trace_dir, str) and profiler_trace_dir:
+        trace_dir_path = Path(profiler_trace_dir)
+        for trace_file in profiler_trace_files:
+            trace_path = Path(trace_file)
+            if trace_path.suffix.lower() != ".csv":
+                errors.append("profiler.trace_files entries must be CSV paths for accepted artifacts")
+                break
+            try:
+                trace_path.relative_to(trace_dir_path)
+            except ValueError:
+                errors.append("profiler.trace_files must be under profiler.trace_dir for accepted artifacts")
+                break
     if profiler.get("expected_kernels_present") is not True:
         errors.append("profiler.expected_kernels_present must be true for accepted artifacts")
     expected_kernel_names = profiler.get("expected_kernel_names")
