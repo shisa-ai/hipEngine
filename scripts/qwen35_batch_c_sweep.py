@@ -1305,8 +1305,14 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     errors: list[str] = []
     if summary.get("schema") != 1:
         errors.append("schema must be 1")
-    if not isinstance(summary.get("timestamp"), str) or not summary.get("timestamp"):
+    timestamp = summary.get("timestamp")
+    if not isinstance(timestamp, str) or not timestamp:
         errors.append("timestamp must be a non-empty string")
+    else:
+        try:
+            datetime.fromisoformat(timestamp)
+        except ValueError:
+            errors.append("timestamp must be ISO-8601 parseable")
     if not isinstance(summary.get("dry_run"), bool):
         errors.append("dry_run must be a bool")
     batch_sizes = summary.get("batch_sizes")

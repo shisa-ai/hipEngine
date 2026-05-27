@@ -2020,6 +2020,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     persisted = json.loads(summary_path.read_text())
     c_sweep.validate_sweep_summary(persisted)
     assert c_sweep.main(["--validate-summary-json", str(summary_path)]) == 0
+    tampered_timestamp = json.loads(json.dumps(persisted))
+    tampered_timestamp["timestamp"] = "not-a-timestamp"
+    with pytest.raises(ValueError, match="timestamp must be ISO-8601 parseable"):
+        c_sweep.validate_sweep_summary(tampered_timestamp)
     tampered_batch_sizes = json.loads(json.dumps(persisted))
     tampered_batch_sizes["batch_sizes"] = []
     with pytest.raises(ValueError, match="batch_sizes must be a non-empty unique positive-int list"):
