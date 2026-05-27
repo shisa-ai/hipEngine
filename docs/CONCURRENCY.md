@@ -903,7 +903,7 @@ roll-up/status view.
       `completed_command_count`, an `options` block, per-retained-command
       `preconditions`, `status_counts`, `category_status_counts`,
       `retained_precondition_counts`, and `skipped_preconditions` summary rollups
-      for planned/passed/skipped/failed rows, has persisted-summary coverage for
+      for planned/passed/skipped/failed rows, has persisted-summary coverage and summary-validator checks for
       skipped retained rows retaining both the complete `preconditions` list and
       singular first-failed `precondition`, and has unit coverage confirming
       usable references allow the retained command to run. Accepted artifact

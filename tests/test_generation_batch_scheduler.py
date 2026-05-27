@@ -1501,12 +1501,25 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
         }
     ]
     persisted = json.loads(summary_path.read_text())
+    c_sweep.validate_sweep_summary(persisted)
     persisted_skipped = persisted["commands"][-1]
     assert persisted_skipped["status"] == "skipped"
     assert persisted_skipped["preconditions"] == skipped["preconditions"]
     assert persisted_skipped["precondition"] == skipped["precondition"]
     assert persisted["retained_precondition_counts"] == summary["retained_precondition_counts"]
     assert persisted["skipped_preconditions"] == summary["skipped_preconditions"]
+    tampered_precondition_counts = json.loads(json.dumps(persisted))
+    tampered_precondition_counts["retained_precondition_counts"] = {}
+    with pytest.raises(ValueError, match="retained_precondition_counts must match commands.preconditions"):
+        c_sweep.validate_sweep_summary(tampered_precondition_counts)
+    tampered_skipped_preconditions = json.loads(json.dumps(persisted))
+    tampered_skipped_preconditions["skipped_preconditions"] = []
+    with pytest.raises(ValueError, match="skipped_preconditions must match commands.preconditions"):
+        c_sweep.validate_sweep_summary(tampered_skipped_preconditions)
+    tampered_singular_precondition = json.loads(json.dumps(persisted))
+    tampered_singular_precondition["commands"][-1].pop("precondition")
+    with pytest.raises(ValueError, match=r"commands\[\]\.precondition must match"):
+        c_sweep.validate_sweep_summary(tampered_singular_precondition)
 
 
 @pytest.mark.parametrize(

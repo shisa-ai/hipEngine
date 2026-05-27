@@ -1315,6 +1315,12 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             errors.append("commands entries must be objects")
             break
     if entries:
+        expected_precondition_counts = _retained_precondition_counts(entries)
+        if summary.get("retained_precondition_counts") != expected_precondition_counts:
+            errors.append("retained_precondition_counts must match commands.preconditions")
+        expected_skipped_preconditions = _skipped_preconditions(entries)
+        if summary.get("skipped_preconditions") != expected_skipped_preconditions:
+            errors.append("skipped_preconditions must match commands.preconditions")
         expected_postcondition_counts = _retained_postcondition_counts(entries)
         if summary.get("retained_postcondition_counts") != expected_postcondition_counts:
             errors.append("retained_postcondition_counts must match commands.postconditions")
@@ -1322,6 +1328,16 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         if summary.get("failed_postconditions") != expected_failed_postconditions:
             errors.append("failed_postconditions must match commands.postconditions")
         for entry in entries:
+            preconditions = entry.get("preconditions")
+            if isinstance(preconditions, list):
+                failed_preconditions = [
+                    precondition
+                    for precondition in preconditions
+                    if isinstance(precondition, dict) and precondition.get("passed") is not True
+                ]
+                if failed_preconditions and entry.get("precondition") != failed_preconditions[0]:
+                    errors.append("commands[].precondition must match the first failed precondition")
+                    break
             postconditions = entry.get("postconditions")
             if not isinstance(postconditions, list):
                 continue
