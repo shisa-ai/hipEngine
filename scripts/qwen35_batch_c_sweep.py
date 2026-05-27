@@ -321,16 +321,30 @@ def _extract_decode_rates(payload: dict[str, Any]) -> tuple[float | None, float 
     return aggregate, per_request
 
 
-def _command_arg_int(command: SweepCommand, flag: str) -> int | None:
+def _command_arg_value(command: SweepCommand, flag: str) -> str | None:
     argv = list(command.argv)
     try:
-        value = argv[argv.index(flag) + 1]
+        return argv[argv.index(flag) + 1]
     except (ValueError, IndexError):
+        return None
+
+
+def _command_arg_int(command: SweepCommand, flag: str) -> int | None:
+    value = _command_arg_value(command, flag)
+    if value is None:
         return None
     try:
         return int(value)
     except ValueError:
         return None
+
+
+def _command_text_has_flag(command_text: str, flag: str) -> bool:
+    try:
+        argv = shlex.split(command_text)
+    except ValueError:
+        return False
+    return flag in argv
 
 
 def _command_text_arg(command_text: str, flag: str) -> str | None:
@@ -679,6 +693,19 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                 reasons.append(
                     f"profiler command decode-tokens={command_decode_tokens!r} does not match decode_tokens={expected_decode_tokens}"
                 )
+            expected_compiler_version_file = _command_arg_value(command, "--compiler-version-file")
+            if expected_compiler_version_file is not None:
+                command_compiler_version_file = _command_text_arg(profiler_command, "--compiler-version-file")
+                if command_compiler_version_file != expected_compiler_version_file:
+                    reasons.append(
+                        "profiler command compiler-version-file="
+                        f"{command_compiler_version_file!r} does not match compiler_version_file={expected_compiler_version_file}"
+                    )
+            if "--require-cached-build" in command.argv and not _command_text_has_flag(
+                profiler_command,
+                "--require-cached-build",
+            ):
+                reasons.append("profiler command is missing --require-cached-build")
         if profiler.get("status") != "captured":
             reasons.append("status is not 'captured'")
         if profiler.get("expected_kernels_present") is not True:

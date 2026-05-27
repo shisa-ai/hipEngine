@@ -349,6 +349,47 @@ def test_batch_c_sweep_profiler_precondition_rejects_missing_command(tmp_path: P
     }
 
 
+def test_batch_c_sweep_profiler_precondition_rejects_missing_cached_build_flags(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    compiler_version_file = tmp_path / "hipcc-version.txt"
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+            "--compiler-version-file",
+            str(compiler_version_file),
+            "--require-cached-build",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": (
+            "profiler command compiler-version-file=None "
+            f"does not match compiler_version_file={compiler_version_file}; "
+            "profiler command is missing --require-cached-build"
+        ),
+    }
+
+
 def test_batch_c_sweep_profiler_precondition_rejects_missing_kernel_shares(tmp_path: Path) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
