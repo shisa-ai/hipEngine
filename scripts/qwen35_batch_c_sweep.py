@@ -1442,6 +1442,14 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if status not in {"planned", "passed", "skipped", "failed"}:
                 errors.append("commands[].status must be planned, passed, skipped, or failed")
                 break
+            dry_run = summary.get("dry_run")
+            if isinstance(dry_run, bool):
+                if dry_run and status != "planned":
+                    errors.append("commands[].status must be planned for dry-run summaries")
+                    break
+                if not dry_run and status == "planned":
+                    errors.append("commands[].status cannot be planned for executed summaries")
+                    break
             returncode = entry.get("returncode")
             if status in {"planned", "skipped"}:
                 if returncode is not None:

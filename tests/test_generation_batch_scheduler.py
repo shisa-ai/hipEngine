@@ -1280,6 +1280,11 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     }
     assert persisted["retained_precondition_counts"] == {}
     assert persisted["skipped_preconditions"] == []
+    c_sweep.validate_sweep_summary(persisted)
+    tampered_dry_run_status = json.loads(json.dumps(persisted))
+    tampered_dry_run_status["commands"][0]["status"] = "passed"
+    with pytest.raises(ValueError, match=r"commands\[\]\.status must be planned for dry-run summaries"):
+        c_sweep.validate_sweep_summary(tampered_dry_run_status)
     assert all(entry["status"] == "planned" for entry in persisted["commands"])
     assert all(entry["command"] for entry in persisted["commands"])
     assert all(entry["artifact_path"] for entry in persisted["commands"])
@@ -2130,6 +2135,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_status["status"] = "blocked"
     with pytest.raises(ValueError, match="status must match commands"):
         c_sweep.validate_sweep_summary(tampered_status)
+    tampered_executed_planned = json.loads(json.dumps(persisted))
+    tampered_executed_planned["commands"][-1]["status"] = "planned"
+    with pytest.raises(ValueError, match=r"commands\[\]\.status cannot be planned for executed summaries"):
+        c_sweep.validate_sweep_summary(tampered_executed_planned)
     assert persisted["retained_postcondition_counts"] == summary["retained_postcondition_counts"]
     assert persisted["failed_postconditions"] == summary["failed_postconditions"]
     assert persisted["commands"][-1]["postconditions"] == native["postconditions"]
