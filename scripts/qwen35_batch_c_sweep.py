@@ -1314,6 +1314,20 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         else:
             errors.append("commands entries must be objects")
             break
+    git = summary.get("git")
+    git_dirty: bool | None = None
+    if not isinstance(git, Mapping):
+        errors.append("git must be an object")
+    else:
+        if not isinstance(git.get("commit"), str) or not git.get("commit"):
+            errors.append("git.commit must be a non-empty string")
+        if not isinstance(git.get("dirty"), bool):
+            errors.append("git.dirty must be a bool")
+        else:
+            git_dirty = bool(git["dirty"])
+        status_short = git.get("status_short")
+        if not isinstance(status_short, list) or not all(isinstance(item, str) for item in status_short):
+            errors.append("git.status_short must be a string list")
     if entries:
         for entry in entries:
             if not isinstance(entry.get("category"), str) or not entry.get("category"):
@@ -1338,6 +1352,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 break
             if entry.get("status") not in {"planned", "passed", "skipped", "failed"}:
                 errors.append("commands[].status must be planned, passed, skipped, or failed")
+                break
+            if git_dirty is not None and entry.get("git_dirty") is not git_dirty:
+                errors.append("commands[].git_dirty must match git.dirty")
                 break
         if summary.get("completed_command_count") != len(entries):
             errors.append("completed_command_count must match len(commands)")
