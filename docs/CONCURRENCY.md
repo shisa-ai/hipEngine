@@ -992,7 +992,8 @@ roll-up/status view.
       `profiler.artifact_path` under `benchmarks/results/`, native batch
       expected kernel names and duration-map keys (no
       serial/per-row/fallback labels) present with every duration-map entry
-      carrying positive numeric evidence, plus an accepted non-row-GEMV
+      carrying positive numeric evidence and `profiler.total_kernel_duration_ns`
+      matching the duration-map sum, plus an accepted non-row-GEMV
       `projection_dispatch` decision whose selected candidate is listed with
       matching retained speedup evidence and appears in profiler kernel names.
       The scoreboard item remains open until accepted

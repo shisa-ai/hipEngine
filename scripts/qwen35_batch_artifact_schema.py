@@ -861,6 +861,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
                 break
             if isinstance(kernel_name, str) and kernel_name and not _is_positive_number(duration_ns):
                 errors.append(f"profiler.kernel_durations_ns.{kernel_name} must be positive numeric for accepted artifacts")
+        _validate_profiler_kernel_duration_total(profiler, kernel_durations, errors)
         if isinstance(expected_kernel_names, list):
             for kernel_name in expected_kernel_names:
                 if not isinstance(kernel_name, str) or not kernel_name:
@@ -869,6 +870,25 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
                     errors.append(f"profiler.kernel_durations_ns.{kernel_name} must be positive numeric for accepted artifacts")
     _validate_projection_dispatch_profiler_evidence(payload, profiler, errors)
     _validate_optional_projection_dispatch_candidates(payload, errors)
+
+
+def _validate_profiler_kernel_duration_total(
+    profiler: Mapping[str, Any],
+    kernel_durations: Mapping[Any, Any],
+    errors: list[str],
+) -> None:
+    total_duration = profiler.get("total_kernel_duration_ns")
+    if not _is_positive_number(total_duration):
+        errors.append("profiler.total_kernel_duration_ns must be positive numeric for accepted artifacts")
+        return
+    duration_sum = sum(
+        float(duration_ns)
+        for kernel_name, duration_ns in kernel_durations.items()
+        if isinstance(kernel_name, str) and kernel_name and _is_positive_number(duration_ns)
+    )
+    tolerance = max(1.0, duration_sum * 1e-6)
+    if duration_sum > 0.0 and abs(float(total_duration) - duration_sum) > tolerance:
+        errors.append("profiler.total_kernel_duration_ns must match sum(profiler.kernel_durations_ns) for accepted artifacts")
 
 
 def _validate_projection_dispatch_profiler_evidence(

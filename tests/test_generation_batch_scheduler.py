@@ -2470,6 +2470,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                 "qwen35_batch_decode": 12345.0,
                 "qwen35_batch_decode_wmma_caware": 2345.0,
             },
+            "total_kernel_duration_ns": 14690.0,
         },
         "workload": {
             "model": "Qwen3.5/3.6-35B-A3B-PARO",
@@ -3605,6 +3606,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     missing_kernel_durations["profiler"].pop("kernel_durations_ns")
     with pytest.raises(ValueError, match="kernel_durations_ns"):
         validate_cn_diagnostic_artifact_payload(missing_kernel_durations)
+
+    missing_profiler_total = json.loads(json.dumps(accepted))
+    missing_profiler_total["profiler"].pop("total_kernel_duration_ns")
+    with pytest.raises(ValueError, match="total_kernel_duration_ns must be positive numeric"):
+        validate_cn_diagnostic_artifact_payload(missing_profiler_total)
+
+    mismatched_profiler_total = json.loads(json.dumps(accepted))
+    mismatched_profiler_total["profiler"]["total_kernel_duration_ns"] = 1.0
+    with pytest.raises(ValueError, match=r"total_kernel_duration_ns must match sum\(profiler.kernel_durations_ns\)"):
+        validate_cn_diagnostic_artifact_payload(mismatched_profiler_total)
 
     fallback_kernel_duration = json.loads(json.dumps(accepted))
     fallback_kernel_duration["profiler"]["kernel_durations_ns"]["qwen35_per_row_fallback_decode"] = 12345.0
