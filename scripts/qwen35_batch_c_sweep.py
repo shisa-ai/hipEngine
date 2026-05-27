@@ -416,6 +416,8 @@ def _validate_profiler_kernel_durations(profiler: dict[str, Any], reasons: list[
     share_keys = {key for key in duration_shares if isinstance(key, str) and key}
     if duration_keys != share_keys:
         reasons.append("kernel_duration_shares keys do not match kernel_durations_ns")
+    if any(_has_disallowed_profiler_kernel_fragment(key) for key in share_keys):
+        reasons.append("kernel_duration_shares contains a serial/per-row/fallback kernel")
 
     duration_sum = 0.0
     share_sum = 0.0
