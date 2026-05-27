@@ -726,10 +726,12 @@ roll-up/status view.
       artifact candidate/evidence lists before the policy can consume them;
       projection speedup evidence must reference an artifact under
       `benchmarks/results/` and, when accepted, must beat row-GEMV on both
-      aggregate and per-request ratios; and accepted c>N artifact schema rejects
-      malformed optional `projection_dispatch_candidates` metadata. The item remains open
-      until runtime projection call sites are wired to this policy and retained
-      benchmark artifacts provide the required ratios.
+      aggregate and per-request ratios; accepted c>N artifact schema rejects
+      malformed optional `projection_dispatch_candidates` metadata; and retained
+      native batch metadata now records a `projection_dispatch` row-GEMV fallback
+      with an explicit blocker when no c-aware projection candidate is available.
+      The item remains open until runtime projection call sites are wired to this
+      policy and retained benchmark artifacts provide the required ratios.
 - [x] **C3.5 GGUF c>N template.** Port the Qwen/PARO equality template to
       GGUF Q4_K/Q5_K/Q6_K/Q8_0. Acceptance: at least one GGUF c=2 diagnostic
       reaches an unambiguous `eq_ok`, `blocked`, or `rejected_correctness`

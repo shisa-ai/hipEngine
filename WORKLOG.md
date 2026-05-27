@@ -31022,3 +31022,29 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY projection dispatch metadata blocker
+
+Materially advanced C3.4/P4 retained projection wiring without closing the item:
+
+- `Qwen35ParoResidentSession.batch_execution_metadata(...)` now accepts `active_rows` and records a schema-compatible `projection_dispatch` decision for native c>N metadata.
+- The retained bench passes `active_rows=args.batch_size`, so native retained artifacts surface the current row-GEMV fallback plus the explicit `projection dispatch: no c-aware projection candidate applies...` blocker until retained c-aware projection evidence exists.
+- Extended resident batch metadata tests to assert the row-GEMV fallback path, row count, selected candidate, blocker, and JSON serialization.
+- Updated the C3.4 progress note. Runtime projection call sites still need real c-aware candidates and retained benchmark artifacts before C3.4/P4 can close.
+- No queue item was marked complete and no c>N performance claim was added.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_batch_execution_metadata_keeps_native_diagnostics_ineligible tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_batch_execution_metadata_labels_serial_fallback -q
+# 2 passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```

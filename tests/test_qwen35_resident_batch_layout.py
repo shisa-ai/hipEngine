@@ -940,12 +940,18 @@ def test_qwen35_resident_batch_execution_metadata_keeps_native_diagnostics_ineli
     session.layer_limit = 3
     session.config = SimpleNamespace(layer_types=("linear_attention", "linear_attention", "full_attention"))
 
-    metadata = session.batch_execution_metadata(scheduler_owned=True, native_decode=True)
+    metadata = session.batch_execution_metadata(scheduler_owned=True, native_decode=True, active_rows=4)
 
     assert metadata.path == "scheduler_native_compact_batch"
     assert metadata.native_caware_decode
     assert not metadata.throughput_claim_eligible
+    assert metadata.projection_dispatch is not None
+    assert metadata.projection_dispatch["rows"] == 4
+    assert metadata.projection_dispatch["path"] == "row_gemv_until_caware_benchmark"
+    assert metadata.projection_dispatch["selected_candidate"] == "row_gemv"
     assert any("generated-token equality" in blocker for blocker in metadata.blockers)
+    assert any("projection dispatch: no c-aware projection candidate applies" in blocker for blocker in metadata.blockers)
+    assert metadata.to_json_dict()["projection_dispatch"] == metadata.projection_dispatch
 
 
 def test_qwen35_resident_step_batch_native_requires_experimental_env(monkeypatch) -> None:

@@ -526,7 +526,11 @@ def _run_native_bench(
         scheduler_metadata["active_count_after_completion"] = scheduler.active_count
         scheduler_metadata["slot_to_request_after_completion"] = list(scheduler.active_batch.slot_to_request)
         scheduler_metadata["graph_bucket_stats"] = scheduler.graph_buckets.stats.to_json_dict()
-        batch_execution = session.batch_execution_metadata(scheduler_owned=True, native_decode=True).to_json_dict()
+        batch_execution = session.batch_execution_metadata(
+            scheduler_owned=True,
+            native_decode=True,
+            active_rows=args.batch_size,
+        ).to_json_dict()
 
     completed_payload = [done.to_json_dict() for done in completed]
     request_observability = {

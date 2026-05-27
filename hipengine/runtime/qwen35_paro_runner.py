@@ -52,7 +52,14 @@ from hipengine.kernels.hip_gfx1100.runtime import (
     set_i64_scalar,
     set_i64_vector,
 )
-from hipengine.dispatch import ActiveBatch, BatchSamplerMode, RequestState, plan_batch_sampler_dispatch
+from hipengine.dispatch import (
+    ActiveBatch,
+    BatchSamplerMode,
+    ProjectionKernelSelection,
+    RequestState,
+    plan_batch_sampler_dispatch,
+    plan_projection_dispatch,
+)
 from hipengine.kvcache import FixedPagedKVPolicy, KVLiveSpans, KVScaleMetadata
 from hipengine.kvcache.policy import KV_SCALE_GRANULARITY_CHOICES
 from hipengine.loading import (
@@ -974,6 +981,7 @@ class Qwen35ParoResidentBatchExecution:
     throughput_claim_eligible: bool
     blockers: tuple[str, ...]
     decode_execution: dict[str, Any] | None = None
+    projection_dispatch: dict[str, Any] | None = None
 
     def to_json_dict(self) -> dict[str, Any]:
         payload = {
@@ -988,6 +996,8 @@ class Qwen35ParoResidentBatchExecution:
         }
         if self.decode_execution is not None:
             payload["decode_execution"] = self.decode_execution
+        if self.projection_dispatch is not None:
+            payload["projection_dispatch"] = self.projection_dispatch
         return payload
 
 
@@ -1555,12 +1565,19 @@ class Qwen35ParoResidentSession:
         *,
         scheduler_owned: bool = False,
         native_decode: bool = False,
+        active_rows: int | None = None,
     ) -> Qwen35ParoResidentBatchExecution:
         """Describe whether the resident c>N path is native or a serial fallback."""
 
         native_prefill_plan = self.native_prefill_plan()
         blockers = list(native_prefill_plan.blockers)
         decode_execution = getattr(self, "last_batch_decode_execution", None) if native_decode else None
+        projection_rows = active_rows
+        if projection_rows is None and isinstance(decode_execution, dict):
+            decode_rows = decode_execution.get("rows")
+            if isinstance(decode_rows, int) and not isinstance(decode_rows, bool):
+                projection_rows = decode_rows
+        projection_dispatch = None
         if native_decode:
             blockers.extend(
                 [
@@ -1582,6 +1599,14 @@ class Qwen35ParoResidentSession:
             else:
                 row_execution = "native_compact_caware_layers"
                 native_caware_decode = True
+            if projection_rows is not None:
+                projection_decision = plan_projection_dispatch(
+                    rows=int(projection_rows),
+                    row_gemv=ProjectionKernelSelection("linear", "w4_paro", "row_gemv"),
+                )
+                projection_dispatch = projection_decision.to_json_dict()
+                if not projection_decision.throughput_claim_eligible:
+                    blockers.extend(f"projection dispatch: {blocker}" for blocker in projection_decision.blockers)
             eligible = False
         else:
             blockers.extend(
@@ -1604,6 +1629,7 @@ class Qwen35ParoResidentSession:
             throughput_claim_eligible=eligible,
             blockers=tuple(dict.fromkeys(blockers)),
             decode_execution=decode_execution if isinstance(decode_execution, dict) else None,
+            projection_dispatch=projection_dispatch,
         )
 
     def prefill_native(
