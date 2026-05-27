@@ -251,6 +251,9 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     for field in _REQUIRED_ACCEPTED_COMMAND_FIELDS:
         if not isinstance(commands.get(field), str) or not commands.get(field):
             errors.append(f"commands.{field} must be a non-empty string for accepted artifacts")
+    profiler_command = commands.get("profiler")
+    if isinstance(profiler_command, str) and ("rocprofv3" not in profiler_command or "--kernel-trace" not in profiler_command):
+        errors.append("commands.profiler must include rocprofv3 --kernel-trace for accepted artifacts")
     profiler = _mapping_at(payload, "profiler", errors)
     if profiler.get("status") != "captured":
         errors.append("profiler.status must be 'captured' for accepted artifacts")

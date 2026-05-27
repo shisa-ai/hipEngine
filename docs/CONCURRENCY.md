@@ -911,7 +911,8 @@ roll-up/status view.
       c=1 and usable same-shape/same-concurrency serial bridge
       baselines,
       positive decode-step timing samples,
-      non-empty benchmark, correctness-reference, and profiler commands,
+      non-empty benchmark/correctness-reference commands and a concrete
+      `rocprofv3 --kernel-trace` profiler command,
       concrete non-empty hardware `gpu`/`arch` fields,
       commit/dirty-state software fields, and captured profiler evidence with
       expected kernel names present and positive per-kernel duration evidence.

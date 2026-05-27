@@ -2621,6 +2621,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     with pytest.raises(ValueError, match="commands.profiler"):
         validate_cn_diagnostic_artifact_payload(missing_profiler_command)
 
+    profiler_without_kernel_trace = json.loads(json.dumps(accepted))
+    profiler_without_kernel_trace["commands"]["profiler"] = "python3 scripts/qwen35_batch_retained_bench.py --json accepted.json"
+    with pytest.raises(ValueError, match="commands.profiler must include rocprofv3 --kernel-trace"):
+        validate_cn_diagnostic_artifact_payload(profiler_without_kernel_trace)
+
     not_captured_profiler = json.loads(json.dumps(accepted))
     not_captured_profiler["profiler"]["status"] = "not_captured"
     with pytest.raises(ValueError, match="profiler.status"):
