@@ -115,7 +115,7 @@ def validate_cn_diagnostic_artifact_payload(payload: Mapping[str, Any]) -> None:
     if accepted or status == "accepted" or performance_claim is True:
         _validate_accepted_retained_gates(payload, errors)
         _validate_accepted_execution_gates(payload, errors)
-        _validate_accepted_correctness_gates(correctness, errors)
+        _validate_accepted_correctness_gates(payload, correctness, errors)
         _validate_accepted_measurement_gates(payload, errors)
         _validate_accepted_scaling_gates(payload, errors)
         _validate_accepted_evidence_fields(payload, errors)
@@ -224,7 +224,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         errors.append("profiler.expected_kernels_present must be true for accepted artifacts")
 
 
-def _validate_accepted_correctness_gates(correctness: Mapping[str, Any], errors: list[str]) -> None:
+def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness: Mapping[str, Any], errors: list[str]) -> None:
     if correctness.get("passed") is not True:
         errors.append("correctness.passed must be true for accepted artifacts")
     equality = correctness.get("generated_token_equality")
@@ -252,8 +252,15 @@ def _validate_accepted_correctness_gates(correctness: Mapping[str, Any], errors:
         errors.append("correctness.primitive_batch_correctness.passed must be true for accepted artifacts")
     if not isinstance(primitive.get("artifact_path"), str) or not primitive.get("artifact_path"):
         errors.append("correctness.primitive_batch_correctness.artifact_path must be a non-empty string for accepted artifacts")
-    if not isinstance(primitive.get("rows"), int):
+    primitive_rows = primitive.get("rows")
+    if not isinstance(primitive_rows, int) or isinstance(primitive_rows, bool):
         errors.append("correctness.primitive_batch_correctness.rows must be an int for accepted artifacts")
+    workload = _mapping_at(payload, "workload", errors)
+    concurrency = workload.get("concurrency")
+    if not isinstance(concurrency, int) or isinstance(concurrency, bool) or concurrency <= 1:
+        errors.append("workload.concurrency must be an int > 1 for accepted artifacts")
+    elif isinstance(primitive_rows, int) and not isinstance(primitive_rows, bool) and primitive_rows != concurrency:
+        errors.append("correctness.primitive_batch_correctness.rows must match workload.concurrency for accepted artifacts")
 
 
 def _validate_accepted_measurement_gates(payload: Mapping[str, Any], errors: list[str]) -> None:

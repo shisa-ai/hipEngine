@@ -838,8 +838,9 @@ roll-up/status view.
       missing any required field cannot be accepted. Evidence:
       `scripts/qwen35_batch_artifact_schema.py` accepted-row gates now also
       require non-skipped generated-token equality vs independent c=1 with no
-      mismatches and a passing primitive c>N GPU correctness JSON for the same
-      row count, plus `pytest -q tests/test_generation_batch_scheduler.py -q`.
+      mismatches and a passing primitive c>N GPU correctness JSON whose `rows`
+      value matches `workload.concurrency`, plus
+      `pytest -q tests/test_generation_batch_scheduler.py -q`.
 
 ### Performance packets — run only after correctness is green
 
@@ -886,6 +887,7 @@ roll-up/status view.
       cites correctness gate, profiler status, exact command, and hardware.
       Progress: accepted/performance-claim c>N artifacts now fail schema
       validation unless they include fully native batch-execution metadata,
+      `workload.concurrency` matching the primitive correctness row count,
       numeric aggregate/per-request throughput, all required scaling ratios vs
       both c=1 and the serial bridge, decode-step timing samples,
       non-empty benchmark, correctness-reference, and profiler commands,

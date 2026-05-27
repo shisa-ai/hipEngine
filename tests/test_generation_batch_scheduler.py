@@ -1927,6 +1927,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
         },
         "profiler": {"status": "captured", "expected_kernels_present": True},
         "workload": {
+            "concurrency": 2,
             "native_compact_prefill": True,
             "native_caware_decode": True,
         },
@@ -2062,6 +2063,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     failed_primitive["correctness"]["primitive_batch_correctness"]["passed"] = False
     with pytest.raises(ValueError, match="primitive_batch_correctness.passed"):
         validate_cn_diagnostic_artifact_payload(failed_primitive)
+
+    mismatched_primitive_rows = json.loads(json.dumps(accepted))
+    mismatched_primitive_rows["correctness"]["primitive_batch_correctness"]["rows"] = 8
+    with pytest.raises(ValueError, match="primitive_batch_correctness.rows must match workload.concurrency"):
+        validate_cn_diagnostic_artifact_payload(mismatched_primitive_rows)
+
+    missing_workload_concurrency = json.loads(json.dumps(accepted))
+    missing_workload_concurrency["workload"].pop("concurrency")
+    with pytest.raises(ValueError, match="workload.concurrency"):
+        validate_cn_diagnostic_artifact_payload(missing_workload_concurrency)
 
     serial_bridge_execution = json.loads(json.dumps(accepted))
     serial_bridge_execution["execution"]["batch_execution"]["path"] = "scheduler_serial_slot_bridge"
