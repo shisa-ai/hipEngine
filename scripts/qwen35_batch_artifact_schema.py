@@ -404,6 +404,9 @@ def _validate_accepted_scheduler_metadata(
         for field in ("entries", "hits", "misses"):
             if not isinstance(graph_stats.get(field), int) or isinstance(graph_stats.get(field), bool) or graph_stats.get(field) < 0:
                 errors.append(f"execution.scheduler_metadata.graph_bucket_stats.{field} must be a non-negative int for accepted artifacts")
+        entries = graph_stats.get("entries")
+        if isinstance(entries, int) and not isinstance(entries, bool) and entries <= 0:
+            errors.append("execution.scheduler_metadata.graph_bucket_stats.entries must be positive for accepted artifacts")
 
 
 def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[str]) -> None:

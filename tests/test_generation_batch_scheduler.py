@@ -2070,6 +2070,30 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     assert missing["status"] == "missing"
 
 
+def test_qwen35_retained_records_decode_graph_bucket_metadata() -> None:
+    scheduler = ResidentBatchScheduler(capacity=2, context_bucket_size=4)
+    scheduler.submit([1, 2, 3], max_new_tokens=1)
+    scheduler.submit([4, 5], max_new_tokens=1)
+    scheduler.admit_pending()
+    scheduler.next_compact_prefill_slabs(chunk_size=3, block_size=4)
+    metadata: dict[str, object] = {}
+
+    retained_bench._record_decode_graph_bucket_metadata(scheduler, metadata)
+
+    assert metadata["decode_shape_key"] == {
+        "mode": "decode",
+        "active_c": 2,
+        "context_bucket": 4,
+        "active_mask": [True, True],
+        "top_k": 0,
+        "experts_per_token": 0,
+        "replay_steps": 1,
+        "draft_depth": 0,
+        "tree_shape": [],
+    }
+    assert metadata["graph_bucket_stats"] == {"entries": 1, "hits": 1, "misses": 1}
+
+
 def test_qwen35_retained_profiler_reference_loads_captured_summary(tmp_path: Path) -> None:
     profiler_path = tmp_path / "profiler-summary.json"
     profiler_path.write_text(
@@ -2279,7 +2303,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
                     "draft_depth": 0,
                     "tree_shape": [],
                 },
-                "graph_bucket_stats": {"entries": 0, "hits": 0, "misses": 0},
+                "graph_bucket_stats": {"entries": 1, "hits": 1, "misses": 1},
             },
         },
         "observability": {
@@ -2538,6 +2562,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     negative_graph_bucket_hits["execution"]["scheduler_metadata"]["graph_bucket_stats"]["hits"] = -1
     with pytest.raises(ValueError, match="graph_bucket_stats.hits must be a non-negative int"):
         validate_cn_diagnostic_artifact_payload(negative_graph_bucket_hits)
+
+    empty_graph_bucket_cache = json.loads(json.dumps(accepted))
+    empty_graph_bucket_cache["execution"]["scheduler_metadata"]["graph_bucket_stats"]["entries"] = 0
+    with pytest.raises(ValueError, match="graph_bucket_stats.entries must be positive"):
+        validate_cn_diagnostic_artifact_payload(empty_graph_bucket_cache)
 
     missing_latency = dict(accepted)
     missing_latency["observability"] = {

@@ -68,6 +68,19 @@ def _shape_key_payload(key) -> dict[str, Any]:
     }
 
 
+def _record_decode_graph_bucket_metadata(scheduler: ResidentBatchScheduler, scheduler_metadata: dict[str, Any]) -> None:
+    key = scheduler.shape_key(mode="decode", top_k=0, experts_per_token=0, replay_steps=1)
+    scheduler_metadata["decode_shape_key"] = _shape_key_payload(key)
+    scheduler.graph_buckets.get_or_create(key, lambda bucket: _shape_key_payload(bucket))
+    scheduler.graph_buckets.get(key)
+    stats = scheduler.graph_buckets.stats
+    scheduler_metadata["graph_bucket_stats"] = {
+        "entries": stats.entries,
+        "hits": stats.hits,
+        "misses": stats.misses,
+    }
+
+
 def _summarize_samples(samples: Sequence[float]) -> dict[str, Any]:
     values = [float(sample) for sample in samples]
     if not values:
@@ -485,9 +498,7 @@ def _run_native_bench(
         if set(seed_by_request) != set(request_ids):
             raise RuntimeError("missing one or more prefill seed tokens")
 
-        scheduler_metadata["decode_shape_key"] = _shape_key_payload(
-            scheduler.shape_key(mode="decode", top_k=0, experts_per_token=0, replay_steps=1)
-        )
+        _record_decode_graph_bucket_metadata(scheduler, scheduler_metadata)
         next_token_by_request = {request_id: seed_by_request[request_id].token_id for request_id in request_ids}
         warmup_start = time.perf_counter()
         for _ in range(warmup_decode_tokens):
