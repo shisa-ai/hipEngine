@@ -400,6 +400,33 @@ def _has_disallowed_profiler_kernel_fragment(name: str) -> bool:
     return any(fragment in lowered for fragment in _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS)
 
 
+def _profiler_kernel_duration_category(kernel_name: str) -> str:
+    lowered = kernel_name.lower()
+    if "graph" in lowered or "replay" in lowered:
+        return "graph_replay"
+    if "moe" in lowered or "expert" in lowered or "router" in lowered:
+        return "moe"
+    if "attn" in lowered or "attention" in lowered or "paged" in lowered or "kv" in lowered:
+        return "attention"
+    if "lm_head" in lowered or "sample" in lowered or "argmax" in lowered:
+        return "sampling"
+    projection_fragments = ("projection", "linear", "matmul", "gemm", "gemv", "mmq", "wmma")
+    if any(fragment in lowered for fragment in projection_fragments):
+        return "projection"
+    return "other"
+
+
+def _profiler_kernel_duration_category_sums(kernel_durations: dict[Any, Any]) -> dict[str, float]:
+    categories = dict.fromkeys(_PROFILER_KERNEL_DURATION_CATEGORIES, 0.0)
+    for kernel_name, duration_ns in kernel_durations.items():
+        if not isinstance(kernel_name, str) or not kernel_name:
+            continue
+        if not _is_number(duration_ns) or float(duration_ns) <= 0.0:
+            continue
+        categories[_profiler_kernel_duration_category(kernel_name)] += float(duration_ns)
+    return categories
+
+
 def _validate_profiler_kernel_durations(profiler: dict[str, Any], reasons: list[str]) -> None:
     kernel_durations = profiler.get("kernel_durations_ns")
     if not isinstance(kernel_durations, dict) or not kernel_durations:
@@ -460,6 +487,15 @@ def _validate_profiler_kernel_duration_categories(profiler: dict[str, Any], reas
         reasons.append("kernel_duration_categories_ns keys do not match required categories")
     if share_keys != expected_keys:
         reasons.append("kernel_duration_category_shares keys do not match required categories")
+    kernel_durations = profiler.get("kernel_durations_ns")
+    if isinstance(kernel_durations, dict) and duration_keys == expected_keys:
+        expected_categories = _profiler_kernel_duration_category_sums(kernel_durations)
+        if any(
+            _is_number(duration_categories.get(category))
+            and abs(float(duration_categories[category]) - expected_duration) > max(1.0, expected_duration * 1e-6)
+            for category, expected_duration in expected_categories.items()
+        ):
+            reasons.append("kernel_duration_categories_ns does not match categorized kernel_durations_ns")
 
     duration_sum = 0.0
     share_sum = 0.0
