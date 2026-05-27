@@ -1315,6 +1315,26 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             errors.append("commands entries must be objects")
             break
     if entries:
+        for entry in entries:
+            if not isinstance(entry.get("category"), str) or not entry.get("category"):
+                errors.append("commands[].category must be a non-empty string")
+                break
+            if not isinstance(entry.get("batch_size"), int) or isinstance(entry.get("batch_size"), bool) or entry.get("batch_size") <= 0:
+                errors.append("commands[].batch_size must be a positive int")
+                break
+            if not isinstance(entry.get("artifact_path"), str) or not entry.get("artifact_path"):
+                errors.append("commands[].artifact_path must be a non-empty string")
+                break
+            if not isinstance(entry.get("command"), str) or not entry.get("command"):
+                errors.append("commands[].command must be a non-empty string")
+                break
+            argv = entry.get("argv")
+            if not isinstance(argv, list) or not argv or not all(isinstance(item, str) and item for item in argv):
+                errors.append("commands[].argv must be a non-empty string list")
+                break
+            if entry.get("status") not in {"planned", "passed", "skipped", "failed"}:
+                errors.append("commands[].status must be planned, passed, skipped, or failed")
+                break
         if summary.get("completed_command_count") != len(entries):
             errors.append("completed_command_count must match len(commands)")
         command_count = summary.get("command_count")
