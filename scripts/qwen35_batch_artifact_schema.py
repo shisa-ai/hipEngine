@@ -123,6 +123,16 @@ _REQUIRED_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES = (
     "validation",
     "other",
 )
+_ALLOWED_PROFILER_SYNTHESIZED_FIELDS = (
+    "trace_kernel_names",
+    "kernel_durations_ns",
+    "total_kernel_duration_ns",
+    "kernel_duration_shares",
+    "kernel_duration_categories_ns",
+    "kernel_duration_category_shares",
+    "output_format",
+    "trace_dir",
+)
 
 
 def _mapping_at(payload: Mapping[str, Any], key: str, errors: list[str]) -> Mapping[str, Any]:
@@ -308,6 +318,18 @@ def _validate_expected_profiler_kernel_names(expected_kernel_names: list[Any], e
         if isinstance(name, str) and _has_disallowed_profiler_kernel_fragment(name):
             errors.append("profiler.expected_kernel_names must not include serial/per-row/fallback kernel names for accepted artifacts")
             break
+
+
+def _validate_profiler_synthesized_fields(profiler: Mapping[str, Any], errors: list[str]) -> None:
+    synthesized_fields = profiler.get("synthesized_fields")
+    if not isinstance(synthesized_fields, list) or not all(isinstance(field, str) for field in synthesized_fields):
+        errors.append("profiler.synthesized_fields must be a string list for accepted artifacts")
+        return
+    if len(set(synthesized_fields)) != len(synthesized_fields):
+        errors.append("profiler.synthesized_fields must not contain duplicates for accepted artifacts")
+    unknown_fields = sorted(set(synthesized_fields) - set(_ALLOWED_PROFILER_SYNTHESIZED_FIELDS))
+    if unknown_fields:
+        errors.append("profiler.synthesized_fields must only name known synthesized profiler fields for accepted artifacts")
 
 
 def _is_benchmark_results_path(value: str) -> bool:
@@ -931,6 +953,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
                 break
         if not any(_is_kernel_trace_csv_path(trace_file) for trace_file in profiler_trace_files):
             errors.append("profiler.trace_files must include a kernel-trace CSV path for accepted artifacts")
+    _validate_profiler_synthesized_fields(profiler, errors)
     profiler_trace_kernel_names = profiler.get("trace_kernel_names")
     profiler_trace_kernel_names_valid = _is_nonempty_string_list(profiler_trace_kernel_names)
     if not profiler_trace_kernel_names_valid:

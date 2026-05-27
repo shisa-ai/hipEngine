@@ -3643,6 +3643,15 @@ def test_qwen35_retained_profiler_reference_loads_captured_summary(tmp_path: Pat
     assert loaded["trace_dir"] == str(trace_dir)
     assert loaded["trace_files"] == [str(trace_csv)]
     assert loaded["trace_kernel_names"] == ["qwen35_batch_decode"]
+    assert loaded["synthesized_fields"] == [
+        "trace_kernel_names",
+        "total_kernel_duration_ns",
+        "kernel_duration_shares",
+        "kernel_duration_categories_ns",
+        "kernel_duration_category_shares",
+        "output_format",
+        "trace_dir",
+    ]
     assert loaded["expected_kernels_present"] is True
     assert loaded["total_kernel_duration_ns"] == 12345.0
     assert loaded["kernel_duration_shares"] == {"qwen35_batch_decode": 1.0}
@@ -3716,6 +3725,14 @@ def test_qwen35_retained_profiler_reference_synthesizes_durations_from_trace_csv
     loaded = retained_bench._profiler_reference(profiler_path)
 
     assert loaded["trace_kernel_names"] == ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"]
+    assert loaded["synthesized_fields"] == [
+        "trace_kernel_names",
+        "kernel_durations_ns",
+        "total_kernel_duration_ns",
+        "kernel_duration_shares",
+        "kernel_duration_categories_ns",
+        "kernel_duration_category_shares",
+    ]
     assert loaded["kernel_durations_ns"] == {"qwen35_batch_decode": 150.0, "qwen35_batch_decode_wmma_caware": 200.0}
     assert loaded["total_kernel_duration_ns"] == 350.0
     assert loaded["kernel_duration_shares"] == {
@@ -3852,6 +3869,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             "trace_dir": "/tmp/hipengine-profile",
             "trace_files": ["/tmp/hipengine-profile/hipengine_kernel_trace.csv"],
             "trace_kernel_names": ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"],
+            "synthesized_fields": [],
             "expected_kernels_present": True,
             "expected_kernel_names": ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"],
             "kernel_durations_ns": {
@@ -4984,6 +5002,21 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     profiler_trace_file_without_kernel_trace_csv["profiler"]["trace_files"] = ["/tmp/hipengine-profile/hipengine_api_trace.csv"]
     with pytest.raises(ValueError, match="profiler.trace_files must include a kernel-trace CSV path"):
         validate_cn_diagnostic_artifact_payload(profiler_trace_file_without_kernel_trace_csv)
+
+    profiler_missing_synthesized_fields = json.loads(json.dumps(accepted))
+    profiler_missing_synthesized_fields["profiler"].pop("synthesized_fields")
+    with pytest.raises(ValueError, match="profiler.synthesized_fields must be a string list"):
+        validate_cn_diagnostic_artifact_payload(profiler_missing_synthesized_fields)
+
+    profiler_duplicate_synthesized_fields = json.loads(json.dumps(accepted))
+    profiler_duplicate_synthesized_fields["profiler"]["synthesized_fields"] = ["trace_kernel_names", "trace_kernel_names"]
+    with pytest.raises(ValueError, match="profiler.synthesized_fields must not contain duplicates"):
+        validate_cn_diagnostic_artifact_payload(profiler_duplicate_synthesized_fields)
+
+    profiler_unknown_synthesized_fields = json.loads(json.dumps(accepted))
+    profiler_unknown_synthesized_fields["profiler"]["synthesized_fields"] = ["trace_kernel_names", "unexpected_field"]
+    with pytest.raises(ValueError, match="profiler.synthesized_fields must only name known synthesized profiler fields"):
+        validate_cn_diagnostic_artifact_payload(profiler_unknown_synthesized_fields)
 
     profiler_missing_trace_kernel_names = json.loads(json.dumps(accepted))
     profiler_missing_trace_kernel_names["profiler"].pop("trace_kernel_names")

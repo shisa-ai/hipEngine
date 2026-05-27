@@ -56,6 +56,16 @@ _PROFILER_TRACE_KERNEL_NAME_COLUMNS = ("Kernel_Name", "KernelName", "Name")
 _PROFILER_TRACE_START_COLUMNS = ("Start_Timestamp", "StartTimestamp", "StartNs", "Start")
 _PROFILER_TRACE_END_COLUMNS = ("End_Timestamp", "EndTimestamp", "EndNs", "End")
 _PROFILER_TRACE_DURATION_COLUMNS = ("DurationNs", "Duration_NS", "Duration_Ns", "Duration")
+_PROFILER_SYNTHESIZED_FIELDS = (
+    "trace_kernel_names",
+    "kernel_durations_ns",
+    "total_kernel_duration_ns",
+    "kernel_duration_shares",
+    "kernel_duration_categories_ns",
+    "kernel_duration_category_shares",
+    "output_format",
+    "trace_dir",
+)
 
 
 def _load_prompt_slices(path: Path, *, prompt_length: int, batch_size: int) -> list[list[int]]:
@@ -571,40 +581,51 @@ def _profiler_reference(path: Path | None) -> dict[str, Any]:
     if not isinstance(profiler, Mapping):
         return {"artifact_path": str(path), "status": "invalid_json", "reason": "profiler summary is not an object"}
     result = dict(profiler)
+    synthesized_fields: set[str] = set()
     if "kernel_durations_ns" not in result:
         kernel_durations = _synthesized_profiler_kernel_durations_from_traces(result, profiler_path=path)
         if kernel_durations is not None:
             result["kernel_durations_ns"] = kernel_durations
+            synthesized_fields.add("kernel_durations_ns")
     if "total_kernel_duration_ns" not in result:
         total_kernel_duration_ns = _synthesized_profiler_total_kernel_duration(result)
         if total_kernel_duration_ns is not None:
             result["total_kernel_duration_ns"] = total_kernel_duration_ns
+            synthesized_fields.add("total_kernel_duration_ns")
     if "kernel_duration_shares" not in result:
         kernel_duration_shares = _synthesized_profiler_kernel_duration_shares(result)
         if kernel_duration_shares is not None:
             result["kernel_duration_shares"] = kernel_duration_shares
+            synthesized_fields.add("kernel_duration_shares")
     if "kernel_duration_categories_ns" not in result:
         kernel_duration_categories_ns = _synthesized_profiler_kernel_duration_categories(result)
         if kernel_duration_categories_ns is not None:
             result["kernel_duration_categories_ns"] = kernel_duration_categories_ns
+            synthesized_fields.add("kernel_duration_categories_ns")
     if "kernel_duration_category_shares" not in result:
         kernel_duration_category_shares = _synthesized_profiler_kernel_duration_category_shares(result)
         if kernel_duration_category_shares is not None:
             result["kernel_duration_category_shares"] = kernel_duration_category_shares
+            synthesized_fields.add("kernel_duration_category_shares")
     if "trace_kernel_names" not in result:
         trace_kernel_names = _synthesized_profiler_trace_kernel_names(result, profiler_path=path)
         if trace_kernel_names is not None:
             result["trace_kernel_names"] = trace_kernel_names
+            synthesized_fields.add("trace_kernel_names")
     profiler_command = _profiler_command_label(profiler, payload)
     if profiler_command is not None:
         if "output_format" not in result:
             output_format = _command_arg_value(profiler_command, "--output-format")
             if output_format is not None:
                 result["output_format"] = output_format
+                synthesized_fields.add("output_format")
         if "trace_dir" not in result:
             trace_dir = _command_arg_value(profiler_command, "-d")
             if trace_dir is not None:
                 result["trace_dir"] = trace_dir
+                synthesized_fields.add("trace_dir")
+    if "synthesized_fields" not in result:
+        result["synthesized_fields"] = [field for field in _PROFILER_SYNTHESIZED_FIELDS if field in synthesized_fields]
     result.setdefault("artifact_path", str(path))
     result.setdefault("status", "loaded")
     return result
