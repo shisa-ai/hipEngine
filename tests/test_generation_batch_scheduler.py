@@ -1999,6 +1999,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     ]
     persisted = json.loads(summary_path.read_text())
     c_sweep.validate_sweep_summary(persisted)
+    assert c_sweep.main(["--validate-summary-json", str(summary_path)]) == 0
     tampered_completed_count = json.loads(json.dumps(persisted))
     tampered_completed_count["completed_command_count"] = 2
     with pytest.raises(ValueError, match=r"completed_command_count must match len\(commands\)"):
@@ -2007,6 +2008,9 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_status_counts["status_counts"] = {}
     with pytest.raises(ValueError, match="status_counts must match commands"):
         c_sweep.validate_sweep_summary(tampered_status_counts)
+    invalid_summary_path = tmp_path / "invalid-summary.json"
+    invalid_summary_path.write_text(json.dumps(tampered_status_counts))
+    assert c_sweep.main(["--validate-summary-json", str(invalid_summary_path)]) == 1
     tampered_category_status_counts = json.loads(json.dumps(persisted))
     tampered_category_status_counts["category_status_counts"] = {}
     with pytest.raises(ValueError, match="category_status_counts must match commands"):

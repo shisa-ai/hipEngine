@@ -1516,6 +1516,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--include-int8", action="store_true", help="Plan blocked INT8 KV c>N diagnostics for c>1 rows")
     parser.add_argument("--output-dir", type=Path, default=Path("/tmp/hipengine-batch-c-sweep"))
     parser.add_argument("--summary-json", type=Path)
+    parser.add_argument("--validate-summary-json", type=Path, help="Validate an existing c-sweep summary JSON and exit")
     parser.add_argument("--dry-run", action="store_true", help="Write the command summary without executing commands")
     parser.add_argument("--stop-on-failure", action=argparse.BooleanOptionalAction, default=True)
     return parser
@@ -1524,6 +1525,17 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.validate_summary_json is not None:
+        try:
+            summary = json.loads(Path(args.validate_summary_json).read_text())
+            if not isinstance(summary, Mapping):
+                raise ValueError("summary root must be an object")
+            validate_sweep_summary(summary)
+        except Exception as exc:
+            print(f"invalid c-sweep summary: {exc}", file=sys.stderr)
+            return 1
+        print("OK")
+        return 0
     summary = run_sweep(args)
     print(json.dumps(summary, indent=2))
     return 1 if summary["status"] in {"failed", "blocked"} else 0
