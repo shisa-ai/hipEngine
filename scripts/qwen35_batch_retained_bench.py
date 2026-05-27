@@ -53,6 +53,9 @@ _PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES = (
     "other",
 )
 _PROFILER_TRACE_KERNEL_NAME_COLUMNS = ("Kernel_Name", "KernelName", "Name")
+_PROFILER_TRACE_START_COLUMNS = ("Start_Timestamp", "StartTimestamp", "StartNs", "Start")
+_PROFILER_TRACE_END_COLUMNS = ("End_Timestamp", "EndTimestamp", "EndNs", "End")
+_PROFILER_TRACE_DURATION_COLUMNS = ("DurationNs", "Duration_NS", "Duration_Ns", "Duration")
 
 
 def _load_prompt_slices(path: Path, *, prompt_length: int, batch_size: int) -> list[list[int]]:
@@ -445,6 +448,51 @@ def _resolve_profiler_trace_file(trace_file: str, *, profiler_path: Path) -> Pat
     return path
 
 
+def _profiler_trace_row_kernel_name(row: Mapping[str, Any]) -> str:
+    for column in _PROFILER_TRACE_KERNEL_NAME_COLUMNS:
+        value = row.get(column)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _profiler_trace_row_duration_ns(row: Mapping[str, Any]) -> float | None:
+    for column in _PROFILER_TRACE_DURATION_COLUMNS:
+        value = row.get(column)
+        if value in (None, ""):
+            continue
+        try:
+            duration = float(value)
+        except (TypeError, ValueError):
+            continue
+        if duration > 0.0 and math.isfinite(duration):
+            return duration
+    start = None
+    end = None
+    for column in _PROFILER_TRACE_START_COLUMNS:
+        value = row.get(column)
+        if value in (None, ""):
+            continue
+        try:
+            start = float(value)
+            break
+        except (TypeError, ValueError):
+            continue
+    for column in _PROFILER_TRACE_END_COLUMNS:
+        value = row.get(column)
+        if value in (None, ""):
+            continue
+        try:
+            end = float(value)
+            break
+        except (TypeError, ValueError):
+            continue
+    if start is None or end is None:
+        return None
+    duration = end - start
+    return duration if duration > 0.0 and math.isfinite(duration) else None
+
+
 def _read_profiler_trace_kernel_names(trace_file: Path) -> list[str]:
     names: list[str] = []
     seen: set[str] = set()
@@ -452,18 +500,28 @@ def _read_profiler_trace_kernel_names(trace_file: Path) -> list[str]:
         with trace_file.open(newline="") as handle:
             reader = csv.DictReader(handle)
             for row in reader:
-                name = ""
-                for column in _PROFILER_TRACE_KERNEL_NAME_COLUMNS:
-                    value = row.get(column)
-                    if isinstance(value, str) and value.strip():
-                        name = value.strip()
-                        break
+                name = _profiler_trace_row_kernel_name(row)
                 if name and name not in seen:
                     names.append(name)
                     seen.add(name)
     except OSError:
         return []
     return names
+
+
+def _read_profiler_trace_kernel_durations(trace_file: Path) -> dict[str, float]:
+    durations: dict[str, float] = {}
+    try:
+        with trace_file.open(newline="") as handle:
+            reader = csv.DictReader(handle)
+            for row in reader:
+                name = _profiler_trace_row_kernel_name(row)
+                duration_ns = _profiler_trace_row_duration_ns(row)
+                if name and duration_ns is not None:
+                    durations[name] = durations.get(name, 0.0) + duration_ns
+    except OSError:
+        return {}
+    return durations
 
 
 def _synthesized_profiler_trace_kernel_names(profiler: Mapping[str, Any], *, profiler_path: Path) -> list[str] | None:
@@ -482,6 +540,21 @@ def _synthesized_profiler_trace_kernel_names(profiler: Mapping[str, Any], *, pro
     return names or None
 
 
+def _synthesized_profiler_kernel_durations_from_traces(profiler: Mapping[str, Any], *, profiler_path: Path) -> dict[str, float] | None:
+    trace_files = profiler.get("trace_files")
+    if not isinstance(trace_files, list) or not trace_files:
+        return None
+    durations: dict[str, float] = {}
+    for trace_file in trace_files:
+        if not isinstance(trace_file, str) or not trace_file:
+            continue
+        for kernel_name, duration_ns in _read_profiler_trace_kernel_durations(
+            _resolve_profiler_trace_file(trace_file, profiler_path=profiler_path)
+        ).items():
+            durations[kernel_name] = durations.get(kernel_name, 0.0) + duration_ns
+    return durations or None
+
+
 def _profiler_reference(path: Path | None) -> dict[str, Any]:
     if path is None:
         return {"status": "not_captured", "notes": "E2E retained c>N row; profiler trace not captured in this iteration."}
@@ -498,6 +571,10 @@ def _profiler_reference(path: Path | None) -> dict[str, Any]:
     if not isinstance(profiler, Mapping):
         return {"artifact_path": str(path), "status": "invalid_json", "reason": "profiler summary is not an object"}
     result = dict(profiler)
+    if "kernel_durations_ns" not in result:
+        kernel_durations = _synthesized_profiler_kernel_durations_from_traces(result, profiler_path=path)
+        if kernel_durations is not None:
+            result["kernel_durations_ns"] = kernel_durations
     if "total_kernel_duration_ns" not in result:
         total_kernel_duration_ns = _synthesized_profiler_total_kernel_duration(result)
         if total_kernel_duration_ns is not None:

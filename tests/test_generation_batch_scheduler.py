@@ -3624,6 +3624,47 @@ def test_qwen35_retained_profiler_reference_loads_captured_summary(tmp_path: Pat
     assert retained_bench._profiler_reference(tmp_path / "missing.json")["status"] == "missing"
 
 
+def test_qwen35_retained_profiler_reference_synthesizes_durations_from_trace_csv(tmp_path: Path) -> None:
+    profiler_path = tmp_path / "profiler-summary.json"
+    trace_csv = tmp_path / "hipengine_kernel_trace.csv"
+    trace_csv.write_text(
+        "Kernel_Name,Start_Timestamp,End_Timestamp\n"
+        "qwen35_batch_decode,0,100\n"
+        "qwen35_batch_decode,100,150\n"
+        "qwen35_batch_decode_wmma_caware,150,350\n"
+    )
+    profiler_path.write_text(
+        json.dumps(
+            {
+                "profiler": {
+                    "status": "captured",
+                    "trace_files": [str(trace_csv)],
+                    "expected_kernels_present": True,
+                    "expected_kernel_names": ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"],
+                }
+            }
+        )
+    )
+
+    loaded = retained_bench._profiler_reference(profiler_path)
+
+    assert loaded["trace_kernel_names"] == ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"]
+    assert loaded["kernel_durations_ns"] == {"qwen35_batch_decode": 150.0, "qwen35_batch_decode_wmma_caware": 200.0}
+    assert loaded["total_kernel_duration_ns"] == 350.0
+    assert loaded["kernel_duration_shares"] == {
+        "qwen35_batch_decode": 150.0 / 350.0,
+        "qwen35_batch_decode_wmma_caware": 200.0 / 350.0,
+    }
+    assert loaded["kernel_duration_categories_ns"] == {
+        "attention": 0.0,
+        "moe": 0.0,
+        "projection": 200.0,
+        "sampling": 0.0,
+        "graph_replay": 0.0,
+        "other": 150.0,
+    }
+
+
 def test_qwen35_retained_payload_mirrors_fallback_native_decode_label(monkeypatch) -> None:
     monkeypatch.setattr(retained_bench, "_hardware_context", lambda: {"gpu": "test"})
     monkeypatch.setattr(retained_bench, "_software_context", lambda: {"python": "test"})
