@@ -295,8 +295,11 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     software = _mapping_at(payload, "software", errors)
     if not isinstance(software.get("hipengine_commit"), str) or not software.get("hipengine_commit"):
         errors.append("software.hipengine_commit must be a non-empty string for accepted artifacts")
-    if not isinstance(software.get("hipengine_dirty"), bool):
+    hipengine_dirty = software.get("hipengine_dirty")
+    if not isinstance(hipengine_dirty, bool):
         errors.append("software.hipengine_dirty must be a bool for accepted artifacts")
+    elif hipengine_dirty:
+        errors.append("software.hipengine_dirty must be false for accepted artifacts")
     commands = _mapping_at(payload, "commands", errors)
     for field in _REQUIRED_ACCEPTED_COMMAND_FIELDS:
         if not isinstance(commands.get(field), str) or not commands.get(field):

@@ -2769,6 +2769,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     with pytest.raises(ValueError, match="hipengine_dirty"):
         validate_cn_diagnostic_artifact_payload(missing_dirty_state)
 
+    dirty_state = json.loads(json.dumps(accepted))
+    dirty_state["software"]["hipengine_dirty"] = True
+    with pytest.raises(ValueError, match="software.hipengine_dirty must be false"):
+        validate_cn_diagnostic_artifact_payload(dirty_state)
+
     incomplete_scaling = dict(accepted)
     incomplete_scaling["scaling"] = {"complete": False}
     with pytest.raises(ValueError, match="scaling.complete|scaling.native"):
