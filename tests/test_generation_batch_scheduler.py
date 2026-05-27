@@ -2162,9 +2162,9 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
                 "rocm-smi --showmeminfo vram --showuse --showtemp",
                 "hipcc --version",
             ],
-            "benchmark": "python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json accepted.json",
+            "benchmark": "python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json benchmarks/results/accepted-c2.json",
             "correctness_reference": "inline generated-token equality vs independent c=1 plus python3 scripts/qwen35_batch_correctness.py --rows 2 --json primitive-c2.json",
-            "profiler": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile -- python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json accepted.json",
+            "profiler": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile -- python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json benchmarks/results/accepted-c2.json",
         },
         "profiler": {
             "status": "captured",
@@ -2655,6 +2655,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     with pytest.raises(ValueError, match="commands.benchmark must reference scripts/qwen35_batch_retained_bench.py"):
         validate_cn_diagnostic_artifact_payload(wrong_benchmark_command)
 
+    missing_benchmark_json = json.loads(json.dumps(accepted))
+    missing_benchmark_json["commands"]["benchmark"] = "python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40"
+    with pytest.raises(ValueError, match="commands.benchmark must include --json"):
+        validate_cn_diagnostic_artifact_payload(missing_benchmark_json)
+
+    tmp_benchmark_json = json.loads(json.dumps(accepted))
+    tmp_benchmark_json["commands"]["benchmark"] = "python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json /tmp/accepted-c2.json"
+    with pytest.raises(ValueError, match="commands.benchmark --json path must be under benchmarks/results"):
+        validate_cn_diagnostic_artifact_payload(tmp_benchmark_json)
+
     missing_benchmark_batch_size = json.loads(json.dumps(accepted))
     missing_benchmark_batch_size["commands"]["benchmark"] = "python3 scripts/qwen35_batch_retained_bench.py --prompt-length 512 --decode-tokens 128 --max-layers 40 --json accepted.json"
     with pytest.raises(ValueError, match="commands.benchmark must include --batch-size"):
@@ -2734,6 +2744,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     profiler_wrong_target["commands"]["profiler"] = "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_serial_bench.py --batch-size 2"
     with pytest.raises(ValueError, match="commands.profiler must target scripts/qwen35_batch_retained_bench.py"):
         validate_cn_diagnostic_artifact_payload(profiler_wrong_target)
+
+    missing_profiler_json = json.loads(json.dumps(accepted))
+    missing_profiler_json["commands"]["profiler"] = "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40"
+    with pytest.raises(ValueError, match="commands.profiler must include --json"):
+        validate_cn_diagnostic_artifact_payload(missing_profiler_json)
+
+    tmp_profiler_json = json.loads(json.dumps(accepted))
+    tmp_profiler_json["commands"]["profiler"] = "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json /tmp/accepted-c2.json"
+    with pytest.raises(ValueError, match="commands.profiler --json path must be under benchmarks/results"):
+        validate_cn_diagnostic_artifact_payload(tmp_profiler_json)
 
     profiler_missing_batch_size = json.loads(json.dumps(accepted))
     profiler_missing_batch_size["commands"]["profiler"] = "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_retained_bench.py --prompt-length 512 --decode-tokens 128 --max-layers 40"

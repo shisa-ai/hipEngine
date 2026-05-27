@@ -79,6 +79,7 @@ _COMMAND_BATCH_SIZE_RE = re.compile(r"(?:^|\s)--batch-size(?:=|\s+)(\d+)(?=\s|$)
 _COMMAND_DECODE_TOKENS_RE = re.compile(r"(?:^|\s)--decode-tokens(?:=|\s+)(\d+)(?=\s|$)")
 _COMMAND_MAX_LAYERS_RE = re.compile(r"(?:^|\s)--max-layers(?:=|\s+)(\d+)(?=\s|$)")
 _COMMAND_PROMPT_LENGTH_RE = re.compile(r"(?:^|\s)--prompt-length(?:=|\s+)(\d+)(?=\s|$)")
+_COMMAND_JSON_RE = re.compile(r"(?:^|\s)--json(?:=|\s+)(\S+)(?=\s|$)")
 _CORRECTNESS_ROWS_RE = re.compile(r"(?:^|\s)--rows(?:=|\s+)(\d+)(?=\s|$)")
 _FULL_COMMIT_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", re.IGNORECASE)
 _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = ("serial", "fallback", "per_row", "per-row")
@@ -111,6 +112,15 @@ def _validate_command_workload_shape(command: str, *, field: str, payload: Mappi
         expected = workload.get(workload_key)
         if isinstance(expected, int) and not isinstance(expected, bool) and int(match.group(1)) != expected:
             errors.append(f"commands.{field} {flag} must match workload.{workload_key} for accepted artifacts")
+
+
+def _validate_command_json_artifact_path(command: str, *, field: str, errors: list[str]) -> None:
+    json_match = _COMMAND_JSON_RE.search(command)
+    if json_match is None:
+        errors.append(f"commands.{field} must include --json <benchmarks/results/...> for accepted artifacts")
+        return
+    json_path = json_match.group(1).strip("'\"")
+    _validate_benchmark_results_artifact_path(f"commands.{field} --json path", json_path, errors)
 
 
 def _has_disallowed_profiler_kernel_fragment(name: str) -> bool:
@@ -370,6 +380,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             errors.append("commands.benchmark must reference scripts/qwen35_batch_retained_bench.py for accepted artifacts")
         else:
             _validate_command_workload_shape(benchmark_command, field="benchmark", payload=payload, errors=errors)
+            _validate_command_json_artifact_path(benchmark_command, field="benchmark", errors=errors)
     correctness_command = commands.get("correctness_reference")
     if isinstance(correctness_command, str):
         if "qwen35_batch_correctness.py" not in correctness_command:
@@ -391,6 +402,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             errors.append("commands.profiler must target scripts/qwen35_batch_retained_bench.py for accepted artifacts")
         else:
             _validate_command_workload_shape(profiler_command, field="profiler", payload=payload, errors=errors)
+            _validate_command_json_artifact_path(profiler_command, field="profiler", errors=errors)
     profiler = _mapping_at(payload, "profiler", errors)
     if profiler.get("status") != "captured":
         errors.append("profiler.status must be 'captured' for accepted artifacts")
