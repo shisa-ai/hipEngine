@@ -862,7 +862,7 @@ roll-up/status view.
       counts, and KV policy, and retained scaling summaries carry c=1/serial
       baseline `status`/`reason`, `workload_concurrency`, and prompt/decode
       labels so schema validation rejects c>N rows compared against missing,
-      failed, ambiguous, or wrong-shape baselines; the sweep writes `command_count`,
+      failed/unusable, reason-bearing, ambiguous, or wrong-shape baselines; the sweep writes `command_count`,
       `completed_command_count`, an `options` block, per-retained-command
       `preconditions`, `status_counts`, `category_status_counts`,
       `retained_precondition_counts`, and `skipped_preconditions` summary rollups

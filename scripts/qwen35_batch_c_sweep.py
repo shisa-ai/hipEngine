@@ -361,8 +361,11 @@ def _scaling_reference_precondition(
         reasons.append("scaling reference artifact root is not an object")
     else:
         status = payload.get("status")
-        if status in {"failed", "rejected", "rejected_correctness"}:
+        if status in {"failed", "rejected", "rejected_correctness", "missing", "invalid_json"}:
             reasons.append(f"status={status!r} is not usable as a scaling reference")
+        reason = payload.get("reason")
+        if reason is not None:
+            reasons.append(f"scaling reference reason is non-null: {reason}")
         aggregate, per_request = _extract_decode_rates(payload)
         if aggregate is None or per_request is None:
             reasons.append("decode throughput fields are missing")
