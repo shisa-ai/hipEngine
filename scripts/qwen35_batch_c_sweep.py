@@ -656,6 +656,10 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
         kernel_durations = profiler["kernel_durations_ns"]
         result.update(
             {
+                "profiler_status": str(profiler["status"]),
+                "workload_concurrency": int(raw_rows),
+                "prompt_tokens_per_request": int(raw_prompt_tokens),
+                "gen_tokens_per_request": int(raw_gen_tokens),
                 "expected_kernel_names": list(profiler["expected_kernel_names"]),
                 "kernel_durations_ns": {
                     kernel_name: float(duration_ns)
