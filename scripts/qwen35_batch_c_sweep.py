@@ -400,6 +400,11 @@ def _has_disallowed_profiler_kernel_fragment(name: str) -> bool:
     return any(fragment in lowered for fragment in _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS)
 
 
+def _is_kernel_trace_csv_path(trace_file: str) -> bool:
+    name = Path(trace_file).name.lower()
+    return Path(trace_file).suffix.lower() == ".csv" and "kernel" in name and "trace" in name
+
+
 def _profiler_kernel_duration_category(kernel_name: str) -> str:
     lowered = kernel_name.lower()
     if "graph" in lowered or "replay" in lowered:
@@ -728,6 +733,8 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
             profiler_trace_files = list(raw_trace_files)
             if any(Path(trace_file).suffix.lower() != ".csv" for trace_file in profiler_trace_files):
                 reasons.append("profiler.trace_files contains a non-CSV trace file")
+            if not any(_is_kernel_trace_csv_path(trace_file) for trace_file in profiler_trace_files):
+                reasons.append("profiler.trace_files does not include a kernel-trace CSV")
             if profiler_trace_dir is not None:
                 trace_dir_path = Path(profiler_trace_dir)
                 for trace_file in profiler_trace_files:

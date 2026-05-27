@@ -271,6 +271,11 @@ def _has_disallowed_profiler_kernel_fragment(name: str) -> bool:
     return any(fragment in lowered for fragment in _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS)
 
 
+def _is_kernel_trace_csv_path(trace_file: str) -> bool:
+    name = Path(trace_file).name.lower()
+    return Path(trace_file).suffix.lower() == ".csv" and "kernel" in name and "trace" in name
+
+
 def _profiler_kernel_duration_category(kernel_name: str) -> str:
     lowered = kernel_name.lower()
     if "graph" in lowered or "replay" in lowered:
@@ -924,6 +929,8 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             except ValueError:
                 errors.append("profiler.trace_files must be under profiler.trace_dir for accepted artifacts")
                 break
+        if not any(_is_kernel_trace_csv_path(trace_file) for trace_file in profiler_trace_files):
+            errors.append("profiler.trace_files must include a kernel-trace CSV path for accepted artifacts")
     if profiler.get("expected_kernels_present") is not True:
         errors.append("profiler.expected_kernels_present must be true for accepted artifacts")
     expected_kernel_names = profiler.get("expected_kernel_names")

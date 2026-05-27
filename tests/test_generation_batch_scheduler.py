@@ -485,6 +485,42 @@ def test_batch_c_sweep_profiler_precondition_rejects_trace_files_outside_trace_d
     }
 
 
+def test_batch_c_sweep_profiler_precondition_rejects_trace_files_without_kernel_trace_csv(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"]["trace_files"] = [str(output_dir / "profile-c2" / "hipengine_api_trace.csv")]
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler.trace_files does not include a kernel-trace CSV",
+    }
+
+
 def test_batch_c_sweep_profiler_precondition_rejects_missing_command_trace_dir(tmp_path: Path) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
@@ -4747,6 +4783,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     profiler_trace_file_outside_trace_dir["profiler"]["trace_files"] = ["/tmp/other-profile/hipengine_kernel_trace.csv"]
     with pytest.raises(ValueError, match="profiler.trace_files must be under profiler.trace_dir"):
         validate_cn_diagnostic_artifact_payload(profiler_trace_file_outside_trace_dir)
+
+    profiler_trace_file_without_kernel_trace_csv = json.loads(json.dumps(accepted))
+    profiler_trace_file_without_kernel_trace_csv["profiler"]["trace_files"] = ["/tmp/hipengine-profile/hipengine_api_trace.csv"]
+    with pytest.raises(ValueError, match="profiler.trace_files must include a kernel-trace CSV path"):
+        validate_cn_diagnostic_artifact_payload(profiler_trace_file_without_kernel_trace_csv)
 
     profiler_wrong_target = json.loads(json.dumps(accepted))
     profiler_wrong_target["commands"]["profiler"] = "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_serial_bench.py --batch-size 2"
