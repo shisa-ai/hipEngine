@@ -2329,6 +2329,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     with pytest.raises(ValueError, match="primitive_batch_correctness.passed"):
         validate_cn_diagnostic_artifact_payload(failed_primitive)
 
+    primitive_tmp_artifact = json.loads(json.dumps(accepted))
+    primitive_tmp_artifact["correctness"]["primitive_batch_correctness"]["artifact_path"] = "/tmp/primitive-c2.json"
+    with pytest.raises(ValueError, match="primitive_batch_correctness.artifact_path must be under benchmarks/results"):
+        validate_cn_diagnostic_artifact_payload(primitive_tmp_artifact)
+
     mismatched_primitive_rows = json.loads(json.dumps(accepted))
     mismatched_primitive_rows["correctness"]["primitive_batch_correctness"]["rows"] = 8
     with pytest.raises(ValueError, match="primitive_batch_correctness.rows must match workload.concurrency"):
@@ -2532,6 +2537,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     missing_c1_status["scaling"]["c1_baseline"].pop("status")
     with pytest.raises(ValueError, match="c1_baseline.status"):
         validate_cn_diagnostic_artifact_payload(missing_c1_status)
+
+    tmp_c1_artifact = json.loads(json.dumps(accepted))
+    tmp_c1_artifact["scaling"]["c1_baseline"]["artifact_path"] = "/tmp/c1.json"
+    with pytest.raises(ValueError, match="scaling.c1_baseline.artifact_path must be under benchmarks/results"):
+        validate_cn_diagnostic_artifact_payload(tmp_c1_artifact)
 
     failed_c1_status = json.loads(json.dumps(accepted))
     failed_c1_status["scaling"]["c1_baseline"]["status"] = "missing"

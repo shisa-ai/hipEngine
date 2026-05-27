@@ -918,6 +918,7 @@ roll-up/status view.
       with `--rows` matching `workload.concurrency`, and a concrete
       `rocprofv3 --kernel-trace` profiler command targeting
       `scripts/qwen35_batch_retained_bench.py` with the same retained shape flags,
+      primitive/scaling artifact paths under `benchmarks/results/`,
       concrete non-empty hardware `gpu`/`arch` fields,
       commit/dirty-state software fields, and captured profiler evidence with
       native batch expected kernel names (no serial/per-row/fallback labels)

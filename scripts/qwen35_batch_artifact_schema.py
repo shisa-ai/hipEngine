@@ -115,6 +115,16 @@ def _validate_expected_profiler_kernel_names(expected_kernel_names: list[Any], e
             break
 
 
+def _is_benchmark_results_path(value: str) -> bool:
+    normalized = value.replace("\\", "/")
+    return normalized.startswith("benchmarks/results/") or "/benchmarks/results/" in normalized
+
+
+def _validate_benchmark_results_artifact_path(field: str, value: Any, errors: list[str]) -> None:
+    if isinstance(value, str) and value and not _is_benchmark_results_path(value):
+        errors.append(f"{field} must be under benchmarks/results for accepted artifacts")
+
+
 def validate_cn_diagnostic_artifact_payload(payload: Mapping[str, Any]) -> None:
     """Validate c>N diagnostic/retained benchmark artifact labeling fields.
 
@@ -379,8 +389,15 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
         return
     if primitive.get("passed") is not True:
         errors.append("correctness.primitive_batch_correctness.passed must be true for accepted artifacts")
-    if not isinstance(primitive.get("artifact_path"), str) or not primitive.get("artifact_path"):
+    primitive_artifact_path = primitive.get("artifact_path")
+    if not isinstance(primitive_artifact_path, str) or not primitive_artifact_path:
         errors.append("correctness.primitive_batch_correctness.artifact_path must be a non-empty string for accepted artifacts")
+    else:
+        _validate_benchmark_results_artifact_path(
+            "correctness.primitive_batch_correctness.artifact_path",
+            primitive_artifact_path,
+            errors,
+        )
     primitive_rows = primitive.get("rows")
     if not isinstance(primitive_rows, int) or isinstance(primitive_rows, bool):
         errors.append("correctness.primitive_batch_correctness.rows must be an int for accepted artifacts")
@@ -488,8 +505,11 @@ def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[st
         if not isinstance(baseline, Mapping):
             errors.append(f"scaling.{baseline_name} must be an object for accepted artifacts")
             continue
-        if not isinstance(baseline.get("artifact_path"), str) or not baseline.get("artifact_path"):
+        baseline_artifact_path = baseline.get("artifact_path")
+        if not isinstance(baseline_artifact_path, str) or not baseline_artifact_path:
             errors.append(f"scaling.{baseline_name}.artifact_path must be a non-empty string for accepted artifacts")
+        else:
+            _validate_benchmark_results_artifact_path(f"scaling.{baseline_name}.artifact_path", baseline_artifact_path, errors)
         status = baseline.get("status")
         if not isinstance(status, str) or not status:
             errors.append(f"scaling.{baseline_name}.status must be a non-empty string for accepted artifacts")
