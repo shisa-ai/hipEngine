@@ -900,8 +900,8 @@ roll-up/status view.
       aggregate token labels matching per-request shape times concurrency,
       full-row admission/completion/per-request observability with matching row
       ids and latency samples for every row in `workload.concurrency`, positive
-      aggregate/per-request throughput whose native scaling copy matches the
-      primary measurements, all
+      aggregate/per-request throughput whose rates match `workload.concurrency`
+      and whose native scaling copy matches the primary measurements, all
       required positive scaling ratios that mathematically match usable same-shape
       c=1 and usable same-shape/same-concurrency serial bridge
       baselines,

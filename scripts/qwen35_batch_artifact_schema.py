@@ -356,6 +356,8 @@ def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[st
             int(gen_tokens) * int(concurrency),
             errors,
         )
+    if concurrency_valid:
+        _validate_aggregate_per_request_rate("measurements", measurements, int(concurrency), errors)
     if scaling.get("complete") is not True:
         errors.append("scaling.complete must be true for accepted artifacts")
     native = scaling.get("native")
@@ -407,6 +409,8 @@ def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[st
             errors.append("scaling.c1_baseline.workload_concurrency must be an int for accepted artifacts")
         elif c1_concurrency != 1:
             errors.append("scaling.c1_baseline.workload_concurrency must be 1 for accepted artifacts")
+        else:
+            _validate_aggregate_per_request_rate("scaling.c1_baseline", c1_baseline, c1_concurrency, errors)
     serial_baseline = scaling.get("serial_bridge_baseline")
     if isinstance(serial_baseline, Mapping):
         serial_concurrency = serial_baseline.get("workload_concurrency")
@@ -414,6 +418,8 @@ def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[st
             errors.append("scaling.serial_bridge_baseline.workload_concurrency must be an int for accepted artifacts")
         elif concurrency_valid and serial_concurrency != concurrency:
             errors.append("scaling.serial_bridge_baseline.workload_concurrency must match workload.concurrency for accepted artifacts")
+        else:
+            _validate_aggregate_per_request_rate("scaling.serial_bridge_baseline", serial_baseline, serial_concurrency, errors)
     ratios = scaling.get("ratios")
     if not isinstance(ratios, Mapping):
         errors.append("scaling.ratios must be an object for accepted artifacts")
@@ -458,6 +464,22 @@ def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[st
                 "decode_tok_s_per_request",
                 errors,
             )
+
+
+def _validate_aggregate_per_request_rate(
+    label: str,
+    payload: Mapping[str, Any],
+    concurrency: int,
+    errors: list[str],
+) -> None:
+    aggregate = payload.get("decode_tok_s_aggregate")
+    per_request = payload.get("decode_tok_s_per_request")
+    if not (_is_number(aggregate) and _is_number(per_request)):
+        return
+    expected = float(per_request) * float(concurrency)
+    tolerance = max(1e-9, abs(expected) * 1e-6)
+    if abs(float(aggregate) - expected) > tolerance:
+        errors.append(f"{label}.decode_tok_s_aggregate must match decode_tok_s_per_request times concurrency for accepted artifacts")
 
 
 def _validate_workload_aggregate_tokens(
