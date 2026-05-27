@@ -113,14 +113,16 @@ def _validate_command_workload_shape(command: str, *, field: str, payload: Mappi
             errors.append(f"commands.{field} {flag} must match workload.{workload_key} for accepted artifacts")
 
 
+def _has_disallowed_profiler_kernel_fragment(name: str) -> bool:
+    lowered = name.lower()
+    return any(fragment in lowered for fragment in _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS)
+
+
 def _validate_expected_profiler_kernel_names(expected_kernel_names: list[Any], errors: list[str]) -> None:
     if not any(isinstance(name, str) and "batch" in name.lower() for name in expected_kernel_names):
         errors.append("profiler.expected_kernel_names must include at least one native batch kernel name for accepted artifacts")
     for name in expected_kernel_names:
-        if not isinstance(name, str):
-            continue
-        lowered = name.lower()
-        if any(fragment in lowered for fragment in _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS):
+        if isinstance(name, str) and _has_disallowed_profiler_kernel_fragment(name):
             errors.append("profiler.expected_kernel_names must not include serial/per-row/fallback kernel names for accepted artifacts")
             break
 
@@ -387,12 +389,17 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     kernel_durations = profiler.get("kernel_durations_ns")
     if not isinstance(kernel_durations, Mapping) or not kernel_durations:
         errors.append("profiler.kernel_durations_ns must be a non-empty object for accepted artifacts")
-    elif isinstance(expected_kernel_names, list):
-        for kernel_name in expected_kernel_names:
-            if not isinstance(kernel_name, str) or not kernel_name:
-                continue
-            if not _is_positive_number(kernel_durations.get(kernel_name)):
-                errors.append(f"profiler.kernel_durations_ns.{kernel_name} must be positive numeric for accepted artifacts")
+    else:
+        for kernel_name in kernel_durations:
+            if isinstance(kernel_name, str) and _has_disallowed_profiler_kernel_fragment(kernel_name):
+                errors.append("profiler.kernel_durations_ns must not include serial/per-row/fallback kernel names for accepted artifacts")
+                break
+        if isinstance(expected_kernel_names, list):
+            for kernel_name in expected_kernel_names:
+                if not isinstance(kernel_name, str) or not kernel_name:
+                    continue
+                if not _is_positive_number(kernel_durations.get(kernel_name)):
+                    errors.append(f"profiler.kernel_durations_ns.{kernel_name} must be positive numeric for accepted artifacts")
 
 
 def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness: Mapping[str, Any], errors: list[str]) -> None:

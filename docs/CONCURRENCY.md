@@ -925,8 +925,9 @@ roll-up/status view.
       `rocminfo` output includes the recorded arch,
       clean full-commit software fields (`software.hipengine_dirty == false`)
       plus non-empty `hipcc_version`, and captured profiler evidence with
-      native batch expected kernel names (no serial/per-row/fallback labels)
-      present and positive per-kernel duration evidence.
+      native batch expected kernel names and duration-map keys (no
+      serial/per-row/fallback labels) present with positive per-kernel duration
+      evidence.
       The scoreboard item remains open until accepted
       artifacts exist and the benchmark rollups are updated.
 
