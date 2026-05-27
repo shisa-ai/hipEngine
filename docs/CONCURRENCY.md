@@ -921,7 +921,8 @@ roll-up/status view.
       primitive/scaling artifact paths under `benchmarks/results/`,
       environment capture commands for `rocminfo`, `rocm-smi`, and `hipcc --version`,
       concrete non-empty hardware `gpu`/`arch` fields plus successful
-      `hardware.rocminfo`/`hardware.rocm_smi` capture objects,
+      `hardware.rocminfo`/`hardware.rocm_smi` capture objects whose
+      `rocminfo` output includes the recorded arch,
       clean full-commit software fields (`software.hipengine_dirty == false`)
       plus non-empty `hipcc_version`, and captured profiler evidence with
       native batch expected kernel names (no serial/per-row/fallback labels)

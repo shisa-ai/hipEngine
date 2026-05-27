@@ -316,6 +316,12 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             errors.append(f"hardware.{field} must be a non-empty string for accepted artifacts")
     for field in _REQUIRED_ACCEPTED_HARDWARE_CAPTURE_FIELDS:
         _validate_capture_context(f"hardware.{field}", hardware.get(field), errors)
+    hardware_arch = hardware.get("arch")
+    rocminfo = hardware.get("rocminfo")
+    if isinstance(hardware_arch, str) and hardware_arch and isinstance(rocminfo, Mapping):
+        rocminfo_output = rocminfo.get("output")
+        if isinstance(rocminfo_output, str) and hardware_arch not in rocminfo_output:
+            errors.append("hardware.rocminfo.output must include hardware.arch for accepted artifacts")
     software = _mapping_at(payload, "software", errors)
     hipengine_commit = software.get("hipengine_commit")
     if not isinstance(hipengine_commit, str) or not hipengine_commit:

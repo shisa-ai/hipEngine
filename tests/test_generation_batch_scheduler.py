@@ -2806,6 +2806,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     with pytest.raises(ValueError, match="hardware.rocm_smi.returncode must be 0"):
         validate_cn_diagnostic_artifact_payload(failed_rocm_smi)
 
+    mismatched_rocminfo_arch = json.loads(json.dumps(accepted))
+    mismatched_rocminfo_arch["hardware"]["rocminfo"]["output"] = "Name: gfx0000"
+    with pytest.raises(ValueError, match="hardware.rocminfo.output must include hardware.arch"):
+        validate_cn_diagnostic_artifact_payload(mismatched_rocminfo_arch)
+
     short_commit = json.loads(json.dumps(accepted))
     short_commit["software"]["hipengine_commit"] = "abc1234"
     with pytest.raises(ValueError, match="software.hipengine_commit must be a full commit hash"):
