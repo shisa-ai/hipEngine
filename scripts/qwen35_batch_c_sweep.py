@@ -765,6 +765,7 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
             {
                 "profiler_status": str(profiler["status"]),
                 "profiler_command": profiler_command,
+                "retained_artifact_path": str(command.artifact_path),
                 "profiler_model": _command_text_arg(profiler_command, "--model"),
                 "profiler_fixture": _command_text_arg(profiler_command, "--fixture"),
                 "profiler_warmup_decode_tokens": int(_command_text_arg(profiler_command, "--warmup-decode-tokens")),

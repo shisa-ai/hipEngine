@@ -1369,6 +1369,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
             "--prompt-length 16 --decode-tokens 2 --warmup-decode-tokens 1 --max-layers 3 "
             f"--json {output_dir / 'native-diagnostic-c2.json'} --profiler-json {output_dir / 'profiler-c2.json'}"
         ),
+        "retained_artifact_path": str(output_dir / "native-diagnostic-c2.json"),
         "profiler_model": "/tmp/model",
         "profiler_fixture": "/tmp/fixture.json",
         "profiler_warmup_decode_tokens": 1,
