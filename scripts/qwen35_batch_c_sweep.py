@@ -1171,7 +1171,7 @@ def _retained_profiler_synthesis_postcondition(
     preconditions: Sequence[dict[str, Any]] | None,
 ) -> dict[str, Any] | None:
     profiler_precondition = _profiler_summary_precondition_record(preconditions)
-    if command.category != "native_diagnostic" or profiler_precondition is None or not command.artifact_path.exists():
+    if command.category != "native_diagnostic" or profiler_precondition is None:
         return None
     result: dict[str, Any] = {
         "kind": "retained_profiler_synthesis",
@@ -1180,6 +1180,9 @@ def _retained_profiler_synthesis_postcondition(
         "passed": False,
         "reason": None,
     }
+    if not command.artifact_path.exists():
+        result["reason"] = "retained artifact was not written for profiler provenance cross-check"
+        return result
     expected_fields = profiler_precondition.get("profiler_trace_synthesized_fields")
     if not isinstance(expected_fields, list) or not all(isinstance(field, str) for field in expected_fields):
         result["reason"] = "profiler precondition synthesized fields are missing or malformed"

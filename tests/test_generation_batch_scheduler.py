@@ -2081,6 +2081,36 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     assert "precondition" not in native
 
 
+def test_batch_c_sweep_rejects_missing_retained_profiler_synthesis_artifact(tmp_path: Path) -> None:
+    artifact_path = tmp_path / "missing-native-diagnostic-c2.json"
+    profiler_path = tmp_path / "profiler-c2.json"
+    command = c_sweep.SweepCommand(
+        category="native_diagnostic",
+        batch_size=2,
+        artifact_path=artifact_path,
+        argv=("python3", "scripts/qwen35_batch_retained_bench.py"),
+    )
+    postcondition = c_sweep._retained_profiler_synthesis_postcondition(
+        command,
+        [
+            {
+                "kind": "profiler_summary",
+                "artifact_path": str(profiler_path),
+                "passed": True,
+                "profiler_trace_synthesized_fields": [],
+            }
+        ],
+    )
+
+    assert postcondition == {
+        "kind": "retained_profiler_synthesis",
+        "artifact_path": str(artifact_path),
+        "profiler_precondition_artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "retained artifact was not written for profiler provenance cross-check",
+    }
+
+
 def test_batch_c_sweep_rejects_retained_profiler_synthesis_mismatch(tmp_path: Path) -> None:
     artifact_path = tmp_path / "native-diagnostic-c2.json"
     profiler_path = tmp_path / "profiler-c2.json"
