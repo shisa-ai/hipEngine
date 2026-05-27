@@ -885,8 +885,9 @@ roll-up/status view.
       replay length)`. Acceptance: bucket hit/miss stats and profiler evidence
       show replay for common shapes. Progress: graph-bucket stats now serialize
       `entries`, `hits`, `misses`, miss-reason counts, and kernel-time
-      histogram buckets, and retained accepted-artifact schema requires those
-      observability fields before a c>N row can be promoted.
+      histogram buckets; retained accepted-artifact schema requires those
+      observability fields before a c>N row can be promoted; `/metrics` exposes
+      the labeled miss-reason and kernel-time-bucket counters for live runs.
 - [ ] **P3 remove residual serial loops.** Remove full-attention per-row
       fallback, per-row metadata allocation, per-row LM-head launches, and
       Python per-layer dispatch from steady-state native decode. Acceptance:
@@ -1159,7 +1160,8 @@ endpoint live; retained c>N rows include all gates above.
       (entries, hits, misses, miss reason, kernel-time histogram). Progress:
       `GraphBucketCache.stats.to_json_dict()` now includes miss-reason counts
       and kernel-time histogram buckets, retained/serial scripts emit that
-      shape, and accepted-artifact schema validates it; the item remains open
+      shape, accepted-artifact schema validates it, and `/metrics` exports
+      labeled miss-reason and kernel-time-bucket counters; the item remains open
       until real replay profiler evidence populates kernel-time buckets.
 - [x] Retained-row gates 4 (admission/completion timestamps + p50/p95) and
       6/7/8 (dynamic pool + stable block id + prefix sharing artifact)

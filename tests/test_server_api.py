@@ -393,7 +393,13 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
         free_pages=4,
         refcounted_pages=5,
     )
-    fake.graph_bucket_stats = SimpleNamespace(entries=6, hits=7, misses=8)
+    fake.graph_bucket_stats = SimpleNamespace(
+        entries=6,
+        hits=7,
+        misses=8,
+        miss_reasons={"cache_absent": 5, "shape_changed": 3},
+        kernel_time_histogram_ns={"le_10us": 2, "le_100us": 4},
+    )
     app = create_app(
         ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False, metrics="prometheus"),
         llm=fake,
@@ -428,6 +434,10 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
     assert _metric_value(metrics.text, "hipengine_graph_bucket_entries") == 6
     assert _metric_value(metrics.text, "hipengine_graph_bucket_hits_total") == 7
     assert _metric_value(metrics.text, "hipengine_graph_bucket_misses_total") == 8
+    assert _labeled_metric_value(metrics.text, "hipengine_graph_bucket_miss_reason_total", reason="cache_absent") == 5
+    assert _labeled_metric_value(metrics.text, "hipengine_graph_bucket_miss_reason_total", reason="shape_changed") == 3
+    assert _labeled_metric_value(metrics.text, "hipengine_graph_bucket_kernel_time_bucket_total", bucket="le_10us") == 2
+    assert _labeled_metric_value(metrics.text, "hipengine_graph_bucket_kernel_time_bucket_total", bucket="le_100us") == 4
 
 
 def test_streaming_chat_completion_lowers_n_to_seeded_rows() -> None:
@@ -592,6 +602,15 @@ def _metric_value(text: str, name: str) -> int:
         if line.startswith(prefix):
             return int(float(line.removeprefix(prefix)))
     raise AssertionError(f"metric {name} not found in:\n{text}")
+
+
+def _labeled_metric_value(text: str, name: str, **labels: str) -> int:
+    encoded_labels = ",".join(f'{key}="{value}"' for key, value in sorted(labels.items()))
+    prefix = f"{name}{{{encoded_labels}}} "
+    for line in text.splitlines():
+        if line.startswith(prefix):
+            return int(float(line.removeprefix(prefix)))
+    raise AssertionError(f"metric {name} with labels {labels} not found in:\n{text}")
 
 
 def _sse_payloads(text: str) -> list[dict]:

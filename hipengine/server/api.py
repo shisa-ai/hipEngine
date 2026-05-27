@@ -891,6 +891,20 @@ def _render_prometheus_metrics(metrics: _ServerMetrics, *, engine: Any | None) -
         lines.append(f"# HELP {name} {help_text[name]}")
         lines.append(f"# TYPE {name} {'counter' if name in counter_names else 'gauge'}")
         lines.append(f"{name} {_format_metric_value(value)}")
+    _append_labeled_counter_metrics(
+        lines,
+        "hipengine_graph_bucket_miss_reason_total",
+        "Graph bucket cache misses by reason, or empty when unavailable.",
+        "reason",
+        graph["miss_reasons"],
+    )
+    _append_labeled_counter_metrics(
+        lines,
+        "hipengine_graph_bucket_kernel_time_bucket_total",
+        "Graph bucket kernel-time observations by duration bucket, or empty when unavailable.",
+        "bucket",
+        graph["kernel_time_histogram_ns"],
+    )
     return "\n".join(lines) + "\n"
 
 
@@ -913,14 +927,22 @@ def _pool_metric_values(engine: Any | None) -> dict[str, float]:
     return values
 
 
-def _graph_bucket_metric_values(engine: Any | None) -> dict[str, float]:
-    values = {"entries": 0.0, "hits": 0.0, "misses": 0.0}
+def _graph_bucket_metric_values(engine: Any | None) -> dict[str, Any]:
+    values: dict[str, Any] = {
+        "entries": 0.0,
+        "hits": 0.0,
+        "misses": 0.0,
+        "miss_reasons": {},
+        "kernel_time_histogram_ns": {},
+    }
     stats = _first_stats_object(engine, ("graph_buckets", "graph_bucket_cache", "graph_bucket_stats"))
     if stats is None:
         return values
     data = _stats_to_mapping(stats)
-    for key in values:
+    for key in ("entries", "hits", "misses"):
         values[key] = float(data.get(key, 0) or 0)
+    values["miss_reasons"] = _non_negative_metric_mapping(data.get("miss_reasons"))
+    values["kernel_time_histogram_ns"] = _non_negative_metric_mapping(data.get("kernel_time_histogram_ns"))
     return values
 
 
@@ -959,8 +981,36 @@ def _stats_to_mapping(stats: Any) -> Mapping[str, Any]:
         "entries",
         "hits",
         "misses",
+        "miss_reasons",
+        "kernel_time_histogram_ns",
     )
     return {key: getattr(stats, key) for key in keys if hasattr(stats, key)}
+
+
+def _non_negative_metric_mapping(value: Any) -> dict[str, float]:
+    if not isinstance(value, Mapping):
+        return {}
+    metrics: dict[str, float] = {}
+    for key, raw in value.items():
+        try:
+            numeric = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if numeric < 0:
+            continue
+        metrics[str(key)] = numeric
+    return metrics
+
+
+def _append_labeled_counter_metrics(lines: list[str], name: str, help_text: str, label: str, values: Mapping[str, float]) -> None:
+    lines.append(f"# HELP {name} {help_text}")
+    lines.append(f"# TYPE {name} counter")
+    for key, value in sorted(values.items()):
+        lines.append(f'{name}{{{label}="{_escape_prometheus_label_value(key)}"}} {_format_metric_value(value)}')
+
+
+def _escape_prometheus_label_value(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
 
 
 def _format_metric_value(value: float) -> str:
