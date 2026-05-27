@@ -2149,6 +2149,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     with pytest.raises(ValueError, match="commands.benchmark"):
         validate_cn_diagnostic_artifact_payload(missing_command)
 
+    missing_correctness_command = json.loads(json.dumps(accepted))
+    missing_correctness_command["commands"]["correctness_reference"] = ""
+    with pytest.raises(ValueError, match="commands.correctness_reference"):
+        validate_cn_diagnostic_artifact_payload(missing_correctness_command)
+
     missing_profiler = dict(accepted)
     missing_profiler.pop("profiler")
     with pytest.raises(ValueError, match="profiler"):

@@ -45,6 +45,11 @@ _REQUIRED_ACCEPTED_HARDWARE_FIELDS = (
     "gpu",
     "arch",
 )
+_REQUIRED_ACCEPTED_COMMAND_FIELDS = (
+    "benchmark",
+    "correctness_reference",
+    "profiler",
+)
 _REQUIRED_ACCEPTED_SCALING_BASELINES = (
     "c1_baseline",
     "serial_bridge_baseline",
@@ -209,10 +214,9 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     if not isinstance(software.get("hipengine_dirty"), bool):
         errors.append("software.hipengine_dirty must be a bool for accepted artifacts")
     commands = _mapping_at(payload, "commands", errors)
-    if not isinstance(commands.get("benchmark"), str) or not commands.get("benchmark"):
-        errors.append("commands.benchmark must be a non-empty string for accepted artifacts")
-    if not isinstance(commands.get("profiler"), str) or not commands.get("profiler"):
-        errors.append("commands.profiler must be a non-empty string for accepted artifacts")
+    for field in _REQUIRED_ACCEPTED_COMMAND_FIELDS:
+        if not isinstance(commands.get(field), str) or not commands.get(field):
+            errors.append(f"commands.{field} must be a non-empty string for accepted artifacts")
     profiler = _mapping_at(payload, "profiler", errors)
     if profiler.get("status") != "captured":
         errors.append("profiler.status must be 'captured' for accepted artifacts")
