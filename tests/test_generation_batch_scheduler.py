@@ -2492,8 +2492,8 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             "generated_token_equality": {
                 "passed": True,
                 "skipped": False,
-                "batch_sequences": [[10, 11], [20, 21]],
-                "c1_sequences": [[10, 11], [20, 21]],
+                "batch_sequences": [list(range(10, 138)), list(range(20, 148))],
+                "c1_sequences": [list(range(10, 138)), list(range(20, 148))],
                 "mismatches": [],
             },
             "primitive_batch_correctness": {
@@ -2837,6 +2837,12 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     short_equality["correctness"]["generated_token_equality"]["batch_sequences"] = [[10, 11]]
     with pytest.raises(ValueError, match="batch_sequences length must match workload.concurrency"):
         validate_cn_diagnostic_artifact_payload(short_equality)
+
+    truncated_decode_equality = json.loads(json.dumps(accepted))
+    truncated_decode_equality["correctness"]["generated_token_equality"]["batch_sequences"][0] = [10, 11]
+    truncated_decode_equality["correctness"]["generated_token_equality"]["c1_sequences"][0] = [10, 11]
+    with pytest.raises(ValueError, match=r"batch_sequences\[0\] length must match workload.gen_tokens_per_request"):
+        validate_cn_diagnostic_artifact_payload(truncated_decode_equality)
 
     missing_primitive = json.loads(json.dumps(accepted))
     missing_primitive["correctness"].pop("primitive_batch_correctness")

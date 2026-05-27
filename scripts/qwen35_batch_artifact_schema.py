@@ -934,6 +934,8 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
     workload = _mapping_at(payload, "workload", errors)
     concurrency = workload.get("concurrency")
     concurrency_valid = isinstance(concurrency, int) and not isinstance(concurrency, bool) and concurrency > 1
+    gen_tokens = workload.get("gen_tokens_per_request")
+    gen_tokens_valid = isinstance(gen_tokens, int) and not isinstance(gen_tokens, bool) and gen_tokens > 0
     if not concurrency_valid:
         errors.append("workload.concurrency must be an int > 1 for accepted artifacts")
     else:
@@ -941,6 +943,19 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
             errors.append("correctness.generated_token_equality.batch_sequences length must match workload.concurrency for accepted artifacts")
         if isinstance(c1_sequences, list) and len(c1_sequences) != concurrency:
             errors.append("correctness.generated_token_equality.c1_sequences length must match workload.concurrency for accepted artifacts")
+    if gen_tokens_valid:
+        _validate_generated_token_sequence_lengths(
+            "correctness.generated_token_equality.batch_sequences",
+            batch_sequences,
+            int(gen_tokens),
+            errors,
+        )
+        _validate_generated_token_sequence_lengths(
+            "correctness.generated_token_equality.c1_sequences",
+            c1_sequences,
+            int(gen_tokens),
+            errors,
+        )
     if isinstance(batch_sequences, list) and isinstance(c1_sequences, list) and batch_sequences != c1_sequences:
         errors.append("correctness.generated_token_equality.batch_sequences must equal c1_sequences for accepted artifacts")
     mismatches = equality.get("mismatches")
@@ -979,6 +994,24 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
         errors.append("correctness.primitive_batch_correctness.attn_batch_vs_c1_max_abs must be numeric for accepted artifacts")
     elif float(attn_vs_c1) != 0.0:
         errors.append("correctness.primitive_batch_correctness.attn_batch_vs_c1_max_abs must be 0.0 for accepted artifacts")
+
+
+def _validate_generated_token_sequence_lengths(
+    label: str,
+    sequences: Any,
+    gen_tokens_per_request: int,
+    errors: list[str],
+) -> None:
+    if not isinstance(sequences, list):
+        return
+    for index, sequence in enumerate(sequences):
+        if not isinstance(sequence, list):
+            errors.append(f"{label}[{index}] must be a list for accepted artifacts")
+            continue
+        if len(sequence) != gen_tokens_per_request:
+            errors.append(f"{label}[{index}] length must match workload.gen_tokens_per_request for accepted artifacts")
+        if any(not isinstance(token, int) or isinstance(token, bool) for token in sequence):
+            errors.append(f"{label}[{index}] must contain only token ids for accepted artifacts")
 
 
 def _validate_accepted_measurement_gates(payload: Mapping[str, Any], errors: list[str]) -> None:
