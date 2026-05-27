@@ -691,6 +691,8 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
     profiler_output_format: str | None = None
     profiler_trace_dir: str | None = None
     profiler_trace_files: list[str] = []
+    profiler_trace_kernel_names: list[str] = []
+    trace_kernel_names_valid = False
     if not isinstance(profiler, dict):
         reasons.append("profiler summary root is not an object")
     else:
@@ -743,6 +745,18 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                     except ValueError:
                         reasons.append("profiler.trace_files contains a path outside profiler.trace_dir")
                         break
+        raw_trace_kernel_names = profiler.get("trace_kernel_names")
+        if not isinstance(raw_trace_kernel_names, list) or not raw_trace_kernel_names:
+            reasons.append("profiler.trace_kernel_names is missing or empty")
+        elif not all(isinstance(kernel_name, str) and kernel_name for kernel_name in raw_trace_kernel_names):
+            reasons.append("profiler.trace_kernel_names contains a non-string entry")
+        else:
+            profiler_trace_kernel_names = list(raw_trace_kernel_names)
+            trace_kernel_names_valid = True
+            if not any("batch" in kernel_name.lower() for kernel_name in profiler_trace_kernel_names):
+                reasons.append("profiler.trace_kernel_names does not include a native batch kernel")
+            if any(_has_disallowed_profiler_kernel_fragment(kernel_name) for kernel_name in profiler_trace_kernel_names):
+                reasons.append("profiler.trace_kernel_names contains a serial/per-row/fallback kernel")
         profiler_command = _profiler_command_label(profiler, payload if isinstance(payload, dict) else None)
         if profiler_command is None:
             reasons.append("profiler command is missing")
@@ -858,6 +872,17 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                     ):
                         reasons.append(f"kernel_durations_ns.{kernel_name} is missing or non-positive numeric")
                         break
+            if trace_kernel_names_valid:
+                missing_duration_names = sorted(
+                    kernel_name
+                    for kernel_name in kernel_durations
+                    if isinstance(kernel_name, str)
+                    and kernel_name
+                    and not _has_disallowed_profiler_kernel_fragment(kernel_name)
+                    and kernel_name not in profiler_trace_kernel_names
+                )
+                if missing_duration_names:
+                    reasons.append("profiler.trace_kernel_names must include kernel_durations_ns keys")
         _validate_profiler_kernel_durations(profiler, reasons)
         _validate_profiler_kernel_duration_categories(profiler, reasons)
         _validate_profiler_cpu_side_bottlenecks(profiler, reasons)
@@ -876,6 +901,7 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                 "profiler_output_format": str(profiler["output_format"]),
                 "profiler_trace_dir": str(profiler["trace_dir"]),
                 "profiler_trace_files": list(profiler_trace_files),
+                "profiler_trace_kernel_names": list(profiler_trace_kernel_names),
                 "retained_artifact_path": str(command.artifact_path),
                 "c1_baseline_artifact_path": _command_arg_value(command, "--c1-baseline-json"),
                 "serial_bridge_artifact_path": _command_arg_value(command, "--serial-bridge-json"),

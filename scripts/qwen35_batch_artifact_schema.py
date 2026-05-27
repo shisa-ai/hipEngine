@@ -931,6 +931,15 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
                 break
         if not any(_is_kernel_trace_csv_path(trace_file) for trace_file in profiler_trace_files):
             errors.append("profiler.trace_files must include a kernel-trace CSV path for accepted artifacts")
+    profiler_trace_kernel_names = profiler.get("trace_kernel_names")
+    profiler_trace_kernel_names_valid = _is_nonempty_string_list(profiler_trace_kernel_names)
+    if not profiler_trace_kernel_names_valid:
+        errors.append("profiler.trace_kernel_names must be a non-empty string list for accepted artifacts")
+    elif isinstance(profiler_trace_kernel_names, list):
+        if not any("batch" in kernel_name.lower() for kernel_name in profiler_trace_kernel_names):
+            errors.append("profiler.trace_kernel_names must include at least one native batch kernel name for accepted artifacts")
+        if any(_has_disallowed_profiler_kernel_fragment(kernel_name) for kernel_name in profiler_trace_kernel_names):
+            errors.append("profiler.trace_kernel_names must not include serial/per-row/fallback kernel names for accepted artifacts")
     if profiler.get("expected_kernels_present") is not True:
         errors.append("profiler.expected_kernels_present must be true for accepted artifacts")
     expected_kernel_names = profiler.get("expected_kernel_names")
@@ -948,6 +957,17 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
                 break
             if isinstance(kernel_name, str) and kernel_name and not _is_positive_number(duration_ns):
                 errors.append(f"profiler.kernel_durations_ns.{kernel_name} must be positive numeric for accepted artifacts")
+        if profiler_trace_kernel_names_valid and isinstance(profiler_trace_kernel_names, list):
+            missing_duration_names = sorted(
+                kernel_name
+                for kernel_name in kernel_durations
+                if isinstance(kernel_name, str)
+                and kernel_name
+                and not _has_disallowed_profiler_kernel_fragment(kernel_name)
+                and kernel_name not in profiler_trace_kernel_names
+            )
+            if missing_duration_names:
+                errors.append("profiler.trace_kernel_names must include profiler.kernel_durations_ns keys for accepted artifacts")
         _validate_profiler_kernel_duration_total(profiler, kernel_durations, errors)
         _validate_profiler_kernel_duration_shares(profiler, kernel_durations, errors)
         _validate_profiler_kernel_duration_categories(profiler, kernel_durations, errors)

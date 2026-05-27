@@ -120,6 +120,7 @@ def _write_c_sweep_profiler_summary(
                     "output_format": "csv",
                     "trace_dir": str(trace_dir),
                     "trace_files": [str(trace_dir / "hipengine_kernel_trace.csv")],
+                    "trace_kernel_names": ["qwen35_batch_decode"],
                     "command": (
                         f"rocprofv3 --kernel-trace --output-format csv -d {trace_dir} -- python3 scripts/qwen35_batch_retained_bench.py "
                         f"--model {model} --fixture {fixture} --batch-size {rows} "
@@ -189,6 +190,7 @@ def test_batch_c_sweep_profiler_precondition_rejects_mismatched_artifact_path(tm
                     "output_format": "csv",
                     "trace_dir": str(output_dir / "profile-c2"),
                     "trace_files": [str(output_dir / "profile-c2" / "hipengine_kernel_trace.csv")],
+                    "trace_kernel_names": ["qwen35_batch_decode"],
                     "command": (
                         f"rocprofv3 --kernel-trace --output-format csv -d {output_dir / 'profile-c2'} -- python3 scripts/qwen35_batch_retained_bench.py "
                         "--model /tmp/model --fixture /tmp/fixture.json --batch-size 2 "
@@ -518,6 +520,78 @@ def test_batch_c_sweep_profiler_precondition_rejects_trace_files_without_kernel_
         "artifact_path": str(profiler_path),
         "passed": False,
         "reason": "profiler.trace_files does not include a kernel-trace CSV",
+    }
+
+
+def test_batch_c_sweep_profiler_precondition_rejects_missing_trace_kernel_names(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"].pop("trace_kernel_names")
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler.trace_kernel_names is missing or empty",
+    }
+
+
+def test_batch_c_sweep_profiler_precondition_rejects_trace_kernel_names_missing_duration_key(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"]["trace_kernel_names"] = ["qwen35_batch_prefill"]
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler.trace_kernel_names must include kernel_durations_ns keys",
     }
 
 
@@ -1004,6 +1078,7 @@ def test_batch_c_sweep_profiler_precondition_rejects_category_rows_mismatch(tmp_
     profiler_path = output_dir / "profiler-c2.json"
     payload = json.loads(profiler_path.read_text())
     payload["profiler"]["expected_kernel_names"] = ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"]
+    payload["profiler"]["trace_kernel_names"] = ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"]
     payload["profiler"]["kernel_durations_ns"] = {
         "qwen35_batch_decode": 12345.0,
         "qwen35_batch_decode_wmma_caware": 2345.0,
@@ -1867,6 +1942,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         "profiler_output_format": "csv",
         "profiler_trace_dir": str(output_dir / "profile-c2"),
         "profiler_trace_files": [str(output_dir / "profile-c2" / "hipengine_kernel_trace.csv")],
+        "profiler_trace_kernel_names": ["qwen35_batch_decode"],
         "retained_artifact_path": str(output_dir / "native-diagnostic-c2.json"),
         "c1_baseline_artifact_path": str(output_dir / "native-baseline-c1.json"),
         "serial_bridge_artifact_path": str(output_dir / "serial-bridge-c2.json"),
@@ -3656,6 +3732,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             "output_format": "csv",
             "trace_dir": "/tmp/hipengine-profile",
             "trace_files": ["/tmp/hipengine-profile/hipengine_kernel_trace.csv"],
+            "trace_kernel_names": ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"],
             "expected_kernels_present": True,
             "expected_kernel_names": ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"],
             "kernel_durations_ns": {
@@ -4788,6 +4865,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     profiler_trace_file_without_kernel_trace_csv["profiler"]["trace_files"] = ["/tmp/hipengine-profile/hipengine_api_trace.csv"]
     with pytest.raises(ValueError, match="profiler.trace_files must include a kernel-trace CSV path"):
         validate_cn_diagnostic_artifact_payload(profiler_trace_file_without_kernel_trace_csv)
+
+    profiler_missing_trace_kernel_names = json.loads(json.dumps(accepted))
+    profiler_missing_trace_kernel_names["profiler"].pop("trace_kernel_names")
+    with pytest.raises(ValueError, match="profiler.trace_kernel_names must be a non-empty string list"):
+        validate_cn_diagnostic_artifact_payload(profiler_missing_trace_kernel_names)
+
+    profiler_trace_kernel_names_missing_duration = json.loads(json.dumps(accepted))
+    profiler_trace_kernel_names_missing_duration["profiler"]["trace_kernel_names"] = ["qwen35_batch_prefill"]
+    with pytest.raises(ValueError, match="profiler.trace_kernel_names must include profiler.kernel_durations_ns keys"):
+        validate_cn_diagnostic_artifact_payload(profiler_trace_kernel_names_missing_duration)
 
     profiler_wrong_target = json.loads(json.dumps(accepted))
     profiler_wrong_target["commands"]["profiler"] = "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_serial_bench.py --batch-size 2"
