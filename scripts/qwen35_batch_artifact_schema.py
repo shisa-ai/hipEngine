@@ -276,8 +276,8 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
 def _validate_accepted_measurement_gates(payload: Mapping[str, Any], errors: list[str]) -> None:
     measurements = _mapping_at(payload, "measurements", errors)
     for field in ("decode_seconds", "decode_tok_s_aggregate", "decode_tok_s_per_request"):
-        if not _is_number(measurements.get(field)):
-            errors.append(f"measurements.{field} must be numeric for accepted artifacts")
+        if not _is_positive_number(measurements.get(field)):
+            errors.append(f"measurements.{field} must be positive numeric for accepted artifacts")
     decode_steps = measurements.get("decode_step_seconds")
     if not isinstance(decode_steps, Mapping):
         errors.append("measurements.decode_step_seconds must be an object for accepted artifacts")
@@ -285,11 +285,13 @@ def _validate_accepted_measurement_gates(payload: Mapping[str, Any], errors: lis
     samples = decode_steps.get("samples")
     if not isinstance(samples, list) or not samples:
         errors.append("measurements.decode_step_seconds.samples must be a non-empty list for accepted artifacts")
-    elif any(not _is_number(sample) for sample in samples):
-        errors.append("measurements.decode_step_seconds.samples must contain only numbers for accepted artifacts")
-    for field in ("median", "p95", "min", "max", "stdev"):
-        if not _is_number(decode_steps.get(field)):
-            errors.append(f"measurements.decode_step_seconds.{field} must be numeric for accepted artifacts")
+    elif any(not _is_positive_number(sample) for sample in samples):
+        errors.append("measurements.decode_step_seconds.samples must contain only positive numbers for accepted artifacts")
+    for field in ("median", "p95", "min", "max"):
+        if not _is_positive_number(decode_steps.get(field)):
+            errors.append(f"measurements.decode_step_seconds.{field} must be positive numeric for accepted artifacts")
+    if not _is_nonnegative_number(decode_steps.get("stdev")):
+        errors.append("measurements.decode_step_seconds.stdev must be non-negative numeric for accepted artifacts")
 
 
 def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[str]) -> None:
@@ -312,8 +314,8 @@ def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[st
         errors.append("scaling.native must be an object for accepted artifacts")
     else:
         for field in ("decode_tok_s_aggregate", "decode_tok_s_per_request"):
-            if not _is_number(native.get(field)):
-                errors.append(f"scaling.native.{field} must be numeric for accepted artifacts")
+            if not _is_positive_number(native.get(field)):
+                errors.append(f"scaling.native.{field} must be positive numeric for accepted artifacts")
     for baseline_name in _REQUIRED_ACCEPTED_SCALING_BASELINES:
         baseline = scaling.get(baseline_name)
         if not isinstance(baseline, Mapping):
@@ -329,8 +331,8 @@ def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[st
         if baseline.get("reason") is not None:
             errors.append(f"scaling.{baseline_name}.reason must be null for accepted artifacts")
         for field in ("decode_tok_s_aggregate", "decode_tok_s_per_request"):
-            if not _is_number(baseline.get(field)):
-                errors.append(f"scaling.{baseline_name}.{field} must be numeric for accepted artifacts")
+            if not _is_positive_number(baseline.get(field)):
+                errors.append(f"scaling.{baseline_name}.{field} must be positive numeric for accepted artifacts")
         baseline_prompt_tokens = baseline.get("prompt_tokens_per_request")
         if not isinstance(baseline_prompt_tokens, int) or isinstance(baseline_prompt_tokens, bool):
             errors.append(f"scaling.{baseline_name}.prompt_tokens_per_request must be an int for accepted artifacts")
@@ -360,8 +362,8 @@ def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[st
         errors.append("scaling.ratios must be an object for accepted artifacts")
     else:
         for field in _REQUIRED_ACCEPTED_SCALING_RATIOS:
-            if not _is_number(ratios.get(field)):
-                errors.append(f"scaling.ratios.{field} must be numeric for accepted artifacts")
+            if not _is_positive_number(ratios.get(field)):
+                errors.append(f"scaling.ratios.{field} must be positive numeric for accepted artifacts")
         if isinstance(native, Mapping) and isinstance(c1_baseline, Mapping) and isinstance(serial_baseline, Mapping):
             _validate_scaling_ratio(
                 "aggregate_vs_c1",
@@ -456,6 +458,14 @@ def _valid_request_observability(row: Any, errors: list[str]) -> bool:
 
 def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _is_positive_number(value: Any) -> bool:
+    return _is_number(value) and float(value) > 0.0
+
+
+def _is_nonnegative_number(value: Any) -> bool:
+    return _is_number(value) and float(value) >= 0.0
 
 
 __all__ = ["validate_cn_diagnostic_artifact_payload"]

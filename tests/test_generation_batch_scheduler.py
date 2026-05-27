@@ -2439,10 +2439,25 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     with pytest.raises(ValueError, match="decode_tok_s_per_request"):
         validate_cn_diagnostic_artifact_payload(missing_decode_rate)
 
+    zero_decode_rate = json.loads(json.dumps(accepted))
+    zero_decode_rate["measurements"]["decode_tok_s_aggregate"] = 0.0
+    with pytest.raises(ValueError, match="measurements.decode_tok_s_aggregate must be positive numeric"):
+        validate_cn_diagnostic_artifact_payload(zero_decode_rate)
+
+    zero_baseline_rate = json.loads(json.dumps(accepted))
+    zero_baseline_rate["scaling"]["c1_baseline"]["decode_tok_s_per_request"] = 0.0
+    with pytest.raises(ValueError, match="c1_baseline.decode_tok_s_per_request must be positive numeric"):
+        validate_cn_diagnostic_artifact_payload(zero_baseline_rate)
+
     empty_samples = json.loads(json.dumps(accepted))
     empty_samples["measurements"]["decode_step_seconds"]["samples"] = []
     with pytest.raises(ValueError, match="samples"):
         validate_cn_diagnostic_artifact_payload(empty_samples)
+
+    zero_sample = json.loads(json.dumps(accepted))
+    zero_sample["measurements"]["decode_step_seconds"]["samples"][0] = 0.0
+    with pytest.raises(ValueError, match="samples must contain only positive numbers"):
+        validate_cn_diagnostic_artifact_payload(zero_sample)
 
     missing_command = json.loads(json.dumps(accepted))
     missing_command["commands"]["benchmark"] = ""
