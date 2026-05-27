@@ -926,8 +926,9 @@ roll-up/status view.
       `hardware.rocminfo`/`hardware.rocm_smi` capture objects whose commands
       match their tools and whose `rocminfo` output includes the recorded arch,
       clean full-commit software fields (`software.hipengine_dirty == false`)
-      plus non-empty `hipcc_version`, and captured profiler evidence with
-      native batch expected kernel names and duration-map keys (no
+      plus non-empty `hipcc_version`, and captured profiler evidence with a
+      `profiler.artifact_path` under `benchmarks/results/`, native batch
+      expected kernel names and duration-map keys (no
       serial/per-row/fallback labels) present with every duration-map entry
       carrying positive numeric evidence.
       The scoreboard item remains open until accepted

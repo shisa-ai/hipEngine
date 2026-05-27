@@ -2212,6 +2212,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
             "profiler": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile -- python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json benchmarks/results/accepted-c2.json",
         },
         "profiler": {
+            "artifact_path": "benchmarks/results/profiler-c2.json",
             "status": "captured",
             "expected_kernels_present": True,
             "expected_kernel_names": ["qwen35_batch_decode"],
@@ -2774,6 +2775,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     missing_profiler.pop("profiler")
     with pytest.raises(ValueError, match="profiler"):
         validate_cn_diagnostic_artifact_payload(missing_profiler)
+
+    missing_profiler_artifact = json.loads(json.dumps(accepted))
+    missing_profiler_artifact["profiler"].pop("artifact_path")
+    with pytest.raises(ValueError, match="profiler.artifact_path must be a non-empty string"):
+        validate_cn_diagnostic_artifact_payload(missing_profiler_artifact)
+
+    tmp_profiler_artifact = json.loads(json.dumps(accepted))
+    tmp_profiler_artifact["profiler"]["artifact_path"] = "/tmp/profiler-c2.json"
+    with pytest.raises(ValueError, match="profiler.artifact_path must be under benchmarks/results"):
+        validate_cn_diagnostic_artifact_payload(tmp_profiler_artifact)
 
     missing_profiler_command = json.loads(json.dumps(accepted))
     missing_profiler_command["commands"]["profiler"] = None

@@ -404,6 +404,11 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             _validate_command_workload_shape(profiler_command, field="profiler", payload=payload, errors=errors)
             _validate_command_json_artifact_path(profiler_command, field="profiler", errors=errors)
     profiler = _mapping_at(payload, "profiler", errors)
+    profiler_artifact_path = profiler.get("artifact_path")
+    if not isinstance(profiler_artifact_path, str) or not profiler_artifact_path:
+        errors.append("profiler.artifact_path must be a non-empty string for accepted artifacts")
+    else:
+        _validate_benchmark_results_artifact_path("profiler.artifact_path", profiler_artifact_path, errors)
     if profiler.get("status") != "captured":
         errors.append("profiler.status must be 'captured' for accepted artifacts")
     if profiler.get("expected_kernels_present") is not True:
