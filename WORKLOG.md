@@ -30788,3 +30788,30 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY KVTC radix-node guardrail
+
+Completed the C5 phase-ladder KVTC ABI guardrail item with host-only repo evidence:
+
+- Added `PrefixCacheEntryState` as pointer-independent radix-node metadata carrying `matched_tokens`, stable `block_ids`, `owner_request_ids`, derived `refcount`, and `eviction_state`.
+- Added `RadixCache.entry_state(...)`, `.entry_states()`, and `.mark_entry_eviction_state(...)` so tier/eviction state can be attached to the radix node without rewriting block ids or depending on raw block pointers.
+- Exported `PrefixCacheEntryState` from `hipengine.kvcache`.
+- Added `test_radix_cache_entry_state_is_pointer_independent_kvtc_guardrail`, covering stable block IDs across tier-state changes and cancellation refcount changes.
+- Marked the C5 phase-ladder KVTC ABI guardrail item complete with evidence in `docs/CONCURRENCY.md`.
+- The bite-sized implementation queue metric is unchanged because this C5 phase-ladder item is outside the counted queue slice. No c>N performance claim was added.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_kvcache_policy.py::test_radix_cache_entry_state_is_pointer_independent_kvtc_guardrail tests/test_kvcache_policy.py::test_radix_cache_cancellation_removes_live_prefix_ownership tests/test_kvcache_policy.py::test_chunked_kv_pool_copy_on_write_fork_preserves_prefix_and_splits_suffix -q
+# 3 passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```

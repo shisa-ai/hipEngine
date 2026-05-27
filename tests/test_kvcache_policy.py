@@ -163,6 +163,47 @@ def test_radix_cache_cancellation_removes_live_prefix_ownership() -> None:
     assert cache.stats.entries == 0
 
 
+def test_radix_cache_entry_state_is_pointer_independent_kvtc_guardrail() -> None:
+    cache = RadixCache(block_size=2)
+    cache.insert(1, [1, 2, 3, 4], [10, 11])
+    cache.insert(2, [1, 2], [10])
+
+    state = cache.entry_state([1, 2])
+    assert state.block_ids == (10,)
+    assert state.owner_request_ids == (1, 2)
+    assert state.refcount == 2
+    assert state.eviction_state == "resident"
+    assert "pointer" not in state.to_json_dict()
+
+    tiered = cache.mark_entry_eviction_state([1, 2], "tiered:host")
+    assert tiered.block_ids == (10,)
+    assert tiered.refcount == 2
+    assert tiered.eviction_state == "tiered:host"
+    assert cache.match([1, 2, 99]).block_ids == (10,)
+
+    states = {entry.matched_tokens: entry for entry in cache.entry_states()}
+    assert states[(1, 2)].block_ids == (10,)
+    assert states[(1, 2, 3, 4)].block_ids == (10, 11)
+    assert states[(1, 2)].to_json_dict() == {
+        "matched_tokens": [1, 2],
+        "block_ids": [10],
+        "owner_request_ids": [1, 2],
+        "refcount": 2,
+        "eviction_state": "tiered:host",
+    }
+
+    cache.cancel(1)
+    shared = cache.entry_state([1, 2])
+    assert shared.block_ids == (10,)
+    assert shared.owner_request_ids == (2,)
+    assert shared.refcount == 1
+    assert shared.eviction_state == "tiered:host"
+
+    cache.cancel(2)
+    with pytest.raises(KeyError, match="no live prefix cache entry"):
+        cache.entry_state([1, 2])
+
+
 def test_chunked_kv_pool_grows_and_shrinks_on_burst_idle() -> None:
     pool = ChunkedKVPool(
         page_bytes=1024,

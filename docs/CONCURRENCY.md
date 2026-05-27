@@ -1141,10 +1141,16 @@ endpoint live; retained c>N rows include all gates above.
       `HIPENGINE_PREFIX_CACHE` / `--prefix-cache` in `{off, radix}` with
       default `off` until acceptance gates pass.
 - [x] Implement copy-on-write fork at first divergent token.
-- [ ] **KVTC ABI guardrail.** Block ids returned by the allocator must be
+- [x] **KVTC ABI guardrail.** Block ids returned by the allocator must be
       stable across hypothetical tier moves; refcount and eviction state
       must attach to the radix node rather than the block pointer. KVTC
-      itself ships in a separate feature branch.
+      itself ships in a separate feature branch. Evidence:
+      `PrefixCacheEntryState` exposes pointer-independent radix-node metadata
+      (`block_ids`, `owner_request_ids`, `refcount`, `eviction_state`),
+      `RadixCache.mark_entry_eviction_state(...)` updates tier/eviction state
+      without rewriting block ids, and
+      `test_radix_cache_entry_state_is_pointer_independent_kvtc_guardrail`
+      covers stable block ids across tier-state changes and cancellation.
 - [x] Lower `n > 1` at the API layer to N `submit()` calls with the same
       prompt tokens and distinct seeds; collect output by `request_id`;
       remove the `n>1 → 400` rejection.

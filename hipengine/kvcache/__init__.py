@@ -23,6 +23,7 @@ from hipengine.kvcache.pool import (
 from hipengine.kvcache.radix import (
     PREFIX_CACHE_CHOICES,
     PrefixCacheCancel,
+    PrefixCacheEntryState,
     PrefixCacheInsert,
     PrefixCacheMatch,
     PrefixCacheStats,
@@ -48,6 +49,7 @@ __all__ = [
     "KV_SCALE_GRANULARITY_CHOICES",
     "PREFIX_CACHE_CHOICES",
     "PrefixCacheCancel",
+    "PrefixCacheEntryState",
     "PrefixCacheInsert",
     "PrefixCacheMatch",
     "PrefixCacheStats",

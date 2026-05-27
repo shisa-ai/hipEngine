@@ -64,6 +64,29 @@ class PrefixCacheCancel:
 
 
 @dataclass(frozen=True, slots=True)
+class PrefixCacheEntryState:
+    """Pointer-independent state attached to one live radix prefix node."""
+
+    matched_tokens: tuple[int, ...]
+    block_ids: tuple[int, ...]
+    owner_request_ids: tuple[int, ...]
+    eviction_state: str
+
+    @property
+    def refcount(self) -> int:
+        return len(self.owner_request_ids)
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "matched_tokens": list(self.matched_tokens),
+            "block_ids": list(self.block_ids),
+            "owner_request_ids": list(self.owner_request_ids),
+            "refcount": self.refcount,
+            "eviction_state": self.eviction_state,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class PrefixCacheStats:
     """Small stats payload for diagnostics and metrics."""
 
@@ -88,6 +111,7 @@ class _RadixNode:
     children: dict[int, "_RadixNode"] = field(default_factory=dict)
     block_ids: tuple[int, ...] = ()
     owner_request_ids: set[int] = field(default_factory=set)
+    eviction_state: str = "resident"
 
     @property
     def live(self) -> bool:
@@ -159,6 +183,8 @@ class RadixCache:
             prefix_blocks = block_tuple[:block_count]
             if node.live and node.block_ids != prefix_blocks:
                 raise ValueError("live prefix cache entry has conflicting block ids")
+            if not node.owner_request_ids:
+                node.eviction_state = "resident"
             node.block_ids = prefix_blocks
             node.owner_request_ids.add(rid)
             owned_nodes.append(node)
@@ -215,11 +241,63 @@ class RadixCache:
             if not node.owner_request_ids:
                 removed_blocks.extend(node.block_ids)
                 node.block_ids = ()
+                node.eviction_state = "empty"
         return PrefixCacheCancel(
             request_id=rid,
             removed_entries=removed_entries,
             removed_blocks=tuple(removed_blocks),
         )
+
+    def entry_state(self, tokens: Iterable[int]) -> PrefixCacheEntryState:
+        """Return pointer-independent state for an exact live prefix entry."""
+
+        token_tuple = tuple(int(token) for token in tokens)
+        node = self._node_for_tokens(token_tuple)
+        if node is None or not node.live:
+            raise KeyError("no live prefix cache entry for tokens")
+        return _entry_state_from_node(token_tuple, node)
+
+    def mark_entry_eviction_state(self, tokens: Iterable[int], eviction_state: str) -> PrefixCacheEntryState:
+        """Update tier/eviction state on a radix node without rewriting block ids."""
+
+        state = str(eviction_state)
+        if not state:
+            raise ValueError("eviction_state must be a non-empty string")
+        token_tuple = tuple(int(token) for token in tokens)
+        node = self._node_for_tokens(token_tuple)
+        if node is None or not node.live:
+            raise KeyError("no live prefix cache entry for tokens")
+        node.eviction_state = state
+        return _entry_state_from_node(token_tuple, node)
+
+    def entry_states(self) -> tuple[PrefixCacheEntryState, ...]:
+        """Return all live prefix entries without exposing block pointers."""
+
+        states: list[PrefixCacheEntryState] = []
+        self._collect_entry_states(self._root, (), states)
+        return tuple(states)
+
+    def _node_for_tokens(self, tokens: tuple[int, ...]) -> _RadixNode | None:
+        if any(token < 0 for token in tokens):
+            raise ValueError("tokens must be non-negative")
+        node = self._root
+        for token in tokens:
+            child = node.children.get(token)
+            if child is None:
+                return None
+            node = child
+        return node
+
+    def _collect_entry_states(
+        self,
+        node: _RadixNode,
+        prefix: tuple[int, ...],
+        states: list[PrefixCacheEntryState],
+    ) -> None:
+        if node.live:
+            states.append(_entry_state_from_node(prefix, node))
+        for token in sorted(node.children):
+            self._collect_entry_states(node.children[token], (*prefix, token), states)
 
     def _entry_count(self, node: _RadixNode) -> int:
         count = 1 if node.live else 0
@@ -228,9 +306,19 @@ class RadixCache:
         return count
 
 
+def _entry_state_from_node(tokens: tuple[int, ...], node: _RadixNode) -> PrefixCacheEntryState:
+    return PrefixCacheEntryState(
+        matched_tokens=tokens,
+        block_ids=node.block_ids,
+        owner_request_ids=tuple(sorted(node.owner_request_ids)),
+        eviction_state=node.eviction_state,
+    )
+
+
 __all__ = [
     "PREFIX_CACHE_CHOICES",
     "PrefixCacheCancel",
+    "PrefixCacheEntryState",
     "PrefixCacheInsert",
     "PrefixCacheMatch",
     "PrefixCacheStats",
