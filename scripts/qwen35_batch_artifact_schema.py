@@ -71,6 +71,7 @@ _COMMAND_DECODE_TOKENS_RE = re.compile(r"(?:^|\s)--decode-tokens(?:=|\s+)(\d+)(?
 _COMMAND_MAX_LAYERS_RE = re.compile(r"(?:^|\s)--max-layers(?:=|\s+)(\d+)(?=\s|$)")
 _COMMAND_PROMPT_LENGTH_RE = re.compile(r"(?:^|\s)--prompt-length(?:=|\s+)(\d+)(?=\s|$)")
 _CORRECTNESS_ROWS_RE = re.compile(r"(?:^|\s)--rows(?:=|\s+)(\d+)(?=\s|$)")
+_DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = ("serial", "fallback", "per_row", "per-row")
 
 
 def _mapping_at(payload: Mapping[str, Any], key: str, errors: list[str]) -> Mapping[str, Any]:
@@ -100,6 +101,18 @@ def _validate_command_workload_shape(command: str, *, field: str, payload: Mappi
         expected = workload.get(workload_key)
         if isinstance(expected, int) and not isinstance(expected, bool) and int(match.group(1)) != expected:
             errors.append(f"commands.{field} {flag} must match workload.{workload_key} for accepted artifacts")
+
+
+def _validate_expected_profiler_kernel_names(expected_kernel_names: list[Any], errors: list[str]) -> None:
+    if not any(isinstance(name, str) and "batch" in name.lower() for name in expected_kernel_names):
+        errors.append("profiler.expected_kernel_names must include at least one native batch kernel name for accepted artifacts")
+    for name in expected_kernel_names:
+        if not isinstance(name, str):
+            continue
+        lowered = name.lower()
+        if any(fragment in lowered for fragment in _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS):
+            errors.append("profiler.expected_kernel_names must not include serial/per-row/fallback kernel names for accepted artifacts")
+            break
 
 
 def validate_cn_diagnostic_artifact_payload(payload: Mapping[str, Any]) -> None:
@@ -313,6 +326,8 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     expected_kernel_names = profiler.get("expected_kernel_names")
     if not _is_nonempty_string_list(expected_kernel_names):
         errors.append("profiler.expected_kernel_names must be a non-empty string list for accepted artifacts")
+    elif isinstance(expected_kernel_names, list):
+        _validate_expected_profiler_kernel_names(expected_kernel_names, errors)
     kernel_durations = profiler.get("kernel_durations_ns")
     if not isinstance(kernel_durations, Mapping) or not kernel_durations:
         errors.append("profiler.kernel_durations_ns must be a non-empty object for accepted artifacts")

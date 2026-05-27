@@ -2718,6 +2718,21 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     with pytest.raises(ValueError, match="expected_kernel_names"):
         validate_cn_diagnostic_artifact_payload(missing_expected_kernel_names)
 
+    non_batch_expected_kernel = json.loads(json.dumps(accepted))
+    non_batch_expected_kernel["profiler"]["expected_kernel_names"] = ["qwen35_decode"]
+    non_batch_expected_kernel["profiler"]["kernel_durations_ns"] = {"qwen35_decode": 12345.0}
+    with pytest.raises(ValueError, match="expected_kernel_names must include at least one native batch kernel"):
+        validate_cn_diagnostic_artifact_payload(non_batch_expected_kernel)
+
+    fallback_expected_kernel = json.loads(json.dumps(accepted))
+    fallback_expected_kernel["profiler"]["expected_kernel_names"] = ["qwen35_batch_decode", "qwen35_per_row_fallback_decode"]
+    fallback_expected_kernel["profiler"]["kernel_durations_ns"] = {
+        "qwen35_batch_decode": 12345.0,
+        "qwen35_per_row_fallback_decode": 12345.0,
+    }
+    with pytest.raises(ValueError, match="expected_kernel_names must not include serial/per-row/fallback"):
+        validate_cn_diagnostic_artifact_payload(fallback_expected_kernel)
+
     missing_kernel_durations = json.loads(json.dumps(accepted))
     missing_kernel_durations["profiler"].pop("kernel_durations_ns")
     with pytest.raises(ValueError, match="kernel_durations_ns"):
