@@ -904,7 +904,7 @@ roll-up/status view.
       `preconditions`, `status_counts`, `category_status_counts`,
       `retained_precondition_counts`, and `skipped_preconditions` summary rollups
       for planned/passed/skipped/failed rows, has persisted-summary coverage and summary-validator checks for
-      git dirty-state provenance, command identity fields (including command/argv consistency), command counts, status/category-status rollups (including `qwen35_batch_c_sweep.py --validate-summary-json`), and skipped retained rows retaining both the complete `preconditions` list and
+      top-level run options/shape labels, git dirty-state provenance, command identity fields (including command/argv consistency), command counts, status/category-status rollups (including `qwen35_batch_c_sweep.py --validate-summary-json`), and skipped retained rows retaining both the complete `preconditions` list and
       singular first-failed `precondition`, and has unit coverage confirming
       usable references allow the retained command to run. Accepted artifact
       schema also rejects baseline statuses known to be unusable for claims

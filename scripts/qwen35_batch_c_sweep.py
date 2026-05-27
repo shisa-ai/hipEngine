@@ -1303,6 +1303,33 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
 
 def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     errors: list[str] = []
+    if summary.get("schema") != 1:
+        errors.append("schema must be 1")
+    if not isinstance(summary.get("timestamp"), str) or not summary.get("timestamp"):
+        errors.append("timestamp must be a non-empty string")
+    if not isinstance(summary.get("dry_run"), bool):
+        errors.append("dry_run must be a bool")
+    batch_sizes = summary.get("batch_sizes")
+    if (
+        not isinstance(batch_sizes, list)
+        or not batch_sizes
+        or not all(isinstance(item, int) and not isinstance(item, bool) and item > 0 for item in batch_sizes)
+        or len(set(batch_sizes)) != len(batch_sizes)
+    ):
+        errors.append("batch_sizes must be a non-empty unique positive-int list")
+        batch_sizes = []
+    if not isinstance(summary.get("output_dir"), str) or not summary.get("output_dir"):
+        errors.append("output_dir must be a non-empty string")
+    options = summary.get("options")
+    if not isinstance(options, Mapping):
+        errors.append("options must be an object")
+    else:
+        for option in ("stop_on_failure", "include_int8", "require_cached_build"):
+            if not isinstance(options.get(option), bool):
+                errors.append(f"options.{option} must be a bool")
+        compiler_version_file = options.get("compiler_version_file")
+        if compiler_version_file is not None and not isinstance(compiler_version_file, str):
+            errors.append("options.compiler_version_file must be a string or null")
     commands = summary.get("commands")
     if not isinstance(commands, list):
         errors.append("commands must be a list")
@@ -1335,6 +1362,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 break
             if not isinstance(entry.get("batch_size"), int) or isinstance(entry.get("batch_size"), bool) or entry.get("batch_size") <= 0:
                 errors.append("commands[].batch_size must be a positive int")
+                break
+            if batch_sizes and entry.get("batch_size") not in batch_sizes:
+                errors.append("commands[].batch_size must be listed in batch_sizes")
                 break
             if not isinstance(entry.get("artifact_path"), str) or not entry.get("artifact_path"):
                 errors.append("commands[].artifact_path must be a non-empty string")

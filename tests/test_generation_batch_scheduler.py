@@ -2000,6 +2000,18 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     persisted = json.loads(summary_path.read_text())
     c_sweep.validate_sweep_summary(persisted)
     assert c_sweep.main(["--validate-summary-json", str(summary_path)]) == 0
+    tampered_batch_sizes = json.loads(json.dumps(persisted))
+    tampered_batch_sizes["batch_sizes"] = []
+    with pytest.raises(ValueError, match="batch_sizes must be a non-empty unique positive-int list"):
+        c_sweep.validate_sweep_summary(tampered_batch_sizes)
+    tampered_options = json.loads(json.dumps(persisted))
+    tampered_options["options"]["stop_on_failure"] = "yes"
+    with pytest.raises(ValueError, match="options.stop_on_failure must be a bool"):
+        c_sweep.validate_sweep_summary(tampered_options)
+    tampered_output_dir = json.loads(json.dumps(persisted))
+    tampered_output_dir["output_dir"] = ""
+    with pytest.raises(ValueError, match="output_dir must be a non-empty string"):
+        c_sweep.validate_sweep_summary(tampered_output_dir)
     tampered_command_argv = json.loads(json.dumps(persisted))
     tampered_command_argv["commands"][-1]["argv"] = []
     with pytest.raises(ValueError, match=r"commands\[\]\.argv must be a non-empty string list"):
