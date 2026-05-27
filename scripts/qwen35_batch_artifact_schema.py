@@ -936,6 +936,10 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
     concurrency_valid = isinstance(concurrency, int) and not isinstance(concurrency, bool) and concurrency > 1
     gen_tokens = workload.get("gen_tokens_per_request")
     gen_tokens_valid = isinstance(gen_tokens, int) and not isinstance(gen_tokens, bool) and gen_tokens > 0
+    warmup_tokens = workload.get("warmup_decode_tokens")
+    warmup_tokens_valid = isinstance(warmup_tokens, int) and not isinstance(warmup_tokens, bool) and warmup_tokens >= 0
+    if not warmup_tokens_valid:
+        errors.append("workload.warmup_decode_tokens must be a non-negative int for accepted artifacts")
     if not concurrency_valid:
         errors.append("workload.concurrency must be an int > 1 for accepted artifacts")
     else:
@@ -943,17 +947,18 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
             errors.append("correctness.generated_token_equality.batch_sequences length must match workload.concurrency for accepted artifacts")
         if isinstance(c1_sequences, list) and len(c1_sequences) != concurrency:
             errors.append("correctness.generated_token_equality.c1_sequences length must match workload.concurrency for accepted artifacts")
-    if gen_tokens_valid:
+    if gen_tokens_valid and warmup_tokens_valid:
+        expected_equality_tokens = 1 + int(warmup_tokens) + int(gen_tokens)
         _validate_generated_token_sequence_lengths(
             "correctness.generated_token_equality.batch_sequences",
             batch_sequences,
-            int(gen_tokens),
+            expected_equality_tokens,
             errors,
         )
         _validate_generated_token_sequence_lengths(
             "correctness.generated_token_equality.c1_sequences",
             c1_sequences,
-            int(gen_tokens),
+            expected_equality_tokens,
             errors,
         )
         _validate_execution_generated_tokens(
@@ -1006,7 +1011,7 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
 def _validate_generated_token_sequence_lengths(
     label: str,
     sequences: Any,
-    gen_tokens_per_request: int,
+    expected_equality_tokens: int,
     errors: list[str],
 ) -> None:
     if not isinstance(sequences, list):
@@ -1015,8 +1020,8 @@ def _validate_generated_token_sequence_lengths(
         if not isinstance(sequence, list):
             errors.append(f"{label}[{index}] must be a list for accepted artifacts")
             continue
-        if len(sequence) != gen_tokens_per_request:
-            errors.append(f"{label}[{index}] length must match workload.gen_tokens_per_request for accepted artifacts")
+        if len(sequence) != expected_equality_tokens:
+            errors.append(f"{label}[{index}] length must match seed plus workload.warmup_decode_tokens plus workload.gen_tokens_per_request for accepted artifacts")
         if any(not isinstance(token, int) or isinstance(token, bool) for token in sequence):
             errors.append(f"{label}[{index}] must contain only token ids for accepted artifacts")
 

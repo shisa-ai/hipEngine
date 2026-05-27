@@ -2482,6 +2482,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             "prompt_lengths": [512, 512],
             "gen_tokens_per_request": 128,
             "gen_tokens_aggregate": 256,
+            "warmup_decode_tokens": 8,
             "max_layers": 40,
             "scheduler_path": "scheduler_native_compact_batch",
             "native_compact_prefill": True,
@@ -2492,8 +2493,8 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             "generated_token_equality": {
                 "passed": True,
                 "skipped": False,
-                "batch_sequences": [list(range(10, 138)), list(range(20, 148))],
-                "c1_sequences": [list(range(10, 138)), list(range(20, 148))],
+                "batch_sequences": [list(range(0, 137)), list(range(100, 237))],
+                "c1_sequences": [list(range(0, 137)), list(range(100, 237))],
                 "mismatches": [],
             },
             "primitive_batch_correctness": {
@@ -2560,8 +2561,8 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                 },
             },
             "generated_tokens": {
-                "0": [{"token_id": token} for token in range(10, 138)],
-                "1": [{"token_id": token} for token in range(20, 148)],
+                "0": [{"token_id": token} for token in range(9, 137)],
+                "1": [{"token_id": token} for token in range(109, 237)],
             },
         },
         "observability": {
@@ -2845,7 +2846,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     truncated_decode_equality = json.loads(json.dumps(accepted))
     truncated_decode_equality["correctness"]["generated_token_equality"]["batch_sequences"][0] = [10, 11]
     truncated_decode_equality["correctness"]["generated_token_equality"]["c1_sequences"][0] = [10, 11]
-    with pytest.raises(ValueError, match=r"batch_sequences\[0\] length must match workload.gen_tokens_per_request"):
+    with pytest.raises(ValueError, match=r"batch_sequences\[0\] length must match seed plus workload.warmup_decode_tokens plus workload.gen_tokens_per_request"):
         validate_cn_diagnostic_artifact_payload(truncated_decode_equality)
 
     missing_execution_generated_tokens = json.loads(json.dumps(accepted))
@@ -2857,6 +2858,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     mismatched_execution_generated_tokens["execution"]["generated_tokens"]["0"][0]["token_id"] = 999
     with pytest.raises(ValueError, match="execution.generated_tokens.0 must match correctness.generated_token_equality.batch_sequences suffix"):
         validate_cn_diagnostic_artifact_payload(mismatched_execution_generated_tokens)
+
+    missing_warmup_decode_tokens = json.loads(json.dumps(accepted))
+    missing_warmup_decode_tokens["workload"].pop("warmup_decode_tokens")
+    with pytest.raises(ValueError, match="warmup_decode_tokens must be a non-negative int"):
+        validate_cn_diagnostic_artifact_payload(missing_warmup_decode_tokens)
 
     missing_primitive = json.loads(json.dumps(accepted))
     missing_primitive["correctness"].pop("primitive_batch_correctness")
