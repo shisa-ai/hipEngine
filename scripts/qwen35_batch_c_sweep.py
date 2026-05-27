@@ -691,6 +691,17 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
             command_profiler_path = _command_text_arg(profiler_command, "--profiler-json")
             if command_profiler_path != str(profiler_path):
                 reasons.append("profiler command --profiler-json path does not match artifact_path")
+            for flag, label in (
+                ("--c1-baseline-json", "c1_baseline_json"),
+                ("--serial-bridge-json", "serial_bridge_json"),
+                ("--primitive-correctness-json", "primitive_correctness_json"),
+            ):
+                expected_reference_path = _command_arg_value(command, flag)
+                command_reference_path = _command_text_arg(profiler_command, flag)
+                if expected_reference_path is not None and command_reference_path != expected_reference_path:
+                    reasons.append(
+                        f"profiler command {flag}={command_reference_path!r} does not match {label}={expected_reference_path}"
+                    )
             command_batch_size = _command_text_arg(profiler_command, "--batch-size")
             if command_batch_size != str(command.batch_size):
                 reasons.append(f"profiler command batch-size={command_batch_size!r} does not match batch_size={command.batch_size}")
