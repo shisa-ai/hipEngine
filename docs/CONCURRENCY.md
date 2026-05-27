@@ -666,7 +666,9 @@ roll-up/status view.
       independent c=1. Batch execution metadata now records
       `decode_execution.full_attention_decode_path=per_row_splitk_fallback` and
       forces `native_caware_decode=false` when that fallback is used; the retained
-      bench payload mirrors that execution flag, so artifacts cannot overclaim
+      bench payload mirrors that execution flag, and accepted artifact schema now
+      requires `decode_execution.full_attention_decode_path=native_batch` plus
+      `decode_execution.native_caware_decode=true`, so artifacts cannot overclaim
       long-context native decode. The item remains open until the split-K reducer
       itself is row-aware/native c>N.
 - [x] **C2.8 append-only block-id contract.** Prevent block ids from changing
@@ -896,10 +898,11 @@ roll-up/status view.
       Python per-layer dispatch from steady-state native decode. Acceptance:
       profiler summaries show the removed bottleneck and equality remains
       green. Progress: accepted/performance-claim c>N artifact schema now rejects
-      serial-bridge paths, row executions labeled `serial`/`fallback`, per-row
-      full-attention decode fallbacks, and non-native sampler metadata, so
-      residual serial loops cannot be promoted as retained rows while this item
-      remains open.
+      serial-bridge paths, row executions labeled `serial`/`fallback`, missing
+      decode-execution metadata, non-`native_batch` full-attention decode paths,
+      per-row full-attention decode fallbacks, and non-native sampler metadata,
+      so residual serial loops cannot be promoted as retained rows while this
+      item remains open.
 - [ ] **P4 MoE/projection scaling.** Group routed lanes by expert and switch
       c=2/4/8 projections/MoE to kernels that beat row-GEMV. Acceptance:
       c=8 aggregate decode improves vs both c=1 and the serial bridge, with

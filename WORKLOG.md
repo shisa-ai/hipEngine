@@ -30868,3 +30868,29 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY accepted decode-execution schema gate
+
+Materially advanced C2.7/P3/P5 retained-artifact safety without closing the items:
+
+- Accepted/performance-claim c>N artifact schema now requires `execution.batch_execution.decode_execution` to be an object.
+- A schema-green native decode claim must report `full_attention_decode_path="native_batch"` and `decode_execution.native_caware_decode=true`.
+- Extended `test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates` with missing decode metadata, per-row split-K fallback, and non-native decode-execution rejection cases.
+- Updated the C2.7 and P3 progress notes. C2.7 remains open until the split-K reducer itself is row-aware/native c>N; P3 remains open until residual serial loops are actually removed from steady-state native decode.
+- No queue item was marked complete and no c>N performance claim was added.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates tests/test_generation_batch_scheduler.py::test_qwen35_retained_records_decode_graph_bucket_metadata tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_run_layers_batch_decode_uses_per_row_splitk_fallback_for_long_context -q
+# 3 passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```

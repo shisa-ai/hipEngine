@@ -510,9 +510,13 @@ def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[
     elif "serial" in row_execution or "fallback" in row_execution:
         errors.append("execution.batch_execution.row_execution must not contain serial or fallback for accepted artifacts")
     decode_execution = batch_execution.get("decode_execution")
-    if isinstance(decode_execution, Mapping):
-        if decode_execution.get("full_attention_decode_path") in {"per_row_splitk_fallback", "per_row_context_fallback"}:
-            errors.append("execution.batch_execution.decode_execution.full_attention_decode_path must not be a per-row fallback for accepted artifacts")
+    if not isinstance(decode_execution, Mapping):
+        errors.append("execution.batch_execution.decode_execution must be an object for accepted artifacts")
+    else:
+        if decode_execution.get("full_attention_decode_path") != "native_batch":
+            errors.append("execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch for accepted artifacts")
+        if decode_execution.get("native_caware_decode") is not True:
+            errors.append("execution.batch_execution.decode_execution.native_caware_decode must be true for accepted artifacts")
         sampler_execution = decode_execution.get("sampler_execution")
         if not isinstance(sampler_execution, Mapping):
             errors.append("execution.batch_execution.decode_execution.sampler_execution must be an object for accepted artifacts")

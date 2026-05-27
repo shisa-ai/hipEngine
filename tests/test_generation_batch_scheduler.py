@@ -2896,10 +2896,20 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="native_caware_decode"):
         validate_cn_diagnostic_artifact_payload(non_native_decode)
 
+    missing_decode_execution = json.loads(json.dumps(accepted))
+    missing_decode_execution["execution"]["batch_execution"].pop("decode_execution")
+    with pytest.raises(ValueError, match="decode_execution must be an object"):
+        validate_cn_diagnostic_artifact_payload(missing_decode_execution)
+
     per_row_splitk = json.loads(json.dumps(accepted))
     per_row_splitk["execution"]["batch_execution"]["decode_execution"]["full_attention_decode_path"] = "per_row_splitk_fallback"
-    with pytest.raises(ValueError, match="per-row fallback"):
+    with pytest.raises(ValueError, match="full_attention_decode_path must be native_batch"):
         validate_cn_diagnostic_artifact_payload(per_row_splitk)
+
+    non_native_decode_execution = json.loads(json.dumps(accepted))
+    non_native_decode_execution["execution"]["batch_execution"]["decode_execution"]["native_caware_decode"] = False
+    with pytest.raises(ValueError, match="decode_execution.native_caware_decode must be true"):
+        validate_cn_diagnostic_artifact_payload(non_native_decode_execution)
 
     missing_sampler_execution = json.loads(json.dumps(accepted))
     missing_sampler_execution["execution"]["batch_execution"]["decode_execution"].pop("sampler_execution")
