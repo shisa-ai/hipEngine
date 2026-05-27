@@ -2148,6 +2148,7 @@ def test_qwen35_retained_payload_mirrors_fallback_native_decode_label(monkeypatc
         decode_tokens=128,
         warmup_decode_tokens=0,
         max_layers=40,
+        json=None,
         model="/tmp/model",
         kv_storage="bf16",
         kv_scale_dtype="fp16",
@@ -2205,6 +2206,7 @@ def test_qwen35_retained_payload_mirrors_fallback_native_decode_label(monkeypatc
 def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -> None:
     accepted = {
         "status": "accepted",
+        "artifact_path": "benchmarks/results/accepted-c2.json",
         "performance_claim": True,
         "hardware": {
             "gpu": "AMD Radeon Pro W7900",
@@ -2401,6 +2403,26 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     }
 
     validate_cn_diagnostic_artifact_payload(accepted)
+
+    missing_artifact_path = json.loads(json.dumps(accepted))
+    missing_artifact_path.pop("artifact_path")
+    with pytest.raises(ValueError, match="artifact_path must be a non-empty string"):
+        validate_cn_diagnostic_artifact_payload(missing_artifact_path)
+
+    tmp_artifact_path = json.loads(json.dumps(accepted))
+    tmp_artifact_path["artifact_path"] = "/tmp/accepted-c2.json"
+    with pytest.raises(ValueError, match="artifact_path must be under benchmarks/results"):
+        validate_cn_diagnostic_artifact_payload(tmp_artifact_path)
+
+    mismatched_benchmark_artifact_path = json.loads(json.dumps(accepted))
+    mismatched_benchmark_artifact_path["commands"]["benchmark"] = mismatched_benchmark_artifact_path["commands"]["benchmark"].replace("benchmarks/results/accepted-c2.json", "benchmarks/results/other-accepted-c2.json")
+    with pytest.raises(ValueError, match="commands.benchmark --json path must match artifact_path"):
+        validate_cn_diagnostic_artifact_payload(mismatched_benchmark_artifact_path)
+
+    mismatched_profiler_artifact_path = json.loads(json.dumps(accepted))
+    mismatched_profiler_artifact_path["commands"]["profiler"] = mismatched_profiler_artifact_path["commands"]["profiler"].replace("benchmarks/results/accepted-c2.json", "benchmarks/results/other-accepted-c2.json")
+    with pytest.raises(ValueError, match="commands.profiler --json path must match artifact_path"):
+        validate_cn_diagnostic_artifact_payload(mismatched_profiler_artifact_path)
 
     missing_equality = json.loads(json.dumps(accepted))
     missing_equality["correctness"].pop("generated_token_equality")

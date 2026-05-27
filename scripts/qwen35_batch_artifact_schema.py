@@ -475,7 +475,17 @@ def _validate_accepted_scheduler_metadata(
             errors.append("execution.scheduler_metadata.graph_bucket_stats.entries must be positive for accepted artifacts")
 
 
+def _validate_accepted_payload_artifact_path(payload: Mapping[str, Any], errors: list[str]) -> Any:
+    artifact_path = payload.get("artifact_path")
+    if not isinstance(artifact_path, str) or not artifact_path:
+        errors.append("artifact_path must be a non-empty string for accepted artifacts")
+    else:
+        _validate_benchmark_results_artifact_path("artifact_path", artifact_path, errors)
+    return artifact_path
+
+
 def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[str]) -> None:
+    payload_artifact_path = _validate_accepted_payload_artifact_path(payload, errors)
     hardware = _mapping_at(payload, "hardware", errors)
     if not hardware:
         errors.append("hardware must be a non-empty object for accepted artifacts")
@@ -528,7 +538,13 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         else:
             _validate_command_model_fixture_flags(benchmark_command, field="benchmark", errors=errors)
             _validate_command_workload_shape(benchmark_command, field="benchmark", payload=payload, errors=errors)
-            _validate_command_json_artifact_path(benchmark_command, field="benchmark", errors=errors)
+            _validate_command_json_matches_artifact_path(
+                benchmark_command,
+                field="benchmark",
+                artifact_field="artifact_path",
+                artifact_path=payload_artifact_path,
+                errors=errors,
+            )
             _validate_retained_benchmark_reference_paths(benchmark_command, field="benchmark", payload=payload, errors=errors)
     correctness_command = commands.get("correctness_reference")
     if isinstance(correctness_command, str):
@@ -562,7 +578,13 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         else:
             _validate_command_model_fixture_flags(profiler_command, field="profiler", errors=errors)
             _validate_command_workload_shape(profiler_command, field="profiler", payload=payload, errors=errors)
-            _validate_command_json_artifact_path(profiler_command, field="profiler", errors=errors)
+            _validate_command_json_matches_artifact_path(
+                profiler_command,
+                field="profiler",
+                artifact_field="artifact_path",
+                artifact_path=payload_artifact_path,
+                errors=errors,
+            )
             _validate_retained_benchmark_reference_paths(profiler_command, field="profiler", payload=payload, errors=errors)
             if "--require-cached-build" not in profiler_command:
                 errors.append("commands.profiler must include --require-cached-build for accepted artifacts")

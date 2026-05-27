@@ -713,6 +713,7 @@ def _build_payload(
     payload = {
         "schema": 3,
         "status": status,
+        "artifact_path": str(args.json) if args.json is not None else None,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "run_tag": f"qwen35-paro-c{args.batch_size}-native-retained",
         "summary": "Qwen3.5/PARO scheduler compact native c>N benchmark",

@@ -913,10 +913,11 @@ roll-up/status view.
       baselines,
       positive decode-step timing samples,
       a retained-benchmark command referencing `scripts/qwen35_batch_retained_bench.py`
-      with explicit `--model` / `--fixture` plus `--batch-size`,
-      `--prompt-length`, `--decode-tokens`, and `--max-layers` matching workload
-      shape fields and baseline/correctness reference paths matching the
-      retained artifact payload,
+      with a top-level artifact path under `benchmarks/results/` matched by the
+      retained benchmark/profiler `--json` outputs, explicit `--model` /
+      `--fixture` plus `--batch-size`, `--prompt-length`, `--decode-tokens`, and
+      `--max-layers` matching workload shape fields and baseline/correctness
+      reference paths matching the retained artifact payload,
       a correctness-reference command naming `scripts/qwen35_batch_correctness.py`
       with `--rows` matching `workload.concurrency` and `--json` matching
       `correctness.primitive_batch_correctness.artifact_path`, and a concrete
