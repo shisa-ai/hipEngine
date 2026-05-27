@@ -2054,6 +2054,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     with pytest.raises(ValueError, match="mismatches must be empty"):
         validate_cn_diagnostic_artifact_payload(mismatch_equality)
 
+    mislabeled_equality = json.loads(json.dumps(accepted))
+    mislabeled_equality["correctness"]["generated_token_equality"]["c1_sequences"][1][0] = 99
+    with pytest.raises(ValueError, match="batch_sequences must equal c1_sequences"):
+        validate_cn_diagnostic_artifact_payload(mislabeled_equality)
+
+    short_equality = json.loads(json.dumps(accepted))
+    short_equality["correctness"]["generated_token_equality"]["batch_sequences"] = [[10, 11]]
+    with pytest.raises(ValueError, match="batch_sequences length must match workload.concurrency"):
+        validate_cn_diagnostic_artifact_payload(short_equality)
+
     missing_primitive = json.loads(json.dumps(accepted))
     missing_primitive["correctness"].pop("primitive_batch_correctness")
     with pytest.raises(ValueError, match="primitive_batch_correctness"):

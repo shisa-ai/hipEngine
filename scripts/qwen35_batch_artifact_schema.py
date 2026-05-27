@@ -235,10 +235,24 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
         errors.append("correctness.generated_token_equality.passed must be true for accepted artifacts")
     if equality.get("skipped") is not False:
         errors.append("correctness.generated_token_equality.skipped must be false for accepted artifacts")
-    if not isinstance(equality.get("batch_sequences"), list):
+    batch_sequences = equality.get("batch_sequences")
+    if not isinstance(batch_sequences, list):
         errors.append("correctness.generated_token_equality.batch_sequences must be a list for accepted artifacts")
-    if not isinstance(equality.get("c1_sequences"), list):
+    c1_sequences = equality.get("c1_sequences")
+    if not isinstance(c1_sequences, list):
         errors.append("correctness.generated_token_equality.c1_sequences must be a list for accepted artifacts")
+    workload = _mapping_at(payload, "workload", errors)
+    concurrency = workload.get("concurrency")
+    concurrency_valid = isinstance(concurrency, int) and not isinstance(concurrency, bool) and concurrency > 1
+    if not concurrency_valid:
+        errors.append("workload.concurrency must be an int > 1 for accepted artifacts")
+    else:
+        if isinstance(batch_sequences, list) and len(batch_sequences) != concurrency:
+            errors.append("correctness.generated_token_equality.batch_sequences length must match workload.concurrency for accepted artifacts")
+        if isinstance(c1_sequences, list) and len(c1_sequences) != concurrency:
+            errors.append("correctness.generated_token_equality.c1_sequences length must match workload.concurrency for accepted artifacts")
+    if isinstance(batch_sequences, list) and isinstance(c1_sequences, list) and batch_sequences != c1_sequences:
+        errors.append("correctness.generated_token_equality.batch_sequences must equal c1_sequences for accepted artifacts")
     mismatches = equality.get("mismatches")
     if not isinstance(mismatches, list):
         errors.append("correctness.generated_token_equality.mismatches must be a list for accepted artifacts")
@@ -255,11 +269,7 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
     primitive_rows = primitive.get("rows")
     if not isinstance(primitive_rows, int) or isinstance(primitive_rows, bool):
         errors.append("correctness.primitive_batch_correctness.rows must be an int for accepted artifacts")
-    workload = _mapping_at(payload, "workload", errors)
-    concurrency = workload.get("concurrency")
-    if not isinstance(concurrency, int) or isinstance(concurrency, bool) or concurrency <= 1:
-        errors.append("workload.concurrency must be an int > 1 for accepted artifacts")
-    elif isinstance(primitive_rows, int) and not isinstance(primitive_rows, bool) and primitive_rows != concurrency:
+    if concurrency_valid and isinstance(primitive_rows, int) and not isinstance(primitive_rows, bool) and primitive_rows != concurrency:
         errors.append("correctness.primitive_batch_correctness.rows must match workload.concurrency for accepted artifacts")
 
 
