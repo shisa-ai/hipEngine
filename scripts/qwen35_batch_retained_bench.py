@@ -709,6 +709,8 @@ def _build_payload(
                 "rocminfo | grep -E 'Name:|gfx' | head -4",
                 "rocm-smi --showmeminfo vram --showuse --showtemp",
                 "hipcc --version",
+                "git rev-parse HEAD",
+                "git diff --quiet",
             ],
             "correctness_reference": f"inline generated-token equality vs independent c=1 plus {correctness_reference_command}",
             "benchmark": _command(argv),

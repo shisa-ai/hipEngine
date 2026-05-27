@@ -64,6 +64,8 @@ _REQUIRED_ACCEPTED_ENVIRONMENT_COMMAND_FRAGMENTS = (
     "rocminfo",
     "rocm-smi",
     "hipcc --version",
+    "git rev-parse HEAD",
+    "git diff --quiet",
 )
 _REQUIRED_ACCEPTED_SCALING_BASELINES = (
     "c1_baseline",

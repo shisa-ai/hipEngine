@@ -923,7 +923,8 @@ roll-up/status view.
       under `benchmarks/results/`, and the retained bench can now attach a
       captured profiler summary via `--profiler-json` / `--profiler-command`
       with `--profiler-json` matching `profiler.artifact_path`,
-      environment capture commands for `rocminfo`, `rocm-smi`, and `hipcc --version`,
+      environment capture commands for `rocminfo`, `rocm-smi`, `hipcc --version`,
+      `git rev-parse HEAD`, and `git diff --quiet`,
       concrete non-empty hardware `gpu`/`arch` fields plus successful
       `hardware.rocminfo`/`hardware.rocm_smi` capture objects whose commands
       match their tools and whose `rocminfo` output includes the recorded arch,

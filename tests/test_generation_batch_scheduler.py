@@ -2206,6 +2206,8 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
                 "rocminfo | grep -E 'Name:|gfx' | head -4",
                 "rocm-smi --showmeminfo vram --showuse --showtemp",
                 "hipcc --version",
+                "git rev-parse HEAD",
+                "git diff --quiet",
             ],
             "benchmark": "python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json benchmarks/results/accepted-c2.json",
             "correctness_reference": "inline generated-token equality vs independent c=1 plus python3 scripts/qwen35_batch_correctness.py --rows 2 --json primitive-c2.json",
@@ -2695,6 +2697,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     incomplete_environment_commands["commands"]["environment"] = ["rocminfo", "hipcc --version"]
     with pytest.raises(ValueError, match="commands.environment must include rocm-smi"):
         validate_cn_diagnostic_artifact_payload(incomplete_environment_commands)
+
+    missing_git_environment_command = json.loads(json.dumps(accepted))
+    missing_git_environment_command["commands"]["environment"].remove("git diff --quiet")
+    with pytest.raises(ValueError, match="commands.environment must include git diff --quiet"):
+        validate_cn_diagnostic_artifact_payload(missing_git_environment_command)
 
     wrong_benchmark_command = json.loads(json.dumps(accepted))
     wrong_benchmark_command["commands"]["benchmark"] = "python3 scripts/qwen35_batch_serial_bench.py --batch-size 2"
