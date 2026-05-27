@@ -677,6 +677,14 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                 reasons.append("profiler command does not include rocprofv3 --kernel-trace")
             if "scripts/qwen35_batch_retained_bench.py" not in profiler_command:
                 reasons.append("profiler command does not target qwen35_batch_retained_bench.py")
+            expected_model = _command_arg_value(command, "--model")
+            command_model = _command_text_arg(profiler_command, "--model")
+            if expected_model is not None and command_model != expected_model:
+                reasons.append(f"profiler command model={command_model!r} does not match model={expected_model}")
+            expected_fixture = _command_arg_value(command, "--fixture")
+            command_fixture = _command_text_arg(profiler_command, "--fixture")
+            if expected_fixture is not None and command_fixture != expected_fixture:
+                reasons.append(f"profiler command fixture={command_fixture!r} does not match fixture={expected_fixture}")
             command_profiler_path = _command_text_arg(profiler_command, "--profiler-json")
             if command_profiler_path != str(profiler_path):
                 reasons.append("profiler command --profiler-json path does not match artifact_path")
@@ -693,6 +701,17 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                 reasons.append(
                     f"profiler command decode-tokens={command_decode_tokens!r} does not match decode_tokens={expected_decode_tokens}"
                 )
+            expected_warmup_decode_tokens = _command_arg_int(command, "--warmup-decode-tokens")
+            command_warmup_decode_tokens = _command_text_arg(profiler_command, "--warmup-decode-tokens")
+            if expected_warmup_decode_tokens is not None and command_warmup_decode_tokens != str(expected_warmup_decode_tokens):
+                reasons.append(
+                    "profiler command warmup-decode-tokens="
+                    f"{command_warmup_decode_tokens!r} does not match warmup_decode_tokens={expected_warmup_decode_tokens}"
+                )
+            expected_max_layers = _command_arg_int(command, "--max-layers")
+            command_max_layers = _command_text_arg(profiler_command, "--max-layers")
+            if expected_max_layers is not None and command_max_layers != str(expected_max_layers):
+                reasons.append(f"profiler command max-layers={command_max_layers!r} does not match max_layers={expected_max_layers}")
             expected_compiler_version_file = _command_arg_value(command, "--compiler-version-file")
             if expected_compiler_version_file is not None:
                 command_compiler_version_file = _command_text_arg(profiler_command, "--compiler-version-file")

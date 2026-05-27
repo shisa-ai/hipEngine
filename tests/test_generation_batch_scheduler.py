@@ -97,7 +97,15 @@ class _FakeTextGenerator:
         return [f"generated:{prompt}:{seed}" for prompt, seed in zip(request.prompts, seeds, strict=True)]
 
 
-def _write_c_sweep_profiler_summary(output_dir: Path, *, rows: int = 2) -> None:
+def _write_c_sweep_profiler_summary(
+    output_dir: Path,
+    *,
+    rows: int = 2,
+    model: str = "/tmp/model",
+    fixture: str = "/tmp/fixture.json",
+    warmup_decode_tokens: int = 8,
+    max_layers: int = 40,
+) -> None:
     profiler_path = output_dir / f"profiler-c{rows}.json"
     profiler_path.write_text(
         json.dumps(
@@ -109,7 +117,10 @@ def _write_c_sweep_profiler_summary(output_dir: Path, *, rows: int = 2) -> None:
                     "status": "captured",
                     "command": (
                         "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_retained_bench.py "
-                        f"--batch-size {rows} --prompt-length 16 --decode-tokens 2 --profiler-json {profiler_path}"
+                        f"--model {model} --fixture {fixture} --batch-size {rows} "
+                        "--prompt-length 16 --decode-tokens 2 "
+                        f"--warmup-decode-tokens {warmup_decode_tokens} --max-layers {max_layers} "
+                        f"--profiler-json {profiler_path}"
                     ),
                     "expected_kernels_present": True,
                     "expected_kernel_names": ["qwen35_batch_decode"],
@@ -169,7 +180,9 @@ def test_batch_c_sweep_profiler_precondition_rejects_mismatched_artifact_path(tm
                     "status": "captured",
                     "command": (
                         "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_retained_bench.py "
-                        f"--batch-size 2 --prompt-length 16 --decode-tokens 2 --profiler-json {profiler_path}"
+                        "--model /tmp/model --fixture /tmp/fixture.json --batch-size 2 "
+                        "--prompt-length 16 --decode-tokens 2 "
+                        f"--warmup-decode-tokens 8 --max-layers 40 --profiler-json {profiler_path}"
                     ),
                     "expected_kernels_present": True,
                     "expected_kernel_names": ["qwen35_batch_decode"],
@@ -346,6 +359,39 @@ def test_batch_c_sweep_profiler_precondition_rejects_missing_command(tmp_path: P
         "artifact_path": str(profiler_path),
         "passed": False,
         "reason": "profiler command is missing",
+    }
+
+
+def test_batch_c_sweep_profiler_precondition_rejects_wrong_workload_command(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/other-model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler command model='/tmp/model' does not match model=/tmp/other-model",
     }
 
 
@@ -632,7 +678,7 @@ def test_batch_c_sweep_stops_and_counts_failed_command(tmp_path: Path, monkeypat
 def test_batch_c_sweep_no_stop_counts_failed_and_skipped_rows(tmp_path: Path, monkeypatch) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
-    _write_c_sweep_profiler_summary(output_dir)
+    _write_c_sweep_profiler_summary(output_dir, warmup_decode_tokens=1, max_layers=3)
     args = build_c_sweep_parser().parse_args(
         [
             "--batch-sizes",
@@ -708,7 +754,7 @@ def test_batch_c_sweep_no_stop_counts_failed_and_skipped_rows(tmp_path: Path, mo
 def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: Path, monkeypatch) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
-    _write_c_sweep_profiler_summary(output_dir)
+    _write_c_sweep_profiler_summary(output_dir, warmup_decode_tokens=1, max_layers=3)
     summary_path = tmp_path / "summary.json"
     args = build_c_sweep_parser().parse_args(
         [
@@ -812,7 +858,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_missing(
             }
         )
     )
-    _write_c_sweep_profiler_summary(output_dir)
+    _write_c_sweep_profiler_summary(output_dir, warmup_decode_tokens=1, max_layers=3)
     if missing_artifact != "c1":
         (output_dir / "native-baseline-c1.json").write_text(
             json.dumps(
@@ -923,7 +969,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_shape_missing(
             }
         )
     )
-    _write_c_sweep_profiler_summary(output_dir)
+    _write_c_sweep_profiler_summary(output_dir, warmup_decode_tokens=1, max_layers=3)
     (output_dir / "native-baseline-c1.json").write_text(
         json.dumps({"schema": 1, "throughput": {"warmed_decode_tok_s": 10.0}})
     )
@@ -999,7 +1045,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_reason_is_non_null(
             }
         )
     )
-    _write_c_sweep_profiler_summary(output_dir)
+    _write_c_sweep_profiler_summary(output_dir, warmup_decode_tokens=1, max_layers=3)
     (output_dir / "native-baseline-c1.json").write_text(
         json.dumps(
             {
@@ -1159,7 +1205,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
             }
         )
     )
-    _write_c_sweep_profiler_summary(output_dir)
+    _write_c_sweep_profiler_summary(output_dir, warmup_decode_tokens=1, max_layers=3)
     (output_dir / "native-baseline-c1.json").write_text(
         json.dumps(
             {
@@ -1278,7 +1324,9 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         "profiler_status": "captured",
         "profiler_command": (
             "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_retained_bench.py "
-            f"--batch-size 2 --prompt-length 16 --decode-tokens 2 --profiler-json {output_dir / 'profiler-c2.json'}"
+            "--model /tmp/model --fixture /tmp/fixture.json --batch-size 2 "
+            "--prompt-length 16 --decode-tokens 2 --warmup-decode-tokens 1 --max-layers 3 "
+            f"--profiler-json {output_dir / 'profiler-c2.json'}"
         ),
         "workload_concurrency": 2,
         "prompt_tokens_per_request": 16,
