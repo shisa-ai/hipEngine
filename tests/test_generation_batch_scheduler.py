@@ -2138,7 +2138,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
         "status": "accepted",
         "performance_claim": True,
         "hardware": {"gpu": "AMD Radeon Pro W7900", "arch": "gfx1100"},
-        "software": {"hipengine_commit": "0123456789abcdef0123456789abcdef01234567", "hipengine_dirty": False},
+        "software": {
+            "hipengine_commit": "0123456789abcdef0123456789abcdef01234567",
+            "hipengine_dirty": False,
+            "hipcc_version": "HIP version: 6.4.0",
+        },
         "commands": {
             "benchmark": "python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json accepted.json",
             "correctness_reference": "inline generated-token equality vs independent c=1 plus python3 scripts/qwen35_batch_correctness.py --rows 2 --json primitive-c2.json",
@@ -2778,6 +2782,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     dirty_state["software"]["hipengine_dirty"] = True
     with pytest.raises(ValueError, match="software.hipengine_dirty must be false"):
         validate_cn_diagnostic_artifact_payload(dirty_state)
+
+    missing_hipcc_version = json.loads(json.dumps(accepted))
+    missing_hipcc_version["software"].pop("hipcc_version")
+    with pytest.raises(ValueError, match="software.hipcc_version"):
+        validate_cn_diagnostic_artifact_payload(missing_hipcc_version)
 
     incomplete_scaling = dict(accepted)
     incomplete_scaling["scaling"] = {"complete": False}

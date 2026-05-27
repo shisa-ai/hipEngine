@@ -920,8 +920,8 @@ roll-up/status view.
       `scripts/qwen35_batch_retained_bench.py` with the same retained shape flags,
       primitive/scaling artifact paths under `benchmarks/results/`,
       concrete non-empty hardware `gpu`/`arch` fields,
-      clean full-commit software fields (`software.hipengine_dirty == false`),
-      and captured profiler evidence with
+      clean full-commit software fields (`software.hipengine_dirty == false`)
+      plus non-empty `hipcc_version`, and captured profiler evidence with
       native batch expected kernel names (no serial/per-row/fallback labels)
       present and positive per-kernel duration evidence.
       The scoreboard item remains open until accepted
