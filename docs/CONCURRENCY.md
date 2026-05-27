@@ -714,9 +714,11 @@ roll-up/status view.
       aggregate/per-request ratios. Progress: `hipengine.dispatch.projection`
       now exposes a tested c-aware projection policy: c=1 is pinned to row-GEMV,
       c>N candidates require accepted benchmark evidence with aggregate and
-      per-request speedups over row-GEMV, and missing/slow/rejected evidence
-      falls back to row-GEMV with explicit blockers. The item remains open until
-      runtime projection call sites are wired to this policy and retained
+      per-request speedups over row-GEMV, missing/slow/rejected evidence falls
+      back to row-GEMV with explicit blockers, and
+      `ProjectionDispatchEvidence.from_json_dict(...)` schema-checks retained
+      evidence blocks before the policy can consume them. The item remains open
+      until runtime projection call sites are wired to this policy and retained
       benchmark artifacts provide the required ratios.
 - [x] **C3.5 GGUF c>N template.** Port the Qwen/PARO equality template to
       GGUF Q4_K/Q5_K/Q6_K/Q8_0. Acceptance: at least one GGUF c=2 diagnostic

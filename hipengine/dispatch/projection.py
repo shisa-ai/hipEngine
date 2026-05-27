@@ -9,7 +9,7 @@ inputs so runtime code does not grow backend- or quant-specific branches.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -40,6 +40,32 @@ class ProjectionDispatchEvidence:
     aggregate_vs_row_gemv: float
     per_request_vs_row_gemv: float
     accepted: bool = True
+
+    @classmethod
+    def from_json_dict(cls, payload: Mapping[str, Any]) -> "ProjectionDispatchEvidence":
+        """Load schema-checked projection speedup evidence from an artifact block."""
+
+        errors: list[str] = []
+        artifact_path = payload.get("artifact_path")
+        if not isinstance(artifact_path, str) or not artifact_path:
+            errors.append("artifact_path must be a non-empty string")
+        aggregate_vs_row_gemv = payload.get("aggregate_vs_row_gemv")
+        if not _is_positive_number(aggregate_vs_row_gemv):
+            errors.append("aggregate_vs_row_gemv must be positive numeric")
+        per_request_vs_row_gemv = payload.get("per_request_vs_row_gemv")
+        if not _is_positive_number(per_request_vs_row_gemv):
+            errors.append("per_request_vs_row_gemv must be positive numeric")
+        accepted = payload.get("accepted", True)
+        if not isinstance(accepted, bool):
+            errors.append("accepted must be a bool")
+        if errors:
+            raise ValueError("invalid projection dispatch evidence: " + "; ".join(errors))
+        return cls(
+            artifact_path=str(artifact_path),
+            aggregate_vs_row_gemv=float(aggregate_vs_row_gemv),
+            per_request_vs_row_gemv=float(per_request_vs_row_gemv),
+            accepted=bool(accepted),
+        )
 
     def to_json_dict(self) -> dict[str, Any]:
         return {
@@ -90,6 +116,14 @@ class ProjectionDispatchDecision:
             "blockers": list(self.blockers),
             "evidence": None if self.evidence is None else self.evidence.to_json_dict(),
         }
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _is_positive_number(value: Any) -> bool:
+    return _is_number(value) and float(value) > 0.0
 
 
 def plan_projection_dispatch(

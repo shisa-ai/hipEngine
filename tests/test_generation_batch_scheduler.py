@@ -835,6 +835,25 @@ def test_projection_dispatch_keeps_c1_on_row_gemv_even_with_fast_candidate() -> 
     assert decision.blockers == ()
 
 
+def test_projection_dispatch_evidence_loads_schema_checked_artifact_blocks() -> None:
+    payload = {
+        "artifact_path": "benchmarks/results/projection-wmma-c4.json",
+        "aggregate_vs_row_gemv": 1.35,
+        "per_request_vs_row_gemv": 1.10,
+        "accepted": True,
+    }
+
+    evidence = ProjectionDispatchEvidence.from_json_dict(payload)
+
+    assert evidence.to_json_dict() == payload
+    rejected = ProjectionDispatchEvidence.from_json_dict({**payload, "accepted": False})
+    assert rejected.accepted is False
+    with pytest.raises(ValueError, match="aggregate_vs_row_gemv must be positive numeric"):
+        ProjectionDispatchEvidence.from_json_dict({**payload, "aggregate_vs_row_gemv": 0.0})
+    with pytest.raises(ValueError, match="accepted must be a bool"):
+        ProjectionDispatchEvidence.from_json_dict({**payload, "accepted": "yes"})
+
+
 def test_projection_dispatch_requires_accepted_cN_speedup_evidence() -> None:
     row_gemv = ProjectionKernelSelection("linear", "w4_paro", "row_gemv")
     missing = ProjectionDispatchCandidate(
