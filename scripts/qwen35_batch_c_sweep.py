@@ -1405,6 +1405,16 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if declared_batch_size is not None and declared_batch_size != entry.get("batch_size"):
                 errors.append("commands[].batch_size must match commands[].argv --batch-size/--rows")
                 break
+            expected_scripts_by_category = {
+                "primitive": {"scripts/qwen35_batch_correctness.py"},
+                "serial_bridge": {"scripts/qwen35_batch_serial_bench.py"},
+                "native_diagnostic": {"scripts/qwen35_paro_bench.py", "scripts/qwen35_batch_retained_bench.py"},
+                "int8_native_diagnostic": {"scripts/qwen35_batch_int8_diagnostic.py"},
+            }
+            expected_scripts = expected_scripts_by_category.get(entry.get("category"))
+            if expected_scripts is not None and (len(argv) < 2 or argv[1] not in expected_scripts):
+                errors.append("commands[].category must match commands[].argv script")
+                break
             if entry.get("status") not in {"planned", "passed", "skipped", "failed"}:
                 errors.append("commands[].status must be planned, passed, skipped, or failed")
                 break

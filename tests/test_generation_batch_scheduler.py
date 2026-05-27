@@ -2031,6 +2031,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_argv_batch_size["commands"][-1]["command"] = shlex.join(retained_argv)
     with pytest.raises(ValueError, match=r"commands\[\]\.batch_size must match commands\[\]\.argv"):
         c_sweep.validate_sweep_summary(tampered_argv_batch_size)
+    tampered_command_category = json.loads(json.dumps(persisted))
+    tampered_command_category["commands"][-1]["category"] = "serial_bridge"
+    with pytest.raises(ValueError, match=r"commands\[\]\.category must match commands\[\]\.argv script"):
+        c_sweep.validate_sweep_summary(tampered_command_category)
     tampered_git_dirty = json.loads(json.dumps(persisted))
     tampered_git_dirty["commands"][-1]["git_dirty"] = True
     with pytest.raises(ValueError, match=r"commands\[\]\.git_dirty must match git.dirty"):
