@@ -42,7 +42,10 @@ from hipengine.kvcache import ChunkedKVPool, FixedPagedKVPolicy
 from hipengine.speculative import AcceptResult, DraftBatch, TargetAcceptSummary, TargetStateCommitBuffers, TargetVerifyBuffers
 from scripts import qwen35_batch_c_sweep as c_sweep
 from scripts import qwen35_batch_retained_bench as retained_bench
-from scripts.qwen35_batch_artifact_schema import validate_cn_diagnostic_artifact_payload
+from scripts.qwen35_batch_artifact_schema import (
+    validate_cn_diagnostic_artifact_payload,
+    validate_cn_diagnostic_rollup_evidence,
+)
 from scripts.qwen35_batch_c_sweep import build_parser as build_c_sweep_parser, build_sweep_commands, run_sweep
 from scripts.qwen35_batch_gguf_diagnostic import build_parser as build_gguf_diagnostic_parser, run as run_gguf_diagnostic
 from scripts.qwen35_batch_hidden_bisect import (
@@ -2199,11 +2202,19 @@ def test_qwen35_retained_payload_mirrors_fallback_native_decode_label(monkeypatc
     assert payload["workload"]["native_caware_decode"] is False
     assert payload["execution"]["batch_execution"]["native_caware_decode"] is False
     assert payload["execution"]["batch_execution"]["decode_execution"]["full_attention_decode_path"] == "per_row_splitk_fallback"
+    assert payload["benchmark_rollup"] == {
+        "artifact_path": None,
+        "readme_path": "benchmarks/README.md",
+        "changelog_path": "benchmarks/CHANGELOG.md",
+    }
     assert "scripts/qwen35_batch_correctness.py" in payload["commands"]["correctness_reference"]
     assert "--rows 2" in payload["commands"]["correctness_reference"]
 
 
-def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -> None:
+def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     accepted = {
         "status": "accepted",
         "artifact_path": "benchmarks/results/accepted-c2.json",
@@ -2226,6 +2237,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
             "hipengine_commit": "0123456789abcdef0123456789abcdef01234567",
             "hipengine_dirty": False,
             "hipcc_version": "HIP version: 6.4.0",
+        },
+        "benchmark_rollup": {
+            "artifact_path": "benchmarks/results/accepted-c2.json",
+            "readme_path": "benchmarks/README.md",
+            "changelog_path": "benchmarks/CHANGELOG.md",
         },
         "commands": {
             "environment": [
@@ -2403,6 +2419,45 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     }
 
     validate_cn_diagnostic_artifact_payload(accepted)
+
+    rollup_root = tmp_path / "rollup-repo"
+    (rollup_root / "benchmarks").mkdir(parents=True)
+    (rollup_root / "benchmarks" / "README.md").write_text(
+        f"retained row: `{accepted['artifact_path']}`\n",
+        encoding="utf-8",
+    )
+    (rollup_root / "benchmarks" / "CHANGELOG.md").write_text(
+        f"- retained c>N row; `{accepted['artifact_path']}`\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(rollup_root)
+    validate_cn_diagnostic_rollup_evidence(accepted)
+
+    missing_rollup = json.loads(json.dumps(accepted))
+    missing_rollup.pop("benchmark_rollup")
+    with pytest.raises(ValueError, match="benchmark_rollup must be an object"):
+        validate_cn_diagnostic_rollup_evidence(missing_rollup)
+
+    wrong_rollup_artifact = json.loads(json.dumps(accepted))
+    wrong_rollup_artifact["benchmark_rollup"]["artifact_path"] = "benchmarks/results/other-accepted-c2.json"
+    with pytest.raises(ValueError, match="benchmark_rollup.artifact_path must match artifact_path"):
+        validate_cn_diagnostic_rollup_evidence(wrong_rollup_artifact)
+
+    wrong_rollup_path = json.loads(json.dumps(accepted))
+    wrong_rollup_path["benchmark_rollup"]["readme_path"] = "README.md"
+    with pytest.raises(ValueError, match="benchmark_rollup.readme_path must be benchmarks/README.md"):
+        validate_cn_diagnostic_rollup_evidence(wrong_rollup_path)
+
+    (rollup_root / "benchmarks" / "CHANGELOG.md").write_text(
+        "- retained c>N row without an artifact link\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="benchmark_rollup.changelog_path must mention artifact_path"):
+        validate_cn_diagnostic_rollup_evidence(accepted)
+    (rollup_root / "benchmarks" / "CHANGELOG.md").write_text(
+        f"- retained c>N row; `{accepted['artifact_path']}`\n",
+        encoding="utf-8",
+    )
 
     missing_artifact_path = json.loads(json.dumps(accepted))
     missing_artifact_path.pop("artifact_path")

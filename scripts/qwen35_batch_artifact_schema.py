@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 _REQUIRED_WORKLOAD_FLAGS = (
@@ -278,6 +279,78 @@ def _validate_capture_context(
         errors.append(f"{field}.returncode must be 0 for accepted artifacts")
     if not isinstance(value.get("output"), str) or not value.get("output"):
         errors.append(f"{field}.output must be a non-empty string for accepted artifacts")
+
+
+def validate_cn_diagnostic_rollup_evidence(payload: Mapping[str, Any]) -> None:
+    """Validate post-run benchmark rollup evidence for an accepted c>N artifact.
+
+    This check intentionally reads the live rollup files and is not called by
+    the retained benchmark emitter: the artifact has to exist before humans can
+    update ``benchmarks/README.md`` and ``benchmarks/CHANGELOG.md``. Run this
+    after the rollup docs are updated, before treating a c>N retained row as a
+    promoted performance claim.
+    """
+
+    errors: list[str] = []
+    try:
+        validate_cn_diagnostic_artifact_payload(payload)
+    except ValueError as exc:
+        errors.append(str(exc))
+
+    artifact_path = payload.get("artifact_path")
+    if not isinstance(artifact_path, str) or not artifact_path:
+        errors.append("artifact_path must be a non-empty string for rollup evidence")
+    else:
+        _validate_benchmark_results_artifact_path("artifact_path", artifact_path, errors)
+
+    rollup = payload.get("benchmark_rollup")
+    if not isinstance(rollup, Mapping):
+        errors.append("benchmark_rollup must be an object for rollup evidence")
+        rollup = {}
+    if rollup.get("artifact_path") != artifact_path:
+        errors.append("benchmark_rollup.artifact_path must match artifact_path for rollup evidence")
+    _validate_rollup_file_mentions_artifact(
+        "benchmark_rollup.readme_path",
+        rollup.get("readme_path"),
+        expected_path="benchmarks/README.md",
+        artifact_path=artifact_path,
+        errors=errors,
+    )
+    _validate_rollup_file_mentions_artifact(
+        "benchmark_rollup.changelog_path",
+        rollup.get("changelog_path"),
+        expected_path="benchmarks/CHANGELOG.md",
+        artifact_path=artifact_path,
+        errors=errors,
+    )
+
+    if errors:
+        raise ValueError("invalid c>N benchmark rollup evidence: " + "; ".join(errors))
+
+
+def _validate_rollup_file_mentions_artifact(
+    field: str,
+    value: Any,
+    *,
+    expected_path: str,
+    artifact_path: Any,
+    errors: list[str],
+) -> None:
+    if value != expected_path:
+        errors.append(f"{field} must be {expected_path} for rollup evidence")
+        return
+    if not isinstance(artifact_path, str) or not artifact_path:
+        return
+    path = Path(value)
+    try:
+        text = path.read_text()
+    except FileNotFoundError:
+        errors.append(f"{field} file does not exist for rollup evidence")
+        return
+    normalized_text = text.replace("\\", "/")
+    normalized_artifact_path = artifact_path.replace("\\", "/")
+    if normalized_artifact_path not in normalized_text:
+        errors.append(f"{field} must mention artifact_path for rollup evidence")
 
 
 def validate_cn_diagnostic_artifact_payload(payload: Mapping[str, Any]) -> None:

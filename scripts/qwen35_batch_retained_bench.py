@@ -739,6 +739,11 @@ def _build_payload(
             "native_compact_prefill": True,
             "native_caware_decode": native_caware_decode,
         },
+        "benchmark_rollup": {
+            "artifact_path": str(args.json) if args.json is not None else None,
+            "readme_path": "benchmarks/README.md",
+            "changelog_path": "benchmarks/CHANGELOG.md",
+        },
         "commands": {
             "environment": [
                 "rocminfo | grep -E 'Name:|gfx' | head -4",
