@@ -2155,6 +2155,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
             "prompt_lengths": [512, 512],
             "gen_tokens_per_request": 128,
             "gen_tokens_aggregate": 256,
+            "max_layers": 40,
             "native_compact_prefill": True,
             "native_caware_decode": True,
         },
@@ -2350,6 +2351,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     mismatched_prompt_lengths["workload"]["prompt_lengths"] = [512, 256]
     with pytest.raises(ValueError, match="prompt_lengths entries must match workload.prompt_tokens_per_request"):
         validate_cn_diagnostic_artifact_payload(mismatched_prompt_lengths)
+
+    missing_max_layers = json.loads(json.dumps(accepted))
+    missing_max_layers["workload"].pop("max_layers")
+    with pytest.raises(ValueError, match="workload.max_layers"):
+        validate_cn_diagnostic_artifact_payload(missing_max_layers)
+
+    reduced_max_layers = json.loads(json.dumps(accepted))
+    reduced_max_layers["workload"]["max_layers"] = 8
+    with pytest.raises(ValueError, match="workload.max_layers must be 40"):
+        validate_cn_diagnostic_artifact_payload(reduced_max_layers)
 
     serial_bridge_execution = json.loads(json.dumps(accepted))
     serial_bridge_execution["execution"]["batch_execution"]["path"] = "scheduler_serial_slot_bridge"

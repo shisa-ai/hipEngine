@@ -342,6 +342,11 @@ def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[st
     gen_tokens_valid = isinstance(gen_tokens, int) and not isinstance(gen_tokens, bool) and gen_tokens > 0
     if not gen_tokens_valid:
         errors.append("workload.gen_tokens_per_request must be an int > 0 for accepted artifacts")
+    max_layers = workload.get("max_layers")
+    if not isinstance(max_layers, int) or isinstance(max_layers, bool):
+        errors.append("workload.max_layers must be an int for accepted artifacts")
+    elif max_layers != 40:
+        errors.append("workload.max_layers must be 40 for accepted artifacts")
     if concurrency_valid and prompt_tokens_valid:
         _validate_workload_aggregate_tokens(
             "prompt_tokens_aggregate",
