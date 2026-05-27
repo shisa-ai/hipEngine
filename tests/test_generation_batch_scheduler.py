@@ -2454,11 +2454,15 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         "error": None,
     }
     validate_cn_diagnostic_validation_summary(summary)
+    assert validate_cn_diagnostic_artifact_main([str(summary_file), "--validation-summary"]) == 0
 
     invalid_summary = dict(summary)
     invalid_summary["error"] = "unexpected warning"
     with pytest.raises(ValueError, match="summary.error must be null"):
         validate_cn_diagnostic_validation_summary(invalid_summary)
+    invalid_summary_file = rollup_root / "benchmarks" / "results" / "accepted-c2-invalid-summary.json"
+    invalid_summary_file.write_text(json.dumps(invalid_summary), encoding="utf-8")
+    assert validate_cn_diagnostic_artifact_main([str(invalid_summary_file), "--validation-summary"]) == 1
 
     missing_rollup_artifact = json.loads(json.dumps(accepted))
     missing_rollup_artifact.pop("benchmark_rollup")
@@ -2476,6 +2480,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     assert failed_summary["benchmark_rollup"] is None
     assert "benchmark_rollup must be an object" in failed_summary["error"]
     validate_cn_diagnostic_validation_summary(failed_summary)
+    assert validate_cn_diagnostic_artifact_main([str(failed_summary_file), "--validation-summary"]) == 0
 
     invalid_failed_summary = dict(failed_summary)
     invalid_failed_summary["error"] = None

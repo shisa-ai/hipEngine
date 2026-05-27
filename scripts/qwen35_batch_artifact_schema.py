@@ -1173,11 +1173,30 @@ def main(argv: list[str] | None = None) -> int:
         help="Also require benchmark_rollup metadata and live README/CHANGELOG links for promotion",
     )
     parser.add_argument(
+        "--validation-summary",
+        action="store_true",
+        help="Treat artifact_json as a retained validation summary artifact and validate its schema",
+    )
+    parser.add_argument(
         "--summary-json",
         type=Path,
         help="Optional JSON file recording pass/fail status for automation evidence",
     )
     args = parser.parse_args(argv)
+    if args.validation_summary and args.rollup_evidence:
+        parser.error("--validation-summary cannot be combined with --rollup-evidence")
+    if args.validation_summary and args.summary_json is not None:
+        parser.error("--validation-summary cannot be combined with --summary-json")
+
+    if args.validation_summary:
+        try:
+            summary = _load_payload(args.artifact_json)
+            validate_cn_diagnostic_validation_summary(summary)
+        except Exception as exc:
+            print(f"invalid c>N diagnostic artifact: {exc}", file=sys.stderr)
+            return 1
+        print("OK")
+        return 0
 
     mode = "rollup_evidence" if args.rollup_evidence else "artifact_schema"
     payload: Mapping[str, Any] | None = None

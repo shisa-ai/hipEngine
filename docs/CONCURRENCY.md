@@ -934,8 +934,9 @@ roll-up/status view.
       --rollup-evidence --summary-json
       benchmarks/results/<artifact>-rollup-check.json`) verifies live
       `benchmarks/README.md` and `benchmarks/CHANGELOG.md` both mention the
-      retained artifact path before promotion and writes self-validating
-      pass/fail summary evidence only under `benchmarks/results/`,
+      retained artifact path before promotion, writes self-validating
+      pass/fail summary evidence only under `benchmarks/results/`, and can
+      recheck those summaries with `--validation-summary`,
       environment capture commands for `rocminfo`, `rocm-smi`, `hipcc --version`,
       `git rev-parse HEAD`, and `git diff --quiet`,
       concrete non-empty hardware `gpu`/`arch` fields plus successful
