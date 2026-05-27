@@ -1930,6 +1930,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
 
     def fake_run(argv, **kwargs):
         calls.append(list(argv))
+        if len(argv) > 1 and argv[1] == "scripts/qwen35_batch_retained_bench.py":
+            (output_dir / "native-diagnostic-c2.json").write_text(
+                json.dumps({"profiler": {"synthesized_fields": []}})
+            )
         return FakeProc()
 
     monkeypatch.setattr(c_sweep.subprocess, "run", fake_run)
@@ -1964,6 +1968,17 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         "profiler_summary",
     ]
     assert all(item["passed"] is True for item in native["preconditions"])
+    assert native["postconditions"] == [
+        {
+            "kind": "retained_profiler_synthesis",
+            "artifact_path": str(output_dir / "native-diagnostic-c2.json"),
+            "profiler_precondition_artifact_path": str(output_dir / "profiler-c2.json"),
+            "passed": True,
+            "reason": None,
+            "profiler_synthesized_fields": [],
+            "profiler_precondition_synthesized_fields": [],
+        }
+    ]
     preconditions_by_kind = {item["kind"]: item for item in native["preconditions"]}
     assert preconditions_by_kind["c1_baseline"] == {
         "kind": "c1_baseline",
@@ -2062,6 +2077,39 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         },
     }
     assert "precondition" not in native
+
+
+def test_batch_c_sweep_rejects_retained_profiler_synthesis_mismatch(tmp_path: Path) -> None:
+    artifact_path = tmp_path / "native-diagnostic-c2.json"
+    profiler_path = tmp_path / "profiler-c2.json"
+    artifact_path.write_text(json.dumps({"profiler": {"synthesized_fields": ["trace_kernel_names"]}}))
+    command = c_sweep.SweepCommand(
+        category="native_diagnostic",
+        batch_size=2,
+        artifact_path=artifact_path,
+        argv=("python3", "scripts/qwen35_batch_retained_bench.py"),
+    )
+    postcondition = c_sweep._retained_profiler_synthesis_postcondition(
+        command,
+        [
+            {
+                "kind": "profiler_summary",
+                "artifact_path": str(profiler_path),
+                "passed": True,
+                "profiler_trace_synthesized_fields": [],
+            }
+        ],
+    )
+
+    assert postcondition == {
+        "kind": "retained_profiler_synthesis",
+        "artifact_path": str(artifact_path),
+        "profiler_precondition_artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "retained artifact profiler.synthesized_fields does not match profiler precondition synthesized fields",
+        "profiler_synthesized_fields": ["trace_kernel_names"],
+        "profiler_precondition_synthesized_fields": [],
+    }
 
 
 def test_batch_c_sweep_can_plan_int8_blocked_diagnostics(tmp_path: Path) -> None:

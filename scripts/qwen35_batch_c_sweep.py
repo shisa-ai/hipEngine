@@ -1157,6 +1157,55 @@ def _first_failed_precondition(preconditions: Sequence[dict[str, Any]] | None) -
     return None
 
 
+def _profiler_summary_precondition_record(preconditions: Sequence[dict[str, Any]] | None) -> dict[str, Any] | None:
+    if preconditions is None:
+        return None
+    for precondition in preconditions:
+        if precondition.get("kind") == "profiler_summary" and precondition.get("passed") is True:
+            return precondition
+    return None
+
+
+def _retained_profiler_synthesis_postcondition(
+    command: SweepCommand,
+    preconditions: Sequence[dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    profiler_precondition = _profiler_summary_precondition_record(preconditions)
+    if command.category != "native_diagnostic" or profiler_precondition is None or not command.artifact_path.exists():
+        return None
+    result: dict[str, Any] = {
+        "kind": "retained_profiler_synthesis",
+        "artifact_path": str(command.artifact_path),
+        "profiler_precondition_artifact_path": profiler_precondition.get("artifact_path"),
+        "passed": False,
+        "reason": None,
+    }
+    expected_fields = profiler_precondition.get("profiler_trace_synthesized_fields")
+    if not isinstance(expected_fields, list) or not all(isinstance(field, str) for field in expected_fields):
+        result["reason"] = "profiler precondition synthesized fields are missing or malformed"
+        return result
+    try:
+        payload = json.loads(command.artifact_path.read_text())
+    except Exception as exc:
+        result["reason"] = f"retained artifact is invalid JSON: {type(exc).__name__}: {exc}"
+        return result
+    profiler = payload.get("profiler") if isinstance(payload, dict) else None
+    if not isinstance(profiler, dict):
+        result["reason"] = "retained artifact profiler object is missing"
+        return result
+    actual_fields = profiler.get("synthesized_fields")
+    if not isinstance(actual_fields, list) or not all(isinstance(field, str) for field in actual_fields):
+        result["reason"] = "retained artifact profiler.synthesized_fields is missing or malformed"
+        return result
+    result["profiler_synthesized_fields"] = list(actual_fields)
+    result["profiler_precondition_synthesized_fields"] = list(expected_fields)
+    if list(actual_fields) != list(expected_fields):
+        result["reason"] = "retained artifact profiler.synthesized_fields does not match profiler precondition synthesized fields"
+        return result
+    result["passed"] = True
+    return result
+
+
 def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1210,6 +1259,13 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
                     "output_tail": proc.stdout[-4000:],
                 }
             )
+            if entry["status"] == "passed":
+                postcondition = _retained_profiler_synthesis_postcondition(command, preconditions)
+                if postcondition is not None:
+                    entry["postconditions"] = [postcondition]
+                    if postcondition["passed"] is not True:
+                        entry["status"] = "failed"
+                        entry["output_tail"] = str(postcondition["reason"])
         entries.append(entry)
         if entry["status"] == "failed" and args.stop_on_failure:
             break
