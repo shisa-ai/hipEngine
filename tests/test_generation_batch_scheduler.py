@@ -2160,6 +2160,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
             "gen_tokens_per_request": 128,
             "gen_tokens_aggregate": 256,
             "max_layers": 40,
+            "scheduler_path": "scheduler_native_compact_batch",
             "native_compact_prefill": True,
             "native_caware_decode": True,
         },
@@ -2386,6 +2387,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     serial_bridge_execution["execution"]["batch_execution"]["path"] = "scheduler_serial_slot_bridge"
     with pytest.raises(ValueError, match="serial bridge"):
         validate_cn_diagnostic_artifact_payload(serial_bridge_execution)
+
+    missing_scheduler_path = json.loads(json.dumps(accepted))
+    missing_scheduler_path["workload"].pop("scheduler_path")
+    with pytest.raises(ValueError, match="workload.scheduler_path"):
+        validate_cn_diagnostic_artifact_payload(missing_scheduler_path)
+
+    mismatched_scheduler_path = json.loads(json.dumps(accepted))
+    mismatched_scheduler_path["workload"]["scheduler_path"] = "scheduler_native_other"
+    with pytest.raises(ValueError, match="scheduler_path must match execution.batch_execution.path"):
+        validate_cn_diagnostic_artifact_payload(mismatched_scheduler_path)
 
     fallback_execution = json.loads(json.dumps(accepted))
     fallback_execution["execution"]["batch_execution"]["row_execution"] = "native_linear_batch_with_per_row_full_attention_fallback"

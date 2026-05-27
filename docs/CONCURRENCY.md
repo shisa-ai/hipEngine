@@ -894,7 +894,8 @@ roll-up/status view.
       JSON artifacts under `benchmarks/results/`. Acceptance: every perf claim
       cites correctness gate, profiler status, exact command, and hardware.
       Progress: accepted/performance-claim c>N artifacts now fail schema
-      validation unless they include fully native batch-execution metadata,
+      validation unless they include fully native batch-execution metadata with
+      workload scheduler labels matching the execution path,
       generated-token equality sequence lists matching `workload.concurrency`,
       `workload.concurrency` matching the primitive correctness row count,
       full 40-layer workload labels with concrete model/quant/KV storage dtype

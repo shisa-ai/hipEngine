@@ -202,6 +202,7 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
 
 def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[str]) -> None:
     execution = _mapping_at(payload, "execution", errors)
+    workload = _mapping_at(payload, "workload", errors)
     batch_execution = execution.get("batch_execution")
     if not isinstance(batch_execution, Mapping):
         errors.append("execution.batch_execution must be an object for accepted artifacts")
@@ -210,10 +211,16 @@ def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[
         if batch_execution.get(field) is not True:
             errors.append(f"execution.batch_execution.{field} must be true for accepted artifacts")
     path = batch_execution.get("path")
-    if not isinstance(path, str) or not path:
+    path_valid = isinstance(path, str) and bool(path)
+    if not path_valid:
         errors.append("execution.batch_execution.path must be a non-empty string for accepted artifacts")
     elif "serial" in path:
         errors.append("execution.batch_execution.path must not be a serial bridge for accepted artifacts")
+    scheduler_path = workload.get("scheduler_path")
+    if not isinstance(scheduler_path, str) or not scheduler_path:
+        errors.append("workload.scheduler_path must be a non-empty string for accepted artifacts")
+    elif path_valid and scheduler_path != path:
+        errors.append("workload.scheduler_path must match execution.batch_execution.path for accepted artifacts")
     row_execution = batch_execution.get("row_execution")
     if not isinstance(row_execution, str) or not row_execution:
         errors.append("execution.batch_execution.row_execution must be a non-empty string for accepted artifacts")
