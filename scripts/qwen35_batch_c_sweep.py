@@ -1501,6 +1501,12 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     break
             if condition_schema_error:
                 break
+            if entry.get("category") == "native_diagnostic" and entry.get("batch_size") != 1 and status != "planned":
+                preconditions = entry.get("preconditions")
+                expected_retained_kinds = ["primitive_correctness", "c1_baseline", "serial_bridge", "profiler_summary"]
+                if not isinstance(preconditions, list) or [condition.get("kind") for condition in preconditions] != expected_retained_kinds:
+                    errors.append("commands[].preconditions must include retained native gate kinds")
+                    break
             postconditions = entry.get("postconditions")
             failed_postconditions = [
                 postcondition

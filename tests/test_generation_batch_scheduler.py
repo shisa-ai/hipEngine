@@ -2158,6 +2158,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_postcondition_schema["commands"][-1]["postconditions"][0]["kind"] = ""
     with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.kind must be a non-empty string"):
         c_sweep.validate_sweep_summary(tampered_postcondition_schema)
+    tampered_retained_gate_kinds = json.loads(json.dumps(persisted))
+    tampered_retained_gate_kinds["commands"][-1]["preconditions"].pop()
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions must include retained native gate kinds"):
+        c_sweep.validate_sweep_summary(tampered_retained_gate_kinds)
     preconditions_by_kind = {item["kind"]: item for item in native["preconditions"]}
     assert preconditions_by_kind["c1_baseline"] == {
         "kind": "c1_baseline",
