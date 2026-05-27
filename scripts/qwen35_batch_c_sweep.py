@@ -303,6 +303,32 @@ def _extract_decode_rates(payload: dict[str, Any]) -> tuple[float | None, float 
     return aggregate, per_request
 
 
+def _command_arg_int(command: SweepCommand, flag: str) -> int | None:
+    argv = list(command.argv)
+    try:
+        value = argv[argv.index(flag) + 1]
+    except (ValueError, IndexError):
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+def _reference_label(payload: dict[str, Any], *keys: str) -> Any:
+    workload = payload.get("workload")
+    if isinstance(workload, dict):
+        for key in keys:
+            value = workload.get(key)
+            if value is not None:
+                return value
+    for key in keys:
+        value = payload.get(key)
+        if value is not None:
+            return value
+    return None
+
+
 def _scaling_reference_precondition(
     command: SweepCommand,
     *,
@@ -341,10 +367,23 @@ def _scaling_reference_precondition(
         if aggregate is None or per_request is None:
             reasons.append("decode throughput fields are missing")
         workload = payload.get("workload")
-        if expected_concurrency is not None:
-            concurrency = workload.get("concurrency") if isinstance(workload, dict) else None
-            if concurrency != expected_concurrency:
-                reasons.append(f"workload.concurrency={concurrency!r} does not match batch_size={expected_concurrency}")
+        concurrency = workload.get("concurrency") if isinstance(workload, dict) else None
+        if kind == "c1_baseline" and concurrency is None:
+            concurrency = 1
+        if expected_concurrency is not None and concurrency != expected_concurrency:
+            reasons.append(f"workload.concurrency={concurrency!r} does not match batch_size={expected_concurrency}")
+        expected_prompt_length = _command_arg_int(command, "--prompt-length")
+        prompt_tokens = _reference_label(payload, "prompt_tokens_per_request", "prompt_length")
+        if not isinstance(prompt_tokens, int) or isinstance(prompt_tokens, bool):
+            reasons.append("prompt token count label is missing")
+        elif expected_prompt_length is not None and prompt_tokens != expected_prompt_length:
+            reasons.append(f"prompt_tokens_per_request={prompt_tokens!r} does not match prompt_length={expected_prompt_length}")
+        expected_decode_tokens = _command_arg_int(command, "--decode-tokens")
+        gen_tokens = _reference_label(payload, "gen_tokens_per_request", "decode_tokens")
+        if not isinstance(gen_tokens, int) or isinstance(gen_tokens, bool):
+            reasons.append("decode token count label is missing")
+        elif expected_decode_tokens is not None and gen_tokens != expected_decode_tokens:
+            reasons.append(f"gen_tokens_per_request={gen_tokens!r} does not match decode_tokens={expected_decode_tokens}")
     return {
         "kind": kind,
         "artifact_path": str(path),
@@ -362,6 +401,7 @@ def _native_retained_preconditions(command: SweepCommand) -> tuple[dict[str, Any
             command,
             flag="--c1-baseline-json",
             kind="c1_baseline",
+            expected_concurrency=1,
         ),
         _scaling_reference_precondition(
             command,
