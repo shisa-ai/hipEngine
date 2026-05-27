@@ -29191,3 +29191,28 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY c-sweep baseline evidence fields
+
+Materially advanced P1 auditability without closing an open item:
+
+- `scripts/qwen35_batch_c_sweep.py` retained scaling preconditions now include the resolved baseline evidence fields in summary JSON: `reference_status`, `reference_reason`, `workload_concurrency`, `prompt_tokens_per_request`, `gen_tokens_per_request`, `decode_tok_s_aggregate`, and `decode_tok_s_per_request`.
+- Extended `test_batch_c_sweep_runs_retained_when_all_references_are_usable` to assert those fields for both c=1 and serial baselines on a retained-ready row.
+- Updated P1 docs to state retained precondition records carry resolved baseline rates and labels.
+- No queue item was marked complete and no c>N performance claim was added.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_batch_c_sweep_runs_retained_when_all_references_are_usable tests/test_generation_batch_scheduler.py::test_batch_c_sweep_skips_retained_when_scaling_reference_reason_is_non_null -q
+# 2 passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```

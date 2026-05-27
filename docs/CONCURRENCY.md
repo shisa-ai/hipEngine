@@ -861,8 +861,10 @@ roll-up/status view.
       first-class `workload` object with `concurrency=1`, prompt/decode token
       counts, and KV policy, and retained scaling summaries carry c=1/serial
       baseline `status`/`reason`, `workload_concurrency`, and prompt/decode
-      labels so schema validation rejects c>N rows compared against missing,
-      failed/unusable, reason-bearing, ambiguous, or wrong-shape baselines; the sweep writes `command_count`,
+      labels, and the retained precondition records include the resolved baseline
+      status/reason, row/shape labels, and aggregate/per-request rates, so schema
+      validation rejects c>N rows compared against missing, failed/unusable,
+      reason-bearing, ambiguous, or wrong-shape baselines; the sweep writes `command_count`,
       `completed_command_count`, an `options` block, per-retained-command
       `preconditions`, `status_counts`, `category_status_counts`,
       `retained_precondition_counts`, and `skipped_preconditions` summary rollups

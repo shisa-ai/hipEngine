@@ -736,6 +736,33 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         "serial_bridge",
     ]
     assert all(item["passed"] is True for item in native["preconditions"])
+    preconditions_by_kind = {item["kind"]: item for item in native["preconditions"]}
+    assert preconditions_by_kind["c1_baseline"] == {
+        "kind": "c1_baseline",
+        "artifact_path": str(output_dir / "native-baseline-c1.json"),
+        "passed": True,
+        "reason": None,
+        "reference_status": "loaded",
+        "reference_reason": None,
+        "workload_concurrency": 1,
+        "prompt_tokens_per_request": 16,
+        "gen_tokens_per_request": 2,
+        "decode_tok_s_aggregate": 10.0,
+        "decode_tok_s_per_request": 10.0,
+    }
+    assert preconditions_by_kind["serial_bridge"] == {
+        "kind": "serial_bridge",
+        "artifact_path": str(output_dir / "serial-bridge-c2.json"),
+        "passed": True,
+        "reason": None,
+        "reference_status": "blocked",
+        "reference_reason": None,
+        "workload_concurrency": 2,
+        "prompt_tokens_per_request": 16,
+        "gen_tokens_per_request": 2,
+        "decode_tok_s_aggregate": 20.0,
+        "decode_tok_s_per_request": 10.0,
+    }
     assert "precondition" not in native
 
 

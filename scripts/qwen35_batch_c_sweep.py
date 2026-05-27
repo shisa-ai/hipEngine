@@ -357,41 +357,62 @@ def _scaling_reference_precondition(
             "reason": f"scaling reference artifact is invalid JSON: {type(exc).__name__}: {exc}",
         }
     reasons: list[str] = []
+    status: str | None = None
+    reference_reason: Any = None
+    aggregate: float | None = None
+    per_request: float | None = None
+    concurrency: int | None = None
+    prompt_tokens: int | None = None
+    gen_tokens: int | None = None
     if not isinstance(payload, dict):
         reasons.append("scaling reference artifact root is not an object")
     else:
-        status = payload.get("status")
+        raw_status = payload.get("status")
+        status = str(raw_status) if raw_status else "loaded"
         if status in {"failed", "rejected", "rejected_correctness", "missing", "invalid_json"}:
             reasons.append(f"status={status!r} is not usable as a scaling reference")
-        reason = payload.get("reason")
-        if reason is not None:
-            reasons.append(f"scaling reference reason is non-null: {reason}")
+        reference_reason = payload.get("reason")
+        if reference_reason is not None:
+            reasons.append(f"scaling reference reason is non-null: {reference_reason}")
         aggregate, per_request = _extract_decode_rates(payload)
         if aggregate is None or per_request is None:
             reasons.append("decode throughput fields are missing")
         workload = payload.get("workload")
-        concurrency = workload.get("concurrency") if isinstance(workload, dict) else None
+        raw_concurrency = workload.get("concurrency") if isinstance(workload, dict) else None
+        if isinstance(raw_concurrency, int) and not isinstance(raw_concurrency, bool):
+            concurrency = raw_concurrency
         if kind == "c1_baseline" and concurrency is None:
             concurrency = 1
         if expected_concurrency is not None and concurrency != expected_concurrency:
             reasons.append(f"workload.concurrency={concurrency!r} does not match batch_size={expected_concurrency}")
         expected_prompt_length = _command_arg_int(command, "--prompt-length")
-        prompt_tokens = _reference_label(payload, "prompt_tokens_per_request", "prompt_length")
-        if not isinstance(prompt_tokens, int) or isinstance(prompt_tokens, bool):
+        raw_prompt_tokens = _reference_label(payload, "prompt_tokens_per_request", "prompt_length")
+        if not isinstance(raw_prompt_tokens, int) or isinstance(raw_prompt_tokens, bool):
             reasons.append("prompt token count label is missing")
-        elif expected_prompt_length is not None and prompt_tokens != expected_prompt_length:
-            reasons.append(f"prompt_tokens_per_request={prompt_tokens!r} does not match prompt_length={expected_prompt_length}")
+        else:
+            prompt_tokens = raw_prompt_tokens
+            if expected_prompt_length is not None and prompt_tokens != expected_prompt_length:
+                reasons.append(f"prompt_tokens_per_request={prompt_tokens!r} does not match prompt_length={expected_prompt_length}")
         expected_decode_tokens = _command_arg_int(command, "--decode-tokens")
-        gen_tokens = _reference_label(payload, "gen_tokens_per_request", "decode_tokens")
-        if not isinstance(gen_tokens, int) or isinstance(gen_tokens, bool):
+        raw_gen_tokens = _reference_label(payload, "gen_tokens_per_request", "decode_tokens")
+        if not isinstance(raw_gen_tokens, int) or isinstance(raw_gen_tokens, bool):
             reasons.append("decode token count label is missing")
-        elif expected_decode_tokens is not None and gen_tokens != expected_decode_tokens:
-            reasons.append(f"gen_tokens_per_request={gen_tokens!r} does not match decode_tokens={expected_decode_tokens}")
+        else:
+            gen_tokens = raw_gen_tokens
+            if expected_decode_tokens is not None and gen_tokens != expected_decode_tokens:
+                reasons.append(f"gen_tokens_per_request={gen_tokens!r} does not match decode_tokens={expected_decode_tokens}")
     return {
         "kind": kind,
         "artifact_path": str(path),
         "passed": not reasons,
         "reason": None if not reasons else "; ".join(reasons),
+        "reference_status": status,
+        "reference_reason": reference_reason,
+        "workload_concurrency": concurrency,
+        "prompt_tokens_per_request": prompt_tokens,
+        "gen_tokens_per_request": gen_tokens,
+        "decode_tok_s_aggregate": aggregate,
+        "decode_tok_s_per_request": per_request,
     }
 
 
