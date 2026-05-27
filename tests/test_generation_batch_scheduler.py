@@ -154,6 +154,56 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     assert str(tmp_path / "artifacts" / "primitive-c2.json") in retained_c2.argv
 
 
+def test_batch_c_sweep_stops_and_counts_failed_command(tmp_path: Path, monkeypatch) -> None:
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(tmp_path / "artifacts"),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+            "--warmup-decode-tokens",
+            "1",
+            "--max-layers",
+            "3",
+        ]
+    )
+    monkeypatch.setattr(c_sweep, "_git_state", lambda: {"commit": "test", "dirty": False, "status_short": []})
+
+    class FakeProc:
+        returncode = 42
+        stdout = "primitive failed\n"
+
+    calls: list[list[str]] = []
+
+    def fake_run(argv, **kwargs):
+        calls.append(list(argv))
+        return FakeProc()
+
+    monkeypatch.setattr(c_sweep.subprocess, "run", fake_run)
+
+    summary = run_sweep(args)
+
+    assert summary["status"] == "failed"
+    assert summary["status_counts"] == {"failed": 1}
+    assert summary["category_status_counts"] == {"primitive": {"failed": 1}}
+    assert summary["skipped_preconditions"] == []
+    assert len(summary["commands"]) == 1
+    failed = summary["commands"][0]
+    assert failed["category"] == "primitive"
+    assert failed["returncode"] == 42
+    assert failed["output_tail"] == "primitive failed\n"
+    assert len(calls) == 1
+    assert calls[0][1] == "scripts/qwen35_batch_correctness.py"
+
+
 def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: Path, monkeypatch) -> None:
     output_dir = tmp_path / "artifacts"
     args = build_c_sweep_parser().parse_args(
