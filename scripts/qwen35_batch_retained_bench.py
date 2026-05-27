@@ -10,6 +10,7 @@ resident runs before marking a row accepted.
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import math
 from collections.abc import Mapping
@@ -51,6 +52,7 @@ _PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES = (
     "validation",
     "other",
 )
+_PROFILER_TRACE_KERNEL_NAME_COLUMNS = ("Kernel_Name", "KernelName", "Name")
 
 
 def _load_prompt_slices(path: Path, *, prompt_length: int, batch_size: int) -> list[list[int]]:
@@ -433,6 +435,53 @@ def _profiler_command_label(profiler: Mapping[str, Any], payload: Mapping[str, A
     return None
 
 
+def _resolve_profiler_trace_file(trace_file: str, *, profiler_path: Path) -> Path:
+    path = Path(trace_file)
+    if path.is_absolute():
+        return path
+    parent_relative = profiler_path.parent / path
+    if parent_relative.exists():
+        return parent_relative
+    return path
+
+
+def _read_profiler_trace_kernel_names(trace_file: Path) -> list[str]:
+    names: list[str] = []
+    seen: set[str] = set()
+    try:
+        with trace_file.open(newline="") as handle:
+            reader = csv.DictReader(handle)
+            for row in reader:
+                name = ""
+                for column in _PROFILER_TRACE_KERNEL_NAME_COLUMNS:
+                    value = row.get(column)
+                    if isinstance(value, str) and value.strip():
+                        name = value.strip()
+                        break
+                if name and name not in seen:
+                    names.append(name)
+                    seen.add(name)
+    except OSError:
+        return []
+    return names
+
+
+def _synthesized_profiler_trace_kernel_names(profiler: Mapping[str, Any], *, profiler_path: Path) -> list[str] | None:
+    trace_files = profiler.get("trace_files")
+    if not isinstance(trace_files, list) or not trace_files:
+        return None
+    names: list[str] = []
+    seen: set[str] = set()
+    for trace_file in trace_files:
+        if not isinstance(trace_file, str) or not trace_file:
+            continue
+        for kernel_name in _read_profiler_trace_kernel_names(_resolve_profiler_trace_file(trace_file, profiler_path=profiler_path)):
+            if kernel_name not in seen:
+                names.append(kernel_name)
+                seen.add(kernel_name)
+    return names or None
+
+
 def _profiler_reference(path: Path | None) -> dict[str, Any]:
     if path is None:
         return {"status": "not_captured", "notes": "E2E retained c>N row; profiler trace not captured in this iteration."}
@@ -465,6 +514,10 @@ def _profiler_reference(path: Path | None) -> dict[str, Any]:
         kernel_duration_category_shares = _synthesized_profiler_kernel_duration_category_shares(result)
         if kernel_duration_category_shares is not None:
             result["kernel_duration_category_shares"] = kernel_duration_category_shares
+    if "trace_kernel_names" not in result:
+        trace_kernel_names = _synthesized_profiler_trace_kernel_names(result, profiler_path=path)
+        if trace_kernel_names is not None:
+            result["trace_kernel_names"] = trace_kernel_names
     profiler_command = _profiler_command_label(profiler, payload)
     if profiler_command is not None:
         if "output_format" not in result:

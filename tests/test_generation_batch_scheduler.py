@@ -3528,12 +3528,21 @@ def test_qwen35_retained_records_decode_graph_bucket_metadata() -> None:
 
 def test_qwen35_retained_profiler_reference_loads_captured_summary(tmp_path: Path) -> None:
     profiler_path = tmp_path / "profiler-summary.json"
+    trace_dir = tmp_path / "hipengine-profile-c2"
+    trace_dir.mkdir()
+    trace_csv = trace_dir / "hipengine_kernel_trace.csv"
+    trace_csv.write_text(
+        "Kernel_Name,Start_Timestamp,End_Timestamp\n"
+        "qwen35_batch_decode,0,100\n"
+        "qwen35_batch_decode,100,200\n"
+    )
     profiler_path.write_text(
         json.dumps(
             {
                 "profiler": {
                     "status": "captured",
-                    "command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile-c2 -- python3 scripts/qwen35_batch_retained_bench.py",
+                    "command": f"rocprofv3 --kernel-trace --output-format csv -d {trace_dir} -- python3 scripts/qwen35_batch_retained_bench.py",
+                    "trace_files": [str(trace_csv)],
                     "expected_kernels_present": True,
                     "expected_kernel_names": ["qwen35_batch_decode"],
                     "kernel_durations_ns": {"qwen35_batch_decode": 12345.0},
@@ -3564,7 +3573,9 @@ def test_qwen35_retained_profiler_reference_loads_captured_summary(tmp_path: Pat
 
     assert loaded["status"] == "captured"
     assert loaded["output_format"] == "csv"
-    assert loaded["trace_dir"] == "/tmp/hipengine-profile-c2"
+    assert loaded["trace_dir"] == str(trace_dir)
+    assert loaded["trace_files"] == [str(trace_csv)]
+    assert loaded["trace_kernel_names"] == ["qwen35_batch_decode"]
     assert loaded["expected_kernels_present"] is True
     assert loaded["total_kernel_duration_ns"] == 12345.0
     assert loaded["kernel_duration_shares"] == {"qwen35_batch_decode": 1.0}
