@@ -19,6 +19,7 @@ from hipengine.dispatch.projection import (
     ProjectionDispatchEvidence,
     ProjectionKernelSelection,
     plan_projection_dispatch,
+    projection_dispatch_candidates_from_artifact,
     projection_dispatch_candidates_from_json,
 )
 from hipengine.dispatch.sampling import BatchSamplerDispatchDecision, BatchSamplerMode, plan_batch_sampler_dispatch
@@ -48,6 +49,7 @@ __all__ = [
     "plan_paged_attn_decode",
     "plan_paged_kv_write",
     "plan_projection_dispatch",
+    "projection_dispatch_candidates_from_artifact",
     "projection_dispatch_candidates_from_json",
     "plan_batch_sampler_dispatch",
     "resolve_paged_attn_decode",

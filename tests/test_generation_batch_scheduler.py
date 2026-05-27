@@ -18,6 +18,7 @@ from hipengine.dispatch import (
     WorkKind,
     plan_batch_sampler_dispatch,
     plan_projection_dispatch,
+    projection_dispatch_candidates_from_artifact,
     projection_dispatch_candidates_from_json,
 )
 from hipengine.generation import (
@@ -917,6 +918,36 @@ def test_projection_dispatch_candidate_list_loads_ordered_artifact_blocks() -> N
         projection_dispatch_candidates_from_json([first, "not-a-candidate"])
     with pytest.raises(ValueError, match=r"candidates\[0\].*min_rows must be a positive int"):
         projection_dispatch_candidates_from_json([{**first, "min_rows": 0}])
+
+
+def test_projection_dispatch_candidate_list_loads_from_artifact_payload() -> None:
+    candidate = {
+        "name": "wmma_caware",
+        "selection": {"layer": "linear", "quant": "w4_paro", "variant": "wmma_caware"},
+        "min_rows": 4,
+        "max_rows": 8,
+        "evidence": {
+            "artifact_path": "benchmarks/results/projection-wmma-c4.json",
+            "aggregate_vs_row_gemv": 1.35,
+            "per_request_vs_row_gemv": 1.10,
+            "accepted": True,
+        },
+    }
+    artifact = {
+        "status": "accepted",
+        "projection_dispatch_candidates": [candidate],
+    }
+
+    loaded = projection_dispatch_candidates_from_artifact(artifact)
+
+    assert len(loaded) == 1
+    assert loaded[0].to_json_dict() == candidate
+    assert projection_dispatch_candidates_from_artifact({"status": "blocked"}) == ()
+    assert projection_dispatch_candidates_from_artifact({"projection_dispatch": [candidate]}, field="projection_dispatch")[0].name == "wmma_caware"
+    with pytest.raises(ValueError, match="projection dispatch candidate field must be a non-empty string"):
+        projection_dispatch_candidates_from_artifact(artifact, field="")
+    with pytest.raises(ValueError, match="invalid projection_dispatch_candidates"):
+        projection_dispatch_candidates_from_artifact({"projection_dispatch_candidates": ["not-a-candidate"]})
 
 
 def test_projection_dispatch_requires_accepted_cN_speedup_evidence() -> None:

@@ -218,6 +218,24 @@ def projection_dispatch_candidates_from_json(payload: Any) -> tuple[ProjectionDi
     return tuple(candidates)
 
 
+def projection_dispatch_candidates_from_artifact(
+    payload: Mapping[str, Any],
+    *,
+    field: str = "projection_dispatch_candidates",
+) -> tuple[ProjectionDispatchCandidate, ...]:
+    """Extract c-aware projection candidates from a retained benchmark artifact."""
+
+    if not isinstance(field, str) or not field:
+        raise ValueError("projection dispatch candidate field must be a non-empty string")
+    candidates_payload = payload.get(field)
+    if candidates_payload is None:
+        return ()
+    try:
+        return projection_dispatch_candidates_from_json(candidates_payload)
+    except ValueError as exc:
+        raise ValueError(f"invalid {field}: {exc}") from exc
+
+
 def plan_projection_dispatch(
     *,
     rows: int,
@@ -311,5 +329,6 @@ __all__ = [
     "ProjectionDispatchEvidence",
     "ProjectionKernelSelection",
     "plan_projection_dispatch",
+    "projection_dispatch_candidates_from_artifact",
     "projection_dispatch_candidates_from_json",
 ]
