@@ -333,6 +333,23 @@ def _command_arg_int(command: SweepCommand, flag: str) -> int | None:
         return None
 
 
+def _command_text_arg(command_text: str, flag: str) -> str | None:
+    try:
+        argv = shlex.split(command_text)
+    except ValueError:
+        return None
+    for index, value in enumerate(argv):
+        if value == flag:
+            try:
+                return argv[index + 1]
+            except IndexError:
+                return None
+        prefix = f"{flag}="
+        if value.startswith(prefix):
+            return value[len(prefix) :]
+    return None
+
+
 def _reference_label(payload: dict[str, Any], *keys: str) -> Any:
     workload = payload.get("workload")
     if isinstance(workload, dict):
@@ -344,6 +361,22 @@ def _reference_label(payload: dict[str, Any], *keys: str) -> Any:
         value = payload.get(key)
         if value is not None:
             return value
+    return None
+
+
+def _profiler_command_label(profiler: dict[str, Any], payload: dict[str, Any] | None) -> str | None:
+    for source in (profiler, payload):
+        if not isinstance(source, dict):
+            continue
+        for key in ("command", "profiler_command"):
+            value = source.get(key)
+            if isinstance(value, str) and value:
+                return value
+        commands = source.get("commands")
+        if isinstance(commands, dict):
+            value = commands.get("profiler")
+            if isinstance(value, str) and value:
+                return value
     return None
 
 
@@ -591,6 +624,7 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
         else payload
     )
     reasons: list[str] = []
+    profiler_command: str | None = None
     if not isinstance(profiler, dict):
         reasons.append("profiler summary root is not an object")
     else:
@@ -621,6 +655,30 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
             reasons.append("decode token count label is missing")
         elif expected_decode_tokens is not None and raw_gen_tokens != expected_decode_tokens:
             reasons.append(f"gen_tokens_per_request={raw_gen_tokens!r} does not match decode_tokens={expected_decode_tokens}")
+        profiler_command = _profiler_command_label(profiler, payload if isinstance(payload, dict) else None)
+        if profiler_command is None:
+            reasons.append("profiler command is missing")
+        else:
+            if "rocprofv3" not in profiler_command or "--kernel-trace" not in profiler_command:
+                reasons.append("profiler command does not include rocprofv3 --kernel-trace")
+            if "scripts/qwen35_batch_retained_bench.py" not in profiler_command:
+                reasons.append("profiler command does not target qwen35_batch_retained_bench.py")
+            command_profiler_path = _command_text_arg(profiler_command, "--profiler-json")
+            if command_profiler_path != str(profiler_path):
+                reasons.append("profiler command --profiler-json path does not match artifact_path")
+            command_batch_size = _command_text_arg(profiler_command, "--batch-size")
+            if command_batch_size != str(command.batch_size):
+                reasons.append(f"profiler command batch-size={command_batch_size!r} does not match batch_size={command.batch_size}")
+            command_prompt_length = _command_text_arg(profiler_command, "--prompt-length")
+            if expected_prompt_length is not None and command_prompt_length != str(expected_prompt_length):
+                reasons.append(
+                    f"profiler command prompt-length={command_prompt_length!r} does not match prompt_length={expected_prompt_length}"
+                )
+            command_decode_tokens = _command_text_arg(profiler_command, "--decode-tokens")
+            if expected_decode_tokens is not None and command_decode_tokens != str(expected_decode_tokens):
+                reasons.append(
+                    f"profiler command decode-tokens={command_decode_tokens!r} does not match decode_tokens={expected_decode_tokens}"
+                )
         if profiler.get("status") != "captured":
             reasons.append("status is not 'captured'")
         if profiler.get("expected_kernels_present") is not True:
@@ -657,6 +715,7 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
         result.update(
             {
                 "profiler_status": str(profiler["status"]),
+                "profiler_command": profiler_command,
                 "workload_concurrency": int(raw_rows),
                 "prompt_tokens_per_request": int(raw_prompt_tokens),
                 "gen_tokens_per_request": int(raw_gen_tokens),
