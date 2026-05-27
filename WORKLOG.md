@@ -28741,3 +28741,28 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY c-sweep command-count rollups
+
+Materially advanced P1 c-sweep reviewability without closing it:
+
+- `scripts/qwen35_batch_c_sweep.py` summaries now record `command_count` and `completed_command_count` so truncated stop-on-failure runs are explicit without summing status buckets.
+- Tests assert full dry-run and happy-path summaries report all commands completed, default stop-on-failure reports only the failed command completed, and `--no-stop-on-failure` reports the full mixed-status sweep.
+- Updated the P1 note to mention the command-count rollups alongside options/status/skipped-precondition fields.
+- No performance claim was added and no queue item was marked complete.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_batch_c_sweep_dry_run_records_commands_and_artifacts tests/test_generation_batch_scheduler.py::test_batch_c_sweep_stops_and_counts_failed_command tests/test_generation_batch_scheduler.py::test_batch_c_sweep_no_stop_counts_failed_and_skipped_rows tests/test_generation_batch_scheduler.py::test_batch_c_sweep_runs_retained_when_all_references_are_usable -q
+# 4 passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```

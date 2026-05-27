@@ -436,6 +436,8 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
         "batch_sizes": list(args.batch_sizes),
         "output_dir": str(output_dir),
         "options": _summary_options(args),
+        "command_count": len(commands),
+        "completed_command_count": len(entries),
         "git": git,
         "commands": entries,
         "status_counts": _status_counts(entries),

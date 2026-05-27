@@ -138,6 +138,8 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     assert summary_path.exists()
     persisted = json.loads(summary_path.read_text())
     assert persisted["options"] == summary["options"]
+    assert persisted["command_count"] == 6
+    assert persisted["completed_command_count"] == 6
     assert len(persisted["commands"]) == 6
     assert persisted["status_counts"] == {"planned": 6}
     assert persisted["category_status_counts"] == {
@@ -200,6 +202,8 @@ def test_batch_c_sweep_stops_and_counts_failed_command(tmp_path: Path, monkeypat
 
     assert summary["status"] == "failed"
     assert summary["options"]["stop_on_failure"] is True
+    assert summary["command_count"] == 3
+    assert summary["completed_command_count"] == 1
     assert summary["status_counts"] == {"failed": 1}
     assert summary["category_status_counts"] == {"primitive": {"failed": 1}}
     assert summary["skipped_preconditions"] == []
@@ -256,6 +260,8 @@ def test_batch_c_sweep_no_stop_counts_failed_and_skipped_rows(tmp_path: Path, mo
 
     assert summary["status"] == "failed"
     assert summary["options"]["stop_on_failure"] is False
+    assert summary["command_count"] == 3
+    assert summary["completed_command_count"] == 3
     assert summary["status_counts"] == {"failed": 1, "passed": 1, "skipped": 1}
     assert summary["category_status_counts"] == {
         "primitive": {"failed": 1},
@@ -494,6 +500,8 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     summary = run_sweep(args)
 
     assert summary["status"] == "passed"
+    assert summary["command_count"] == 3
+    assert summary["completed_command_count"] == 3
     assert summary["status_counts"] == {"passed": 3}
     assert summary["category_status_counts"] == {
         "primitive": {"passed": 1},
