@@ -67,6 +67,8 @@ _REQUIRED_ACCEPTED_SCALING_RATIOS = (
     "per_request_vs_serial_bridge",
 )
 _COMMAND_BATCH_SIZE_RE = re.compile(r"(?:^|\s)--batch-size(?:=|\s+)(\d+)(?=\s|$)")
+_COMMAND_DECODE_TOKENS_RE = re.compile(r"(?:^|\s)--decode-tokens(?:=|\s+)(\d+)(?=\s|$)")
+_COMMAND_PROMPT_LENGTH_RE = re.compile(r"(?:^|\s)--prompt-length(?:=|\s+)(\d+)(?=\s|$)")
 _CORRECTNESS_ROWS_RE = re.compile(r"(?:^|\s)--rows(?:=|\s+)(\d+)(?=\s|$)")
 
 
@@ -267,6 +269,22 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
                 concurrency = workload.get("concurrency") if isinstance(workload, Mapping) else None
                 if isinstance(concurrency, int) and not isinstance(concurrency, bool) and int(batch_size_match.group(1)) != concurrency:
                     errors.append("commands.benchmark --batch-size must match workload.concurrency for accepted artifacts")
+            prompt_match = _COMMAND_PROMPT_LENGTH_RE.search(benchmark_command)
+            if prompt_match is None:
+                errors.append("commands.benchmark must include --prompt-length <workload.prompt_tokens_per_request> for accepted artifacts")
+            else:
+                workload = payload.get("workload")
+                prompt_tokens = workload.get("prompt_tokens_per_request") if isinstance(workload, Mapping) else None
+                if isinstance(prompt_tokens, int) and not isinstance(prompt_tokens, bool) and int(prompt_match.group(1)) != prompt_tokens:
+                    errors.append("commands.benchmark --prompt-length must match workload.prompt_tokens_per_request for accepted artifacts")
+            decode_match = _COMMAND_DECODE_TOKENS_RE.search(benchmark_command)
+            if decode_match is None:
+                errors.append("commands.benchmark must include --decode-tokens <workload.gen_tokens_per_request> for accepted artifacts")
+            else:
+                workload = payload.get("workload")
+                gen_tokens = workload.get("gen_tokens_per_request") if isinstance(workload, Mapping) else None
+                if isinstance(gen_tokens, int) and not isinstance(gen_tokens, bool) and int(decode_match.group(1)) != gen_tokens:
+                    errors.append("commands.benchmark --decode-tokens must match workload.gen_tokens_per_request for accepted artifacts")
     correctness_command = commands.get("correctness_reference")
     if isinstance(correctness_command, str):
         if "qwen35_batch_correctness.py" not in correctness_command:
