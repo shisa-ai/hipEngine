@@ -1259,7 +1259,16 @@ Establish these before optimizing anything:
 - [ ] Add hipGraph capture/replay buckets for decode by `(C, context
       bucket, active mask, KV dtype, layer plan, top-k/experts, replay
       length)`, with an uncaptured fallback for rare shapes.
-- [ ] Add graph-bucket cache hit/miss and replay statistics to artifacts.
+- [x] Add graph-bucket cache hit/miss and replay statistics to artifacts.
+      Evidence: `GraphBucketStats.to_json_dict()` serializes `entries`,
+      `hits`, `misses`, `miss_reasons`, and `kernel_time_histogram_ns`;
+      `scripts/qwen35_batch_retained_bench.py` and serial diagnostics emit
+      `decode_shape_key` / `graph_bucket_stats`; accepted-artifact schema
+      requires those fields; `/metrics` exports graph-bucket counters; covered by
+      `test_graph_bucket_cache_clear_resets_entries_and_counters`,
+      `test_qwen35_retained_records_decode_graph_bucket_metadata`,
+      `test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates`,
+      and `test_metrics_endpoint_is_opt_in_and_additive`.
 - [ ] Eliminate residual serial loops on the native path after correctness
       is green:
   - full-attention per-row fallback;
