@@ -529,7 +529,7 @@ def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[
             errors.append("execution.batch_execution.decode_execution.sampler_execution must be an object for accepted artifacts")
         else:
             _validate_accepted_sampler_execution(sampler_execution, errors)
-    _validate_accepted_projection_dispatch(batch_execution, workload, errors)
+    _validate_accepted_projection_dispatch(payload, batch_execution, workload, errors)
     scheduler_metadata = execution.get("scheduler_metadata")
     if not isinstance(scheduler_metadata, Mapping):
         errors.append("execution.scheduler_metadata must be an object for accepted artifacts")
@@ -538,6 +538,7 @@ def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[
 
 
 def _validate_accepted_projection_dispatch(
+    payload: Mapping[str, Any],
     batch_execution: Mapping[str, Any],
     workload: Mapping[str, Any],
     errors: list[str],
@@ -573,6 +574,7 @@ def _validate_accepted_projection_dispatch(
         if selection.get("variant") == "row_gemv":
             errors.append("execution.batch_execution.projection_dispatch.selection.variant must not be row_gemv for accepted artifacts")
     evidence = projection_dispatch.get("evidence")
+    dispatch_evidence: ProjectionDispatchEvidence | None = None
     if not isinstance(evidence, Mapping):
         errors.append("execution.batch_execution.projection_dispatch.evidence must be an object for accepted artifacts")
     else:
@@ -583,6 +585,37 @@ def _validate_accepted_projection_dispatch(
         else:
             if dispatch_evidence.accepted is not True:
                 errors.append("execution.batch_execution.projection_dispatch.evidence.accepted must be true for accepted artifacts")
+
+    if "projection_dispatch_candidates" not in payload:
+        errors.append("projection_dispatch_candidates must include selected projection candidate for accepted artifacts")
+        return
+    try:
+        candidates = projection_dispatch_candidates_from_artifact(payload)
+    except ValueError as exc:
+        errors.append(str(exc))
+        return
+    if not candidates:
+        errors.append("projection_dispatch_candidates must be non-empty for accepted artifacts")
+        return
+    if not isinstance(selected_candidate, str) or not selected_candidate:
+        return
+    matches = [candidate for candidate in candidates if candidate.name == selected_candidate]
+    if not matches:
+        errors.append("projection_dispatch_candidates must include selected_candidate for accepted artifacts")
+        return
+    candidate = matches[0]
+    if isinstance(rows, int) and not isinstance(rows, bool) and not candidate.applies_to(rows):
+        errors.append("projection_dispatch_candidates selected_candidate row bounds must include projection_dispatch.rows for accepted artifacts")
+    if isinstance(selection, Mapping):
+        expected_selection = candidate.selection.to_json_dict()
+        actual_selection = {field: selection.get(field) for field in ("layer", "quant", "variant")}
+        if actual_selection != expected_selection:
+            errors.append("execution.batch_execution.projection_dispatch.selection must match selected projection_dispatch_candidates entry for accepted artifacts")
+    if dispatch_evidence is not None:
+        if candidate.evidence is None:
+            errors.append("projection_dispatch_candidates selected_candidate evidence must be present for accepted artifacts")
+        elif candidate.evidence.to_json_dict() != dispatch_evidence.to_json_dict():
+            errors.append("execution.batch_execution.projection_dispatch.evidence must match selected projection_dispatch_candidates entry for accepted artifacts")
 
 
 def _validate_accepted_sampler_execution(sampler_execution: Mapping[str, Any], errors: list[str]) -> None:

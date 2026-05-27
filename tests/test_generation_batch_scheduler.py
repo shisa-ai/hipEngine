@@ -2648,6 +2648,20 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             "stable_block_id": {"passed": True, "audit": "debug check passed"},
             "prefix_sharing": {"enabled": False, "savings_bytes": 0},
         },
+        "projection_dispatch_candidates": [
+            {
+                "name": "wmma_caware",
+                "selection": {"layer": "linear", "quant": "w4_paro", "variant": "wmma_caware"},
+                "min_rows": 2,
+                "max_rows": 8,
+                "evidence": {
+                    "artifact_path": "benchmarks/results/projection-wmma-c2.json",
+                    "aggregate_vs_row_gemv": 1.35,
+                    "per_request_vs_row_gemv": 1.10,
+                    "accepted": True,
+                },
+            }
+        ],
         "decision": {"accepted": True},
     }
 
@@ -2976,6 +2990,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     missing_projection_dispatch["execution"]["batch_execution"].pop("projection_dispatch")
     with pytest.raises(ValueError, match="projection_dispatch must be an object"):
         validate_cn_diagnostic_artifact_payload(missing_projection_dispatch)
+
+    missing_projection_candidate_list = json.loads(json.dumps(accepted))
+    missing_projection_candidate_list.pop("projection_dispatch_candidates")
+    with pytest.raises(ValueError, match="projection_dispatch_candidates must include selected projection candidate"):
+        validate_cn_diagnostic_artifact_payload(missing_projection_candidate_list)
+
+    unlisted_projection_candidate = json.loads(json.dumps(accepted))
+    unlisted_projection_candidate["projection_dispatch_candidates"][0]["name"] = "other_caware"
+    with pytest.raises(ValueError, match="projection_dispatch_candidates must include selected_candidate"):
+        validate_cn_diagnostic_artifact_payload(unlisted_projection_candidate)
 
     row_gemv_projection_dispatch = json.loads(json.dumps(accepted))
     row_gemv_projection_dispatch["execution"]["batch_execution"]["projection_dispatch"].update(

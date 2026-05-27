@@ -729,9 +729,10 @@ roll-up/status view.
       aggregate and per-request ratios; accepted c>N artifact schema rejects
       malformed optional `projection_dispatch_candidates` metadata; accepted c>N
       artifact schema now requires `execution.batch_execution.projection_dispatch`
-      to name an evidence-backed non-row-GEMV c-aware path; and retained native
-      batch metadata records a `projection_dispatch` row-GEMV fallback with an
-      explicit blocker when no c-aware projection candidate is available. The
+      to name an evidence-backed non-row-GEMV c-aware path whose selected
+      candidate is present in `projection_dispatch_candidates`; and retained
+      native batch metadata records a `projection_dispatch` row-GEMV fallback
+      with an explicit blocker when no c-aware projection candidate is available. The
       item remains open until runtime projection call sites are wired to this
       policy and retained benchmark artifacts provide the required ratios.
 - [x] **C3.5 GGUF c>N template.** Port the Qwen/PARO equality template to
@@ -977,7 +978,8 @@ roll-up/status view.
       expected kernel names and duration-map keys (no
       serial/per-row/fallback labels) present with every duration-map entry
       carrying positive numeric evidence, plus an accepted non-row-GEMV
-      `projection_dispatch` decision with retained speedup evidence.
+      `projection_dispatch` decision whose selected candidate is listed with
+      matching retained speedup evidence.
       The scoreboard item remains open until accepted
       artifacts exist and the benchmark rollups are updated.
 
