@@ -81,6 +81,27 @@ def _mapping_at(payload: Mapping[str, Any], key: str, errors: list[str]) -> Mapp
     return value
 
 
+def _validate_command_workload_shape(command: str, *, field: str, payload: Mapping[str, Any], errors: list[str]) -> None:
+    workload = payload.get("workload")
+    if not isinstance(workload, Mapping):
+        return
+
+    expected_fields = (
+        (_COMMAND_BATCH_SIZE_RE, "--batch-size", "concurrency"),
+        (_COMMAND_PROMPT_LENGTH_RE, "--prompt-length", "prompt_tokens_per_request"),
+        (_COMMAND_DECODE_TOKENS_RE, "--decode-tokens", "gen_tokens_per_request"),
+        (_COMMAND_MAX_LAYERS_RE, "--max-layers", "max_layers"),
+    )
+    for pattern, flag, workload_key in expected_fields:
+        match = pattern.search(command)
+        if match is None:
+            errors.append(f"commands.{field} must include {flag} <workload.{workload_key}> for accepted artifacts")
+            continue
+        expected = workload.get(workload_key)
+        if isinstance(expected, int) and not isinstance(expected, bool) and int(match.group(1)) != expected:
+            errors.append(f"commands.{field} {flag} must match workload.{workload_key} for accepted artifacts")
+
+
 def validate_cn_diagnostic_artifact_payload(payload: Mapping[str, Any]) -> None:
     """Validate c>N diagnostic/retained benchmark artifact labeling fields.
 
@@ -262,38 +283,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         if "qwen35_batch_retained_bench.py" not in benchmark_command:
             errors.append("commands.benchmark must reference scripts/qwen35_batch_retained_bench.py for accepted artifacts")
         else:
-            batch_size_match = _COMMAND_BATCH_SIZE_RE.search(benchmark_command)
-            if batch_size_match is None:
-                errors.append("commands.benchmark must include --batch-size <workload.concurrency> for accepted artifacts")
-            else:
-                workload = payload.get("workload")
-                concurrency = workload.get("concurrency") if isinstance(workload, Mapping) else None
-                if isinstance(concurrency, int) and not isinstance(concurrency, bool) and int(batch_size_match.group(1)) != concurrency:
-                    errors.append("commands.benchmark --batch-size must match workload.concurrency for accepted artifacts")
-            prompt_match = _COMMAND_PROMPT_LENGTH_RE.search(benchmark_command)
-            if prompt_match is None:
-                errors.append("commands.benchmark must include --prompt-length <workload.prompt_tokens_per_request> for accepted artifacts")
-            else:
-                workload = payload.get("workload")
-                prompt_tokens = workload.get("prompt_tokens_per_request") if isinstance(workload, Mapping) else None
-                if isinstance(prompt_tokens, int) and not isinstance(prompt_tokens, bool) and int(prompt_match.group(1)) != prompt_tokens:
-                    errors.append("commands.benchmark --prompt-length must match workload.prompt_tokens_per_request for accepted artifacts")
-            decode_match = _COMMAND_DECODE_TOKENS_RE.search(benchmark_command)
-            if decode_match is None:
-                errors.append("commands.benchmark must include --decode-tokens <workload.gen_tokens_per_request> for accepted artifacts")
-            else:
-                workload = payload.get("workload")
-                gen_tokens = workload.get("gen_tokens_per_request") if isinstance(workload, Mapping) else None
-                if isinstance(gen_tokens, int) and not isinstance(gen_tokens, bool) and int(decode_match.group(1)) != gen_tokens:
-                    errors.append("commands.benchmark --decode-tokens must match workload.gen_tokens_per_request for accepted artifacts")
-            max_layers_match = _COMMAND_MAX_LAYERS_RE.search(benchmark_command)
-            if max_layers_match is None:
-                errors.append("commands.benchmark must include --max-layers <workload.max_layers> for accepted artifacts")
-            else:
-                workload = payload.get("workload")
-                max_layers = workload.get("max_layers") if isinstance(workload, Mapping) else None
-                if isinstance(max_layers, int) and not isinstance(max_layers, bool) and int(max_layers_match.group(1)) != max_layers:
-                    errors.append("commands.benchmark --max-layers must match workload.max_layers for accepted artifacts")
+            _validate_command_workload_shape(benchmark_command, field="benchmark", payload=payload, errors=errors)
     correctness_command = commands.get("correctness_reference")
     if isinstance(correctness_command, str):
         if "qwen35_batch_correctness.py" not in correctness_command:
@@ -313,6 +303,8 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             errors.append("commands.profiler must include rocprofv3 --kernel-trace for accepted artifacts")
         if "qwen35_batch_retained_bench.py" not in profiler_command:
             errors.append("commands.profiler must target scripts/qwen35_batch_retained_bench.py for accepted artifacts")
+        else:
+            _validate_command_workload_shape(profiler_command, field="profiler", payload=payload, errors=errors)
     profiler = _mapping_at(payload, "profiler", errors)
     if profiler.get("status") != "captured":
         errors.append("profiler.status must be 'captured' for accepted artifacts")

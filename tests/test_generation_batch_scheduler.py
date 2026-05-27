@@ -2142,7 +2142,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
         "commands": {
             "benchmark": "python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json accepted.json",
             "correctness_reference": "inline generated-token equality vs independent c=1 plus python3 scripts/qwen35_batch_correctness.py --rows 2 --json primitive-c2.json",
-            "profiler": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile -- python3 scripts/qwen35_batch_retained_bench.py ...",
+            "profiler": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile -- python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json accepted.json",
         },
         "profiler": {
             "status": "captured",
@@ -2692,6 +2692,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     profiler_wrong_target["commands"]["profiler"] = "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_serial_bench.py --batch-size 2"
     with pytest.raises(ValueError, match="commands.profiler must target scripts/qwen35_batch_retained_bench.py"):
         validate_cn_diagnostic_artifact_payload(profiler_wrong_target)
+
+    profiler_missing_batch_size = json.loads(json.dumps(accepted))
+    profiler_missing_batch_size["commands"]["profiler"] = "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_retained_bench.py --prompt-length 512 --decode-tokens 128 --max-layers 40"
+    with pytest.raises(ValueError, match="commands.profiler must include --batch-size"):
+        validate_cn_diagnostic_artifact_payload(profiler_missing_batch_size)
+
+    profiler_wrong_decode_tokens = json.loads(json.dumps(accepted))
+    profiler_wrong_decode_tokens["commands"]["profiler"] = "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 32 --max-layers 40"
+    with pytest.raises(ValueError, match="commands.profiler --decode-tokens must match workload.gen_tokens_per_request"):
+        validate_cn_diagnostic_artifact_payload(profiler_wrong_decode_tokens)
 
     not_captured_profiler = json.loads(json.dumps(accepted))
     not_captured_profiler["profiler"]["status"] = "not_captured"

@@ -917,7 +917,7 @@ roll-up/status view.
       a correctness-reference command naming `scripts/qwen35_batch_correctness.py`
       with `--rows` matching `workload.concurrency`, and a concrete
       `rocprofv3 --kernel-trace` profiler command targeting
-      `scripts/qwen35_batch_retained_bench.py`,
+      `scripts/qwen35_batch_retained_bench.py` with the same retained shape flags,
       concrete non-empty hardware `gpu`/`arch` fields,
       commit/dirty-state software fields, and captured profiler evidence with
       expected kernel names present and positive per-kernel duration evidence.
