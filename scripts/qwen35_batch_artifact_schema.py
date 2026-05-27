@@ -390,10 +390,12 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     if not isinstance(kernel_durations, Mapping) or not kernel_durations:
         errors.append("profiler.kernel_durations_ns must be a non-empty object for accepted artifacts")
     else:
-        for kernel_name in kernel_durations:
+        for kernel_name, duration_ns in kernel_durations.items():
             if isinstance(kernel_name, str) and _has_disallowed_profiler_kernel_fragment(kernel_name):
                 errors.append("profiler.kernel_durations_ns must not include serial/per-row/fallback kernel names for accepted artifacts")
                 break
+            if isinstance(kernel_name, str) and kernel_name and not _is_positive_number(duration_ns):
+                errors.append(f"profiler.kernel_durations_ns.{kernel_name} must be positive numeric for accepted artifacts")
         if isinstance(expected_kernel_names, list):
             for kernel_name in expected_kernel_names:
                 if not isinstance(kernel_name, str) or not kernel_name:

@@ -2785,6 +2785,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     with pytest.raises(ValueError, match="kernel_durations_ns must not include serial/per-row/fallback"):
         validate_cn_diagnostic_artifact_payload(fallback_kernel_duration)
 
+    zero_extra_kernel_duration = json.loads(json.dumps(accepted))
+    zero_extra_kernel_duration["profiler"]["kernel_durations_ns"]["qwen35_batch_prefill"] = 0.0
+    with pytest.raises(ValueError, match="qwen35_batch_prefill must be positive numeric"):
+        validate_cn_diagnostic_artifact_payload(zero_extra_kernel_duration)
+
     zero_kernel_duration = json.loads(json.dumps(accepted))
     zero_kernel_duration["profiler"]["kernel_durations_ns"]["qwen35_batch_decode"] = 0.0
     with pytest.raises(ValueError, match="qwen35_batch_decode must be positive numeric"):
