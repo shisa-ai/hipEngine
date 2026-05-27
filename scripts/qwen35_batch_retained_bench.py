@@ -264,6 +264,24 @@ def _primitive_correctness_reference(path: Path | None, *, rows: int) -> dict[st
     }
 
 
+def _synthesized_profiler_total_kernel_duration(profiler: Mapping[str, Any]) -> float | None:
+    kernel_durations = profiler.get("kernel_durations_ns")
+    if not isinstance(kernel_durations, Mapping):
+        return None
+    total = 0.0
+    saw_duration = False
+    for duration_ns in kernel_durations.values():
+        if (
+            not isinstance(duration_ns, (int, float))
+            or not math.isfinite(float(duration_ns))
+            or float(duration_ns) <= 0.0
+        ):
+            continue
+        total += float(duration_ns)
+        saw_duration = True
+    return total if saw_duration else None
+
+
 def _profiler_reference(path: Path | None) -> dict[str, Any]:
     if path is None:
         return {"status": "not_captured", "notes": "E2E retained c>N row; profiler trace not captured in this iteration."}
@@ -280,6 +298,10 @@ def _profiler_reference(path: Path | None) -> dict[str, Any]:
     if not isinstance(profiler, Mapping):
         return {"artifact_path": str(path), "status": "invalid_json", "reason": "profiler summary is not an object"}
     result = dict(profiler)
+    if "total_kernel_duration_ns" not in result:
+        total_kernel_duration_ns = _synthesized_profiler_total_kernel_duration(result)
+        if total_kernel_duration_ns is not None:
+            result["total_kernel_duration_ns"] = total_kernel_duration_ns
     result.setdefault("artifact_path", str(path))
     result.setdefault("status", "loaded")
     return result

@@ -2340,6 +2340,7 @@ def test_qwen35_retained_profiler_reference_loads_captured_summary(tmp_path: Pat
 
     assert loaded["status"] == "captured"
     assert loaded["expected_kernels_present"] is True
+    assert loaded["total_kernel_duration_ns"] == 12345.0
     assert loaded["artifact_path"] == str(profiler_path)
     assert command is not None
     assert command.startswith("rocprofv3 --kernel-trace")

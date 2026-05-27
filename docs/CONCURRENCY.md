@@ -971,10 +971,11 @@ roll-up/status view.
       plus cached-build flags (`--compiler-version-file`, `--require-cached-build`),
       benchmark/profiler `--json` outputs plus primitive/scaling artifact paths
       under `benchmarks/results/`, and the retained bench can now attach a
-      captured profiler summary via `--profiler-json` / `--profiler-command`
-      with `--profiler-json` matching `profiler.artifact_path`, and the retained
-      payload declares benchmark rollup files while the post-run
-      `validate_cn_diagnostic_rollup_evidence` gate (or the CLI
+      captured profiler summary via `--profiler-json` / `--profiler-command`,
+      synthesize `profiler.total_kernel_duration_ns` from per-kernel durations
+      when the summary omits it, and require `--profiler-json` to match
+      `profiler.artifact_path`; the retained payload declares benchmark rollup
+      files while the post-run `validate_cn_diagnostic_rollup_evidence` gate (or the CLI
       `python3 scripts/qwen35_batch_artifact_schema.py <artifact>
       --rollup-evidence --summary-json
       benchmarks/results/<artifact>-rollup-check.json`) verifies live
