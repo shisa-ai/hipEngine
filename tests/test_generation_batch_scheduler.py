@@ -43,6 +43,7 @@ from hipengine.speculative import AcceptResult, DraftBatch, TargetAcceptSummary,
 from scripts import qwen35_batch_c_sweep as c_sweep
 from scripts import qwen35_batch_retained_bench as retained_bench
 from scripts.qwen35_batch_artifact_schema import (
+    main as validate_cn_diagnostic_artifact_main,
     validate_cn_diagnostic_artifact_payload,
     validate_cn_diagnostic_rollup_evidence,
 )
@@ -2430,8 +2431,12 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         f"- retained c>N row; `{accepted['artifact_path']}`\n",
         encoding="utf-8",
     )
+    artifact_file = rollup_root / "benchmarks" / "results" / "accepted-c2.json"
+    artifact_file.parent.mkdir()
+    artifact_file.write_text(json.dumps(accepted), encoding="utf-8")
     monkeypatch.chdir(rollup_root)
     validate_cn_diagnostic_rollup_evidence(accepted)
+    assert validate_cn_diagnostic_artifact_main([str(artifact_file), "--rollup-evidence"]) == 0
 
     missing_rollup = json.loads(json.dumps(accepted))
     missing_rollup.pop("benchmark_rollup")

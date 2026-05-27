@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import argparse
+import json
 import re
+import sys
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -1077,4 +1080,38 @@ def _is_nonempty_string_list(value: Any) -> bool:
     return isinstance(value, list) and bool(value) and all(isinstance(item, str) and bool(item) for item in value)
 
 
-__all__ = ["validate_cn_diagnostic_artifact_payload"]
+def _load_payload(path: Path) -> Mapping[str, Any]:
+    payload = json.loads(path.read_text())
+    if not isinstance(payload, Mapping):
+        raise ValueError("artifact root must be an object")
+    return payload
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Validate Qwen3.5 c>N diagnostic/retained benchmark artifacts")
+    parser.add_argument("artifact_json", type=Path, help="Artifact JSON to validate")
+    parser.add_argument(
+        "--rollup-evidence",
+        action="store_true",
+        help="Also require benchmark_rollup metadata and live README/CHANGELOG links for promotion",
+    )
+    args = parser.parse_args(argv)
+
+    try:
+        payload = _load_payload(args.artifact_json)
+        if args.rollup_evidence:
+            validate_cn_diagnostic_rollup_evidence(payload)
+        else:
+            validate_cn_diagnostic_artifact_payload(payload)
+    except Exception as exc:
+        print(f"invalid c>N diagnostic artifact: {exc}", file=sys.stderr)
+        return 1
+    print("OK")
+    return 0
+
+
+__all__ = ["main", "validate_cn_diagnostic_artifact_payload", "validate_cn_diagnostic_rollup_evidence"]
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
