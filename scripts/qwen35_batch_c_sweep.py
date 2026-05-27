@@ -762,6 +762,10 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
             {
                 "profiler_status": str(profiler["status"]),
                 "profiler_command": profiler_command,
+                "profiler_model": _command_text_arg(profiler_command, "--model"),
+                "profiler_fixture": _command_text_arg(profiler_command, "--fixture"),
+                "profiler_warmup_decode_tokens": int(_command_text_arg(profiler_command, "--warmup-decode-tokens")),
+                "profiler_max_layers": int(_command_text_arg(profiler_command, "--max-layers")),
                 "workload_concurrency": int(raw_rows),
                 "prompt_tokens_per_request": int(raw_prompt_tokens),
                 "gen_tokens_per_request": int(raw_gen_tokens),

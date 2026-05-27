@@ -1328,6 +1328,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
             "--prompt-length 16 --decode-tokens 2 --warmup-decode-tokens 1 --max-layers 3 "
             f"--profiler-json {output_dir / 'profiler-c2.json'}"
         ),
+        "profiler_model": "/tmp/model",
+        "profiler_fixture": "/tmp/fixture.json",
+        "profiler_warmup_decode_tokens": 1,
+        "profiler_max_layers": 3,
         "workload_concurrency": 2,
         "prompt_tokens_per_request": 16,
         "gen_tokens_per_request": 2,
