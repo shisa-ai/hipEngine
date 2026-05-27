@@ -584,6 +584,22 @@ def test_batch_c_sweep_can_plan_int8_blocked_diagnostics(tmp_path: Path) -> None
     assert "--rows 2" in int8.command
     assert int8.artifact_path.name == "int8-native-diagnostic-c2.json"
 
+    summary = run_sweep(args)
+
+    assert summary["status"] == "planned"
+    assert summary["options"]["include_int8"] is True
+    assert summary["command_count"] == 7
+    assert summary["completed_command_count"] == 7
+    assert summary["status_counts"] == {"planned": 7}
+    assert summary["category_status_counts"] == {
+        "primitive": {"planned": 2},
+        "serial_bridge": {"planned": 2},
+        "native_diagnostic": {"planned": 2},
+        "int8_native_diagnostic": {"planned": 1},
+    }
+    assert summary["retained_precondition_counts"] == {}
+    assert summary["skipped_preconditions"] == []
+
 
 def test_projection_dispatch_keeps_c1_on_row_gemv_even_with_fast_candidate() -> None:
     row_gemv = ProjectionKernelSelection("linear", "w4_paro", "row_gemv")

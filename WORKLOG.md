@@ -28816,3 +28816,28 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY INT8 c-sweep summary coverage
+
+Materially advanced C3.1/P1 INT8 auditability without closing it:
+
+- Extended `test_batch_c_sweep_can_plan_int8_blocked_diagnostics` so it exercises the dry-run sweep summary, not only `build_sweep_commands(...)`.
+- The test now asserts `options.include_int8=true`, `command_count=7`, `completed_command_count=7`, `status_counts={planned: 7}`, and `category_status_counts.int8_native_diagnostic={planned: 1}`.
+- Updated the C3.1 progress note. C3.1 remains open because the INT8 path is still blocked before execution and lacks generated-token equality.
+- No performance claim was added and no queue item was marked complete.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_batch_c_sweep_can_plan_int8_blocked_diagnostics tests/test_generation_batch_scheduler.py::test_batch_c_sweep_dry_run_records_commands_and_artifacts -q
+# 2 passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```

@@ -690,9 +690,10 @@ roll-up/status view.
       retained-bench command and explicit blockers (`compact c>N native prefill`
       and `step_batch_native` INT8 rejection). The c-sweep planner includes this
       template behind `--include-int8`, producing an `int8_native_diagnostic`
-      command in `/tmp/hipengine-c-sweep-int8-plan/summary.json`. The item remains
-      open because blocked-before-execution is not an accepted C3.1 terminal
-      status.
+      command in `/tmp/hipengine-c-sweep-int8-plan/summary.json`; dry-run summary
+      tests now assert `options.include_int8=true`, `command_count=7`, and an
+      `int8_native_diagnostic` category count. The item remains open because
+      blocked-before-execution is not an accepted C3.1 terminal status.
 - [x] **C3.2 per-row `KVLiveSpans` everywhere.** Audit full-attention decode,
       KV append, and storage-dtype wrappers for scalar `(block_table,
       context_len)` shortcuts. Acceptance: tests cover BF16 and INT8 per-row
