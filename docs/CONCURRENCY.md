@@ -920,7 +920,8 @@ roll-up/status view.
       `scripts/qwen35_batch_retained_bench.py` with the same retained shape flags,
       benchmark/profiler `--json` outputs plus primitive/scaling artifact paths
       under `benchmarks/results/`, and the retained bench can now attach a
-      captured profiler summary via `--profiler-json` / `--profiler-command`,
+      captured profiler summary via `--profiler-json` / `--profiler-command`
+      with `--profiler-json` matching `profiler.artifact_path`,
       environment capture commands for `rocminfo`, `rocm-smi`, and `hipcc --version`,
       concrete non-empty hardware `gpu`/`arch` fields plus successful
       `hardware.rocminfo`/`hardware.rocm_smi` capture objects whose commands

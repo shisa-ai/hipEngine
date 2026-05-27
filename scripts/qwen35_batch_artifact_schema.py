@@ -80,6 +80,7 @@ _COMMAND_DECODE_TOKENS_RE = re.compile(r"(?:^|\s)--decode-tokens(?:=|\s+)(\d+)(?
 _COMMAND_MAX_LAYERS_RE = re.compile(r"(?:^|\s)--max-layers(?:=|\s+)(\d+)(?=\s|$)")
 _COMMAND_PROMPT_LENGTH_RE = re.compile(r"(?:^|\s)--prompt-length(?:=|\s+)(\d+)(?=\s|$)")
 _COMMAND_JSON_RE = re.compile(r"(?:^|\s)--json(?:=|\s+)(\S+)(?=\s|$)")
+_COMMAND_PROFILER_JSON_RE = re.compile(r"(?:^|\s)--profiler-json(?:=|\s+)(\S+)(?=\s|$)")
 _CORRECTNESS_ROWS_RE = re.compile(r"(?:^|\s)--rows(?:=|\s+)(\d+)(?=\s|$)")
 _FULL_COMMIT_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", re.IGNORECASE)
 _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = ("serial", "fallback", "per_row", "per-row")
@@ -121,6 +122,16 @@ def _validate_command_json_artifact_path(command: str, *, field: str, errors: li
         return
     json_path = json_match.group(1).strip("'\"")
     _validate_benchmark_results_artifact_path(f"commands.{field} --json path", json_path, errors)
+
+
+def _validate_profiler_command_artifact_reference(command: str, profiler_artifact_path: str, errors: list[str]) -> None:
+    profiler_json_match = _COMMAND_PROFILER_JSON_RE.search(command)
+    if profiler_json_match is None:
+        errors.append("commands.profiler must include --profiler-json <profiler.artifact_path> for accepted artifacts")
+        return
+    command_profiler_path = profiler_json_match.group(1).strip("'\"")
+    if command_profiler_path != profiler_artifact_path:
+        errors.append("commands.profiler --profiler-json path must match profiler.artifact_path for accepted artifacts")
 
 
 def _has_disallowed_profiler_kernel_fragment(name: str) -> bool:
@@ -409,6 +420,8 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         errors.append("profiler.artifact_path must be a non-empty string for accepted artifacts")
     else:
         _validate_benchmark_results_artifact_path("profiler.artifact_path", profiler_artifact_path, errors)
+        if isinstance(profiler_command, str):
+            _validate_profiler_command_artifact_reference(profiler_command, profiler_artifact_path, errors)
     if profiler.get("status") != "captured":
         errors.append("profiler.status must be 'captured' for accepted artifacts")
     if profiler.get("expected_kernels_present") is not True:
