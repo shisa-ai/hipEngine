@@ -2090,9 +2090,15 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     native_artifact_path = output_dir / "native-diagnostic-c2.json"
     native_artifact_payload = native_artifact_path.read_text()
     native_artifact_path.unlink()
-    with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must exist for passed native diagnostics"):
+    with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must exist for passed summary rows"):
         c_sweep.validate_sweep_summary(persisted)
     native_artifact_path.write_text(native_artifact_payload)
+    primitive_artifact_path = output_dir / "primitive-c2.json"
+    primitive_artifact_payload = primitive_artifact_path.read_text()
+    primitive_artifact_path.unlink()
+    with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must exist for passed summary rows"):
+        c_sweep.validate_sweep_summary(persisted)
+    primitive_artifact_path.write_text(primitive_artifact_payload)
     tampered_duration = json.loads(json.dumps(persisted))
     tampered_duration["commands"][-1]["duration_seconds"] = -1.0
     with pytest.raises(ValueError, match=r"commands\[\]\.duration_seconds must be a non-negative number"):
