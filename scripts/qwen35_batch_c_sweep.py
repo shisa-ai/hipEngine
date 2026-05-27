@@ -1438,6 +1438,25 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if status != "planned" and not isinstance(entry.get("output_tail"), str):
                 errors.append("commands[].output_tail must be a string for non-planned rows")
                 break
+            if status == "skipped":
+                preconditions = entry.get("preconditions")
+                if not isinstance(preconditions, list):
+                    errors.append("commands[].preconditions must be a list for skipped rows")
+                    break
+                failed_preconditions = [
+                    precondition
+                    for precondition in preconditions
+                    if isinstance(precondition, dict) and precondition.get("passed") is not True
+                ]
+                if not failed_preconditions:
+                    errors.append("commands[].precondition must identify a failed precondition for skipped rows")
+                    break
+                if entry.get("precondition") != failed_preconditions[0]:
+                    errors.append("commands[].precondition must match the first failed precondition")
+                    break
+                if entry.get("output_tail") != failed_preconditions[0].get("reason"):
+                    errors.append("commands[].output_tail must match skipped precondition reason")
+                    break
             if git_dirty is not None and entry.get("git_dirty") is not git_dirty:
                 errors.append("commands[].git_dirty must match git.dirty")
                 break
