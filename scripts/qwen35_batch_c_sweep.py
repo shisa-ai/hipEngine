@@ -451,6 +451,7 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
         "commands": entries,
         "status_counts": _status_counts(entries),
         "category_status_counts": _category_status_counts(entries),
+        "retained_precondition_counts": _retained_precondition_counts(entries),
         "skipped_preconditions": _skipped_preconditions(entries),
         "status": _summary_status(entries),
     }
@@ -485,6 +486,22 @@ def _category_status_counts(entries: Sequence[dict[str, Any]]) -> dict[str, dict
         status = str(entry.get("status") or "unknown")
         category_counts = counts.setdefault(category, {})
         category_counts[status] = category_counts.get(status, 0) + 1
+    return counts
+
+
+def _retained_precondition_counts(entries: Sequence[dict[str, Any]]) -> dict[str, dict[str, int]]:
+    counts: dict[str, dict[str, int]] = {}
+    for entry in entries:
+        preconditions = entry.get("preconditions")
+        if not isinstance(preconditions, list):
+            continue
+        for precondition in preconditions:
+            if not isinstance(precondition, dict):
+                continue
+            kind = str(precondition.get("kind") or "unknown")
+            status = "passed" if precondition.get("passed") is True else "failed"
+            kind_counts = counts.setdefault(kind, {})
+            kind_counts[status] = kind_counts.get(status, 0) + 1
     return counts
 
 

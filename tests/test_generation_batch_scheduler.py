@@ -147,6 +147,7 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
         "serial_bridge": {"planned": 2},
         "native_diagnostic": {"planned": 2},
     }
+    assert persisted["retained_precondition_counts"] == {}
     assert persisted["skipped_preconditions"] == []
     assert all(entry["status"] == "planned" for entry in persisted["commands"])
     assert all(entry["command"] for entry in persisted["commands"])
@@ -206,6 +207,7 @@ def test_batch_c_sweep_stops_and_counts_failed_command(tmp_path: Path, monkeypat
     assert summary["completed_command_count"] == 1
     assert summary["status_counts"] == {"failed": 1}
     assert summary["category_status_counts"] == {"primitive": {"failed": 1}}
+    assert summary["retained_precondition_counts"] == {}
     assert summary["skipped_preconditions"] == []
     assert len(summary["commands"]) == 1
     failed = summary["commands"][0]
@@ -268,6 +270,11 @@ def test_batch_c_sweep_no_stop_counts_failed_and_skipped_rows(tmp_path: Path, mo
         "serial_bridge": {"passed": 1},
         "native_diagnostic": {"skipped": 1},
     }
+    assert summary["retained_precondition_counts"] == {
+        "primitive_correctness": {"failed": 1},
+        "c1_baseline": {"failed": 1},
+        "serial_bridge": {"failed": 1},
+    }
     assert [entry["status"] for entry in summary["commands"]] == ["failed", "passed", "skipped"]
     assert summary["skipped_preconditions"] == [
         {
@@ -322,6 +329,11 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
         "primitive": {"passed": 1},
         "serial_bridge": {"passed": 1},
         "native_diagnostic": {"skipped": 1},
+    }
+    assert summary["retained_precondition_counts"] == {
+        "primitive_correctness": {"failed": 1},
+        "c1_baseline": {"failed": 1},
+        "serial_bridge": {"failed": 1},
     }
     assert [entry["status"] for entry in summary["commands"]] == ["passed", "passed", "skipped"]
     skipped = summary["commands"][-1]
@@ -424,6 +436,12 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_missing(
         "serial_bridge": {"passed": 1},
         "native_diagnostic": {"skipped": 1},
     }
+    expected_counts = {
+        "primitive_correctness": {"passed": 1},
+        "c1_baseline": {"failed" if missing_artifact == "c1" else "passed": 1},
+        "serial_bridge": {"failed" if missing_artifact == "serial" else "passed": 1},
+    }
+    assert summary["retained_precondition_counts"] == expected_counts
     assert [entry["status"] for entry in summary["commands"]] == ["passed", "passed", "skipped"]
     skipped = summary["commands"][-1]
     assert [item["kind"] for item in skipped["preconditions"]] == [
@@ -520,6 +538,11 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         "primitive": {"passed": 1},
         "serial_bridge": {"passed": 1},
         "native_diagnostic": {"passed": 1},
+    }
+    assert summary["retained_precondition_counts"] == {
+        "primitive_correctness": {"passed": 1},
+        "c1_baseline": {"passed": 1},
+        "serial_bridge": {"passed": 1},
     }
     assert summary["skipped_preconditions"] == []
     assert [entry["status"] for entry in summary["commands"]] == ["passed", "passed", "passed"]
