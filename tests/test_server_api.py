@@ -177,6 +177,31 @@ def test_generation_batcher_coalesces_compatible_submissions() -> None:
     asyncio.run(run())
 
 
+def test_generation_batcher_default_zero_window_bypasses_submission_coalescing() -> None:
+    async def run() -> None:
+        fake = FakeLLM()
+        sampling = SamplingParams(max_tokens=2)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            generation_lock=asyncio.Lock(),
+            batch_window_seconds=0.0,
+        )
+
+        first, second = await asyncio.gather(
+            batcher.submit(("one",), sampling),
+            batcher.submit(("two",), sampling),
+        )
+
+        streamed = [chunk async for chunk in batcher.stream(("three",), sampling)]
+
+        assert first == ["generated:one"]
+        assert second == ["generated:two"]
+        assert streamed == ["generated:three"]
+        assert sorted(call[0] for call in fake.calls) == [("one",), ("three",), ("two",)]
+
+    asyncio.run(run())
+
+
 def test_generation_batcher_stream_uses_per_request_queue_and_coalesces() -> None:
     async def run() -> None:
         fake = FakeLLM()
@@ -362,18 +387,25 @@ def test_streaming_chat_completion_returns_sse_done_marker() -> None:
     assert fake.calls[0][1].max_tokens == 131072 - fake.count_tokens(prompt) - 1
 
 
-def test_metrics_and_prefix_cache_cli_env_defaults(monkeypatch) -> None:
+def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch) -> None:
+    monkeypatch.delenv("HIPENGINE_GENERATION_BATCH_WINDOW_MS", raising=False)
+    default_args = build_parser().parse_args(["--model", "fake-path"])
+    assert default_args.generation_batch_window_ms == 0.0
+
     monkeypatch.setenv("HIPENGINE_METRICS", "prometheus")
     monkeypatch.setenv("HIPENGINE_PREFIX_CACHE", "radix")
+    monkeypatch.setenv("HIPENGINE_GENERATION_BATCH_WINDOW_MS", "3.5")
     env_args = build_parser().parse_args(["--model", "fake-path"])
     assert env_args.metrics == "prometheus"
     assert env_args.prefix_cache == "radix"
+    assert env_args.generation_batch_window_ms == 3.5
 
     cli_args = build_parser().parse_args(
-        ["--model", "fake-path", "--metrics", "off", "--prefix-cache", "off"]
+        ["--model", "fake-path", "--metrics", "off", "--prefix-cache", "off", "--generation-batch-window-ms", "0"]
     )
     assert cli_args.metrics == "off"
     assert cli_args.prefix_cache == "off"
+    assert cli_args.generation_batch_window_ms == 0.0
 
     app = create_app(ServerConfig(model="fake-path", eager_load=False, prefix_cache="radix"), llm=FakeLLM())
     assert app.state.hipengine_prefix_cache_mode == "radix"

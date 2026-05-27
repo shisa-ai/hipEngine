@@ -30761,3 +30761,30 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY demote submission coalescer by default
+
+Completed the C5 phase-ladder item to remove/demote the submission-time coalescer to a cold-path optimization:
+
+- `ServerConfig.generation_batch_window_ms` now defaults to `0.0`, and `hipengine serve --generation-batch-window-ms` / `HIPENGINE_GENERATION_BATCH_WINDOW_MS` now default to `0`.
+- `_GenerationBatcher.submit()` and `.stream()` bypass the coalescing queue entirely when the window is zero, using the shared generate helper for a single immediate call path.
+- Positive windows still opt into the existing compatible-request coalescer for explicit experiments.
+- Added `test_generation_batcher_default_zero_window_bypasses_submission_coalescing` and extended CLI/env coverage in `test_metrics_prefix_cache_and_generation_batch_cli_env_defaults`.
+- Updated `docs/ENVS.md` and marked the C5 phase-ladder coalescer item complete with repo evidence in `docs/CONCURRENCY.md`.
+- The bite-sized implementation queue metric is unchanged because this C5 phase-ladder item is outside the counted queue slice. No c>N performance claim was added.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_server_api.py::test_generation_batcher_default_zero_window_bypasses_submission_coalescing tests/test_server_api.py::test_generation_batcher_coalesces_compatible_submissions tests/test_server_api.py::test_generation_batcher_stream_uses_per_request_queue_and_coalesces tests/test_server_api.py::test_metrics_prefix_cache_and_generation_batch_cli_env_defaults -q
+# 4 passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```

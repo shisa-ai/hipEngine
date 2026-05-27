@@ -1151,8 +1151,15 @@ endpoint live; retained c>N rows include all gates above.
 - [x] Land the per-row sampler params block (temperature, top-k, top-p,
       repetition penalty, seed, stop tokens) in one launch.
 - [x] Per-row EOS handling drives `RECLAIM` per-row, not per-batch.
-- [ ] Remove or demote the submission-time coalescer
-      (`_GenerationBatcher`) to a cold-path optimization.
+- [x] Remove or demote the submission-time coalescer
+      (`_GenerationBatcher`) to a cold-path optimization. Evidence: default
+      `ServerConfig.generation_batch_window_ms` and
+      `HIPENGINE_GENERATION_BATCH_WINDOW_MS`/`--generation-batch-window-ms`
+      are now `0`, `_GenerationBatcher.submit()` and `.stream()` bypass the
+      coalescing queue when the window is zero, and
+      `test_generation_batcher_default_zero_window_bypasses_submission_coalescing`
+      plus `test_metrics_prefix_cache_and_generation_batch_cli_env_defaults`
+      cover the default/opt-in path.
 - [x] Add Prometheus `/metrics` endpoint;
       knob `HIPENGINE_METRICS` / `--metrics` in `{off, prometheus}`;
       default `off` until coverage is broad.

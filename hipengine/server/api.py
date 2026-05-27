@@ -54,7 +54,7 @@ class ServerConfig:
     kv_storage: str = "auto"
     kv_scale_dtype: str = "fp16"
     kv_scale_granularity: str = "per_token_head"
-    generation_batch_window_ms: float = 5.0
+    generation_batch_window_ms: float = 0.0
     metrics: str = "off"
     prefix_cache: str = "off"
     created: int = field(default_factory=lambda: int(time.time()))
@@ -199,11 +199,14 @@ class _GenerationBatcher:
         self._worker: asyncio.Task[None] | None = None
 
     async def submit(self, prompts: Sequence[str], sampling: SamplingParams) -> list[str]:
+        prompt_tuple = tuple(str(prompt) for prompt in prompts)
+        if self._batch_window_seconds <= 0.0:
+            return await self._generate_prompts(prompt_tuple, sampling)
         loop = asyncio.get_running_loop()
         future: asyncio.Future[list[str]] = loop.create_future()
         self._queue.append(
             _QueuedGeneration(
-                prompts=tuple(str(prompt) for prompt in prompts),
+                prompts=prompt_tuple,
                 sampling=sampling,
                 future=future,
             )
@@ -215,10 +218,15 @@ class _GenerationBatcher:
     async def stream(self, prompts: Sequence[str], sampling: SamplingParams) -> AsyncIterator[str]:
         """Yield generated text through a per-request queue owned by the batcher."""
 
+        prompt_tuple = tuple(str(prompt) for prompt in prompts)
+        if self._batch_window_seconds <= 0.0:
+            for output in await self._generate_prompts(prompt_tuple, sampling):
+                yield output
+            return
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[object] = asyncio.Queue()
         item = _QueuedGeneration(
-            prompts=tuple(str(prompt) for prompt in prompts),
+            prompts=prompt_tuple,
             sampling=sampling,
             stream_queue=queue,
         )
@@ -274,23 +282,27 @@ class _GenerationBatcher:
             prompts.extend(item.prompts)
             slices.append((item, start, len(prompts)))
         try:
-            async with self._generation_lock:
-                raw_outputs = await run_in_threadpool(
-                    self._engine_factory().generate,
-                    tuple(prompts),
-                    group[0].sampling,
-                )
-            outputs = [str(item) for item in raw_outputs]
-            if len(outputs) != len(prompts):
-                raise RuntimeError(
-                    f"generator returned {len(outputs)} outputs for {len(prompts)} prompts"
-                )
+            outputs = await self._generate_prompts(tuple(prompts), group[0].sampling)
         except Exception as exc:
             for item in group:
                 _finish_queued_generation(item, exception=exc)
             return
         for item, start, end in slices:
             _finish_queued_generation(item, outputs=outputs[start:end])
+
+    async def _generate_prompts(self, prompts: tuple[str, ...], sampling: SamplingParams) -> list[str]:
+        async with self._generation_lock:
+            raw_outputs = await run_in_threadpool(
+                self._engine_factory().generate,
+                prompts,
+                sampling,
+            )
+        outputs = [str(item) for item in raw_outputs]
+        if len(outputs) != len(prompts):
+            raise RuntimeError(
+                f"generator returned {len(outputs)} outputs for {len(prompts)} prompts"
+            )
+        return outputs
 
 
 def _queued_generation_cancelled(item: _QueuedGeneration) -> bool:

@@ -107,8 +107,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--generation-batch-window-ms",
         type=_nonnegative_float,
-        default=_env_nonnegative_float("HIPENGINE_GENERATION_BATCH_WINDOW_MS", 5.0),
-        help="Milliseconds to coalesce compatible non-streaming requests (default: 5)",
+        default=_env_nonnegative_float("HIPENGINE_GENERATION_BATCH_WINDOW_MS", 0.0),
+        help="Milliseconds to opt into cold-path coalescing for compatible requests (default: 0 = off)",
     )
     parser.add_argument(
         "--metrics",
