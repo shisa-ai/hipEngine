@@ -294,6 +294,9 @@ def _validate_accepted_measurement_gates(payload: Mapping[str, Any], errors: lis
 
 def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[str]) -> None:
     scaling = _mapping_at(payload, "scaling", errors)
+    workload = _mapping_at(payload, "workload", errors)
+    concurrency = workload.get("concurrency")
+    concurrency_valid = isinstance(concurrency, int) and not isinstance(concurrency, bool) and concurrency > 1
     if scaling.get("complete") is not True:
         errors.append("scaling.complete must be true for accepted artifacts")
     native = scaling.get("native")
@@ -313,6 +316,13 @@ def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[st
         for field in ("decode_tok_s_aggregate", "decode_tok_s_per_request"):
             if not _is_number(baseline.get(field)):
                 errors.append(f"scaling.{baseline_name}.{field} must be numeric for accepted artifacts")
+    serial_baseline = scaling.get("serial_bridge_baseline")
+    if isinstance(serial_baseline, Mapping):
+        serial_concurrency = serial_baseline.get("workload_concurrency")
+        if not isinstance(serial_concurrency, int) or isinstance(serial_concurrency, bool):
+            errors.append("scaling.serial_bridge_baseline.workload_concurrency must be an int for accepted artifacts")
+        elif concurrency_valid and serial_concurrency != concurrency:
+            errors.append("scaling.serial_bridge_baseline.workload_concurrency must match workload.concurrency for accepted artifacts")
     ratios = scaling.get("ratios")
     if not isinstance(ratios, Mapping):
         errors.append("scaling.ratios must be an object for accepted artifacts")

@@ -1801,6 +1801,7 @@ def test_qwen35_retained_scaling_comparison_uses_c1_and_serial_artifacts(tmp_pat
             {
                 "run_tag": "serial-c2",
                 "status": "blocked",
+                "workload": {"concurrency": 2},
                 "measurements": {
                     "decode_tok_s_aggregate": 8.0,
                     "decode_tok_s_per_request": 4.0,
@@ -1818,6 +1819,7 @@ def test_qwen35_retained_scaling_comparison_uses_c1_and_serial_artifacts(tmp_pat
 
     assert scaling["complete"] is True
     assert scaling["c1_baseline"]["decode_tok_s_aggregate"] == 5.0
+    assert scaling["serial_bridge_baseline"]["workload_concurrency"] == 2
     assert scaling["serial_bridge_baseline"]["decode_tok_s_per_request"] == 4.0
     assert scaling["ratios"] == {
         "aggregate_vs_c1": 16.0 / 5.0,
@@ -2006,6 +2008,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
             },
             "serial_bridge_baseline": {
                 "artifact_path": "benchmarks/results/serial-c2.json",
+                "workload_concurrency": 2,
                 "decode_tok_s_aggregate": 80.0,
                 "decode_tok_s_per_request": 40.0,
             },
@@ -2149,6 +2152,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
         missing_ratio["scaling"]["ratios"].pop(ratio_field)
         with pytest.raises(ValueError, match=ratio_field):
             validate_cn_diagnostic_artifact_payload(missing_ratio)
+
+    missing_serial_concurrency = json.loads(json.dumps(accepted))
+    missing_serial_concurrency["scaling"]["serial_bridge_baseline"].pop("workload_concurrency")
+    with pytest.raises(ValueError, match="serial_bridge_baseline.workload_concurrency"):
+        validate_cn_diagnostic_artifact_payload(missing_serial_concurrency)
+
+    mismatched_serial_concurrency = json.loads(json.dumps(accepted))
+    mismatched_serial_concurrency["scaling"]["serial_bridge_baseline"]["workload_concurrency"] = 8
+    with pytest.raises(ValueError, match="serial_bridge_baseline.workload_concurrency must match workload.concurrency"):
+        validate_cn_diagnostic_artifact_payload(mismatched_serial_concurrency)
 
     missing_measurements = dict(accepted)
     missing_measurements.pop("measurements")

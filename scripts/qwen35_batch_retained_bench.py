@@ -145,12 +145,19 @@ def _scaling_reference(path: Path | None) -> dict[str, Any]:
             "reason": "artifact root is not an object",
         }
     aggregate, per_request = _extract_decode_rates(payload)
+    workload = payload.get("workload")
+    workload_concurrency = None
+    if isinstance(workload, Mapping):
+        concurrency = workload.get("concurrency")
+        if isinstance(concurrency, int) and not isinstance(concurrency, bool):
+            workload_concurrency = concurrency
     status = str(payload.get("status") or "loaded")
     reason = None if aggregate is not None and per_request is not None else "decode throughput fields missing"
     return {
         "artifact_path": str(path),
         "status": status,
         "run_tag": payload.get("run_tag"),
+        "workload_concurrency": workload_concurrency,
         "decode_tok_s_aggregate": aggregate,
         "decode_tok_s_per_request": per_request,
         "reason": reason,

@@ -857,7 +857,9 @@ roll-up/status view.
       generated-token run without primitive GPU correctness remains blocked
       instead of becoming a throughput claim. Real c-sweep runs now skip retained
       native diagnostics if the matching primitive, c=1 baseline, or serial-
-      bridge artifact is missing or failed, writes `command_count`,
+      bridge artifact is missing or failed; retained scaling summaries carry the
+      serial-bridge `workload_concurrency` so schema validation rejects c>N rows
+      compared against the wrong serial baseline; the sweep writes `command_count`,
       `completed_command_count`, an `options` block, per-retained-command
       `preconditions`, `status_counts`, `category_status_counts`,
       `retained_precondition_counts`, and `skipped_preconditions` summary rollups
@@ -891,7 +893,7 @@ roll-up/status view.
       generated-token equality sequence lists matching `workload.concurrency`,
       `workload.concurrency` matching the primitive correctness row count,
       numeric aggregate/per-request throughput, all required scaling ratios vs
-      both c=1 and the serial bridge, decode-step timing samples,
+      both c=1 and a same-concurrency serial bridge baseline, decode-step timing samples,
       non-empty benchmark, correctness-reference, and profiler commands,
       concrete non-empty hardware `gpu`/`arch` fields,
       commit/dirty-state software fields, and captured profiler evidence with
