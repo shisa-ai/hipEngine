@@ -317,6 +317,17 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
         errors.append("correctness.primitive_batch_correctness.rows must be an int for accepted artifacts")
     if concurrency_valid and isinstance(primitive_rows, int) and not isinstance(primitive_rows, bool) and primitive_rows != concurrency:
         errors.append("correctness.primitive_batch_correctness.rows must match workload.concurrency for accepted artifacts")
+    for field in ("append_key_mismatch", "append_value_mismatch"):
+        value = primitive.get(field)
+        if not isinstance(value, int) or isinstance(value, bool):
+            errors.append(f"correctness.primitive_batch_correctness.{field} must be an int for accepted artifacts")
+        elif value != 0:
+            errors.append(f"correctness.primitive_batch_correctness.{field} must be 0 for accepted artifacts")
+    attn_vs_c1 = primitive.get("attn_batch_vs_c1_max_abs")
+    if not _is_number(attn_vs_c1):
+        errors.append("correctness.primitive_batch_correctness.attn_batch_vs_c1_max_abs must be numeric for accepted artifacts")
+    elif float(attn_vs_c1) != 0.0:
+        errors.append("correctness.primitive_batch_correctness.attn_batch_vs_c1_max_abs must be 0.0 for accepted artifacts")
 
 
 def _validate_accepted_measurement_gates(payload: Mapping[str, Any], errors: list[str]) -> None:

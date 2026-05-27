@@ -2332,6 +2332,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     with pytest.raises(ValueError, match="primitive_batch_correctness.rows must match workload.concurrency"):
         validate_cn_diagnostic_artifact_payload(mismatched_primitive_rows)
 
+    primitive_append_mismatch = json.loads(json.dumps(accepted))
+    primitive_append_mismatch["correctness"]["primitive_batch_correctness"]["append_key_mismatch"] = 1
+    with pytest.raises(ValueError, match="primitive_batch_correctness.append_key_mismatch must be 0"):
+        validate_cn_diagnostic_artifact_payload(primitive_append_mismatch)
+
+    primitive_attn_mismatch = json.loads(json.dumps(accepted))
+    primitive_attn_mismatch["correctness"]["primitive_batch_correctness"]["attn_batch_vs_c1_max_abs"] = 0.25
+    with pytest.raises(ValueError, match="primitive_batch_correctness.attn_batch_vs_c1_max_abs must be 0.0"):
+        validate_cn_diagnostic_artifact_payload(primitive_attn_mismatch)
+
     missing_workload_concurrency = json.loads(json.dumps(accepted))
     missing_workload_concurrency["workload"].pop("concurrency")
     with pytest.raises(ValueError, match="workload.concurrency"):
