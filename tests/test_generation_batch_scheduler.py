@@ -2613,6 +2613,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     with pytest.raises(ValueError, match="commands.benchmark must reference scripts/qwen35_batch_retained_bench.py"):
         validate_cn_diagnostic_artifact_payload(wrong_benchmark_command)
 
+    missing_benchmark_batch_size = json.loads(json.dumps(accepted))
+    missing_benchmark_batch_size["commands"]["benchmark"] = "python3 scripts/qwen35_batch_retained_bench.py --json accepted.json"
+    with pytest.raises(ValueError, match="commands.benchmark must include --batch-size"):
+        validate_cn_diagnostic_artifact_payload(missing_benchmark_batch_size)
+
+    wrong_benchmark_batch_size = json.loads(json.dumps(accepted))
+    wrong_benchmark_batch_size["commands"]["benchmark"] = "python3 scripts/qwen35_batch_retained_bench.py --batch-size 8 --json accepted.json"
+    with pytest.raises(ValueError, match="commands.benchmark --batch-size must match workload.concurrency"):
+        validate_cn_diagnostic_artifact_payload(wrong_benchmark_batch_size)
+
     missing_correctness_command = json.loads(json.dumps(accepted))
     missing_correctness_command["commands"]["correctness_reference"] = ""
     with pytest.raises(ValueError, match="commands.correctness_reference"):

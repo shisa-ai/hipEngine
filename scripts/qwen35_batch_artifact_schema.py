@@ -66,6 +66,7 @@ _REQUIRED_ACCEPTED_SCALING_RATIOS = (
     "aggregate_vs_serial_bridge",
     "per_request_vs_serial_bridge",
 )
+_COMMAND_BATCH_SIZE_RE = re.compile(r"(?:^|\s)--batch-size(?:=|\s+)(\d+)(?=\s|$)")
 _CORRECTNESS_ROWS_RE = re.compile(r"(?:^|\s)--rows(?:=|\s+)(\d+)(?=\s|$)")
 
 
@@ -254,8 +255,18 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         if not isinstance(commands.get(field), str) or not commands.get(field):
             errors.append(f"commands.{field} must be a non-empty string for accepted artifacts")
     benchmark_command = commands.get("benchmark")
-    if isinstance(benchmark_command, str) and "qwen35_batch_retained_bench.py" not in benchmark_command:
-        errors.append("commands.benchmark must reference scripts/qwen35_batch_retained_bench.py for accepted artifacts")
+    if isinstance(benchmark_command, str):
+        if "qwen35_batch_retained_bench.py" not in benchmark_command:
+            errors.append("commands.benchmark must reference scripts/qwen35_batch_retained_bench.py for accepted artifacts")
+        else:
+            batch_size_match = _COMMAND_BATCH_SIZE_RE.search(benchmark_command)
+            if batch_size_match is None:
+                errors.append("commands.benchmark must include --batch-size <workload.concurrency> for accepted artifacts")
+            else:
+                workload = payload.get("workload")
+                concurrency = workload.get("concurrency") if isinstance(workload, Mapping) else None
+                if isinstance(concurrency, int) and not isinstance(concurrency, bool) and int(batch_size_match.group(1)) != concurrency:
+                    errors.append("commands.benchmark --batch-size must match workload.concurrency for accepted artifacts")
     correctness_command = commands.get("correctness_reference")
     if isinstance(correctness_command, str):
         if "qwen35_batch_correctness.py" not in correctness_command:

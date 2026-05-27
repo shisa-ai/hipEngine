@@ -911,7 +911,8 @@ roll-up/status view.
       c=1 and usable same-shape/same-concurrency serial bridge
       baselines,
       positive decode-step timing samples,
-      a retained-benchmark command referencing `scripts/qwen35_batch_retained_bench.py`,
+      a retained-benchmark command referencing `scripts/qwen35_batch_retained_bench.py`
+      with `--batch-size` matching `workload.concurrency`,
       a correctness-reference command naming `scripts/qwen35_batch_correctness.py`
       with `--rows` matching `workload.concurrency`, and a concrete
       `rocprofv3 --kernel-trace` profiler command,
