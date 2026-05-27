@@ -683,6 +683,9 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
         else:
             if "rocprofv3" not in profiler_command or "--kernel-trace" not in profiler_command:
                 reasons.append("profiler command does not include rocprofv3 --kernel-trace")
+            command_output_format = _command_text_arg(profiler_command, "--output-format")
+            if command_output_format != "csv":
+                reasons.append(f"profiler command output-format={command_output_format!r} does not match 'csv'")
             if "scripts/qwen35_batch_retained_bench.py" not in profiler_command:
                 reasons.append("profiler command does not target qwen35_batch_retained_bench.py")
             expected_model = _command_arg_value(command, "--model")
@@ -792,6 +795,7 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
             {
                 "profiler_status": str(profiler["status"]),
                 "profiler_command": profiler_command,
+                "profiler_output_format": _command_text_arg(profiler_command, "--output-format"),
                 "retained_artifact_path": str(command.artifact_path),
                 "c1_baseline_artifact_path": _command_arg_value(command, "--c1-baseline-json"),
                 "serial_bridge_artifact_path": _command_arg_value(command, "--serial-bridge-json"),
