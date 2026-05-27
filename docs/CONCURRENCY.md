@@ -138,36 +138,38 @@ mirrored in this matrix.
 
 The engine loop is the single owner of admission, work scheduling, KV
 allocation, sampling, completion, reclaim, and pool resize in the host-side
-scheduler contract. The FastAPI adapter still keeps `generation_lock` in
-`hipengine/server/api.py` because the retained Qwen/PARO resident session is not
-yet proven reentrant under native c>N decode; that lock is now an adapter safety
-rail, not evidence that the C4 loop scaffolding is absent.
+scheduler contract. The FastAPI adapter now keeps only a short `session_lock`
+in `hipengine/server/api.py` for model/session preparation; request-lifetime
+`engine.generate(...)` calls are serialized by the batcher worker rather than a
+coarse server lock, which is an adapter safety rail and not evidence that the C4
+loop scaffolding is absent.
 
 ### C1 lock-scope audit
 
 Current server lock scope after the C4/C5 host work:
 
-- Startup eager-load/warmup holds `generation_lock` around resident-session
-  preparation and the one warmup `engine.generate(...)` call.
-- Non-streaming requests call `generate(...)`, which holds the lock only for
-  resident-context preparation, sampling construction, optional `n>1` row-seed
-  lowering, and context-budget validation, then enqueue into
-  `_GenerationBatcher`.
-- `_GenerationBatcher._run_group(...)` still holds the lock around one grouped
-  `engine.generate(tuple(prompts), sampling)` call. This deliberately serializes
-  resident-session mutation while retaining prompt-list/coalescing behavior; it
-  is not retained native c>N throughput evidence.
-- Streaming chat holds the lock for preparation only, then routes through
-  `_GenerationBatcher.stream(...)`. The batcher owns a per-request queue and the
-  grouped `engine.generate(...)` lock, so streaming no longer directly bypasses
-  the batcher through `engine.stream(...)`.
+- Startup eager-load holds `session_lock` only around LLM construction,
+  resident-session preparation, context-budget validation, and capacity logging;
+  the warmup `engine.generate(...)` call runs after the lock is released.
+- Non-streaming requests call `generate(...)`, which holds `session_lock` only
+  for lazy LLM construction, resident-context preparation, sampling
+  construction, optional `n>1` row-seed lowering, and context-budget validation,
+  then enqueue into `_GenerationBatcher`.
+- `_GenerationBatcher._run_group(...)` no longer accepts or holds a generation
+  lock. It owns an event-loop queue/worker and calls
+  `engine.generate(tuple(prompts), sampling)` outside `session_lock`, so no
+  request lifetime is covered by a server lock.
+- Streaming chat holds `session_lock` for preparation only, then routes through
+  `_GenerationBatcher.stream(...)`. The batcher owns a per-request queue, so
+  streaming no longer directly bypasses the batcher through `engine.stream(...)`.
 
-The remaining lock-removal blocker is correctness/performance, not host API
+The remaining native-throughput blocker is correctness/performance, not host API
 shape: server endpoints can be thinned further only after the resident path has
 native c>N generated-token equality, retained execution metadata, and accepted
-benchmark evidence. Until then, the grouped lock prevents concurrent mutation of
-shared KV, linear-attention recurrent state, hidden buffers, scratch, and
-sampler state.
+benchmark evidence. Until then, the batcher worker serializes grouped calls to
+avoid concurrent mutation of shared KV, linear-attention recurrent state, hidden
+buffers, scratch, and sampler state without holding a request-lifetime server
+lock.
 
 ### Public interface (target)
 
@@ -593,10 +595,11 @@ roll-up/status view.
 ### C1 packets — keep current integration safe
 
 - [x] **C1.1 lock scope audit.** Trace the server/generator mutation paths
-      protected by `generation_lock`; document which session state is still
-      non-reentrant. Acceptance: a focused test or review note proves the lock
-      is narrow enough for C1 and names the exact blocker for C4 removal.
-      Evidence: §C1 lock-scope audit plus `hipengine/server/api.py` code refs.
+      formerly protected by `generation_lock`; document which session state is
+      still non-reentrant. Acceptance: a focused test or review note proves the
+      lock is narrow enough for C1 and names the exact blocker for native
+      request-level concurrency. Evidence: §C1 lock-scope audit plus
+      `hipengine/server/api.py` code refs and `pytest -q tests/test_server_api.py -q`.
 - [x] **C1.2 API rejection contract.** Keep `n>1` rejected until C5 and add
       regression coverage if missing for completions and chat. Acceptance:
       server tests prove `n>1` returns the intended 4xx while prompt-list
@@ -1144,9 +1147,13 @@ becomes a `submit+poll` adapter.
       changes mid-run. Evidence:
       `test_fixed_paged_policy_audits_append_only_block_pointers` in
       `tests/test_kvcache_policy.py`.
-- [ ] Narrow or remove the coarse `generation_lock`; any remaining lock
+- [x] Narrow or remove the coarse `generation_lock`; any remaining lock
       protects only non-reentrant session mutation, not the lifetime of a
-      generated batch.
+      generated batch. Evidence: `hipengine/server/api.py` now uses
+      `session_lock` only for LLM construction/preparation/context-budget mutation,
+      `_GenerationBatcher` no longer accepts a lock, and
+      `test_generation_batcher_default_zero_window_queues_without_lifetime_lock`
+      plus `pytest -q tests/test_server_api.py -q` cover the batcher path.
 - [x] Route server streaming through the engine loop and the per-request
       token queue; the streaming path no longer bypasses the batcher.
 - [x] Unify cancel / disconnect / EOS / max-tokens / timeout into one
@@ -1193,9 +1200,9 @@ endpoint live; retained c>N rows include all gates above.
       (`_GenerationBatcher`) to a cold-path optimization. Evidence: default
       `ServerConfig.generation_batch_window_ms` and
       `HIPENGINE_GENERATION_BATCH_WINDOW_MS`/`--generation-batch-window-ms`
-      are now `0`, `_GenerationBatcher.submit()` and `.stream()` bypass the
-      coalescing queue when the window is zero, and
-      `test_generation_batcher_default_zero_window_bypasses_submission_coalescing`
+      remain `0`, `_GenerationBatcher` applies no intentional zero-window delay
+      and no longer holds a request-lifetime generation lock, and
+      `test_generation_batcher_default_zero_window_queues_without_lifetime_lock`
       plus `test_metrics_prefix_cache_and_generation_batch_cli_env_defaults`
       cover the default/opt-in path.
 - [x] Add Prometheus `/metrics` endpoint;

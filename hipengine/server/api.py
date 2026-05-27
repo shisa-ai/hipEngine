@@ -1,9 +1,9 @@
 """OpenAI-compatible FastAPI surface for hipEngine.
 
 The server layer is optional and intentionally thin: it adapts OpenAI-style JSON
-requests to the torch-free ``hipengine.LLM.generate()`` library API.  The current
-runtime is still single-request/c=1, so requests are serialized behind a lock
-until continuous batching lands in the scheduler.
+requests to the torch-free ``hipengine.LLM.generate()`` library API.  HTTP
+requests are routed through the generation batcher; the remaining async lock is
+limited to short model/session preparation mutations.
 """
 
 from __future__ import annotations
@@ -189,19 +189,15 @@ class _GenerationBatcher:
         self,
         *,
         engine_factory: Callable[[], Any],
-        generation_lock: asyncio.Lock,
         batch_window_seconds: float,
     ) -> None:
         self._engine_factory = engine_factory
-        self._generation_lock = generation_lock
         self._batch_window_seconds = max(0.0, float(batch_window_seconds))
         self._queue: deque[_QueuedGeneration] = deque()
         self._worker: asyncio.Task[None] | None = None
 
     async def submit(self, prompts: Sequence[str], sampling: SamplingParams) -> list[str]:
         prompt_tuple = tuple(str(prompt) for prompt in prompts)
-        if self._batch_window_seconds <= 0.0:
-            return await self._generate_prompts(prompt_tuple, sampling)
         loop = asyncio.get_running_loop()
         future: asyncio.Future[list[str]] = loop.create_future()
         self._queue.append(
@@ -219,10 +215,6 @@ class _GenerationBatcher:
         """Yield generated text through a per-request queue owned by the batcher."""
 
         prompt_tuple = tuple(str(prompt) for prompt in prompts)
-        if self._batch_window_seconds <= 0.0:
-            for output in await self._generate_prompts(prompt_tuple, sampling):
-                yield output
-            return
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[object] = asyncio.Queue()
         item = _QueuedGeneration(
@@ -291,12 +283,11 @@ class _GenerationBatcher:
             _finish_queued_generation(item, outputs=outputs[start:end])
 
     async def _generate_prompts(self, prompts: tuple[str, ...], sampling: SamplingParams) -> list[str]:
-        async with self._generation_lock:
-            raw_outputs = await run_in_threadpool(
-                self._engine_factory().generate,
-                prompts,
-                sampling,
-            )
+        raw_outputs = await run_in_threadpool(
+            self._engine_factory().generate,
+            prompts,
+            sampling,
+        )
         outputs = [str(item) for item in raw_outputs]
         if len(outputs) != len(prompts):
             raise RuntimeError(
@@ -353,7 +344,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     app.state.hipengine_effective_max_context_tokens = config.max_context_tokens
     app.state.hipengine_prefix_cache_mode = prefix_cache_mode
     app.state.hipengine_server_metrics = _ServerMetrics()
-    generation_lock = asyncio.Lock()
+    session_lock = asyncio.Lock()
 
     def get_llm() -> Any:
         if app.state.hipengine_llm is None:
@@ -362,7 +353,6 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
 
     generation_batcher = _GenerationBatcher(
         engine_factory=get_llm,
-        generation_lock=generation_lock,
         batch_window_seconds=float(config.generation_batch_window_ms) / 1000.0,
     )
     app.state.hipengine_generation_batcher = generation_batcher
@@ -472,7 +462,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             kv_scale_dtype=config.kv_scale_dtype,
             kv_scale_granularity=config.kv_scale_granularity,
         )
-        async with generation_lock:
+        async with session_lock:
             engine = get_llm()
             max_context = await ensure_resident_context(engine, sampling, phase="startup")
             _LOGGER.info(
@@ -488,13 +478,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
             _log_kv_capacity_summary(engine)
             _validate_context_budget(max_context, engine, (config.eager_load_prompt,), sampling)
-            _LOGGER.info(
-                "WARMUP: prompt_tokens<=%s max_tokens=%d",
-                "unknown" if max_context is None else str(max_context),
-                max_tokens,
-            )
-            await run_in_threadpool(engine.generate, (config.eager_load_prompt,), sampling)
-            _LOGGER.info("hipEngine is ready.")
+        _LOGGER.info(
+            "WARMUP: prompt_tokens<=%s max_tokens=%d",
+            "unknown" if max_context is None else str(max_context),
+            max_tokens,
+        )
+        await run_in_threadpool(engine.generate, (config.eager_load_prompt,), sampling)
+        _LOGGER.info("hipEngine is ready.")
 
     if hasattr(app, "add_event_handler"):
         app.add_event_handler("startup", eager_load_model)
@@ -569,8 +559,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     ) -> _GeneratedBatch:
         try:
             _validate_generation_request(config, request)
-            engine = get_llm()
-            async with generation_lock:
+            async with session_lock:
+                engine = get_llm()
                 await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
                 sampling = sampling_params(request, prompts, engine)
                 if _request_n(request) > 1:
@@ -778,14 +768,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             yield _chat_stream_error(response_id, created, config.model_id, exc.message)
             yield "data: [DONE]\n\n"
             return
-        engine = get_llm()
         response_id = f"chatcmpl-{uuid.uuid4().hex}"
         created = int(time.time())
         full_text: list[str] = []
         splitter = _ReasoningSplitter()
 
         try:
-            async with generation_lock:
+            async with session_lock:
+                engine = get_llm()
                 await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
                 sampling = sampling_params(request, (prompt,), engine)
                 _validate_context_budget(effective_max_context_tokens(engine), engine, (prompt,), sampling)

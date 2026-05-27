@@ -161,7 +161,6 @@ def test_generation_batcher_coalesces_compatible_submissions() -> None:
         sampling = SamplingParams(max_tokens=2)
         batcher = _GenerationBatcher(
             engine_factory=lambda: fake,
-            generation_lock=asyncio.Lock(),
             batch_window_seconds=0.001,
         )
 
@@ -177,13 +176,12 @@ def test_generation_batcher_coalesces_compatible_submissions() -> None:
     asyncio.run(run())
 
 
-def test_generation_batcher_default_zero_window_bypasses_submission_coalescing() -> None:
+def test_generation_batcher_default_zero_window_queues_without_lifetime_lock() -> None:
     async def run() -> None:
         fake = FakeLLM()
         sampling = SamplingParams(max_tokens=2)
         batcher = _GenerationBatcher(
             engine_factory=lambda: fake,
-            generation_lock=asyncio.Lock(),
             batch_window_seconds=0.0,
         )
 
@@ -197,7 +195,7 @@ def test_generation_batcher_default_zero_window_bypasses_submission_coalescing()
         assert first == ["generated:one"]
         assert second == ["generated:two"]
         assert streamed == ["generated:three"]
-        assert sorted(call[0] for call in fake.calls) == [("one",), ("three",), ("two",)]
+        assert fake.calls == [(("one", "two"), sampling), (("three",), sampling)]
 
     asyncio.run(run())
 
@@ -208,7 +206,6 @@ def test_generation_batcher_stream_uses_per_request_queue_and_coalesces() -> Non
         sampling = SamplingParams(max_tokens=2)
         batcher = _GenerationBatcher(
             engine_factory=lambda: fake,
-            generation_lock=asyncio.Lock(),
             batch_window_seconds=0.001,
         )
 
@@ -236,7 +233,6 @@ def test_generation_batcher_keeps_incompatible_sampling_separate() -> None:
         second_sampling = SamplingParams(max_tokens=2)
         batcher = _GenerationBatcher(
             engine_factory=lambda: fake,
-            generation_lock=asyncio.Lock(),
             batch_window_seconds=0.001,
         )
 
