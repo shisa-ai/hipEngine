@@ -11,7 +11,9 @@ ROCm.
 from __future__ import annotations
 
 import argparse
+import csv
 import json
+import math
 import shlex
 import subprocess
 import sys
@@ -45,6 +47,10 @@ _PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES = (
     "validation",
     "other",
 )
+_PROFILER_TRACE_KERNEL_NAME_COLUMNS = ("Kernel_Name", "KernelName", "Name")
+_PROFILER_TRACE_START_COLUMNS = ("Start_Timestamp", "StartTimestamp", "StartNs", "Start")
+_PROFILER_TRACE_END_COLUMNS = ("End_Timestamp", "EndTimestamp", "EndNs", "End")
+_PROFILER_TRACE_DURATION_COLUMNS = ("DurationNs", "Duration_NS", "Duration_Ns", "Duration")
 
 
 @dataclass(frozen=True, slots=True)
@@ -405,6 +411,167 @@ def _is_kernel_trace_csv_path(trace_file: str) -> bool:
     return Path(trace_file).suffix.lower() == ".csv" and "kernel" in name and "trace" in name
 
 
+def _resolve_profiler_trace_file(trace_file: str, *, profiler_path: Path) -> Path:
+    path = Path(trace_file)
+    if path.is_absolute():
+        return path
+    parent_relative = profiler_path.parent / path
+    if parent_relative.exists():
+        return parent_relative
+    return path
+
+
+def _profiler_trace_row_kernel_name(row: dict[str, Any]) -> str:
+    for column in _PROFILER_TRACE_KERNEL_NAME_COLUMNS:
+        value = row.get(column)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _profiler_trace_row_duration_ns(row: dict[str, Any]) -> float | None:
+    for column in _PROFILER_TRACE_DURATION_COLUMNS:
+        value = row.get(column)
+        if value in (None, ""):
+            continue
+        try:
+            duration = float(value)
+        except (TypeError, ValueError):
+            continue
+        if duration > 0.0 and math.isfinite(duration):
+            return duration
+    start = None
+    end = None
+    for column in _PROFILER_TRACE_START_COLUMNS:
+        value = row.get(column)
+        if value in (None, ""):
+            continue
+        try:
+            start = float(value)
+            break
+        except (TypeError, ValueError):
+            continue
+    for column in _PROFILER_TRACE_END_COLUMNS:
+        value = row.get(column)
+        if value in (None, ""):
+            continue
+        try:
+            end = float(value)
+            break
+        except (TypeError, ValueError):
+            continue
+    if start is None or end is None:
+        return None
+    duration = end - start
+    return duration if duration > 0.0 and math.isfinite(duration) else None
+
+
+def _read_profiler_trace_kernel_names(trace_file: Path) -> list[str]:
+    names: list[str] = []
+    seen: set[str] = set()
+    try:
+        with trace_file.open(newline="") as handle:
+            reader = csv.DictReader(handle)
+            for row in reader:
+                name = _profiler_trace_row_kernel_name(row)
+                if name and name not in seen:
+                    names.append(name)
+                    seen.add(name)
+    except OSError:
+        return []
+    return names
+
+
+def _read_profiler_trace_kernel_durations(trace_file: Path) -> dict[str, float]:
+    durations: dict[str, float] = {}
+    try:
+        with trace_file.open(newline="") as handle:
+            reader = csv.DictReader(handle)
+            for row in reader:
+                name = _profiler_trace_row_kernel_name(row)
+                duration_ns = _profiler_trace_row_duration_ns(row)
+                if name and duration_ns is not None:
+                    durations[name] = durations.get(name, 0.0) + duration_ns
+    except OSError:
+        return {}
+    return durations
+
+
+def _synthesized_profiler_trace_kernel_names(profiler: dict[str, Any], *, profiler_path: Path) -> list[str] | None:
+    trace_files = profiler.get("trace_files")
+    if not isinstance(trace_files, list) or not trace_files:
+        return None
+    names: list[str] = []
+    seen: set[str] = set()
+    for trace_file in trace_files:
+        if not isinstance(trace_file, str) or not trace_file:
+            continue
+        for kernel_name in _read_profiler_trace_kernel_names(_resolve_profiler_trace_file(trace_file, profiler_path=profiler_path)):
+            if kernel_name not in seen:
+                names.append(kernel_name)
+                seen.add(kernel_name)
+    return names or None
+
+
+def _synthesized_profiler_kernel_durations_from_traces(profiler: dict[str, Any], *, profiler_path: Path) -> dict[str, float] | None:
+    trace_files = profiler.get("trace_files")
+    if not isinstance(trace_files, list) or not trace_files:
+        return None
+    durations: dict[str, float] = {}
+    for trace_file in trace_files:
+        if not isinstance(trace_file, str) or not trace_file:
+            continue
+        for kernel_name, duration_ns in _read_profiler_trace_kernel_durations(
+            _resolve_profiler_trace_file(trace_file, profiler_path=profiler_path)
+        ).items():
+            durations[kernel_name] = durations.get(kernel_name, 0.0) + duration_ns
+    return durations or None
+
+
+def _synthesize_profiler_trace_fields(profiler: dict[str, Any], *, profiler_path: Path) -> None:
+    if "trace_kernel_names" not in profiler:
+        trace_kernel_names = _synthesized_profiler_trace_kernel_names(profiler, profiler_path=profiler_path)
+        if trace_kernel_names is not None:
+            profiler["trace_kernel_names"] = trace_kernel_names
+    synthesized_durations_from_trace = False
+    if "kernel_durations_ns" not in profiler:
+        kernel_durations = _synthesized_profiler_kernel_durations_from_traces(profiler, profiler_path=profiler_path)
+        if kernel_durations is not None:
+            profiler["kernel_durations_ns"] = kernel_durations
+            synthesized_durations_from_trace = True
+    kernel_durations = profiler.get("kernel_durations_ns")
+    if not isinstance(kernel_durations, dict) or not kernel_durations or not synthesized_durations_from_trace:
+        return
+    if "total_kernel_duration_ns" not in profiler:
+        total = sum(
+            float(duration_ns)
+            for duration_ns in kernel_durations.values()
+            if _is_number(duration_ns) and float(duration_ns) > 0.0
+        )
+        if total > 0.0:
+            profiler["total_kernel_duration_ns"] = total
+    total_duration = profiler.get("total_kernel_duration_ns")
+    if "kernel_duration_shares" not in profiler and _is_number(total_duration) and float(total_duration) > 0.0:
+        profiler["kernel_duration_shares"] = {
+            str(kernel_name): float(duration_ns) / float(total_duration)
+            for kernel_name, duration_ns in kernel_durations.items()
+            if isinstance(kernel_name, str) and kernel_name and _is_number(duration_ns) and float(duration_ns) > 0.0
+        }
+    if "kernel_duration_categories_ns" not in profiler:
+        profiler["kernel_duration_categories_ns"] = _profiler_kernel_duration_category_sums(kernel_durations)
+    duration_categories = profiler.get("kernel_duration_categories_ns")
+    if (
+        "kernel_duration_category_shares" not in profiler
+        and isinstance(duration_categories, dict)
+        and _is_number(total_duration)
+        and float(total_duration) > 0.0
+    ):
+        profiler["kernel_duration_category_shares"] = {
+            category: float(duration_categories.get(category, 0.0)) / float(total_duration)
+            for category in _PROFILER_KERNEL_DURATION_CATEGORIES
+        }
+
+
 def _profiler_kernel_duration_category(kernel_name: str) -> str:
     lowered = kernel_name.lower()
     if "graph" in lowered or "replay" in lowered:
@@ -745,6 +912,7 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                     except ValueError:
                         reasons.append("profiler.trace_files contains a path outside profiler.trace_dir")
                         break
+        _synthesize_profiler_trace_fields(profiler, profiler_path=profiler_path)
         raw_trace_kernel_names = profiler.get("trace_kernel_names")
         if not isinstance(raw_trace_kernel_names, list) or not raw_trace_kernel_names:
             reasons.append("profiler.trace_kernel_names is missing or empty")

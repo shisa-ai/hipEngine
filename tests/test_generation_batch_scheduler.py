@@ -523,6 +523,64 @@ def test_batch_c_sweep_profiler_precondition_rejects_trace_files_without_kernel_
     }
 
 
+def test_batch_c_sweep_profiler_precondition_synthesizes_trace_fields_from_csv(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    trace_dir = output_dir / "profile-c2"
+    trace_dir.mkdir()
+    (trace_dir / "hipengine_kernel_trace.csv").write_text(
+        "Kernel_Name,Start_Timestamp,End_Timestamp\n"
+        "qwen35_batch_decode,0,100\n"
+        "qwen35_batch_decode,100,150\n"
+        "qwen35_batch_decode_wmma_caware,150,350\n"
+    )
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    for field in (
+        "trace_kernel_names",
+        "kernel_durations_ns",
+        "total_kernel_duration_ns",
+        "kernel_duration_shares",
+        "kernel_duration_categories_ns",
+        "kernel_duration_category_shares",
+    ):
+        payload["profiler"].pop(field)
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition["passed"] is True
+    assert precondition["profiler_trace_kernel_names"] == ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"]
+    assert precondition["kernel_durations_ns"] == {"qwen35_batch_decode": 150.0, "qwen35_batch_decode_wmma_caware": 200.0}
+    assert precondition["total_kernel_duration_ns"] == 350.0
+    assert precondition["kernel_duration_categories_ns"] == {
+        "attention": 0.0,
+        "moe": 0.0,
+        "projection": 200.0,
+        "sampling": 0.0,
+        "graph_replay": 0.0,
+        "other": 150.0,
+    }
+
+
 def test_batch_c_sweep_profiler_precondition_rejects_missing_trace_kernel_names(tmp_path: Path) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
