@@ -1475,6 +1475,32 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if status != "planned" and not isinstance(entry.get("output_tail"), str):
                 errors.append("commands[].output_tail must be a string for non-planned rows")
                 break
+            condition_schema_error = False
+            for condition_field in ("preconditions", "postconditions"):
+                if condition_field not in entry:
+                    continue
+                conditions = entry[condition_field]
+                if not isinstance(conditions, list):
+                    errors.append(f"commands[].{condition_field} must be a list")
+                    condition_schema_error = True
+                    break
+                for condition in conditions:
+                    if not isinstance(condition, dict):
+                        errors.append(f"commands[].{condition_field}[] must be an object")
+                        condition_schema_error = True
+                        break
+                    if not isinstance(condition.get("kind"), str) or not condition.get("kind"):
+                        errors.append(f"commands[].{condition_field}[].kind must be a non-empty string")
+                        condition_schema_error = True
+                        break
+                    if not isinstance(condition.get("passed"), bool):
+                        errors.append(f"commands[].{condition_field}[].passed must be a bool")
+                        condition_schema_error = True
+                        break
+                if condition_schema_error:
+                    break
+            if condition_schema_error:
+                break
             postconditions = entry.get("postconditions")
             failed_postconditions = [
                 postcondition

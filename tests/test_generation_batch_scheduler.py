@@ -2150,6 +2150,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_postcondition_counts["retained_postcondition_counts"] = {}
     with pytest.raises(ValueError, match="retained_postcondition_counts must match commands.postconditions"):
         c_sweep.validate_sweep_summary(tampered_postcondition_counts)
+    tampered_precondition_schema = json.loads(json.dumps(persisted))
+    tampered_precondition_schema["commands"][-1]["preconditions"][0]["passed"] = "yes"
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.passed must be a bool"):
+        c_sweep.validate_sweep_summary(tampered_precondition_schema)
+    tampered_postcondition_schema = json.loads(json.dumps(persisted))
+    tampered_postcondition_schema["commands"][-1]["postconditions"][0]["kind"] = ""
+    with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.kind must be a non-empty string"):
+        c_sweep.validate_sweep_summary(tampered_postcondition_schema)
     preconditions_by_kind = {item["kind"]: item for item in native["preconditions"]}
     assert preconditions_by_kind["c1_baseline"] == {
         "kind": "c1_baseline",
