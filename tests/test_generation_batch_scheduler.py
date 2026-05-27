@@ -110,6 +110,23 @@ def _write_c_sweep_profiler_summary(output_dir: Path, *, rows: int = 2) -> None:
                     "expected_kernels_present": True,
                     "expected_kernel_names": ["qwen35_batch_decode"],
                     "kernel_durations_ns": {"qwen35_batch_decode": 12345.0},
+                    "cpu_side_total_seconds": 10.0,
+                    "cpu_side_bottlenecks_seconds": {
+                        "load": 1.0,
+                        "prefill": 2.0,
+                        "warmup_decode": 0.0,
+                        "decode": 7.0,
+                        "validation": 0.0,
+                        "other": 0.0,
+                    },
+                    "cpu_side_bottleneck_shares": {
+                        "load": 0.1,
+                        "prefill": 0.2,
+                        "warmup_decode": 0.0,
+                        "decode": 0.7,
+                        "validation": 0.0,
+                        "other": 0.0,
+                    },
                 },
             }
         )
@@ -131,6 +148,23 @@ def test_batch_c_sweep_profiler_precondition_rejects_mismatched_artifact_path(tm
                     "expected_kernels_present": True,
                     "expected_kernel_names": ["qwen35_batch_decode"],
                     "kernel_durations_ns": {"qwen35_batch_decode": 12345.0},
+                    "cpu_side_total_seconds": 10.0,
+                    "cpu_side_bottlenecks_seconds": {
+                        "load": 1.0,
+                        "prefill": 2.0,
+                        "warmup_decode": 0.0,
+                        "decode": 7.0,
+                        "validation": 0.0,
+                        "other": 0.0,
+                    },
+                    "cpu_side_bottleneck_shares": {
+                        "load": 0.1,
+                        "prefill": 0.2,
+                        "warmup_decode": 0.0,
+                        "decode": 0.7,
+                        "validation": 0.0,
+                        "other": 0.0,
+                    },
                 },
             }
         )
@@ -232,6 +266,42 @@ def test_batch_c_sweep_profiler_precondition_rejects_wrong_shape(tmp_path: Path)
         "artifact_path": str(profiler_path),
         "passed": False,
         "reason": "prompt_tokens_per_request=32 does not match prompt_length=16",
+    }
+
+
+def test_batch_c_sweep_profiler_precondition_rejects_missing_cpu_summary(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"].pop("cpu_side_bottlenecks_seconds")
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "cpu_side_bottlenecks_seconds is missing or empty",
     }
 
 

@@ -28,6 +28,14 @@ DEFAULT_MODEL = (
 )
 DEFAULT_FIXTURE = "fixtures/qwen35_paro/parent_512_32_seed1234.json"
 DEFAULT_BATCH_SIZES = (1, 2, 4, 8)
+_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES = (
+    "load",
+    "prefill",
+    "warmup_decode",
+    "decode",
+    "validation",
+    "other",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -331,6 +339,50 @@ def _reference_label(payload: dict[str, Any], *keys: str) -> Any:
     return None
 
 
+def _validate_profiler_cpu_side_bottlenecks(profiler: dict[str, Any], reasons: list[str]) -> None:
+    cpu_total = profiler.get("cpu_side_total_seconds")
+    durations = profiler.get("cpu_side_bottlenecks_seconds")
+    shares = profiler.get("cpu_side_bottleneck_shares")
+    if not _is_number(cpu_total) or float(cpu_total) <= 0.0:
+        reasons.append("cpu_side_total_seconds is missing or non-positive numeric")
+        return
+    if not isinstance(durations, dict) or not durations:
+        reasons.append("cpu_side_bottlenecks_seconds is missing or empty")
+        return
+    if not isinstance(shares, dict) or not shares:
+        reasons.append("cpu_side_bottleneck_shares is missing or empty")
+        return
+    expected_keys = set(_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES)
+    duration_keys = {key for key in durations if isinstance(key, str)}
+    share_keys = {key for key in shares if isinstance(key, str)}
+    if duration_keys != expected_keys:
+        reasons.append("cpu_side_bottlenecks_seconds keys do not match required categories")
+    if share_keys != expected_keys:
+        reasons.append("cpu_side_bottleneck_shares keys do not match required categories")
+
+    duration_sum = 0.0
+    share_sum = 0.0
+    for category in _PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES:
+        duration_seconds = durations.get(category)
+        duration_share = shares.get(category)
+        if not _is_number(duration_seconds) or float(duration_seconds) < 0.0:
+            reasons.append(f"cpu_side_bottlenecks_seconds.{category} is missing or negative numeric")
+            continue
+        duration_sum += float(duration_seconds)
+        if not _is_number(duration_share) or float(duration_share) < 0.0:
+            reasons.append(f"cpu_side_bottleneck_shares.{category} is missing or negative numeric")
+            continue
+        share_sum += float(duration_share)
+        expected_share = float(duration_seconds) / float(cpu_total)
+        if abs(float(duration_share) - expected_share) > 1e-6:
+            reasons.append(f"cpu_side_bottleneck_shares.{category} does not match cpu-side duration share")
+    tolerance = max(1e-9, float(cpu_total) * 1e-6)
+    if abs(duration_sum - float(cpu_total)) > tolerance:
+        reasons.append("cpu_side_bottlenecks_seconds does not sum to cpu_side_total_seconds")
+    if abs(share_sum - 1.0) > 1e-6:
+        reasons.append("cpu_side_bottleneck_shares does not sum to 1.0")
+
+
 def _scaling_reference_precondition(
     command: SweepCommand,
     *,
@@ -501,6 +553,7 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                 ):
                     reasons.append(f"kernel_durations_ns.{kernel_name} is missing or non-positive numeric")
                     break
+        _validate_profiler_cpu_side_bottlenecks(profiler, reasons)
     return {
         "kind": "profiler_summary",
         "artifact_path": str(profiler_path),
