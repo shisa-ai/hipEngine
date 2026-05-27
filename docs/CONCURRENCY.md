@@ -972,11 +972,12 @@ roll-up/status view.
       benchmark/profiler `--json` outputs plus primitive/scaling artifact paths
       under `benchmarks/results/`, and the retained bench can now attach a
       captured profiler summary via `--profiler-json` / `--profiler-command`,
-      synthesize `profiler.total_kernel_duration_ns` from per-kernel durations
-      when the summary omits it, and require `--profiler-json` to match
+      synthesize `profiler.total_kernel_duration_ns` and
+      `profiler.kernel_duration_shares` from per-kernel durations when the
+      summary omits them, and require `--profiler-json` to match
       `profiler.artifact_path`; the retained payload declares benchmark rollup
-      files while the post-run `validate_cn_diagnostic_rollup_evidence` gate (or the CLI
-      `python3 scripts/qwen35_batch_artifact_schema.py <artifact>
+      files while the post-run `validate_cn_diagnostic_rollup_evidence` gate
+      (or the CLI `python3 scripts/qwen35_batch_artifact_schema.py <artifact>
       --rollup-evidence --summary-json
       benchmarks/results/<artifact>-rollup-check.json`) verifies live
       `benchmarks/README.md` and `benchmarks/CHANGELOG.md` both mention the
@@ -993,8 +994,9 @@ roll-up/status view.
       `profiler.artifact_path` under `benchmarks/results/`, native batch
       expected kernel names and duration-map keys (no
       serial/per-row/fallback labels) present with every duration-map entry
-      carrying positive numeric evidence and `profiler.total_kernel_duration_ns`
-      matching the duration-map sum, plus an accepted non-row-GEMV
+      carrying positive numeric evidence, `profiler.total_kernel_duration_ns`
+      matching the duration-map sum, and per-kernel duration-share keys/values
+      matching `duration / total`, plus an accepted non-row-GEMV
       `projection_dispatch` decision whose selected candidate is listed with
       matching retained speedup evidence and appears in profiler kernel names.
       The scoreboard item remains open until accepted
@@ -1300,7 +1302,10 @@ Establish these before optimizing anything:
     once the per-row sampler is live.
 - [ ] Profiler summaries for accepted rows: expected kernel names,
       duration/share for attention, MoE, projection, sampling, graph
-      replay, and any CPU-side bottleneck.
+      replay, and any CPU-side bottleneck. Progress: accepted-artifact schema
+      now requires per-kernel duration shares to match `kernel_durations_ns` /
+      `total_kernel_duration_ns`, and retained-bench ingestion synthesizes those
+      shares when profiler summaries provide durations but omit shares.
 - [ ] Only update `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, and
       `benchmarks/results/` for retained rows with correctness green,
       protocol shape satisfied, and profiler evidence. Rejected/blocked

@@ -264,6 +264,15 @@ def _primitive_correctness_reference(path: Path | None, *, rows: int) -> dict[st
     }
 
 
+def _is_finite_positive_number(value: Any) -> bool:
+    return (
+        not isinstance(value, bool)
+        and isinstance(value, (int, float))
+        and math.isfinite(float(value))
+        and float(value) > 0.0
+    )
+
+
 def _synthesized_profiler_total_kernel_duration(profiler: Mapping[str, Any]) -> float | None:
     kernel_durations = profiler.get("kernel_durations_ns")
     if not isinstance(kernel_durations, Mapping):
@@ -271,15 +280,24 @@ def _synthesized_profiler_total_kernel_duration(profiler: Mapping[str, Any]) -> 
     total = 0.0
     saw_duration = False
     for duration_ns in kernel_durations.values():
-        if (
-            not isinstance(duration_ns, (int, float))
-            or not math.isfinite(float(duration_ns))
-            or float(duration_ns) <= 0.0
-        ):
+        if not _is_finite_positive_number(duration_ns):
             continue
         total += float(duration_ns)
         saw_duration = True
     return total if saw_duration else None
+
+
+def _synthesized_profiler_kernel_duration_shares(profiler: Mapping[str, Any]) -> dict[str, float] | None:
+    kernel_durations = profiler.get("kernel_durations_ns")
+    total_duration = profiler.get("total_kernel_duration_ns")
+    if not isinstance(kernel_durations, Mapping) or not _is_finite_positive_number(total_duration):
+        return None
+    shares = {
+        str(kernel_name): float(duration_ns) / float(total_duration)
+        for kernel_name, duration_ns in kernel_durations.items()
+        if isinstance(kernel_name, str) and kernel_name and _is_finite_positive_number(duration_ns)
+    }
+    return shares or None
 
 
 def _profiler_reference(path: Path | None) -> dict[str, Any]:
@@ -302,6 +320,10 @@ def _profiler_reference(path: Path | None) -> dict[str, Any]:
         total_kernel_duration_ns = _synthesized_profiler_total_kernel_duration(result)
         if total_kernel_duration_ns is not None:
             result["total_kernel_duration_ns"] = total_kernel_duration_ns
+    if "kernel_duration_shares" not in result:
+        kernel_duration_shares = _synthesized_profiler_kernel_duration_shares(result)
+        if kernel_duration_shares is not None:
+            result["kernel_duration_shares"] = kernel_duration_shares
     result.setdefault("artifact_path", str(path))
     result.setdefault("status", "loaded")
     return result

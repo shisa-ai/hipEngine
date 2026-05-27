@@ -862,6 +862,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             if isinstance(kernel_name, str) and kernel_name and not _is_positive_number(duration_ns):
                 errors.append(f"profiler.kernel_durations_ns.{kernel_name} must be positive numeric for accepted artifacts")
         _validate_profiler_kernel_duration_total(profiler, kernel_durations, errors)
+        _validate_profiler_kernel_duration_shares(profiler, kernel_durations, errors)
         if isinstance(expected_kernel_names, list):
             for kernel_name in expected_kernel_names:
                 if not isinstance(kernel_name, str) or not kernel_name:
@@ -889,6 +890,52 @@ def _validate_profiler_kernel_duration_total(
     tolerance = max(1.0, duration_sum * 1e-6)
     if duration_sum > 0.0 and abs(float(total_duration) - duration_sum) > tolerance:
         errors.append("profiler.total_kernel_duration_ns must match sum(profiler.kernel_durations_ns) for accepted artifacts")
+
+
+def _validate_profiler_kernel_duration_shares(
+    profiler: Mapping[str, Any],
+    kernel_durations: Mapping[Any, Any],
+    errors: list[str],
+) -> None:
+    kernel_duration_shares = profiler.get("kernel_duration_shares")
+    if not isinstance(kernel_duration_shares, Mapping) or not kernel_duration_shares:
+        errors.append("profiler.kernel_duration_shares must be a non-empty object for accepted artifacts")
+        return
+    duration_keys = {
+        kernel_name
+        for kernel_name, duration_ns in kernel_durations.items()
+        if isinstance(kernel_name, str) and kernel_name and _is_positive_number(duration_ns)
+    }
+    share_keys = {
+        kernel_name
+        for kernel_name, duration_share in kernel_duration_shares.items()
+        if isinstance(kernel_name, str) and kernel_name and _is_positive_number(duration_share)
+    }
+    if duration_keys != share_keys:
+        errors.append("profiler.kernel_duration_shares keys must match profiler.kernel_durations_ns for accepted artifacts")
+    total_duration = profiler.get("total_kernel_duration_ns")
+    if not _is_positive_number(total_duration):
+        return
+    share_sum = 0.0
+    for kernel_name, duration_share in kernel_duration_shares.items():
+        if isinstance(kernel_name, str) and _has_disallowed_profiler_kernel_fragment(kernel_name):
+            errors.append("profiler.kernel_duration_shares must not include serial/per-row/fallback kernel names for accepted artifacts")
+            break
+        if not isinstance(kernel_name, str) or not kernel_name or not _is_positive_number(duration_share):
+            errors.append(f"profiler.kernel_duration_shares.{kernel_name} must be positive numeric for accepted artifacts")
+            continue
+        share_sum += float(duration_share)
+        duration_ns = kernel_durations.get(kernel_name)
+        if _is_positive_number(duration_ns):
+            expected_share = float(duration_ns) / float(total_duration)
+            tolerance = max(1e-6, expected_share * 1e-6)
+            if abs(float(duration_share) - expected_share) > tolerance:
+                errors.append(
+                    f"profiler.kernel_duration_shares.{kernel_name} must match "
+                    "profiler.kernel_durations_ns/kernel total for accepted artifacts"
+                )
+    if share_sum > 0.0 and abs(share_sum - 1.0) > 1e-6:
+        errors.append("profiler.kernel_duration_shares must sum to 1.0 for accepted artifacts")
 
 
 def _validate_projection_dispatch_profiler_evidence(
