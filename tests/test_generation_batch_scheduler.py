@@ -293,12 +293,15 @@ def test_batch_c_sweep_no_stop_counts_failed_and_skipped_rows(tmp_path: Path, mo
 
 def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: Path, monkeypatch) -> None:
     output_dir = tmp_path / "artifacts"
+    summary_path = tmp_path / "summary.json"
     args = build_c_sweep_parser().parse_args(
         [
             "--batch-sizes",
             "2",
             "--output-dir",
             str(output_dir),
+            "--summary-json",
+            str(summary_path),
             "--model",
             "/tmp/model",
             "--fixture",
@@ -358,6 +361,13 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
             "reason": "primitive correctness artifact does not exist",
         }
     ]
+    persisted = json.loads(summary_path.read_text())
+    persisted_skipped = persisted["commands"][-1]
+    assert persisted_skipped["status"] == "skipped"
+    assert persisted_skipped["preconditions"] == skipped["preconditions"]
+    assert persisted_skipped["precondition"] == skipped["precondition"]
+    assert persisted["retained_precondition_counts"] == summary["retained_precondition_counts"]
+    assert persisted["skipped_preconditions"] == summary["skipped_preconditions"]
 
 
 @pytest.mark.parametrize(
