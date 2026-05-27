@@ -897,6 +897,7 @@ roll-up/status view.
       validation unless they include fully native batch-execution metadata,
       generated-token equality sequence lists matching `workload.concurrency`,
       `workload.concurrency` matching the primitive correctness row count,
+      aggregate token labels matching per-request shape times concurrency,
       full-row admission/completion/per-request observability with matching row
       ids and latency samples for every row in `workload.concurrency`, positive
       aggregate/per-request throughput whose native scaling copy matches the

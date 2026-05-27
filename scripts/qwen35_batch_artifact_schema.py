@@ -342,6 +342,20 @@ def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[st
     gen_tokens_valid = isinstance(gen_tokens, int) and not isinstance(gen_tokens, bool) and gen_tokens > 0
     if not gen_tokens_valid:
         errors.append("workload.gen_tokens_per_request must be an int > 0 for accepted artifacts")
+    if concurrency_valid and prompt_tokens_valid:
+        _validate_workload_aggregate_tokens(
+            "prompt_tokens_aggregate",
+            workload,
+            int(prompt_tokens) * int(concurrency),
+            errors,
+        )
+    if concurrency_valid and gen_tokens_valid:
+        _validate_workload_aggregate_tokens(
+            "gen_tokens_aggregate",
+            workload,
+            int(gen_tokens) * int(concurrency),
+            errors,
+        )
     if scaling.get("complete") is not True:
         errors.append("scaling.complete must be true for accepted artifacts")
     native = scaling.get("native")
@@ -444,6 +458,19 @@ def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[st
                 "decode_tok_s_per_request",
                 errors,
             )
+
+
+def _validate_workload_aggregate_tokens(
+    field: str,
+    workload: Mapping[str, Any],
+    expected: int,
+    errors: list[str],
+) -> None:
+    actual = workload.get(field)
+    if not isinstance(actual, int) or isinstance(actual, bool):
+        errors.append(f"workload.{field} must be an int for accepted artifacts")
+    elif actual != expected:
+        errors.append(f"workload.{field} must equal per-request tokens times workload.concurrency for accepted artifacts")
 
 
 def _validate_matching_number(

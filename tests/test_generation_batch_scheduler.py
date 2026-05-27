@@ -2151,7 +2151,9 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
         "workload": {
             "concurrency": 2,
             "prompt_tokens_per_request": 512,
+            "prompt_tokens_aggregate": 1024,
             "gen_tokens_per_request": 128,
+            "gen_tokens_aggregate": 256,
             "native_compact_prefill": True,
             "native_caware_decode": True,
         },
@@ -2327,6 +2329,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     missing_workload_concurrency["workload"].pop("concurrency")
     with pytest.raises(ValueError, match="workload.concurrency"):
         validate_cn_diagnostic_artifact_payload(missing_workload_concurrency)
+
+    missing_prompt_aggregate = json.loads(json.dumps(accepted))
+    missing_prompt_aggregate["workload"].pop("prompt_tokens_aggregate")
+    with pytest.raises(ValueError, match="workload.prompt_tokens_aggregate"):
+        validate_cn_diagnostic_artifact_payload(missing_prompt_aggregate)
+
+    mismatched_decode_aggregate = json.loads(json.dumps(accepted))
+    mismatched_decode_aggregate["workload"]["gen_tokens_aggregate"] = 128
+    with pytest.raises(ValueError, match="gen_tokens_aggregate must equal per-request tokens times workload.concurrency"):
+        validate_cn_diagnostic_artifact_payload(mismatched_decode_aggregate)
 
     serial_bridge_execution = json.loads(json.dumps(accepted))
     serial_bridge_execution["execution"]["batch_execution"]["path"] = "scheduler_serial_slot_bridge"
