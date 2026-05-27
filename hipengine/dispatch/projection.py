@@ -198,6 +198,26 @@ def _is_positive_number(value: Any) -> bool:
     return _is_number(value) and float(value) > 0.0
 
 
+def projection_dispatch_candidates_from_json(payload: Any) -> tuple[ProjectionDispatchCandidate, ...]:
+    """Load an ordered candidate list from retained projection metadata."""
+
+    if not isinstance(payload, list):
+        raise ValueError("projection dispatch candidates must be a list")
+    candidates: list[ProjectionDispatchCandidate] = []
+    errors: list[str] = []
+    for index, item in enumerate(payload):
+        if not isinstance(item, Mapping):
+            errors.append(f"candidates[{index}] must be an object")
+            continue
+        try:
+            candidates.append(ProjectionDispatchCandidate.from_json_dict(item))
+        except ValueError as exc:
+            errors.append(f"candidates[{index}]: {exc}")
+    if errors:
+        raise ValueError("invalid projection dispatch candidates: " + "; ".join(errors))
+    return tuple(candidates)
+
+
 def plan_projection_dispatch(
     *,
     rows: int,
@@ -291,4 +311,5 @@ __all__ = [
     "ProjectionDispatchEvidence",
     "ProjectionKernelSelection",
     "plan_projection_dispatch",
+    "projection_dispatch_candidates_from_json",
 ]

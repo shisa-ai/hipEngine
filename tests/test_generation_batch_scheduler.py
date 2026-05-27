@@ -18,6 +18,7 @@ from hipengine.dispatch import (
     WorkKind,
     plan_batch_sampler_dispatch,
     plan_projection_dispatch,
+    projection_dispatch_candidates_from_json,
 )
 from hipengine.generation import (
     CompactPromptSlab,
@@ -882,6 +883,40 @@ def test_projection_dispatch_candidate_loads_schema_checked_artifact_blocks() ->
         ProjectionDispatchCandidate.from_json_dict(
             {**payload, "evidence": {**payload["evidence"], "aggregate_vs_row_gemv": 0.0}}
         )
+
+
+def test_projection_dispatch_candidate_list_loads_ordered_artifact_blocks() -> None:
+    first = {
+        "name": "mmq_caware",
+        "selection": {"layer": "linear", "quant": "w4_paro", "variant": "mmq_caware"},
+        "min_rows": 2,
+        "max_rows": 4,
+        "evidence": {
+            "artifact_path": "benchmarks/results/projection-mmq-c2.json",
+            "aggregate_vs_row_gemv": 1.20,
+            "per_request_vs_row_gemv": 1.05,
+            "accepted": True,
+        },
+    }
+    second = {
+        "name": "wmma_caware",
+        "selection": {"layer": "linear", "quant": "w4_paro", "variant": "wmma_caware"},
+        "min_rows": 4,
+        "max_rows": 8,
+        "evidence": None,
+    }
+
+    candidates = projection_dispatch_candidates_from_json([first, second])
+
+    assert [candidate.name for candidate in candidates] == ["mmq_caware", "wmma_caware"]
+    assert candidates[0].to_json_dict() == first
+    assert candidates[1].to_json_dict() == second
+    with pytest.raises(ValueError, match="projection dispatch candidates must be a list"):
+        projection_dispatch_candidates_from_json({"name": "mmq_caware"})
+    with pytest.raises(ValueError, match=r"candidates\[1\] must be an object"):
+        projection_dispatch_candidates_from_json([first, "not-a-candidate"])
+    with pytest.raises(ValueError, match=r"candidates\[0\].*min_rows must be a positive int"):
+        projection_dispatch_candidates_from_json([{**first, "min_rows": 0}])
 
 
 def test_projection_dispatch_requires_accepted_cN_speedup_evidence() -> None:

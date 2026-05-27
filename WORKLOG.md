@@ -30603,3 +30603,29 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY projection candidate-list loader
+
+Materially advanced C3.4 c-aware projection dispatch without closing the item:
+
+- `projection_dispatch_candidates_from_json(...)` now schema-checks an ordered retained projection candidate list and returns immutable candidates ready for `plan_projection_dispatch(...)`.
+- The list loader rejects non-list roots, non-object entries with indexed errors, and propagates indexed nested candidate/evidence validation errors.
+- Exported the helper through `hipengine.dispatch` and extended projection-dispatch tests for ordered loading, list shape failures, and indexed nested validation failures.
+- Updated the C3.4 progress note. The item remains open until runtime projection call sites are wired to this policy and retained benchmark artifacts provide the required ratios.
+- No queue item was marked complete and no c>N performance claim was added.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_projection_dispatch_candidate_list_loads_ordered_artifact_blocks tests/test_generation_batch_scheduler.py::test_projection_dispatch_candidate_loads_schema_checked_artifact_blocks tests/test_generation_batch_scheduler.py::test_projection_dispatch_selects_best_evidence_green_cN_candidate -q
+# 3 passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```
