@@ -119,6 +119,7 @@ def _write_c_sweep_profiler_summary(
                     "status": "captured",
                     "output_format": "csv",
                     "trace_dir": str(trace_dir),
+                    "trace_files": [str(trace_dir / "hipengine_kernel_trace.csv")],
                     "command": (
                         f"rocprofv3 --kernel-trace --output-format csv -d {trace_dir} -- python3 scripts/qwen35_batch_retained_bench.py "
                         f"--model {model} --fixture {fixture} --batch-size {rows} "
@@ -187,6 +188,7 @@ def test_batch_c_sweep_profiler_precondition_rejects_mismatched_artifact_path(tm
                     "status": "captured",
                     "output_format": "csv",
                     "trace_dir": str(output_dir / "profile-c2"),
+                    "trace_files": [str(output_dir / "profile-c2" / "hipengine_kernel_trace.csv")],
                     "command": (
                         f"rocprofv3 --kernel-trace --output-format csv -d {output_dir / 'profile-c2'} -- python3 scripts/qwen35_batch_retained_bench.py "
                         "--model /tmp/model --fixture /tmp/fixture.json --batch-size 2 "
@@ -408,6 +410,78 @@ def test_batch_c_sweep_profiler_precondition_rejects_missing_trace_dir(tmp_path:
         "artifact_path": str(profiler_path),
         "passed": False,
         "reason": "profiler.trace_dir is missing",
+    }
+
+
+def test_batch_c_sweep_profiler_precondition_rejects_missing_trace_files(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"].pop("trace_files")
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler.trace_files is missing or empty",
+    }
+
+
+def test_batch_c_sweep_profiler_precondition_rejects_trace_files_outside_trace_dir(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"]["trace_files"] = [str(output_dir / "other-profile" / "hipengine_kernel_trace.csv")]
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler.trace_files contains a path outside profiler.trace_dir",
     }
 
 
@@ -1756,6 +1830,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         ),
         "profiler_output_format": "csv",
         "profiler_trace_dir": str(output_dir / "profile-c2"),
+        "profiler_trace_files": [str(output_dir / "profile-c2" / "hipengine_kernel_trace.csv")],
         "retained_artifact_path": str(output_dir / "native-diagnostic-c2.json"),
         "c1_baseline_artifact_path": str(output_dir / "native-baseline-c1.json"),
         "serial_bridge_artifact_path": str(output_dir / "serial-bridge-c2.json"),

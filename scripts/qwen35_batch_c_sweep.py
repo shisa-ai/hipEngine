@@ -685,6 +685,7 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
     profiler_command: str | None = None
     profiler_output_format: str | None = None
     profiler_trace_dir: str | None = None
+    profiler_trace_files: list[str] = []
     if not isinstance(profiler, dict):
         reasons.append("profiler summary root is not an object")
     else:
@@ -718,6 +719,23 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
         raw_trace_dir = profiler.get("trace_dir")
         if isinstance(raw_trace_dir, str) and raw_trace_dir:
             profiler_trace_dir = raw_trace_dir
+        raw_trace_files = profiler.get("trace_files")
+        if not isinstance(raw_trace_files, list) or not raw_trace_files:
+            reasons.append("profiler.trace_files is missing or empty")
+        elif not all(isinstance(trace_file, str) and trace_file for trace_file in raw_trace_files):
+            reasons.append("profiler.trace_files contains a non-string entry")
+        else:
+            profiler_trace_files = list(raw_trace_files)
+            if any(Path(trace_file).suffix.lower() != ".csv" for trace_file in profiler_trace_files):
+                reasons.append("profiler.trace_files contains a non-CSV trace file")
+            if profiler_trace_dir is not None:
+                trace_dir_path = Path(profiler_trace_dir)
+                for trace_file in profiler_trace_files:
+                    try:
+                        Path(trace_file).relative_to(trace_dir_path)
+                    except ValueError:
+                        reasons.append("profiler.trace_files contains a path outside profiler.trace_dir")
+                        break
         profiler_command = _profiler_command_label(profiler, payload if isinstance(payload, dict) else None)
         if profiler_command is None:
             reasons.append("profiler command is missing")
@@ -850,6 +868,7 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                 "profiler_command": profiler_command,
                 "profiler_output_format": str(profiler["output_format"]),
                 "profiler_trace_dir": str(profiler["trace_dir"]),
+                "profiler_trace_files": list(profiler_trace_files),
                 "retained_artifact_path": str(command.artifact_path),
                 "c1_baseline_artifact_path": _command_arg_value(command, "--c1-baseline-json"),
                 "serial_bridge_artifact_path": _command_arg_value(command, "--serial-bridge-json"),
