@@ -1483,6 +1483,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         command_count = summary.get("command_count")
         if not isinstance(command_count, int) or isinstance(command_count, bool) or command_count < len(entries):
             errors.append("command_count must be an int greater than or equal to completed_command_count")
+        elif isinstance(options, Mapping) and isinstance(options.get("include_int8"), bool) and batch_sizes:
+            expected_command_count = sum(3 + (1 if options["include_int8"] and c != 1 else 0) for c in batch_sizes)
+            if command_count != expected_command_count:
+                errors.append("command_count must match batch_sizes/options.include_int8")
         expected_status_counts = _status_counts(entries)
         if summary.get("status_counts") != expected_status_counts:
             errors.append("status_counts must match commands")

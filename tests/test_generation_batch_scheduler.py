@@ -2085,6 +2085,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_completed_count["completed_command_count"] = 2
     with pytest.raises(ValueError, match=r"completed_command_count must match len\(commands\)"):
         c_sweep.validate_sweep_summary(tampered_completed_count)
+    tampered_command_count = json.loads(json.dumps(persisted))
+    tampered_command_count["command_count"] = 4
+    with pytest.raises(ValueError, match=r"command_count must match batch_sizes/options\.include_int8"):
+        c_sweep.validate_sweep_summary(tampered_command_count)
     tampered_status_counts = json.loads(json.dumps(persisted))
     tampered_status_counts["status_counts"] = {}
     with pytest.raises(ValueError, match="status_counts must match commands"):
