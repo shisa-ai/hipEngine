@@ -28,6 +28,7 @@ DEFAULT_MODEL = (
 )
 DEFAULT_FIXTURE = "fixtures/qwen35_paro/parent_512_32_seed1234.json"
 DEFAULT_BATCH_SIZES = (1, 2, 4, 8)
+_DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = ("serial", "fallback", "per_row", "per-row")
 _PROFILER_KERNEL_DURATION_CATEGORIES = (
     "attention",
     "moe",
@@ -394,6 +395,11 @@ def _profiler_command_label(profiler: dict[str, Any], payload: dict[str, Any] | 
     return None
 
 
+def _has_disallowed_profiler_kernel_fragment(name: str) -> bool:
+    lowered = name.lower()
+    return any(fragment in lowered for fragment in _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS)
+
+
 def _validate_profiler_kernel_durations(profiler: dict[str, Any], reasons: list[str]) -> None:
     kernel_durations = profiler.get("kernel_durations_ns")
     if not isinstance(kernel_durations, dict) or not kernel_durations:
@@ -750,17 +756,25 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
             reasons.append("expected_kernel_names contains a non-string entry")
         elif not any("batch" in name.lower() for name in expected_kernel_names):
             reasons.append("expected_kernel_names does not include a native batch kernel")
+        elif any(_has_disallowed_profiler_kernel_fragment(name) for name in expected_kernel_names):
+            reasons.append("expected_kernel_names contains a serial/per-row/fallback kernel")
         kernel_durations = profiler.get("kernel_durations_ns")
         if not isinstance(kernel_durations, dict) or not kernel_durations:
             reasons.append("kernel_durations_ns is missing or empty")
-        elif isinstance(expected_kernel_names, list):
-            for kernel_name in expected_kernel_names:
-                duration_ns = kernel_durations.get(kernel_name)
-                if isinstance(kernel_name, str) and kernel_name and (
-                    not _is_number(duration_ns) or float(duration_ns) <= 0.0
-                ):
-                    reasons.append(f"kernel_durations_ns.{kernel_name} is missing or non-positive numeric")
-                    break
+        else:
+            if any(
+                isinstance(kernel_name, str) and _has_disallowed_profiler_kernel_fragment(kernel_name)
+                for kernel_name in kernel_durations
+            ):
+                reasons.append("kernel_durations_ns contains a serial/per-row/fallback kernel")
+            if isinstance(expected_kernel_names, list):
+                for kernel_name in expected_kernel_names:
+                    duration_ns = kernel_durations.get(kernel_name)
+                    if isinstance(kernel_name, str) and kernel_name and (
+                        not _is_number(duration_ns) or float(duration_ns) <= 0.0
+                    ):
+                        reasons.append(f"kernel_durations_ns.{kernel_name} is missing or non-positive numeric")
+                        break
         _validate_profiler_kernel_durations(profiler, reasons)
         _validate_profiler_kernel_duration_categories(profiler, reasons)
         _validate_profiler_cpu_side_bottlenecks(profiler, reasons)
