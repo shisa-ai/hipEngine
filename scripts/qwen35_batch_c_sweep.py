@@ -1388,6 +1388,23 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if json_path != entry.get("artifact_path"):
                 errors.append("commands[].artifact_path must match commands[].argv --json")
                 break
+            declared_batch_size: int | None = None
+            batch_arg_error = False
+            for batch_flag in ("--batch-size", "--rows"):
+                if batch_flag not in argv:
+                    continue
+                try:
+                    declared_batch_size = int(argv[argv.index(batch_flag) + 1])
+                except (IndexError, ValueError):
+                    errors.append(f"commands[].argv {batch_flag} must have an int value")
+                    batch_arg_error = True
+                    break
+                break
+            if batch_arg_error:
+                break
+            if declared_batch_size is not None and declared_batch_size != entry.get("batch_size"):
+                errors.append("commands[].batch_size must match commands[].argv --batch-size/--rows")
+                break
             if entry.get("status") not in {"planned", "passed", "skipped", "failed"}:
                 errors.append("commands[].status must be planned, passed, skipped, or failed")
                 break

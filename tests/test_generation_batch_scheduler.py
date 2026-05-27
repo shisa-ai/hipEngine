@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 from dataclasses import replace
 from pathlib import Path
 
@@ -2024,6 +2025,12 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_artifact_path["commands"][-1]["artifact_path"] = str(output_dir / "other-native-diagnostic-c2.json")
     with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match commands\[\]\.argv --json"):
         c_sweep.validate_sweep_summary(tampered_artifact_path)
+    tampered_argv_batch_size = json.loads(json.dumps(persisted))
+    retained_argv = tampered_argv_batch_size["commands"][-1]["argv"]
+    retained_argv[retained_argv.index("--batch-size") + 1] = "3"
+    tampered_argv_batch_size["commands"][-1]["command"] = shlex.join(retained_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.batch_size must match commands\[\]\.argv"):
+        c_sweep.validate_sweep_summary(tampered_argv_batch_size)
     tampered_git_dirty = json.loads(json.dumps(persisted))
     tampered_git_dirty["commands"][-1]["git_dirty"] = True
     with pytest.raises(ValueError, match=r"commands\[\]\.git_dirty must match git.dirty"):
