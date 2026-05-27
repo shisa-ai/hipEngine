@@ -899,8 +899,9 @@ roll-up/status view.
       `workload.concurrency` matching the primitive correctness row count,
       full-row admission/completion/per-request observability and latency samples
       for every row in `workload.concurrency`, positive aggregate/per-request
-      throughput, all required positive scaling ratios that mathematically match
-      usable same-shape c=1 and usable same-shape/same-concurrency serial bridge
+      throughput whose native scaling copy matches the primary measurements, all
+      required positive scaling ratios that mathematically match usable same-shape
+      c=1 and usable same-shape/same-concurrency serial bridge
       baselines,
       positive decode-step timing samples,
       non-empty benchmark, correctness-reference, and profiler commands,

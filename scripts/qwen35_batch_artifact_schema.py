@@ -325,6 +325,7 @@ def _validate_accepted_measurement_gates(payload: Mapping[str, Any], errors: lis
 
 def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[str]) -> None:
     scaling = _mapping_at(payload, "scaling", errors)
+    measurements = _mapping_at(payload, "measurements", errors)
     workload = _mapping_at(payload, "workload", errors)
     concurrency = workload.get("concurrency")
     concurrency_valid = isinstance(concurrency, int) and not isinstance(concurrency, bool) and concurrency > 1
@@ -345,6 +346,14 @@ def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[st
         for field in ("decode_tok_s_aggregate", "decode_tok_s_per_request"):
             if not _is_positive_number(native.get(field)):
                 errors.append(f"scaling.native.{field} must be positive numeric for accepted artifacts")
+            _validate_matching_number(
+                f"scaling.native.{field}",
+                native,
+                field,
+                measurements,
+                field,
+                errors,
+            )
     for baseline_name in _REQUIRED_ACCEPTED_SCALING_BASELINES:
         baseline = scaling.get(baseline_name)
         if not isinstance(baseline, Mapping):
@@ -430,6 +439,24 @@ def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[st
                 "decode_tok_s_per_request",
                 errors,
             )
+
+
+def _validate_matching_number(
+    label: str,
+    actual_payload: Mapping[str, Any],
+    actual_field: str,
+    expected_payload: Mapping[str, Any],
+    expected_field: str,
+    errors: list[str],
+) -> None:
+    actual = actual_payload.get(actual_field)
+    expected = expected_payload.get(expected_field)
+    if not (_is_number(actual) and _is_number(expected)):
+        return
+    expected_value = float(expected)
+    tolerance = max(1e-9, abs(expected_value) * 1e-6)
+    if abs(float(actual) - expected_value) > tolerance:
+        errors.append(f"{label} must match measurements.{expected_field} for accepted artifacts")
 
 
 def _validate_scaling_ratio(
