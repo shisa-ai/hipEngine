@@ -2210,7 +2210,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
                 "git diff --quiet",
             ],
             "benchmark": "python3 scripts/qwen35_batch_retained_bench.py --model /models/test-qwen35 --fixture fixtures/qwen35.json --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json benchmarks/results/accepted-c2.json",
-            "correctness_reference": "inline generated-token equality vs independent c=1 plus python3 scripts/qwen35_batch_correctness.py --rows 2 --json primitive-c2.json",
+            "correctness_reference": "inline generated-token equality vs independent c=1 plus python3 scripts/qwen35_batch_correctness.py --rows 2 --json benchmarks/results/primitive-c2.json",
             "profiler": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile -- python3 scripts/qwen35_batch_retained_bench.py --model /models/test-qwen35 --fixture fixtures/qwen35.json --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --compiler-version-file benchmarks/results/hipcc-version.txt --require-cached-build --json benchmarks/results/accepted-c2.json --profiler-json benchmarks/results/profiler-c2.json",
         },
         "profiler": {
@@ -2787,6 +2787,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     wrong_correctness_rows["commands"]["correctness_reference"] = "python3 scripts/qwen35_batch_correctness.py --rows 8 --json primitive-c8.json"
     with pytest.raises(ValueError, match="commands.correctness_reference --rows must match workload.concurrency"):
         validate_cn_diagnostic_artifact_payload(wrong_correctness_rows)
+
+    missing_correctness_json = json.loads(json.dumps(accepted))
+    missing_correctness_json["commands"]["correctness_reference"] = "python3 scripts/qwen35_batch_correctness.py --rows 2"
+    with pytest.raises(ValueError, match="commands.correctness_reference must include --json"):
+        validate_cn_diagnostic_artifact_payload(missing_correctness_json)
+
+    mismatched_correctness_json = json.loads(json.dumps(accepted))
+    mismatched_correctness_json["commands"]["correctness_reference"] = "python3 scripts/qwen35_batch_correctness.py --rows 2 --json benchmarks/results/other-primitive-c2.json"
+    with pytest.raises(ValueError, match="commands.correctness_reference --json path must match correctness.primitive_batch_correctness.artifact_path"):
+        validate_cn_diagnostic_artifact_payload(mismatched_correctness_json)
 
     missing_profiler = dict(accepted)
     missing_profiler.pop("profiler")

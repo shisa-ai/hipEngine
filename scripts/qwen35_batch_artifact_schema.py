@@ -120,13 +120,36 @@ def _validate_command_workload_shape(command: str, *, field: str, payload: Mappi
             errors.append(f"commands.{field} {flag} must match workload.{workload_key} for accepted artifacts")
 
 
-def _validate_command_json_artifact_path(command: str, *, field: str, errors: list[str]) -> None:
+def _command_json_path(command: str) -> str | None:
     json_match = _COMMAND_JSON_RE.search(command)
     if json_match is None:
+        return None
+    return json_match.group(1).strip("'\"")
+
+
+def _validate_command_json_artifact_path(command: str, *, field: str, errors: list[str]) -> None:
+    json_path = _command_json_path(command)
+    if json_path is None:
         errors.append(f"commands.{field} must include --json <benchmarks/results/...> for accepted artifacts")
         return
-    json_path = json_match.group(1).strip("'\"")
     _validate_benchmark_results_artifact_path(f"commands.{field} --json path", json_path, errors)
+
+
+def _validate_command_json_matches_artifact_path(
+    command: str,
+    *,
+    field: str,
+    artifact_field: str,
+    artifact_path: Any,
+    errors: list[str],
+) -> None:
+    json_path = _command_json_path(command)
+    if json_path is None:
+        errors.append(f"commands.{field} must include --json <{artifact_field}> for accepted artifacts")
+        return
+    _validate_benchmark_results_artifact_path(f"commands.{field} --json path", json_path, errors)
+    if isinstance(artifact_path, str) and artifact_path and json_path != artifact_path:
+        errors.append(f"commands.{field} --json path must match {artifact_field} for accepted artifacts")
 
 
 def _validate_command_model_fixture_flags(command: str, *, field: str, errors: list[str]) -> None:
@@ -418,6 +441,16 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
                 concurrency = workload.get("concurrency") if isinstance(workload, Mapping) else None
                 if isinstance(concurrency, int) and not isinstance(concurrency, bool) and int(rows_match.group(1)) != concurrency:
                     errors.append("commands.correctness_reference --rows must match workload.concurrency for accepted artifacts")
+            correctness = payload.get("correctness")
+            primitive = correctness.get("primitive_batch_correctness") if isinstance(correctness, Mapping) else None
+            primitive_artifact_path = primitive.get("artifact_path") if isinstance(primitive, Mapping) else None
+            _validate_command_json_matches_artifact_path(
+                correctness_command,
+                field="correctness_reference",
+                artifact_field="correctness.primitive_batch_correctness.artifact_path",
+                artifact_path=primitive_artifact_path,
+                errors=errors,
+            )
     profiler_command = commands.get("profiler")
     if isinstance(profiler_command, str):
         if "rocprofv3" not in profiler_command or "--kernel-trace" not in profiler_command:
