@@ -2183,8 +2183,8 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
             }
         },
         "observability": {
-            "admission_timestamps": {"0": 1.0},
-            "completion_timestamps": {"0": 2.0},
+            "admission_timestamps": {"0": 1.0, "1": 1.1},
+            "completion_timestamps": {"0": 2.0, "1": 2.2},
             "request_latency_seconds": {"p50": 1.0, "p95": 1.25},
             "per_request": {
                 "0": {
@@ -2196,7 +2196,17 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
                     "bucket_key": "decode:c=2:ctx=512:mask=11",
                     "admission_blocked_reason": None,
                     "finish_reason": "length",
-                }
+                },
+                "1": {
+                    "queue_seconds": 0.15,
+                    "prefill_seconds": 0.25,
+                    "decode_seconds": 0.35,
+                    "kv_pages_owned": 2,
+                    "kv_pages_peak": 3,
+                    "bucket_key": "decode:c=2:ctx=512:mask=11",
+                    "admission_blocked_reason": None,
+                    "finish_reason": "length",
+                },
             },
         },
         "measurements": {
@@ -2348,12 +2358,27 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
 
     missing_per_request = dict(accepted)
     missing_per_request["observability"] = {
-        "admission_timestamps": {"0": 1.0},
-        "completion_timestamps": {"0": 2.0},
+        "admission_timestamps": {"0": 1.0, "1": 1.1},
+        "completion_timestamps": {"0": 2.0, "1": 2.2},
         "request_latency_seconds": {"p50": 1.0, "p95": 1.25},
     }
     with pytest.raises(ValueError, match="per_request"):
         validate_cn_diagnostic_artifact_payload(missing_per_request)
+
+    short_admission_timestamps = json.loads(json.dumps(accepted))
+    short_admission_timestamps["observability"]["admission_timestamps"].pop("1")
+    with pytest.raises(ValueError, match="admission_timestamps length must match workload.concurrency"):
+        validate_cn_diagnostic_artifact_payload(short_admission_timestamps)
+
+    short_completion_timestamps = json.loads(json.dumps(accepted))
+    short_completion_timestamps["observability"]["completion_timestamps"].pop("1")
+    with pytest.raises(ValueError, match="completion_timestamps length must match workload.concurrency"):
+        validate_cn_diagnostic_artifact_payload(short_completion_timestamps)
+
+    short_per_request = json.loads(json.dumps(accepted))
+    short_per_request["observability"]["per_request"].pop("1")
+    with pytest.raises(ValueError, match="per_request length must match workload.concurrency"):
+        validate_cn_diagnostic_artifact_payload(short_per_request)
 
     missing_pool = dict(accepted)
     missing_pool["memory"] = {

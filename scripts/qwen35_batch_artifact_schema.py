@@ -131,9 +131,16 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
         errors.append("accepted retained artifact must set performance_claim=true")
 
     observability = _mapping_at(payload, "observability", errors)
+    workload = _mapping_at(payload, "workload", errors)
+    concurrency = workload.get("concurrency")
+    concurrency_valid = isinstance(concurrency, int) and not isinstance(concurrency, bool) and concurrency > 1
     for field in _REQUIRED_ACCEPTED_OBSERVABILITY_FIELDS:
         if not isinstance(observability.get(field), Mapping):
             errors.append(f"observability.{field} must be an object for accepted artifacts")
+    for field in ("admission_timestamps", "completion_timestamps"):
+        row_map = observability.get(field)
+        if concurrency_valid and isinstance(row_map, Mapping) and len(row_map) != concurrency:
+            errors.append(f"observability.{field} length must match workload.concurrency for accepted artifacts")
     latency = observability.get("request_latency_seconds")
     if isinstance(latency, Mapping):
         if not _is_number(latency.get("p50")):
@@ -144,6 +151,8 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
     if not isinstance(per_request, Mapping) or not per_request:
         errors.append("observability.per_request must be a non-empty object for accepted artifacts")
     else:
+        if concurrency_valid and len(per_request) != concurrency:
+            errors.append("observability.per_request length must match workload.concurrency for accepted artifacts")
         for row in per_request.values():
             _valid_request_observability(row, errors)
 
