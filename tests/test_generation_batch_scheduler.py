@@ -2233,9 +2233,9 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
                 "git rev-parse HEAD",
                 "git diff --quiet",
             ],
-            "benchmark": "python3 scripts/qwen35_batch_retained_bench.py --model /models/test-qwen35 --fixture fixtures/qwen35.json --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json benchmarks/results/accepted-c2.json",
+            "benchmark": "python3 scripts/qwen35_batch_retained_bench.py --model /models/test-qwen35 --fixture fixtures/qwen35.json --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json benchmarks/results/accepted-c2.json --c1-baseline-json benchmarks/results/c1.json --serial-bridge-json benchmarks/results/serial-c2.json --primitive-correctness-json benchmarks/results/primitive-c2.json",
             "correctness_reference": "inline generated-token equality vs independent c=1 plus python3 scripts/qwen35_batch_correctness.py --rows 2 --json benchmarks/results/primitive-c2.json",
-            "profiler": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile -- python3 scripts/qwen35_batch_retained_bench.py --model /models/test-qwen35 --fixture fixtures/qwen35.json --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --compiler-version-file benchmarks/results/hipcc-version.txt --require-cached-build --json benchmarks/results/accepted-c2.json --profiler-json benchmarks/results/profiler-c2.json",
+            "profiler": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile -- python3 scripts/qwen35_batch_retained_bench.py --model /models/test-qwen35 --fixture fixtures/qwen35.json --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --compiler-version-file benchmarks/results/hipcc-version.txt --require-cached-build --json benchmarks/results/accepted-c2.json --c1-baseline-json benchmarks/results/c1.json --serial-bridge-json benchmarks/results/serial-c2.json --primitive-correctness-json benchmarks/results/primitive-c2.json --profiler-json benchmarks/results/profiler-c2.json",
         },
         "profiler": {
             "artifact_path": "benchmarks/results/profiler-c2.json",
@@ -2791,6 +2791,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     with pytest.raises(ValueError, match="commands.benchmark --json path must be under benchmarks/results"):
         validate_cn_diagnostic_artifact_payload(tmp_benchmark_json)
 
+    missing_benchmark_c1_baseline = json.loads(json.dumps(accepted))
+    missing_benchmark_c1_baseline["commands"]["benchmark"] = missing_benchmark_c1_baseline["commands"]["benchmark"].replace(" --c1-baseline-json benchmarks/results/c1.json", "")
+    with pytest.raises(ValueError, match="commands.benchmark must include --c1-baseline-json"):
+        validate_cn_diagnostic_artifact_payload(missing_benchmark_c1_baseline)
+
+    mismatched_benchmark_serial_baseline = json.loads(json.dumps(accepted))
+    mismatched_benchmark_serial_baseline["commands"]["benchmark"] = mismatched_benchmark_serial_baseline["commands"]["benchmark"].replace("benchmarks/results/serial-c2.json", "benchmarks/results/other-serial-c2.json")
+    with pytest.raises(ValueError, match="commands.benchmark --serial-bridge-json path must match scaling.serial_bridge_baseline.artifact_path"):
+        validate_cn_diagnostic_artifact_payload(mismatched_benchmark_serial_baseline)
+
     missing_benchmark_batch_size = json.loads(json.dumps(accepted))
     missing_benchmark_batch_size["commands"]["benchmark"] = "python3 scripts/qwen35_batch_retained_bench.py --prompt-length 512 --decode-tokens 128 --max-layers 40 --json accepted.json"
     with pytest.raises(ValueError, match="commands.benchmark must include --batch-size"):
@@ -2910,6 +2920,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     missing_profiler_json_reference["commands"]["profiler"] = "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json benchmarks/results/accepted-c2.json"
     with pytest.raises(ValueError, match="commands.profiler must include --profiler-json"):
         validate_cn_diagnostic_artifact_payload(missing_profiler_json_reference)
+
+    mismatched_profiler_primitive = json.loads(json.dumps(accepted))
+    mismatched_profiler_primitive["commands"]["profiler"] = mismatched_profiler_primitive["commands"]["profiler"].replace("--primitive-correctness-json benchmarks/results/primitive-c2.json", "--primitive-correctness-json benchmarks/results/other-primitive-c2.json")
+    with pytest.raises(ValueError, match="commands.profiler --primitive-correctness-json path must match correctness.primitive_batch_correctness.artifact_path"):
+        validate_cn_diagnostic_artifact_payload(mismatched_profiler_primitive)
 
     mismatched_profiler_json_reference = json.loads(json.dumps(accepted))
     mismatched_profiler_json_reference["commands"]["profiler"] = "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --compiler-version-file benchmarks/results/hipcc-version.txt --require-cached-build --json benchmarks/results/accepted-c2.json --profiler-json benchmarks/results/other-profiler-c2.json"

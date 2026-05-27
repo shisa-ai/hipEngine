@@ -85,6 +85,9 @@ _COMMAND_FIXTURE_RE = re.compile(r"(?:^|\s)--fixture(?:=|\s+)(\S+)(?=\s|$)")
 _COMMAND_PROMPT_LENGTH_RE = re.compile(r"(?:^|\s)--prompt-length(?:=|\s+)(\d+)(?=\s|$)")
 _COMMAND_JSON_RE = re.compile(r"(?:^|\s)--json(?:=|\s+)(\S+)(?=\s|$)")
 _COMMAND_PROFILER_JSON_RE = re.compile(r"(?:^|\s)--profiler-json(?:=|\s+)(\S+)(?=\s|$)")
+_COMMAND_C1_BASELINE_JSON_RE = re.compile(r"(?:^|\s)--c1-baseline-json(?:=|\s+)(\S+)(?=\s|$)")
+_COMMAND_SERIAL_BRIDGE_JSON_RE = re.compile(r"(?:^|\s)--serial-bridge-json(?:=|\s+)(\S+)(?=\s|$)")
+_COMMAND_PRIMITIVE_CORRECTNESS_JSON_RE = re.compile(r"(?:^|\s)--primitive-correctness-json(?:=|\s+)(\S+)(?=\s|$)")
 _COMMAND_COMPILER_VERSION_FILE_RE = re.compile(r"(?:^|\s)--compiler-version-file(?:=|\s+)(\S+)(?=\s|$)")
 _CORRECTNESS_ROWS_RE = re.compile(r"(?:^|\s)--rows(?:=|\s+)(\d+)(?=\s|$)")
 _FULL_COMMIT_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", re.IGNORECASE)
@@ -157,6 +160,69 @@ def _validate_command_model_fixture_flags(command: str, *, field: str, errors: l
         errors.append(f"commands.{field} must include --model for accepted artifacts")
     if _COMMAND_FIXTURE_RE.search(command) is None:
         errors.append(f"commands.{field} must include --fixture for accepted artifacts")
+
+
+def _validate_command_flag_matches_artifact_path(
+    command: str,
+    *,
+    field: str,
+    flag: str,
+    pattern: re.Pattern[str],
+    artifact_field: str,
+    artifact_path: Any,
+    errors: list[str],
+) -> None:
+    match = pattern.search(command)
+    if match is None:
+        errors.append(f"commands.{field} must include {flag} <{artifact_field}> for accepted artifacts")
+        return
+    command_path = match.group(1).strip("'\"")
+    _validate_benchmark_results_artifact_path(f"commands.{field} {flag} path", command_path, errors)
+    if isinstance(artifact_path, str) and artifact_path and command_path != artifact_path:
+        errors.append(f"commands.{field} {flag} path must match {artifact_field} for accepted artifacts")
+
+
+def _reference_artifact_paths(payload: Mapping[str, Any]) -> tuple[Any, Any, Any]:
+    correctness = payload.get("correctness")
+    primitive = correctness.get("primitive_batch_correctness") if isinstance(correctness, Mapping) else None
+    primitive_artifact_path = primitive.get("artifact_path") if isinstance(primitive, Mapping) else None
+    scaling = payload.get("scaling")
+    c1 = scaling.get("c1_baseline") if isinstance(scaling, Mapping) else None
+    serial = scaling.get("serial_bridge_baseline") if isinstance(scaling, Mapping) else None
+    c1_artifact_path = c1.get("artifact_path") if isinstance(c1, Mapping) else None
+    serial_artifact_path = serial.get("artifact_path") if isinstance(serial, Mapping) else None
+    return primitive_artifact_path, c1_artifact_path, serial_artifact_path
+
+
+def _validate_retained_benchmark_reference_paths(command: str, *, field: str, payload: Mapping[str, Any], errors: list[str]) -> None:
+    primitive_artifact_path, c1_artifact_path, serial_artifact_path = _reference_artifact_paths(payload)
+    _validate_command_flag_matches_artifact_path(
+        command,
+        field=field,
+        flag="--c1-baseline-json",
+        pattern=_COMMAND_C1_BASELINE_JSON_RE,
+        artifact_field="scaling.c1_baseline.artifact_path",
+        artifact_path=c1_artifact_path,
+        errors=errors,
+    )
+    _validate_command_flag_matches_artifact_path(
+        command,
+        field=field,
+        flag="--serial-bridge-json",
+        pattern=_COMMAND_SERIAL_BRIDGE_JSON_RE,
+        artifact_field="scaling.serial_bridge_baseline.artifact_path",
+        artifact_path=serial_artifact_path,
+        errors=errors,
+    )
+    _validate_command_flag_matches_artifact_path(
+        command,
+        field=field,
+        flag="--primitive-correctness-json",
+        pattern=_COMMAND_PRIMITIVE_CORRECTNESS_JSON_RE,
+        artifact_field="correctness.primitive_batch_correctness.artifact_path",
+        artifact_path=primitive_artifact_path,
+        errors=errors,
+    )
 
 
 def _validate_profiler_command_artifact_reference(command: str, profiler_artifact_path: str, errors: list[str]) -> None:
@@ -463,6 +529,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             _validate_command_model_fixture_flags(benchmark_command, field="benchmark", errors=errors)
             _validate_command_workload_shape(benchmark_command, field="benchmark", payload=payload, errors=errors)
             _validate_command_json_artifact_path(benchmark_command, field="benchmark", errors=errors)
+            _validate_retained_benchmark_reference_paths(benchmark_command, field="benchmark", payload=payload, errors=errors)
     correctness_command = commands.get("correctness_reference")
     if isinstance(correctness_command, str):
         if "qwen35_batch_correctness.py" not in correctness_command:
@@ -496,6 +563,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             _validate_command_model_fixture_flags(profiler_command, field="profiler", errors=errors)
             _validate_command_workload_shape(profiler_command, field="profiler", payload=payload, errors=errors)
             _validate_command_json_artifact_path(profiler_command, field="profiler", errors=errors)
+            _validate_retained_benchmark_reference_paths(profiler_command, field="profiler", payload=payload, errors=errors)
             if "--require-cached-build" not in profiler_command:
                 errors.append("commands.profiler must include --require-cached-build for accepted artifacts")
             if _COMMAND_COMPILER_VERSION_FILE_RE.search(profiler_command) is None:

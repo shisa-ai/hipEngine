@@ -915,7 +915,8 @@ roll-up/status view.
       a retained-benchmark command referencing `scripts/qwen35_batch_retained_bench.py`
       with explicit `--model` / `--fixture` plus `--batch-size`,
       `--prompt-length`, `--decode-tokens`, and `--max-layers` matching workload
-      shape fields,
+      shape fields and baseline/correctness reference paths matching the
+      retained artifact payload,
       a correctness-reference command naming `scripts/qwen35_batch_correctness.py`
       with `--rows` matching `workload.concurrency` and `--json` matching
       `correctness.primitive_batch_correctness.artifact_path`, and a concrete
