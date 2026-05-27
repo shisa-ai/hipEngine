@@ -888,8 +888,8 @@ roll-up/status view.
       validation unless they include fully native batch-execution metadata,
       numeric aggregate/per-request throughput, all required scaling ratios vs
       both c=1 and the serial bridge, decode-step timing samples,
-      non-empty benchmark and profiler commands, non-empty hardware,
-      commit/dirty-state software fields, and captured profiler evidence with
+      non-empty benchmark and profiler commands, concrete non-empty hardware
+      `gpu`/`arch` fields, commit/dirty-state software fields, and captured profiler evidence with
       expected kernels present. The scoreboard item remains open until accepted
       artifacts exist and the benchmark rollups are updated.
 

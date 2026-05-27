@@ -2169,6 +2169,17 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     with pytest.raises(ValueError, match="expected_kernels_present"):
         validate_cn_diagnostic_artifact_payload(missing_expected_kernel)
 
+    empty_hardware = json.loads(json.dumps(accepted))
+    empty_hardware["hardware"] = {}
+    with pytest.raises(ValueError, match="hardware.gpu|hardware.arch"):
+        validate_cn_diagnostic_artifact_payload(empty_hardware)
+
+    for hardware_field in ("gpu", "arch"):
+        missing_hardware_field = json.loads(json.dumps(accepted))
+        missing_hardware_field["hardware"].pop(hardware_field)
+        with pytest.raises(ValueError, match=f"hardware.{hardware_field}"):
+            validate_cn_diagnostic_artifact_payload(missing_hardware_field)
+
     missing_dirty_state = json.loads(json.dumps(accepted))
     missing_dirty_state["software"].pop("hipengine_dirty")
     with pytest.raises(ValueError, match="hipengine_dirty"):

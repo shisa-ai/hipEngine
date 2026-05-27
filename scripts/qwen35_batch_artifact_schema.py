@@ -41,6 +41,10 @@ _REQUIRED_ACCEPTED_POOL_COUNTER_FIELDS = (
     "free_pages",
     "refcounted_pages",
 )
+_REQUIRED_ACCEPTED_HARDWARE_FIELDS = (
+    "gpu",
+    "arch",
+)
 _REQUIRED_ACCEPTED_SCALING_BASELINES = (
     "c1_baseline",
     "serial_bridge_baseline",
@@ -196,6 +200,9 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     hardware = _mapping_at(payload, "hardware", errors)
     if not hardware:
         errors.append("hardware must be a non-empty object for accepted artifacts")
+    for field in _REQUIRED_ACCEPTED_HARDWARE_FIELDS:
+        if not isinstance(hardware.get(field), str) or not hardware.get(field):
+            errors.append(f"hardware.{field} must be a non-empty string for accepted artifacts")
     software = _mapping_at(payload, "software", errors)
     if not isinstance(software.get("hipengine_commit"), str) or not software.get("hipengine_commit"):
         errors.append("software.hipengine_commit must be a non-empty string for accepted artifacts")
