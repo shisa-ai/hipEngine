@@ -21,7 +21,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL = (
@@ -1293,11 +1293,48 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
         "failed_postconditions": _failed_postconditions(entries),
         "status": _summary_status(entries),
     }
+    validate_sweep_summary(summary)
     if args.summary_json is not None:
         path = Path(args.summary_json)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(summary, indent=2) + "\n")
     return summary
+
+
+def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
+    errors: list[str] = []
+    commands = summary.get("commands")
+    if not isinstance(commands, list):
+        errors.append("commands must be a list")
+        commands = []
+    entries: list[dict[str, Any]] = []
+    for command in commands:
+        if isinstance(command, dict):
+            entries.append(command)
+        else:
+            errors.append("commands entries must be objects")
+            break
+    if entries:
+        expected_postcondition_counts = _retained_postcondition_counts(entries)
+        if summary.get("retained_postcondition_counts") != expected_postcondition_counts:
+            errors.append("retained_postcondition_counts must match commands.postconditions")
+        expected_failed_postconditions = _failed_postconditions(entries)
+        if summary.get("failed_postconditions") != expected_failed_postconditions:
+            errors.append("failed_postconditions must match commands.postconditions")
+        for entry in entries:
+            postconditions = entry.get("postconditions")
+            if not isinstance(postconditions, list):
+                continue
+            failed_postconditions = [
+                postcondition
+                for postcondition in postconditions
+                if isinstance(postcondition, dict) and postcondition.get("passed") is not True
+            ]
+            if failed_postconditions and entry.get("postcondition") != failed_postconditions[0]:
+                errors.append("commands[].postcondition must match the first failed postcondition")
+                break
+    if errors:
+        raise ValueError("invalid c-sweep summary: " + "; ".join(errors))
 
 
 def _summary_options(args: argparse.Namespace) -> dict[str, Any]:

@@ -1985,9 +1985,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         }
     ]
     persisted = json.loads(summary_path.read_text())
+    c_sweep.validate_sweep_summary(persisted)
     assert persisted["retained_postcondition_counts"] == summary["retained_postcondition_counts"]
     assert persisted["failed_postconditions"] == summary["failed_postconditions"]
     assert persisted["commands"][-1]["postconditions"] == native["postconditions"]
+    tampered_postcondition_counts = json.loads(json.dumps(persisted))
+    tampered_postcondition_counts["retained_postcondition_counts"] = {}
+    with pytest.raises(ValueError, match="retained_postcondition_counts must match commands.postconditions"):
+        c_sweep.validate_sweep_summary(tampered_postcondition_counts)
     preconditions_by_kind = {item["kind"]: item for item in native["preconditions"]}
     assert preconditions_by_kind["c1_baseline"] == {
         "kind": "c1_baseline",
@@ -2253,6 +2258,15 @@ def test_batch_c_sweep_fails_retained_row_on_profiler_synthesis_mismatch(tmp_pat
     assert native["status"] == "failed"
     assert native["postcondition"] == native["postconditions"][0]
     assert native["output_tail"] == "retained artifact profiler.synthesized_fields does not match profiler precondition synthesized fields"
+    c_sweep.validate_sweep_summary(summary)
+    tampered_failed_postconditions = json.loads(json.dumps(summary))
+    tampered_failed_postconditions["failed_postconditions"] = []
+    with pytest.raises(ValueError, match="failed_postconditions must match commands.postconditions"):
+        c_sweep.validate_sweep_summary(tampered_failed_postconditions)
+    tampered_singular_postcondition = json.loads(json.dumps(summary))
+    tampered_singular_postcondition["commands"][-1].pop("postcondition")
+    with pytest.raises(ValueError, match=r"commands\[\]\.postcondition must match"):
+        c_sweep.validate_sweep_summary(tampered_singular_postcondition)
 
 
 def test_batch_c_sweep_can_plan_int8_blocked_diagnostics(tmp_path: Path) -> None:
