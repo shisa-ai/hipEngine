@@ -2039,6 +2039,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_artifact_path["commands"][-1]["artifact_path"] = str(output_dir / "other-native-diagnostic-c2.json")
     with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match commands\[\]\.argv --json"):
         c_sweep.validate_sweep_summary(tampered_artifact_path)
+    tampered_artifact_output_dir = json.loads(json.dumps(persisted))
+    primitive_row = tampered_artifact_output_dir["commands"][0]
+    outside_artifact = str(tmp_path / "outside" / "primitive-c2.json")
+    primitive_row["artifact_path"] = outside_artifact
+    primitive_row["argv"][primitive_row["argv"].index("--json") + 1] = outside_artifact
+    primitive_row["command"] = shlex.join(primitive_row["argv"])
+    with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must be under output_dir"):
+        c_sweep.validate_sweep_summary(tampered_artifact_output_dir)
     tampered_argv_batch_size = json.loads(json.dumps(persisted))
     retained_argv = tampered_argv_batch_size["commands"][-1]["argv"]
     retained_argv[retained_argv.index("--batch-size") + 1] = "3"

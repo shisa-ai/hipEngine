@@ -1388,6 +1388,15 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if json_path != entry.get("artifact_path"):
                 errors.append("commands[].artifact_path must match commands[].argv --json")
                 break
+            output_dir_text = summary.get("output_dir")
+            if isinstance(output_dir_text, str) and output_dir_text:
+                artifact_path = Path(entry["artifact_path"])
+                output_dir_path = Path(output_dir_text)
+                artifact_abs = (artifact_path if artifact_path.is_absolute() else REPO_ROOT / artifact_path).resolve()
+                output_dir_abs = (output_dir_path if output_dir_path.is_absolute() else REPO_ROOT / output_dir_path).resolve()
+                if not artifact_abs.is_relative_to(output_dir_abs):
+                    errors.append("commands[].artifact_path must be under output_dir")
+                    break
             declared_batch_size: int | None = None
             batch_arg_error = False
             for batch_flag in ("--batch-size", "--rows"):
