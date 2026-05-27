@@ -25,6 +25,25 @@ class ProjectionKernelSelection:
     quant: str
     variant: str
 
+    @classmethod
+    def from_json_dict(cls, payload: Mapping[str, Any]) -> "ProjectionKernelSelection":
+        errors: list[str] = []
+        layer = payload.get("layer")
+        if not isinstance(layer, str) or not layer:
+            errors.append("selection.layer must be a non-empty string")
+        quant = payload.get("quant")
+        if not isinstance(quant, str) or not quant:
+            errors.append("selection.quant must be a non-empty string")
+        variant = payload.get("variant")
+        if not isinstance(variant, str) or not variant:
+            errors.append("selection.variant must be a non-empty string")
+        if errors:
+            raise ValueError("invalid projection kernel selection: " + "; ".join(errors))
+        return cls(layer=str(layer), quant=str(quant), variant=str(variant))
+
+    def to_json_dict(self) -> dict[str, str]:
+        return {"layer": self.layer, "quant": self.quant, "variant": self.variant}
+
     def key(self, backend: str) -> KernelKey:
         return KernelKey(backend, self.layer, self.quant, self.variant)
 
@@ -86,6 +105,63 @@ class ProjectionDispatchCandidate:
     max_rows: int | None = None
     evidence: ProjectionDispatchEvidence | None = None
 
+    @classmethod
+    def from_json_dict(cls, payload: Mapping[str, Any]) -> "ProjectionDispatchCandidate":
+        """Load a c-aware projection candidate from retained artifact metadata."""
+
+        errors: list[str] = []
+        name = payload.get("name")
+        if not isinstance(name, str) or not name:
+            errors.append("name must be a non-empty string")
+        selection_payload = payload.get("selection")
+        selection: ProjectionKernelSelection | None = None
+        if not isinstance(selection_payload, Mapping):
+            errors.append("selection must be an object")
+        else:
+            try:
+                selection = ProjectionKernelSelection.from_json_dict(selection_payload)
+            except ValueError as exc:
+                errors.append(str(exc))
+        min_rows = payload.get("min_rows", 2)
+        if not isinstance(min_rows, int) or isinstance(min_rows, bool) or min_rows <= 0:
+            errors.append("min_rows must be a positive int")
+        max_rows = payload.get("max_rows")
+        if max_rows is not None and (not isinstance(max_rows, int) or isinstance(max_rows, bool) or max_rows <= 0):
+            errors.append("max_rows must be a positive int or null")
+        if isinstance(min_rows, int) and isinstance(max_rows, int) and not isinstance(min_rows, bool) and not isinstance(max_rows, bool) and max_rows < min_rows:
+            errors.append("max_rows must be >= min_rows")
+        evidence_payload = payload.get("evidence")
+        evidence: ProjectionDispatchEvidence | None = None
+        if evidence_payload is not None:
+            if not isinstance(evidence_payload, Mapping):
+                errors.append("evidence must be an object or null")
+            else:
+                try:
+                    evidence = ProjectionDispatchEvidence.from_json_dict(evidence_payload)
+                except ValueError as exc:
+                    errors.append(str(exc))
+        if errors:
+            raise ValueError("invalid projection dispatch candidate: " + "; ".join(errors))
+        assert isinstance(name, str)
+        assert isinstance(min_rows, int) and not isinstance(min_rows, bool)
+        assert selection is not None
+        return cls(
+            name=name,
+            selection=selection,
+            min_rows=min_rows,
+            max_rows=None if max_rows is None else int(max_rows),
+            evidence=evidence,
+        )
+
+    def to_json_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "selection": self.selection.to_json_dict(),
+            "min_rows": self.min_rows,
+            "max_rows": self.max_rows,
+            "evidence": None if self.evidence is None else self.evidence.to_json_dict(),
+        }
+
     def applies_to(self, rows: int) -> bool:
         return rows >= self.min_rows and (self.max_rows is None or rows <= self.max_rows)
 
@@ -107,11 +183,7 @@ class ProjectionDispatchDecision:
             "rows": self.rows,
             "selected_candidate": self.selected_candidate,
             "path": self.path,
-            "selection": {
-                "layer": self.selection.layer,
-                "quant": self.selection.quant,
-                "variant": self.selection.variant,
-            },
+            "selection": self.selection.to_json_dict(),
             "throughput_claim_eligible": self.throughput_claim_eligible,
             "blockers": list(self.blockers),
             "evidence": None if self.evidence is None else self.evidence.to_json_dict(),

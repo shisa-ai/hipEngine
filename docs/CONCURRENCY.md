@@ -716,10 +716,11 @@ roll-up/status view.
       c>N candidates require accepted benchmark evidence with aggregate and
       per-request speedups over row-GEMV, missing/slow/rejected evidence falls
       back to row-GEMV with explicit blockers, and
-      `ProjectionDispatchEvidence.from_json_dict(...)` schema-checks retained
-      evidence blocks before the policy can consume them. The item remains open
-      until runtime projection call sites are wired to this policy and retained
-      benchmark artifacts provide the required ratios.
+      `ProjectionDispatchEvidence.from_json_dict(...)` plus
+      `ProjectionDispatchCandidate.from_json_dict(...)` schema-check retained
+      candidate/evidence blocks before the policy can consume them. The item
+      remains open until runtime projection call sites are wired to this policy
+      and retained benchmark artifacts provide the required ratios.
 - [x] **C3.5 GGUF c>N template.** Port the Qwen/PARO equality template to
       GGUF Q4_K/Q5_K/Q6_K/Q8_0. Acceptance: at least one GGUF c=2 diagnostic
       reaches an unambiguous `eq_ok`, `blocked`, or `rejected_correctness`

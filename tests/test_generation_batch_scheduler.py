@@ -854,6 +854,36 @@ def test_projection_dispatch_evidence_loads_schema_checked_artifact_blocks() -> 
         ProjectionDispatchEvidence.from_json_dict({**payload, "accepted": "yes"})
 
 
+def test_projection_dispatch_candidate_loads_schema_checked_artifact_blocks() -> None:
+    payload = {
+        "name": "wmma_caware",
+        "selection": {"layer": "linear", "quant": "w4_paro", "variant": "wmma_caware"},
+        "min_rows": 2,
+        "max_rows": 8,
+        "evidence": {
+            "artifact_path": "benchmarks/results/projection-wmma-c4.json",
+            "aggregate_vs_row_gemv": 1.35,
+            "per_request_vs_row_gemv": 1.10,
+            "accepted": True,
+        },
+    }
+
+    candidate = ProjectionDispatchCandidate.from_json_dict(payload)
+
+    assert candidate.to_json_dict() == payload
+    assert candidate.applies_to(4)
+    assert not candidate.applies_to(1)
+    assert not candidate.applies_to(16)
+    with pytest.raises(ValueError, match="selection.quant must be a non-empty string"):
+        ProjectionDispatchCandidate.from_json_dict({**payload, "selection": {"layer": "linear", "variant": "wmma_caware"}})
+    with pytest.raises(ValueError, match="max_rows must be >= min_rows"):
+        ProjectionDispatchCandidate.from_json_dict({**payload, "min_rows": 8, "max_rows": 4})
+    with pytest.raises(ValueError, match="aggregate_vs_row_gemv must be positive numeric"):
+        ProjectionDispatchCandidate.from_json_dict(
+            {**payload, "evidence": {**payload["evidence"], "aggregate_vs_row_gemv": 0.0}}
+        )
+
+
 def test_projection_dispatch_requires_accepted_cN_speedup_evidence() -> None:
     row_gemv = ProjectionKernelSelection("linear", "w4_paro", "row_gemv")
     missing = ProjectionDispatchCandidate(
