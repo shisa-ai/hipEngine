@@ -161,6 +161,11 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
     else:
         if concurrency_valid and len(per_request) != concurrency:
             errors.append("observability.per_request length must match workload.concurrency for accepted artifacts")
+        per_request_keys = set(per_request.keys())
+        for field in ("admission_timestamps", "completion_timestamps"):
+            row_map = observability.get(field)
+            if isinstance(row_map, Mapping) and set(row_map.keys()) != per_request_keys:
+                errors.append(f"observability.{field} keys must match observability.per_request keys for accepted artifacts")
         for row in per_request.values():
             _valid_request_observability(row, errors)
 

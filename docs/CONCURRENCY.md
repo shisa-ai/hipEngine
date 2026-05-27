@@ -897,9 +897,10 @@ roll-up/status view.
       validation unless they include fully native batch-execution metadata,
       generated-token equality sequence lists matching `workload.concurrency`,
       `workload.concurrency` matching the primitive correctness row count,
-      full-row admission/completion/per-request observability and latency samples
-      for every row in `workload.concurrency`, positive aggregate/per-request
-      throughput whose native scaling copy matches the primary measurements, all
+      full-row admission/completion/per-request observability with matching row
+      ids and latency samples for every row in `workload.concurrency`, positive
+      aggregate/per-request throughput whose native scaling copy matches the
+      primary measurements, all
       required positive scaling ratios that mathematically match usable same-shape
       c=1 and usable same-shape/same-concurrency serial bridge
       baselines,

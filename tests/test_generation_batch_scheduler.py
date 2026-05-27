@@ -2395,6 +2395,12 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     with pytest.raises(ValueError, match="completion_timestamps length must match workload.concurrency"):
         validate_cn_diagnostic_artifact_payload(short_completion_timestamps)
 
+    mismatched_observability_keys = json.loads(json.dumps(accepted))
+    mismatched_observability_keys["observability"]["completion_timestamps"].pop("1")
+    mismatched_observability_keys["observability"]["completion_timestamps"]["2"] = 2.3
+    with pytest.raises(ValueError, match="completion_timestamps keys must match observability.per_request keys"):
+        validate_cn_diagnostic_artifact_payload(mismatched_observability_keys)
+
     short_per_request = json.loads(json.dumps(accepted))
     short_per_request["observability"]["per_request"].pop("1")
     with pytest.raises(ValueError, match="per_request length must match workload.concurrency"):
