@@ -569,6 +569,14 @@ def test_batch_c_sweep_profiler_precondition_synthesizes_trace_fields_from_csv(t
 
     assert precondition["passed"] is True
     assert precondition["profiler_trace_kernel_names"] == ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"]
+    assert precondition["profiler_trace_synthesized_fields"] == [
+        "trace_kernel_names",
+        "kernel_durations_ns",
+        "total_kernel_duration_ns",
+        "kernel_duration_shares",
+        "kernel_duration_categories_ns",
+        "kernel_duration_category_shares",
+    ]
     assert precondition["kernel_durations_ns"] == {"qwen35_batch_decode": 150.0, "qwen35_batch_decode_wmma_caware": 200.0}
     assert precondition["total_kernel_duration_ns"] == 350.0
     assert precondition["kernel_duration_categories_ns"] == {
@@ -2001,6 +2009,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         "profiler_trace_dir": str(output_dir / "profile-c2"),
         "profiler_trace_files": [str(output_dir / "profile-c2" / "hipengine_kernel_trace.csv")],
         "profiler_trace_kernel_names": ["qwen35_batch_decode"],
+        "profiler_trace_synthesized_fields": [],
         "retained_artifact_path": str(output_dir / "native-diagnostic-c2.json"),
         "c1_baseline_artifact_path": str(output_dir / "native-baseline-c1.json"),
         "serial_bridge_artifact_path": str(output_dir / "serial-bridge-c2.json"),
