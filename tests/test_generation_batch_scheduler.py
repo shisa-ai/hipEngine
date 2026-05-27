@@ -2047,6 +2047,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     primitive_row["command"] = shlex.join(primitive_row["argv"])
     with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must be under output_dir"):
         c_sweep.validate_sweep_summary(tampered_artifact_output_dir)
+    tampered_artifact_filename = json.loads(json.dumps(persisted))
+    primitive_row = tampered_artifact_filename["commands"][0]
+    wrong_filename = str(output_dir / "other-primitive-c2.json")
+    primitive_row["artifact_path"] = wrong_filename
+    primitive_row["argv"][primitive_row["argv"].index("--json") + 1] = wrong_filename
+    primitive_row["command"] = shlex.join(primitive_row["argv"])
+    with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match category/batch-size filename"):
+        c_sweep.validate_sweep_summary(tampered_artifact_filename)
     tampered_argv_batch_size = json.loads(json.dumps(persisted))
     retained_argv = tampered_argv_batch_size["commands"][-1]["argv"]
     retained_argv[retained_argv.index("--batch-size") + 1] = "3"
@@ -2054,7 +2062,12 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     with pytest.raises(ValueError, match=r"commands\[\]\.batch_size must match commands\[\]\.argv"):
         c_sweep.validate_sweep_summary(tampered_argv_batch_size)
     tampered_command_category = json.loads(json.dumps(persisted))
-    tampered_command_category["commands"][-1]["category"] = "serial_bridge"
+    retained_row = tampered_command_category["commands"][-1]
+    retained_row["category"] = "serial_bridge"
+    serial_artifact = str(output_dir / "serial-bridge-c2.json")
+    retained_row["artifact_path"] = serial_artifact
+    retained_row["argv"][retained_row["argv"].index("--json") + 1] = serial_artifact
+    retained_row["command"] = shlex.join(retained_row["argv"])
     with pytest.raises(ValueError, match=r"commands\[\]\.category must match commands\[\]\.argv script"):
         c_sweep.validate_sweep_summary(tampered_command_category)
     tampered_returncode = json.loads(json.dumps(persisted))
@@ -2065,14 +2078,12 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_passed_returncode["commands"][-1]["returncode"] = 1
     with pytest.raises(ValueError, match=r"commands\[\]\.status passed requires returncode 0"):
         c_sweep.validate_sweep_summary(tampered_passed_returncode)
-    tampered_passed_artifact = json.loads(json.dumps(persisted))
-    retained_row = tampered_passed_artifact["commands"][-1]
-    missing_artifact = str(output_dir / "missing-native-diagnostic-c2.json")
-    retained_row["artifact_path"] = missing_artifact
-    retained_row["argv"][retained_row["argv"].index("--json") + 1] = missing_artifact
-    retained_row["command"] = shlex.join(retained_row["argv"])
+    native_artifact_path = output_dir / "native-diagnostic-c2.json"
+    native_artifact_payload = native_artifact_path.read_text()
+    native_artifact_path.unlink()
     with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must exist for passed native diagnostics"):
-        c_sweep.validate_sweep_summary(tampered_passed_artifact)
+        c_sweep.validate_sweep_summary(persisted)
+    native_artifact_path.write_text(native_artifact_payload)
     tampered_duration = json.loads(json.dumps(persisted))
     tampered_duration["commands"][-1]["duration_seconds"] = -1.0
     with pytest.raises(ValueError, match=r"commands\[\]\.duration_seconds must be a non-negative number"):

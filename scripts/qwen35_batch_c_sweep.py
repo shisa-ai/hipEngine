@@ -1397,6 +1397,20 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 if not artifact_abs.is_relative_to(output_dir_abs):
                     errors.append("commands[].artifact_path must be under output_dir")
                     break
+                category = entry.get("category")
+                batch_size = entry.get("batch_size")
+                expected_artifact_name = None
+                if category == "primitive":
+                    expected_artifact_name = f"primitive-c{batch_size}.json"
+                elif category == "serial_bridge":
+                    expected_artifact_name = f"serial-bridge-c{batch_size}.json"
+                elif category == "native_diagnostic":
+                    expected_artifact_name = "native-baseline-c1.json" if batch_size == 1 else f"native-diagnostic-c{batch_size}.json"
+                elif category == "int8_native_diagnostic":
+                    expected_artifact_name = f"int8-native-diagnostic-c{batch_size}.json"
+                if expected_artifact_name is not None and artifact_abs != (output_dir_abs / expected_artifact_name).resolve():
+                    errors.append("commands[].artifact_path must match category/batch-size filename")
+                    break
             declared_batch_size: int | None = None
             batch_arg_error = False
             for batch_flag in ("--batch-size", "--rows"):
