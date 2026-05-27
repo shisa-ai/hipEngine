@@ -1082,6 +1082,23 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         "artifact_path": str(output_dir / "profiler-c2.json"),
         "passed": True,
         "reason": None,
+        "cpu_side_total_seconds": 10.0,
+        "cpu_side_bottlenecks_seconds": {
+            "load": 1.0,
+            "prefill": 2.0,
+            "warmup_decode": 0.0,
+            "decode": 7.0,
+            "validation": 0.0,
+            "other": 0.0,
+        },
+        "cpu_side_bottleneck_shares": {
+            "load": 0.1,
+            "prefill": 0.2,
+            "warmup_decode": 0.0,
+            "decode": 0.7,
+            "validation": 0.0,
+            "other": 0.0,
+        },
     }
     assert "precondition" not in native
 

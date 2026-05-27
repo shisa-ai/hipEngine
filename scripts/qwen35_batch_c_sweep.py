@@ -554,12 +554,27 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                     reasons.append(f"kernel_durations_ns.{kernel_name} is missing or non-positive numeric")
                     break
         _validate_profiler_cpu_side_bottlenecks(profiler, reasons)
-    return {
+    result: dict[str, Any] = {
         "kind": "profiler_summary",
         "artifact_path": str(profiler_path),
         "passed": not reasons,
         "reason": None if not reasons else "; ".join(reasons),
     }
+    if not reasons and isinstance(profiler, dict):
+        result.update(
+            {
+                "cpu_side_total_seconds": float(profiler["cpu_side_total_seconds"]),
+                "cpu_side_bottlenecks_seconds": {
+                    category: float(profiler["cpu_side_bottlenecks_seconds"][category])
+                    for category in _PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES
+                },
+                "cpu_side_bottleneck_shares": {
+                    category: float(profiler["cpu_side_bottleneck_shares"][category])
+                    for category in _PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES
+                },
+            }
+        )
+    return result
 
 
 def _native_retained_preconditions(command: SweepCommand) -> tuple[dict[str, Any], ...] | None:
