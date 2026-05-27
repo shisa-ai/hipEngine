@@ -56,6 +56,11 @@ _REQUIRED_ACCEPTED_COMMAND_FIELDS = (
     "correctness_reference",
     "profiler",
 )
+_REQUIRED_ACCEPTED_ENVIRONMENT_COMMAND_FRAGMENTS = (
+    "rocminfo",
+    "rocm-smi",
+    "hipcc --version",
+)
 _REQUIRED_ACCEPTED_SCALING_BASELINES = (
     "c1_baseline",
     "serial_bridge_baseline",
@@ -310,6 +315,14 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     for field in _REQUIRED_ACCEPTED_COMMAND_FIELDS:
         if not isinstance(commands.get(field), str) or not commands.get(field):
             errors.append(f"commands.{field} must be a non-empty string for accepted artifacts")
+    environment_commands = commands.get("environment")
+    if not _is_nonempty_string_list(environment_commands):
+        errors.append("commands.environment must be a non-empty string list for accepted artifacts")
+    elif isinstance(environment_commands, list):
+        joined_environment_commands = "\n".join(environment_commands)
+        for fragment in _REQUIRED_ACCEPTED_ENVIRONMENT_COMMAND_FRAGMENTS:
+            if fragment not in joined_environment_commands:
+                errors.append(f"commands.environment must include {fragment} for accepted artifacts")
     benchmark_command = commands.get("benchmark")
     if isinstance(benchmark_command, str):
         if "qwen35_batch_retained_bench.py" not in benchmark_command:

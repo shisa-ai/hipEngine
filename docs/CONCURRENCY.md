@@ -919,6 +919,7 @@ roll-up/status view.
       `rocprofv3 --kernel-trace` profiler command targeting
       `scripts/qwen35_batch_retained_bench.py` with the same retained shape flags,
       primitive/scaling artifact paths under `benchmarks/results/`,
+      environment capture commands for `rocminfo`, `rocm-smi`, and `hipcc --version`,
       concrete non-empty hardware `gpu`/`arch` fields,
       clean full-commit software fields (`software.hipengine_dirty == false`)
       plus non-empty `hipcc_version`, and captured profiler evidence with
