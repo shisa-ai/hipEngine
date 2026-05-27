@@ -1072,6 +1072,24 @@ def test_batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head() -> No
     assert "batched LM-head requires green c>N generated-token equality evidence" in blocked.blockers
     assert "batched LM-head requires an equality artifact path" in blocked.blockers
 
+    tmp_artifact = plan_batch_sampler_dispatch(
+        rows=2,
+        requested_mode="batched_lm_head",
+        c2_equality_green=True,
+        equality_artifact="/tmp/qwen35-c2-eq.json",
+    )
+    assert tmp_artifact.mode is BatchSamplerMode.SERIAL_LM_HEAD
+    assert "batched LM-head equality artifact path must be under benchmarks/results" in tmp_artifact.blockers
+
+    traversal_artifact = plan_batch_sampler_dispatch(
+        rows=2,
+        requested_mode="batched_lm_head",
+        c2_equality_green=True,
+        equality_artifact="benchmarks/results/../tmp/qwen35-c2-eq.json",
+    )
+    assert traversal_artifact.mode is BatchSamplerMode.SERIAL_LM_HEAD
+    assert "batched LM-head equality artifact path must be under benchmarks/results" in traversal_artifact.blockers
+
     allowed = plan_batch_sampler_dispatch(
         rows=8,
         requested_mode="batched_lm_head",

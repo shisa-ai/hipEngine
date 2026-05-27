@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import PurePosixPath
 from typing import Any
 
 
@@ -53,6 +54,11 @@ def _sampler_mode(value: BatchSamplerMode | str) -> BatchSamplerMode:
         raise ValueError(f"unknown batch sampler mode {value!r}; expected one of: {valid}") from exc
 
 
+def _is_retained_artifact_path(value: str) -> bool:
+    path = PurePosixPath(value)
+    return not path.is_absolute() and len(path.parts) >= 3 and path.parts[:2] == ("benchmarks", "results") and ".." not in path.parts
+
+
 def plan_batch_sampler_dispatch(
     *,
     rows: int,
@@ -93,10 +99,13 @@ def plan_batch_sampler_dispatch(
             blockers=(),
         )
     blockers: list[str] = []
+    artifact = str(equality_artifact).strip() if equality_artifact else None
     if not c2_equality_green:
         blockers.append("batched LM-head requires green c>N generated-token equality evidence")
-    if not equality_artifact:
+    if not artifact:
         blockers.append("batched LM-head requires an equality artifact path")
+    elif not _is_retained_artifact_path(artifact):
+        blockers.append("batched LM-head equality artifact path must be under benchmarks/results")
     if blockers:
         return BatchSamplerDispatchDecision(
             rows=rows,
@@ -104,7 +113,7 @@ def plan_batch_sampler_dispatch(
             mode=BatchSamplerMode.SERIAL_LM_HEAD,
             native_row_aware_lm_head=False,
             c2_equality_green=bool(c2_equality_green),
-            equality_artifact=equality_artifact,
+            equality_artifact=artifact,
             blockers=tuple(blockers),
         )
     return BatchSamplerDispatchDecision(
@@ -113,7 +122,7 @@ def plan_batch_sampler_dispatch(
         mode=BatchSamplerMode.BATCHED_LM_HEAD,
         native_row_aware_lm_head=True,
         c2_equality_green=True,
-        equality_artifact=equality_artifact,
+        equality_artifact=artifact,
         blockers=(),
     )
 

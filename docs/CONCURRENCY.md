@@ -738,10 +738,11 @@ roll-up/status view.
       C2 equality is green. Acceptance: c=2/4/8 equality stays green with
       `HIPENGINE_QWEN35_BATCH_SAMPLE_MODE=batched_lm_head` or successor.
       Progress: `hipengine.dispatch.sampling` now gates `batched_lm_head` behind
-      explicit c>N generated-token equality evidence and an artifact path;
-      `_sample_batch_from_hidden(...)` records the sampler decision and falls
-      back to `serial_lm_head` when evidence is missing, so setting the mode
-      cannot silently create a native sampler claim before C2 is green.
+      explicit c>N generated-token equality evidence and a retained artifact path
+      under `benchmarks/results/`; `_sample_batch_from_hidden(...)` records the
+      sampler decision and falls back to `serial_lm_head` when evidence is
+      missing or points outside retained artifacts, so setting the mode cannot
+      silently create a native sampler claim before C2 is green.
 
 ### C4 packets — continuous scheduler and dynamic KV pool
 

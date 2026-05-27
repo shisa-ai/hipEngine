@@ -30815,3 +30815,30 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY retained sampler artifact guard
+
+Materially advanced C3.6 native sampler safety without closing the item:
+
+- `plan_batch_sampler_dispatch(...)` now requires c>N `batched_lm_head` equality evidence to point under `benchmarks/results/`; absolute paths and traversal paths fall back to `serial_lm_head` with an explicit blocker.
+- `_sample_batch_from_hidden(...)` inherits that guard and records the fallback in `last_batch_sampler_execution`, so env-driven sampler experiments cannot silently promote `/tmp` diagnostics as native retained sampler evidence.
+- Extended `test_batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head` for `/tmp` and traversal artifact blockers.
+- Added `test_qwen35_resident_sample_batch_requires_retained_equality_artifact` for the runtime env path.
+- Updated the C3.6 progress note. The item remains open until C2 equality is green and c=2/4/8 equality stays green with a retained native sampler artifact.
+- No queue item was marked complete and no c>N performance claim was added.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_sample_batch_batched_lm_head_falls_back_without_c2_evidence tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_sample_batch_requires_retained_equality_artifact -q
+# 3 passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```
