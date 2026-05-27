@@ -1828,10 +1828,14 @@ def test_qwen35_retained_scaling_comparison_uses_c1_and_serial_artifacts(tmp_pat
     )
 
     assert scaling["complete"] is True
+    assert scaling["c1_baseline"]["status"] == "loaded"
+    assert scaling["c1_baseline"]["reason"] is None
     assert scaling["c1_baseline"]["workload_concurrency"] == 1
     assert scaling["c1_baseline"]["prompt_tokens_per_request"] == 512
     assert scaling["c1_baseline"]["gen_tokens_per_request"] == 128
     assert scaling["c1_baseline"]["decode_tok_s_aggregate"] == 5.0
+    assert scaling["serial_bridge_baseline"]["status"] == "blocked"
+    assert scaling["serial_bridge_baseline"]["reason"] is None
     assert scaling["serial_bridge_baseline"]["workload_concurrency"] == 2
     assert scaling["serial_bridge_baseline"]["prompt_tokens_per_request"] == 512
     assert scaling["serial_bridge_baseline"]["gen_tokens_per_request"] == 128
@@ -2020,6 +2024,8 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
             },
             "c1_baseline": {
                 "artifact_path": "benchmarks/results/c1.json",
+                "status": "loaded",
+                "reason": None,
                 "workload_concurrency": 1,
                 "prompt_tokens_per_request": 512,
                 "gen_tokens_per_request": 128,
@@ -2028,6 +2034,8 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
             },
             "serial_bridge_baseline": {
                 "artifact_path": "benchmarks/results/serial-c2.json",
+                "status": "blocked",
+                "reason": None,
                 "workload_concurrency": 2,
                 "prompt_tokens_per_request": 512,
                 "gen_tokens_per_request": 128,
@@ -2175,6 +2183,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
         with pytest.raises(ValueError, match=ratio_field):
             validate_cn_diagnostic_artifact_payload(missing_ratio)
 
+    missing_c1_status = json.loads(json.dumps(accepted))
+    missing_c1_status["scaling"]["c1_baseline"].pop("status")
+    with pytest.raises(ValueError, match="c1_baseline.status"):
+        validate_cn_diagnostic_artifact_payload(missing_c1_status)
+
+    failed_c1_status = json.loads(json.dumps(accepted))
+    failed_c1_status["scaling"]["c1_baseline"]["status"] = "missing"
+    with pytest.raises(ValueError, match="c1_baseline.status must be usable"):
+        validate_cn_diagnostic_artifact_payload(failed_c1_status)
+
     missing_c1_concurrency = json.loads(json.dumps(accepted))
     missing_c1_concurrency["scaling"]["c1_baseline"].pop("workload_concurrency")
     with pytest.raises(ValueError, match="c1_baseline.workload_concurrency"):
@@ -2204,6 +2222,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     missing_serial_decode_shape["scaling"]["serial_bridge_baseline"].pop("gen_tokens_per_request")
     with pytest.raises(ValueError, match="serial_bridge_baseline.gen_tokens_per_request"):
         validate_cn_diagnostic_artifact_payload(missing_serial_decode_shape)
+
+    serial_baseline_reason = json.loads(json.dumps(accepted))
+    serial_baseline_reason["scaling"]["serial_bridge_baseline"]["reason"] = "decode throughput fields missing"
+    with pytest.raises(ValueError, match="serial_bridge_baseline.reason"):
+        validate_cn_diagnostic_artifact_payload(serial_baseline_reason)
 
     missing_measurements = dict(accepted)
     missing_measurements.pop("measurements")

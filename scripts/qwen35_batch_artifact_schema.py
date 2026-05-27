@@ -321,6 +321,13 @@ def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[st
             continue
         if not isinstance(baseline.get("artifact_path"), str) or not baseline.get("artifact_path"):
             errors.append(f"scaling.{baseline_name}.artifact_path must be a non-empty string for accepted artifacts")
+        status = baseline.get("status")
+        if not isinstance(status, str) or not status:
+            errors.append(f"scaling.{baseline_name}.status must be a non-empty string for accepted artifacts")
+        elif status in {"missing", "invalid_json"}:
+            errors.append(f"scaling.{baseline_name}.status must be usable for accepted artifacts")
+        if baseline.get("reason") is not None:
+            errors.append(f"scaling.{baseline_name}.reason must be null for accepted artifacts")
         for field in ("decode_tok_s_aggregate", "decode_tok_s_per_request"):
             if not _is_number(baseline.get(field)):
                 errors.append(f"scaling.{baseline_name}.{field} must be numeric for accepted artifacts")
