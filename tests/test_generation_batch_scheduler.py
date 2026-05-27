@@ -1794,14 +1794,24 @@ def test_qwen35_batch_diagnostic_artifact_schema_requires_label_fields() -> None
 
 def test_qwen35_retained_scaling_comparison_uses_c1_and_serial_artifacts(tmp_path: Path) -> None:
     c1 = tmp_path / "native-baseline-c1.json"
-    c1.write_text(json.dumps({"run_tag": "c1", "workload": {"concurrency": 1}, "throughput": {"warmed_decode_tok_s": 5.0}}))
+    c1.write_text(
+        json.dumps(
+            {
+                "run_tag": "c1",
+                "prompt_length": 512,
+                "decode_tokens": 128,
+                "workload": {"concurrency": 1},
+                "throughput": {"warmed_decode_tok_s": 5.0},
+            }
+        )
+    )
     serial = tmp_path / "serial-bridge-c2.json"
     serial.write_text(
         json.dumps(
             {
                 "run_tag": "serial-c2",
                 "status": "blocked",
-                "workload": {"concurrency": 2},
+                "workload": {"concurrency": 2, "prompt_tokens_per_request": 512, "gen_tokens_per_request": 128},
                 "measurements": {
                     "decode_tok_s_aggregate": 8.0,
                     "decode_tok_s_per_request": 4.0,
@@ -1819,8 +1829,12 @@ def test_qwen35_retained_scaling_comparison_uses_c1_and_serial_artifacts(tmp_pat
 
     assert scaling["complete"] is True
     assert scaling["c1_baseline"]["workload_concurrency"] == 1
+    assert scaling["c1_baseline"]["prompt_tokens_per_request"] == 512
+    assert scaling["c1_baseline"]["gen_tokens_per_request"] == 128
     assert scaling["c1_baseline"]["decode_tok_s_aggregate"] == 5.0
     assert scaling["serial_bridge_baseline"]["workload_concurrency"] == 2
+    assert scaling["serial_bridge_baseline"]["prompt_tokens_per_request"] == 512
+    assert scaling["serial_bridge_baseline"]["gen_tokens_per_request"] == 128
     assert scaling["serial_bridge_baseline"]["decode_tok_s_per_request"] == 4.0
     assert scaling["ratios"] == {
         "aggregate_vs_c1": 16.0 / 5.0,
@@ -1931,6 +1945,8 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
         "profiler": {"status": "captured", "expected_kernels_present": True},
         "workload": {
             "concurrency": 2,
+            "prompt_tokens_per_request": 512,
+            "gen_tokens_per_request": 128,
             "native_compact_prefill": True,
             "native_caware_decode": True,
         },
@@ -2005,12 +2021,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
             "c1_baseline": {
                 "artifact_path": "benchmarks/results/c1.json",
                 "workload_concurrency": 1,
+                "prompt_tokens_per_request": 512,
+                "gen_tokens_per_request": 128,
                 "decode_tok_s_aggregate": 60.0,
                 "decode_tok_s_per_request": 60.0,
             },
             "serial_bridge_baseline": {
                 "artifact_path": "benchmarks/results/serial-c2.json",
                 "workload_concurrency": 2,
+                "prompt_tokens_per_request": 512,
+                "gen_tokens_per_request": 128,
                 "decode_tok_s_aggregate": 80.0,
                 "decode_tok_s_per_request": 40.0,
             },
@@ -2174,6 +2194,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
     mismatched_serial_concurrency["scaling"]["serial_bridge_baseline"]["workload_concurrency"] = 8
     with pytest.raises(ValueError, match="serial_bridge_baseline.workload_concurrency must match workload.concurrency"):
         validate_cn_diagnostic_artifact_payload(mismatched_serial_concurrency)
+
+    mismatched_c1_prompt_shape = json.loads(json.dumps(accepted))
+    mismatched_c1_prompt_shape["scaling"]["c1_baseline"]["prompt_tokens_per_request"] = 256
+    with pytest.raises(ValueError, match="c1_baseline.prompt_tokens_per_request must match workload.prompt_tokens_per_request"):
+        validate_cn_diagnostic_artifact_payload(mismatched_c1_prompt_shape)
+
+    missing_serial_decode_shape = json.loads(json.dumps(accepted))
+    missing_serial_decode_shape["scaling"]["serial_bridge_baseline"].pop("gen_tokens_per_request")
+    with pytest.raises(ValueError, match="serial_bridge_baseline.gen_tokens_per_request"):
+        validate_cn_diagnostic_artifact_payload(missing_serial_decode_shape)
 
     missing_measurements = dict(accepted)
     missing_measurements.pop("measurements")

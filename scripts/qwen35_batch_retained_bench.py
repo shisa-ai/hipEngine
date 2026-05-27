@@ -147,10 +147,26 @@ def _scaling_reference(path: Path | None) -> dict[str, Any]:
     aggregate, per_request = _extract_decode_rates(payload)
     workload = payload.get("workload")
     workload_concurrency = None
+    prompt_tokens_per_request = None
+    gen_tokens_per_request = None
     if isinstance(workload, Mapping):
         concurrency = workload.get("concurrency")
         if isinstance(concurrency, int) and not isinstance(concurrency, bool):
             workload_concurrency = concurrency
+        prompt_tokens = workload.get("prompt_tokens_per_request", workload.get("prompt_length"))
+        if isinstance(prompt_tokens, int) and not isinstance(prompt_tokens, bool):
+            prompt_tokens_per_request = prompt_tokens
+        gen_tokens = workload.get("gen_tokens_per_request", workload.get("decode_tokens"))
+        if isinstance(gen_tokens, int) and not isinstance(gen_tokens, bool):
+            gen_tokens_per_request = gen_tokens
+    if prompt_tokens_per_request is None:
+        prompt_tokens = payload.get("prompt_length")
+        if isinstance(prompt_tokens, int) and not isinstance(prompt_tokens, bool):
+            prompt_tokens_per_request = prompt_tokens
+    if gen_tokens_per_request is None:
+        gen_tokens = payload.get("decode_tokens")
+        if isinstance(gen_tokens, int) and not isinstance(gen_tokens, bool):
+            gen_tokens_per_request = gen_tokens
     status = str(payload.get("status") or "loaded")
     reason = None if aggregate is not None and per_request is not None else "decode throughput fields missing"
     return {
@@ -158,6 +174,8 @@ def _scaling_reference(path: Path | None) -> dict[str, Any]:
         "status": status,
         "run_tag": payload.get("run_tag"),
         "workload_concurrency": workload_concurrency,
+        "prompt_tokens_per_request": prompt_tokens_per_request,
+        "gen_tokens_per_request": gen_tokens_per_request,
         "decode_tok_s_aggregate": aggregate,
         "decode_tok_s_per_request": per_request,
         "reason": reason,

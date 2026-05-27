@@ -29040,3 +29040,28 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
 ```
+
+## 2026-05-27 — CONCURRENCY scaling baseline shape labels
+
+Materially advanced P1/P5 scaling evidence safety without closing an open item:
+
+- `scripts/qwen35_batch_retained_bench.py` now carries `prompt_tokens_per_request` and `gen_tokens_per_request` from loaded c=1/serial scaling reference artifacts when those labels exist, including c=1 artifacts that expose top-level `prompt_length` / `decode_tokens`.
+- `scripts/qwen35_batch_artifact_schema.py` now rejects accepted/performance-claim c>N artifacts when workload prompt/decode shape labels are missing, or when either c=1 or serial baseline prompt/decode labels are missing or do not match the retained workload.
+- Extended `test_qwen35_retained_scaling_comparison_uses_c1_and_serial_artifacts` and `test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates` for shape-label propagation and mismatch rejection.
+- Updated P1/P5 docs. No queue item was marked complete and no c>N performance claim was added.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_retained_scaling_comparison_uses_c1_and_serial_artifacts tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q
+# 2 passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed with append mismatches 0 and attn_batch_vs_c1_max_abs 0.0
+```

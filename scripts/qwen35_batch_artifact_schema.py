@@ -297,6 +297,14 @@ def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[st
     workload = _mapping_at(payload, "workload", errors)
     concurrency = workload.get("concurrency")
     concurrency_valid = isinstance(concurrency, int) and not isinstance(concurrency, bool) and concurrency > 1
+    prompt_tokens = workload.get("prompt_tokens_per_request")
+    prompt_tokens_valid = isinstance(prompt_tokens, int) and not isinstance(prompt_tokens, bool) and prompt_tokens > 0
+    if not prompt_tokens_valid:
+        errors.append("workload.prompt_tokens_per_request must be an int > 0 for accepted artifacts")
+    gen_tokens = workload.get("gen_tokens_per_request")
+    gen_tokens_valid = isinstance(gen_tokens, int) and not isinstance(gen_tokens, bool) and gen_tokens > 0
+    if not gen_tokens_valid:
+        errors.append("workload.gen_tokens_per_request must be an int > 0 for accepted artifacts")
     if scaling.get("complete") is not True:
         errors.append("scaling.complete must be true for accepted artifacts")
     native = scaling.get("native")
@@ -316,6 +324,16 @@ def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[st
         for field in ("decode_tok_s_aggregate", "decode_tok_s_per_request"):
             if not _is_number(baseline.get(field)):
                 errors.append(f"scaling.{baseline_name}.{field} must be numeric for accepted artifacts")
+        baseline_prompt_tokens = baseline.get("prompt_tokens_per_request")
+        if not isinstance(baseline_prompt_tokens, int) or isinstance(baseline_prompt_tokens, bool):
+            errors.append(f"scaling.{baseline_name}.prompt_tokens_per_request must be an int for accepted artifacts")
+        elif prompt_tokens_valid and baseline_prompt_tokens != prompt_tokens:
+            errors.append(f"scaling.{baseline_name}.prompt_tokens_per_request must match workload.prompt_tokens_per_request for accepted artifacts")
+        baseline_gen_tokens = baseline.get("gen_tokens_per_request")
+        if not isinstance(baseline_gen_tokens, int) or isinstance(baseline_gen_tokens, bool):
+            errors.append(f"scaling.{baseline_name}.gen_tokens_per_request must be an int for accepted artifacts")
+        elif gen_tokens_valid and baseline_gen_tokens != gen_tokens:
+            errors.append(f"scaling.{baseline_name}.gen_tokens_per_request must match workload.gen_tokens_per_request for accepted artifacts")
     c1_baseline = scaling.get("c1_baseline")
     if isinstance(c1_baseline, Mapping):
         c1_concurrency = c1_baseline.get("workload_concurrency")
