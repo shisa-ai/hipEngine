@@ -956,6 +956,13 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
             int(gen_tokens),
             errors,
         )
+        _validate_execution_generated_tokens(
+            payload,
+            batch_sequences,
+            int(concurrency) if concurrency_valid else None,
+            int(gen_tokens),
+            errors,
+        )
     if isinstance(batch_sequences, list) and isinstance(c1_sequences, list) and batch_sequences != c1_sequences:
         errors.append("correctness.generated_token_equality.batch_sequences must equal c1_sequences for accepted artifacts")
     mismatches = equality.get("mismatches")
@@ -1012,6 +1019,55 @@ def _validate_generated_token_sequence_lengths(
             errors.append(f"{label}[{index}] length must match workload.gen_tokens_per_request for accepted artifacts")
         if any(not isinstance(token, int) or isinstance(token, bool) for token in sequence):
             errors.append(f"{label}[{index}] must contain only token ids for accepted artifacts")
+
+
+def _validate_execution_generated_tokens(
+    payload: Mapping[str, Any],
+    batch_sequences: Any,
+    concurrency: int | None,
+    gen_tokens_per_request: int,
+    errors: list[str],
+) -> None:
+    execution = payload.get("execution")
+    generated_tokens = execution.get("generated_tokens") if isinstance(execution, Mapping) else None
+    if not isinstance(generated_tokens, Mapping):
+        errors.append("execution.generated_tokens must be an object for accepted artifacts")
+        return
+    if concurrency is not None and len(generated_tokens) != concurrency:
+        errors.append("execution.generated_tokens length must match workload.concurrency for accepted artifacts")
+    if concurrency is None:
+        return
+    for row_index in range(concurrency):
+        row_key = str(row_index)
+        row = generated_tokens.get(row_key)
+        token_ids = _extract_generated_token_ids(row, f"execution.generated_tokens.{row_key}", errors)
+        if token_ids is None:
+            continue
+        if len(token_ids) != gen_tokens_per_request:
+            errors.append(f"execution.generated_tokens.{row_key} length must match workload.gen_tokens_per_request for accepted artifacts")
+        if isinstance(batch_sequences, list) and row_index < len(batch_sequences) and isinstance(batch_sequences[row_index], list):
+            expected_suffix = batch_sequences[row_index][-len(token_ids) :] if token_ids else []
+            if token_ids != expected_suffix:
+                errors.append(f"execution.generated_tokens.{row_key} must match correctness.generated_token_equality.batch_sequences suffix for accepted artifacts")
+
+
+def _extract_generated_token_ids(row: Any, label: str, errors: list[str]) -> list[int] | None:
+    if not isinstance(row, list):
+        errors.append(f"{label} must be a list for accepted artifacts")
+        return None
+    token_ids: list[int] = []
+    for index, item in enumerate(row):
+        if isinstance(item, int) and not isinstance(item, bool):
+            token_ids.append(item)
+            continue
+        if isinstance(item, Mapping):
+            token_id = item.get("token_id")
+            if isinstance(token_id, int) and not isinstance(token_id, bool):
+                token_ids.append(token_id)
+                continue
+        errors.append(f"{label}[{index}] must be a token id or object with token_id for accepted artifacts")
+        return None
+    return token_ids
 
 
 def _validate_accepted_measurement_gates(payload: Mapping[str, Any], errors: list[str]) -> None:

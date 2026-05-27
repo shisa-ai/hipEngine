@@ -2559,6 +2559,10 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                     "kernel_time_histogram_ns": {},
                 },
             },
+            "generated_tokens": {
+                "0": [{"token_id": token} for token in range(10, 138)],
+                "1": [{"token_id": token} for token in range(20, 148)],
+            },
         },
         "observability": {
             "admission_timestamps": {"0": 1.0, "1": 1.1},
@@ -2843,6 +2847,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     truncated_decode_equality["correctness"]["generated_token_equality"]["c1_sequences"][0] = [10, 11]
     with pytest.raises(ValueError, match=r"batch_sequences\[0\] length must match workload.gen_tokens_per_request"):
         validate_cn_diagnostic_artifact_payload(truncated_decode_equality)
+
+    missing_execution_generated_tokens = json.loads(json.dumps(accepted))
+    missing_execution_generated_tokens["execution"].pop("generated_tokens")
+    with pytest.raises(ValueError, match="execution.generated_tokens must be an object"):
+        validate_cn_diagnostic_artifact_payload(missing_execution_generated_tokens)
+
+    mismatched_execution_generated_tokens = json.loads(json.dumps(accepted))
+    mismatched_execution_generated_tokens["execution"]["generated_tokens"]["0"][0]["token_id"] = 999
+    with pytest.raises(ValueError, match="execution.generated_tokens.0 must match correctness.generated_token_equality.batch_sequences suffix"):
+        validate_cn_diagnostic_artifact_payload(mismatched_execution_generated_tokens)
 
     missing_primitive = json.loads(json.dumps(accepted))
     missing_primitive["correctness"].pop("primitive_batch_correctness")

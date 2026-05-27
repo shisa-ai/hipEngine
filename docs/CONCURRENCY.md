@@ -859,8 +859,9 @@ roll-up/status view.
       `scripts/qwen35_batch_artifact_schema.py` accepted-row gates now also
       require non-skipped generated-token equality vs independent c=1 with exact
       `batch_sequences == c1_sequences` lists whose row count matches
-      `workload.concurrency` and whose per-row token counts match
-      `workload.gen_tokens_per_request`, no mismatches, and a passing primitive c>N GPU
+      `workload.concurrency`, whose per-row token counts match
+      `workload.gen_tokens_per_request`, and whose suffixes match
+      `execution.generated_tokens`, no mismatches, and a passing primitive c>N GPU
       correctness JSON whose `rows` value matches `workload.concurrency`, plus
       `pytest -q tests/test_generation_batch_scheduler.py -q`.
 
@@ -928,7 +929,8 @@ roll-up/status view.
       validation unless they include fully native batch-execution metadata with
       workload scheduler labels matching the execution path,
       generated-token equality sequence lists matching `workload.concurrency`
-      rows and `workload.gen_tokens_per_request` tokens per row,
+      rows and `workload.gen_tokens_per_request` tokens per row, with
+      `execution.generated_tokens` matching the equality suffixes,
       primitive GPU correctness row count matching `workload.concurrency` with
       zero append mismatches and zero batch-vs-c1 attention error,
       full 40-layer workload labels with concrete model/quant/KV storage dtype
