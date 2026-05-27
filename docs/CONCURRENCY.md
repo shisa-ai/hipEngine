@@ -723,10 +723,11 @@ roll-up/status view.
       `projection_dispatch_candidates_from_json(...)`,
       `projection_dispatch_candidates_from_artifact(...)`, and
       `plan_projection_dispatch_from_artifact(...)` schema-check retained
-      artifact candidate/evidence lists before the policy can consume them, and
-      accepted c>N artifact schema rejects malformed optional
-      `projection_dispatch_candidates` metadata. The item remains open until
-      runtime projection call sites are wired to this policy and retained
+      artifact candidate/evidence lists before the policy can consume them;
+      projection speedup evidence must reference an artifact under
+      `benchmarks/results/`; and accepted c>N artifact schema rejects malformed
+      optional `projection_dispatch_candidates` metadata. The item remains open
+      until runtime projection call sites are wired to this policy and retained
       benchmark artifacts provide the required ratios.
 - [x] **C3.5 GGUF c>N template.** Port the Qwen/PARO equality template to
       GGUF Q4_K/Q5_K/Q6_K/Q8_0. Acceptance: at least one GGUF c=2 diagnostic

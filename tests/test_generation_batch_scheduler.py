@@ -855,6 +855,10 @@ def test_projection_dispatch_evidence_loads_schema_checked_artifact_blocks() -> 
         ProjectionDispatchEvidence.from_json_dict({**payload, "aggregate_vs_row_gemv": 0.0})
     with pytest.raises(ValueError, match="accepted must be a bool"):
         ProjectionDispatchEvidence.from_json_dict({**payload, "accepted": "yes"})
+    with pytest.raises(ValueError, match="artifact_path must be under benchmarks/results"):
+        ProjectionDispatchEvidence.from_json_dict({**payload, "artifact_path": "/tmp/projection-wmma-c4.json"})
+    with pytest.raises(ValueError, match="artifact_path must be under benchmarks/results"):
+        ProjectionDispatchEvidence.from_json_dict({**payload, "artifact_path": "benchmarks/results/../tmp/projection-wmma-c4.json"})
 
 
 def test_projection_dispatch_candidate_loads_schema_checked_artifact_blocks() -> None:

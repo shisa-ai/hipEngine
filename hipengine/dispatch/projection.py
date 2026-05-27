@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from typing import Any
 
 from hipengine.dispatch.fusion import KernelPlanStep
@@ -68,6 +69,8 @@ class ProjectionDispatchEvidence:
         artifact_path = payload.get("artifact_path")
         if not isinstance(artifact_path, str) or not artifact_path:
             errors.append("artifact_path must be a non-empty string")
+        elif not _is_retained_artifact_path(artifact_path):
+            errors.append("artifact_path must be under benchmarks/results")
         aggregate_vs_row_gemv = payload.get("aggregate_vs_row_gemv")
         if not _is_positive_number(aggregate_vs_row_gemv):
             errors.append("aggregate_vs_row_gemv must be positive numeric")
@@ -196,6 +199,11 @@ def _is_number(value: Any) -> bool:
 
 def _is_positive_number(value: Any) -> bool:
     return _is_number(value) and float(value) > 0.0
+
+
+def _is_retained_artifact_path(value: str) -> bool:
+    path = PurePosixPath(value)
+    return not path.is_absolute() and len(path.parts) >= 3 and path.parts[:2] == ("benchmarks", "results") and ".." not in path.parts
 
 
 def projection_dispatch_candidates_from_json(payload: Any) -> tuple[ProjectionDispatchCandidate, ...]:
