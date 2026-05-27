@@ -444,6 +444,42 @@ def test_batch_c_sweep_profiler_precondition_rejects_missing_structured_output_f
     }
 
 
+def test_batch_c_sweep_profiler_precondition_rejects_wrong_structured_output_format(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"]["output_format"] = "json"
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler.output_format='json' does not match 'csv'",
+    }
+
+
 def test_batch_c_sweep_profiler_precondition_rejects_wrong_workload_command(tmp_path: Path) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
@@ -4521,6 +4557,14 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     )
     with pytest.raises(ValueError, match="commands.profiler must include --output-format csv"):
         validate_cn_diagnostic_artifact_payload(profiler_without_output_format)
+
+    profiler_mismatched_output_format = json.loads(json.dumps(accepted))
+    profiler_mismatched_output_format["commands"]["profiler"] = profiler_mismatched_output_format["commands"]["profiler"].replace(
+        " --output-format csv",
+        " --output-format json",
+    )
+    with pytest.raises(ValueError, match="profiler.output_format must match commands.profiler --output-format"):
+        validate_cn_diagnostic_artifact_payload(profiler_mismatched_output_format)
 
     profiler_wrong_target = json.loads(json.dumps(accepted))
     profiler_wrong_target["commands"]["profiler"] = "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_serial_bench.py --batch-size 2"
