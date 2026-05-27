@@ -316,6 +316,13 @@ def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[st
         for field in ("decode_tok_s_aggregate", "decode_tok_s_per_request"):
             if not _is_number(baseline.get(field)):
                 errors.append(f"scaling.{baseline_name}.{field} must be numeric for accepted artifacts")
+    c1_baseline = scaling.get("c1_baseline")
+    if isinstance(c1_baseline, Mapping):
+        c1_concurrency = c1_baseline.get("workload_concurrency")
+        if not isinstance(c1_concurrency, int) or isinstance(c1_concurrency, bool):
+            errors.append("scaling.c1_baseline.workload_concurrency must be an int for accepted artifacts")
+        elif c1_concurrency != 1:
+            errors.append("scaling.c1_baseline.workload_concurrency must be 1 for accepted artifacts")
     serial_baseline = scaling.get("serial_bridge_baseline")
     if isinstance(serial_baseline, Mapping):
         serial_concurrency = serial_baseline.get("workload_concurrency")

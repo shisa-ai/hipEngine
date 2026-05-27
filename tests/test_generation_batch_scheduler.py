@@ -1794,7 +1794,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_requires_label_fields() -> None
 
 def test_qwen35_retained_scaling_comparison_uses_c1_and_serial_artifacts(tmp_path: Path) -> None:
     c1 = tmp_path / "native-baseline-c1.json"
-    c1.write_text(json.dumps({"run_tag": "c1", "throughput": {"warmed_decode_tok_s": 5.0}}))
+    c1.write_text(json.dumps({"run_tag": "c1", "workload": {"concurrency": 1}, "throughput": {"warmed_decode_tok_s": 5.0}}))
     serial = tmp_path / "serial-bridge-c2.json"
     serial.write_text(
         json.dumps(
@@ -1818,6 +1818,7 @@ def test_qwen35_retained_scaling_comparison_uses_c1_and_serial_artifacts(tmp_pat
     )
 
     assert scaling["complete"] is True
+    assert scaling["c1_baseline"]["workload_concurrency"] == 1
     assert scaling["c1_baseline"]["decode_tok_s_aggregate"] == 5.0
     assert scaling["serial_bridge_baseline"]["workload_concurrency"] == 2
     assert scaling["serial_bridge_baseline"]["decode_tok_s_per_request"] == 4.0
@@ -2003,6 +2004,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
             },
             "c1_baseline": {
                 "artifact_path": "benchmarks/results/c1.json",
+                "workload_concurrency": 1,
                 "decode_tok_s_aggregate": 60.0,
                 "decode_tok_s_per_request": 60.0,
             },
@@ -2152,6 +2154,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates() -
         missing_ratio["scaling"]["ratios"].pop(ratio_field)
         with pytest.raises(ValueError, match=ratio_field):
             validate_cn_diagnostic_artifact_payload(missing_ratio)
+
+    missing_c1_concurrency = json.loads(json.dumps(accepted))
+    missing_c1_concurrency["scaling"]["c1_baseline"].pop("workload_concurrency")
+    with pytest.raises(ValueError, match="c1_baseline.workload_concurrency"):
+        validate_cn_diagnostic_artifact_payload(missing_c1_concurrency)
+
+    mismatched_c1_concurrency = json.loads(json.dumps(accepted))
+    mismatched_c1_concurrency["scaling"]["c1_baseline"]["workload_concurrency"] = 2
+    with pytest.raises(ValueError, match="c1_baseline.workload_concurrency must be 1"):
+        validate_cn_diagnostic_artifact_payload(mismatched_c1_concurrency)
 
     missing_serial_concurrency = json.loads(json.dumps(accepted))
     missing_serial_concurrency["scaling"]["serial_bridge_baseline"].pop("workload_concurrency")
