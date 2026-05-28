@@ -8161,6 +8161,10 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     assert "benchmark_rollup must be an object" in failed_summary["error"]
     validate_cn_diagnostic_validation_summary(failed_summary)
     assert validate_cn_diagnostic_artifact_main([str(failed_summary_file), "--validation-summary"]) == 0
+    outside_failed_summary_source = dict(failed_summary)
+    outside_failed_summary_source["artifact_json"] = str(rollup_root / "tmp" / "accepted-c2-missing-rollup.json")
+    with pytest.raises(ValueError, match="summary.artifact_json must be under benchmarks/results"):
+        validate_cn_diagnostic_validation_summary(outside_failed_summary_source)
 
     invalid_failed_summary = dict(failed_summary)
     invalid_failed_summary["error"] = None
