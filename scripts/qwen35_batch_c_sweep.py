@@ -1699,6 +1699,11 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                             break
                     if scaling_precondition_error:
                         break
+                    expected_aggregate_rate = float(scaling_precondition["decode_tok_s_per_request"]) * int(expected_concurrency)
+                    if abs(float(scaling_precondition["decode_tok_s_aggregate"]) - expected_aggregate_rate) > max(1e-9, expected_aggregate_rate * 1e-6):
+                        errors.append("commands[].preconditions[].decode aggregate rate must match per-request rate times concurrency when passed")
+                        scaling_precondition_error = True
+                        break
                 if scaling_precondition_error:
                     break
                 profiler_precondition = preconditions[3]

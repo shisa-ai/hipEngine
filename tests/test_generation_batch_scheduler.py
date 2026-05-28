@@ -2431,6 +2431,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_scaling_precondition_rate["commands"][-1]["preconditions"][1]["decode_tok_s_aggregate"] = 0.0
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.decode rates must be positive numbers when passed"):
         c_sweep.validate_sweep_summary(tampered_scaling_precondition_rate)
+    tampered_scaling_precondition_rate_arithmetic = json.loads(json.dumps(persisted))
+    tampered_scaling_precondition_rate_arithmetic["commands"][-1]["preconditions"][2]["decode_tok_s_per_request"] = 11.0
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.decode aggregate rate must match per-request rate times concurrency when passed"):
+        c_sweep.validate_sweep_summary(tampered_scaling_precondition_rate_arithmetic)
     tampered_profiler_precondition_concurrency = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_concurrency["commands"][-1]["preconditions"][-1]["workload_concurrency"] = 1
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler workload_concurrency must match retained batch_size"):
