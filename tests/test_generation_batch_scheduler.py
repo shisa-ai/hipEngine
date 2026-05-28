@@ -1124,6 +1124,44 @@ def test_batch_c_sweep_profiler_precondition_rejects_missing_kernel_shares(tmp_p
     }
 
 
+def test_batch_c_sweep_profiler_precondition_rejects_nonpositive_extra_kernel_duration(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"]["trace_kernel_names"].append("qwen35_batch_extra")
+    payload["profiler"]["kernel_durations_ns"]["qwen35_batch_extra"] = 0.0
+    payload["profiler"]["kernel_duration_shares"]["qwen35_batch_extra"] = 0.0
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "kernel_durations_ns.qwen35_batch_extra is missing or non-positive numeric",
+    }
+
+
 def test_batch_c_sweep_profiler_precondition_rejects_missing_kernel_categories(tmp_path: Path) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()

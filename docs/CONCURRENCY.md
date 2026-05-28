@@ -1032,8 +1032,9 @@ roll-up/status view.
       `profiler.artifact_path` under `benchmarks/results/`, profiler trace
       files canonically contained under `profiler.trace_dir`, native batch
       expected kernel names and duration-map keys (no
-      serial/per-row/fallback labels) present with every duration-map entry
-      carrying positive numeric evidence, `profiler.total_kernel_duration_ns`
+      serial/per-row/fallback labels) present with every duration-map entry,
+      including extra trace-listed entries, carrying positive numeric evidence,
+      `profiler.total_kernel_duration_ns`
       matching the duration-map sum, per-kernel duration-share keys/values
       matching `duration / total`, category duration/share buckets for
       attention/MoE/projection/sampling/graph/other, and CPU-side bottleneck

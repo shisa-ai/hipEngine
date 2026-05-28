@@ -762,6 +762,7 @@ def _validate_profiler_kernel_durations(profiler: dict[str, Any], reasons: list[
         duration_ns = kernel_durations.get(kernel_name)
         duration_share = duration_shares.get(kernel_name)
         if not _is_number(duration_ns) or float(duration_ns) <= 0.0:
+            reasons.append(f"kernel_durations_ns.{kernel_name} is missing or non-positive numeric")
             continue
         duration_sum += float(duration_ns)
         if not _is_number(duration_share) or float(duration_share) <= 0.0:
