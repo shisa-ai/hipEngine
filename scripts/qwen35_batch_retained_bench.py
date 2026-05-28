@@ -56,6 +56,13 @@ _PROFILER_TRACE_KERNEL_NAME_COLUMNS = ("Kernel_Name", "KernelName", "Name")
 _PROFILER_TRACE_START_COLUMNS = ("Start_Timestamp", "StartTimestamp", "StartNs", "Start")
 _PROFILER_TRACE_END_COLUMNS = ("End_Timestamp", "EndTimestamp", "EndNs", "End")
 _PROFILER_TRACE_DURATION_COLUMNS = ("DurationNs", "Duration_NS", "Duration_Ns", "Duration")
+_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS = {
+    "block_size": 256,
+    "max_context_len": 4,
+    "num_q_heads": 4,
+    "num_kv_heads": 1,
+    "head_dim": 8,
+}
 _PROFILER_SYNTHESIZED_FIELDS = (
     "trace_kernel_names",
     "kernel_durations_ns",
@@ -279,6 +286,10 @@ def _primitive_correctness_reference(path: Path | None, *, rows: int) -> dict[st
     artifact_seed = payload.get("seed")
     if not isinstance(artifact_seed, int) or isinstance(artifact_seed, bool):
         reasons.append("seed is missing or not an int")
+    for field, expected_value in _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS.items():
+        value = payload.get(field)
+        if not isinstance(value, int) or isinstance(value, bool) or value != expected_value:
+            reasons.append(f"{field} is missing or not {expected_value}")
     if payload.get("passed") is not True:
         reasons.append("primitive correctness payload did not pass")
     if payload.get("append_key_mismatch") != 0:

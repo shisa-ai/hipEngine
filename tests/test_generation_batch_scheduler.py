@@ -4976,10 +4976,15 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
             }
         )
     )
+    mismatched_shape_artifact = tmp_path / "primitive-c2-shape.json"
+    shape_payload = json.loads(artifact.read_text())
+    shape_payload["head_dim"] = 16
+    mismatched_shape_artifact.write_text(json.dumps(shape_payload))
 
     passed = retained_bench._primitive_correctness_reference(artifact, rows=2)
     mismatched = retained_bench._primitive_correctness_reference(artifact, rows=4)
     missing_schema = retained_bench._primitive_correctness_reference(schema_less_artifact, rows=2)
+    mismatched_shape = retained_bench._primitive_correctness_reference(mismatched_shape_artifact, rows=2)
     missing = retained_bench._primitive_correctness_reference(None, rows=2)
 
     assert passed["passed"] is True
@@ -4992,6 +4997,8 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     assert "does not match batch_size=4" in mismatched["reason"]
     assert missing_schema["passed"] is False
     assert "schema is missing or not 1" in missing_schema["reason"]
+    assert mismatched_shape["passed"] is False
+    assert "head_dim is missing or not 8" in mismatched_shape["reason"]
     assert missing["status"] == "missing"
 
 
