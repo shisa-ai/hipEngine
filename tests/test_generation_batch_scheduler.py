@@ -5946,6 +5946,14 @@ def test_qwen35_retained_memory_evidence_blockers_cover_required_fields() -> Non
     assert "memory.prefix_sharing.savings_bytes is unavailable or non-finite" in blockers
 
 
+def test_qwen35_retained_graph_histogram_blockers_reject_unknown_buckets() -> None:
+    blockers = retained_bench._graph_kernel_time_histogram_blockers(
+        {"graph_bucket_stats": {"kernel_time_histogram_ns": {"lt_1us": 1, "le_10us": 1}}}
+    )
+
+    assert blockers == ["execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns.lt_1us is not a known bucket"]
+
+
 def test_qwen35_retained_payload_blocks_acceptance_without_graph_histogram_evidence(monkeypatch) -> None:
     monkeypatch.setattr(retained_bench, "_hardware_context", lambda: {"gpu": "test"})
     monkeypatch.setattr(retained_bench, "_software_context", lambda: {"python": "test"})

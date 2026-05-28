@@ -29,7 +29,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from hipengine.core.memory import memory_stats
-from hipengine.generation import GeneratedToken, GraphBucketCache, ResidentBatchScheduler
+from hipengine.generation import GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS, GeneratedToken, GraphBucketCache, ResidentBatchScheduler
 from hipengine.kvcache import ResolvedKVPolicy
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
 from scripts.qwen35_batch_artifact_schema import validate_cn_diagnostic_artifact_payload
@@ -180,7 +180,11 @@ def _graph_kernel_time_histogram_blockers(scheduler_metadata: Mapping[str, Any])
         return ["execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns is missing"]
     total_observations = 0
     blockers: list[str] = []
+    allowed_buckets = set(GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS)
     for bucket, count in histogram.items():
+        if not isinstance(bucket, str) or bucket not in allowed_buckets:
+            blockers.append(f"execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns.{bucket} is not a known bucket")
+            continue
         if isinstance(count, bool) or not isinstance(count, int) or count < 0:
             blockers.append(f"execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns.{bucket} is unavailable or non-integer")
             continue
