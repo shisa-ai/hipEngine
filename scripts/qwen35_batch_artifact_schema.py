@@ -2792,6 +2792,8 @@ def _validate_summary_json_path(path: Path, *, label: str = "--summary-json path
         raise ValueError(f"{label} must be under the current repo benchmarks/results for retained validation evidence")
     if path.suffix != ".json":
         raise ValueError(f"{label} must end with .json for retained validation evidence")
+    if path.exists() and path.is_dir():
+        raise ValueError(f"{label} must be a .json file, not a directory, for retained validation evidence")
 
 
 def _validate_validation_summary_output_path(path: Path, summary: Mapping[str, Any], *, label: str = "--summary-json path") -> None:
