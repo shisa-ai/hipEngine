@@ -1924,6 +1924,55 @@ def test_batch_c_sweep_rejects_unsafe_output_dir_before_creating_artifacts(tmp_p
             run_sweep(args)
 
 
+def test_batch_c_sweep_rejects_unsafe_compiler_version_file_before_creating_artifacts(
+    tmp_path: Path, monkeypatch
+) -> None:
+    output_dir = tmp_path / "artifacts"
+    parent_component_compiler = tmp_path / "compiler-parent" / ".." / "hipcc-version.txt"
+    symlink_compiler = tmp_path / "hipcc-version-link.txt"
+    monkeypatch.setattr(
+        c_sweep.subprocess,
+        "run",
+        lambda *args, **kwargs: pytest.fail("unsafe compiler-version sweep should fail before launching subprocesses"),
+    )
+
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--dry-run",
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--compiler-version-file",
+            str(parent_component_compiler),
+        ]
+    )
+    with pytest.raises(ValueError, match="--compiler-version-file must not contain parent-directory components"):
+        run_sweep(args)
+    assert not output_dir.exists()
+
+    if hasattr(os, "symlink"):
+        target = tmp_path / "hipcc-version.txt"
+        target.write_text("hipcc version\n")
+        try:
+            symlink_compiler.symlink_to(target)
+        except (OSError, NotImplementedError):
+            return
+        args = build_c_sweep_parser().parse_args(
+            [
+                "--dry-run",
+                "--batch-sizes",
+                "2",
+                "--output-dir",
+                str(output_dir),
+                "--compiler-version-file",
+                str(symlink_compiler),
+            ]
+        )
+        with pytest.raises(ValueError, match="--compiler-version-file must not be a symlink"):
+            run_sweep(args)
+
+
 def test_batch_c_sweep_stops_and_counts_failed_command(tmp_path: Path, monkeypatch) -> None:
     args = build_c_sweep_parser().parse_args(
         [

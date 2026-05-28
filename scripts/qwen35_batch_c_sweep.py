@@ -2719,6 +2719,15 @@ def _validate_run_options(args: argparse.Namespace) -> None:
         raise ValueError("--output-dir must not be a symlink")
     if _path_has_symlink_parent(output_dir_check_path):
         raise ValueError("--output-dir parent directories must not be symlinks")
+    if args.compiler_version_file is not None:
+        compiler_version_file = Path(args.compiler_version_file)
+        if _path_has_parent_directory_component(compiler_version_file):
+            raise ValueError("--compiler-version-file must not contain parent-directory components")
+        compiler_version_check_path = compiler_version_file if compiler_version_file.is_absolute() else REPO_ROOT / compiler_version_file
+        if compiler_version_check_path.is_symlink():
+            raise ValueError("--compiler-version-file must not be a symlink")
+        if _path_has_symlink_parent(compiler_version_check_path):
+            raise ValueError("--compiler-version-file parent directories must not be symlinks")
 
 
 def _summary_options(args: argparse.Namespace) -> dict[str, Any]:
