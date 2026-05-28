@@ -3785,6 +3785,11 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_options["options"]["stop_on_failure"] = "yes"
     with pytest.raises(ValueError, match="options.stop_on_failure must be a bool"):
         c_sweep.validate_sweep_summary(tampered_options)
+    for option in ("include_int8", "require_cached_build"):
+        tampered_bool_option = json.loads(json.dumps(persisted))
+        tampered_bool_option["options"][option] = "yes"
+        with pytest.raises(ValueError, match=rf"options\.{option} must be a bool"):
+            c_sweep.validate_sweep_summary(tampered_bool_option)
     tampered_options_model = json.loads(json.dumps(persisted))
     tampered_options_model["options"]["model"] = "/tmp/other-model"
     with pytest.raises(ValueError, match=r"commands\[\]\.argv --model must match options.model"):
