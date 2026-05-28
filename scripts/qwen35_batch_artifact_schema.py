@@ -2700,6 +2700,10 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
                 errors.append("summary.benchmark_rollup.artifact_path must match summary.artifact_path")
             if benchmark_rollup.get("source_artifact_path") != artifact_path:
                 errors.append("summary.benchmark_rollup.source_artifact_path must match summary.artifact_path")
+            if benchmark_rollup.get("readme_path") != "benchmarks/README.md":
+                errors.append("summary.benchmark_rollup.readme_path must be benchmarks/README.md")
+            if benchmark_rollup.get("changelog_path") != "benchmarks/CHANGELOG.md":
+                errors.append("summary.benchmark_rollup.changelog_path must be benchmarks/CHANGELOG.md")
     if mode == "rollup_evidence" and passed is True:
         if status != "accepted":
             errors.append("passed rollup evidence summary.status must be accepted")
