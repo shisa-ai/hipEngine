@@ -2362,6 +2362,13 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_failed_precondition_reason["commands"][-1]["preconditions"][0]["passed"] = False
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.reason must be a non-empty string when failed"):
         c_sweep.validate_sweep_summary(tampered_failed_precondition_reason)
+    tampered_passed_row_failed_precondition = json.loads(json.dumps(persisted))
+    failed_gate = tampered_passed_row_failed_precondition["commands"][-1]["preconditions"][0]
+    failed_gate["passed"] = False
+    failed_gate["reason"] = "primitive correctness failed"
+    tampered_passed_row_failed_precondition["commands"][-1]["precondition"] = dict(failed_gate)
+    with pytest.raises(ValueError, match=r"commands\[\]\.status passed cannot include failed preconditions"):
+        c_sweep.validate_sweep_summary(tampered_passed_row_failed_precondition)
     tampered_postcondition_schema = json.loads(json.dumps(persisted))
     tampered_postcondition_schema["commands"][-1]["postconditions"][0]["kind"] = ""
     with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.kind must be a non-empty string"):

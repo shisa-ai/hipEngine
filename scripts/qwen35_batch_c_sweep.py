@@ -1935,6 +1935,14 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 for postcondition in postconditions
                 if isinstance(postcondition, dict) and postcondition.get("passed") is not True
             ] if isinstance(postconditions, list) else []
+            failed_preconditions = [
+                precondition
+                for precondition in preconditions
+                if isinstance(precondition, dict) and precondition.get("passed") is not True
+            ] if isinstance(preconditions, list) else []
+            if status == "passed" and failed_preconditions:
+                errors.append("commands[].status passed cannot include failed preconditions")
+                break
             if status == "passed" and returncode != 0:
                 errors.append("commands[].status passed requires returncode 0")
                 break
