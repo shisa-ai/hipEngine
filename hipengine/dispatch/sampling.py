@@ -9,9 +9,11 @@ record explicit blockers instead of relying on ad-hoc env checks.
 
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 
@@ -80,6 +82,39 @@ def _optional_positive_int(value: int | str | None) -> tuple[int | None, bool]:
     return parsed, True
 
 
+def _artifact_row_count(payload: Mapping[str, Any]) -> Any:
+    rows = payload.get("rows")
+    if rows is not None:
+        return rows
+    workload = payload.get("workload")
+    if isinstance(workload, Mapping):
+        return workload.get("concurrency")
+    return None
+
+
+def _equality_artifact_blockers(value: str, *, rows: int) -> tuple[str, ...]:
+    path = Path(value)
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return ("batched LM-head equality artifact must point to an existing JSON artifact",)
+    except json.JSONDecodeError as exc:
+        return (f"batched LM-head equality artifact must be valid JSON: {exc}",)
+    if not isinstance(payload, Mapping):
+        return ("batched LM-head equality artifact must be a JSON object",)
+    blockers: list[str] = []
+    if payload.get("passed") is not True:
+        blockers.append("batched LM-head equality artifact must report passed=true")
+    artifact_rows = _artifact_row_count(payload)
+    if isinstance(artifact_rows, bool) or not isinstance(artifact_rows, int):
+        blockers.append("batched LM-head equality artifact rows must be an integer")
+    elif artifact_rows != rows:
+        blockers.append("batched LM-head equality artifact rows must match batch rows")
+    return tuple(blockers)
+
+
 def plan_batch_sampler_dispatch(
     *,
     rows: int,
@@ -133,6 +168,8 @@ def plan_batch_sampler_dispatch(
         blockers.append("batched LM-head requires an equality artifact path")
     elif not _is_retained_artifact_path(artifact):
         blockers.append("batched LM-head equality artifact path must be under benchmarks/results")
+    else:
+        blockers.extend(_equality_artifact_blockers(artifact, rows=rows))
     if not equality_rows_valid:
         blockers.append("batched LM-head equality rows must be a positive integer")
     elif parsed_equality_rows is None:

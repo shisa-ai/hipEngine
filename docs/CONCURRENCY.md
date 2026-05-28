@@ -754,9 +754,9 @@ roll-up/status view.
       explicit c>N generated-token equality evidence and a retained artifact path
       under `benchmarks/results/`; `_sample_batch_from_hidden(...)` records the
       sampler decision and falls back to `serial_lm_head` when evidence is
-      missing or points outside retained artifacts, and accepted c>N artifact
+      missing, failed, wrong-row, or points outside retained artifacts, and accepted c>N artifact
       schema requires a native sampler decision with requested mode `batched_lm_head`, row count and equality row count matching `workload.concurrency`, green retained equality
-      evidence plus no blockers, and retained bench now blocks promotion before schema validation unless sampler metadata records an explicitly requested native row-aware batched LM-head decision with matching rows/equality rows, a retained equality artifact whose JSON reports `passed=true` at the same row count, and no blockers, so setting the mode cannot silently create a
+      evidence plus no blockers, and dispatch/retained bench now block promotion before schema validation unless sampler metadata records an explicitly requested native row-aware batched LM-head decision with matching rows/equality rows, a retained equality artifact whose JSON reports `passed=true` at the same row count, and no blockers, so setting the mode cannot silently create a
       native sampler claim before same-concurrency equality is green.
 
 ### C4 packets — continuous scheduler and dynamic KV pool

@@ -4254,7 +4254,14 @@ def test_projection_dispatch_selects_best_evidence_green_cN_candidate() -> None:
     assert decision.to_json_dict()["evidence"]["aggregate_vs_row_gemv"] == 1.35
 
 
-def test_batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head() -> None:
+def test_batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    artifact_dir = tmp_path / "benchmarks" / "results"
+    artifact_dir.mkdir(parents=True)
+    (artifact_dir / "qwen35-c8-eq.json").write_text(json.dumps({"schema": 1, "rows": 8, "passed": True}), encoding="utf-8")
+    (artifact_dir / "qwen35-c8-failed-eq.json").write_text(json.dumps({"schema": 1, "rows": 8, "passed": False}), encoding="utf-8")
+    (artifact_dir / "qwen35-c8-wrong-rows-eq.json").write_text(json.dumps({"schema": 1, "rows": 2, "passed": True}), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
     serial = plan_batch_sampler_dispatch(rows=2, requested_mode="serial_lm_head")
     assert serial.mode is BatchSamplerMode.SERIAL_LM_HEAD
     assert serial.native_row_aware_lm_head is False
@@ -4302,6 +4309,26 @@ def test_batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head() -> No
     )
     assert mismatched_equality_rows.mode is BatchSamplerMode.SERIAL_LM_HEAD
     assert "batched LM-head equality rows must match batch rows" in mismatched_equality_rows.blockers
+
+    failed_equality_artifact = plan_batch_sampler_dispatch(
+        rows=8,
+        requested_mode="batched_lm_head",
+        c2_equality_green=True,
+        equality_artifact="benchmarks/results/qwen35-c8-failed-eq.json",
+        equality_rows=8,
+    )
+    assert failed_equality_artifact.mode is BatchSamplerMode.SERIAL_LM_HEAD
+    assert "batched LM-head equality artifact must report passed=true" in failed_equality_artifact.blockers
+
+    wrong_rows_equality_artifact = plan_batch_sampler_dispatch(
+        rows=8,
+        requested_mode="batched_lm_head",
+        c2_equality_green=True,
+        equality_artifact="benchmarks/results/qwen35-c8-wrong-rows-eq.json",
+        equality_rows=8,
+    )
+    assert wrong_rows_equality_artifact.mode is BatchSamplerMode.SERIAL_LM_HEAD
+    assert "batched LM-head equality artifact rows must match batch rows" in wrong_rows_equality_artifact.blockers
 
     allowed = plan_batch_sampler_dispatch(
         rows=8,
