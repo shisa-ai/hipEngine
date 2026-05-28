@@ -5918,6 +5918,22 @@ def test_qwen35_retained_profiler_kernel_evidence_blockers_require_trace_duratio
             "qwen35_batch_decode": 12345 / 14690,
             "qwen35_batch_decode_wmma_caware": 2345 / 14690,
         },
+        "kernel_duration_categories_ns": {
+            "attention": 0.0,
+            "moe": 0.0,
+            "projection": 2345.0,
+            "sampling": 0.0,
+            "graph_replay": 0.0,
+            "other": 12345.0,
+        },
+        "kernel_duration_category_shares": {
+            "attention": 0.0,
+            "moe": 0.0,
+            "projection": 2345 / 14690,
+            "sampling": 0.0,
+            "graph_replay": 0.0,
+            "other": 12345 / 14690,
+        },
     }
     incomplete = {
         "trace_kernel_names": ["qwen35_batch_decode"],
@@ -5940,11 +5956,35 @@ def test_qwen35_retained_profiler_kernel_evidence_blockers_require_duration_arit
         "kernel_durations_ns": {"qwen35_batch_decode": 100.0, "qwen35_batch_decode_wmma_caware": 300.0},
         "total_kernel_duration_ns": 400.0,
         "kernel_duration_shares": {"qwen35_batch_decode": 0.25, "qwen35_batch_decode_wmma_caware": 0.75},
+        "kernel_duration_categories_ns": {
+            "attention": 0.0,
+            "moe": 0.0,
+            "projection": 300.0,
+            "sampling": 0.0,
+            "graph_replay": 0.0,
+            "other": 100.0,
+        },
+        "kernel_duration_category_shares": {
+            "attention": 0.0,
+            "moe": 0.0,
+            "projection": 0.75,
+            "sampling": 0.0,
+            "graph_replay": 0.0,
+            "other": 0.25,
+        },
     }
     stale_total = {**profiler, "total_kernel_duration_ns": 500.0}
     stale_share = {
         **profiler,
         "kernel_duration_shares": {"qwen35_batch_decode": 0.5, "qwen35_batch_decode_wmma_caware": 0.5},
+    }
+    stale_category = {
+        **profiler,
+        "kernel_duration_categories_ns": {**profiler["kernel_duration_categories_ns"], "projection": 200.0},
+    }
+    stale_category_share = {
+        **profiler,
+        "kernel_duration_category_shares": {**profiler["kernel_duration_category_shares"], "projection": 0.5},
     }
 
     assert retained_bench._profiler_kernel_evidence_blockers(profiler) == []
@@ -5952,6 +5992,10 @@ def test_qwen35_retained_profiler_kernel_evidence_blockers_require_duration_arit
     assert "profiler.total_kernel_duration_ns must equal sum(profiler.kernel_durations_ns)" in total_blockers
     share_blockers = retained_bench._profiler_kernel_evidence_blockers(stale_share)
     assert "profiler.kernel_duration_shares.qwen35_batch_decode must match duration/total" in share_blockers
+    category_blockers = retained_bench._profiler_kernel_evidence_blockers(stale_category)
+    assert "profiler.kernel_duration_categories_ns.projection must match categorized kernel_durations_ns" in category_blockers
+    category_share_blockers = retained_bench._profiler_kernel_evidence_blockers(stale_category_share)
+    assert "profiler.kernel_duration_category_shares.projection must match category/total" in category_share_blockers
 
 
 def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_paths() -> None:

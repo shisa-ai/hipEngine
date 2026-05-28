@@ -1115,6 +1115,56 @@ def _profiler_kernel_evidence_blockers(profiler: Mapping[str, Any]) -> list[str]
                     if not math.isclose(float(share), expected_share, rel_tol=1e-6, abs_tol=1e-9):
                         blockers.append(f"profiler.kernel_duration_shares.{kernel_name} must match duration/total")
                         break
+    category_key_set = set(_PROFILER_KERNEL_DURATION_CATEGORIES)
+    expected_categories: dict[str, float] | None = None
+    if duration_keys_valid and durations_valid:
+        expected_categories = dict.fromkeys(_PROFILER_KERNEL_DURATION_CATEGORIES, 0.0)
+        for kernel_name, duration_ns in kernel_durations.items():
+            expected_categories[_profiler_kernel_duration_category(kernel_name)] += float(duration_ns)
+    kernel_duration_categories = profiler.get("kernel_duration_categories_ns")
+    category_values_valid = False
+    if not isinstance(kernel_duration_categories, Mapping) or not kernel_duration_categories:
+        blockers.append("profiler.kernel_duration_categories_ns must be a non-empty object")
+    else:
+        category_keys = {key for key in kernel_duration_categories if isinstance(key, str) and key}
+        if len(category_keys) != len(kernel_duration_categories):
+            blockers.append("profiler.kernel_duration_categories_ns keys must be non-empty strings")
+        elif category_keys != category_key_set:
+            blockers.append("profiler.kernel_duration_categories_ns keys must match known categories")
+        else:
+            category_values_valid = True
+            for category in _PROFILER_KERNEL_DURATION_CATEGORIES:
+                category_value = kernel_duration_categories[category]
+                if not _is_finite_nonnegative_number(category_value):
+                    blockers.append(f"profiler.kernel_duration_categories_ns.{category} must be finite nonnegative numeric")
+                    category_values_valid = False
+                    break
+                if expected_categories is not None and not math.isclose(
+                    float(category_value), expected_categories[category], rel_tol=1e-6, abs_tol=1e-3
+                ):
+                    blockers.append(f"profiler.kernel_duration_categories_ns.{category} must match categorized kernel_durations_ns")
+                    category_values_valid = False
+                    break
+    kernel_duration_category_shares = profiler.get("kernel_duration_category_shares")
+    if not isinstance(kernel_duration_category_shares, Mapping) or not kernel_duration_category_shares:
+        blockers.append("profiler.kernel_duration_category_shares must be a non-empty object")
+    else:
+        category_share_keys = {key for key in kernel_duration_category_shares if isinstance(key, str) and key}
+        if len(category_share_keys) != len(kernel_duration_category_shares):
+            blockers.append("profiler.kernel_duration_category_shares keys must be non-empty strings")
+        elif category_share_keys != category_key_set:
+            blockers.append("profiler.kernel_duration_category_shares keys must match known categories")
+        else:
+            for category in _PROFILER_KERNEL_DURATION_CATEGORIES:
+                category_share = kernel_duration_category_shares[category]
+                if not _is_finite_nonnegative_number(category_share):
+                    blockers.append(f"profiler.kernel_duration_category_shares.{category} must be finite nonnegative numeric")
+                    break
+                if total_duration_valid and category_values_valid:
+                    expected_share = float(kernel_duration_categories[category]) / float(total_kernel_duration)
+                    if not math.isclose(float(category_share), expected_share, rel_tol=1e-6, abs_tol=1e-9):
+                        blockers.append(f"profiler.kernel_duration_category_shares.{category} must match category/total")
+                        break
     if isinstance(trace_kernel_names, list):
         trace_name_set = {name for name in trace_kernel_names if isinstance(name, str) and name}
         missing_trace_names = [name for name in kernel_durations if isinstance(name, str) and name and name not in trace_name_set]
