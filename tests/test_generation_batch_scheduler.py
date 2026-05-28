@@ -2218,6 +2218,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_postcondition_kind["commands"][-1]["postconditions"][0]["kind"] = "other_check"
     with pytest.raises(ValueError, match=r"commands\[\]\.postconditions must include retained native postcondition kinds"):
         c_sweep.validate_sweep_summary(tampered_postcondition_kind)
+    tampered_postcondition_artifact_path = json.loads(json.dumps(persisted))
+    tampered_postcondition_artifact_path["commands"][-1]["postconditions"][0]["artifact_path"] = str(output_dir / "other.json")
+    with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.artifact_path must match commands\[\]\.artifact_path"):
+        c_sweep.validate_sweep_summary(tampered_postcondition_artifact_path)
+    tampered_postcondition_profiler_path = json.loads(json.dumps(persisted))
+    tampered_postcondition_profiler_path["commands"][-1]["postconditions"][0]["profiler_precondition_artifact_path"] = str(output_dir / "other-profiler.json")
+    with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler_precondition_artifact_path must match profiler_summary precondition"):
+        c_sweep.validate_sweep_summary(tampered_postcondition_profiler_path)
     tampered_git_dirty = json.loads(json.dumps(persisted))
     tampered_git_dirty["commands"][-1]["git_dirty"] = True
     with pytest.raises(ValueError, match=r"commands\[\]\.git_dirty must match git.dirty"):

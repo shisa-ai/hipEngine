@@ -1558,6 +1558,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             ):
                 errors.append("commands[].postconditions must be absent for failed rows with nonzero returncode")
                 break
+            if status == "skipped" and any(field in entry for field in ("postconditions", "postcondition")):
+                errors.append("commands[].postconditions must be absent for skipped rows")
+                break
             if "postconditions" in entry and (entry.get("category") != "native_diagnostic" or entry.get("batch_size") == 1):
                 errors.append("commands[].postconditions are only valid for retained native diagnostic rows")
                 break
@@ -1573,6 +1576,26 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     errors.append("commands[].preconditions must include retained native gate kinds")
                     break
             postconditions = entry.get("postconditions")
+            preconditions = entry.get("preconditions")
+            if isinstance(postconditions, list):
+                postcondition = postconditions[0]
+                if postcondition.get("artifact_path") != entry.get("artifact_path"):
+                    errors.append("commands[].postconditions[].artifact_path must match commands[].artifact_path")
+                    break
+                profiler_precondition = next(
+                    (
+                        condition
+                        for condition in preconditions
+                        if isinstance(condition, dict) and condition.get("kind") == "profiler_summary"
+                    ),
+                    None,
+                ) if isinstance(preconditions, list) else None
+                if (
+                    isinstance(profiler_precondition, dict)
+                    and postcondition.get("profiler_precondition_artifact_path") != profiler_precondition.get("artifact_path")
+                ):
+                    errors.append("commands[].postconditions[].profiler_precondition_artifact_path must match profiler_summary precondition")
+                    break
             failed_postconditions = [
                 postcondition
                 for postcondition in postconditions
