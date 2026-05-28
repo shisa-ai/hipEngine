@@ -1743,6 +1743,13 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if profiler_precondition.get("profiler_output_format") != "csv":
                         errors.append("commands[].preconditions[].profiler_output_format must be csv when passed")
                         break
+                    profiler_trace_dir = profiler_precondition.get("profiler_trace_dir")
+                    if not isinstance(profiler_trace_dir, str) or not profiler_trace_dir:
+                        errors.append("commands[].preconditions[].profiler_trace_dir must be a non-empty string when passed")
+                        break
+                    if _command_text_arg(profiler_command, "-d") != profiler_trace_dir:
+                        errors.append("commands[].preconditions[].profiler_trace_dir must match profiler command -d")
+                        break
                     profiler_trace_files = profiler_precondition.get("profiler_trace_files")
                     if (
                         not isinstance(profiler_trace_files, list)
@@ -1751,6 +1758,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         or not any(_is_kernel_trace_csv_path(trace_file) for trace_file in profiler_trace_files)
                     ):
                         errors.append("commands[].preconditions[].profiler_trace_files must include a kernel-trace CSV when passed")
+                        break
+                    if any(not Path(trace_file).is_relative_to(Path(profiler_trace_dir)) for trace_file in profiler_trace_files):
+                        errors.append("commands[].preconditions[].profiler_trace_files must be under profiler_trace_dir when passed")
                         break
                     profiler_kernel_names = profiler_precondition.get("profiler_trace_kernel_names")
                     if (

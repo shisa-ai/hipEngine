@@ -2435,6 +2435,18 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_profiler_precondition_status["commands"][-1]["preconditions"][-1]["profiler_status"] = "missing"
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_status must be captured when passed"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_status)
+    tampered_profiler_precondition_trace_dir = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_trace_dir["commands"][-1]["preconditions"][-1].pop("profiler_trace_dir")
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_dir must be a non-empty string when passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_trace_dir)
+    tampered_profiler_precondition_trace_dir_command = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_trace_dir_command["commands"][-1]["preconditions"][-1]["profiler_trace_dir"] = str(output_dir / "other-profile-c2")
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_dir must match profiler command -d"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_trace_dir_command)
+    tampered_profiler_precondition_trace_file_scope = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_trace_file_scope["commands"][-1]["preconditions"][-1]["profiler_trace_files"] = [str(output_dir / "other-profile-c2" / "hipengine_kernel_trace.csv")]
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_files must be under profiler_trace_dir when passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_trace_file_scope)
     tampered_profiler_precondition_trace_files = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_trace_files["commands"][-1]["preconditions"][-1]["profiler_trace_files"] = []
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_files must include a kernel-trace CSV when passed"):
