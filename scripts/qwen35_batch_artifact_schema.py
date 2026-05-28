@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from hipengine.dispatch import ProjectionDispatchEvidence, projection_dispatch_candidates_from_artifact
+from hipengine.generation import GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -105,7 +106,7 @@ _UNUSABLE_ACCEPTED_SCALING_BASELINE_STATUSES = {
     "rejected",
     "rejected_correctness",
 }
-_GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS = frozenset(("le_10us", "le_100us", "le_1ms", "le_10ms", "gt_10ms"))
+_GRAPH_KERNEL_TIME_HISTOGRAM_BUCKET_SET = frozenset(GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS)
 _COMMAND_BATCH_SIZE_RE = re.compile(r"(?:^|\s)--batch-size(?:=|\s+)(\d+)(?=\s|$)")
 _COMMAND_DECODE_TOKENS_RE = re.compile(r"(?:^|\s)--decode-tokens(?:=|\s+)(\d+)(?=\s|$)")
 _COMMAND_MAX_LAYERS_RE = re.compile(r"(?:^|\s)--max-layers(?:=|\s+)(\d+)(?=\s|$)")
@@ -1045,10 +1046,10 @@ def _validate_accepted_scheduler_metadata(
             errors.append("execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns must be an object for accepted artifacts")
         else:
             invalid_histogram_buckets = sorted(
-                str(key) for key in kernel_time_histogram if isinstance(key, str) and key not in _GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS
+                str(key) for key in kernel_time_histogram if isinstance(key, str) and key not in _GRAPH_KERNEL_TIME_HISTOGRAM_BUCKET_SET
             )
             if invalid_histogram_buckets:
-                allowed = ", ".join(sorted(_GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS))
+                allowed = ", ".join(GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS)
                 errors.append(
                     f"execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns keys must be one of {allowed} for accepted artifacts"
                 )

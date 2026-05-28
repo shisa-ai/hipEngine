@@ -29,6 +29,7 @@ from hipengine.generation import (
     EngineLoopConfig,
     GeneratedToken,
     GenerationRequest,
+    GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS,
     GraphBucketCache,
     PerRowSamplingParams,
     ResidentBatchScheduler,
@@ -5239,6 +5240,7 @@ def test_graph_bucket_cache_clear_resets_entries_and_counters() -> None:
     cache.put(key, object())
     cache.record_kernel_time_ns(5_000)
     cache.record_kernel_time_ns(50_000)
+    assert GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS == ("le_10us", "le_100us", "le_1ms", "le_10ms", "gt_10ms")
     assert cache.stats.entries == 1
     assert cache.stats.miss_reasons == {"shape_changed": 1}
     assert cache.stats.kernel_time_histogram_ns == {"le_10us": 1, "le_100us": 1}

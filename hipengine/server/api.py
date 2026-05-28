@@ -32,11 +32,12 @@ except ImportError:  # pragma: no cover - Pydantic v1 compatibility
 from starlette.concurrency import run_in_threadpool
 
 from hipengine import LLM, SamplingParams
+from hipengine.generation import GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS
 from hipengine.kvcache import resolve_prefix_cache_mode
 
 
 _LOGGER = logging.getLogger("uvicorn.error")
-_GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS = frozenset(("le_10us", "le_100us", "le_1ms", "le_10ms", "gt_10ms"))
+_GRAPH_KERNEL_TIME_HISTOGRAM_BUCKET_SET = frozenset(GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS)
 
 
 @dataclass(frozen=True)
@@ -952,7 +953,7 @@ def _graph_bucket_metric_values(engine: Any | None) -> dict[str, Any]:
     values["miss_reasons"] = _non_negative_metric_mapping(data.get("miss_reasons"))
     kernel_time_histogram = _non_negative_metric_mapping(data.get("kernel_time_histogram_ns"))
     values["kernel_time_histogram_ns"] = {
-        bucket: value for bucket, value in kernel_time_histogram.items() if bucket in _GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS
+        bucket: value for bucket, value in kernel_time_histogram.items() if bucket in _GRAPH_KERNEL_TIME_HISTOGRAM_BUCKET_SET
     }
     return values
 

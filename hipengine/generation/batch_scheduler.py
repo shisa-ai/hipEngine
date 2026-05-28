@@ -391,6 +391,9 @@ class SpeculativeStateCommitPlan:
     buffers: TargetStateCommitBuffers
 
 
+GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS = ("le_10us", "le_100us", "le_1ms", "le_10ms", "gt_10ms")
+
+
 @dataclass(frozen=True, slots=True)
 class GraphBucketStats:
     entries: int
@@ -469,14 +472,14 @@ class GraphBucketCache:
 
 def _kernel_time_histogram_bucket_ns(duration_ns: int) -> str:
     if duration_ns <= 10_000:
-        return "le_10us"
+        return GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS[0]
     if duration_ns <= 100_000:
-        return "le_100us"
+        return GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS[1]
     if duration_ns <= 1_000_000:
-        return "le_1ms"
+        return GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS[2]
     if duration_ns <= 10_000_000:
-        return "le_10ms"
-    return "gt_10ms"
+        return GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS[3]
+    return GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS[4]
 
 
 class ResidentBatchScheduler:
