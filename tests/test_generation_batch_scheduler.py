@@ -6899,6 +6899,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="kernel_time_histogram_ns.le_10us must be a non-negative int"):
         validate_cn_diagnostic_artifact_payload(invalid_graph_bucket_histogram)
 
+    unknown_graph_bucket_histogram = json.loads(json.dumps(accepted))
+    unknown_graph_bucket_histogram["execution"]["scheduler_metadata"]["graph_bucket_stats"]["kernel_time_histogram_ns"] = {"lt_1us": 1}
+    with pytest.raises(ValueError, match="kernel_time_histogram_ns keys must be one of"):
+        validate_cn_diagnostic_artifact_payload(unknown_graph_bucket_histogram)
+
     empty_graph_bucket_histogram = json.loads(json.dumps(accepted))
     empty_graph_bucket_histogram["execution"]["scheduler_metadata"]["graph_bucket_stats"]["kernel_time_histogram_ns"] = {}
     with pytest.raises(ValueError, match="kernel_time_histogram_ns must contain at least one observation"):

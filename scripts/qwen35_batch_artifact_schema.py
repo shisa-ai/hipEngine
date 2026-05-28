@@ -105,6 +105,7 @@ _UNUSABLE_ACCEPTED_SCALING_BASELINE_STATUSES = {
     "rejected",
     "rejected_correctness",
 }
+_GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS = frozenset(("le_10us", "le_100us", "le_1ms", "le_10ms", "gt_10ms"))
 _COMMAND_BATCH_SIZE_RE = re.compile(r"(?:^|\s)--batch-size(?:=|\s+)(\d+)(?=\s|$)")
 _COMMAND_DECODE_TOKENS_RE = re.compile(r"(?:^|\s)--decode-tokens(?:=|\s+)(\d+)(?=\s|$)")
 _COMMAND_MAX_LAYERS_RE = re.compile(r"(?:^|\s)--max-layers(?:=|\s+)(\d+)(?=\s|$)")
@@ -1043,6 +1044,14 @@ def _validate_accepted_scheduler_metadata(
         if not isinstance(kernel_time_histogram, Mapping):
             errors.append("execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns must be an object for accepted artifacts")
         else:
+            invalid_histogram_buckets = sorted(
+                str(key) for key in kernel_time_histogram if isinstance(key, str) and key not in _GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS
+            )
+            if invalid_histogram_buckets:
+                allowed = ", ".join(sorted(_GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS))
+                errors.append(
+                    f"execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns keys must be one of {allowed} for accepted artifacts"
+                )
             histogram_total = _validate_non_negative_int_mapping(
                 "execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns",
                 kernel_time_histogram,
