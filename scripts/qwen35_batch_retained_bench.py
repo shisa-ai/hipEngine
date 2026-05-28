@@ -1075,13 +1075,46 @@ def _profiler_kernel_evidence_blockers(profiler: Mapping[str, Any]) -> list[str]
     if not isinstance(kernel_durations, Mapping) or not kernel_durations:
         blockers.append("profiler.kernel_durations_ns must be a non-empty object")
         return blockers
+    duration_keys_valid = True
+    durations_valid = True
+    duration_total = 0.0
     for kernel_name, duration_ns in kernel_durations.items():
         if not isinstance(kernel_name, str) or not kernel_name:
             blockers.append("profiler.kernel_durations_ns keys must be non-empty strings")
+            duration_keys_valid = False
             break
         if not _is_finite_positive_number(duration_ns):
             blockers.append(f"profiler.kernel_durations_ns.{kernel_name} must be positive numeric")
+            durations_valid = False
             break
+        duration_total += float(duration_ns)
+    total_kernel_duration = profiler.get("total_kernel_duration_ns")
+    total_duration_valid = _is_finite_positive_number(total_kernel_duration)
+    if not total_duration_valid:
+        blockers.append("profiler.total_kernel_duration_ns must be positive numeric")
+    elif durations_valid and not math.isclose(float(total_kernel_duration), duration_total, rel_tol=1e-6, abs_tol=1e-3):
+        blockers.append("profiler.total_kernel_duration_ns must equal sum(profiler.kernel_durations_ns)")
+    kernel_duration_shares = profiler.get("kernel_duration_shares")
+    if not isinstance(kernel_duration_shares, Mapping) or not kernel_duration_shares:
+        blockers.append("profiler.kernel_duration_shares must be a non-empty object")
+    elif duration_keys_valid:
+        duration_key_set = {key for key in kernel_durations if isinstance(key, str) and key}
+        share_key_set = {key for key in kernel_duration_shares if isinstance(key, str) and key}
+        if len(share_key_set) != len(kernel_duration_shares):
+            blockers.append("profiler.kernel_duration_shares keys must be non-empty strings")
+        elif share_key_set != duration_key_set:
+            blockers.append("profiler.kernel_duration_shares keys must match profiler.kernel_durations_ns")
+        else:
+            for kernel_name in sorted(share_key_set):
+                share = kernel_duration_shares[kernel_name]
+                if not _is_finite_nonnegative_number(share):
+                    blockers.append(f"profiler.kernel_duration_shares.{kernel_name} must be finite nonnegative numeric")
+                    break
+                if total_duration_valid and durations_valid:
+                    expected_share = float(kernel_durations[kernel_name]) / float(total_kernel_duration)
+                    if not math.isclose(float(share), expected_share, rel_tol=1e-6, abs_tol=1e-9):
+                        blockers.append(f"profiler.kernel_duration_shares.{kernel_name} must match duration/total")
+                        break
     if isinstance(trace_kernel_names, list):
         trace_name_set = {name for name in trace_kernel_names if isinstance(name, str) and name}
         missing_trace_names = [name for name in kernel_durations if isinstance(name, str) and name and name not in trace_name_set]

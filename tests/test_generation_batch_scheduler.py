@@ -5913,17 +5913,45 @@ def test_qwen35_retained_profiler_kernel_evidence_blockers_require_trace_duratio
         "trace_kernel_names": ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"],
         "expected_kernel_names": ["qwen35_batch_decode_wmma_caware"],
         "kernel_durations_ns": {"qwen35_batch_decode": 12345, "qwen35_batch_decode_wmma_caware": 2345},
+        "total_kernel_duration_ns": 14690,
+        "kernel_duration_shares": {
+            "qwen35_batch_decode": 12345 / 14690,
+            "qwen35_batch_decode_wmma_caware": 2345 / 14690,
+        },
     }
     incomplete = {
         "trace_kernel_names": ["qwen35_batch_decode"],
         "expected_kernel_names": ["qwen35_batch_decode_wmma_caware"],
         "kernel_durations_ns": {"qwen35_batch_decode_wmma_caware": 0},
+        "total_kernel_duration_ns": 1,
+        "kernel_duration_shares": {"qwen35_batch_decode_wmma_caware": 1.0},
     }
 
     assert retained_bench._profiler_kernel_evidence_blockers(complete) == []
     blockers = retained_bench._profiler_kernel_evidence_blockers(incomplete)
     assert "profiler.kernel_durations_ns.qwen35_batch_decode_wmma_caware must be positive numeric" in blockers
     assert "profiler.trace_kernel_names must include profiler.kernel_durations_ns keys" in blockers
+
+
+def test_qwen35_retained_profiler_kernel_evidence_blockers_require_duration_arithmetic() -> None:
+    profiler = {
+        "trace_kernel_names": ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"],
+        "expected_kernel_names": ["qwen35_batch_decode_wmma_caware"],
+        "kernel_durations_ns": {"qwen35_batch_decode": 100.0, "qwen35_batch_decode_wmma_caware": 300.0},
+        "total_kernel_duration_ns": 400.0,
+        "kernel_duration_shares": {"qwen35_batch_decode": 0.25, "qwen35_batch_decode_wmma_caware": 0.75},
+    }
+    stale_total = {**profiler, "total_kernel_duration_ns": 500.0}
+    stale_share = {
+        **profiler,
+        "kernel_duration_shares": {"qwen35_batch_decode": 0.5, "qwen35_batch_decode_wmma_caware": 0.5},
+    }
+
+    assert retained_bench._profiler_kernel_evidence_blockers(profiler) == []
+    total_blockers = retained_bench._profiler_kernel_evidence_blockers(stale_total)
+    assert "profiler.total_kernel_duration_ns must equal sum(profiler.kernel_durations_ns)" in total_blockers
+    share_blockers = retained_bench._profiler_kernel_evidence_blockers(stale_share)
+    assert "profiler.kernel_duration_shares.qwen35_batch_decode must match duration/total" in share_blockers
 
 
 def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_paths() -> None:
