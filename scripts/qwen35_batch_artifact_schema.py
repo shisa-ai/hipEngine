@@ -198,14 +198,33 @@ def _validate_retained_bench_unique_flags(command: str, *, field: str, errors: l
     _validate_command_unique_flags(command, _RETAINED_BENCH_UNIQUE_FLAGS, field=field, errors=errors)
 
 
+def _is_python_executable(token: str) -> bool:
+    return re.fullmatch(r"python(?:3(?:\.\d+)?)?", Path(token).name) is not None
+
+
 def _validate_retained_bench_command_target(command: str, *, field: str, errors: list[str]) -> None:
     try:
         argv = shlex.split(command)
     except ValueError:
         errors.append(f"commands.{field} must be shell-parseable for accepted artifacts")
         return
-    if len(argv) < 2 or not Path(argv[0]).name.startswith("python") or argv[1] != "scripts/qwen35_batch_retained_bench.py":
+    if len(argv) < 2 or not _is_python_executable(argv[0]) or argv[1] != "scripts/qwen35_batch_retained_bench.py":
         errors.append(f"commands.{field} must start with python scripts/qwen35_batch_retained_bench.py for accepted artifacts")
+
+
+def _validate_embedded_python_script_command(command: str, script: str, *, field: str, errors: list[str]) -> None:
+    try:
+        argv = shlex.split(command)
+    except ValueError:
+        errors.append(f"commands.{field} must be shell-parseable for accepted artifacts")
+        return
+    script_indices = [idx for idx, token in enumerate(argv) if token == script]
+    if len(script_indices) != 1:
+        errors.append(f"commands.{field} must include exactly one python {script} invocation for accepted artifacts")
+        return
+    script_index = script_indices[0]
+    if script_index == 0 or not _is_python_executable(argv[script_index - 1]):
+        errors.append(f"commands.{field} must invoke {script} with python for accepted artifacts")
 
 
 def _validate_command_workload_shape(command: str, *, field: str, payload: Mapping[str, Any], errors: list[str]) -> None:
@@ -1021,6 +1040,12 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         if "qwen35_batch_correctness.py" not in correctness_command:
             errors.append("commands.correctness_reference must reference scripts/qwen35_batch_correctness.py for accepted artifacts")
         else:
+            _validate_embedded_python_script_command(
+                correctness_command,
+                "scripts/qwen35_batch_correctness.py",
+                field="correctness_reference",
+                errors=errors,
+            )
             _validate_command_unique_flags(correctness_command, _CORRECTNESS_REFERENCE_UNIQUE_FLAGS, field="correctness_reference", errors=errors)
             rows_match = _CORRECTNESS_ROWS_RE.search(correctness_command)
             if rows_match is None:
