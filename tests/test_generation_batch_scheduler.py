@@ -1894,6 +1894,36 @@ def test_batch_c_sweep_rejects_wrong_seed_before_creating_artifacts(tmp_path: Pa
     assert not output_dir.exists()
 
 
+def test_batch_c_sweep_rejects_unsafe_output_dir_before_creating_artifacts(tmp_path: Path, monkeypatch) -> None:
+    parent_component_output = tmp_path / "output-parent" / ".." / "artifacts"
+    symlink_output = tmp_path / "artifacts-link"
+    monkeypatch.setattr(
+        c_sweep.subprocess,
+        "run",
+        lambda *args, **kwargs: pytest.fail("unsafe output-dir sweep should fail before launching subprocesses"),
+    )
+
+    args = build_c_sweep_parser().parse_args(
+        ["--dry-run", "--batch-sizes", "2", "--output-dir", str(parent_component_output)]
+    )
+    with pytest.raises(ValueError, match="--output-dir must not contain parent-directory components"):
+        run_sweep(args)
+    assert not (tmp_path / "artifacts").exists()
+
+    if hasattr(os, "symlink"):
+        target = tmp_path / "real-artifacts"
+        target.mkdir()
+        try:
+            symlink_output.symlink_to(target, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            return
+        args = build_c_sweep_parser().parse_args(
+            ["--dry-run", "--batch-sizes", "2", "--output-dir", str(symlink_output)]
+        )
+        with pytest.raises(ValueError, match="--output-dir must not be a symlink"):
+            run_sweep(args)
+
+
 def test_batch_c_sweep_stops_and_counts_failed_command(tmp_path: Path, monkeypatch) -> None:
     args = build_c_sweep_parser().parse_args(
         [

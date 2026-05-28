@@ -2711,6 +2711,14 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
 def _validate_run_options(args: argparse.Namespace) -> None:
     if int(args.seed) != _REQUIRED_PRIMITIVE_CORRECTNESS_SEED:
         raise ValueError("--seed must match required primitive correctness seed")
+    output_dir = Path(args.output_dir)
+    if _path_has_parent_directory_component(output_dir):
+        raise ValueError("--output-dir must not contain parent-directory components")
+    output_dir_check_path = output_dir if output_dir.is_absolute() else REPO_ROOT / output_dir
+    if output_dir_check_path.is_symlink():
+        raise ValueError("--output-dir must not be a symlink")
+    if _path_has_symlink_parent(output_dir_check_path):
+        raise ValueError("--output-dir parent directories must not be symlinks")
 
 
 def _summary_options(args: argparse.Namespace) -> dict[str, Any]:
