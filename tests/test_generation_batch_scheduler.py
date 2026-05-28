@@ -6542,6 +6542,12 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         with pytest.raises(ValueError, match=f"hardware.{hardware_field}"):
             validate_cn_diagnostic_artifact_payload(missing_hardware_field)
 
+    placeholder_arch = json.loads(json.dumps(accepted))
+    placeholder_arch["hardware"]["arch"] = "rdna3"
+    placeholder_arch["hardware"]["rocminfo"]["output"] = "Name: rdna3"
+    with pytest.raises(ValueError, match="hardware.arch must be a gfx"):
+        validate_cn_diagnostic_artifact_payload(placeholder_arch)
+
     missing_rocminfo = json.loads(json.dumps(accepted))
     missing_rocminfo["hardware"].pop("rocminfo")
     with pytest.raises(ValueError, match="hardware.rocminfo"):

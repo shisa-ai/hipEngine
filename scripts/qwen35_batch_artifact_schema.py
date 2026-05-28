@@ -136,6 +136,7 @@ _RETAINED_BENCH_UNIQUE_FLAGS = (
 )
 _CORRECTNESS_REFERENCE_UNIQUE_FLAGS = ("--rows", "--json")
 _FULL_COMMIT_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", re.IGNORECASE)
+_ACCEPTED_HARDWARE_ARCH_RE = re.compile(r"gfx[0-9a-f]+", re.IGNORECASE)
 _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = ("serial", "fallback", "per_row", "per-row")
 _REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES = (
     "attention",
@@ -927,6 +928,9 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     for field in _REQUIRED_ACCEPTED_HARDWARE_FIELDS:
         if not isinstance(hardware.get(field), str) or not hardware.get(field):
             errors.append(f"hardware.{field} must be a non-empty string for accepted artifacts")
+    hardware_arch = hardware.get("arch")
+    if isinstance(hardware_arch, str) and hardware_arch and _ACCEPTED_HARDWARE_ARCH_RE.fullmatch(hardware_arch) is None:
+        errors.append("hardware.arch must be a gfx* architecture string for accepted artifacts")
     for field in _REQUIRED_ACCEPTED_HARDWARE_CAPTURE_FIELDS:
         command_fragment = "rocm-smi" if field == "rocm_smi" else field
         _validate_capture_context(
@@ -941,7 +945,6 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             for fragment in _REQUIRED_ACCEPTED_HARDWARE_CAPTURE_COMMAND_FRAGMENTS[field]:
                 if fragment not in command:
                     errors.append(f"hardware.{field}.command must include {fragment} for accepted artifacts")
-    hardware_arch = hardware.get("arch")
     rocminfo = hardware.get("rocminfo")
     if isinstance(hardware_arch, str) and hardware_arch and isinstance(rocminfo, Mapping):
         rocminfo_output = rocminfo.get("output")
