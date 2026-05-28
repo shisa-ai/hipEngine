@@ -1852,6 +1852,33 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if not _is_number(profiler_precondition.get("total_kernel_duration_ns")) or float(profiler_precondition["total_kernel_duration_ns"]) <= 0.0:
                         errors.append("commands[].preconditions[].total_kernel_duration_ns must be positive when profiler passed")
                         break
+                    total_kernel_duration = float(profiler_precondition["total_kernel_duration_ns"])
+                    kernel_duration_sum = sum(float(duration_ns) for duration_ns in kernel_durations.values())
+                    if abs(total_kernel_duration - kernel_duration_sum) > max(1.0, kernel_duration_sum * 1e-6):
+                        errors.append("commands[].preconditions[].total_kernel_duration_ns must match sum(kernel_durations_ns) when profiler passed")
+                        break
+                    kernel_duration_shares = profiler_precondition.get("kernel_duration_shares")
+                    if (
+                        not isinstance(kernel_duration_shares, dict)
+                        or {key for key in kernel_duration_shares if isinstance(key, str)} != {key for key in kernel_durations if isinstance(key, str)}
+                        or any(not _is_number(kernel_duration_shares.get(kernel_name)) or float(kernel_duration_shares[kernel_name]) <= 0.0 for kernel_name in kernel_durations)
+                    ):
+                        errors.append("commands[].preconditions[].kernel_duration_shares must match kernel_durations_ns keys with positive shares when profiler passed")
+                        break
+                    kernel_share_sum = 0.0
+                    kernel_share_error = False
+                    for kernel_name, duration_ns in kernel_durations.items():
+                        kernel_share = float(kernel_duration_shares[kernel_name])
+                        kernel_share_sum += kernel_share
+                        if abs(kernel_share - (float(duration_ns) / total_kernel_duration)) > 1e-6:
+                            errors.append("commands[].preconditions[].kernel_duration_shares must match kernel duration ratios when profiler passed")
+                            kernel_share_error = True
+                            break
+                    if kernel_share_error:
+                        break
+                    if abs(kernel_share_sum - 1.0) > 1e-6:
+                        errors.append("commands[].preconditions[].kernel_duration_shares must sum to 1.0 when profiler passed")
+                        break
                     kernel_categories = profiler_precondition.get("kernel_duration_categories_ns")
                     kernel_category_shares = profiler_precondition.get("kernel_duration_category_shares")
                     if (
