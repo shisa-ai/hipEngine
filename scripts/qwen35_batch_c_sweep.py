@@ -329,12 +329,15 @@ def _extract_decode_rates(payload: dict[str, Any]) -> tuple[float | None, float 
     return aggregate, per_request
 
 
-def _command_arg_value(command: SweepCommand, flag: str) -> str | None:
-    argv = list(command.argv)
+def _argv_value(argv: Sequence[str], flag: str) -> str | None:
     try:
         return argv[argv.index(flag) + 1]
     except (ValueError, IndexError):
         return None
+
+
+def _command_arg_value(command: SweepCommand, flag: str) -> str | None:
+    return _argv_value(list(command.argv), flag)
 
 
 def _command_arg_int(command: SweepCommand, flag: str) -> int | None:
@@ -1574,6 +1577,15 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 expected_retained_kinds = ["primitive_correctness", "c1_baseline", "serial_bridge", "profiler_summary"]
                 if not isinstance(preconditions, list) or [condition.get("kind") for condition in preconditions] != expected_retained_kinds:
                     errors.append("commands[].preconditions must include retained native gate kinds")
+                    break
+                expected_retained_precondition_paths = [
+                    _argv_value(argv, "--primitive-correctness-json"),
+                    _argv_value(argv, "--c1-baseline-json"),
+                    _argv_value(argv, "--serial-bridge-json"),
+                    _argv_value(argv, "--profiler-json"),
+                ]
+                if [condition.get("artifact_path") for condition in preconditions] != expected_retained_precondition_paths:
+                    errors.append("commands[].preconditions[].artifact_path must match retained native gate argv")
                     break
             postconditions = entry.get("postconditions")
             preconditions = entry.get("preconditions")
