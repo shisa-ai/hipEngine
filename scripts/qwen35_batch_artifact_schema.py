@@ -1223,6 +1223,14 @@ def _validate_accepted_scheduler_metadata(
             )
             if not kernel_time_histogram or histogram_total == 0:
                 errors.append("execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns must contain at least one observation for accepted artifacts")
+            if (
+                histogram_total is not None
+                and isinstance(hits, int)
+                and not isinstance(hits, bool)
+                and hits > 0
+                and histogram_total < hits
+            ):
+                errors.append("execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns observation count must cover graph_bucket_stats.hits for accepted artifacts")
 
 
 def _validate_non_negative_int_mapping(label: str, values: Mapping[str, Any], errors: list[str]) -> int | None:

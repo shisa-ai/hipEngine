@@ -280,6 +280,9 @@ def _graph_kernel_time_histogram_blockers(scheduler_metadata: Mapping[str, Any])
         total_observations += int(count)
     if total_observations <= 0:
         blockers.append("execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns has no observations")
+    hits = graph_stats.get("hits")
+    if isinstance(hits, int) and not isinstance(hits, bool) and hits > 0 and total_observations < hits:
+        blockers.append("execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns observation count must cover graph_bucket_stats.hits")
     return blockers
 
 

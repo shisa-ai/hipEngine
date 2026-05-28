@@ -924,7 +924,7 @@ roll-up/status view.
       histogram evidence plus those
       observability fields plus accepted-schema-validated replay shape-key axes (`context_bucket`,
       `top_k`, `experts_per_token`, `replay_steps`, `draft_depth`, and
-      `tree_shape`, with the context bucket covering the workload prompt length) and per-bucket histogram observation counts covering profiler kernel-duration evidence before a c>N row can be promoted; `/metrics` exposes a
+      `tree_shape`, with the context bucket covering the workload prompt length) and per-bucket histogram observation counts covering both replay hits and profiler kernel-duration evidence before a c>N row can be promoted; `/metrics` exposes a
       hit/miss-derived replay-hit-rate gauge plus labeled miss-reason and known kernel-time-bucket counters for live runs.
 - [ ] **P3 remove residual serial loops.** Remove full-attention per-row
       fallback, per-row metadata allocation, per-row LM-head launches, and

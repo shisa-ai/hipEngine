@@ -6741,6 +6741,11 @@ def test_qwen35_retained_graph_histogram_blockers_reject_unknown_buckets() -> No
 
     assert blockers == ["execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns.lt_1us is not a known bucket"]
 
+    short_histogram = retained_bench._graph_kernel_time_histogram_blockers(
+        {"graph_bucket_stats": {"hits": 2, "kernel_time_histogram_ns": {"le_10us": 1}}}
+    )
+    assert "execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns observation count must cover graph_bucket_stats.hits" in short_histogram
+
 
 def test_qwen35_retained_payload_blocks_acceptance_without_graph_histogram_evidence(monkeypatch) -> None:
     monkeypatch.setattr(retained_bench, "_hardware_context", lambda: {"gpu": "test"})
@@ -7970,6 +7975,15 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     mismatched_graph_bucket_replay_rate["execution"]["scheduler_metadata"]["graph_bucket_stats"]["replay_hit_rate"] = 0.25
     with pytest.raises(ValueError, match="graph_bucket_stats.replay_hit_rate must match hits"):
         validate_cn_diagnostic_artifact_payload(mismatched_graph_bucket_replay_rate)
+
+    short_graph_bucket_histogram = json.loads(json.dumps(accepted))
+    short_graph_bucket_stats = short_graph_bucket_histogram["execution"]["scheduler_metadata"]["graph_bucket_stats"]
+    short_graph_bucket_stats["hits"] = 2
+    short_graph_bucket_stats["misses"] = 1
+    short_graph_bucket_stats["replay_hit_rate"] = 2.0 / 3.0
+    short_graph_bucket_stats["kernel_time_histogram_ns"] = {"le_10us": 1}
+    with pytest.raises(ValueError, match="kernel_time_histogram_ns observation count must cover graph_bucket_stats.hits"):
+        validate_cn_diagnostic_artifact_payload(short_graph_bucket_histogram)
 
     empty_graph_bucket_cache = json.loads(json.dumps(accepted))
     empty_graph_bucket_cache["execution"]["scheduler_metadata"]["graph_bucket_stats"]["entries"] = 0
