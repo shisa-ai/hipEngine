@@ -1292,30 +1292,33 @@ def _profiler_provenance_blockers(
         if trace_dir is not None and not _is_path_relative_to(trace_file, trace_dir):
             blockers.append("profiler.trace_files entries must be under profiler.trace_dir")
             break
-    command_candidates = [
+    artifact_commands = [
         command
-        for command in (profiled_command, profiler.get("command"), profiler.get("profiler_command"))
+        for command in (profiler.get("command"), profiler.get("profiler_command"))
         if isinstance(command, str) and command
     ]
-    if not command_candidates:
+    command_candidates: list[str] = []
+    if isinstance(profiled_command, str) and profiled_command and "<profile-dir>" not in profiled_command:
+        command_candidates.append(profiled_command)
+    command_candidates.extend(artifact_commands)
+    unique_command_candidates = list(dict.fromkeys(command_candidates))
+    if not unique_command_candidates:
         blockers.append("profiler command must include rocprofv3 --kernel-trace retained bench command")
     else:
-        command_blockers = [
-            _profiler_command_provenance_blockers(
-                command,
-                trace_dir=trace_dir,
-                profiler_artifact_path=retained_profiler_artifact_path,
-                retained_artifact_path=retained_artifact_path,
-                expected_workload=expected_workload,
-                expected_inputs=expected_inputs,
-                expected_build=expected_build,
-                expected_references=expected_references,
-                expected_kv_policy=expected_kv_policy,
+        for command in unique_command_candidates:
+            blockers.extend(
+                _profiler_command_provenance_blockers(
+                    command,
+                    trace_dir=trace_dir,
+                    profiler_artifact_path=retained_profiler_artifact_path,
+                    retained_artifact_path=retained_artifact_path,
+                    expected_workload=expected_workload,
+                    expected_inputs=expected_inputs,
+                    expected_build=expected_build,
+                    expected_references=expected_references,
+                    expected_kv_policy=expected_kv_policy,
+                )
             )
-            for command in command_candidates
-        ]
-        if all(command_blocker for command_blocker in command_blockers):
-            blockers.extend(command_blockers[0])
     return blockers
 
 

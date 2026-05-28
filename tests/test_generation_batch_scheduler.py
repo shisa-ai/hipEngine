@@ -5946,6 +5946,15 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
         )
         == []
     )
+    stale_profiler_command_alias = {
+        **valid,
+        "profiler_command": valid["command"].replace("--batch-size 2", "--batch-size 4"),
+    }
+    assert "profiler command --batch-size must match retained workload" in retained_bench._profiler_provenance_blockers(
+        stale_profiler_command_alias,
+        retained_artifact_path="benchmarks/results/native-c2.json",
+        expected_workload=expected_workload,
+    )
     blockers = retained_bench._profiler_provenance_blockers(invalid)
     assert "profiler.artifact_path must be under benchmarks/results" in blockers
     assert "profiler.output_format must be csv" in blockers
