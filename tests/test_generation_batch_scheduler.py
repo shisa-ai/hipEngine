@@ -6027,6 +6027,14 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="commands.correctness_reference must invoke scripts/qwen35_batch_correctness.py with python"):
         validate_cn_diagnostic_artifact_payload(non_executable_correctness_command)
 
+    missing_correctness_oracle_text = json.loads(json.dumps(accepted))
+    missing_correctness_oracle_text["commands"]["correctness_reference"] = (
+        "primitive GPU correctness plus python3 scripts/qwen35_batch_correctness.py "
+        "--rows 2 --json benchmarks/results/primitive-c2.json"
+    )
+    with pytest.raises(ValueError, match="commands.correctness_reference must name generated-token equality vs independent c=1"):
+        validate_cn_diagnostic_artifact_payload(missing_correctness_oracle_text)
+
     missing_correctness_rows = json.loads(json.dumps(accepted))
     missing_correctness_rows["commands"]["correctness_reference"] = "python3 scripts/qwen35_batch_correctness.py --json primitive-c2.json"
     with pytest.raises(ValueError, match="commands.correctness_reference must include --rows"):

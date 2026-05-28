@@ -1037,6 +1037,9 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             _validate_retained_benchmark_reference_paths(benchmark_command, field="benchmark", payload=payload, errors=errors)
     correctness_command = commands.get("correctness_reference")
     if isinstance(correctness_command, str):
+        correctness_command_lower = correctness_command.lower()
+        if "generated-token equality" not in correctness_command_lower or "independent c=1" not in correctness_command_lower:
+            errors.append("commands.correctness_reference must name generated-token equality vs independent c=1 for accepted artifacts")
         if "qwen35_batch_correctness.py" not in correctness_command:
             errors.append("commands.correctness_reference must reference scripts/qwen35_batch_correctness.py for accepted artifacts")
         else:
