@@ -804,8 +804,8 @@ def _validate_profiler_kernel_duration_categories(profiler: dict[str, Any], reas
         reasons.append("kernel_duration_category_shares is missing or empty")
         return
     expected_keys = set(_PROFILER_KERNEL_DURATION_CATEGORIES)
-    duration_keys = {key for key in duration_categories if isinstance(key, str)}
-    share_keys = {key for key in category_shares if isinstance(key, str)}
+    duration_keys = set(duration_categories)
+    share_keys = set(category_shares)
     if duration_keys != expected_keys:
         reasons.append("kernel_duration_categories_ns keys do not match required categories")
     if share_keys != expected_keys:
@@ -862,8 +862,8 @@ def _validate_profiler_cpu_side_bottlenecks(profiler: dict[str, Any], reasons: l
         reasons.append("cpu_side_bottleneck_shares is missing or empty")
         return
     expected_keys = set(_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES)
-    duration_keys = {key for key in durations if isinstance(key, str)}
-    share_keys = {key for key in shares if isinstance(key, str)}
+    duration_keys = set(durations)
+    share_keys = set(shares)
     if duration_keys != expected_keys:
         reasons.append("cpu_side_bottlenecks_seconds keys do not match required categories")
     if share_keys != expected_keys:
@@ -2181,10 +2181,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     kernel_category_shares = profiler_precondition.get("kernel_duration_category_shares")
                     if (
                         not isinstance(kernel_categories, dict)
-                        or {key for key in kernel_categories if isinstance(key, str)} != set(_PROFILER_KERNEL_DURATION_CATEGORIES)
+                        or set(kernel_categories) != set(_PROFILER_KERNEL_DURATION_CATEGORIES)
                         or any(not _is_nonnegative_finite_number(kernel_categories.get(category)) for category in _PROFILER_KERNEL_DURATION_CATEGORIES)
                         or not isinstance(kernel_category_shares, dict)
-                        or {key for key in kernel_category_shares if isinstance(key, str)} != set(_PROFILER_KERNEL_DURATION_CATEGORIES)
+                        or set(kernel_category_shares) != set(_PROFILER_KERNEL_DURATION_CATEGORIES)
                         or any(not _is_nonnegative_finite_number(kernel_category_shares.get(category)) for category in _PROFILER_KERNEL_DURATION_CATEGORIES)
                     ):
                         errors.append("commands[].preconditions[].kernel duration categories must include required non-negative categories when profiler passed")
@@ -2223,10 +2223,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     cpu_shares = profiler_precondition.get("cpu_side_bottleneck_shares")
                     if (
                         not isinstance(cpu_durations, dict)
-                        or {key for key in cpu_durations if isinstance(key, str)} != set(_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES)
+                        or set(cpu_durations) != set(_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES)
                         or any(not _is_nonnegative_finite_number(cpu_durations.get(category)) for category in _PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES)
                         or not isinstance(cpu_shares, dict)
-                        or {key for key in cpu_shares if isinstance(key, str)} != set(_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES)
+                        or set(cpu_shares) != set(_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES)
                         or any(not _is_nonnegative_finite_number(cpu_shares.get(category)) for category in _PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES)
                     ):
                         errors.append("commands[].preconditions[].cpu-side bottlenecks must include required non-negative categories when profiler passed")

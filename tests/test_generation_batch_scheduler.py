@@ -3520,6 +3520,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     del tampered_profiler_precondition_categories["commands"][-1]["preconditions"][-1]["kernel_duration_categories_ns"]["other"]
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.kernel duration categories must include required non-negative categories when profiler passed"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_categories)
+    tampered_profiler_precondition_category_key = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_category_key["commands"][-1]["preconditions"][-1]["kernel_duration_category_shares"][True] = 0.0
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.kernel duration categories must include required non-negative categories when profiler passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_category_key)
     tampered_profiler_precondition_nan_category = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_nan_category["commands"][-1]["preconditions"][-1]["kernel_duration_categories_ns"]["other"] = float("nan")
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.kernel duration categories must include required non-negative categories when profiler passed"):
@@ -3556,6 +3560,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_profiler_precondition_cpu_categories["commands"][-1]["preconditions"][-1]["cpu_side_bottlenecks_seconds"]["decode"] = -1.0
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.cpu-side bottlenecks must include required non-negative categories when profiler passed"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_cpu_categories)
+    tampered_profiler_precondition_cpu_key = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_cpu_key["commands"][-1]["preconditions"][-1]["cpu_side_bottleneck_shares"][True] = 0.0
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.cpu-side bottlenecks must include required non-negative categories when profiler passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_cpu_key)
     tampered_profiler_precondition_nan_cpu_duration = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_nan_cpu_duration["commands"][-1]["preconditions"][-1]["cpu_side_bottlenecks_seconds"]["decode"] = float("nan")
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.cpu-side bottlenecks must include required non-negative categories when profiler passed"):
