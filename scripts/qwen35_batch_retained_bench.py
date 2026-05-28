@@ -295,6 +295,7 @@ def _primitive_correctness_reference(path: Path | None, *, rows: int) -> dict[st
         "num_q_heads": payload.get("num_q_heads"),
         "num_kv_heads": payload.get("num_kv_heads"),
         "head_dim": payload.get("head_dim"),
+        "context_lens": payload.get("context_lens"),
         "passed": not reasons,
         "append_key_mismatch": payload.get("append_key_mismatch"),
         "append_value_mismatch": payload.get("append_value_mismatch"),

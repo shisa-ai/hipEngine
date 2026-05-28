@@ -1580,6 +1580,18 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
     primitive_seed = primitive.get("seed")
     if not isinstance(primitive_seed, int) or isinstance(primitive_seed, bool):
         errors.append("correctness.primitive_batch_correctness.seed must be an int for accepted artifacts")
+    primitive_context_lens = primitive.get("context_lens")
+    if not isinstance(primitive_context_lens, list):
+        errors.append("correctness.primitive_batch_correctness.context_lens must be a list for accepted artifacts")
+    elif isinstance(primitive_rows, int) and not isinstance(primitive_rows, bool):
+        max_context_len = _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS["max_context_len"]
+        expected_lens = [(idx % max_context_len) + 1 for idx in range(primitive_rows)]
+        if len(primitive_context_lens) != primitive_rows:
+            errors.append("correctness.primitive_batch_correctness.context_lens length must match rows for accepted artifacts")
+        elif any(not isinstance(value, int) or isinstance(value, bool) for value in primitive_context_lens):
+            errors.append("correctness.primitive_batch_correctness.context_lens values must be ints for accepted artifacts")
+        elif primitive_context_lens != expected_lens:
+            errors.append("correctness.primitive_batch_correctness.context_lens must match scripts/qwen35_batch_correctness.py fixture coverage for accepted artifacts")
     for field, expected_value in _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS.items():
         value = primitive.get(field)
         if not isinstance(value, int) or isinstance(value, bool):

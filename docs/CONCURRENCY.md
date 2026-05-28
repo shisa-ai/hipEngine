@@ -950,7 +950,8 @@ roll-up/status view.
       records,
       primitive GPU correctness row count matching `workload.concurrency`, seed
       provenance, deterministic fixture-shape metadata (`block_size`, `max_context_len`,
-      `num_q_heads`, `num_kv_heads`, `head_dim`), zero append mismatches,
+      `num_q_heads`, `num_kv_heads`, `head_dim`), per-row `context_lens` fixture
+      coverage, zero append mismatches,
       zero batch-vs-c1 attention error, and NumPy-oracle attention error ≤ 2e-5,
       full 40-layer workload labels with concrete model/quant/KV storage dtype
       plus matching KV policy metadata,

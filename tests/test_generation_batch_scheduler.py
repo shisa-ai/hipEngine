@@ -4619,6 +4619,7 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
                 "num_q_heads": 4,
                 "num_kv_heads": 1,
                 "head_dim": 8,
+                "context_lens": [1, 2],
                 "passed": True,
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
@@ -4636,6 +4637,7 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     assert passed["artifact_path"] == str(artifact)
     assert passed["seed"] == 1234
     assert passed["block_size"] == 256
+    assert passed["context_lens"] == [1, 2]
     assert mismatched["passed"] is False
     assert "does not match batch_size=4" in mismatched["reason"]
     assert missing["status"] == "missing"
@@ -5028,6 +5030,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                 "num_q_heads": 4,
                 "num_kv_heads": 1,
                 "head_dim": 8,
+                "context_lens": [1, 2],
                 "passed": True,
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
@@ -5479,6 +5482,21 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     mismatched_primitive_head_dim["correctness"]["primitive_batch_correctness"]["head_dim"] = 16
     with pytest.raises(ValueError, match="primitive_batch_correctness.head_dim must match scripts/qwen35_batch_correctness.py fixture shape"):
         validate_cn_diagnostic_artifact_payload(mismatched_primitive_head_dim)
+
+    missing_primitive_context_lens = json.loads(json.dumps(accepted))
+    missing_primitive_context_lens["correctness"]["primitive_batch_correctness"].pop("context_lens")
+    with pytest.raises(ValueError, match="primitive_batch_correctness.context_lens must be a list"):
+        validate_cn_diagnostic_artifact_payload(missing_primitive_context_lens)
+
+    short_primitive_context_lens = json.loads(json.dumps(accepted))
+    short_primitive_context_lens["correctness"]["primitive_batch_correctness"]["context_lens"] = [1]
+    with pytest.raises(ValueError, match="primitive_batch_correctness.context_lens length must match rows"):
+        validate_cn_diagnostic_artifact_payload(short_primitive_context_lens)
+
+    mismatched_primitive_context_lens = json.loads(json.dumps(accepted))
+    mismatched_primitive_context_lens["correctness"]["primitive_batch_correctness"]["context_lens"] = [2, 1]
+    with pytest.raises(ValueError, match="primitive_batch_correctness.context_lens must match scripts/qwen35_batch_correctness.py fixture coverage"):
+        validate_cn_diagnostic_artifact_payload(mismatched_primitive_context_lens)
 
     primitive_append_mismatch = json.loads(json.dumps(accepted))
     primitive_append_mismatch["correctness"]["primitive_batch_correctness"]["append_key_mismatch"] = 1
