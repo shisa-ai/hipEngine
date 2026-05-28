@@ -80,6 +80,7 @@ def _projection_evidence_payload(
         "schema": 1,
         "rows": rows,
         "artifact_path": artifact_path,
+        "source_artifact_path": artifact_path,
         "accepted": accepted,
         "aggregate_vs_row_gemv": aggregate_vs_row_gemv,
         "per_request_vs_row_gemv": per_request_vs_row_gemv,
@@ -6907,6 +6908,24 @@ def test_qwen35_retained_projection_dispatch_blockers_require_caware_candidate(t
         json.dumps(_projection_evidence_payload(rows=2, artifact_path="benchmarks/results/projection-wmma-c2.json")),
         encoding="utf-8",
     )
+    missing_source_projection_payload = _projection_evidence_payload(
+        rows=2,
+        artifact_path="benchmarks/results/projection-wmma-c2-missing-source.json",
+    )
+    missing_source_projection_payload.pop("source_artifact_path")
+    (artifact_dir / "projection-wmma-c2-missing-source.json").write_text(
+        json.dumps(missing_source_projection_payload),
+        encoding="utf-8",
+    )
+    wrong_source_projection_payload = _projection_evidence_payload(
+        rows=2,
+        artifact_path="benchmarks/results/projection-wmma-c2-wrong-source.json",
+    )
+    wrong_source_projection_payload["source_artifact_path"] = "benchmarks/results/projection-wmma-c2.json"
+    (artifact_dir / "projection-wmma-c2-wrong-source.json").write_text(
+        json.dumps(wrong_source_projection_payload),
+        encoding="utf-8",
+    )
     monkeypatch.chdir(tmp_path)
 
     valid_dispatch = {
@@ -6990,6 +7009,26 @@ def test_qwen35_retained_projection_dispatch_blockers_require_caware_candidate(t
         candidates=[wrong_artifact_path_candidate],
     )
     assert "execution.batch_execution.projection_dispatch.evidence.artifact_path evidence.artifact_path must match projection_dispatch.evidence.artifact_path" in wrong_artifact_path_blockers
+    missing_source_dispatch = json.loads(json.dumps(valid_dispatch))
+    missing_source_dispatch["projection_dispatch"]["evidence"]["artifact_path"] = "benchmarks/results/projection-wmma-c2-missing-source.json"
+    missing_source_candidate = json.loads(json.dumps(valid_candidate))
+    missing_source_candidate["evidence"]["artifact_path"] = "benchmarks/results/projection-wmma-c2-missing-source.json"
+    missing_source_blockers = retained_bench._projection_dispatch_blockers(
+        missing_source_dispatch,
+        concurrency=2,
+        candidates=[missing_source_candidate],
+    )
+    assert "execution.batch_execution.projection_dispatch.evidence.artifact_path evidence.source_artifact_path must be a non-empty string" in missing_source_blockers
+    wrong_source_dispatch = json.loads(json.dumps(valid_dispatch))
+    wrong_source_dispatch["projection_dispatch"]["evidence"]["artifact_path"] = "benchmarks/results/projection-wmma-c2-wrong-source.json"
+    wrong_source_candidate = json.loads(json.dumps(valid_candidate))
+    wrong_source_candidate["evidence"]["artifact_path"] = "benchmarks/results/projection-wmma-c2-wrong-source.json"
+    wrong_source_blockers = retained_bench._projection_dispatch_blockers(
+        wrong_source_dispatch,
+        concurrency=2,
+        candidates=[wrong_source_candidate],
+    )
+    assert "execution.batch_execution.projection_dispatch.evidence.artifact_path evidence.source_artifact_path must match projection_dispatch.evidence.artifact_path" in wrong_source_blockers
     assert retained_bench._projection_dispatch_profiler_blockers(
         valid_dispatch,
         {
@@ -7972,6 +8011,36 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     wrong_artifact_path_projection_evidence["projection_dispatch_candidates"][0]["evidence"]["artifact_path"] = "benchmarks/results/projection-wmma-c2-wrong-artifact-path.json"
     with pytest.raises(ValueError, match="projection_dispatch.evidence.artifact_path evidence.artifact_path must match projection_dispatch.evidence.artifact_path"):
         validate_cn_diagnostic_artifact_payload(wrong_artifact_path_projection_evidence)
+
+    missing_source_projection_payload = _projection_evidence_payload(
+        rows=2,
+        artifact_path="benchmarks/results/projection-wmma-c2-missing-source.json",
+    )
+    missing_source_projection_payload.pop("source_artifact_path")
+    (sampler_artifact_dir / "projection-wmma-c2-missing-source.json").write_text(
+        json.dumps(missing_source_projection_payload),
+        encoding="utf-8",
+    )
+    missing_source_projection_evidence = json.loads(json.dumps(accepted))
+    missing_source_projection_evidence["execution"]["batch_execution"]["projection_dispatch"]["evidence"]["artifact_path"] = "benchmarks/results/projection-wmma-c2-missing-source.json"
+    missing_source_projection_evidence["projection_dispatch_candidates"][0]["evidence"]["artifact_path"] = "benchmarks/results/projection-wmma-c2-missing-source.json"
+    with pytest.raises(ValueError, match="projection_dispatch.evidence.artifact_path evidence.source_artifact_path must be a non-empty string"):
+        validate_cn_diagnostic_artifact_payload(missing_source_projection_evidence)
+
+    wrong_source_projection_payload = _projection_evidence_payload(
+        rows=2,
+        artifact_path="benchmarks/results/projection-wmma-c2-wrong-source.json",
+    )
+    wrong_source_projection_payload["source_artifact_path"] = "benchmarks/results/projection-wmma-c2.json"
+    (sampler_artifact_dir / "projection-wmma-c2-wrong-source.json").write_text(
+        json.dumps(wrong_source_projection_payload),
+        encoding="utf-8",
+    )
+    wrong_source_projection_evidence = json.loads(json.dumps(accepted))
+    wrong_source_projection_evidence["execution"]["batch_execution"]["projection_dispatch"]["evidence"]["artifact_path"] = "benchmarks/results/projection-wmma-c2-wrong-source.json"
+    wrong_source_projection_evidence["projection_dispatch_candidates"][0]["evidence"]["artifact_path"] = "benchmarks/results/projection-wmma-c2-wrong-source.json"
+    with pytest.raises(ValueError, match="projection_dispatch.evidence.artifact_path evidence.source_artifact_path must match projection_dispatch.evidence.artifact_path"):
+        validate_cn_diagnostic_artifact_payload(wrong_source_projection_evidence)
 
     rollup_root = tmp_path / "rollup-repo"
     (rollup_root / "benchmarks").mkdir(parents=True)

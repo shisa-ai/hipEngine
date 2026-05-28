@@ -273,6 +273,11 @@ def projection_dispatch_evidence_payload_blockers(
         blockers.append(f"{label} evidence.artifact_path must be a non-empty string")
     elif payload_artifact_path != evidence.artifact_path:
         blockers.append(f"{label} evidence.artifact_path must match projection_dispatch.evidence.artifact_path")
+    payload_source_artifact_path = payload_evidence.get("source_artifact_path")
+    if not isinstance(payload_source_artifact_path, str) or not payload_source_artifact_path:
+        blockers.append(f"{label} evidence.source_artifact_path must be a non-empty string")
+    elif payload_source_artifact_path != evidence.artifact_path:
+        blockers.append(f"{label} evidence.source_artifact_path must match projection_dispatch.evidence.artifact_path")
     if payload_evidence.get("accepted") is not True:
         blockers.append(f"{label} evidence.accepted must be true")
     for field, expected in (
