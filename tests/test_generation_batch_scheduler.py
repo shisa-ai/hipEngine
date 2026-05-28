@@ -97,6 +97,11 @@ def test_qwen35_validation_summary_paths_report_active_option(
 
     source_artifact = results_dir / "source.json"
     source_artifact.write_text("{}", encoding="utf-8")
+    wrong_named_write_summary = results_dir / "copy-schema-check.json"
+    assert validate_cn_diagnostic_artifact_main([str(source_artifact), "--summary-json", str(wrong_named_write_summary)]) == 1
+    assert "--summary-json path must be benchmarks/results/source-schema-check.json" in capsys.readouterr().err
+    assert not wrong_named_write_summary.exists()
+
     bad_write_summary = results_dir / "source-schema-check.txt"
     assert validate_cn_diagnostic_artifact_main([str(source_artifact), "--summary-json", str(bad_write_summary)]) == 1
     assert "--summary-json path must end with .json" in capsys.readouterr().err
