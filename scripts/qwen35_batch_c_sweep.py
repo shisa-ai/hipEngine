@@ -1774,6 +1774,12 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if _path_has_symlink_parent(compiler_version_check_path):
                         errors.append("commands[].argv compiler-version-file parent directories must not be symlinks")
                         break
+                if entry.get("category") == "native_diagnostic" and isinstance(options, Mapping):
+                    option_compiler_version_file = options.get("compiler_version_file")
+                    if option_compiler_version_file is None or isinstance(option_compiler_version_file, str):
+                        if compiler_version_file != option_compiler_version_file:
+                            errors.append("commands[].argv compiler-version-file must match options.compiler_version_file")
+                            break
             status = entry.get("status")
             if status not in {"planned", "passed", "skipped", "failed"}:
                 errors.append("commands[].status must be planned, passed, skipped, or failed")
