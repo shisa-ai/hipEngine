@@ -3467,6 +3467,32 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
                 if gate_parent_link.is_symlink():
                     gate_parent_link.unlink()
 
+            compiler_symlink_path = output_dir / "hipcc-version-link.txt"
+            try:
+                compiler_symlink_path.symlink_to(output_dir / "hipcc-version.txt")
+                symlink_compiler_summary = json.loads(json.dumps(persisted))
+                retained_argv = symlink_compiler_summary["commands"][-1]["argv"]
+                retained_argv.extend(["--compiler-version-file", str(compiler_symlink_path)])
+                symlink_compiler_summary["commands"][-1]["command"] = shlex.join(retained_argv)
+                with pytest.raises(ValueError, match=r"commands\[\]\.argv compiler-version-file must not be a symlink"):
+                    c_sweep.validate_sweep_summary(symlink_compiler_summary)
+            finally:
+                if compiler_symlink_path.is_symlink():
+                    compiler_symlink_path.unlink()
+
+            compiler_parent_link = output_dir / "compiler-parent-link"
+            try:
+                compiler_parent_link.symlink_to(output_dir, target_is_directory=True)
+                symlink_parent_compiler_summary = json.loads(json.dumps(persisted))
+                retained_argv = symlink_parent_compiler_summary["commands"][-1]["argv"]
+                retained_argv.extend(["--compiler-version-file", str(compiler_parent_link / "hipcc-version.txt")])
+                symlink_parent_compiler_summary["commands"][-1]["command"] = shlex.join(retained_argv)
+                with pytest.raises(ValueError, match=r"commands\[\]\.argv compiler-version-file parent directories must not be symlinks"):
+                    c_sweep.validate_sweep_summary(symlink_parent_compiler_summary)
+            finally:
+                if compiler_parent_link.is_symlink():
+                    compiler_parent_link.unlink()
+
         symlink_artifact_summary = json.loads(json.dumps(persisted))
         primitive_artifact_path = Path(symlink_artifact_summary["commands"][0]["artifact_path"])
         primitive_artifact_target = primitive_artifact_path.with_name("primitive-c2-real.json")
@@ -3809,6 +3835,12 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_precondition_argv_parent_component["commands"][-1]["command"] = shlex.join(retained_argv)
     with pytest.raises(ValueError, match=r"commands\[\]\.argv retained native gate artifact paths must not contain parent-directory components"):
         c_sweep.validate_sweep_summary(tampered_precondition_argv_parent_component)
+    tampered_compiler_version_parent_component = json.loads(json.dumps(persisted))
+    retained_argv = tampered_compiler_version_parent_component["commands"][-1]["argv"]
+    retained_argv.extend(["--compiler-version-file", str(output_dir / "compiler-parent" / ".." / "hipcc-version.txt")])
+    tampered_compiler_version_parent_component["commands"][-1]["command"] = shlex.join(retained_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv compiler-version-file must not contain parent-directory components"):
+        c_sweep.validate_sweep_summary(tampered_compiler_version_parent_component)
     tampered_missing_gate_argv = json.loads(json.dumps(persisted))
     retained_argv = tampered_missing_gate_argv["commands"][-1]["argv"]
     gate_index = retained_argv.index("--profiler-json")

@@ -1752,6 +1752,19 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                             break
                     if retained_gate_path_error:
                         break
+                compiler_version_file = _argv_value(argv, "--compiler-version-file")
+                if compiler_version_file is not None:
+                    if _path_has_parent_directory_component(compiler_version_file):
+                        errors.append("commands[].argv compiler-version-file must not contain parent-directory components")
+                        break
+                    compiler_version_path = Path(compiler_version_file)
+                    compiler_version_check_path = compiler_version_path if compiler_version_path.is_absolute() else REPO_ROOT / compiler_version_path
+                    if compiler_version_check_path.is_symlink():
+                        errors.append("commands[].argv compiler-version-file must not be a symlink")
+                        break
+                    if _path_has_symlink_parent(compiler_version_check_path):
+                        errors.append("commands[].argv compiler-version-file parent directories must not be symlinks")
+                        break
             status = entry.get("status")
             if status not in {"planned", "passed", "skipped", "failed"}:
                 errors.append("commands[].status must be planned, passed, skipped, or failed")
