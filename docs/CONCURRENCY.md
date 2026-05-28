@@ -995,7 +995,8 @@ roll-up/status view.
       (`--model`, `--fixture`, `--batch-size`, `--prompt-length`,
       `--decode-tokens`, `--max-layers`, `--c1-baseline-json`, `--serial-bridge-json`,
       `--primitive-correctness-json`, `--profiler-json`,
-      `--compiler-version-file`, `--require-cached-build`),
+      `--compiler-version-file`, `--require-cached-build`), typed profiler
+      precondition workload/warmup/layer labels matching the retained command,
       benchmark/profiler `--json` outputs plus primitive/scaling/compiler-version
       artifact paths under `benchmarks/results/`, and the retained bench can now attach a
       captured profiler summary via `--profiler-json` / `--profiler-command`,

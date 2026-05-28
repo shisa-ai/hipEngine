@@ -2999,12 +2999,32 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         c_sweep.validate_sweep_summary(tampered_scaling_precondition_rate_arithmetic)
     tampered_profiler_precondition_concurrency = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_concurrency["commands"][-1]["preconditions"][-1]["workload_concurrency"] = 1
-    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler workload_concurrency must match retained batch_size"):
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler workload_concurrency must be a typed int matching retained batch_size"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_concurrency)
+    tampered_profiler_precondition_bool_concurrency = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_bool_concurrency["commands"][-1]["preconditions"][-1]["workload_concurrency"] = True
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler workload_concurrency must be a typed int matching retained batch_size"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_bool_concurrency)
+    tampered_profiler_precondition_float_prompt = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_float_prompt["commands"][-1]["preconditions"][-1]["prompt_tokens_per_request"] = 16.0
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler prompt_tokens_per_request must be a typed int matching retained command shape"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_float_prompt)
+    tampered_profiler_precondition_float_decode = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_float_decode["commands"][-1]["preconditions"][-1]["gen_tokens_per_request"] = 2.0
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler gen_tokens_per_request must be a typed int matching retained command shape"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_float_decode)
     tampered_profiler_precondition_shape = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_shape["commands"][-1]["preconditions"][-1]["profiler_warmup_decode_tokens"] = 2
-    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_warmup_decode_tokens must match retained command shape"):
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_warmup_decode_tokens must be a typed int matching retained command shape"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_shape)
+    tampered_profiler_precondition_float_warmup = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_float_warmup["commands"][-1]["preconditions"][-1]["profiler_warmup_decode_tokens"] = 1.0
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_warmup_decode_tokens must be a typed int matching retained command shape"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_float_warmup)
+    tampered_profiler_precondition_float_layers = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_float_layers["commands"][-1]["preconditions"][-1]["profiler_max_layers"] = 3.0
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_max_layers must be a typed int matching retained command shape"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_float_layers)
     tampered_profiler_precondition_command = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_command["commands"][-1]["preconditions"][-1]["profiler_command"] = "python3 scripts/qwen35_batch_retained_bench.py --model /tmp/model --fixture /tmp/fixture.json"
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_command must include rocprofv3 kernel trace retained bench when passed"):

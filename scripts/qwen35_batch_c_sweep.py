@@ -1873,20 +1873,45 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     break
                 profiler_precondition = preconditions[3]
                 if profiler_precondition.get("passed") is True:
-                    if profiler_precondition.get("workload_concurrency") != entry.get("batch_size"):
-                        errors.append("commands[].preconditions[].profiler workload_concurrency must match retained batch_size")
+                    workload_concurrency = profiler_precondition.get("workload_concurrency")
+                    if (
+                        not isinstance(workload_concurrency, int)
+                        or isinstance(workload_concurrency, bool)
+                        or workload_concurrency != entry.get("batch_size")
+                    ):
+                        errors.append("commands[].preconditions[].profiler workload_concurrency must be a typed int matching retained batch_size")
                         break
-                    if profiler_precondition.get("prompt_tokens_per_request") != expected_prompt_tokens:
-                        errors.append("commands[].preconditions[].profiler prompt_tokens_per_request must match retained command shape")
+                    prompt_tokens_per_request = profiler_precondition.get("prompt_tokens_per_request")
+                    if (
+                        not isinstance(prompt_tokens_per_request, int)
+                        or isinstance(prompt_tokens_per_request, bool)
+                        or prompt_tokens_per_request != expected_prompt_tokens
+                    ):
+                        errors.append("commands[].preconditions[].profiler prompt_tokens_per_request must be a typed int matching retained command shape")
                         break
-                    if profiler_precondition.get("gen_tokens_per_request") != expected_decode_tokens:
-                        errors.append("commands[].preconditions[].profiler gen_tokens_per_request must match retained command shape")
+                    gen_tokens_per_request = profiler_precondition.get("gen_tokens_per_request")
+                    if (
+                        not isinstance(gen_tokens_per_request, int)
+                        or isinstance(gen_tokens_per_request, bool)
+                        or gen_tokens_per_request != expected_decode_tokens
+                    ):
+                        errors.append("commands[].preconditions[].profiler gen_tokens_per_request must be a typed int matching retained command shape")
                         break
-                    if profiler_precondition.get("profiler_warmup_decode_tokens") != int(_argv_value(argv, "--warmup-decode-tokens")):
-                        errors.append("commands[].preconditions[].profiler_warmup_decode_tokens must match retained command shape")
+                    profiler_warmup_decode_tokens = profiler_precondition.get("profiler_warmup_decode_tokens")
+                    if (
+                        not isinstance(profiler_warmup_decode_tokens, int)
+                        or isinstance(profiler_warmup_decode_tokens, bool)
+                        or profiler_warmup_decode_tokens != int(_argv_value(argv, "--warmup-decode-tokens"))
+                    ):
+                        errors.append("commands[].preconditions[].profiler_warmup_decode_tokens must be a typed int matching retained command shape")
                         break
-                    if profiler_precondition.get("profiler_max_layers") != int(_argv_value(argv, "--max-layers")):
-                        errors.append("commands[].preconditions[].profiler_max_layers must match retained command shape")
+                    profiler_max_layers = profiler_precondition.get("profiler_max_layers")
+                    if (
+                        not isinstance(profiler_max_layers, int)
+                        or isinstance(profiler_max_layers, bool)
+                        or profiler_max_layers != int(_argv_value(argv, "--max-layers"))
+                    ):
+                        errors.append("commands[].preconditions[].profiler_max_layers must be a typed int matching retained command shape")
                         break
                     profiler_command = profiler_precondition.get("profiler_command")
                     if (
