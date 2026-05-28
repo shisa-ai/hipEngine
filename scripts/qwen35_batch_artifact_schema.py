@@ -2781,9 +2781,10 @@ def _validate_validation_summary_output_path(path: Path, summary: Mapping[str, A
     if mode not in {"artifact_schema", "rollup_evidence"}:
         return
     artifact_path = summary.get("artifact_path")
-    if not isinstance(artifact_path, str) or not artifact_path:
+    stem_source = artifact_path if isinstance(artifact_path, str) and artifact_path else summary.get("artifact_json")
+    if not isinstance(stem_source, str) or not stem_source:
         return
-    artifact_stem = artifact_path.replace("\\", "/").rsplit("/", 1)[-1].removesuffix(".json")
+    artifact_stem = stem_source.replace("\\", "/").rsplit("/", 1)[-1].removesuffix(".json")
     suffix = "rollup-check" if mode == "rollup_evidence" else "schema-check"
     expected_name = f"{artifact_stem}-{suffix}.json"
     if path.name != expected_name:
