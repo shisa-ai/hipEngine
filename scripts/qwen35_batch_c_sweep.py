@@ -1599,6 +1599,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if not isinstance(entry.get("artifact_path"), str) or not entry.get("artifact_path"):
                 errors.append("commands[].artifact_path must be a non-empty string")
                 break
+            if _path_has_parent_directory_component(entry["artifact_path"]):
+                errors.append("commands[].artifact_path must not contain parent-directory components")
+                break
             command_text = entry.get("command")
             if not isinstance(command_text, str) or not command_text:
                 errors.append("commands[].command must be a non-empty string")

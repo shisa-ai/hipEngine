@@ -3474,6 +3474,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_artifact_path["commands"][-1]["artifact_path"] = str(output_dir / "other-native-diagnostic-c2.json")
     with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match commands\[\]\.argv --json"):
         c_sweep.validate_sweep_summary(tampered_artifact_path)
+    tampered_artifact_parent_component = json.loads(json.dumps(persisted))
+    primitive_row = tampered_artifact_parent_component["commands"][0]
+    artifact_with_parent_component = str(output_dir / "artifact-parent" / ".." / "primitive-c2.json")
+    primitive_row["artifact_path"] = artifact_with_parent_component
+    primitive_row["argv"][primitive_row["argv"].index("--json") + 1] = artifact_with_parent_component
+    primitive_row["command"] = shlex.join(primitive_row["argv"])
+    with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must not contain parent-directory components"):
+        c_sweep.validate_sweep_summary(tampered_artifact_parent_component)
     tampered_artifact_output_dir = json.loads(json.dumps(persisted))
     primitive_row = tampered_artifact_output_dir["commands"][0]
     outside_artifact = str(tmp_path / "outside" / "primitive-c2.json")
