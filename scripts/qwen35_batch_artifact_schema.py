@@ -1389,6 +1389,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         _validate_profiler_kernel_duration_shares(profiler, kernel_durations, errors)
         _validate_profiler_kernel_duration_categories(profiler, kernel_durations, errors)
         _validate_profiler_cpu_side_bottlenecks(profiler, errors)
+        _validate_graph_histogram_profiler_coverage(payload, kernel_durations, errors)
         if isinstance(expected_kernel_names, list):
             for kernel_name in expected_kernel_names:
                 if not isinstance(kernel_name, str) or not kernel_name:
@@ -1397,6 +1398,30 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
                     errors.append(f"profiler.kernel_durations_ns.{kernel_name} must be positive numeric for accepted artifacts")
     _validate_projection_dispatch_profiler_evidence(payload, profiler, errors)
     _validate_optional_projection_dispatch_candidates(payload, errors)
+
+
+def _validate_graph_histogram_profiler_coverage(payload: Mapping[str, Any], kernel_durations: Mapping[Any, Any], errors: list[str]) -> None:
+    execution = payload.get("execution")
+    scheduler_metadata = execution.get("scheduler_metadata") if isinstance(execution, Mapping) else None
+    graph_stats = scheduler_metadata.get("graph_bucket_stats") if isinstance(scheduler_metadata, Mapping) else None
+    histogram = graph_stats.get("kernel_time_histogram_ns") if isinstance(graph_stats, Mapping) else None
+    if not isinstance(histogram, Mapping):
+        return
+    histogram_total = 0
+    for count in histogram.values():
+        if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+            return
+        histogram_total += int(count)
+    profiler_integer_duration_count = 0
+    for kernel_name, duration_ns in kernel_durations.items():
+        if not isinstance(kernel_name, str) or not kernel_name or _has_disallowed_profiler_kernel_fragment(kernel_name):
+            continue
+        if _is_positive_number(duration_ns) and float(duration_ns).is_integer():
+            profiler_integer_duration_count += 1
+    if profiler_integer_duration_count > 0 and histogram_total < profiler_integer_duration_count:
+        errors.append(
+            "execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns observation count must cover profiler.kernel_durations_ns for accepted artifacts"
+        )
 
 
 def _validate_profiler_kernel_duration_total(
