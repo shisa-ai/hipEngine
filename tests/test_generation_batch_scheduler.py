@@ -8206,6 +8206,10 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     stale_rollup_summary["benchmark_rollup"]["source_artifact_path"] = "benchmarks/results/other-accepted-c2.json"
     with pytest.raises(ValueError, match="summary.benchmark_rollup.source_artifact_path must match summary.artifact_path"):
         validate_cn_diagnostic_validation_summary(stale_rollup_summary)
+    extra_rollup_key_summary = json.loads(json.dumps(summary))
+    extra_rollup_key_summary["benchmark_rollup"]["note"] = "promote"
+    with pytest.raises(ValueError, match="summary.benchmark_rollup contains unexpected keys: note"):
+        validate_cn_diagnostic_validation_summary(extra_rollup_key_summary)
     wrong_summary_readme = json.loads(json.dumps(summary))
     wrong_summary_readme["benchmark_rollup"]["readme_path"] = "README.md"
     with pytest.raises(ValueError, match="summary.benchmark_rollup.readme_path must be benchmarks/README.md"):

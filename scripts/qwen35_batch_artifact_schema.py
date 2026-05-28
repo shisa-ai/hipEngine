@@ -2728,6 +2728,10 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
         if not isinstance(benchmark_rollup, Mapping):
             errors.append("summary.benchmark_rollup must be an object or null")
         elif isinstance(artifact_path, str):
+            expected_rollup_keys = {"artifact_path", "source_artifact_path", "readme_path", "changelog_path"}
+            unexpected_rollup_keys = sorted(str(key) for key in benchmark_rollup.keys() - expected_rollup_keys)
+            if unexpected_rollup_keys:
+                errors.append("summary.benchmark_rollup contains unexpected keys: " + ", ".join(unexpected_rollup_keys))
             if benchmark_rollup.get("artifact_path") != artifact_path:
                 errors.append("summary.benchmark_rollup.artifact_path must match summary.artifact_path")
             if benchmark_rollup.get("source_artifact_path") != artifact_path:
