@@ -6153,6 +6153,39 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="commands.profiler --primitive-correctness-json path must match correctness.primitive_batch_correctness.artifact_path"):
         validate_cn_diagnostic_artifact_payload(mismatched_profiler_primitive)
 
+    profiler_c1_baseline_before_separator = json.loads(json.dumps(accepted))
+    profiler_c1_baseline_before_separator["commands"]["profiler"] = profiler_c1_baseline_before_separator["commands"]["profiler"].replace(
+        " --c1-baseline-json benchmarks/results/c1.json",
+        " --c1-baseline-json benchmarks/results/other-c1.json",
+    ).replace(
+        " -d /tmp/hipengine-profile -- python3",
+        " -d /tmp/hipengine-profile --c1-baseline-json benchmarks/results/c1.json -- python3",
+    )
+    with pytest.raises(ValueError, match="commands.profiler --c1-baseline-json path must match scaling.c1_baseline.artifact_path"):
+        validate_cn_diagnostic_artifact_payload(profiler_c1_baseline_before_separator)
+
+    profiler_serial_bridge_before_separator = json.loads(json.dumps(accepted))
+    profiler_serial_bridge_before_separator["commands"]["profiler"] = profiler_serial_bridge_before_separator["commands"]["profiler"].replace(
+        " --serial-bridge-json benchmarks/results/serial-c2.json",
+        " --serial-bridge-json benchmarks/results/other-serial-c2.json",
+    ).replace(
+        " -d /tmp/hipengine-profile -- python3",
+        " -d /tmp/hipengine-profile --serial-bridge-json benchmarks/results/serial-c2.json -- python3",
+    )
+    with pytest.raises(ValueError, match="commands.profiler --serial-bridge-json path must match scaling.serial_bridge_baseline.artifact_path"):
+        validate_cn_diagnostic_artifact_payload(profiler_serial_bridge_before_separator)
+
+    profiler_primitive_before_separator = json.loads(json.dumps(accepted))
+    profiler_primitive_before_separator["commands"]["profiler"] = profiler_primitive_before_separator["commands"]["profiler"].replace(
+        " --primitive-correctness-json benchmarks/results/primitive-c2.json",
+        " --primitive-correctness-json benchmarks/results/other-primitive-c2.json",
+    ).replace(
+        " -d /tmp/hipengine-profile -- python3",
+        " -d /tmp/hipengine-profile --primitive-correctness-json benchmarks/results/primitive-c2.json -- python3",
+    )
+    with pytest.raises(ValueError, match="commands.profiler --primitive-correctness-json path must match correctness.primitive_batch_correctness.artifact_path"):
+        validate_cn_diagnostic_artifact_payload(profiler_primitive_before_separator)
+
     mismatched_profiler_json_reference = json.loads(json.dumps(accepted))
     mismatched_profiler_json_reference["commands"]["profiler"] = "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --compiler-version-file benchmarks/results/hipcc-version.txt --require-cached-build --json benchmarks/results/accepted-c2.json --profiler-json benchmarks/results/other-profiler-c2.json"
     with pytest.raises(ValueError, match="commands.profiler --profiler-json path must match profiler.artifact_path"):
