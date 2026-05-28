@@ -8166,6 +8166,12 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     ) == 1
     assert not bad_summary_file.exists()
 
+    wrong_named_rollup_summary_file = rollup_root / "benchmarks" / "results" / "other-rollup-check.json"
+    assert validate_cn_diagnostic_artifact_main(
+        [str(artifact_file), "--rollup-evidence", "--summary-json", str(wrong_named_rollup_summary_file)]
+    ) == 1
+    assert not wrong_named_rollup_summary_file.exists()
+
     missing_rollup = json.loads(json.dumps(accepted))
     missing_rollup.pop("benchmark_rollup")
     with pytest.raises(ValueError, match="benchmark_rollup must be an object"):

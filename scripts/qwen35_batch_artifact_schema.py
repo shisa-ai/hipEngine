@@ -2729,6 +2729,7 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
 
 def _write_validation_summary(path: Path, summary: Mapping[str, Any]) -> None:
     validate_cn_diagnostic_validation_summary(summary)
+    _validate_validation_summary_output_path(path, summary)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
 
@@ -2736,6 +2737,19 @@ def _write_validation_summary(path: Path, summary: Mapping[str, Any]) -> None:
 def _validate_summary_json_path(path: Path) -> None:
     if not _is_benchmark_results_path(str(path)):
         raise ValueError("--summary-json path must be under benchmarks/results for retained validation evidence")
+
+
+def _validate_validation_summary_output_path(path: Path, summary: Mapping[str, Any]) -> None:
+    _validate_summary_json_path(path)
+    if summary.get("mode") != "rollup_evidence" or summary.get("passed") is not True:
+        return
+    artifact_path = summary.get("artifact_path")
+    if not isinstance(artifact_path, str) or not artifact_path:
+        return
+    artifact_stem = artifact_path.replace("\\", "/").rsplit("/", 1)[-1].removesuffix(".json")
+    expected_name = f"{artifact_stem}-rollup-check.json"
+    if path.name != expected_name:
+        raise ValueError(f"--summary-json filename must be {expected_name} for passed rollup evidence")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -2795,12 +2809,20 @@ def main(argv: list[str] | None = None) -> int:
             error=str(exc),
         )
         if args.summary_json is not None:
-            _write_validation_summary(args.summary_json, summary)
+            try:
+                _write_validation_summary(args.summary_json, summary)
+            except ValueError as write_exc:
+                print(f"invalid c>N diagnostic artifact: {write_exc}", file=sys.stderr)
+                return 1
         print(f"invalid c>N diagnostic artifact: {exc}", file=sys.stderr)
         return 1
     summary = _validation_summary(artifact_json=args.artifact_json, mode=mode, passed=True, payload=payload)
     if args.summary_json is not None:
-        _write_validation_summary(args.summary_json, summary)
+        try:
+            _write_validation_summary(args.summary_json, summary)
+        except ValueError as exc:
+            print(f"invalid c>N diagnostic artifact: {exc}", file=sys.stderr)
+            return 1
     print("OK")
     return 0
 

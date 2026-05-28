@@ -1026,11 +1026,11 @@ roll-up/status view.
       `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`) while the post-run `validate_cn_diagnostic_rollup_evidence` gate
       (or the CLI `python3 scripts/qwen35_batch_artifact_schema.py <artifact>
       --rollup-evidence --summary-json
-      benchmarks/results/<artifact>-rollup-check.json`) verifies live
+      benchmarks/results/<artifact-stem>-rollup-check.json`) verifies live
       `benchmarks/README.md` and `benchmarks/CHANGELOG.md` both mention the
       retained artifact path, the README carries `Last updated: YYYY-MM-DD`,
       and the changelog carries a same-line dated `YYYY-MM-DD` artifact entry whose date matches README `Last updated` and includes numeric old→new metric plus percent-delta evidence before promotion, writes self-validating
-      pass/fail summary evidence only under `benchmarks/results/`, keeps rollup metadata out of generic artifact-schema summaries, requires passed rollup summaries to assert `status=accepted`, `performance_claim=true`, and canonical README/CHANGELOG rollup metadata, requires passed or rollup-bearing summaries' source JSON to point at the retained artifact path, and can
+      pass/fail summary evidence only under `benchmarks/results/`, binds passed rollup summary filenames to the retained artifact stem, keeps rollup metadata out of generic artifact-schema summaries, requires passed rollup summaries to assert `status=accepted`, `performance_claim=true`, and canonical README/CHANGELOG rollup metadata, requires passed or rollup-bearing summaries' source JSON to point at the retained artifact path, and can
       recheck those summaries with `--validation-summary`,
       exact environment capture command entries for `rocminfo | grep -E 'Name:|gfx' | head -4`,
       `rocm-smi --showmeminfo vram --showuse --showtemp`, `hipcc --version`,
