@@ -1294,6 +1294,10 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     tampered_planned_duration["commands"][0]["duration_seconds"] = 0.1
     with pytest.raises(ValueError, match=r"commands\[\]\.duration_seconds must be zero for planned rows"):
         c_sweep.validate_sweep_summary(tampered_planned_duration)
+    tampered_planned_output = json.loads(json.dumps(persisted))
+    tampered_planned_output["commands"][0]["output_tail"] = "dry-run output"
+    with pytest.raises(ValueError, match=r"commands\[\]\.output_tail must be absent for planned rows"):
+        c_sweep.validate_sweep_summary(tampered_planned_output)
     assert all(entry["status"] == "planned" for entry in persisted["commands"])
     assert all(entry["command"] for entry in persisted["commands"])
     assert all(entry["artifact_path"] for entry in persisted["commands"])
