@@ -1743,13 +1743,18 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if not profiler_command_argv or Path(profiler_command_argv[0]).name != "rocprofv3":
                         errors.append("commands[].preconditions[].profiler_command must start with rocprofv3 when passed")
                         break
-                    if not _command_text_has_flag(profiler_command, "--kernel-trace"):
-                        errors.append("commands[].preconditions[].profiler_command must include --kernel-trace flag when passed")
-                        break
                     if "--" not in profiler_command_argv:
                         errors.append("commands[].preconditions[].profiler_command must include rocprof command separator when passed")
                         break
-                    profiled_command_argv = profiler_command_argv[profiler_command_argv.index("--") + 1 :]
+                    separator_index = profiler_command_argv.index("--")
+                    rocprof_command_argv = profiler_command_argv[:separator_index]
+                    profiled_command_argv = profiler_command_argv[separator_index + 1 :]
+                    if "--kernel-trace" not in rocprof_command_argv:
+                        errors.append("commands[].preconditions[].profiler_command must include --kernel-trace flag before rocprof separator when passed")
+                        break
+                    if _argv_value(rocprof_command_argv, "--output-format") != "csv":
+                        errors.append("commands[].preconditions[].profiler_command must include --output-format csv before rocprof separator when passed")
+                        break
                     if (
                         len(profiled_command_argv) < 2
                         or not Path(profiled_command_argv[0]).name.startswith("python")
@@ -1828,14 +1833,11 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if profiler_precondition.get("profiler_output_format") != "csv":
                         errors.append("commands[].preconditions[].profiler_output_format must be csv when passed")
                         break
-                    if _command_text_arg(profiler_command, "--output-format") != "csv":
-                        errors.append("commands[].preconditions[].profiler command --output-format must be csv when passed")
-                        break
                     profiler_trace_dir = profiler_precondition.get("profiler_trace_dir")
                     if not isinstance(profiler_trace_dir, str) or not profiler_trace_dir:
                         errors.append("commands[].preconditions[].profiler_trace_dir must be a non-empty string when passed")
                         break
-                    if _command_text_arg(profiler_command, "-d") != profiler_trace_dir:
+                    if _argv_value(rocprof_command_argv, "-d") != profiler_trace_dir:
                         errors.append("commands[].preconditions[].profiler_trace_dir must match profiler command -d")
                         break
                     output_dir_text = summary.get("output_dir")
