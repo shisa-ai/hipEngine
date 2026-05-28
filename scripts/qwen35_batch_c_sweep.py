@@ -1785,6 +1785,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     separator_index = profiler_command_argv.index("--")
                     rocprof_command_argv = profiler_command_argv[:separator_index]
                     profiled_command_argv = profiler_command_argv[separator_index + 1 :]
+                    if _duplicate_flags(rocprof_command_argv, ("--kernel-trace", "--output-format", "-d")):
+                        errors.append("commands[].preconditions[].profiler_command rocprof options must be unique")
+                        break
                     if "--kernel-trace" not in rocprof_command_argv:
                         errors.append("commands[].preconditions[].profiler_command must include --kernel-trace flag before rocprof separator when passed")
                         break

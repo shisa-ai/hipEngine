@@ -2582,6 +2582,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     profiler_precondition["profiler_command"] = profiler_precondition["profiler_command"].replace("--kernel-trace", "--kernel-trace-disabled")
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_command must include --kernel-trace flag before rocprof separator when passed"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_kernel_trace_flag)
+    tampered_profiler_precondition_duplicate_kernel_trace = json.loads(json.dumps(persisted))
+    profiler_precondition = tampered_profiler_precondition_duplicate_kernel_trace["commands"][-1]["preconditions"][-1]
+    profiler_precondition["profiler_command"] = profiler_precondition["profiler_command"].replace(
+        "rocprofv3 --kernel-trace --output-format",
+        "rocprofv3 --kernel-trace --kernel-trace --output-format",
+    )
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_command rocprof options must be unique"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_duplicate_kernel_trace)
     tampered_profiler_precondition_command_separator = json.loads(json.dumps(persisted))
     profiler_precondition = tampered_profiler_precondition_command_separator["commands"][-1]["preconditions"][-1]
     profiler_precondition["profiler_command"] = profiler_precondition["profiler_command"].replace(
@@ -2674,6 +2682,11 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     profiler_precondition["profiler_command"] = profiler_precondition["profiler_command"].replace(" --output-format csv", " --output-format json")
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_command must include --output-format csv before rocprof separator when passed"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_output_command)
+    tampered_profiler_precondition_duplicate_output_command = json.loads(json.dumps(persisted))
+    profiler_precondition = tampered_profiler_precondition_duplicate_output_command["commands"][-1]["preconditions"][-1]
+    profiler_precondition["profiler_command"] = profiler_precondition["profiler_command"].replace(" --output-format csv -d", " --output-format csv --output-format json -d")
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_command rocprof options must be unique"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_duplicate_output_command)
     tampered_profiler_precondition_output_after_separator = json.loads(json.dumps(persisted))
     profiler_precondition = tampered_profiler_precondition_output_after_separator["commands"][-1]["preconditions"][-1]
     profiler_precondition["profiler_command"] = profiler_precondition["profiler_command"].replace(" --output-format csv", "")
@@ -2691,6 +2704,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_profiler_precondition_trace_dir_command["commands"][-1]["preconditions"][-1]["profiler_trace_dir"] = str(output_dir / "other-profile-c2")
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_dir must match profiler command -d"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_trace_dir_command)
+    tampered_profiler_precondition_duplicate_trace_dir = json.loads(json.dumps(persisted))
+    profiler_precondition = tampered_profiler_precondition_duplicate_trace_dir["commands"][-1]["preconditions"][-1]
+    profiler_precondition["profiler_command"] = profiler_precondition["profiler_command"].replace(
+        f" -d {output_dir / 'profile-c2'} -- python3",
+        f" -d {output_dir / 'profile-c2'} -d {output_dir / 'other-profile-c2'} -- python3",
+    )
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_command rocprof options must be unique"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_duplicate_trace_dir)
     tampered_profiler_precondition_trace_dir_after_separator = json.loads(json.dumps(persisted))
     profiler_precondition = tampered_profiler_precondition_trace_dir_after_separator["commands"][-1]["preconditions"][-1]
     profiler_precondition["profiler_command"] = profiler_precondition["profiler_command"].replace(
