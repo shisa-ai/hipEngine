@@ -6286,6 +6286,10 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             },
         },
         "memory": {
+            "max_batch_size": 2,
+            "max_sequence_length": 649,
+            "kv_policy": {"policy_class": "FixedPagedKVPolicy", "storage_dtype": "bf16"},
+            "kv_storage_dtype": "bf16",
             "allocator_reserved_peak_bytes": 8192,
             "dynamic_pool": {
                 "evidence": "initial chunk sufficed",
@@ -6952,6 +6956,26 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     }
     with pytest.raises(ValueError, match="stable_block_id|pool_counters|allocator_reserved_peak_bytes"):
         validate_cn_diagnostic_artifact_payload(missing_pool)
+
+    wrong_memory_batch_size = json.loads(json.dumps(accepted))
+    wrong_memory_batch_size["memory"]["max_batch_size"] = 4
+    with pytest.raises(ValueError, match="memory.max_batch_size must match workload.concurrency"):
+        validate_cn_diagnostic_artifact_payload(wrong_memory_batch_size)
+
+    short_memory_sequence = json.loads(json.dumps(accepted))
+    short_memory_sequence["memory"]["max_sequence_length"] = 648
+    with pytest.raises(ValueError, match="memory.max_sequence_length must cover workload prompt"):
+        validate_cn_diagnostic_artifact_payload(short_memory_sequence)
+
+    mismatched_memory_kv_dtype = json.loads(json.dumps(accepted))
+    mismatched_memory_kv_dtype["memory"]["kv_storage_dtype"] = "int8_per_token_head"
+    with pytest.raises(ValueError, match="memory.kv_storage_dtype must match workload.kv_storage_dtype"):
+        validate_cn_diagnostic_artifact_payload(mismatched_memory_kv_dtype)
+
+    mismatched_memory_kv_policy = json.loads(json.dumps(accepted))
+    mismatched_memory_kv_policy["memory"]["kv_policy"]["storage_dtype"] = "int8_per_token_head"
+    with pytest.raises(ValueError, match="memory.kv_policy must match workload.kv_policy"):
+        validate_cn_diagnostic_artifact_payload(mismatched_memory_kv_policy)
 
     nonfinite_allocator_peak = json.loads(json.dumps(accepted))
     nonfinite_allocator_peak["memory"]["allocator_reserved_peak_bytes"] = float("inf")

@@ -747,6 +747,25 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
             _valid_request_observability(row, errors)
 
     memory = _mapping_at(payload, "memory", errors)
+    if concurrency_valid:
+        if memory.get("max_batch_size") != concurrency:
+            errors.append("memory.max_batch_size must match workload.concurrency for accepted artifacts")
+    prompt_tokens = workload.get("prompt_tokens_per_request")
+    warmup_tokens = workload.get("warmup_decode_tokens")
+    gen_tokens = workload.get("gen_tokens_per_request")
+    if all(isinstance(value, int) and not isinstance(value, bool) for value in (prompt_tokens, warmup_tokens, gen_tokens)):
+        expected_sequence_length = int(prompt_tokens) + int(warmup_tokens) + int(gen_tokens) + 1
+        max_sequence_length = memory.get("max_sequence_length")
+        if not isinstance(max_sequence_length, int) or isinstance(max_sequence_length, bool) or max_sequence_length < expected_sequence_length:
+            errors.append("memory.max_sequence_length must cover workload prompt + warmup + decode tokens for accepted artifacts")
+    if memory.get("kv_storage_dtype") != workload.get("kv_storage_dtype"):
+        errors.append("memory.kv_storage_dtype must match workload.kv_storage_dtype for accepted artifacts")
+    memory_kv_policy = memory.get("kv_policy")
+    workload_kv_policy = workload.get("kv_policy")
+    if not isinstance(memory_kv_policy, Mapping):
+        errors.append("memory.kv_policy must be an object for accepted artifacts")
+    elif isinstance(workload_kv_policy, Mapping) and dict(memory_kv_policy) != dict(workload_kv_policy):
+        errors.append("memory.kv_policy must match workload.kv_policy for accepted artifacts")
     if not _is_nonnegative_number(memory.get("allocator_reserved_peak_bytes")):
         errors.append("memory.allocator_reserved_peak_bytes must be finite non-negative numeric for accepted artifacts")
     for field in _REQUIRED_ACCEPTED_POOL_FIELDS:
