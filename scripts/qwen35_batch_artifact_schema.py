@@ -681,6 +681,7 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
             if _is_finite_number(admission_timestamp) and _is_finite_number(completion_timestamp) and float(completion_timestamp) <= float(admission_timestamp):
                 errors.append("observability.completion_timestamps must be greater than admission_timestamps for accepted artifacts")
                 break
+    latency_samples: list[Any] | None = None
     latency = observability.get("request_latency_seconds")
     if isinstance(latency, Mapping):
         p50 = latency.get("p50")
@@ -695,6 +696,7 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
         if not isinstance(samples, list) or not samples:
             errors.append("observability.request_latency_seconds.samples must be a non-empty list for accepted artifacts")
         else:
+            latency_samples = samples
             if any(not _is_positive_number(sample) for sample in samples):
                 errors.append("observability.request_latency_seconds.samples must contain only positive numbers for accepted artifacts")
             if concurrency_valid and len(samples) != concurrency:
@@ -710,6 +712,23 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
             row_map = observability.get(field)
             if isinstance(row_map, Mapping) and set(row_map.keys()) != per_request_keys:
                 errors.append(f"observability.{field} keys must match observability.per_request keys for accepted artifacts")
+        if isinstance(admission_timestamps, Mapping) and isinstance(completion_timestamps, Mapping) and isinstance(latency_samples, list):
+            ordered_request_ids = sorted(
+                per_request_keys,
+                key=lambda key: (0, int(key)) if isinstance(key, str) and key.isdigit() else (1, str(key)),
+            )
+            for index, request_id in enumerate(ordered_request_ids):
+                if index >= len(latency_samples):
+                    break
+                admission_timestamp = admission_timestamps.get(request_id)
+                completion_timestamp = completion_timestamps.get(request_id)
+                latency_sample = latency_samples[index]
+                if _is_finite_number(admission_timestamp) and _is_finite_number(completion_timestamp) and _is_positive_number(latency_sample):
+                    expected_latency = float(completion_timestamp) - float(admission_timestamp)
+                    tolerance = max(1e-9, abs(expected_latency) * 1e-6)
+                    if expected_latency > 0.0 and abs(float(latency_sample) - expected_latency) > tolerance:
+                        errors.append("observability.request_latency_seconds.samples must match completion_timestamps minus admission_timestamps for accepted artifacts")
+                        break
         for row in per_request.values():
             _valid_request_observability(row, errors)
 
