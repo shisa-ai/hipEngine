@@ -1761,29 +1761,29 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                             break
                     if retained_gate_path_error:
                         break
-                compiler_version_file = _argv_value(argv, "--compiler-version-file")
-                if compiler_version_file is not None:
-                    if _path_has_parent_directory_component(compiler_version_file):
-                        errors.append("commands[].argv compiler-version-file must not contain parent-directory components")
+            compiler_version_file = _argv_value(argv, "--compiler-version-file")
+            if compiler_version_file is not None:
+                if _path_has_parent_directory_component(compiler_version_file):
+                    errors.append("commands[].argv compiler-version-file must not contain parent-directory components")
+                    break
+                compiler_version_path = Path(compiler_version_file)
+                compiler_version_check_path = compiler_version_path if compiler_version_path.is_absolute() else REPO_ROOT / compiler_version_path
+                if compiler_version_check_path.is_symlink():
+                    errors.append("commands[].argv compiler-version-file must not be a symlink")
+                    break
+                if _path_has_symlink_parent(compiler_version_check_path):
+                    errors.append("commands[].argv compiler-version-file parent directories must not be symlinks")
+                    break
+            if entry.get("category") in {"serial_bridge", "native_diagnostic"} and isinstance(options, Mapping):
+                option_compiler_version_file = options.get("compiler_version_file")
+                if option_compiler_version_file is None or isinstance(option_compiler_version_file, str):
+                    if compiler_version_file != option_compiler_version_file:
+                        errors.append("commands[].argv compiler-version-file must match options.compiler_version_file")
                         break
-                    compiler_version_path = Path(compiler_version_file)
-                    compiler_version_check_path = compiler_version_path if compiler_version_path.is_absolute() else REPO_ROOT / compiler_version_path
-                    if compiler_version_check_path.is_symlink():
-                        errors.append("commands[].argv compiler-version-file must not be a symlink")
-                        break
-                    if _path_has_symlink_parent(compiler_version_check_path):
-                        errors.append("commands[].argv compiler-version-file parent directories must not be symlinks")
-                        break
-                if entry.get("category") == "native_diagnostic" and isinstance(options, Mapping):
-                    option_compiler_version_file = options.get("compiler_version_file")
-                    if option_compiler_version_file is None or isinstance(option_compiler_version_file, str):
-                        if compiler_version_file != option_compiler_version_file:
-                            errors.append("commands[].argv compiler-version-file must match options.compiler_version_file")
-                            break
-                    option_require_cached_build = options.get("require_cached_build")
-                    if isinstance(option_require_cached_build, bool) and ("--require-cached-build" in argv) != option_require_cached_build:
-                        errors.append("commands[].argv require-cached-build must match options.require_cached_build")
-                        break
+                option_require_cached_build = options.get("require_cached_build")
+                if isinstance(option_require_cached_build, bool) and ("--require-cached-build" in argv) != option_require_cached_build:
+                    errors.append("commands[].argv require-cached-build must match options.require_cached_build")
+                    break
             status = entry.get("status")
             if status not in {"planned", "passed", "skipped", "failed"}:
                 errors.append("commands[].status must be planned, passed, skipped, or failed")
