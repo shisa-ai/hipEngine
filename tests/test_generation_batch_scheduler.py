@@ -6578,6 +6578,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="hardware.rocm_smi.command must include --showmeminfo"):
         validate_cn_diagnostic_artifact_payload(spoofed_rocm_smi_command)
 
+    missing_rocm_smi_output_markers = json.loads(json.dumps(accepted))
+    missing_rocm_smi_output_markers["hardware"]["rocm_smi"]["output"] = "capture ok"
+    with pytest.raises(ValueError, match="hardware.rocm_smi.output must include GPU and VRAM markers"):
+        validate_cn_diagnostic_artifact_payload(missing_rocm_smi_output_markers)
+
     missing_rocminfo_name_marker = json.loads(json.dumps(accepted))
     missing_rocminfo_name_marker["hardware"]["rocminfo"]["output"] = "gfx1100"
     with pytest.raises(ValueError, match="hardware.rocminfo.output must include Name:"):

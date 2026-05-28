@@ -1008,8 +1008,9 @@ roll-up/status view.
       `gfx*` architecture string plus successful
       `hardware.rocminfo`/`hardware.rocm_smi` capture objects whose commands
       include the retained capture fragments (`rocminfo | grep -E`, `Name:|gfx`,
-      `head -4`, and the `rocm-smi --showmeminfo vram --showuse --showtemp` flags)
-      and whose `rocminfo` output includes a `Name:` marker plus the recorded arch,
+      `head -4`, and the `rocm-smi --showmeminfo vram --showuse --showtemp` flags),
+      whose `rocminfo` output includes a `Name:` marker plus the recorded arch,
+      and whose `rocm_smi` output includes GPU and VRAM markers,
       clean full-commit software fields (`software.hipengine_dirty == false`)
       plus a non-empty `hipcc_version` string containing a hipcc/HIP/clang version marker,
       and captured profiler evidence with a

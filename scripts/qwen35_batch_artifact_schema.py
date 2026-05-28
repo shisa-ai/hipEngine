@@ -953,6 +953,13 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
                 errors.append("hardware.rocminfo.output must include Name: for accepted artifacts")
             if hardware_arch not in rocminfo_output:
                 errors.append("hardware.rocminfo.output must include hardware.arch for accepted artifacts")
+    rocm_smi = hardware.get("rocm_smi")
+    if isinstance(rocm_smi, Mapping):
+        rocm_smi_output = rocm_smi.get("output")
+        if isinstance(rocm_smi_output, str):
+            rocm_smi_output_lower = rocm_smi_output.lower()
+            if "gpu" not in rocm_smi_output_lower or "vram" not in rocm_smi_output_lower:
+                errors.append("hardware.rocm_smi.output must include GPU and VRAM markers for accepted artifacts")
     software = _mapping_at(payload, "software", errors)
     hipengine_commit = software.get("hipengine_commit")
     if not isinstance(hipengine_commit, str) or not hipengine_commit:
