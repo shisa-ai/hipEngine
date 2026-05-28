@@ -2283,6 +2283,20 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     postcondition["profiler_precondition_synthesized_fields"] = ["trace_kernel_names"]
     with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler_precondition_synthesized_fields must match profiler_summary precondition"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_field_match)
+    tampered_profiler_unknown_synthesized_field = json.loads(json.dumps(persisted))
+    postcondition = tampered_profiler_unknown_synthesized_field["commands"][-1]["postconditions"][0]
+    postcondition["profiler_synthesized_fields"] = ["trace_kernel_names", "edited_field"]
+    postcondition["profiler_precondition_synthesized_fields"] = ["trace_kernel_names", "edited_field"]
+    tampered_profiler_unknown_synthesized_field["commands"][-1]["preconditions"][-1]["profiler_trace_synthesized_fields"] = ["trace_kernel_names", "edited_field"]
+    with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler synthesized fields must be known trace-derived fields"):
+        c_sweep.validate_sweep_summary(tampered_profiler_unknown_synthesized_field)
+    tampered_profiler_duplicate_synthesized_field = json.loads(json.dumps(persisted))
+    postcondition = tampered_profiler_duplicate_synthesized_field["commands"][-1]["postconditions"][0]
+    postcondition["profiler_synthesized_fields"] = ["trace_kernel_names", "trace_kernel_names"]
+    postcondition["profiler_precondition_synthesized_fields"] = ["trace_kernel_names", "trace_kernel_names"]
+    tampered_profiler_duplicate_synthesized_field["commands"][-1]["preconditions"][-1]["profiler_trace_synthesized_fields"] = ["trace_kernel_names", "trace_kernel_names"]
+    with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler synthesized fields must be unique"):
+        c_sweep.validate_sweep_summary(tampered_profiler_duplicate_synthesized_field)
     tampered_git_dirty = json.loads(json.dumps(persisted))
     tampered_git_dirty["commands"][-1]["git_dirty"] = True
     with pytest.raises(ValueError, match=r"commands\[\]\.git_dirty must match git.dirty"):

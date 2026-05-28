@@ -52,6 +52,14 @@ _PROFILER_TRACE_KERNEL_NAME_COLUMNS = ("Kernel_Name", "KernelName", "Name")
 _PROFILER_TRACE_START_COLUMNS = ("Start_Timestamp", "StartTimestamp", "StartNs", "Start")
 _PROFILER_TRACE_END_COLUMNS = ("End_Timestamp", "EndTimestamp", "EndNs", "End")
 _PROFILER_TRACE_DURATION_COLUMNS = ("DurationNs", "Duration_NS", "Duration_Ns", "Duration")
+_PROFILER_SYNTHESIZED_FIELDS = (
+    "trace_kernel_names",
+    "kernel_durations_ns",
+    "total_kernel_duration_ns",
+    "kernel_duration_shares",
+    "kernel_duration_categories_ns",
+    "kernel_duration_category_shares",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1909,6 +1917,12 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     break
                 if postcondition.get("passed") is True and list(precondition_fields) != list(profiler_precondition_fields):
                     errors.append("commands[].postconditions[].profiler_precondition_synthesized_fields must match profiler_summary precondition")
+                    break
+                if postcondition.get("passed") is True and any(field not in _PROFILER_SYNTHESIZED_FIELDS for field in profiler_precondition_fields):
+                    errors.append("commands[].postconditions[].profiler synthesized fields must be known trace-derived fields")
+                    break
+                if postcondition.get("passed") is True and len(set(profiler_precondition_fields)) != len(profiler_precondition_fields):
+                    errors.append("commands[].postconditions[].profiler synthesized fields must be unique")
                     break
             failed_postconditions = [
                 postcondition
