@@ -1743,6 +1743,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if not profiler_command_argv or Path(profiler_command_argv[0]).name != "rocprofv3":
                         errors.append("commands[].preconditions[].profiler_command must start with rocprofv3 when passed")
                         break
+                    if not _command_text_has_flag(profiler_command, "--kernel-trace"):
+                        errors.append("commands[].preconditions[].profiler_command must include --kernel-trace flag when passed")
+                        break
                     if _command_text_arg(profiler_command, "--model") != _argv_value(argv, "--model") or profiler_precondition.get("profiler_model") != _argv_value(argv, "--model"):
                         errors.append("commands[].preconditions[].profiler model must match retained command")
                         break

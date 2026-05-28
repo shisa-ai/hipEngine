@@ -2535,6 +2535,11 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     profiler_precondition["profiler_command"] = "echo " + profiler_precondition["profiler_command"]
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_command must start with rocprofv3 when passed"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_command_executable)
+    tampered_profiler_precondition_kernel_trace_flag = json.loads(json.dumps(persisted))
+    profiler_precondition = tampered_profiler_precondition_kernel_trace_flag["commands"][-1]["preconditions"][-1]
+    profiler_precondition["profiler_command"] = profiler_precondition["profiler_command"].replace("--kernel-trace", "--kernel-trace-disabled")
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_command must include --kernel-trace flag when passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_kernel_trace_flag)
     tampered_profiler_precondition_model = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_model["commands"][-1]["preconditions"][-1]["profiler_model"] = "/tmp/other-model"
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler model must match retained command"):
