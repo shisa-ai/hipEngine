@@ -569,6 +569,9 @@ def _load_benchmark_results_json_artifact(field: str, value: str, errors: list[s
     path = Path(value)
     if not path.is_absolute():
         path = Path.cwd() / path
+    if path.suffix.lower() != ".json":
+        errors.append(f"{field} must point to a .json artifact for accepted artifacts")
+        return None
     if path.is_symlink():
         errors.append(f"{field} must point to a regular JSON artifact, not a symlink, for accepted artifacts")
         return None

@@ -124,6 +124,8 @@ def test_qwen35_artifact_reference_loader_rejects_symlinks_and_directories(
     artifact_dir.mkdir(parents=True)
     regular_artifact = artifact_dir / "source.json"
     regular_artifact.write_text('{"schema": 1}', encoding="utf-8")
+    non_json_artifact = artifact_dir / "source.txt"
+    non_json_artifact.write_text('{"schema": 1}', encoding="utf-8")
     directory_artifact = artifact_dir / "directory.json"
     directory_artifact.mkdir()
     real_parent = artifact_dir / "real-parent"
@@ -142,6 +144,9 @@ def test_qwen35_artifact_reference_loader_rejects_symlinks_and_directories(
     errors: list[str] = []
     assert _load_benchmark_results_json_artifact("artifact_path", "benchmarks/results/source.json", errors) == {"schema": 1}
     assert errors == []
+
+    assert _load_benchmark_results_json_artifact("non_json_path", "benchmarks/results/source.txt", errors) is None
+    assert errors[-1] == "non_json_path must point to a .json artifact for accepted artifacts"
 
     assert _load_benchmark_results_json_artifact("directory_path", "benchmarks/results/directory.json", errors) is None
     assert errors[-1] == "directory_path must point to a regular JSON artifact for accepted artifacts"
