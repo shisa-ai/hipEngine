@@ -1882,8 +1882,21 @@ def _validate_projection_dispatch_profiler_evidence(
         if not any(fragment in name for fragment in fragments for name in expected_lower_names):
             errors.append("profiler.expected_kernel_names must include selected projection_dispatch candidate or variant for accepted artifacts")
         profiler_names.extend(name for name in expected_kernel_names if isinstance(name, str) and name)
+    trace_kernel_names = profiler.get("trace_kernel_names")
+    if isinstance(trace_kernel_names, list):
+        trace_lower_names = [name.lower() for name in trace_kernel_names if isinstance(name, str) and name]
+        if not any(fragment in name for fragment in fragments for name in trace_lower_names):
+            errors.append("profiler.trace_kernel_names must include selected projection_dispatch candidate or variant for accepted artifacts")
+        profiler_names.extend(name for name in trace_kernel_names if isinstance(name, str) and name)
     kernel_durations = profiler.get("kernel_durations_ns")
     if isinstance(kernel_durations, Mapping):
+        duration_lower_names = [
+            name.lower()
+            for name, duration_ns in kernel_durations.items()
+            if isinstance(name, str) and name and _is_positive_number(duration_ns)
+        ]
+        if not any(fragment in name for fragment in fragments for name in duration_lower_names):
+            errors.append("profiler.kernel_durations_ns must include a positive selected projection_dispatch candidate or variant duration for accepted artifacts")
         profiler_names.extend(name for name in kernel_durations if isinstance(name, str) and name)
     if not profiler_names:
         return

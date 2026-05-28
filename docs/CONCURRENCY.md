@@ -735,8 +735,8 @@ roll-up/status view.
       artifact schema now requires `execution.batch_execution.projection_dispatch`
       to name an evidence-backed non-row-GEMV c-aware path whose selected
       candidate is present in `projection_dispatch_candidates` and profiler
-      expected/kernel names; retained native batch metadata records a `projection_dispatch` row-GEMV fallback
-      with an explicit blocker when no c-aware projection candidate is available; and retained bench now blocks promotion before schema validation unless projection dispatch names an evidence-backed non-row-GEMV c-aware candidate present in `projection_dispatch_candidates` with matching row bounds, selection, retained artifact path, an accepted same-row evidence artifact JSON, >1 aggregate/per-request ratios, evidence, and profiler expected/kernel names. The
+      expected/trace/duration kernel names; retained native batch metadata records a `projection_dispatch` row-GEMV fallback
+      with an explicit blocker when no c-aware projection candidate is available; and retained bench now blocks promotion before schema validation unless projection dispatch names an evidence-backed non-row-GEMV c-aware candidate present in `projection_dispatch_candidates` with matching row bounds, selection, retained artifact path, an accepted same-row evidence artifact JSON, >1 aggregate/per-request ratios, evidence, and profiler expected/trace/duration kernel names. The
       item remains open until runtime projection call sites are wired to this
       policy and retained benchmark artifacts provide the required ratios.
 - [x] **C3.5 GGUF c>N template.** Port the Qwen/PARO equality template to
@@ -1055,7 +1055,7 @@ roll-up/status view.
       attention/MoE/projection/sampling/graph/other, finite exact-key CPU-side bottleneck
       duration/share totals, plus an accepted non-row-GEMV
       `projection_dispatch` decision whose selected candidate is listed with
-      matching retained speedup evidence and appears in profiler expected/kernel names, plus native sampler/LM-head expected/trace/duration profiler evidence.
+      matching retained speedup evidence and appears in profiler expected/trace/duration kernel names, plus native sampler/LM-head expected/trace/duration profiler evidence.
       The scoreboard item remains open until accepted
       artifacts exist and the benchmark rollups are updated.
 

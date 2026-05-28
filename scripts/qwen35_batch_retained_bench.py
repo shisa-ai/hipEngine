@@ -1740,12 +1740,25 @@ def _projection_dispatch_profiler_blockers(batch_execution: Mapping[str, Any], p
         expected_lower_names = [name.lower() for name in expected_kernel_names if isinstance(name, str) and name]
         if not any(fragment in name for fragment in fragments for name in expected_lower_names):
             blockers.append("profiler.expected_kernel_names must include selected projection_dispatch candidate or variant")
+    trace_kernel_names = profiler.get("trace_kernel_names")
+    if isinstance(trace_kernel_names, list):
+        trace_lower_names = [name.lower() for name in trace_kernel_names if isinstance(name, str) and name]
+        if not any(fragment in name for fragment in fragments for name in trace_lower_names):
+            blockers.append("profiler.trace_kernel_names must include selected projection_dispatch candidate or variant")
+    kernel_durations = profiler.get("kernel_durations_ns")
+    if isinstance(kernel_durations, Mapping):
+        duration_lower_names = [
+            name.lower()
+            for name, duration_ns in kernel_durations.items()
+            if isinstance(name, str) and name and _is_finite_positive_number(duration_ns)
+        ]
+        if not any(fragment in name for fragment in fragments for name in duration_lower_names):
+            blockers.append("profiler.kernel_durations_ns must include a positive selected projection_dispatch candidate or variant duration")
     profiler_names: list[str] = []
     for field in ("expected_kernel_names", "trace_kernel_names"):
         names = profiler.get(field)
         if isinstance(names, list):
             profiler_names.extend(name for name in names if isinstance(name, str) and name)
-    kernel_durations = profiler.get("kernel_durations_ns")
     if isinstance(kernel_durations, Mapping):
         profiler_names.extend(name for name in kernel_durations if isinstance(name, str) and name)
     lowered_names = [name.lower() for name in profiler_names]

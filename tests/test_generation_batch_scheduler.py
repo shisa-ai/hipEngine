@@ -6588,6 +6588,24 @@ def test_qwen35_retained_projection_dispatch_blockers_require_caware_candidate(t
         },
     )
     assert expected_missing_blockers == ["profiler.expected_kernel_names must include selected projection_dispatch candidate or variant"]
+    trace_missing_blockers = retained_bench._projection_dispatch_profiler_blockers(
+        valid_dispatch,
+        {
+            "expected_kernel_names": ["qwen35_batch_decode_wmma_caware"],
+            "trace_kernel_names": ["qwen35_batch_decode"],
+            "kernel_durations_ns": {"qwen35_batch_decode_wmma_caware": 12345},
+        },
+    )
+    assert trace_missing_blockers == ["profiler.trace_kernel_names must include selected projection_dispatch candidate or variant"]
+    duration_missing_blockers = retained_bench._projection_dispatch_profiler_blockers(
+        valid_dispatch,
+        {
+            "expected_kernel_names": ["qwen35_batch_decode_wmma_caware"],
+            "trace_kernel_names": ["qwen35_batch_decode_wmma_caware"],
+            "kernel_durations_ns": {"qwen35_batch_decode": 12345},
+        },
+    )
+    assert duration_missing_blockers == ["profiler.kernel_durations_ns must include a positive selected projection_dispatch candidate or variant duration"]
     missing_all_projection_blockers = retained_bench._projection_dispatch_profiler_blockers(
         valid_dispatch,
         {
@@ -6597,6 +6615,8 @@ def test_qwen35_retained_projection_dispatch_blockers_require_caware_candidate(t
         },
     )
     assert "profiler.expected_kernel_names must include selected projection_dispatch candidate or variant" in missing_all_projection_blockers
+    assert "profiler.trace_kernel_names must include selected projection_dispatch candidate or variant" in missing_all_projection_blockers
+    assert "profiler.kernel_durations_ns must include a positive selected projection_dispatch candidate or variant duration" in missing_all_projection_blockers
     assert "profiler kernel names must include selected projection_dispatch candidate or variant" in missing_all_projection_blockers
     mismatched_blockers = retained_bench._projection_dispatch_blockers(valid_dispatch, concurrency=2, candidates=[mismatched_candidate])
     assert "projection_dispatch_candidates selected_candidate row bounds must include projection_dispatch.rows" in mismatched_blockers
@@ -9095,9 +9115,36 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="profiler.expected_kernel_names must include selected projection_dispatch candidate or variant"):
         validate_cn_diagnostic_artifact_payload(missing_projection_expected_kernel)
 
+    missing_projection_trace_kernel = json.loads(json.dumps(accepted))
+    missing_projection_trace_kernel["profiler"]["trace_kernel_names"] = [
+        "qwen35_batch_decode",
+        "qwen35_batch_graph_replay",
+        "qwen35_batch_lm_head",
+    ]
+    with pytest.raises(ValueError, match="profiler.trace_kernel_names must include selected projection_dispatch candidate or variant"):
+        validate_cn_diagnostic_artifact_payload(missing_projection_trace_kernel)
+
+    missing_projection_duration = json.loads(json.dumps(accepted))
+    missing_projection_duration["profiler"]["kernel_durations_ns"].pop("qwen35_batch_decode_wmma_caware")
+    with pytest.raises(ValueError, match="profiler.kernel_durations_ns must include a positive selected projection_dispatch candidate or variant duration"):
+        validate_cn_diagnostic_artifact_payload(missing_projection_duration)
+
     missing_projection_profiler_kernel = json.loads(json.dumps(accepted))
-    missing_projection_profiler_kernel["profiler"]["expected_kernel_names"] = ["qwen35_batch_decode", "qwen35_batch_graph_replay"]
-    missing_projection_profiler_kernel["profiler"]["kernel_durations_ns"] = {"qwen35_batch_decode": 12345.0, "qwen35_batch_graph_replay": 100.0}
+    missing_projection_profiler_kernel["profiler"]["expected_kernel_names"] = [
+        "qwen35_batch_decode",
+        "qwen35_batch_graph_replay",
+        "qwen35_batch_lm_head",
+    ]
+    missing_projection_profiler_kernel["profiler"]["trace_kernel_names"] = [
+        "qwen35_batch_decode",
+        "qwen35_batch_graph_replay",
+        "qwen35_batch_lm_head",
+    ]
+    missing_projection_profiler_kernel["profiler"]["kernel_durations_ns"] = {
+        "qwen35_batch_decode": 12345.0,
+        "qwen35_batch_graph_replay": 100.0,
+        "qwen35_batch_lm_head": 500.0,
+    }
     with pytest.raises(ValueError, match="profiler kernel names must include selected projection_dispatch candidate or variant"):
         validate_cn_diagnostic_artifact_payload(missing_projection_profiler_kernel)
 
