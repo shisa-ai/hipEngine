@@ -2967,8 +2967,16 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         c_sweep.validate_sweep_summary(tampered_gate_argv_filename)
     tampered_scaling_precondition_concurrency = json.loads(json.dumps(persisted))
     tampered_scaling_precondition_concurrency["commands"][-1]["preconditions"][1]["workload_concurrency"] = 2
-    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.workload_concurrency must match retained scaling gate"):
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.workload_concurrency must be a typed int matching retained scaling gate"):
         c_sweep.validate_sweep_summary(tampered_scaling_precondition_concurrency)
+    tampered_scaling_precondition_bool_concurrency = json.loads(json.dumps(persisted))
+    tampered_scaling_precondition_bool_concurrency["commands"][-1]["preconditions"][1]["workload_concurrency"] = True
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.workload_concurrency must be a typed int matching retained scaling gate"):
+        c_sweep.validate_sweep_summary(tampered_scaling_precondition_bool_concurrency)
+    tampered_scaling_precondition_float_concurrency = json.loads(json.dumps(persisted))
+    tampered_scaling_precondition_float_concurrency["commands"][-1]["preconditions"][2]["workload_concurrency"] = 2.0
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.workload_concurrency must be a typed int matching retained scaling gate"):
+        c_sweep.validate_sweep_summary(tampered_scaling_precondition_float_concurrency)
     tampered_scaling_precondition_shape = json.loads(json.dumps(persisted))
     tampered_scaling_precondition_shape["commands"][-1]["preconditions"][2]["prompt_tokens_per_request"] = 17
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.prompt_tokens_per_request must match retained command shape"):

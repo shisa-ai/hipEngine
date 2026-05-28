@@ -1830,8 +1830,13 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 for scaling_precondition, expected_concurrency in scaling_preconditions:
                     if scaling_precondition.get("passed") is not True:
                         continue
-                    if scaling_precondition.get("workload_concurrency") != expected_concurrency:
-                        errors.append("commands[].preconditions[].workload_concurrency must match retained scaling gate")
+                    workload_concurrency = scaling_precondition.get("workload_concurrency")
+                    if (
+                        not isinstance(workload_concurrency, int)
+                        or isinstance(workload_concurrency, bool)
+                        or workload_concurrency != expected_concurrency
+                    ):
+                        errors.append("commands[].preconditions[].workload_concurrency must be a typed int matching retained scaling gate")
                         scaling_precondition_error = True
                         break
                     if scaling_precondition.get("prompt_tokens_per_request") != expected_prompt_tokens:

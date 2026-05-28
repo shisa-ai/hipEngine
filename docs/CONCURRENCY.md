@@ -966,8 +966,9 @@ roll-up/status view.
       observability with matching row ids and latency samples for every row in
       `workload.concurrency`, execution scheduler metadata with decode shape-key
       and non-empty graph-bucket stats, positive
-      aggregate/per-request throughput whose rates match `workload.concurrency`
-      and whose native scaling copy matches the primary measurements, all
+      aggregate/per-request throughput whose c-sweep scaling precondition
+      concurrency labels are typed and match `workload.concurrency`, and whose
+      native scaling copy matches the primary measurements, all
       required positive scaling ratios that mathematically match usable same-shape
       c=1 and usable same-shape/same-concurrency serial bridge
       baselines, aggregate ratios vs both references that beat 1.0,
