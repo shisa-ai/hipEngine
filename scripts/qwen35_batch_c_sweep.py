@@ -1604,6 +1604,13 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if _path_has_parent_directory_component(entry["artifact_path"]):
                 errors.append("commands[].artifact_path must not contain parent-directory components")
                 break
+            artifact_path_for_symlink_check = Path(entry["artifact_path"])
+            artifact_path_for_symlink_check = (
+                artifact_path_for_symlink_check if artifact_path_for_symlink_check.is_absolute() else REPO_ROOT / artifact_path_for_symlink_check
+            )
+            if _path_has_symlink_parent(artifact_path_for_symlink_check):
+                errors.append("commands[].artifact_path parent directories must not be symlinks")
+                break
             command_text = entry.get("command")
             if not isinstance(command_text, str) or not command_text:
                 errors.append("commands[].command must be a non-empty string")

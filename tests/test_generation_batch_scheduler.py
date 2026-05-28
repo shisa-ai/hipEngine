@@ -3426,6 +3426,21 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
                 if trace_parent_target.exists():
                     trace_parent_target.rmdir()
 
+            artifact_parent_link = output_dir / "artifact-parent-link"
+            try:
+                artifact_parent_link.symlink_to(output_dir, target_is_directory=True)
+                symlink_parent_artifact_summary = json.loads(json.dumps(persisted))
+                primitive_row = symlink_parent_artifact_summary["commands"][0]
+                artifact_via_symlink_parent = str(artifact_parent_link / "primitive-c2.json")
+                primitive_row["artifact_path"] = artifact_via_symlink_parent
+                primitive_row["argv"][primitive_row["argv"].index("--json") + 1] = artifact_via_symlink_parent
+                primitive_row["command"] = shlex.join(primitive_row["argv"])
+                with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path parent directories must not be symlinks"):
+                    c_sweep.validate_sweep_summary(symlink_parent_artifact_summary)
+            finally:
+                if artifact_parent_link.is_symlink():
+                    artifact_parent_link.unlink()
+
         symlink_artifact_summary = json.loads(json.dumps(persisted))
         primitive_artifact_path = Path(symlink_artifact_summary["commands"][0]["artifact_path"])
         primitive_artifact_target = primitive_artifact_path.with_name("primitive-c2-real.json")
