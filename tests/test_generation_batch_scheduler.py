@@ -4976,6 +4976,10 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
             }
         )
     )
+    mismatched_seed_artifact = tmp_path / "primitive-c2-seed.json"
+    seed_payload = json.loads(artifact.read_text())
+    seed_payload["seed"] = 4321
+    mismatched_seed_artifact.write_text(json.dumps(seed_payload))
     mismatched_shape_artifact = tmp_path / "primitive-c2-shape.json"
     shape_payload = json.loads(artifact.read_text())
     shape_payload["head_dim"] = 16
@@ -4996,6 +5000,7 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     passed = retained_bench._primitive_correctness_reference(artifact, rows=2)
     mismatched = retained_bench._primitive_correctness_reference(artifact, rows=4)
     missing_schema = retained_bench._primitive_correctness_reference(schema_less_artifact, rows=2)
+    mismatched_seed = retained_bench._primitive_correctness_reference(mismatched_seed_artifact, rows=2)
     mismatched_shape = retained_bench._primitive_correctness_reference(mismatched_shape_artifact, rows=2)
     mismatched_numpy = retained_bench._primitive_correctness_reference(mismatched_numpy_artifact, rows=2)
     mismatched_context = retained_bench._primitive_correctness_reference(mismatched_context_artifact, rows=2)
@@ -5012,6 +5017,8 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     assert "does not match batch_size=4" in mismatched["reason"]
     assert missing_schema["passed"] is False
     assert "schema is missing or not 1" in missing_schema["reason"]
+    assert mismatched_seed["passed"] is False
+    assert "seed is missing or not 1234" in mismatched_seed["reason"]
     assert mismatched_shape["passed"] is False
     assert "head_dim is missing or not 8" in mismatched_shape["reason"]
     assert mismatched_numpy["passed"] is False

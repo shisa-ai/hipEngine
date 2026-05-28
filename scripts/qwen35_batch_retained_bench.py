@@ -63,6 +63,7 @@ _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS = {
     "num_kv_heads": 1,
     "head_dim": 8,
 }
+_REQUIRED_PRIMITIVE_CORRECTNESS_SEED = 1234
 _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT = 2e-5
 
 
@@ -300,8 +301,12 @@ def _primitive_correctness_reference(path: Path | None, *, rows: int) -> dict[st
     if not isinstance(artifact_rows, int) or isinstance(artifact_rows, bool) or artifact_rows != int(rows):
         reasons.append(f"artifact rows={artifact_rows!r} does not match batch_size={rows}")
     artifact_seed = payload.get("seed")
-    if not isinstance(artifact_seed, int) or isinstance(artifact_seed, bool):
-        reasons.append("seed is missing or not an int")
+    if (
+        not isinstance(artifact_seed, int)
+        or isinstance(artifact_seed, bool)
+        or artifact_seed != _REQUIRED_PRIMITIVE_CORRECTNESS_SEED
+    ):
+        reasons.append("seed is missing or not 1234")
     for field, expected_value in _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS.items():
         value = payload.get(field)
         if not isinstance(value, int) or isinstance(value, bool) or value != expected_value:
