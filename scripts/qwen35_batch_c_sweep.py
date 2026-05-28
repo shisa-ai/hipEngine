@@ -433,6 +433,17 @@ def _is_kernel_trace_csv_path(trace_file: str) -> bool:
     return Path(trace_file).suffix.lower() == ".csv" and "kernel" in name and "trace" in name
 
 
+def _resolve_repo_path(path: str | Path) -> Path:
+    path = Path(path)
+    if not path.is_absolute():
+        path = REPO_ROOT / path
+    return path.resolve()
+
+
+def _is_resolved_path_relative_to(path: str | Path, root: str | Path) -> bool:
+    return _resolve_repo_path(path).is_relative_to(_resolve_repo_path(root))
+
+
 def _resolve_profiler_trace_file(trace_file: str, *, profiler_path: Path) -> Path:
     path = Path(trace_file)
     if path.is_absolute():
@@ -940,11 +951,8 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
             if not any(_is_kernel_trace_csv_path(trace_file) for trace_file in profiler_trace_files):
                 reasons.append("profiler.trace_files does not include a kernel-trace CSV")
             if profiler_trace_dir is not None:
-                trace_dir_path = Path(profiler_trace_dir)
                 for trace_file in profiler_trace_files:
-                    try:
-                        Path(trace_file).relative_to(trace_dir_path)
-                    except ValueError:
+                    if not _is_resolved_path_relative_to(trace_file, profiler_trace_dir):
                         reasons.append("profiler.trace_files contains a path outside profiler.trace_dir")
                         break
         profiler_trace_synthesized_fields = _synthesize_profiler_trace_fields(profiler, profiler_path=profiler_path)
@@ -1864,7 +1872,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if len(set(profiler_trace_files)) != len(profiler_trace_files):
                         errors.append("commands[].preconditions[].profiler_trace_files must be unique when passed")
                         break
-                    if any(not Path(trace_file).is_relative_to(Path(profiler_trace_dir)) for trace_file in profiler_trace_files):
+                    if any(not _is_resolved_path_relative_to(trace_file, profiler_trace_dir) for trace_file in profiler_trace_files):
                         errors.append("commands[].preconditions[].profiler_trace_files must be under profiler_trace_dir when passed")
                         break
                     profiler_kernel_names = profiler_precondition.get("profiler_trace_kernel_names")

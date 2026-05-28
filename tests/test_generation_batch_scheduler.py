@@ -488,6 +488,42 @@ def test_batch_c_sweep_profiler_precondition_rejects_trace_files_outside_trace_d
     }
 
 
+def test_batch_c_sweep_profiler_precondition_rejects_trace_file_path_traversal(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"]["trace_files"] = [str(output_dir / "profile-c2" / ".." / "other-profile" / "hipengine_kernel_trace.csv")]
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler.trace_files contains a path outside profiler.trace_dir",
+    }
+
+
 def test_batch_c_sweep_profiler_precondition_rejects_trace_files_without_kernel_trace_csv(tmp_path: Path) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
@@ -2670,6 +2706,12 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_profiler_precondition_trace_file_scope["commands"][-1]["preconditions"][-1]["profiler_trace_files"] = [str(output_dir / "other-profile-c2" / "hipengine_kernel_trace.csv")]
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_files must be under profiler_trace_dir when passed"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_trace_file_scope)
+    tampered_profiler_precondition_trace_file_traversal = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_trace_file_traversal["commands"][-1]["preconditions"][-1]["profiler_trace_files"] = [
+        str(output_dir / "profile-c2" / ".." / "other-profile-c2" / "hipengine_kernel_trace.csv")
+    ]
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_files must be under profiler_trace_dir when passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_trace_file_traversal)
     tampered_profiler_precondition_trace_files = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_trace_files["commands"][-1]["preconditions"][-1]["profiler_trace_files"] = []
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_files must include a kernel-trace CSV when passed"):
