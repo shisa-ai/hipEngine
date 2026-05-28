@@ -5955,6 +5955,12 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
         retained_artifact_path="benchmarks/results/native-c2.json",
         expected_workload=expected_workload,
     )
+    missing_artifact_command = {key: value for key, value in valid.items() if key != "command"}
+    assert "profiler artifact must include command or profiler_command" in retained_bench._profiler_provenance_blockers(
+        missing_artifact_command,
+        profiled_command=valid["command"],
+        retained_artifact_path="benchmarks/results/native-c2.json",
+    )
     blockers = retained_bench._profiler_provenance_blockers(invalid)
     assert "profiler.artifact_path must be under benchmarks/results" in blockers
     assert "profiler.output_format must be csv" in blockers

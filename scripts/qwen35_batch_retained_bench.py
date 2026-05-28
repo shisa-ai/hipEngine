@@ -1297,6 +1297,8 @@ def _profiler_provenance_blockers(
         for command in (profiler.get("command"), profiler.get("profiler_command"))
         if isinstance(command, str) and command
     ]
+    if retained_profiler_artifact_path is not None and not artifact_commands:
+        blockers.append("profiler artifact must include command or profiler_command")
     command_candidates: list[str] = []
     if isinstance(profiled_command, str) and profiled_command and "<profile-dir>" not in profiled_command:
         command_candidates.append(profiled_command)
