@@ -5908,6 +5908,24 @@ def test_qwen35_retained_memory_payload_uses_bench_evidence() -> None:
     assert retained_bench._memory_evidence_blockers(memory) == []
 
 
+def test_qwen35_retained_profiler_kernel_evidence_blockers_require_trace_durations() -> None:
+    complete = {
+        "trace_kernel_names": ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"],
+        "expected_kernel_names": ["qwen35_batch_decode_wmma_caware"],
+        "kernel_durations_ns": {"qwen35_batch_decode": 12345, "qwen35_batch_decode_wmma_caware": 2345},
+    }
+    incomplete = {
+        "trace_kernel_names": ["qwen35_batch_decode"],
+        "expected_kernel_names": ["qwen35_batch_decode_wmma_caware"],
+        "kernel_durations_ns": {"qwen35_batch_decode_wmma_caware": 0},
+    }
+
+    assert retained_bench._profiler_kernel_evidence_blockers(complete) == []
+    blockers = retained_bench._profiler_kernel_evidence_blockers(incomplete)
+    assert "profiler.kernel_durations_ns.qwen35_batch_decode_wmma_caware must be positive numeric" in blockers
+    assert "profiler.trace_kernel_names must include profiler.kernel_durations_ns keys" in blockers
+
+
 def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_paths() -> None:
     valid = {
         "path": "scheduler_native_compact_batch",

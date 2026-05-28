@@ -1063,6 +1063,38 @@ def _projection_dispatch_blockers(
     return blockers
 
 
+def _profiler_kernel_evidence_blockers(profiler: Mapping[str, Any]) -> list[str]:
+    blockers: list[str] = []
+    trace_kernel_names = profiler.get("trace_kernel_names")
+    if not isinstance(trace_kernel_names, list) or not any(isinstance(name, str) and name for name in trace_kernel_names):
+        blockers.append("profiler.trace_kernel_names must be a non-empty string list")
+    expected_kernel_names = profiler.get("expected_kernel_names")
+    if not isinstance(expected_kernel_names, list) or not any(isinstance(name, str) and name for name in expected_kernel_names):
+        blockers.append("profiler.expected_kernel_names must be a non-empty string list")
+    kernel_durations = profiler.get("kernel_durations_ns")
+    if not isinstance(kernel_durations, Mapping) or not kernel_durations:
+        blockers.append("profiler.kernel_durations_ns must be a non-empty object")
+        return blockers
+    for kernel_name, duration_ns in kernel_durations.items():
+        if not isinstance(kernel_name, str) or not kernel_name:
+            blockers.append("profiler.kernel_durations_ns keys must be non-empty strings")
+            break
+        if not _is_finite_positive_number(duration_ns):
+            blockers.append(f"profiler.kernel_durations_ns.{kernel_name} must be positive numeric")
+            break
+    if isinstance(trace_kernel_names, list):
+        trace_name_set = {name for name in trace_kernel_names if isinstance(name, str) and name}
+        missing_trace_names = [name for name in kernel_durations if isinstance(name, str) and name and name not in trace_name_set]
+        if missing_trace_names:
+            blockers.append("profiler.trace_kernel_names must include profiler.kernel_durations_ns keys")
+    if isinstance(expected_kernel_names, list):
+        for kernel_name in expected_kernel_names:
+            if isinstance(kernel_name, str) and kernel_name and not _is_finite_positive_number(kernel_durations.get(kernel_name)):
+                blockers.append(f"profiler.kernel_durations_ns.{kernel_name} must be positive numeric")
+                break
+    return blockers
+
+
 def _projection_dispatch_profiler_blockers(batch_execution: Mapping[str, Any], profiler: Mapping[str, Any]) -> list[str]:
     projection_dispatch = batch_execution.get("projection_dispatch")
     if not isinstance(projection_dispatch, Mapping):
@@ -1499,6 +1531,7 @@ def _build_payload(
     scheduler_metadata = dict(bench["scheduler_metadata"])
     _attach_profiler_graph_kernel_time_histogram(scheduler_metadata, profiler)
     profiler_captured = profiler.get("status") == "captured" and profiler.get("expected_kernels_present") is True
+    profiler_blockers = _profiler_kernel_evidence_blockers(profiler)
     batch_execution = dict(bench["batch_execution"])
     throughput_claim_eligible = bool(batch_execution.get("throughput_claim_eligible"))
     native_caware_decode = bool(batch_execution.get("native_caware_decode"))
@@ -1527,6 +1560,7 @@ def _build_payload(
         and protocol_shape
         and scaling_complete
         and profiler_captured
+        and not profiler_blockers
         and not batch_execution_blockers
         and not projection_blockers
         and not sampler_blockers
@@ -1551,6 +1585,7 @@ def _build_payload(
         blocked_reasons.append("scaling comparison vs c=1 and serial bridge baselines is incomplete")
     if not profiler_captured:
         blocked_reasons.append("profiler trace was not captured with expected kernels present")
+    blocked_reasons.extend(profiler_blockers)
     if not bench["finite_logits"]:
         blocked_reasons.append("non-finite seed or decode logits")
     blocked_reasons.extend(batch_execution_blockers)

@@ -890,7 +890,7 @@ roll-up/status view.
       `--primitive-correctness-json` path (`primitive-cN.json`) plus the planned
       `--profiler-json` path (`profiler-cN.json`) so a green generated-token run
       without primitive GPU correctness or captured profiler evidence remains
-      blocked instead of becoming a throughput claim. Real c-sweep runs now skip
+      blocked instead of becoming a throughput claim, and retained bench now blocks promotion before schema validation when profiler trace kernel names, expected kernel names, or positive kernel-duration evidence are missing. Real c-sweep runs now skip
       retained native diagnostics if the matching primitive, c=1 baseline,
       serial-bridge, or profiler-summary artifact is missing, failed, has a
       mismatched profiler artifact path, row count, or prompt/decode shape, or
