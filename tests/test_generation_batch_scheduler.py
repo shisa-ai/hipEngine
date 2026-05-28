@@ -6075,8 +6075,16 @@ def test_qwen35_retained_profiler_reference_loads_captured_summary(tmp_path: Pat
         "validation": 0.0,
         "other": 0.0,
     }
+    wrong_source_path = tmp_path / "profiler-summary-wrong-source.json"
+    wrong_source_payload = json.loads(profiler_path.read_text())
+    wrong_source_payload["profiler"]["artifact_path"] = str(profiler_path)
+    wrong_source_path.write_text(json.dumps(wrong_source_payload))
+    wrong_source = retained_bench._profiler_reference(wrong_source_path)
+
     assert loaded["artifact_path"] == str(profiler_path)
     assert loaded["source_artifact_path"] == str(profiler_path)
+    assert wrong_source["artifact_path"] == str(wrong_source_path)
+    assert wrong_source["source_artifact_path"] == str(profiler_path)
     assert command is not None
     assert command.startswith("rocprofv3 --kernel-trace")
     assert "scripts/qwen35_batch_retained_bench.py" in command
@@ -6270,6 +6278,7 @@ def test_qwen35_retained_memory_payload_uses_bench_evidence() -> None:
 def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_paths() -> None:
     valid = {
         "artifact_path": "benchmarks/results/profiler-c2.json",
+        "source_artifact_path": "benchmarks/results/profiler-c2.json",
         "output_format": "csv",
         "trace_dir": "/tmp/hipengine-profile-c2",
         "trace_files": ["/tmp/hipengine-profile-c2/hipengine_kernel_trace.csv"],
@@ -6304,6 +6313,16 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
             expected_kv_policy=expected_kv_policy,
         )
         == []
+    )
+    missing_profiler_source_artifact = {key: value for key, value in valid.items() if key != "source_artifact_path"}
+    assert "profiler.source_artifact_path must be a non-empty string" in retained_bench._profiler_provenance_blockers(
+        missing_profiler_source_artifact,
+        retained_artifact_path="benchmarks/results/native-c2.json",
+    )
+    mismatched_profiler_source_artifact = {**valid, "source_artifact_path": "benchmarks/results/other-profiler-c2.json"}
+    assert "profiler.source_artifact_path must match profiler.artifact_path" in retained_bench._profiler_provenance_blockers(
+        mismatched_profiler_source_artifact,
+        retained_artifact_path="benchmarks/results/native-c2.json",
     )
     stale_profiler_command_alias = {
         **valid,

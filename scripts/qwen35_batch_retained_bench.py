@@ -893,6 +893,7 @@ def _profiler_reference(path: Path | None) -> dict[str, Any]:
         if isinstance(profiler_source_artifact_path, str) and profiler_source_artifact_path
         else None
     )
+    result["artifact_path"] = str(path)
     synthesized_fields: set[str] = set()
     if "kernel_durations_ns" not in result:
         kernel_durations = _synthesized_profiler_kernel_durations_from_traces(result, profiler_path=path)
@@ -1489,6 +1490,11 @@ def _profiler_provenance_blockers(
     retained_profiler_artifact_path = profiler_artifact_path if _is_retained_artifact_path(profiler_artifact_path) else None
     if retained_profiler_artifact_path is None:
         blockers.append("profiler.artifact_path must be under benchmarks/results")
+    profiler_source_artifact_path = profiler.get("source_artifact_path")
+    if not isinstance(profiler_source_artifact_path, str) or not profiler_source_artifact_path:
+        blockers.append("profiler.source_artifact_path must be a non-empty string")
+    elif retained_profiler_artifact_path is not None and profiler_source_artifact_path != retained_profiler_artifact_path:
+        blockers.append("profiler.source_artifact_path must match profiler.artifact_path")
     if profiler.get("output_format") != "csv":
         blockers.append("profiler.output_format must be csv")
     trace_dir = profiler.get("trace_dir")
