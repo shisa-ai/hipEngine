@@ -137,7 +137,7 @@ _COMMAND_PROFILER_JSON_RE = re.compile(r"(?:^|\s)--profiler-json(?:=|\s+)(\S+)(?
 _ROLLUP_LAST_UPDATED_RE = re.compile(r"(?im)^\s*Last updated\s*:?\s*\d{4}-\d{2}-\d{2}\b")
 _ROLLUP_DATED_CHANGELOG_RE = re.compile(r"(?m)^\s*(?:[-*]\s*)?(?:##\s*)?\d{4}-\d{2}-\d{2}\b")
 _ROLLUP_PERCENT_DELTA_RE = re.compile(r"[+-]?\d+(?:\.\d+)?\s*%")
-_ROLLUP_OLD_NEW_RE = re.compile(r"\S+\s*(?:→|->)\s*\S+")
+_ROLLUP_OLD_NEW_RE = re.compile(r"[+-]?\d+(?:\.\d+)?(?:\s*[A-Za-z/_]+)?\s*(?:→|->)\s*[+-]?\d+(?:\.\d+)?")
 _COMMAND_C1_BASELINE_JSON_RE = re.compile(r"(?:^|\s)--c1-baseline-json(?:=|\s+)(\S+)(?=\s|$)")
 _COMMAND_SERIAL_BRIDGE_JSON_RE = re.compile(r"(?:^|\s)--serial-bridge-json(?:=|\s+)(\S+)(?=\s|$)")
 _COMMAND_PRIMITIVE_CORRECTNESS_JSON_RE = re.compile(r"(?:^|\s)--primitive-correctness-json(?:=|\s+)(\S+)(?=\s|$)")
@@ -690,7 +690,7 @@ def _validate_rollup_changelog_metadata(text: str | None, artifact_path: Any, er
         errors.append("benchmark_rollup.changelog_path artifact entry must include YYYY-MM-DD date for rollup evidence")
         return
     if not any(_ROLLUP_OLD_NEW_RE.search(line) for line in dated_artifact_lines):
-        errors.append("benchmark_rollup.changelog_path artifact entry must include old→new metric marker for rollup evidence")
+        errors.append("benchmark_rollup.changelog_path artifact entry must include numeric old→new metric marker for rollup evidence")
     if not any(_ROLLUP_PERCENT_DELTA_RE.search(line) for line in dated_artifact_lines):
         errors.append("benchmark_rollup.changelog_path artifact entry must include percent delta for rollup evidence")
 
