@@ -186,6 +186,16 @@ def _validate_retained_bench_unique_flags(command: str, *, field: str, errors: l
     _validate_command_unique_flags(command, _RETAINED_BENCH_UNIQUE_FLAGS, field=field, errors=errors)
 
 
+def _validate_retained_bench_command_target(command: str, *, field: str, errors: list[str]) -> None:
+    try:
+        argv = shlex.split(command)
+    except ValueError:
+        errors.append(f"commands.{field} must be shell-parseable for accepted artifacts")
+        return
+    if len(argv) < 2 or not Path(argv[0]).name.startswith("python") or argv[1] != "scripts/qwen35_batch_retained_bench.py":
+        errors.append(f"commands.{field} must start with python scripts/qwen35_batch_retained_bench.py for accepted artifacts")
+
+
 def _validate_command_workload_shape(command: str, *, field: str, payload: Mapping[str, Any], errors: list[str]) -> None:
     workload = payload.get("workload")
     if not isinstance(workload, Mapping):
@@ -926,6 +936,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         if "qwen35_batch_retained_bench.py" not in benchmark_command:
             errors.append("commands.benchmark must reference scripts/qwen35_batch_retained_bench.py for accepted artifacts")
         else:
+            _validate_retained_bench_command_target(benchmark_command, field="benchmark", errors=errors)
             _validate_retained_bench_unique_flags(benchmark_command, field="benchmark", errors=errors)
             _validate_command_model_fixture_flags(benchmark_command, field="benchmark", errors=errors)
             _validate_command_workload_shape(benchmark_command, field="benchmark", payload=payload, errors=errors)

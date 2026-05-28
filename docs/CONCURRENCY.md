@@ -963,8 +963,9 @@ roll-up/status view.
       c=1 and usable same-shape/same-concurrency serial bridge
       baselines, aggregate ratios vs both references that beat 1.0,
       positive decode-step timing samples,
-      a retained-benchmark command referencing `scripts/qwen35_batch_retained_bench.py`
-      with a top-level artifact path under `benchmarks/results/` matched by the
+      a retained-benchmark command starting with a Python invocation of
+      `scripts/qwen35_batch_retained_bench.py` with a top-level artifact path under
+      `benchmarks/results/` matched by the
       retained benchmark/profiler `--json` outputs, explicit `--model` /
       `--fixture` plus `--batch-size`, `--prompt-length`, `--decode-tokens`, and
       `--max-layers` matching workload shape fields and baseline/correctness

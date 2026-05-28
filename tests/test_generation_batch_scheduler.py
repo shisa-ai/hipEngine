@@ -5899,6 +5899,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="commands.benchmark must reference scripts/qwen35_batch_retained_bench.py"):
         validate_cn_diagnostic_artifact_payload(wrong_benchmark_command)
 
+    non_executable_benchmark_command = json.loads(json.dumps(accepted))
+    non_executable_benchmark_command["commands"]["benchmark"] = (
+        "echo scripts/qwen35_batch_retained_bench.py --model /models/test-qwen35 --fixture fixtures/qwen35.json "
+        "--batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 "
+        "--json benchmarks/results/accepted-c2.json --c1-baseline-json benchmarks/results/c1.json "
+        "--serial-bridge-json benchmarks/results/serial-c2.json --primitive-correctness-json benchmarks/results/primitive-c2.json"
+    )
+    with pytest.raises(ValueError, match="commands.benchmark must start with python scripts/qwen35_batch_retained_bench.py"):
+        validate_cn_diagnostic_artifact_payload(non_executable_benchmark_command)
+
     missing_benchmark_model = json.loads(json.dumps(accepted))
     missing_benchmark_model["commands"]["benchmark"] = "python3 scripts/qwen35_batch_retained_bench.py --fixture fixtures/qwen35.json --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json benchmarks/results/accepted-c2.json"
     with pytest.raises(ValueError, match="commands.benchmark must include --model"):
