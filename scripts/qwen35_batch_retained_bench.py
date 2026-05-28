@@ -1010,6 +1010,9 @@ def _batch_execution_blockers(
                 blockers.append("execution.batch_execution.decode_execution.max_full_attention_context must cover workload.prompt_tokens_per_request")
         if max_context_valid and max_context >= 1024:
             blockers.append("execution.batch_execution.decode_execution.max_full_attention_context must be < 1024 until row-aware split-K native decode lands")
+        native_full_attention_layers = decode_execution.get("native_full_attention_layers")
+        if isinstance(native_full_attention_layers, bool) or not isinstance(native_full_attention_layers, int) or native_full_attention_layers <= 0:
+            blockers.append("execution.batch_execution.decode_execution.native_full_attention_layers must be a positive int")
         if expected_concurrency is not None:
             decode_rows = decode_execution.get("rows")
             if isinstance(decode_rows, bool) or not isinstance(decode_rows, int):

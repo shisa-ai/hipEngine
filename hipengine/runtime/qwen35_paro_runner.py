@@ -3194,6 +3194,7 @@ class Qwen35ParoResidentSession:
         cu_seqlens, state_indices, temp_buffers = self._batch_decode_segment_metadata(rows=rows, slots=slots)
         full_attention_decode_path = "none"
         max_full_attention_context = 0
+        native_full_attention_layers = 0
         try:
             for layer_id, state in enumerate(self.states):
                 layer_type = self.config.layer_types[layer_id]
@@ -3220,6 +3221,7 @@ class Qwen35ParoResidentSession:
                     native_full = _env_flag("HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE", True) and max_context < 1024
                     if native_full:
                         full_attention_decode_path = "native_batch"
+                        native_full_attention_layers += 1
                         key_cache, value_cache = self._full_cache_all_slots(layer_id)
                         position_tensor, append_spans, decode_spans = self._batch_full_spans(
                             layer_id,
@@ -3295,6 +3297,7 @@ class Qwen35ParoResidentSession:
                 "rows": int(rows),
                 "slots": [int(slot) for slot in slots],
                 "max_full_attention_context": int(max_full_attention_context),
+                "native_full_attention_layers": int(native_full_attention_layers),
                 "full_attention_decode_path": full_attention_decode_path,
                 "native_caware_decode": full_attention_decode_path not in {"per_row_splitk_fallback", "per_row_context_fallback"},
                 "blockers": decode_blockers,

@@ -883,6 +883,13 @@ def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[
             errors.append("execution.batch_execution.decode_execution.max_full_attention_context must cover workload.prompt_tokens_per_request for accepted artifacts")
         elif max_full_attention_context >= 1024:
             errors.append("execution.batch_execution.decode_execution.max_full_attention_context must be < 1024 until row-aware split-K native decode lands for accepted artifacts")
+        native_full_attention_layers = decode_execution.get("native_full_attention_layers")
+        if (
+            isinstance(native_full_attention_layers, bool)
+            or not isinstance(native_full_attention_layers, int)
+            or native_full_attention_layers <= 0
+        ):
+            errors.append("execution.batch_execution.decode_execution.native_full_attention_layers must be a positive int for accepted artifacts")
         concurrency = workload.get("concurrency")
         decode_rows = decode_execution.get("rows")
         if isinstance(decode_rows, bool) or not isinstance(decode_rows, int):
