@@ -4743,6 +4743,23 @@ def test_batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head(tmp_pat
         json.dumps(wrong_source_equality_payload),
         encoding="utf-8",
     )
+    external_artifact_dir = tmp_path / "external" / "benchmarks" / "results"
+    external_artifact_dir.mkdir(parents=True)
+    external_artifact = external_artifact_dir / "qwen35-c8-external-eq.json"
+    external_artifact.write_text(
+        json.dumps(
+            _sampler_equality_payload(
+                rows=8,
+                artifact_path="benchmarks/results/qwen35-c8-external-symlink-eq.json",
+            )
+        ),
+        encoding="utf-8",
+    )
+    symlink_equality_artifact = artifact_dir / "qwen35-c8-external-symlink-eq.json"
+    try:
+        symlink_equality_artifact.symlink_to(external_artifact)
+    except (OSError, NotImplementedError):
+        symlink_equality_artifact = None
     monkeypatch.chdir(tmp_path)
 
     serial = plan_batch_sampler_dispatch(rows=2, requested_mode="serial_lm_head")
@@ -4773,6 +4790,20 @@ def test_batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head(tmp_pat
     )
     assert traversal_artifact.mode is BatchSamplerMode.SERIAL_LM_HEAD
     assert "batched LM-head equality artifact path must be under benchmarks/results" in traversal_artifact.blockers
+
+    if symlink_equality_artifact is not None:
+        symlink_escape_artifact = plan_batch_sampler_dispatch(
+            rows=8,
+            requested_mode="batched_lm_head",
+            c2_equality_green=True,
+            equality_artifact="benchmarks/results/qwen35-c8-external-symlink-eq.json",
+            equality_rows=8,
+        )
+        assert symlink_escape_artifact.mode is BatchSamplerMode.SERIAL_LM_HEAD
+        assert (
+            "batched LM-head equality artifact path must be under benchmarks/results"
+            in symlink_escape_artifact.blockers
+        )
 
     missing_equality_rows = plan_batch_sampler_dispatch(
         rows=8,

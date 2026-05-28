@@ -754,7 +754,8 @@ roll-up/status view.
       explicit c>N generated-token equality evidence and a retained artifact path
       under `benchmarks/results/`; `_sample_batch_from_hidden(...)` records the
       sampler decision and falls back to `serial_lm_head` when evidence is
-      missing, failed, wrong-row, or points outside retained artifacts, and accepted c>N artifact
+      missing, failed, wrong-row, points outside retained artifacts, or resolves
+      through a symlink outside the active results tree, and accepted c>N artifact
       schema requires a native sampler decision with requested mode `batched_lm_head`, row count and equality row count matching `workload.concurrency`, green retained equality
       evidence plus no blockers, and dispatch/retained bench now block promotion before schema validation unless sampler metadata records an explicitly requested native row-aware batched LM-head decision with matching rows/equality rows, a retained equality artifact whose JSON reports self-matching `artifact_path`/`source_artifact_path` plus generated-token equality vs independent c=1 (`passed=true`, `skipped=false`, matching batch/c1 sequence lists, empty mismatches) at the same row count, matching profiler expected/trace/duration evidence for a native batch sampler/LM-head kernel, and no blockers, so setting the mode cannot silently create a
       native sampler claim before same-concurrency equality and profiler evidence are green.

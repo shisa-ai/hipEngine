@@ -13,7 +13,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any
 
 
@@ -59,8 +59,19 @@ def _sampler_mode(value: BatchSamplerMode | str) -> BatchSamplerMode:
 
 
 def _is_retained_artifact_path(value: str) -> bool:
-    path = PurePosixPath(value)
-    return not path.is_absolute() and len(path.parts) >= 3 and path.parts[:2] == ("benchmarks", "results") and ".." not in path.parts
+    path = Path(value)
+    if (
+        path.is_absolute()
+        or len(path.parts) < 3
+        or path.parts[:2] != ("benchmarks", "results")
+        or ".." in path.parts
+    ):
+        return False
+    results_root = (Path.cwd() / "benchmarks" / "results").resolve()
+    try:
+        return (Path.cwd() / path).resolve().is_relative_to(results_root)
+    except OSError:
+        return False
 
 
 def _optional_positive_int(value: int | str | None) -> tuple[int | None, bool]:
