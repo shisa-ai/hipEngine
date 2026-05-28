@@ -1835,6 +1835,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     ):
                         errors.append("commands[].preconditions[].expected_kernel_names must include native batch kernels only when profiler passed")
                         break
+                    if len(set(expected_kernel_names)) != len(expected_kernel_names):
+                        errors.append("commands[].preconditions[].expected_kernel_names must be unique when profiler passed")
+                        break
                     if any(kernel_name not in profiler_kernel_names for kernel_name in expected_kernel_names):
                         errors.append("commands[].preconditions[].expected_kernel_names must be present in profiler_trace_kernel_names")
                         break
