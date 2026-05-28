@@ -23,7 +23,12 @@ from hipengine.dispatch.projection import (
     projection_dispatch_candidates_from_artifact,
     projection_dispatch_candidates_from_json,
 )
-from hipengine.dispatch.sampling import BatchSamplerDispatchDecision, BatchSamplerMode, plan_batch_sampler_dispatch
+from hipengine.dispatch.sampling import (
+    BatchSamplerDispatchDecision,
+    BatchSamplerMode,
+    batch_sampler_equality_payload_blockers,
+    plan_batch_sampler_dispatch,
+)
 
 __all__ = [
     "ActiveBatch",
@@ -45,6 +50,7 @@ __all__ = [
     "SlotMove",
     "WorkItem",
     "WorkKind",
+    "batch_sampler_equality_payload_blockers",
     "bind_paged_attn_decode",
     "bind_paged_kv_write",
     "plan_paged_attn_decode",

@@ -29,6 +29,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from hipengine.core.memory import memory_stats
+from hipengine.dispatch import batch_sampler_equality_payload_blockers
 from hipengine.generation import GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS, GeneratedToken, GraphBucketCache, ResidentBatchScheduler
 from hipengine.kvcache import ResolvedKVPolicy
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
@@ -1782,16 +1783,6 @@ def _load_sampler_equality_artifact(value: str) -> tuple[Mapping[str, Any] | Non
     return payload, None
 
 
-def _sampler_artifact_row_count(payload: Mapping[str, Any]) -> Any:
-    rows = payload.get("rows")
-    if rows is not None:
-        return rows
-    workload = payload.get("workload")
-    if isinstance(workload, Mapping):
-        return workload.get("concurrency")
-    return None
-
-
 def _sampler_profiler_name_matches(kernel_name: str) -> bool:
     lowered = kernel_name.lower()
     return "batch" in lowered and _profiler_kernel_duration_category(kernel_name) == "sampling"
@@ -1864,14 +1855,18 @@ def _sampler_execution_blockers(batch_execution: Mapping[str, Any], *, expected_
         if equality_artifact_error is not None:
             blockers.append(f"execution.batch_execution.decode_execution.sampler_execution.{equality_artifact_error}")
         elif equality_artifact_payload is not None:
-            if equality_artifact_payload.get("passed") is not True:
-                blockers.append("execution.batch_execution.decode_execution.sampler_execution.equality_artifact.passed must be true")
-            if expected_concurrency is not None:
-                artifact_rows = _sampler_artifact_row_count(equality_artifact_payload)
-                if isinstance(artifact_rows, bool) or not isinstance(artifact_rows, int):
-                    blockers.append("execution.batch_execution.decode_execution.sampler_execution.equality_artifact rows must be an int")
-                elif artifact_rows != int(expected_concurrency):
-                    blockers.append("execution.batch_execution.decode_execution.sampler_execution.equality_artifact rows must match workload.concurrency")
+            artifact_expected_rows = expected_concurrency
+            sampler_rows = sampler_execution.get("rows")
+            if artifact_expected_rows is None and isinstance(sampler_rows, int) and not isinstance(sampler_rows, bool):
+                artifact_expected_rows = sampler_rows
+            if artifact_expected_rows is not None:
+                blockers.extend(
+                    batch_sampler_equality_payload_blockers(
+                        equality_artifact_payload,
+                        rows=int(artifact_expected_rows),
+                        label="execution.batch_execution.decode_execution.sampler_execution.equality_artifact",
+                    )
+                )
     if sampler_execution.get("blockers") != []:
         blockers.append("execution.batch_execution.decode_execution.sampler_execution.blockers must be empty")
     return blockers

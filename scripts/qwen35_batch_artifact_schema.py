@@ -10,7 +10,11 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from hipengine.dispatch import ProjectionDispatchEvidence, projection_dispatch_candidates_from_artifact
+from hipengine.dispatch import (
+    ProjectionDispatchEvidence,
+    batch_sampler_equality_payload_blockers,
+    projection_dispatch_candidates_from_artifact,
+)
 from hipengine.generation import GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -1092,13 +1096,16 @@ def _validate_accepted_sampler_execution(
         )
         equality_artifact_payload = _load_benchmark_results_json_artifact(equality_artifact_field, equality_artifact, errors)
         if equality_artifact_payload is not None:
-            if equality_artifact_payload.get("passed") is not True:
-                errors.append("execution.batch_execution.decode_execution.sampler_execution.equality_artifact.passed must be true for accepted artifacts")
-            artifact_rows = _artifact_row_count(equality_artifact_payload)
-            if isinstance(artifact_rows, bool) or not isinstance(artifact_rows, int):
-                errors.append("execution.batch_execution.decode_execution.sampler_execution.equality_artifact rows must be an int for accepted artifacts")
-            elif isinstance(concurrency, int) and not isinstance(concurrency, bool) and artifact_rows != concurrency:
-                errors.append("execution.batch_execution.decode_execution.sampler_execution.equality_artifact rows must match workload.concurrency for accepted artifacts")
+            expected_rows = concurrency if isinstance(concurrency, int) and not isinstance(concurrency, bool) else rows
+            if isinstance(expected_rows, int) and not isinstance(expected_rows, bool):
+                errors.extend(
+                    f"{blocker} for accepted artifacts"
+                    for blocker in batch_sampler_equality_payload_blockers(
+                        equality_artifact_payload,
+                        rows=expected_rows,
+                        label="execution.batch_execution.decode_execution.sampler_execution.equality_artifact",
+                    )
+                )
     blockers = sampler_execution.get("blockers")
     if blockers != []:
         errors.append("execution.batch_execution.decode_execution.sampler_execution.blockers must be empty for accepted artifacts")

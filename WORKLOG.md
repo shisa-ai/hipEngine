@@ -39070,3 +39070,28 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness still passed; retained scaling claims remain blocked on generated-token equality/profiler evidence
 ```
+
+## 2026-05-28 — CONCURRENCY sampler equality artifact gate
+
+Materially advanced C3.6/P5 native sampler promotion gates without closing a queue item or adding a retained c>N performance claim:
+
+- `hipengine.dispatch.sampling` now requires a batched LM-head equality artifact to carry generated-token equality details (`passed=true`, `skipped=false`, matching `batch_sequences`/`c1_sequences`, and empty mismatches), not just an ad-hoc primitive-style `passed=true` row count.
+- `scripts/qwen35_batch_retained_bench.py` and `scripts/qwen35_batch_artifact_schema.py` apply the same generated-token equality artifact gate before retained promotion / accepted artifact validation.
+- Extended sampler dispatch, retained sampler blocker, and accepted artifact schema tests with primitive-only JSON rejection cases; updated `docs/CONCURRENCY.md` C3.6/P5 progress text to name the required generated-token equality evidence.
+- No retained c>N performance claim was added; generated-token equality, profiler evidence, and scaling evidence remain required before promotion.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -k 'batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head or retained_sampler_execution_blockers_require_native_lm_head_evidence or diagnostic_artifact_schema_enforces_accepted_row_gates' -q
+# 3 passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness still passed; retained scaling claims remain blocked on generated-token equality/profiler/scaling evidence
+```

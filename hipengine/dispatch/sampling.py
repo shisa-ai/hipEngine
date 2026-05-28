@@ -92,6 +92,69 @@ def _artifact_row_count(payload: Mapping[str, Any]) -> Any:
     return None
 
 
+def _generated_token_equality(payload: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    correctness = payload.get("correctness")
+    if isinstance(correctness, Mapping):
+        equality = correctness.get("generated_token_equality")
+        if isinstance(equality, Mapping):
+            return equality
+    equality = payload.get("generated_token_equality")
+    return equality if isinstance(equality, Mapping) else None
+
+
+def batch_sampler_equality_payload_blockers(
+    payload: Mapping[str, Any],
+    *,
+    rows: int,
+    label: str = "batched LM-head equality artifact",
+) -> tuple[str, ...]:
+    """Return blockers for native batched-LM-head equality evidence.
+
+    The sampler gate must be backed by generated-token equality vs independent
+    c=1, not merely by a primitive-kernel or ad-hoc ``passed=true`` JSON file.
+    Accept both full retained artifacts (``correctness.generated_token_equality``)
+    and standalone equality artifacts (top-level ``generated_token_equality``).
+    """
+
+    blockers: list[str] = []
+    equality = _generated_token_equality(payload)
+    correctness = payload.get("correctness")
+    passed = payload.get("passed") is True
+    if isinstance(correctness, Mapping):
+        passed = passed or correctness.get("passed") is True
+    if isinstance(equality, Mapping):
+        passed = passed or equality.get("passed") is True
+    if not passed:
+        blockers.append(f"{label} must report passed=true")
+    artifact_rows = _artifact_row_count(payload)
+    if isinstance(artifact_rows, bool) or not isinstance(artifact_rows, int):
+        blockers.append(f"{label} rows must be an integer")
+    elif artifact_rows != rows:
+        blockers.append(f"{label} rows must match batch rows")
+    if not isinstance(equality, Mapping):
+        blockers.append(f"{label} must include generated-token equality details")
+        return tuple(blockers)
+    if equality.get("passed") is not True:
+        blockers.append(f"{label} generated_token_equality.passed must be true")
+    if equality.get("skipped") is not False:
+        blockers.append(f"{label} generated_token_equality.skipped must be false")
+    batch_sequences = equality.get("batch_sequences")
+    c1_sequences = equality.get("c1_sequences")
+    if not isinstance(batch_sequences, list) or not isinstance(c1_sequences, list):
+        blockers.append(f"{label} generated_token_equality batch_sequences and c1_sequences must be lists")
+    else:
+        if len(batch_sequences) != rows or len(c1_sequences) != rows:
+            blockers.append(f"{label} generated_token_equality sequence row counts must match batch rows")
+        if batch_sequences != c1_sequences:
+            blockers.append(f"{label} generated_token_equality batch_sequences must equal c1_sequences")
+    mismatches = equality.get("mismatches")
+    if not isinstance(mismatches, list):
+        blockers.append(f"{label} generated_token_equality.mismatches must be a list")
+    elif mismatches:
+        blockers.append(f"{label} generated_token_equality.mismatches must be empty")
+    return tuple(blockers)
+
+
 def _equality_artifact_blockers(value: str, *, rows: int) -> tuple[str, ...]:
     path = Path(value)
     if not path.is_absolute():
@@ -104,15 +167,7 @@ def _equality_artifact_blockers(value: str, *, rows: int) -> tuple[str, ...]:
         return (f"batched LM-head equality artifact must be valid JSON: {exc}",)
     if not isinstance(payload, Mapping):
         return ("batched LM-head equality artifact must be a JSON object",)
-    blockers: list[str] = []
-    if payload.get("passed") is not True:
-        blockers.append("batched LM-head equality artifact must report passed=true")
-    artifact_rows = _artifact_row_count(payload)
-    if isinstance(artifact_rows, bool) or not isinstance(artifact_rows, int):
-        blockers.append("batched LM-head equality artifact rows must be an integer")
-    elif artifact_rows != rows:
-        blockers.append("batched LM-head equality artifact rows must match batch rows")
-    return tuple(blockers)
+    return batch_sampler_equality_payload_blockers(payload, rows=rows)
 
 
 def plan_batch_sampler_dispatch(
@@ -202,5 +257,6 @@ def plan_batch_sampler_dispatch(
 __all__ = [
     "BatchSamplerDispatchDecision",
     "BatchSamplerMode",
+    "batch_sampler_equality_payload_blockers",
     "plan_batch_sampler_dispatch",
 ]
