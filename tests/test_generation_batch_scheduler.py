@@ -108,6 +108,10 @@ def test_qwen35_validation_summary_paths_report_active_option(
     assert validate_cn_diagnostic_artifact_main([str(directory_write_summary), "--validation-summary"]) == 1
     assert "--validation-summary path must be a .json file, not a directory" in capsys.readouterr().err
 
+    missing_recheck_summary = results_dir / "missing-schema-check.json"
+    assert validate_cn_diagnostic_artifact_main([str(missing_recheck_summary), "--validation-summary"]) == 1
+    assert "--validation-summary path must exist as a .json file" in capsys.readouterr().err
+
     bad_recheck_summary = results_dir / "source-schema-check.txt"
     bad_recheck_summary.write_text(
         json.dumps(

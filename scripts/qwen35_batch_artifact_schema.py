@@ -2787,13 +2787,15 @@ def _summary_json_path_is_in_current_results(path: Path) -> bool:
         return False
 
 
-def _validate_summary_json_path(path: Path, *, label: str = "--summary-json path") -> None:
+def _validate_summary_json_path(path: Path, *, label: str = "--summary-json path", must_exist: bool = False) -> None:
     if not _summary_json_path_is_in_current_results(path):
         raise ValueError(f"{label} must be under the current repo benchmarks/results for retained validation evidence")
     if path.suffix != ".json":
         raise ValueError(f"{label} must end with .json for retained validation evidence")
     if path.exists() and path.is_dir():
         raise ValueError(f"{label} must be a .json file, not a directory, for retained validation evidence")
+    if must_exist and not path.exists():
+        raise ValueError(f"{label} must exist as a .json file for retained validation evidence")
 
 
 def _validate_validation_summary_output_path(path: Path, summary: Mapping[str, Any], *, label: str = "--summary-json path") -> None:
@@ -2842,7 +2844,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.validation_summary:
         try:
-            _validate_summary_json_path(args.artifact_json, label="--validation-summary path")
+            _validate_summary_json_path(args.artifact_json, label="--validation-summary path", must_exist=True)
             summary = _load_payload(args.artifact_json)
             validate_cn_diagnostic_validation_summary(summary)
             _validate_validation_summary_output_path(args.artifact_json, summary, label="--validation-summary path")
