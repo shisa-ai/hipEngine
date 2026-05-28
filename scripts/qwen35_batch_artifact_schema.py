@@ -830,6 +830,14 @@ def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[
     for field in _REQUIRED_BATCH_EXECUTION_FLAGS:
         if batch_execution.get(field) is not True:
             errors.append(f"execution.batch_execution.{field} must be true for accepted artifacts")
+    native_prefill_plan = batch_execution.get("native_prefill_plan")
+    if not isinstance(native_prefill_plan, Mapping):
+        errors.append("execution.batch_execution.native_prefill_plan must be an object for accepted artifacts")
+    else:
+        if native_prefill_plan.get("full_layer_limit_native") is not True:
+            errors.append("execution.batch_execution.native_prefill_plan.full_layer_limit_native must be true for accepted artifacts")
+        if native_prefill_plan.get("blockers") != []:
+            errors.append("execution.batch_execution.native_prefill_plan.blockers must be empty for accepted artifacts")
     path = batch_execution.get("path")
     path_valid = isinstance(path, str) and bool(path)
     if not path_valid:

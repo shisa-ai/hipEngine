@@ -6352,6 +6352,7 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
         "scheduler_owned": True,
         "blockers": [],
         "row_execution": "native_compact_caware_layers",
+        "native_prefill_plan": {"full_layer_limit_native": True, "blockers": []},
         "native_compact_prefill": True,
         "native_caware_decode": True,
         "decode_execution": {"full_attention_decode_path": "native_batch", "native_caware_decode": True, "blockers": []},
@@ -6361,6 +6362,7 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
         "scheduler_owned": False,
         "blockers": ["full-attention decode used a per-row fallback"],
         "row_execution": "native_linear_batch_with_per_row_full_attention_fallback",
+        "native_prefill_plan": {"full_layer_limit_native": False, "blockers": ["unsupported prefill layer"]},
         "native_compact_prefill": False,
         "native_caware_decode": False,
         "decode_execution": {
@@ -6377,6 +6379,8 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
     assert "execution.batch_execution.blockers must be empty" in blockers
     assert "execution.batch_execution.row_execution must not contain serial or fallback" in blockers
     assert "execution.batch_execution.native_compact_prefill must be true" in blockers
+    assert "execution.batch_execution.native_prefill_plan.full_layer_limit_native must be true" in blockers
+    assert "execution.batch_execution.native_prefill_plan.blockers must be empty" in blockers
     assert "execution.batch_execution.native_caware_decode must be true" in blockers
     assert "execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch" in blockers
     assert "execution.batch_execution.decode_execution.native_caware_decode must be true" in blockers
@@ -6942,6 +6946,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                 "scheduler_owned": True,
                 "blockers": [],
                 "row_execution": "native_compact_caware_layers",
+                "native_prefill_plan": {"full_layer_limit_native": True, "blockers": []},
                 "native_compact_prefill": True,
                 "native_caware_decode": True,
                 "throughput_claim_eligible": True,
@@ -7515,6 +7520,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     blocked_batch_execution["execution"]["batch_execution"]["blockers"] = ["native decode blocker"]
     with pytest.raises(ValueError, match="batch_execution.blockers must be empty"):
         validate_cn_diagnostic_artifact_payload(blocked_batch_execution)
+
+    blocked_prefill_plan = json.loads(json.dumps(accepted))
+    blocked_prefill_plan["execution"]["batch_execution"]["native_prefill_plan"]["blockers"] = ["prefill blocker"]
+    with pytest.raises(ValueError, match="native_prefill_plan.blockers must be empty"):
+        validate_cn_diagnostic_artifact_payload(blocked_prefill_plan)
 
     missing_scheduler_path = json.loads(json.dumps(accepted))
     missing_scheduler_path["workload"].pop("scheduler_path")

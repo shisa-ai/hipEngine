@@ -969,6 +969,14 @@ def _batch_execution_blockers(batch_execution: Mapping[str, Any]) -> list[str]:
         blockers.append("execution.batch_execution.row_execution must not contain serial or fallback")
     if batch_execution.get("native_compact_prefill") is not True:
         blockers.append("execution.batch_execution.native_compact_prefill must be true")
+    native_prefill_plan = batch_execution.get("native_prefill_plan")
+    if not isinstance(native_prefill_plan, Mapping):
+        blockers.append("execution.batch_execution.native_prefill_plan is missing")
+    else:
+        if native_prefill_plan.get("full_layer_limit_native") is not True:
+            blockers.append("execution.batch_execution.native_prefill_plan.full_layer_limit_native must be true")
+        if native_prefill_plan.get("blockers") != []:
+            blockers.append("execution.batch_execution.native_prefill_plan.blockers must be empty")
     if batch_execution.get("native_caware_decode") is not True:
         blockers.append("execution.batch_execution.native_caware_decode must be true")
     decode_execution = batch_execution.get("decode_execution")
