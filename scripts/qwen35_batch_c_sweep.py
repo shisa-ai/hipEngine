@@ -1632,6 +1632,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if command_text != shlex.join(argv):
                 errors.append("commands[].command must match shlex.join(commands[].argv)")
                 break
+            if len(argv) < 2 or not Path(argv[0]).name.startswith("python"):
+                errors.append("commands[].argv must start with a python executable")
+                break
             duplicated_retained_flags = _duplicate_flags(argv, _RETAINED_BENCH_UNIQUE_FLAGS)
             if duplicated_retained_flags:
                 errors.append("commands[].argv must not repeat retained benchmark flags")

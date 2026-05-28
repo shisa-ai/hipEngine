@@ -3592,6 +3592,12 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_command_text["commands"][-1]["command"] = "python3 scripts/qwen35_batch_retained_bench.py --tampered"
     with pytest.raises(ValueError, match=r"commands\[\]\.command must match"):
         c_sweep.validate_sweep_summary(tampered_command_text)
+    tampered_command_executable = json.loads(json.dumps(persisted))
+    primitive_argv = tampered_command_executable["commands"][0]["argv"]
+    primitive_argv[0] = "echo"
+    tampered_command_executable["commands"][0]["command"] = shlex.join(primitive_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv must start with a python executable"):
+        c_sweep.validate_sweep_summary(tampered_command_executable)
     tampered_primitive_rows_missing = json.loads(json.dumps(persisted))
     primitive_argv = tampered_primitive_rows_missing["commands"][0]["argv"]
     rows_index = primitive_argv.index("--rows")
