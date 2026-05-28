@@ -3140,6 +3140,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_primitive_precondition_context_lens["commands"][-1]["preconditions"][0]["primitive_context_lens"] = [2, 1]
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_context_lens must match fixture coverage when primitive passed"):
         c_sweep.validate_sweep_summary(tampered_primitive_precondition_context_lens)
+    tampered_primitive_precondition_bool_context = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_bool_context["commands"][-1]["preconditions"][0]["primitive_context_lens"] = [True, 2]
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_context_lens must match fixture coverage when primitive passed"):
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_bool_context)
     tampered_primitive_precondition_rows = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_rows["commands"][-1]["preconditions"][0]["primitive_rows"] = 3
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_rows must match retained batch_size"):

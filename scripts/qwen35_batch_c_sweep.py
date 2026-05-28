@@ -69,6 +69,14 @@ def _required_primitive_context_lens(rows: int) -> list[int]:
     return [(idx % max_context_len) + 1 for idx in range(rows)]
 
 
+def _primitive_context_lens_matches(value: Any, rows: int) -> bool:
+    return (
+        isinstance(value, list)
+        and all(isinstance(item, int) and not isinstance(item, bool) for item in value)
+        and value == _required_primitive_context_lens(rows)
+    )
+
+
 _PROFILER_SYNTHESIZED_FIELDS = (
     "trace_kernel_names",
     "kernel_durations_ns",
@@ -349,12 +357,7 @@ def _primitive_correctness_precondition(command: SweepCommand) -> dict[str, Any]
             if not isinstance(value, int) or isinstance(value, bool) or value != expected_value:
                 reasons.append(f"{field} is missing or not {expected_value}")
         context_lens = payload.get("context_lens")
-        expected_context_lens = _required_primitive_context_lens(command.batch_size)
-        if (
-            not isinstance(context_lens, list)
-            or any(not isinstance(value, int) or isinstance(value, bool) for value in context_lens)
-            or context_lens != expected_context_lens
-        ):
+        if not _primitive_context_lens_matches(context_lens, command.batch_size):
             reasons.append("context_lens is missing or does not match fixture coverage")
         if payload.get("rows") != command.batch_size:
             reasons.append(f"rows={payload.get('rows')!r} does not match batch_size={command.batch_size}")
@@ -1768,8 +1771,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                             break
                     if primitive_shape_error:
                         break
-                    expected_context_lens = _required_primitive_context_lens(int(entry.get("batch_size")))
-                    if primitive_precondition.get("primitive_context_lens") != expected_context_lens:
+                    if not _primitive_context_lens_matches(
+                        primitive_precondition.get("primitive_context_lens"),
+                        int(entry.get("batch_size")),
+                    ):
                         errors.append("commands[].preconditions[].primitive_context_lens must match fixture coverage when primitive passed")
                         break
                     if primitive_precondition.get("primitive_rows") != entry.get("batch_size"):
