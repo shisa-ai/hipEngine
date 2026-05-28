@@ -8088,6 +8088,10 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     copied_summary_file = rollup_root / "benchmarks" / "results" / "copied-rollup-check.json"
     copied_summary_file.write_text(json.dumps(summary), encoding="utf-8")
     assert validate_cn_diagnostic_artifact_main([str(copied_summary_file), "--validation-summary"]) == 1
+    outside_summary_file = rollup_root / "tmp" / "copied-rollup-check.json"
+    outside_summary_file.parent.mkdir()
+    outside_summary_file.write_text(json.dumps(summary), encoding="utf-8")
+    assert validate_cn_diagnostic_artifact_main([str(outside_summary_file), "--validation-summary"]) == 1
 
     invalid_summary = dict(summary)
     invalid_summary["error"] = "unexpected warning"
