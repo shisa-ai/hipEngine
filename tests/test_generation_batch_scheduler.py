@@ -2004,6 +2004,25 @@ def test_batch_c_sweep_rejects_unsafe_summary_json_before_creating_artifacts(tmp
             run_sweep(args)
 
 
+def test_batch_c_sweep_validate_summary_rejects_unsafe_input_path(tmp_path: Path, capsys) -> None:
+    parent_component_summary = tmp_path / "summary-parent" / ".." / "summary.json"
+    assert c_sweep.main(["--validate-summary-json", str(parent_component_summary)]) == 1
+    captured = capsys.readouterr()
+    assert "--validate-summary-json must not contain parent-directory components" in captured.err
+
+    if hasattr(os, "symlink"):
+        target = tmp_path / "summary-real.json"
+        target.write_text("{}\n")
+        symlink_summary = tmp_path / "summary-link.json"
+        try:
+            symlink_summary.symlink_to(target)
+        except (OSError, NotImplementedError):
+            return
+        assert c_sweep.main(["--validate-summary-json", str(symlink_summary)]) == 1
+        captured = capsys.readouterr()
+        assert "--validate-summary-json must not be a symlink" in captured.err
+
+
 def test_batch_c_sweep_rejects_invalid_shape_before_creating_artifacts(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(
         c_sweep.subprocess,

@@ -2708,6 +2708,17 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         raise ValueError("invalid c-sweep summary: " + "; ".join(errors))
 
 
+def _validate_cli_path_option(flag: str, path: str | Path) -> None:
+    path = Path(path)
+    if _path_has_parent_directory_component(path):
+        raise ValueError(f"{flag} must not contain parent-directory components")
+    check_path = path if path.is_absolute() else REPO_ROOT / path
+    if check_path.is_symlink():
+        raise ValueError(f"{flag} must not be a symlink")
+    if _path_has_symlink_parent(check_path):
+        raise ValueError(f"{flag} parent directories must not be symlinks")
+
+
 def _validate_run_options(args: argparse.Namespace) -> None:
     for option in ("model", "fixture"):
         if not str(getattr(args, option)):
@@ -2726,32 +2737,11 @@ def _validate_run_options(args: argparse.Namespace) -> None:
             flag = "--" + option.replace("_", "-")
             qualifier = "non-negative" if minimum == 0 else "positive"
             raise ValueError(f"{flag} must be {qualifier}")
-    output_dir = Path(args.output_dir)
-    if _path_has_parent_directory_component(output_dir):
-        raise ValueError("--output-dir must not contain parent-directory components")
-    output_dir_check_path = output_dir if output_dir.is_absolute() else REPO_ROOT / output_dir
-    if output_dir_check_path.is_symlink():
-        raise ValueError("--output-dir must not be a symlink")
-    if _path_has_symlink_parent(output_dir_check_path):
-        raise ValueError("--output-dir parent directories must not be symlinks")
+    _validate_cli_path_option("--output-dir", args.output_dir)
     if args.compiler_version_file is not None:
-        compiler_version_file = Path(args.compiler_version_file)
-        if _path_has_parent_directory_component(compiler_version_file):
-            raise ValueError("--compiler-version-file must not contain parent-directory components")
-        compiler_version_check_path = compiler_version_file if compiler_version_file.is_absolute() else REPO_ROOT / compiler_version_file
-        if compiler_version_check_path.is_symlink():
-            raise ValueError("--compiler-version-file must not be a symlink")
-        if _path_has_symlink_parent(compiler_version_check_path):
-            raise ValueError("--compiler-version-file parent directories must not be symlinks")
+        _validate_cli_path_option("--compiler-version-file", args.compiler_version_file)
     if args.summary_json is not None:
-        summary_json = Path(args.summary_json)
-        if _path_has_parent_directory_component(summary_json):
-            raise ValueError("--summary-json must not contain parent-directory components")
-        summary_json_check_path = summary_json if summary_json.is_absolute() else REPO_ROOT / summary_json
-        if summary_json_check_path.is_symlink():
-            raise ValueError("--summary-json must not be a symlink")
-        if _path_has_symlink_parent(summary_json_check_path):
-            raise ValueError("--summary-json parent directories must not be symlinks")
+        _validate_cli_path_option("--summary-json", args.summary_json)
 
 
 def _summary_options(args: argparse.Namespace) -> dict[str, Any]:
@@ -2921,6 +2911,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.validate_summary_json is not None:
         try:
+            _validate_cli_path_option("--validate-summary-json", args.validate_summary_json)
             summary = json.loads(Path(args.validate_summary_json).read_text())
             if not isinstance(summary, Mapping):
                 raise ValueError("summary root must be an object")
