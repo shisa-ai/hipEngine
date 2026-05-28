@@ -2716,6 +2716,8 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
     if (mode == "rollup_evidence" or passed is True or isinstance(benchmark_rollup, Mapping)) and isinstance(artifact_json, str):
         if not _is_benchmark_results_path(artifact_json):
             errors.append("summary.artifact_json must be under benchmarks/results when summary.mode is rollup_evidence, summary.passed is true, or summary.benchmark_rollup is present")
+        if not artifact_json.replace("\\", "/").rsplit("/", 1)[-1].endswith(".json"):
+            errors.append("summary.artifact_json must end with .json when summary.mode is rollup_evidence, summary.passed is true, or summary.benchmark_rollup is present")
     if (passed is True or isinstance(benchmark_rollup, Mapping)) and isinstance(artifact_json, str) and isinstance(artifact_path, str):
         normalized_artifact_json = artifact_json.replace("\\", "/")
         normalized_artifact_path = artifact_path.replace("\\", "/")
