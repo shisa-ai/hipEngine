@@ -135,6 +135,7 @@ _RETAINED_BENCH_UNIQUE_FLAGS = (
     "--require-cached-build",
 )
 _CORRECTNESS_REFERENCE_UNIQUE_FLAGS = ("--rows", "--json")
+_CORRECTNESS_SCRIPT_ALLOWED_FLAGS = ("--rows", "--seed", "--json")
 _FULL_COMMIT_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", re.IGNORECASE)
 _ACCEPTED_HARDWARE_ARCH_RE = re.compile(r"gfx[0-9a-f]+", re.IGNORECASE)
 _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = ("serial", "fallback", "per_row", "per-row")
@@ -227,6 +228,29 @@ def _embedded_python_script_argv(command: str, script: str, *, field: str, error
         errors.append(f"commands.{field} must invoke {script} with python for accepted artifacts")
         return None
     return argv[script_index - 1 :]
+
+
+def _validate_correctness_script_argv_shape(argv: list[str] | None, *, field: str, errors: list[str]) -> None:
+    if argv is None:
+        return
+    idx = 2
+    while idx < len(argv):
+        token = argv[idx]
+        matched_inline_flag = next((flag for flag in _CORRECTNESS_SCRIPT_ALLOWED_FLAGS if token.startswith(f"{flag}=")), None)
+        if matched_inline_flag is not None:
+            if token == f"{matched_inline_flag}=":
+                errors.append(f"commands.{field} {matched_inline_flag} must include a value for accepted artifacts")
+            idx += 1
+            continue
+        if token in _CORRECTNESS_SCRIPT_ALLOWED_FLAGS:
+            if idx + 1 >= len(argv) or argv[idx + 1].startswith("--"):
+                errors.append(f"commands.{field} {token} must include a value for accepted artifacts")
+                idx += 1
+            else:
+                idx += 2
+            continue
+        errors.append("commands.correctness_reference python script argv must only include --rows/--seed/--json for accepted artifacts")
+        return
 
 
 def _validate_command_workload_shape(command: str, *, field: str, payload: Mapping[str, Any], errors: list[str]) -> None:
@@ -1052,6 +1076,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
                 errors=errors,
             )
             correctness_script_command = shlex.join(correctness_script_argv) if correctness_script_argv is not None else correctness_command
+            _validate_correctness_script_argv_shape(correctness_script_argv, field="correctness_reference", errors=errors)
             _validate_command_unique_flags(correctness_command, _CORRECTNESS_REFERENCE_UNIQUE_FLAGS, field="correctness_reference", errors=errors)
             rows_match = _CORRECTNESS_ROWS_RE.search(correctness_script_command)
             if rows_match is None:

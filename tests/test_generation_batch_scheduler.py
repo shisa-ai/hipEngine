@@ -6043,6 +6043,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="commands.correctness_reference must include --rows"):
         validate_cn_diagnostic_artifact_payload(correctness_flags_before_script)
 
+    correctness_trailing_text = json.loads(json.dumps(accepted))
+    correctness_trailing_text["commands"]["correctness_reference"] += " extra-provenance"
+    with pytest.raises(ValueError, match="commands.correctness_reference python script argv must only include --rows/--seed/--json"):
+        validate_cn_diagnostic_artifact_payload(correctness_trailing_text)
+
     missing_correctness_rows = json.loads(json.dumps(accepted))
     missing_correctness_rows["commands"]["correctness_reference"] = "python3 scripts/qwen35_batch_correctness.py --json primitive-c2.json"
     with pytest.raises(ValueError, match="commands.correctness_reference must include --rows"):
