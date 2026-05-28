@@ -2557,6 +2557,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     del tampered_profiler_precondition_categories["commands"][-1]["preconditions"][-1]["kernel_duration_categories_ns"]["other"]
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.kernel duration categories must include required non-negative categories when profiler passed"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_categories)
+    tampered_profiler_precondition_category_sum = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_category_sum["commands"][-1]["preconditions"][-1]["kernel_duration_categories_ns"]["other"] = 1.0
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.kernel_duration_categories_ns must match categorized kernel_durations_ns when profiler passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_category_sum)
+    tampered_profiler_precondition_category_share = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_category_share["commands"][-1]["preconditions"][-1]["kernel_duration_category_shares"]["other"] = 0.5
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.kernel_duration_category_shares must match category duration ratios when profiler passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_category_share)
     tampered_profiler_precondition_cpu_total = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_cpu_total["commands"][-1]["preconditions"][-1]["cpu_side_total_seconds"] = 0.0
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.cpu_side_total_seconds must be positive when profiler passed"):

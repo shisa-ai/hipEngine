@@ -1891,6 +1891,33 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     ):
                         errors.append("commands[].preconditions[].kernel duration categories must include required non-negative categories when profiler passed")
                         break
+                    expected_kernel_categories = _profiler_kernel_duration_category_sums(kernel_durations)
+                    if any(
+                        abs(float(kernel_categories[category]) - expected_duration) > max(1.0, expected_duration * 1e-6)
+                        for category, expected_duration in expected_kernel_categories.items()
+                    ):
+                        errors.append("commands[].preconditions[].kernel_duration_categories_ns must match categorized kernel_durations_ns when profiler passed")
+                        break
+                    category_duration_sum = 0.0
+                    category_share_sum = 0.0
+                    category_share_error = False
+                    for category in _PROFILER_KERNEL_DURATION_CATEGORIES:
+                        category_duration = float(kernel_categories[category])
+                        category_share = float(kernel_category_shares[category])
+                        category_duration_sum += category_duration
+                        category_share_sum += category_share
+                        if abs(category_share - (category_duration / total_kernel_duration)) > 1e-6:
+                            errors.append("commands[].preconditions[].kernel_duration_category_shares must match category duration ratios when profiler passed")
+                            category_share_error = True
+                            break
+                    if category_share_error:
+                        break
+                    if abs(category_duration_sum - total_kernel_duration) > max(1.0, total_kernel_duration * 1e-6):
+                        errors.append("commands[].preconditions[].kernel_duration_categories_ns must sum to total_kernel_duration_ns when profiler passed")
+                        break
+                    if abs(category_share_sum - 1.0) > 1e-6:
+                        errors.append("commands[].preconditions[].kernel_duration_category_shares must sum to 1.0 when profiler passed")
+                        break
                     if not _is_number(profiler_precondition.get("cpu_side_total_seconds")) or float(profiler_precondition["cpu_side_total_seconds"]) <= 0.0:
                         errors.append("commands[].preconditions[].cpu_side_total_seconds must be positive when profiler passed")
                         break
