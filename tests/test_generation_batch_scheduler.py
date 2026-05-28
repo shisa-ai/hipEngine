@@ -77,8 +77,12 @@ def test_qwen35_validation_summary_path_rejects_traversal(tmp_path: Path, monkey
     (repo_root / "tmp").mkdir()
     monkeypatch.chdir(repo_root)
 
-    assert _summary_json_path_is_in_current_results(Path("benchmarks/results/summary.json"))
-    assert _summary_json_path_is_in_current_results(repo_root / "benchmarks" / "results" / "summary.json")
+    relative_summary = Path("benchmarks/results/summary.json")
+    absolute_summary = repo_root / "benchmarks" / "results" / "summary.json"
+    assert _summary_json_path_is_in_current_results(relative_summary)
+    assert _summary_json_path_is_in_current_results(absolute_summary)
+    _validate_summary_json_path(relative_summary)
+    _validate_summary_json_path(absolute_summary, label="absolute summary path")
     assert not _summary_json_path_is_in_current_results(Path("benchmarks/results/../../tmp/summary.json"))
 
     external_summary = tmp_path / "external" / "benchmarks" / "results" / "summary.json"
