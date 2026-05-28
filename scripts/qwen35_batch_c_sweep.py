@@ -2172,6 +2172,16 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if len(set(profiler_trace_files)) != len(profiler_trace_files):
                         errors.append("commands[].preconditions[].profiler_trace_files must be unique when passed")
                         break
+                    trace_file_check_paths = [
+                        trace_file_path if trace_file_path.is_absolute() else REPO_ROOT / trace_file_path
+                        for trace_file_path in (Path(trace_file) for trace_file in profiler_trace_files)
+                    ]
+                    if any(trace_file_path.is_symlink() for trace_file_path in trace_file_check_paths):
+                        errors.append("commands[].preconditions[].profiler_trace_files must not be symlinks when passed")
+                        break
+                    if any(_path_has_symlink_parent(trace_file_path) for trace_file_path in trace_file_check_paths):
+                        errors.append("commands[].preconditions[].profiler_trace_files parent directories must not be symlinks when passed")
+                        break
                     if any(not _is_resolved_path_relative_to(trace_file, profiler_trace_dir) for trace_file in profiler_trace_files):
                         errors.append("commands[].preconditions[].profiler_trace_files must be under profiler_trace_dir when passed")
                         break

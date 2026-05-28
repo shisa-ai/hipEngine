@@ -3356,6 +3356,41 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
                 c_sweep.validate_sweep_summary(symlink_parent_output_summary)
 
             profiler_trace_dir = Path(persisted["commands"][-1]["preconditions"][-1]["profiler_trace_dir"])
+            trace_file_path = Path(persisted["commands"][-1]["preconditions"][-1]["profiler_trace_files"][0])
+            trace_file_target = trace_file_path.with_name("hipengine_kernel_trace_real.csv")
+            profiler_trace_dir.mkdir()
+            trace_file_target.write_text("kernel,duration_ns\n")
+            try:
+                trace_file_path.symlink_to(trace_file_target)
+                with pytest.raises(ValueError, match=r"profiler_trace_files must not be symlinks"):
+                    c_sweep.validate_sweep_summary(persisted)
+            finally:
+                if trace_file_path.is_symlink():
+                    trace_file_path.unlink()
+                if trace_file_target.exists():
+                    trace_file_target.unlink()
+                if profiler_trace_dir.exists():
+                    profiler_trace_dir.rmdir()
+
+            profiler_trace_dir.mkdir()
+            trace_file_parent_target = profiler_trace_dir / "trace-file-parent-real"
+            trace_file_parent_link = profiler_trace_dir / "trace-file-parent-link"
+            trace_file_parent_target.mkdir()
+            try:
+                trace_file_parent_link.symlink_to(trace_file_parent_target, target_is_directory=True)
+                symlink_parent_trace_file_summary = json.loads(json.dumps(persisted))
+                profiler_precondition = symlink_parent_trace_file_summary["commands"][-1]["preconditions"][-1]
+                profiler_precondition["profiler_trace_files"] = [str(trace_file_parent_link / "hipengine_kernel_trace.csv")]
+                with pytest.raises(ValueError, match=r"profiler_trace_files parent directories must not be symlinks"):
+                    c_sweep.validate_sweep_summary(symlink_parent_trace_file_summary)
+            finally:
+                if trace_file_parent_link.is_symlink():
+                    trace_file_parent_link.unlink()
+                if trace_file_parent_target.exists():
+                    trace_file_parent_target.rmdir()
+                if profiler_trace_dir.exists():
+                    profiler_trace_dir.rmdir()
+
             real_profiler_trace_dir = profiler_trace_dir.with_name("profile-c2-real")
             real_profiler_trace_dir.mkdir()
             try:
