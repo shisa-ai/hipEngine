@@ -5980,6 +5980,14 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
         extra_separator,
         retained_artifact_path="benchmarks/results/native-c2.json",
     )
+    skip_generated_equality = {
+        **valid,
+        "command": valid["command"].replace("--json benchmarks/results/native-c2.json", "--skip-generated-equality --json benchmarks/results/native-c2.json"),
+    }
+    assert "profiler command must not include --skip-generated-equality" in retained_bench._profiler_provenance_blockers(
+        skip_generated_equality,
+        retained_artifact_path="benchmarks/results/native-c2.json",
+    )
     post_separator_shadowed_kernel_trace = {
         **valid,
         "command": valid["command"]

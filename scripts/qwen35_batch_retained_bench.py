@@ -1181,6 +1181,8 @@ def _profiler_command_provenance_blockers(
         ):
             if _command_flag_count(profiled_segment, flag) > 1:
                 blockers.append(f"profiler command {flag} must be unique after rocprof separator")
+        if _command_has_flag(retained_command, "--skip-generated-equality"):
+            blockers.append("profiler command must not include --skip-generated-equality")
         if (
             len(profiled_segment) < 2
             or not Path(profiled_segment[0]).name.startswith("python")
