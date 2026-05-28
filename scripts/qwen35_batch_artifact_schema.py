@@ -954,8 +954,15 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             _validate_retained_benchmark_reference_paths(profiler_profiled_benchmark_command, field="profiler", payload=payload, errors=errors)
             if "--require-cached-build" not in profiled_command_argv:
                 errors.append("commands.profiler must include --require-cached-build after rocprof separator for accepted artifacts")
-            if _COMMAND_COMPILER_VERSION_FILE_RE.search(profiler_profiled_benchmark_command) is None:
+            compiler_version_match = _COMMAND_COMPILER_VERSION_FILE_RE.search(profiler_profiled_benchmark_command)
+            if compiler_version_match is None:
                 errors.append("commands.profiler must include --compiler-version-file after rocprof separator for accepted artifacts")
+            else:
+                _validate_benchmark_results_artifact_path(
+                    "commands.profiler --compiler-version-file path",
+                    compiler_version_match.group(1).strip("'\""),
+                    errors,
+                )
     profiler = _mapping_at(payload, "profiler", errors)
     profiler_artifact_path = profiler.get("artifact_path")
     if not isinstance(profiler_artifact_path, str) or not profiler_artifact_path:

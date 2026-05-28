@@ -978,8 +978,8 @@ roll-up/status view.
       that separator, and the same retained shape/artifact/reference/cached-build
       flags validated from the post-separator profiled command segment
       (`--profiler-json`, `--compiler-version-file`, `--require-cached-build`),
-      benchmark/profiler `--json` outputs plus primitive/scaling artifact paths
-      under `benchmarks/results/`, and the retained bench can now attach a
+      benchmark/profiler `--json` outputs plus primitive/scaling/compiler-version
+      artifact paths under `benchmarks/results/`, and the retained bench can now attach a
       captured profiler summary via `--profiler-json` / `--profiler-command`,
       synthesize `profiler.total_kernel_duration_ns`,
       `profiler.kernel_duration_shares`, `profiler.kernel_duration_categories_ns`,

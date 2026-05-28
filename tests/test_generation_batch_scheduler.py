@@ -6187,6 +6187,22 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="commands.profiler must include --compiler-version-file"):
         validate_cn_diagnostic_artifact_payload(profiler_without_compiler_version)
 
+    profiler_compiler_version_before_separator = json.loads(json.dumps(accepted))
+    profiler_compiler_version_before_separator["commands"]["profiler"] = profiler_compiler_version_before_separator["commands"]["profiler"].replace(
+        " -d /tmp/hipengine-profile -- python3",
+        " -d /tmp/hipengine-profile --compiler-version-file benchmarks/results/hipcc-version.txt -- python3",
+    ).replace(" --compiler-version-file benchmarks/results/hipcc-version.txt --require-cached-build", " --require-cached-build")
+    with pytest.raises(ValueError, match="commands.profiler must include --compiler-version-file after rocprof separator"):
+        validate_cn_diagnostic_artifact_payload(profiler_compiler_version_before_separator)
+
+    profiler_tmp_compiler_version = json.loads(json.dumps(accepted))
+    profiler_tmp_compiler_version["commands"]["profiler"] = profiler_tmp_compiler_version["commands"]["profiler"].replace(
+        " --compiler-version-file benchmarks/results/hipcc-version.txt",
+        " --compiler-version-file /tmp/hipcc-version.txt",
+    )
+    with pytest.raises(ValueError, match="commands.profiler --compiler-version-file path must be under benchmarks/results"):
+        validate_cn_diagnostic_artifact_payload(profiler_tmp_compiler_version)
+
     profiler_missing_batch_size = json.loads(json.dumps(accepted))
     profiler_missing_batch_size["commands"]["profiler"] = "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_retained_bench.py --prompt-length 512 --decode-tokens 128 --max-layers 40"
     with pytest.raises(ValueError, match="commands.profiler must include --batch-size"):
