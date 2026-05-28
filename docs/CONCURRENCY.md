@@ -951,7 +951,7 @@ roll-up/status view.
       primitive GPU correctness reference script schema (`schema=1`), row count matching
       `workload.concurrency`, seed provenance, deterministic fixture-shape
       metadata (`block_size`, `max_context_len`, `num_q_heads`, `num_kv_heads`,
-      `head_dim`), per-row `context_lens` fixture
+      `head_dim`), reference-gated typed per-row `context_lens` fixture
       coverage, zero append mismatches,
       zero batch-vs-c1 attention error, and reference-gated NumPy-oracle
       attention error ≤ 2e-5,

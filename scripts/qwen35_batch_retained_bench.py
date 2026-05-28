@@ -64,6 +64,21 @@ _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS = {
     "head_dim": 8,
 }
 _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT = 2e-5
+
+
+def _required_primitive_context_lens(rows: int) -> list[int]:
+    max_context_len = _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS["max_context_len"]
+    return [(idx % max_context_len) + 1 for idx in range(rows)]
+
+
+def _primitive_context_lens_matches(value: Any, rows: int) -> bool:
+    return (
+        isinstance(value, list)
+        and all(isinstance(item, int) and not isinstance(item, bool) for item in value)
+        and value == _required_primitive_context_lens(rows)
+    )
+
+
 _PROFILER_SYNTHESIZED_FIELDS = (
     "trace_kernel_names",
     "kernel_durations_ns",
@@ -291,6 +306,8 @@ def _primitive_correctness_reference(path: Path | None, *, rows: int) -> dict[st
         value = payload.get(field)
         if not isinstance(value, int) or isinstance(value, bool) or value != expected_value:
             reasons.append(f"{field} is missing or not {expected_value}")
+    if not _primitive_context_lens_matches(payload.get("context_lens"), int(rows)):
+        reasons.append("context_lens is missing or does not match fixture coverage")
     if payload.get("passed") is not True:
         reasons.append("primitive correctness payload did not pass")
     if payload.get("append_key_mismatch") != 0:
