@@ -951,7 +951,7 @@ def _retained_memory_payload(args: argparse.Namespace, kv_policy: ResolvedKVPoli
     return memory
 
 
-def _batch_execution_blockers(batch_execution: Mapping[str, Any]) -> list[str]:
+def _batch_execution_blockers(batch_execution: Mapping[str, Any], *, expected_max_layers: int | None = None) -> list[str]:
     blockers: list[str] = []
     path = batch_execution.get("path")
     if not isinstance(path, str) or not path:
@@ -975,6 +975,12 @@ def _batch_execution_blockers(batch_execution: Mapping[str, Any]) -> list[str]:
     else:
         if native_prefill_plan.get("full_layer_limit_native") is not True:
             blockers.append("execution.batch_execution.native_prefill_plan.full_layer_limit_native must be true")
+        if expected_max_layers is not None:
+            layer_limit = native_prefill_plan.get("layer_limit")
+            if isinstance(layer_limit, bool) or not isinstance(layer_limit, int):
+                blockers.append("execution.batch_execution.native_prefill_plan.layer_limit must be an int")
+            elif layer_limit != int(expected_max_layers):
+                blockers.append("execution.batch_execution.native_prefill_plan.layer_limit must match workload.max_layers")
         if native_prefill_plan.get("blockers") != []:
             blockers.append("execution.batch_execution.native_prefill_plan.blockers must be empty")
     if batch_execution.get("native_caware_decode") is not True:
@@ -2038,7 +2044,7 @@ def _build_payload(
     batch_execution = dict(bench["batch_execution"])
     throughput_claim_eligible = bool(batch_execution.get("throughput_claim_eligible"))
     native_caware_decode = bool(batch_execution.get("native_caware_decode"))
-    batch_execution_blockers = _batch_execution_blockers(batch_execution)
+    batch_execution_blockers = _batch_execution_blockers(batch_execution, expected_max_layers=args.max_layers)
     projection_dispatch_candidates = bench.get("projection_dispatch_candidates")
     projection_blockers = _projection_dispatch_blockers(
         batch_execution,
