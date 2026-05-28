@@ -2338,7 +2338,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     retained_argv = tampered_precondition_argv_path["commands"][-1]["argv"]
     retained_argv[retained_argv.index("--serial-bridge-json") + 1] = str(output_dir / "other-serial.json")
     tampered_precondition_argv_path["commands"][-1]["command"] = shlex.join(retained_argv)
-    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.artifact_path must match retained native gate argv"):
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv retained native gate artifact paths must match output_dir filenames"):
         c_sweep.validate_sweep_summary(tampered_precondition_argv_path)
     tampered_missing_gate_argv = json.loads(json.dumps(persisted))
     retained_argv = tampered_missing_gate_argv["commands"][-1]["argv"]
@@ -2347,6 +2347,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_missing_gate_argv["commands"][-1]["command"] = shlex.join(retained_argv)
     with pytest.raises(ValueError, match=r"commands\[\]\.argv must include retained native gate artifact flags"):
         c_sweep.validate_sweep_summary(tampered_missing_gate_argv)
+    tampered_gate_argv_filename = json.loads(json.dumps(persisted))
+    retained_argv = tampered_gate_argv_filename["commands"][-1]["argv"]
+    other_serial = str(output_dir / "other-serial.json")
+    retained_argv[retained_argv.index("--serial-bridge-json") + 1] = other_serial
+    tampered_gate_argv_filename["commands"][-1]["preconditions"][2]["artifact_path"] = other_serial
+    tampered_gate_argv_filename["commands"][-1]["command"] = shlex.join(retained_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv retained native gate artifact paths must match output_dir filenames"):
+        c_sweep.validate_sweep_summary(tampered_gate_argv_filename)
     preconditions_by_kind = {item["kind"]: item for item in native["preconditions"]}
     assert preconditions_by_kind["c1_baseline"] == {
         "kind": "c1_baseline",

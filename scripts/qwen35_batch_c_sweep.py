@@ -1486,6 +1486,31 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 if any(not isinstance(_argv_value(argv, flag), str) or not _argv_value(argv, flag) for flag in retained_gate_flags):
                     errors.append("commands[].argv must include retained native gate artifact flags")
                     break
+                output_dir_text = summary.get("output_dir")
+                if isinstance(output_dir_text, str) and output_dir_text:
+                    output_dir_path = Path(output_dir_text)
+                    output_dir_abs = (output_dir_path if output_dir_path.is_absolute() else REPO_ROOT / output_dir_path).resolve()
+                    retained_gate_names = {
+                        "--c1-baseline-json": "native-baseline-c1.json",
+                        "--serial-bridge-json": f"serial-bridge-c{entry.get('batch_size')}.json",
+                        "--primitive-correctness-json": f"primitive-c{entry.get('batch_size')}.json",
+                        "--profiler-json": f"profiler-c{entry.get('batch_size')}.json",
+                    }
+                    retained_gate_path_error = False
+                    for flag, expected_name in retained_gate_names.items():
+                        gate_text = _argv_value(argv, flag)
+                        if not isinstance(gate_text, str):
+                            errors.append("commands[].argv must include retained native gate artifact flags")
+                            retained_gate_path_error = True
+                            break
+                        gate_path = Path(gate_text)
+                        gate_abs = (gate_path if gate_path.is_absolute() else REPO_ROOT / gate_path).resolve()
+                        if gate_abs != (output_dir_abs / expected_name).resolve():
+                            errors.append("commands[].argv retained native gate artifact paths must match output_dir filenames")
+                            retained_gate_path_error = True
+                            break
+                    if retained_gate_path_error:
+                        break
             status = entry.get("status")
             if status not in {"planned", "passed", "skipped", "failed"}:
                 errors.append("commands[].status must be planned, passed, skipped, or failed")
