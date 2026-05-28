@@ -2738,6 +2738,11 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
             unexpected_rollup_keys = sorted(str(key) for key in benchmark_rollup.keys() - expected_rollup_keys)
             if unexpected_rollup_keys:
                 errors.append("summary.benchmark_rollup contains unexpected keys: " + ", ".join(unexpected_rollup_keys))
+        if isinstance(benchmark_rollup, Mapping):
+            for key in ("artifact_path", "source_artifact_path"):
+                value = benchmark_rollup.get(key)
+                if isinstance(value, str) and _path_text_contains_parent_traversal(value):
+                    errors.append(f"summary.benchmark_rollup.{key} must not contain parent traversal")
         if isinstance(benchmark_rollup, Mapping) and isinstance(artifact_path, str):
             if benchmark_rollup.get("artifact_path") != artifact_path:
                 errors.append("summary.benchmark_rollup.artifact_path must match summary.artifact_path")

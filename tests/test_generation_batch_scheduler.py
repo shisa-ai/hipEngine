@@ -110,6 +110,30 @@ def test_qwen35_validation_summary_payload_rejects_traversal() -> None:
     with pytest.raises(ValueError, match="summary.artifact_path must not contain parent traversal"):
         validate_cn_diagnostic_validation_summary(summary)
 
+    rollup_summary = {
+        "schema": 1,
+        "mode": "rollup_evidence",
+        "passed": False,
+        "artifact_json": "benchmarks/results/source.json",
+        "artifact_path": "benchmarks/results/source.json",
+        "status": None,
+        "performance_claim": None,
+        "benchmark_rollup": {
+            "artifact_path": "benchmarks/results/nested/../source.json",
+            "source_artifact_path": "benchmarks/results/source.json",
+            "readme_path": "benchmarks/README.md",
+            "changelog_path": "benchmarks/CHANGELOG.md",
+        },
+        "error": "rollup validation failed",
+    }
+    with pytest.raises(ValueError, match="summary.benchmark_rollup.artifact_path must not contain parent traversal"):
+        validate_cn_diagnostic_validation_summary(rollup_summary)
+
+    rollup_summary["benchmark_rollup"]["artifact_path"] = "benchmarks/results/source.json"
+    rollup_summary["benchmark_rollup"]["source_artifact_path"] = "benchmarks/results/nested/../source.json"
+    with pytest.raises(ValueError, match="summary.benchmark_rollup.source_artifact_path must not contain parent traversal"):
+        validate_cn_diagnostic_validation_summary(rollup_summary)
+
 
 def test_qwen35_validation_summary_paths_report_active_option(
     tmp_path: Path,
