@@ -295,6 +295,22 @@ def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
+def _is_zero_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value == 0
+
+
+def _is_exact_zero_number(value: Any) -> bool:
+    return _is_number(value) and math.isfinite(float(value)) and float(value) == 0.0
+
+
+def _is_bounded_primitive_numpy_oracle(value: Any) -> bool:
+    return (
+        _is_number(value)
+        and math.isfinite(float(value))
+        and 0.0 <= float(value) <= _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT
+    )
+
+
 def _command_arg_path(command: SweepCommand, flag: str, *, kind: str) -> tuple[Path | None, dict[str, Any] | None]:
     argv = list(command.argv)
     try:
@@ -363,16 +379,15 @@ def _primitive_correctness_precondition(command: SweepCommand) -> dict[str, Any]
             reasons.append(f"rows={payload.get('rows')!r} does not match batch_size={command.batch_size}")
         if payload.get("passed") is not True:
             reasons.append("passed is not true")
-        if payload.get("append_key_mismatch") != 0:
-            reasons.append("append_key_mismatch is non-zero")
-        if payload.get("append_value_mismatch") != 0:
-            reasons.append("append_value_mismatch is non-zero")
+        for field in ("append_key_mismatch", "append_value_mismatch"):
+            if not _is_zero_int(payload.get(field)):
+                reasons.append(f"{field} is missing or not integer zero")
         attn_vs_c1 = payload.get("attn_batch_vs_c1_max_abs")
-        if not _is_number(attn_vs_c1) or float(attn_vs_c1) > 1e-6:
-            reasons.append("attn_batch_vs_c1_max_abs is missing or above 1e-6")
+        if not _is_exact_zero_number(attn_vs_c1):
+            reasons.append("attn_batch_vs_c1_max_abs is missing or not 0.0")
         attn_vs_numpy = payload.get("attn_batch_vs_numpy_max_abs")
-        if not _is_number(attn_vs_numpy) or float(attn_vs_numpy) > _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT:
-            reasons.append("attn_batch_vs_numpy_max_abs is missing or above 2e-5")
+        if not _is_bounded_primitive_numpy_oracle(attn_vs_numpy):
+            reasons.append("attn_batch_vs_numpy_max_abs is missing, non-finite, negative, or above 2e-5")
     result: dict[str, Any] = {
         "kind": "primitive_correctness",
         "artifact_path": str(primitive_path),
@@ -1780,16 +1795,16 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if primitive_precondition.get("primitive_rows") != entry.get("batch_size"):
                         errors.append("commands[].preconditions[].primitive_rows must match retained batch_size")
                         break
-                    if primitive_precondition.get("append_key_mismatch") != 0 or primitive_precondition.get("append_value_mismatch") != 0:
-                        errors.append("commands[].preconditions[].primitive append mismatches must be zero when passed")
+                    if not _is_zero_int(primitive_precondition.get("append_key_mismatch")) or not _is_zero_int(primitive_precondition.get("append_value_mismatch")):
+                        errors.append("commands[].preconditions[].primitive append mismatches must be typed integer zeros when passed")
                         break
                     attn_vs_c1 = primitive_precondition.get("attn_batch_vs_c1_max_abs")
-                    if not _is_number(attn_vs_c1) or float(attn_vs_c1) > 1e-6:
-                        errors.append("commands[].preconditions[].attn_batch_vs_c1_max_abs must be at most 1e-6 when primitive passed")
+                    if not _is_exact_zero_number(attn_vs_c1):
+                        errors.append("commands[].preconditions[].attn_batch_vs_c1_max_abs must be exactly 0.0 when primitive passed")
                         break
                     attn_vs_numpy = primitive_precondition.get("attn_batch_vs_numpy_max_abs")
-                    if not _is_number(attn_vs_numpy) or float(attn_vs_numpy) > _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT:
-                        errors.append("commands[].preconditions[].attn_batch_vs_numpy_max_abs must be at most 2e-5 when primitive passed")
+                    if not _is_bounded_primitive_numpy_oracle(attn_vs_numpy):
+                        errors.append("commands[].preconditions[].attn_batch_vs_numpy_max_abs must be finite between 0.0 and 2e-5 when primitive passed")
                         break
                 expected_prompt_tokens = int(_argv_value(argv, "--prompt-length"))
                 expected_decode_tokens = int(_argv_value(argv, "--decode-tokens"))

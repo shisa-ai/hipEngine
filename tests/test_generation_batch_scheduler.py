@@ -2022,18 +2022,37 @@ def test_batch_c_sweep_primitive_precondition_requires_numpy_oracle(tmp_path: Pa
     primitive_payload["attn_batch_vs_numpy_max_abs"] = 1e-3
     primitive_path.write_text(json.dumps(primitive_payload))
     high_numpy = c_sweep._primitive_correctness_precondition(command)
+    primitive_payload["attn_batch_vs_numpy_max_abs"] = math.nan
+    primitive_path.write_text(json.dumps(primitive_payload))
+    nan_numpy = c_sweep._primitive_correctness_precondition(command)
+    primitive_payload["attn_batch_vs_numpy_max_abs"] = -1e-8
+    primitive_path.write_text(json.dumps(primitive_payload))
+    negative_numpy = c_sweep._primitive_correctness_precondition(command)
 
+    expected_reason = "attn_batch_vs_numpy_max_abs is missing, non-finite, negative, or above 2e-5"
     assert missing_numpy == {
         "kind": "primitive_correctness",
         "artifact_path": str(primitive_path),
         "passed": False,
-        "reason": "attn_batch_vs_numpy_max_abs is missing or above 2e-5",
+        "reason": expected_reason,
     }
     assert high_numpy == {
         "kind": "primitive_correctness",
         "artifact_path": str(primitive_path),
         "passed": False,
-        "reason": "attn_batch_vs_numpy_max_abs is missing or above 2e-5",
+        "reason": expected_reason,
+    }
+    assert nan_numpy == {
+        "kind": "primitive_correctness",
+        "artifact_path": str(primitive_path),
+        "passed": False,
+        "reason": expected_reason,
+    }
+    assert negative_numpy == {
+        "kind": "primitive_correctness",
+        "artifact_path": str(primitive_path),
+        "passed": False,
+        "reason": expected_reason,
     }
 
 
@@ -3152,16 +3171,28 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         c_sweep.validate_sweep_summary(tampered_primitive_precondition_rows)
     tampered_primitive_precondition_mismatch = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_mismatch["commands"][-1]["preconditions"][0]["append_key_mismatch"] = 1
-    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive append mismatches must be zero when passed"):
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive append mismatches must be typed integer zeros when passed"):
         c_sweep.validate_sweep_summary(tampered_primitive_precondition_mismatch)
+    tampered_primitive_precondition_bool_mismatch = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_bool_mismatch["commands"][-1]["preconditions"][0]["append_key_mismatch"] = False
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive append mismatches must be typed integer zeros when passed"):
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_bool_mismatch)
     tampered_primitive_precondition_attn = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_attn["commands"][-1]["preconditions"][0]["attn_batch_vs_c1_max_abs"] = 1e-3
-    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.attn_batch_vs_c1_max_abs must be at most 1e-6 when primitive passed"):
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.attn_batch_vs_c1_max_abs must be exactly 0\.0 when primitive passed"):
         c_sweep.validate_sweep_summary(tampered_primitive_precondition_attn)
+    tampered_primitive_precondition_small_attn = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_small_attn["commands"][-1]["preconditions"][0]["attn_batch_vs_c1_max_abs"] = 5e-7
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.attn_batch_vs_c1_max_abs must be exactly 0\.0 when primitive passed"):
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_small_attn)
     tampered_primitive_precondition_numpy = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_numpy["commands"][-1]["preconditions"][0]["attn_batch_vs_numpy_max_abs"] = 1e-3
-    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.attn_batch_vs_numpy_max_abs must be at most 2e-5 when primitive passed"):
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.attn_batch_vs_numpy_max_abs must be finite between 0\.0 and 2e-5 when primitive passed"):
         c_sweep.validate_sweep_summary(tampered_primitive_precondition_numpy)
+    tampered_primitive_precondition_negative_numpy = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_negative_numpy["commands"][-1]["preconditions"][0]["attn_batch_vs_numpy_max_abs"] = -1e-8
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.attn_batch_vs_numpy_max_abs must be finite between 0\.0 and 2e-5 when primitive passed"):
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_negative_numpy)
     preconditions_by_kind = {item["kind"]: item for item in native["preconditions"]}
     assert preconditions_by_kind["primitive_correctness"] == {
         "kind": "primitive_correctness",
