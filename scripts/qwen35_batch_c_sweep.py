@@ -1749,6 +1749,14 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if "--" not in profiler_command_argv:
                         errors.append("commands[].preconditions[].profiler_command must include rocprof command separator when passed")
                         break
+                    profiled_command_argv = profiler_command_argv[profiler_command_argv.index("--") + 1 :]
+                    if (
+                        len(profiled_command_argv) < 2
+                        or not Path(profiled_command_argv[0]).name.startswith("python")
+                        or profiled_command_argv[1] != "scripts/qwen35_batch_retained_bench.py"
+                    ):
+                        errors.append("commands[].preconditions[].profiler_command must launch retained bench after rocprof separator when passed")
+                        break
                     if _command_text_arg(profiler_command, "--model") != _argv_value(argv, "--model") or profiler_precondition.get("profiler_model") != _argv_value(argv, "--model"):
                         errors.append("commands[].preconditions[].profiler model must match retained command")
                         break
