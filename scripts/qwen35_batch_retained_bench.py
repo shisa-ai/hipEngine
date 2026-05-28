@@ -951,7 +951,12 @@ def _retained_memory_payload(args: argparse.Namespace, kv_policy: ResolvedKVPoli
     return memory
 
 
-def _batch_execution_blockers(batch_execution: Mapping[str, Any], *, expected_max_layers: int | None = None) -> list[str]:
+def _batch_execution_blockers(
+    batch_execution: Mapping[str, Any],
+    *,
+    expected_max_layers: int | None = None,
+    expected_concurrency: int | None = None,
+) -> list[str]:
     blockers: list[str] = []
     path = batch_execution.get("path")
     if not isinstance(path, str) or not path:
@@ -995,6 +1000,22 @@ def _batch_execution_blockers(batch_execution: Mapping[str, Any], *, expected_ma
     if not isinstance(decode_execution, Mapping):
         blockers.append("execution.batch_execution.decode_execution is missing")
     else:
+        if expected_concurrency is not None:
+            decode_rows = decode_execution.get("rows")
+            if isinstance(decode_rows, bool) or not isinstance(decode_rows, int):
+                blockers.append("execution.batch_execution.decode_execution.rows must be an int")
+            elif decode_rows != int(expected_concurrency):
+                blockers.append("execution.batch_execution.decode_execution.rows must match workload.concurrency")
+            decode_slots = decode_execution.get("slots")
+            if not isinstance(decode_slots, list):
+                blockers.append("execution.batch_execution.decode_execution.slots must be a list")
+            else:
+                if len(decode_slots) != int(expected_concurrency):
+                    blockers.append("execution.batch_execution.decode_execution.slots length must match workload.concurrency")
+                elif not all(isinstance(slot, int) and not isinstance(slot, bool) and slot >= 0 for slot in decode_slots):
+                    blockers.append("execution.batch_execution.decode_execution.slots entries must be non-negative ints")
+                elif len(set(decode_slots)) != len(decode_slots):
+                    blockers.append("execution.batch_execution.decode_execution.slots entries must be unique")
         if decode_execution.get("full_attention_decode_path") != "native_batch":
             blockers.append("execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch")
         if decode_execution.get("native_caware_decode") is not True:
@@ -2050,7 +2071,11 @@ def _build_payload(
     batch_execution = dict(bench["batch_execution"])
     throughput_claim_eligible = bool(batch_execution.get("throughput_claim_eligible"))
     native_caware_decode = bool(batch_execution.get("native_caware_decode"))
-    batch_execution_blockers = _batch_execution_blockers(batch_execution, expected_max_layers=args.max_layers)
+    batch_execution_blockers = _batch_execution_blockers(
+        batch_execution,
+        expected_max_layers=args.max_layers,
+        expected_concurrency=args.batch_size,
+    )
     projection_dispatch_candidates = bench.get("projection_dispatch_candidates")
     projection_blockers = _projection_dispatch_blockers(
         batch_execution,

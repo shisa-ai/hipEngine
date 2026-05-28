@@ -870,6 +870,22 @@ def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[
     if not isinstance(decode_execution, Mapping):
         errors.append("execution.batch_execution.decode_execution must be an object for accepted artifacts")
     else:
+        concurrency = workload.get("concurrency")
+        decode_rows = decode_execution.get("rows")
+        if isinstance(decode_rows, bool) or not isinstance(decode_rows, int):
+            errors.append("execution.batch_execution.decode_execution.rows must be an int for accepted artifacts")
+        elif isinstance(concurrency, int) and not isinstance(concurrency, bool) and decode_rows != concurrency:
+            errors.append("execution.batch_execution.decode_execution.rows must match workload.concurrency for accepted artifacts")
+        decode_slots = decode_execution.get("slots")
+        if not isinstance(decode_slots, list):
+            errors.append("execution.batch_execution.decode_execution.slots must be a list for accepted artifacts")
+        elif isinstance(concurrency, int) and not isinstance(concurrency, bool):
+            if len(decode_slots) != concurrency:
+                errors.append("execution.batch_execution.decode_execution.slots length must match workload.concurrency for accepted artifacts")
+            elif not all(isinstance(slot, int) and not isinstance(slot, bool) and slot >= 0 for slot in decode_slots):
+                errors.append("execution.batch_execution.decode_execution.slots entries must be non-negative ints for accepted artifacts")
+            elif len(set(decode_slots)) != len(decode_slots):
+                errors.append("execution.batch_execution.decode_execution.slots entries must be unique for accepted artifacts")
         if decode_execution.get("full_attention_decode_path") != "native_batch":
             errors.append("execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch for accepted artifacts")
         if decode_execution.get("native_caware_decode") is not True:
