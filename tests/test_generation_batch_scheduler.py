@@ -5884,6 +5884,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="benchmark_rollup.artifact_path must match artifact_path"):
         validate_cn_diagnostic_artifact_payload(mismatched_benchmark_rollup)
 
+    wrong_rollup_readme = json.loads(json.dumps(accepted))
+    wrong_rollup_readme["benchmark_rollup"]["readme_path"] = "docs/README.md"
+    with pytest.raises(ValueError, match="benchmark_rollup.readme_path must be benchmarks/README.md"):
+        validate_cn_diagnostic_artifact_payload(wrong_rollup_readme)
+
+    wrong_rollup_changelog = json.loads(json.dumps(accepted))
+    wrong_rollup_changelog["benchmark_rollup"]["changelog_path"] = "CHANGELOG.md"
+    with pytest.raises(ValueError, match="benchmark_rollup.changelog_path must be benchmarks/CHANGELOG.md"):
+        validate_cn_diagnostic_artifact_payload(wrong_rollup_changelog)
+
     missing_command = json.loads(json.dumps(accepted))
     missing_command["commands"]["benchmark"] = ""
     with pytest.raises(ValueError, match="commands.benchmark"):
