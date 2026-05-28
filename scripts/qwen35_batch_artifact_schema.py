@@ -2778,9 +2778,20 @@ def _write_validation_summary(path: Path, summary: Mapping[str, Any]) -> None:
     path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
 
 
+def _summary_json_path_is_in_current_results(path: Path) -> bool:
+    normalized = str(path).replace("\\", "/")
+    if path.is_absolute():
+        results_root = (Path.cwd() / "benchmarks" / "results").resolve()
+        try:
+            return path.resolve().is_relative_to(results_root)
+        except OSError:
+            return False
+    return normalized.startswith("benchmarks/results/")
+
+
 def _validate_summary_json_path(path: Path) -> None:
-    if not _is_benchmark_results_path(str(path)):
-        raise ValueError("--summary-json path must be under benchmarks/results for retained validation evidence")
+    if not _summary_json_path_is_in_current_results(path):
+        raise ValueError("--summary-json path must be under the current repo benchmarks/results for retained validation evidence")
     if path.suffix != ".json":
         raise ValueError("--summary-json path must end with .json for retained validation evidence")
 
