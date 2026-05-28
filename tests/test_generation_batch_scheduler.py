@@ -52,6 +52,7 @@ from scripts import qwen35_batch_correctness as batch_correctness
 from scripts import qwen35_batch_retained_bench as retained_bench
 from scripts.qwen35_batch_artifact_schema import (
     _summary_json_path_is_in_current_results,
+    _validate_summary_json_path,
     main as validate_cn_diagnostic_artifact_main,
     validate_cn_diagnostic_artifact_payload,
     validate_cn_diagnostic_rollup_evidence,
@@ -97,6 +98,16 @@ def test_qwen35_validation_summary_paths_report_active_option(
 
     source_artifact = results_dir / "source.json"
     source_artifact.write_text("{}", encoding="utf-8")
+    parent_file = results_dir / "parent-file"
+    parent_file.write_text("not a directory", encoding="utf-8")
+    parent_file_summary = parent_file / "source-schema-check.json"
+    assert validate_cn_diagnostic_artifact_main([str(source_artifact), "--summary-json", str(parent_file_summary)]) == 1
+    assert "--summary-json path parent directories must be directories" in capsys.readouterr().err
+    assert validate_cn_diagnostic_artifact_main([str(parent_file_summary), "--validation-summary"]) == 1
+    assert "--validation-summary path parent directories must be directories" in capsys.readouterr().err
+    with pytest.raises(ValueError, match="custom summary path parent directories must be directories"):
+        _validate_summary_json_path(parent_file_summary, label="custom summary path")
+
     if hasattr(os, "symlink"):
         symlink_target = tmp_path / "external-summary.json"
         symlink_target.write_text("{}", encoding="utf-8")

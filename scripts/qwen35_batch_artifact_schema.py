@@ -2803,6 +2803,22 @@ def _summary_json_path_has_symlink_parent(path: Path) -> bool:
         current = current.parent
 
 
+def _summary_json_path_has_non_directory_parent(path: Path) -> bool:
+    results_root = Path.cwd() / "benchmarks" / "results"
+    candidate = path if path.is_absolute() else Path.cwd() / path
+    try:
+        candidate.relative_to(results_root)
+    except ValueError:
+        return False
+    current = candidate.parent
+    while True:
+        if current.exists() and not current.is_dir():
+            return True
+        if current == results_root or current == current.parent:
+            return False
+        current = current.parent
+
+
 def _validate_summary_json_path(path: Path, *, label: str = "--summary-json path", must_exist: bool = False) -> None:
     if not _summary_json_path_is_in_current_results(path):
         raise ValueError(f"{label} must be under the current repo benchmarks/results for retained validation evidence")
@@ -2812,6 +2828,8 @@ def _validate_summary_json_path(path: Path, *, label: str = "--summary-json path
         raise ValueError(f"{label} must be a regular .json file, not a symlink, for retained validation evidence")
     if _summary_json_path_has_symlink_parent(path):
         raise ValueError(f"{label} parent directories must not be symlinks for retained validation evidence")
+    if _summary_json_path_has_non_directory_parent(path):
+        raise ValueError(f"{label} parent directories must be directories for retained validation evidence")
     if path.exists() and path.is_dir():
         raise ValueError(f"{label} must be a .json file, not a directory, for retained validation evidence")
     if path.exists() and not path.is_file():
