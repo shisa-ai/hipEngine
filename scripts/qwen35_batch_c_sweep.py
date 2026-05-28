@@ -2161,6 +2161,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         if not trace_dir_abs.is_relative_to(output_dir_abs):
                             errors.append("commands[].preconditions[].profiler_trace_dir must be under output_dir when passed")
                             break
+                    if _path_has_parent_directory_component(profiler_trace_dir):
+                        errors.append("commands[].preconditions[].profiler_trace_dir must not contain parent-directory components when passed")
+                        break
                     profiler_trace_files = profiler_precondition.get("profiler_trace_files")
                     if (
                         not isinstance(profiler_trace_files, list)
