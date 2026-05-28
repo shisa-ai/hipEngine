@@ -295,6 +295,10 @@ def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
+def _is_positive_finite_number(value: Any) -> bool:
+    return _is_number(value) and math.isfinite(float(value)) and float(value) > 0.0
+
+
 def _is_zero_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value == 0
 
@@ -743,8 +747,8 @@ def _validate_profiler_kernel_durations(profiler: dict[str, Any], reasons: list[
         return
     total_duration = profiler.get("total_kernel_duration_ns")
     duration_shares = profiler.get("kernel_duration_shares")
-    if not _is_number(total_duration) or float(total_duration) <= 0.0:
-        reasons.append("total_kernel_duration_ns is missing or non-positive numeric")
+    if not _is_positive_finite_number(total_duration):
+        reasons.append("total_kernel_duration_ns is missing or non-positive finite numeric")
         return
     if not isinstance(duration_shares, dict) or not duration_shares:
         reasons.append("kernel_duration_shares is missing or empty")
@@ -765,12 +769,12 @@ def _validate_profiler_kernel_durations(profiler: dict[str, Any], reasons: list[
     for kernel_name in sorted(duration_keys):
         duration_ns = kernel_durations.get(kernel_name)
         duration_share = duration_shares.get(kernel_name)
-        if not _is_number(duration_ns) or float(duration_ns) <= 0.0:
-            reasons.append(f"kernel_durations_ns.{kernel_name} is missing or non-positive numeric")
+        if not _is_positive_finite_number(duration_ns):
+            reasons.append(f"kernel_durations_ns.{kernel_name} is missing or non-positive finite numeric")
             continue
         duration_sum += float(duration_ns)
-        if not _is_number(duration_share) or float(duration_share) <= 0.0:
-            reasons.append(f"kernel_duration_shares.{kernel_name} is missing or non-positive numeric")
+        if not _is_positive_finite_number(duration_share):
+            reasons.append(f"kernel_duration_shares.{kernel_name} is missing or non-positive finite numeric")
             continue
         share_sum += float(duration_share)
         expected_share = float(duration_ns) / float(total_duration)
@@ -2103,8 +2107,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                             not isinstance(kernel_name, str)
                             or not kernel_name
                             or _has_disallowed_profiler_kernel_fragment(kernel_name)
-                            or not _is_number(duration_ns)
-                            or float(duration_ns) <= 0.0
+                            or not _is_positive_finite_number(duration_ns)
                         ):
                             invalid_kernel_duration = True
                             break
@@ -2122,7 +2125,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if any(kernel_name not in profiler_kernel_names for kernel_name in kernel_durations):
                         errors.append("commands[].preconditions[].kernel_durations_ns keys must be present in profiler_trace_kernel_names")
                         break
-                    if not _is_number(profiler_precondition.get("total_kernel_duration_ns")) or float(profiler_precondition["total_kernel_duration_ns"]) <= 0.0:
+                    if not _is_positive_finite_number(profiler_precondition.get("total_kernel_duration_ns")):
                         errors.append("commands[].preconditions[].total_kernel_duration_ns must be positive when profiler passed")
                         break
                     total_kernel_duration = float(profiler_precondition["total_kernel_duration_ns"])
@@ -2134,7 +2137,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if (
                         not isinstance(kernel_duration_shares, dict)
                         or {key for key in kernel_duration_shares if isinstance(key, str)} != {key for key in kernel_durations if isinstance(key, str)}
-                        or any(not _is_number(kernel_duration_shares.get(kernel_name)) or float(kernel_duration_shares[kernel_name]) <= 0.0 for kernel_name in kernel_durations)
+                        or any(not _is_positive_finite_number(kernel_duration_shares.get(kernel_name)) for kernel_name in kernel_durations)
                     ):
                         errors.append("commands[].preconditions[].kernel_duration_shares must match kernel_durations_ns keys with positive shares when profiler passed")
                         break
