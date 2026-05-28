@@ -2023,6 +2023,32 @@ def test_batch_c_sweep_validate_summary_rejects_unsafe_input_path(tmp_path: Path
         assert "--validate-summary-json must not be a symlink" in captured.err
 
 
+def test_batch_c_sweep_main_reports_invalid_run_preflight(tmp_path: Path, monkeypatch, capsys) -> None:
+    output_dir = tmp_path / "artifacts"
+    monkeypatch.setattr(
+        c_sweep.subprocess,
+        "run",
+        lambda *args, **kwargs: pytest.fail("invalid run preflight should fail before launching subprocesses"),
+    )
+
+    rc = c_sweep.main(
+        [
+            "--dry-run",
+            "--batch-sizes",
+            "2",
+            "--seed",
+            "999",
+            "--output-dir",
+            str(output_dir),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "invalid c-sweep run: --seed must match required primitive correctness seed" in captured.err
+    assert not output_dir.exists()
+
+
 def test_batch_c_sweep_rejects_invalid_shape_before_creating_artifacts(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(
         c_sweep.subprocess,

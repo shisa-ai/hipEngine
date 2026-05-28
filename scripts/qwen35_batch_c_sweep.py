@@ -2921,7 +2921,11 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print("OK")
         return 0
-    summary = run_sweep(args)
+    try:
+        summary = run_sweep(args)
+    except ValueError as exc:
+        print(f"invalid c-sweep run: {exc}", file=sys.stderr)
+        return 1
     print(json.dumps(summary, indent=2))
     return 1 if summary["status"] in {"failed", "blocked"} else 0
 
