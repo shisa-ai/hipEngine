@@ -6715,6 +6715,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="completion_timestamps keys must match observability.per_request keys"):
         validate_cn_diagnostic_artifact_payload(mismatched_observability_keys)
 
+    nonfinite_admission_timestamp = json.loads(json.dumps(accepted))
+    nonfinite_admission_timestamp["observability"]["admission_timestamps"]["0"] = float("inf")
+    with pytest.raises(ValueError, match=r"observability\.admission_timestamps values must be finite numeric"):
+        validate_cn_diagnostic_artifact_payload(nonfinite_admission_timestamp)
+
+    nonmonotonic_completion_timestamp = json.loads(json.dumps(accepted))
+    nonmonotonic_completion_timestamp["observability"]["completion_timestamps"]["0"] = 0.5
+    with pytest.raises(ValueError, match="completion_timestamps must be greater than admission_timestamps"):
+        validate_cn_diagnostic_artifact_payload(nonmonotonic_completion_timestamp)
+
     short_per_request = json.loads(json.dumps(accepted))
     short_per_request["observability"]["per_request"].pop("1")
     with pytest.raises(ValueError, match="per_request length must match workload.concurrency"):

@@ -671,6 +671,16 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
         row_map = observability.get(field)
         if concurrency_valid and isinstance(row_map, Mapping) and len(row_map) != concurrency:
             errors.append(f"observability.{field} length must match workload.concurrency for accepted artifacts")
+        if isinstance(row_map, Mapping) and any(not _is_finite_number(value) for value in row_map.values()):
+            errors.append(f"observability.{field} values must be finite numeric for accepted artifacts")
+    admission_timestamps = observability.get("admission_timestamps")
+    completion_timestamps = observability.get("completion_timestamps")
+    if isinstance(admission_timestamps, Mapping) and isinstance(completion_timestamps, Mapping):
+        for request_id, admission_timestamp in admission_timestamps.items():
+            completion_timestamp = completion_timestamps.get(request_id)
+            if _is_finite_number(admission_timestamp) and _is_finite_number(completion_timestamp) and float(completion_timestamp) <= float(admission_timestamp):
+                errors.append("observability.completion_timestamps must be greater than admission_timestamps for accepted artifacts")
+                break
     latency = observability.get("request_latency_seconds")
     if isinstance(latency, Mapping):
         if not _is_positive_number(latency.get("p50")):
@@ -2102,6 +2112,10 @@ def _valid_request_observability(row: Any, errors: list[str]) -> bool:
 
 def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _is_finite_number(value: Any) -> bool:
+    return _is_number(value) and math.isfinite(float(value))
 
 
 def _is_positive_number(value: Any) -> bool:

@@ -963,7 +963,8 @@ roll-up/status view.
       plus matching KV policy metadata,
       aggregate token labels and per-row prompt lengths matching per-request
       shape times concurrency, full-row admission/completion/per-request
-      observability with finite nonnegative per-row timing, matching row ids,
+      observability with finite admission/completion timestamps, completion
+      after admission, finite nonnegative per-row timing, matching row ids,
       and latency samples for every row in
       `workload.concurrency`, execution scheduler metadata with decode shape-key
       and non-empty graph-bucket stats, positive finite
