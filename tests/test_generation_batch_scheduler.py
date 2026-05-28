@@ -84,6 +84,44 @@ def test_qwen35_validation_summary_path_rejects_traversal(tmp_path: Path, monkey
     assert not _summary_json_path_is_in_current_results(external_summary)
 
 
+def test_qwen35_validation_summary_paths_report_active_option(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo_root = tmp_path / "repo"
+    results_dir = repo_root / "benchmarks" / "results"
+    results_dir.mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
+    source_artifact = results_dir / "source.json"
+    source_artifact.write_text("{}", encoding="utf-8")
+    bad_write_summary = results_dir / "source-schema-check.txt"
+    assert validate_cn_diagnostic_artifact_main([str(source_artifact), "--summary-json", str(bad_write_summary)]) == 1
+    assert "--summary-json path must end with .json" in capsys.readouterr().err
+    assert not bad_write_summary.exists()
+
+    bad_recheck_summary = results_dir / "source-schema-check.txt"
+    bad_recheck_summary.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "mode": "artifact_schema",
+                "passed": False,
+                "artifact_json": "benchmarks/results/source.json",
+                "artifact_path": None,
+                "status": None,
+                "performance_claim": None,
+                "benchmark_rollup": None,
+                "error": "schema validation failed",
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert validate_cn_diagnostic_artifact_main([str(bad_recheck_summary), "--validation-summary"]) == 1
+    assert "--validation-summary path must end with .json" in capsys.readouterr().err
+
+
 def _projection_evidence_payload(
     *,
     rows: int,

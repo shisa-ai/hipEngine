@@ -2787,15 +2787,15 @@ def _summary_json_path_is_in_current_results(path: Path) -> bool:
         return False
 
 
-def _validate_summary_json_path(path: Path) -> None:
+def _validate_summary_json_path(path: Path, *, label: str = "--summary-json path") -> None:
     if not _summary_json_path_is_in_current_results(path):
-        raise ValueError("--summary-json path must be under the current repo benchmarks/results for retained validation evidence")
+        raise ValueError(f"{label} must be under the current repo benchmarks/results for retained validation evidence")
     if path.suffix != ".json":
-        raise ValueError("--summary-json path must end with .json for retained validation evidence")
+        raise ValueError(f"{label} must end with .json for retained validation evidence")
 
 
-def _validate_validation_summary_output_path(path: Path, summary: Mapping[str, Any]) -> None:
-    _validate_summary_json_path(path)
+def _validate_validation_summary_output_path(path: Path, summary: Mapping[str, Any], *, label: str = "--summary-json path") -> None:
+    _validate_summary_json_path(path, label=label)
     mode = summary.get("mode")
     if mode not in {"artifact_schema", "rollup_evidence"}:
         return
@@ -2842,7 +2842,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             summary = _load_payload(args.artifact_json)
             validate_cn_diagnostic_validation_summary(summary)
-            _validate_validation_summary_output_path(args.artifact_json, summary)
+            _validate_validation_summary_output_path(args.artifact_json, summary, label="--validation-summary path")
         except Exception as exc:
             print(f"invalid c>N diagnostic artifact: {exc}", file=sys.stderr)
             return 1
