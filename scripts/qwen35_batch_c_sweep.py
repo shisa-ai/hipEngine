@@ -2711,6 +2711,17 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
 def _validate_run_options(args: argparse.Namespace) -> None:
     if int(args.seed) != _REQUIRED_PRIMITIVE_CORRECTNESS_SEED:
         raise ValueError("--seed must match required primitive correctness seed")
+    for option, minimum in (
+        ("prompt_length", 1),
+        ("decode_tokens", 1),
+        ("warmup_decode_tokens", 0),
+        ("max_layers", 1),
+    ):
+        value = int(getattr(args, option))
+        if value < minimum:
+            flag = "--" + option.replace("_", "-")
+            qualifier = "non-negative" if minimum == 0 else "positive"
+            raise ValueError(f"{flag} must be {qualifier}")
     output_dir = Path(args.output_dir)
     if _path_has_parent_directory_component(output_dir):
         raise ValueError("--output-dir must not contain parent-directory components")

@@ -1973,6 +1973,27 @@ def test_batch_c_sweep_rejects_unsafe_compiler_version_file_before_creating_arti
             run_sweep(args)
 
 
+def test_batch_c_sweep_rejects_invalid_shape_before_creating_artifacts(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        c_sweep.subprocess,
+        "run",
+        lambda *args, **kwargs: pytest.fail("invalid-shape sweep should fail before launching subprocesses"),
+    )
+    for flag, value, expected in (
+        ("--prompt-length", "0", "--prompt-length must be positive"),
+        ("--decode-tokens", "0", "--decode-tokens must be positive"),
+        ("--warmup-decode-tokens", "-1", "--warmup-decode-tokens must be non-negative"),
+        ("--max-layers", "0", "--max-layers must be positive"),
+    ):
+        output_dir = tmp_path / f"artifacts-{flag[2:]}"
+        args = build_c_sweep_parser().parse_args(
+            ["--dry-run", "--batch-sizes", "2", flag, value, "--output-dir", str(output_dir)]
+        )
+        with pytest.raises(ValueError, match=expected):
+            run_sweep(args)
+        assert not output_dir.exists()
+
+
 def test_batch_c_sweep_stops_and_counts_failed_command(tmp_path: Path, monkeypatch) -> None:
     args = build_c_sweep_parser().parse_args(
         [
