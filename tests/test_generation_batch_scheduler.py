@@ -7035,6 +7035,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="decode_shape_key.context_bucket must be a positive int"):
         validate_cn_diagnostic_artifact_payload(missing_decode_context_bucket)
 
+    undersized_decode_context_bucket = json.loads(json.dumps(accepted))
+    undersized_decode_context_bucket["execution"]["scheduler_metadata"]["decode_shape_key"]["context_bucket"] = 256
+    with pytest.raises(ValueError, match="decode_shape_key.context_bucket must cover workload prompt length"):
+        validate_cn_diagnostic_artifact_payload(undersized_decode_context_bucket)
+
     invalid_decode_top_k = json.loads(json.dumps(accepted))
     invalid_decode_top_k["execution"]["scheduler_metadata"]["decode_shape_key"]["top_k"] = -1
     with pytest.raises(ValueError, match="decode_shape_key.top_k must be a non-negative int"):

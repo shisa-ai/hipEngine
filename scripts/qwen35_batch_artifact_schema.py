@@ -978,6 +978,16 @@ def _validate_accepted_scheduler_metadata(
         context_bucket = decode_shape_key.get("context_bucket")
         if not isinstance(context_bucket, int) or isinstance(context_bucket, bool) or context_bucket <= 0:
             errors.append("execution.scheduler_metadata.decode_shape_key.context_bucket must be a positive int for accepted artifacts")
+        else:
+            prompt_lengths = workload.get("prompt_lengths")
+            prompt_tokens_per_request = workload.get("prompt_tokens_per_request")
+            required_context_bucket: int | None = None
+            if isinstance(prompt_lengths, list) and prompt_lengths and all(isinstance(item, int) and not isinstance(item, bool) for item in prompt_lengths):
+                required_context_bucket = max(prompt_lengths)
+            elif isinstance(prompt_tokens_per_request, int) and not isinstance(prompt_tokens_per_request, bool):
+                required_context_bucket = prompt_tokens_per_request
+            if required_context_bucket is not None and context_bucket < required_context_bucket:
+                errors.append("execution.scheduler_metadata.decode_shape_key.context_bucket must cover workload prompt length for accepted artifacts")
         for field in ("top_k", "experts_per_token", "draft_depth"):
             value = decode_shape_key.get(field)
             if not isinstance(value, int) or isinstance(value, bool) or value < 0:
