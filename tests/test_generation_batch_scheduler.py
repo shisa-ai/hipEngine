@@ -2530,6 +2530,12 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_missing_gate_argv["commands"][-1]["command"] = shlex.join(retained_argv)
     with pytest.raises(ValueError, match=r"commands\[\]\.argv must include retained native gate artifact flags"):
         c_sweep.validate_sweep_summary(tampered_missing_gate_argv)
+    tampered_duplicate_retained_argv = json.loads(json.dumps(persisted))
+    retained_argv = tampered_duplicate_retained_argv["commands"][-1]["argv"]
+    retained_argv.extend(["--json", str(output_dir / "other-native.json")])
+    tampered_duplicate_retained_argv["commands"][-1]["command"] = shlex.join(retained_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv must not repeat retained benchmark flags"):
+        c_sweep.validate_sweep_summary(tampered_duplicate_retained_argv)
     tampered_gate_argv_filename = json.loads(json.dumps(persisted))
     retained_argv = tampered_gate_argv_filename["commands"][-1]["argv"]
     other_serial = str(output_dir / "other-serial.json")
@@ -2600,6 +2606,11 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     )
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler profiled command flags must match retained command"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_profiled_flags)
+    tampered_profiler_precondition_profiled_duplicate = json.loads(json.dumps(persisted))
+    profiler_precondition = tampered_profiler_precondition_profiled_duplicate["commands"][-1]["preconditions"][-1]
+    profiler_precondition["profiler_command"] = profiler_precondition["profiler_command"] + f" --json {output_dir / 'other-native.json'}"
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler profiled command flags must be unique"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_profiled_duplicate)
     tampered_profiler_precondition_model = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_model["commands"][-1]["preconditions"][-1]["profiler_model"] = "/tmp/other-model"
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler model must match retained command"):

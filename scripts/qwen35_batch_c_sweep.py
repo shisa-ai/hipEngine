@@ -60,6 +60,22 @@ _PROFILER_SYNTHESIZED_FIELDS = (
     "kernel_duration_categories_ns",
     "kernel_duration_category_shares",
 )
+_RETAINED_BENCH_UNIQUE_FLAGS = (
+    "--model",
+    "--fixture",
+    "--batch-size",
+    "--prompt-length",
+    "--decode-tokens",
+    "--warmup-decode-tokens",
+    "--max-layers",
+    "--json",
+    "--c1-baseline-json",
+    "--serial-bridge-json",
+    "--primitive-correctness-json",
+    "--profiler-json",
+    "--compiler-version-file",
+    "--require-cached-build",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -352,6 +368,14 @@ def _argv_value(argv: Sequence[str], flag: str) -> str | None:
         return argv[argv.index(flag) + 1]
     except (ValueError, IndexError):
         return None
+
+
+def _flag_token_matches(token: str, flag: str) -> bool:
+    return token == flag or token.startswith(f"{flag}=")
+
+
+def _duplicate_flags(argv: Sequence[str], flags: Sequence[str]) -> list[str]:
+    return [flag for flag in flags if sum(1 for token in argv if _flag_token_matches(token, flag)) > 1]
 
 
 def _command_arg_value(command: SweepCommand, flag: str) -> str | None:
@@ -1428,6 +1452,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if command_text != shlex.join(argv):
                 errors.append("commands[].command must match shlex.join(commands[].argv)")
                 break
+            duplicated_retained_flags = _duplicate_flags(argv, _RETAINED_BENCH_UNIQUE_FLAGS)
+            if duplicated_retained_flags:
+                errors.append("commands[].argv must not repeat retained benchmark flags")
+                break
             try:
                 json_path = argv[argv.index("--json") + 1]
             except (ValueError, IndexError):
@@ -1769,6 +1797,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         or profiled_command_argv[1] != "scripts/qwen35_batch_retained_bench.py"
                     ):
                         errors.append("commands[].preconditions[].profiler_command must launch retained bench after rocprof separator when passed")
+                        break
+                    if _duplicate_flags(profiled_command_argv, _RETAINED_BENCH_UNIQUE_FLAGS):
+                        errors.append("commands[].preconditions[].profiler profiled command flags must be unique")
                         break
                     if _command_text_arg(profiler_command, "--model") != _argv_value(argv, "--model") or profiler_precondition.get("profiler_model") != _argv_value(argv, "--model"):
                         errors.append("commands[].preconditions[].profiler model must match retained command")
