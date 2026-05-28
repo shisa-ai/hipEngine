@@ -1876,6 +1876,7 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
     tampered_skipped_failed_precondition["commands"][-1]["preconditions"][0].update(
         {
             "primitive_schema": 1,
+            "primitive_artifact_path": str(output_dir / "primitive-c2.json"),
             "primitive_seed": 1234,
             "primitive_block_size": 256,
             "primitive_max_context_len": 4,
@@ -1931,6 +1932,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_missing(
     (output_dir / "primitive-c2.json").write_text(
         json.dumps(
             {
+                "artifact_path": str(output_dir / "primitive-c2.json"),
                 "schema": 1,
                 "seed": 1234,
                 "rows": 2,
@@ -2046,6 +2048,7 @@ def test_batch_c_sweep_primitive_precondition_requires_schema(tmp_path: Path) ->
     primitive_path.write_text(
         json.dumps(
             {
+                "artifact_path": str(primitive_path),
                 "seed": 1234,
                 "rows": 2,
                 "block_size": 256,
@@ -2084,6 +2087,55 @@ def test_batch_c_sweep_primitive_precondition_requires_schema(tmp_path: Path) ->
     }
 
 
+def test_batch_c_sweep_primitive_precondition_requires_artifact_path(tmp_path: Path) -> None:
+    primitive_path = tmp_path / "primitive-c2.json"
+    command = c_sweep.SweepCommand(
+        category="native_diagnostic",
+        batch_size=2,
+        artifact_path=tmp_path / "native-diagnostic-c2.json",
+        argv=(
+            "python3",
+            "scripts/qwen35_batch_retained_bench.py",
+            "--primitive-correctness-json",
+            str(primitive_path),
+        ),
+    )
+    primitive_payload = {
+        "schema": 1,
+        "seed": 1234,
+        "rows": 2,
+        "block_size": 256,
+        "max_context_len": 4,
+        "num_q_heads": 4,
+        "num_kv_heads": 1,
+        "head_dim": 8,
+        "context_lens": [1, 2],
+        "passed": True,
+        "append_key_mismatch": 0,
+        "append_value_mismatch": 0,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "attn_batch_vs_numpy_max_abs": 5.0e-8,
+    }
+    primitive_path.write_text(json.dumps(primitive_payload))
+    missing_artifact_path = c_sweep._primitive_correctness_precondition(command)
+    primitive_payload["artifact_path"] = str(tmp_path / "other-primitive-c2.json")
+    primitive_path.write_text(json.dumps(primitive_payload))
+    mismatched_artifact_path = c_sweep._primitive_correctness_precondition(command)
+
+    assert missing_artifact_path == {
+        "kind": "primitive_correctness",
+        "artifact_path": str(primitive_path),
+        "passed": False,
+        "reason": "artifact_path is missing or not a non-empty string",
+    }
+    assert mismatched_artifact_path == {
+        "kind": "primitive_correctness",
+        "artifact_path": str(primitive_path),
+        "passed": False,
+        "reason": "artifact_path does not match primitive correctness artifact path",
+    }
+
+
 def test_batch_c_sweep_primitive_precondition_requires_seed(tmp_path: Path) -> None:
     primitive_path = tmp_path / "primitive-c2.json"
     command = c_sweep.SweepCommand(
@@ -2098,6 +2150,7 @@ def test_batch_c_sweep_primitive_precondition_requires_seed(tmp_path: Path) -> N
         ),
     )
     primitive_payload = {
+        "artifact_path": str(primitive_path),
         "schema": 1,
         "rows": 2,
         "block_size": 256,
@@ -2146,6 +2199,7 @@ def test_batch_c_sweep_primitive_precondition_requires_typed_rows(tmp_path: Path
         ),
     )
     primitive_payload = {
+        "artifact_path": str(primitive_path),
         "schema": 1,
         "seed": 1234,
         "rows": 2.0,
@@ -2195,6 +2249,7 @@ def test_batch_c_sweep_primitive_precondition_requires_fixture_shape(tmp_path: P
         ),
     )
     primitive_payload = {
+        "artifact_path": str(primitive_path),
         "schema": 1,
         "seed": 1234,
         "rows": 2,
@@ -2243,6 +2298,7 @@ def test_batch_c_sweep_primitive_precondition_requires_context_lens(tmp_path: Pa
         ),
     )
     primitive_payload = {
+        "artifact_path": str(primitive_path),
         "schema": 1,
         "seed": 1234,
         "rows": 2,
@@ -2300,6 +2356,7 @@ def test_batch_c_sweep_primitive_precondition_requires_typed_append_counters(tmp
         ),
     )
     primitive_payload = {
+        "artifact_path": str(primitive_path),
         "schema": 1,
         "seed": 1234,
         "rows": 2,
@@ -2350,6 +2407,7 @@ def test_batch_c_sweep_primitive_precondition_requires_numpy_oracle(tmp_path: Pa
         ),
     )
     primitive_payload = {
+        "artifact_path": str(primitive_path),
         "schema": 1,
         "seed": 1234,
         "rows": 2,
@@ -2412,6 +2470,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_shape_missing(
     (output_dir / "primitive-c2.json").write_text(
         json.dumps(
             {
+                "artifact_path": str(output_dir / "primitive-c2.json"),
                 "schema": 1,
                 "seed": 1234,
                 "rows": 2,
@@ -2496,6 +2555,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_reason_is_non_null(
     (output_dir / "primitive-c2.json").write_text(
         json.dumps(
             {
+                "artifact_path": str(output_dir / "primitive-c2.json"),
                 "schema": 1,
                 "seed": 1234,
                 "rows": 2,
@@ -2632,6 +2692,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_rate_arithmetic_mis
     (output_dir / "primitive-c2.json").write_text(
         json.dumps(
             {
+                "artifact_path": str(output_dir / "primitive-c2.json"),
                 "schema": 1,
                 "seed": 1234,
                 "rows": 2,
@@ -2720,6 +2781,7 @@ def test_batch_c_sweep_skips_retained_when_profiler_summary_missing(tmp_path: Pa
     (output_dir / "primitive-c2.json").write_text(
         json.dumps(
             {
+                "artifact_path": str(output_dir / "primitive-c2.json"),
                 "schema": 1,
                 "seed": 1234,
                 "rows": 2,
@@ -2807,6 +2869,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     (output_dir / "primitive-c2.json").write_text(
         json.dumps(
             {
+                "artifact_path": str(output_dir / "primitive-c2.json"),
                 "schema": 1,
                 "seed": 1234,
                 "rows": 2,
@@ -3632,6 +3695,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_primitive_precondition_bool_schema["commands"][-1]["preconditions"][0]["primitive_schema"] = True
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_schema must be typed int 1 when primitive passed"):
         c_sweep.validate_sweep_summary(tampered_primitive_precondition_bool_schema)
+    tampered_primitive_precondition_artifact = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_artifact["commands"][-1]["preconditions"][0]["primitive_artifact_path"] = str(output_dir / "other-primitive-c2.json")
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path must match primitive artifact_path when primitive passed"):
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_artifact)
+    tampered_primitive_precondition_missing_artifact = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_missing_artifact["commands"][-1]["preconditions"][0].pop("primitive_artifact_path")
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path must match primitive artifact_path when primitive passed"):
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_missing_artifact)
     tampered_primitive_precondition_seed = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_seed["commands"][-1]["preconditions"][0]["primitive_seed"] = 4321
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_seed must be typed int 1234 when primitive passed"):
@@ -3703,6 +3774,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         "passed": True,
         "reason": None,
         "primitive_schema": 1,
+        "primitive_artifact_path": str(output_dir / "primitive-c2.json"),
         "primitive_seed": 1234,
         "primitive_block_size": 256,
         "primitive_max_context_len": 4,
@@ -3903,6 +3975,7 @@ def test_batch_c_sweep_fails_retained_row_on_profiler_synthesis_mismatch(tmp_pat
     (output_dir / "primitive-c2.json").write_text(
         json.dumps(
             {
+                "artifact_path": str(output_dir / "primitive-c2.json"),
                 "schema": 1,
                 "seed": 1234,
                 "rows": 2,

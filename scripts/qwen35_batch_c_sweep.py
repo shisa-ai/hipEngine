@@ -369,6 +369,11 @@ def _primitive_correctness_precondition(command: SweepCommand) -> dict[str, Any]
             or primitive_schema != _REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA
         ):
             reasons.append("schema is missing or not 1")
+        primitive_artifact_path = payload.get("artifact_path")
+        if not isinstance(primitive_artifact_path, str) or not primitive_artifact_path:
+            reasons.append("artifact_path is missing or not a non-empty string")
+        elif primitive_artifact_path != str(primitive_path):
+            reasons.append("artifact_path does not match primitive correctness artifact path")
         primitive_seed = payload.get("seed")
         if (
             not isinstance(primitive_seed, int)
@@ -407,6 +412,7 @@ def _primitive_correctness_precondition(command: SweepCommand) -> dict[str, Any]
         result.update(
             {
                 "primitive_schema": int(payload["schema"]),
+                "primitive_artifact_path": str(payload["artifact_path"]),
                 "primitive_seed": int(payload["seed"]),
                 **{
                     f"primitive_{field}": int(payload[field])
@@ -1811,6 +1817,14 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         or primitive_schema != _REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA
                     ):
                         errors.append("commands[].preconditions[].primitive_schema must be typed int 1 when primitive passed")
+                        break
+                    primitive_artifact_path = primitive_precondition.get("primitive_artifact_path")
+                    if (
+                        not isinstance(primitive_artifact_path, str)
+                        or not primitive_artifact_path
+                        or primitive_artifact_path != primitive_precondition.get("artifact_path")
+                    ):
+                        errors.append("commands[].preconditions[].primitive_artifact_path must match primitive artifact_path when primitive passed")
                         break
                     primitive_seed = primitive_precondition.get("primitive_seed")
                     if (
