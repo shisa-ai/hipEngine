@@ -2740,6 +2740,8 @@ def _write_validation_summary(path: Path, summary: Mapping[str, Any]) -> None:
 def _validate_summary_json_path(path: Path) -> None:
     if not _is_benchmark_results_path(str(path)):
         raise ValueError("--summary-json path must be under benchmarks/results for retained validation evidence")
+    if path.suffix != ".json":
+        raise ValueError("--summary-json path must end with .json for retained validation evidence")
 
 
 def _validate_validation_summary_output_path(path: Path, summary: Mapping[str, Any]) -> None:

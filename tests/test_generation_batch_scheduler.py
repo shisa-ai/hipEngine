@@ -8183,6 +8183,12 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     ) == 1
     assert not bad_summary_file.exists()
 
+    non_json_summary_file = rollup_root / "benchmarks" / "results" / "accepted-c2-rollup-check.txt"
+    assert validate_cn_diagnostic_artifact_main(
+        [str(artifact_file), "--rollup-evidence", "--summary-json", str(non_json_summary_file)]
+    ) == 1
+    assert not non_json_summary_file.exists()
+
     wrong_named_rollup_summary_file = rollup_root / "benchmarks" / "results" / "other-rollup-check.json"
     assert validate_cn_diagnostic_artifact_main(
         [str(artifact_file), "--rollup-evidence", "--summary-json", str(wrong_named_rollup_summary_file)]
