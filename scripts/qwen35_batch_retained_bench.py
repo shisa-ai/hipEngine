@@ -2471,6 +2471,7 @@ def _build_payload(
         },
         "benchmark_rollup": {
             "artifact_path": str(args.json) if args.json is not None else None,
+            "source_artifact_path": str(args.json) if args.json is not None else None,
             "readme_path": "benchmarks/README.md",
             "changelog_path": "benchmarks/CHANGELOG.md",
         },

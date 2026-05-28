@@ -6267,6 +6267,7 @@ def test_qwen35_retained_payload_mirrors_fallback_native_decode_label(monkeypatc
     assert payload["execution"]["batch_execution"]["decode_execution"]["full_attention_decode_path"] == "per_row_splitk_fallback"
     assert payload["benchmark_rollup"] == {
         "artifact_path": None,
+        "source_artifact_path": None,
         "readme_path": "benchmarks/README.md",
         "changelog_path": "benchmarks/CHANGELOG.md",
     }
@@ -7594,6 +7595,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         },
         "benchmark_rollup": {
             "artifact_path": "benchmarks/results/accepted-c2.json",
+            "source_artifact_path": "benchmarks/results/accepted-c2.json",
             "readme_path": "benchmarks/README.md",
             "changelog_path": "benchmarks/CHANGELOG.md",
         },
@@ -8088,6 +8090,10 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     invalid_summary["error"] = "unexpected warning"
     with pytest.raises(ValueError, match="summary.error must be null"):
         validate_cn_diagnostic_validation_summary(invalid_summary)
+    stale_rollup_summary = json.loads(json.dumps(summary))
+    stale_rollup_summary["benchmark_rollup"]["source_artifact_path"] = "benchmarks/results/other-accepted-c2.json"
+    with pytest.raises(ValueError, match="summary.benchmark_rollup.source_artifact_path must match summary.artifact_path"):
+        validate_cn_diagnostic_validation_summary(stale_rollup_summary)
     invalid_summary_file = rollup_root / "benchmarks" / "results" / "accepted-c2-invalid-summary.json"
     invalid_summary_file.write_text(json.dumps(invalid_summary), encoding="utf-8")
     assert validate_cn_diagnostic_artifact_main([str(invalid_summary_file), "--validation-summary"]) == 1
@@ -8130,6 +8136,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     wrong_rollup_artifact["benchmark_rollup"]["artifact_path"] = "benchmarks/results/other-accepted-c2.json"
     with pytest.raises(ValueError, match="benchmark_rollup.artifact_path must match artifact_path"):
         validate_cn_diagnostic_rollup_evidence(wrong_rollup_artifact)
+
+    missing_rollup_source = json.loads(json.dumps(accepted))
+    missing_rollup_source["benchmark_rollup"].pop("source_artifact_path")
+    with pytest.raises(ValueError, match="benchmark_rollup.source_artifact_path must match artifact_path"):
+        validate_cn_diagnostic_rollup_evidence(missing_rollup_source)
+
+    wrong_rollup_source = json.loads(json.dumps(accepted))
+    wrong_rollup_source["benchmark_rollup"]["source_artifact_path"] = "benchmarks/results/other-accepted-c2.json"
+    with pytest.raises(ValueError, match="benchmark_rollup.source_artifact_path must match artifact_path"):
+        validate_cn_diagnostic_rollup_evidence(wrong_rollup_source)
 
     wrong_rollup_path = json.loads(json.dumps(accepted))
     wrong_rollup_path["benchmark_rollup"]["readme_path"] = "README.md"
@@ -9153,6 +9169,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     mismatched_benchmark_rollup["benchmark_rollup"]["artifact_path"] = "benchmarks/results/other-c2.json"
     with pytest.raises(ValueError, match="benchmark_rollup.artifact_path must match artifact_path"):
         validate_cn_diagnostic_artifact_payload(mismatched_benchmark_rollup)
+
+    missing_benchmark_rollup_source = json.loads(json.dumps(accepted))
+    missing_benchmark_rollup_source["benchmark_rollup"].pop("source_artifact_path")
+    with pytest.raises(ValueError, match="benchmark_rollup.source_artifact_path must match artifact_path"):
+        validate_cn_diagnostic_artifact_payload(missing_benchmark_rollup_source)
+
+    mismatched_benchmark_rollup_source = json.loads(json.dumps(accepted))
+    mismatched_benchmark_rollup_source["benchmark_rollup"]["source_artifact_path"] = "benchmarks/results/other-c2.json"
+    with pytest.raises(ValueError, match="benchmark_rollup.source_artifact_path must match artifact_path"):
+        validate_cn_diagnostic_artifact_payload(mismatched_benchmark_rollup_source)
 
     wrong_rollup_readme = json.loads(json.dumps(accepted))
     wrong_rollup_readme["benchmark_rollup"]["readme_path"] = "docs/README.md"

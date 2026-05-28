@@ -614,6 +614,8 @@ def validate_cn_diagnostic_rollup_evidence(payload: Mapping[str, Any]) -> None:
         rollup = {}
     if rollup.get("artifact_path") != artifact_path:
         errors.append("benchmark_rollup.artifact_path must match artifact_path for rollup evidence")
+    if rollup.get("source_artifact_path") != artifact_path:
+        errors.append("benchmark_rollup.source_artifact_path must match artifact_path for rollup evidence")
     _validate_rollup_file_mentions_artifact(
         "benchmark_rollup.readme_path",
         rollup.get("readme_path"),
@@ -1282,6 +1284,8 @@ def _validate_accepted_benchmark_rollup_declaration(
         return
     if rollup.get("artifact_path") != payload_artifact_path:
         errors.append("benchmark_rollup.artifact_path must match artifact_path for accepted artifacts")
+    if rollup.get("source_artifact_path") != payload_artifact_path:
+        errors.append("benchmark_rollup.source_artifact_path must match artifact_path for accepted artifacts")
     if rollup.get("readme_path") != "benchmarks/README.md":
         errors.append("benchmark_rollup.readme_path must be benchmarks/README.md for accepted artifacts")
     if rollup.get("changelog_path") != "benchmarks/CHANGELOG.md":
@@ -2644,8 +2648,11 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
     if benchmark_rollup is not None:
         if not isinstance(benchmark_rollup, Mapping):
             errors.append("summary.benchmark_rollup must be an object or null")
-        elif isinstance(artifact_path, str) and benchmark_rollup.get("artifact_path") != artifact_path:
-            errors.append("summary.benchmark_rollup.artifact_path must match summary.artifact_path")
+        elif isinstance(artifact_path, str):
+            if benchmark_rollup.get("artifact_path") != artifact_path:
+                errors.append("summary.benchmark_rollup.artifact_path must match summary.artifact_path")
+            if benchmark_rollup.get("source_artifact_path") != artifact_path:
+                errors.append("summary.benchmark_rollup.source_artifact_path must match summary.artifact_path")
     error = summary.get("error")
     if passed is True and error is not None:
         errors.append("summary.error must be null when summary.passed is true")
