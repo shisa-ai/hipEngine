@@ -1073,7 +1073,12 @@ def _is_path_relative_to(child: str, parent: str) -> bool:
         return False
 
 
-def _profiler_command_provenance_blockers(command: str, *, trace_dir: str | None) -> list[str]:
+def _profiler_command_provenance_blockers(
+    command: str,
+    *,
+    trace_dir: str | None,
+    profiler_artifact_path: str | None,
+) -> list[str]:
     blockers: list[str] = []
     if "rocprofv3" not in command:
         blockers.append("profiler command must include rocprofv3")
@@ -1085,12 +1090,16 @@ def _profiler_command_provenance_blockers(command: str, *, trace_dir: str | None
         blockers.append("profiler command must include --output-format csv")
     if trace_dir is not None and _command_arg_value(command, "-d") != trace_dir:
         blockers.append("profiler command -d must match profiler.trace_dir")
+    if profiler_artifact_path is not None and _command_arg_value(command, "--profiler-json") != profiler_artifact_path:
+        blockers.append("profiler command --profiler-json must match profiler.artifact_path")
     return blockers
 
 
 def _profiler_provenance_blockers(profiler: Mapping[str, Any], *, profiled_command: str | None = None) -> list[str]:
     blockers: list[str] = []
-    if not _is_retained_artifact_path(profiler.get("artifact_path")):
+    profiler_artifact_path = profiler.get("artifact_path")
+    retained_profiler_artifact_path = profiler_artifact_path if _is_retained_artifact_path(profiler_artifact_path) else None
+    if retained_profiler_artifact_path is None:
         blockers.append("profiler.artifact_path must be under benchmarks/results")
     if profiler.get("output_format") != "csv":
         blockers.append("profiler.output_format must be csv")
@@ -1122,7 +1131,14 @@ def _profiler_provenance_blockers(profiler: Mapping[str, Any], *, profiled_comma
     if not command_candidates:
         blockers.append("profiler command must include rocprofv3 --kernel-trace retained bench command")
     else:
-        command_blockers = [_profiler_command_provenance_blockers(command, trace_dir=trace_dir) for command in command_candidates]
+        command_blockers = [
+            _profiler_command_provenance_blockers(
+                command,
+                trace_dir=trace_dir,
+                profiler_artifact_path=retained_profiler_artifact_path,
+            )
+            for command in command_candidates
+        ]
         if all(command_blocker for command_blocker in command_blockers):
             blockers.extend(command_blockers[0])
     return blockers
