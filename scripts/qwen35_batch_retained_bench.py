@@ -1138,6 +1138,9 @@ def _profiler_command_provenance_blockers(
     expected_kv_policy: Mapping[str, str] | None,
 ) -> list[str]:
     blockers: list[str] = []
+    command_parts = _split_command_parts(command)
+    if command_parts.count("--") != 1:
+        blockers.append("profiler command must include exactly one rocprof separator")
     rocprof_prefix = _rocprof_command_prefix(command)
     rocprof_prefix_command = _join_command_parts(rocprof_prefix)
     if not rocprof_prefix or Path(rocprof_prefix[0]).name != "rocprofv3":

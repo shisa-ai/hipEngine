@@ -5972,6 +5972,14 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
         wrapper_shadowed_rocprof,
         retained_artifact_path="benchmarks/results/native-c2.json",
     )
+    extra_separator = {
+        **valid,
+        "command": valid["command"].replace("-- python3", "-- -- python3"),
+    }
+    assert "profiler command must include exactly one rocprof separator" in retained_bench._profiler_provenance_blockers(
+        extra_separator,
+        retained_artifact_path="benchmarks/results/native-c2.json",
+    )
     post_separator_shadowed_kernel_trace = {
         **valid,
         "command": valid["command"]
