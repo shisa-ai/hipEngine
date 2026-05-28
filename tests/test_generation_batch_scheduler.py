@@ -2168,6 +2168,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_duration["commands"][-1]["duration_seconds"] = -1.0
     with pytest.raises(ValueError, match=r"commands\[\]\.duration_seconds must be a non-negative number"):
         c_sweep.validate_sweep_summary(tampered_duration)
+    tampered_nonfinite_duration = json.loads(json.dumps(persisted))
+    tampered_nonfinite_duration["commands"][-1]["duration_seconds"] = float("nan")
+    with pytest.raises(ValueError, match=r"commands\[\]\.duration_seconds must be finite"):
+        c_sweep.validate_sweep_summary(tampered_nonfinite_duration)
     tampered_output_tail = json.loads(json.dumps(persisted))
     tampered_output_tail["commands"][-1]["output_tail"] = ["ok"]
     with pytest.raises(ValueError, match=r"commands\[\]\.output_tail must be a string"):

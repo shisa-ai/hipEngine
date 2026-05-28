@@ -1500,6 +1500,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             ):
                 errors.append("commands[].duration_seconds must be a non-negative number")
                 break
+            if not math.isfinite(float(duration_seconds)):
+                errors.append("commands[].duration_seconds must be finite")
+                break
             if status == "planned" and float(duration_seconds) != 0.0:
                 errors.append("commands[].duration_seconds must be zero for planned rows")
                 break
