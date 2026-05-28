@@ -1636,6 +1636,11 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
         {
             "primitive_schema": 1,
             "primitive_seed": 1234,
+            "primitive_block_size": 256,
+            "primitive_max_context_len": 4,
+            "primitive_num_q_heads": 4,
+            "primitive_num_kv_heads": 1,
+            "primitive_head_dim": 8,
             "primitive_rows": 2,
             "append_key_mismatch": 0,
             "append_value_mismatch": 0,
@@ -1687,6 +1692,11 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_missing(
                 "schema": 1,
                 "seed": 1234,
                 "rows": 2,
+                "block_size": 256,
+                "max_context_len": 4,
+                "num_q_heads": 4,
+                "num_kv_heads": 1,
+                "head_dim": 8,
                 "passed": True,
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
@@ -1795,6 +1805,11 @@ def test_batch_c_sweep_primitive_precondition_requires_schema(tmp_path: Path) ->
             {
                 "seed": 1234,
                 "rows": 2,
+                "block_size": 256,
+                "max_context_len": 4,
+                "num_q_heads": 4,
+                "num_kv_heads": 1,
+                "head_dim": 8,
                 "passed": True,
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
@@ -1841,6 +1856,11 @@ def test_batch_c_sweep_primitive_precondition_requires_seed(tmp_path: Path) -> N
     primitive_payload = {
         "schema": 1,
         "rows": 2,
+        "block_size": 256,
+        "max_context_len": 4,
+        "num_q_heads": 4,
+        "num_kv_heads": 1,
+        "head_dim": 8,
         "passed": True,
         "append_key_mismatch": 0,
         "append_value_mismatch": 0,
@@ -1867,6 +1887,53 @@ def test_batch_c_sweep_primitive_precondition_requires_seed(tmp_path: Path) -> N
     }
 
 
+def test_batch_c_sweep_primitive_precondition_requires_fixture_shape(tmp_path: Path) -> None:
+    primitive_path = tmp_path / "primitive-c2.json"
+    command = c_sweep.SweepCommand(
+        category="native_diagnostic",
+        batch_size=2,
+        artifact_path=tmp_path / "native-diagnostic-c2.json",
+        argv=(
+            "python3",
+            "scripts/qwen35_batch_retained_bench.py",
+            "--primitive-correctness-json",
+            str(primitive_path),
+        ),
+    )
+    primitive_payload = {
+        "schema": 1,
+        "seed": 1234,
+        "rows": 2,
+        "max_context_len": 4,
+        "num_q_heads": 4,
+        "num_kv_heads": 1,
+        "head_dim": 8,
+        "passed": True,
+        "append_key_mismatch": 0,
+        "append_value_mismatch": 0,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "attn_batch_vs_numpy_max_abs": 5.0e-8,
+    }
+    primitive_path.write_text(json.dumps(primitive_payload))
+    missing_shape = c_sweep._primitive_correctness_precondition(command)
+    primitive_payload["block_size"] = 128
+    primitive_path.write_text(json.dumps(primitive_payload))
+    wrong_shape = c_sweep._primitive_correctness_precondition(command)
+
+    assert missing_shape == {
+        "kind": "primitive_correctness",
+        "artifact_path": str(primitive_path),
+        "passed": False,
+        "reason": "block_size is missing or not 256",
+    }
+    assert wrong_shape == {
+        "kind": "primitive_correctness",
+        "artifact_path": str(primitive_path),
+        "passed": False,
+        "reason": "block_size is missing or not 256",
+    }
+
+
 def test_batch_c_sweep_primitive_precondition_requires_numpy_oracle(tmp_path: Path) -> None:
     primitive_path = tmp_path / "primitive-c2.json"
     command = c_sweep.SweepCommand(
@@ -1884,6 +1951,11 @@ def test_batch_c_sweep_primitive_precondition_requires_numpy_oracle(tmp_path: Pa
         "schema": 1,
         "seed": 1234,
         "rows": 2,
+        "block_size": 256,
+        "max_context_len": 4,
+        "num_q_heads": 4,
+        "num_kv_heads": 1,
+        "head_dim": 8,
         "passed": True,
         "append_key_mismatch": 0,
         "append_value_mismatch": 0,
@@ -1921,6 +1993,11 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_shape_missing(
                 "schema": 1,
                 "seed": 1234,
                 "rows": 2,
+                "block_size": 256,
+                "max_context_len": 4,
+                "num_q_heads": 4,
+                "num_kv_heads": 1,
+                "head_dim": 8,
                 "passed": True,
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
@@ -1999,6 +2076,11 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_reason_is_non_null(
                 "schema": 1,
                 "seed": 1234,
                 "rows": 2,
+                "block_size": 256,
+                "max_context_len": 4,
+                "num_q_heads": 4,
+                "num_kv_heads": 1,
+                "head_dim": 8,
                 "passed": True,
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
@@ -2085,6 +2167,11 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_rate_arithmetic_mis
                 "schema": 1,
                 "seed": 1234,
                 "rows": 2,
+                "block_size": 256,
+                "max_context_len": 4,
+                "num_q_heads": 4,
+                "num_kv_heads": 1,
+                "head_dim": 8,
                 "passed": True,
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
@@ -2167,6 +2254,11 @@ def test_batch_c_sweep_skips_retained_when_profiler_summary_missing(tmp_path: Pa
                 "schema": 1,
                 "seed": 1234,
                 "rows": 2,
+                "block_size": 256,
+                "max_context_len": 4,
+                "num_q_heads": 4,
+                "num_kv_heads": 1,
+                "head_dim": 8,
                 "passed": True,
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
@@ -2248,6 +2340,11 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
                 "schema": 1,
                 "seed": 1234,
                 "rows": 2,
+                "block_size": 256,
+                "max_context_len": 4,
+                "num_q_heads": 4,
+                "num_kv_heads": 1,
+                "head_dim": 8,
                 "passed": True,
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
@@ -2976,6 +3073,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_primitive_precondition_seed["commands"][-1]["preconditions"][0]["primitive_seed"] = 4321
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_seed must be 1234 when primitive passed"):
         c_sweep.validate_sweep_summary(tampered_primitive_precondition_seed)
+    tampered_primitive_precondition_shape = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_shape["commands"][-1]["preconditions"][0]["primitive_head_dim"] = 16
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_head_dim must match fixture shape when primitive passed"):
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_shape)
     tampered_primitive_precondition_rows = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_rows["commands"][-1]["preconditions"][0]["primitive_rows"] = 3
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_rows must match retained batch_size"):
@@ -3000,6 +3101,11 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         "reason": None,
         "primitive_schema": 1,
         "primitive_seed": 1234,
+        "primitive_block_size": 256,
+        "primitive_max_context_len": 4,
+        "primitive_num_q_heads": 4,
+        "primitive_num_kv_heads": 1,
+        "primitive_head_dim": 8,
         "primitive_rows": 2,
         "append_key_mismatch": 0,
         "append_value_mismatch": 0,
@@ -3196,6 +3302,11 @@ def test_batch_c_sweep_fails_retained_row_on_profiler_synthesis_mismatch(tmp_pat
                 "schema": 1,
                 "seed": 1234,
                 "rows": 2,
+                "block_size": 256,
+                "max_context_len": 4,
+                "num_q_heads": 4,
+                "num_kv_heads": 1,
+                "head_dim": 8,
                 "passed": True,
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,

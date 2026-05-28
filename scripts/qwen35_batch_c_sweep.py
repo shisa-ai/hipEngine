@@ -54,6 +54,13 @@ _PROFILER_TRACE_END_COLUMNS = ("End_Timestamp", "EndTimestamp", "EndNs", "End")
 _PROFILER_TRACE_DURATION_COLUMNS = ("DurationNs", "Duration_NS", "Duration_Ns", "Duration")
 _REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA = 1
 _REQUIRED_PRIMITIVE_CORRECTNESS_SEED = 1234
+_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS = {
+    "block_size": 256,
+    "max_context_len": 4,
+    "num_q_heads": 4,
+    "num_kv_heads": 1,
+    "head_dim": 8,
+}
 _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT = 2e-5
 _PROFILER_SYNTHESIZED_FIELDS = (
     "trace_kernel_names",
@@ -330,6 +337,10 @@ def _primitive_correctness_precondition(command: SweepCommand) -> dict[str, Any]
             or primitive_seed != _REQUIRED_PRIMITIVE_CORRECTNESS_SEED
         ):
             reasons.append("seed is missing or not 1234")
+        for field, expected_value in _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS.items():
+            value = payload.get(field)
+            if not isinstance(value, int) or isinstance(value, bool) or value != expected_value:
+                reasons.append(f"{field} is missing or not {expected_value}")
         if payload.get("rows") != command.batch_size:
             reasons.append(f"rows={payload.get('rows')!r} does not match batch_size={command.batch_size}")
         if payload.get("passed") is not True:
@@ -355,6 +366,10 @@ def _primitive_correctness_precondition(command: SweepCommand) -> dict[str, Any]
             {
                 "primitive_schema": int(payload["schema"]),
                 "primitive_seed": int(payload["seed"]),
+                **{
+                    f"primitive_{field}": int(payload[field])
+                    for field in _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS
+                },
                 "primitive_rows": int(payload["rows"]),
                 "append_key_mismatch": int(payload["append_key_mismatch"]),
                 "append_value_mismatch": int(payload["append_value_mismatch"]),
@@ -1728,6 +1743,14 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         break
                     if primitive_precondition.get("primitive_seed") != _REQUIRED_PRIMITIVE_CORRECTNESS_SEED:
                         errors.append("commands[].preconditions[].primitive_seed must be 1234 when primitive passed")
+                        break
+                    primitive_shape_error = False
+                    for field, expected_value in _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS.items():
+                        if primitive_precondition.get(f"primitive_{field}") != expected_value:
+                            errors.append(f"commands[].preconditions[].primitive_{field} must match fixture shape when primitive passed")
+                            primitive_shape_error = True
+                            break
+                    if primitive_shape_error:
                         break
                     if primitive_precondition.get("primitive_rows") != entry.get("batch_size"):
                         errors.append("commands[].preconditions[].primitive_rows must match retained batch_size")
