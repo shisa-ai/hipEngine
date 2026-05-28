@@ -7703,6 +7703,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             },
             "c1_baseline": {
                 "artifact_path": "benchmarks/results/c1.json",
+                "reference_artifact_path": "benchmarks/results/c1.json",
                 "status": "loaded",
                 "reason": None,
                 "workload_concurrency": 1,
@@ -7713,6 +7714,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             },
             "serial_bridge_baseline": {
                 "artifact_path": "benchmarks/results/serial-c2.json",
+                "reference_artifact_path": "benchmarks/results/serial-c2.json",
                 "status": "blocked",
                 "reason": None,
                 "workload_concurrency": 2,
@@ -8807,8 +8809,19 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
 
     tmp_c1_artifact = json.loads(json.dumps(accepted))
     tmp_c1_artifact["scaling"]["c1_baseline"]["artifact_path"] = "/tmp/c1.json"
+    tmp_c1_artifact["scaling"]["c1_baseline"]["reference_artifact_path"] = "/tmp/c1.json"
     with pytest.raises(ValueError, match="scaling.c1_baseline.artifact_path must be under benchmarks/results"):
         validate_cn_diagnostic_artifact_payload(tmp_c1_artifact)
+
+    missing_c1_reference_artifact = json.loads(json.dumps(accepted))
+    missing_c1_reference_artifact["scaling"]["c1_baseline"].pop("reference_artifact_path")
+    with pytest.raises(ValueError, match="scaling.c1_baseline.reference_artifact_path must be a non-empty string"):
+        validate_cn_diagnostic_artifact_payload(missing_c1_reference_artifact)
+
+    mismatched_serial_reference_artifact = json.loads(json.dumps(accepted))
+    mismatched_serial_reference_artifact["scaling"]["serial_bridge_baseline"]["reference_artifact_path"] = "benchmarks/results/other-serial-c2.json"
+    with pytest.raises(ValueError, match="scaling.serial_bridge_baseline.reference_artifact_path must match artifact_path"):
+        validate_cn_diagnostic_artifact_payload(mismatched_serial_reference_artifact)
 
     failed_c1_status = json.loads(json.dumps(accepted))
     failed_c1_status["scaling"]["c1_baseline"]["status"] = "missing"

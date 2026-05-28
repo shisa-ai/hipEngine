@@ -2337,6 +2337,11 @@ def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[st
             errors.append(f"scaling.{baseline_name}.artifact_path must be a non-empty string for accepted artifacts")
         else:
             _validate_benchmark_results_artifact_path(f"scaling.{baseline_name}.artifact_path", baseline_artifact_path, errors)
+        baseline_reference_artifact_path = baseline.get("reference_artifact_path")
+        if not isinstance(baseline_reference_artifact_path, str) or not baseline_reference_artifact_path:
+            errors.append(f"scaling.{baseline_name}.reference_artifact_path must be a non-empty string for accepted artifacts")
+        elif isinstance(baseline_artifact_path, str) and baseline_artifact_path and baseline_reference_artifact_path != baseline_artifact_path:
+            errors.append(f"scaling.{baseline_name}.reference_artifact_path must match artifact_path for accepted artifacts")
         status = baseline.get("status")
         if not isinstance(status, str) or not status:
             errors.append(f"scaling.{baseline_name}.status must be a non-empty string for accepted artifacts")
