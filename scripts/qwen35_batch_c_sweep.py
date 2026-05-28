@@ -1310,9 +1310,12 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         errors.append("timestamp must be a non-empty string")
     else:
         try:
-            datetime.fromisoformat(timestamp)
+            parsed_timestamp = datetime.fromisoformat(timestamp)
         except ValueError:
             errors.append("timestamp must be ISO-8601 parseable")
+        else:
+            if parsed_timestamp.tzinfo is None or parsed_timestamp.utcoffset() is None:
+                errors.append("timestamp must include timezone")
     if not isinstance(summary.get("dry_run"), bool):
         errors.append("dry_run must be a bool")
     batch_sizes = summary.get("batch_sizes")
