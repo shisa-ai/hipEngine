@@ -1829,6 +1829,14 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     assert persisted["retained_precondition_counts"] == {}
     assert persisted["skipped_preconditions"] == []
     c_sweep.validate_sweep_summary(persisted)
+    tampered_schema_bool = json.loads(json.dumps(persisted))
+    tampered_schema_bool["schema"] = True
+    with pytest.raises(ValueError, match="schema must be typed int 1"):
+        c_sweep.validate_sweep_summary(tampered_schema_bool)
+    tampered_schema_string = json.loads(json.dumps(persisted))
+    tampered_schema_string["schema"] = "1"
+    with pytest.raises(ValueError, match="schema must be typed int 1"):
+        c_sweep.validate_sweep_summary(tampered_schema_string)
     tampered_dry_run_type = json.loads(json.dumps(persisted))
     tampered_dry_run_type["dry_run"] = "true"
     with pytest.raises(ValueError, match="dry_run must be a bool"):

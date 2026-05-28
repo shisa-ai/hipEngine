@@ -1513,8 +1513,9 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
 
 def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     errors: list[str] = []
-    if summary.get("schema") != 1:
-        errors.append("schema must be 1")
+    schema = summary.get("schema")
+    if not isinstance(schema, int) or isinstance(schema, bool) or schema != 1:
+        errors.append("schema must be typed int 1")
     timestamp = summary.get("timestamp")
     if not isinstance(timestamp, str) or not timestamp:
         errors.append("timestamp must be a non-empty string")
