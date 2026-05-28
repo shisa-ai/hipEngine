@@ -2022,6 +2022,17 @@ def test_batch_c_sweep_validate_summary_rejects_unsafe_input_path(tmp_path: Path
         captured = capsys.readouterr()
         assert "--validate-summary-json must not be a symlink" in captured.err
 
+        parent_target = tmp_path / "summary-parent-real"
+        parent_link = tmp_path / "summary-parent-link"
+        parent_target.mkdir()
+        try:
+            parent_link.symlink_to(parent_target, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            return
+        assert c_sweep.main(["--validate-summary-json", str(parent_link / "summary.json")]) == 1
+        captured = capsys.readouterr()
+        assert "--validate-summary-json parent directories must not be symlinks" in captured.err
+
 
 def test_batch_c_sweep_main_reports_invalid_run_preflight(tmp_path: Path, monkeypatch, capsys) -> None:
     output_dir = tmp_path / "artifacts"
