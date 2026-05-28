@@ -5952,12 +5952,21 @@ def test_qwen35_retained_projection_dispatch_blockers_require_caware_candidate()
     mismatched_candidate["selection"]["variant"] = "mmq_caware"
     mismatched_candidate["evidence"]["per_request_vs_row_gemv"] = 1.01
     mismatched_candidate["max_rows"] = 1
+    bad_evidence_dispatch = json.loads(json.dumps(valid_dispatch))
+    bad_evidence = bad_evidence_dispatch["projection_dispatch"]["evidence"]
+    bad_evidence["artifact_path"] = "/tmp/projection-wmma-c2.json"
+    bad_evidence["aggregate_vs_row_gemv"] = 1.0
+    bad_evidence["per_request_vs_row_gemv"] = 0.95
 
     assert retained_bench._projection_dispatch_blockers(
         valid_dispatch,
         concurrency=2,
         candidates=[valid_candidate],
     ) == []
+    bad_evidence_blockers = retained_bench._projection_dispatch_blockers(bad_evidence_dispatch, concurrency=2, candidates=[valid_candidate])
+    assert "execution.batch_execution.projection_dispatch.evidence.artifact_path must be under benchmarks/results" in bad_evidence_blockers
+    assert "execution.batch_execution.projection_dispatch.evidence.aggregate_vs_row_gemv must be > 1.0" in bad_evidence_blockers
+    assert "execution.batch_execution.projection_dispatch.evidence.per_request_vs_row_gemv must be > 1.0" in bad_evidence_blockers
     mismatched_blockers = retained_bench._projection_dispatch_blockers(valid_dispatch, concurrency=2, candidates=[mismatched_candidate])
     assert "projection_dispatch_candidates selected_candidate row bounds must include projection_dispatch.rows" in mismatched_blockers
     assert "execution.batch_execution.projection_dispatch.selection must match selected projection_dispatch_candidates entry" in mismatched_blockers

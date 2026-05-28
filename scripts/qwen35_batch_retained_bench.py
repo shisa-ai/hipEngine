@@ -522,6 +522,13 @@ def _is_finite_positive_number(value: Any) -> bool:
     return _is_finite_nonnegative_number(value) and float(value) > 0.0
 
 
+def _is_retained_artifact_path(value: Any) -> bool:
+    if not isinstance(value, str) or not value:
+        return False
+    path = Path(value)
+    return not path.is_absolute() and len(path.parts) >= 3 and path.parts[:2] == ("benchmarks", "results") and ".." not in path.parts
+
+
 def _synthesized_profiler_total_kernel_duration(profiler: Mapping[str, Any]) -> float | None:
     kernel_durations = profiler.get("kernel_durations_ns")
     if not isinstance(kernel_durations, Mapping):
@@ -972,8 +979,15 @@ def _projection_dispatch_blockers(
     evidence = projection_dispatch.get("evidence")
     if not isinstance(evidence, Mapping):
         blockers.append("execution.batch_execution.projection_dispatch.evidence is missing")
-    elif evidence.get("accepted") is not True:
-        blockers.append("execution.batch_execution.projection_dispatch.evidence.accepted must be true")
+    else:
+        if evidence.get("accepted") is not True:
+            blockers.append("execution.batch_execution.projection_dispatch.evidence.accepted must be true")
+        if not _is_retained_artifact_path(evidence.get("artifact_path")):
+            blockers.append("execution.batch_execution.projection_dispatch.evidence.artifact_path must be under benchmarks/results")
+        for field in ("aggregate_vs_row_gemv", "per_request_vs_row_gemv"):
+            value = evidence.get(field)
+            if not _is_finite_positive_number(value) or float(value) <= 1.0:
+                blockers.append(f"execution.batch_execution.projection_dispatch.evidence.{field} must be > 1.0")
     selected_candidate_entry: Mapping[str, Any] | None = None
     if not isinstance(candidates, list) or not candidates:
         blockers.append("projection_dispatch_candidates must include selected projection candidate")

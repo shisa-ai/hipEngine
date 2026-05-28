@@ -736,7 +736,7 @@ roll-up/status view.
       to name an evidence-backed non-row-GEMV c-aware path whose selected
       candidate is present in `projection_dispatch_candidates` and profiler
       kernel names; retained native batch metadata records a `projection_dispatch` row-GEMV fallback
-      with an explicit blocker when no c-aware projection candidate is available; and retained bench now blocks promotion before schema validation unless projection dispatch names an evidence-backed non-row-GEMV c-aware candidate present in `projection_dispatch_candidates` with matching row bounds, selection, and evidence. The
+      with an explicit blocker when no c-aware projection candidate is available; and retained bench now blocks promotion before schema validation unless projection dispatch names an evidence-backed non-row-GEMV c-aware candidate present in `projection_dispatch_candidates` with matching row bounds, selection, retained artifact path, >1 aggregate/per-request ratios, and evidence. The
       item remains open until runtime projection call sites are wired to this
       policy and retained benchmark artifacts provide the required ratios.
 - [x] **C3.5 GGUF c>N template.** Port the Qwen/PARO equality template to
