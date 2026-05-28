@@ -107,6 +107,18 @@ def test_qwen35_validation_summary_paths_report_active_option(
         assert validate_cn_diagnostic_artifact_main([str(symlink_summary), "--validation-summary"]) == 1
         assert "--validation-summary path must be under the current repo benchmarks/results" in capsys.readouterr().err
 
+        internal_source_artifact = results_dir / "linked.json"
+        internal_source_artifact.write_text("{}", encoding="utf-8")
+        internal_symlink_target = results_dir / "linked-target.json"
+        internal_symlink_target.write_text("{}", encoding="utf-8")
+        internal_symlink_summary = results_dir / "linked-schema-check.json"
+        os.symlink(internal_symlink_target, internal_symlink_summary)
+        assert validate_cn_diagnostic_artifact_main([str(internal_source_artifact), "--summary-json", str(internal_symlink_summary)]) == 1
+        assert "--summary-json path must be a regular .json file, not a symlink" in capsys.readouterr().err
+        assert internal_symlink_target.read_text(encoding="utf-8") == "{}"
+        assert validate_cn_diagnostic_artifact_main([str(internal_symlink_summary), "--validation-summary"]) == 1
+        assert "--validation-summary path must be a regular .json file, not a symlink" in capsys.readouterr().err
+
     wrong_named_write_summary = results_dir / "copy-schema-check.json"
     assert validate_cn_diagnostic_artifact_main([str(source_artifact), "--summary-json", str(wrong_named_write_summary)]) == 1
     assert "--summary-json path must be benchmarks/results/source-schema-check.json" in capsys.readouterr().err
