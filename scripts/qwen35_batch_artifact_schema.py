@@ -768,8 +768,8 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
     if isinstance(prefix_sharing, Mapping):
         if not isinstance(prefix_sharing.get("enabled"), bool):
             errors.append("memory.prefix_sharing.enabled must be a bool for accepted artifacts")
-        if not _is_number(prefix_sharing.get("savings_bytes")):
-            errors.append("memory.prefix_sharing.savings_bytes must be numeric for accepted artifacts")
+        if not _is_nonnegative_number(prefix_sharing.get("savings_bytes")):
+            errors.append("memory.prefix_sharing.savings_bytes must be finite non-negative numeric for accepted artifacts")
 
 
 def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[str]) -> None:

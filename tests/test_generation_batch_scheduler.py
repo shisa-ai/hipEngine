@@ -6778,6 +6778,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="pool_counters.free_pages must be finite non-negative numeric"):
         validate_cn_diagnostic_artifact_payload(negative_pool_counter)
 
+    nonfinite_prefix_savings = json.loads(json.dumps(accepted))
+    nonfinite_prefix_savings["memory"]["prefix_sharing"]["savings_bytes"] = float("inf")
+    with pytest.raises(ValueError, match="prefix_sharing.savings_bytes must be finite non-negative numeric"):
+        validate_cn_diagnostic_artifact_payload(nonfinite_prefix_savings)
+
+    negative_prefix_savings = json.loads(json.dumps(accepted))
+    negative_prefix_savings["memory"]["prefix_sharing"]["savings_bytes"] = -1
+    with pytest.raises(ValueError, match="prefix_sharing.savings_bytes must be finite non-negative numeric"):
+        validate_cn_diagnostic_artifact_payload(negative_prefix_savings)
+
     missing_scaling = dict(accepted)
     missing_scaling.pop("scaling")
     with pytest.raises(ValueError, match="scaling"):
