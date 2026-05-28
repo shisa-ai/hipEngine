@@ -2618,6 +2618,11 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_profiler_precondition_kernel_names["commands"][-1]["preconditions"][-1]["profiler_trace_kernel_names"] = ["serial_lm_head"]
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_kernel_names must include native batch kernels only when passed"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_kernel_names)
+    tampered_profiler_precondition_kernel_name_duplicate = json.loads(json.dumps(persisted))
+    trace_precondition = tampered_profiler_precondition_kernel_name_duplicate["commands"][-1]["preconditions"][-1]
+    trace_precondition["profiler_trace_kernel_names"].append(trace_precondition["profiler_trace_kernel_names"][0])
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_kernel_names must be unique when passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_kernel_name_duplicate)
     tampered_profiler_precondition_expected_kernels = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_expected_kernels["commands"][-1]["preconditions"][-1]["expected_kernel_names"] = ["serial_lm_head"]
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.expected_kernel_names must include native batch kernels only when profiler passed"):
