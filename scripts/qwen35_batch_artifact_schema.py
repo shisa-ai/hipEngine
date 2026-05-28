@@ -134,8 +134,8 @@ _COMMAND_FIXTURE_RE = re.compile(r"(?:^|\s)--fixture(?:=|\s+)(\S+)(?=\s|$)")
 _COMMAND_PROMPT_LENGTH_RE = re.compile(r"(?:^|\s)--prompt-length(?:=|\s+)(\d+)(?=\s|$)")
 _COMMAND_JSON_RE = re.compile(r"(?:^|\s)--json(?:=|\s+)(\S+)(?=\s|$)")
 _COMMAND_PROFILER_JSON_RE = re.compile(r"(?:^|\s)--profiler-json(?:=|\s+)(\S+)(?=\s|$)")
-_ROLLUP_LAST_UPDATED_RE = re.compile(r"(?im)^\s*Last updated\s*:?\s*\d{4}-\d{2}-\d{2}\b")
-_ROLLUP_DATED_CHANGELOG_RE = re.compile(r"(?m)^\s*(?:[-*]\s*)?(?:##\s*)?\d{4}-\d{2}-\d{2}\b")
+_ROLLUP_LAST_UPDATED_RE = re.compile(r"(?im)^\s*Last updated\s*:?\s*(\d{4}-\d{2}-\d{2})\b")
+_ROLLUP_DATED_CHANGELOG_RE = re.compile(r"(?m)^\s*(?:[-*]\s*)?(?:##\s*)?(\d{4}-\d{2}-\d{2})\b")
 _ROLLUP_PERCENT_DELTA_RE = re.compile(r"[+-]?\d+(?:\.\d+)?\s*%")
 _ROLLUP_OLD_NEW_RE = re.compile(r"[+-]?\d+(?:\.\d+)?(?:\s*[A-Za-z/_]+)?\s*(?:→|->)\s*[+-]?\d+(?:\.\d+)?")
 _COMMAND_C1_BASELINE_JSON_RE = re.compile(r"(?:^|\s)--c1-baseline-json(?:=|\s+)(\S+)(?=\s|$)")
@@ -627,7 +627,7 @@ def validate_cn_diagnostic_rollup_evidence(payload: Mapping[str, Any]) -> None:
         artifact_path=artifact_path,
         errors=errors,
     )
-    _validate_rollup_readme_metadata(readme_text, errors)
+    readme_last_updated_date = _validate_rollup_readme_metadata(readme_text, errors)
     changelog_text = _validate_rollup_file_mentions_artifact(
         "benchmark_rollup.changelog_path",
         rollup.get("changelog_path"),
@@ -635,7 +635,7 @@ def validate_cn_diagnostic_rollup_evidence(payload: Mapping[str, Any]) -> None:
         artifact_path=artifact_path,
         errors=errors,
     )
-    _validate_rollup_changelog_metadata(changelog_text, artifact_path, errors)
+    _validate_rollup_changelog_metadata(changelog_text, artifact_path, readme_last_updated_date, errors)
 
     if errors:
         raise ValueError("invalid c>N benchmark rollup evidence: " + "; ".join(errors))
@@ -667,14 +667,22 @@ def _validate_rollup_file_mentions_artifact(
     return text
 
 
-def _validate_rollup_readme_metadata(text: str | None, errors: list[str]) -> None:
+def _validate_rollup_readme_metadata(text: str | None, errors: list[str]) -> str | None:
     if text is None:
-        return
-    if _ROLLUP_LAST_UPDATED_RE.search(text) is None:
+        return None
+    match = _ROLLUP_LAST_UPDATED_RE.search(text)
+    if match is None:
         errors.append("benchmark_rollup.readme_path must include Last updated YYYY-MM-DD metadata for rollup evidence")
+        return None
+    return match.group(1)
 
 
-def _validate_rollup_changelog_metadata(text: str | None, artifact_path: Any, errors: list[str]) -> None:
+def _validate_rollup_changelog_metadata(
+    text: str | None,
+    artifact_path: Any,
+    readme_last_updated_date: str | None,
+    errors: list[str],
+) -> None:
     if text is None:
         return
     if _ROLLUP_DATED_CHANGELOG_RE.search(text) is None:
@@ -685,10 +693,14 @@ def _validate_rollup_changelog_metadata(text: str | None, artifact_path: Any, er
     artifact_lines = [line for line in text.replace("\\", "/").splitlines() if normalized_artifact_path in line]
     if not artifact_lines:
         return
-    dated_artifact_lines = [line for line in artifact_lines if _ROLLUP_DATED_CHANGELOG_RE.search(line)]
+    dated_artifact_entries = [(_ROLLUP_DATED_CHANGELOG_RE.search(line), line) for line in artifact_lines]
+    dated_artifact_lines = [line for match, line in dated_artifact_entries if match is not None]
     if not dated_artifact_lines:
         errors.append("benchmark_rollup.changelog_path artifact entry must include YYYY-MM-DD date for rollup evidence")
         return
+    dated_artifact_dates = [match.group(1) for match, _line in dated_artifact_entries if match is not None]
+    if readme_last_updated_date is not None and readme_last_updated_date not in dated_artifact_dates:
+        errors.append("benchmark_rollup.changelog_path artifact entry date must match benchmark_rollup.readme_path Last updated date for rollup evidence")
     if not any(_ROLLUP_OLD_NEW_RE.search(line) for line in dated_artifact_lines):
         errors.append("benchmark_rollup.changelog_path artifact entry must include numeric old→new metric marker for rollup evidence")
     if not any(_ROLLUP_PERCENT_DELTA_RE.search(line) for line in dated_artifact_lines):

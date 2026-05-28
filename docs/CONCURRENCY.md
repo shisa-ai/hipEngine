@@ -1029,7 +1029,7 @@ roll-up/status view.
       benchmarks/results/<artifact>-rollup-check.json`) verifies live
       `benchmarks/README.md` and `benchmarks/CHANGELOG.md` both mention the
       retained artifact path, the README carries `Last updated: YYYY-MM-DD`,
-      and the changelog carries a same-line dated `YYYY-MM-DD` artifact entry with numeric old→new metric and percent-delta evidence before promotion, writes self-validating
+      and the changelog carries a same-line dated `YYYY-MM-DD` artifact entry whose date matches README `Last updated` and includes numeric old→new metric plus percent-delta evidence before promotion, writes self-validating
       pass/fail summary evidence only under `benchmarks/results/`, and can
       recheck those summaries with `--validation-summary`,
       exact environment capture command entries for `rocminfo | grep -E 'Name:|gfx' | head -4`,
