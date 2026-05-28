@@ -52,6 +52,7 @@ _PROFILER_TRACE_KERNEL_NAME_COLUMNS = ("Kernel_Name", "KernelName", "Name")
 _PROFILER_TRACE_START_COLUMNS = ("Start_Timestamp", "StartTimestamp", "StartNs", "Start")
 _PROFILER_TRACE_END_COLUMNS = ("End_Timestamp", "EndTimestamp", "EndNs", "End")
 _PROFILER_TRACE_DURATION_COLUMNS = ("DurationNs", "Duration_NS", "Duration_Ns", "Duration")
+_REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA = 1
 _PROFILER_SYNTHESIZED_FIELDS = (
     "trace_kernel_names",
     "kernel_durations_ns",
@@ -313,6 +314,13 @@ def _primitive_correctness_precondition(command: SweepCommand) -> dict[str, Any]
     if not isinstance(payload, dict):
         reasons.append("primitive correctness artifact root is not an object")
     else:
+        primitive_schema = payload.get("schema")
+        if (
+            not isinstance(primitive_schema, int)
+            or isinstance(primitive_schema, bool)
+            or primitive_schema != _REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA
+        ):
+            reasons.append("schema is missing or not 1")
         if payload.get("rows") != command.batch_size:
             reasons.append(f"rows={payload.get('rows')!r} does not match batch_size={command.batch_size}")
         if payload.get("passed") is not True:
@@ -333,6 +341,7 @@ def _primitive_correctness_precondition(command: SweepCommand) -> dict[str, Any]
     if not reasons and isinstance(payload, dict):
         result.update(
             {
+                "primitive_schema": int(payload["schema"]),
                 "primitive_rows": int(payload["rows"]),
                 "append_key_mismatch": int(payload["append_key_mismatch"]),
                 "append_value_mismatch": int(payload["append_value_mismatch"]),
@@ -1700,6 +1709,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     break
                 primitive_precondition = preconditions[0]
                 if primitive_precondition.get("passed") is True:
+                    if primitive_precondition.get("primitive_schema") != _REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA:
+                        errors.append("commands[].preconditions[].primitive_schema must be 1 when primitive passed")
+                        break
                     if primitive_precondition.get("primitive_rows") != entry.get("batch_size"):
                         errors.append("commands[].preconditions[].primitive_rows must match retained batch_size")
                         break

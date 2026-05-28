@@ -35666,3 +35666,29 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness emitted schema=1 and passed=true
 ```
+
+## 2026-05-28 — CONCURRENCY c-sweep primitive schema precondition
+
+Materially advanced P1/P5 retained-row gating without closing any queue item or adding a retained c>N performance claim:
+
+- `scripts/qwen35_batch_c_sweep.py` now rejects retained native rows whose primitive correctness precondition artifact is missing `schema=1` and carries `primitive_schema` in passed preconditions.
+- `validate_sweep_summary()` now rejects passed primitive preconditions whose `primitive_schema` is not `1`, preventing stale primitive JSONs from being treated as usable retained references.
+- Added direct precondition coverage for schema-less primitive artifacts and persisted-summary tamper coverage for mismatched `primitive_schema`.
+- Updated `docs/CONCURRENCY.md` P1 notes to record primitive-correctness schema/precondition-field validation.
+- No retained c>N performance claim was added; C2.4/C2.5 generated-token equality artifacts are still missing.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -k 'primitive_precondition_requires_schema or primitive_correctness_reference_requires_same_rows or batch_c_sweep or retained_profiler_reference or artifact_schema_enforces_accepted_row_gates' -q
+# 46 passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness emitted schema=1 and passed=true
+```

@@ -1634,6 +1634,7 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
         precondition["reason"] = None
     tampered_skipped_failed_precondition["commands"][-1]["preconditions"][0].update(
         {
+            "primitive_schema": 1,
             "primitive_rows": 2,
             "append_key_mismatch": 0,
             "append_value_mismatch": 0,
@@ -1781,6 +1782,41 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_missing(
             "reason": "scaling reference artifact does not exist",
         }
     ]
+
+
+def test_batch_c_sweep_primitive_precondition_requires_schema(tmp_path: Path) -> None:
+    primitive_path = tmp_path / "primitive-c2.json"
+    primitive_path.write_text(
+        json.dumps(
+            {
+                "rows": 2,
+                "passed": True,
+                "append_key_mismatch": 0,
+                "append_value_mismatch": 0,
+                "attn_batch_vs_c1_max_abs": 0.0,
+            }
+        )
+    )
+    command = c_sweep.SweepCommand(
+        category="native_diagnostic",
+        batch_size=2,
+        artifact_path=tmp_path / "native-diagnostic-c2.json",
+        argv=(
+            "python3",
+            "scripts/qwen35_batch_retained_bench.py",
+            "--primitive-correctness-json",
+            str(primitive_path),
+        ),
+    )
+
+    precondition = c_sweep._primitive_correctness_precondition(command)
+
+    assert precondition == {
+        "kind": "primitive_correctness",
+        "artifact_path": str(primitive_path),
+        "passed": False,
+        "reason": "schema is missing or not 1",
+    }
 
 
 def test_batch_c_sweep_skips_retained_when_scaling_reference_shape_missing(
@@ -2832,6 +2868,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_profiler_precondition_cpu_categories["commands"][-1]["preconditions"][-1]["cpu_side_bottlenecks_seconds"]["decode"] = -1.0
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.cpu-side bottlenecks must include required non-negative categories when profiler passed"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_cpu_categories)
+    tampered_primitive_precondition_schema = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_schema["commands"][-1]["preconditions"][0]["primitive_schema"] = 2
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_schema must be 1 when primitive passed"):
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_schema)
     tampered_primitive_precondition_rows = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_rows["commands"][-1]["preconditions"][0]["primitive_rows"] = 3
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_rows must match retained batch_size"):
@@ -2850,6 +2890,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         "artifact_path": str(output_dir / "primitive-c2.json"),
         "passed": True,
         "reason": None,
+        "primitive_schema": 1,
         "primitive_rows": 2,
         "append_key_mismatch": 0,
         "append_value_mismatch": 0,
