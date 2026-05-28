@@ -5966,6 +5966,26 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
         wrong_profiled_segment,
         retained_artifact_path="benchmarks/results/native-c2.json",
     )
+    post_separator_shadowed_kernel_trace = {
+        **valid,
+        "command": valid["command"]
+        .replace("rocprofv3 --kernel-trace --output-format", "rocprofv3 --output-format")
+        .replace("-- python3 scripts/qwen35_batch_retained_bench.py", "-- python3 scripts/qwen35_batch_retained_bench.py --kernel-trace"),
+    }
+    assert "profiler command must include --kernel-trace" in retained_bench._profiler_provenance_blockers(
+        post_separator_shadowed_kernel_trace,
+        retained_artifact_path="benchmarks/results/native-c2.json",
+    )
+    post_separator_shadowed_trace_dir = {
+        **valid,
+        "command": valid["command"]
+        .replace(" -d /tmp/hipengine-profile-c2", "")
+        .replace("-- python3 scripts/qwen35_batch_retained_bench.py", "-- python3 scripts/qwen35_batch_retained_bench.py -d /tmp/hipengine-profile-c2"),
+    }
+    assert "profiler command -d must match profiler.trace_dir" in retained_bench._profiler_provenance_blockers(
+        post_separator_shadowed_trace_dir,
+        retained_artifact_path="benchmarks/results/native-c2.json",
+    )
     mismatched_profiler_json = {
         **valid,
         "command": valid["command"].replace("benchmarks/results/profiler-c2.json", "benchmarks/results/other-profiler.json"),

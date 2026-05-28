@@ -1109,6 +1109,13 @@ def _profiled_command_segment(command: str) -> list[str] | None:
     return parts[parts.index("--") + 1 :]
 
 
+def _rocprof_command_prefix(command: str) -> list[str]:
+    parts = _split_command_parts(command)
+    if "--" not in parts:
+        return parts
+    return parts[: parts.index("--")]
+
+
 def _join_command_parts(parts: Sequence[str]) -> str:
     return " ".join(shlex.quote(part) for part in parts)
 
@@ -1126,9 +1133,11 @@ def _profiler_command_provenance_blockers(
     expected_kv_policy: Mapping[str, str] | None,
 ) -> list[str]:
     blockers: list[str] = []
-    if "rocprofv3" not in command:
+    rocprof_prefix = _rocprof_command_prefix(command)
+    rocprof_prefix_command = _join_command_parts(rocprof_prefix)
+    if not any(Path(part).name == "rocprofv3" for part in rocprof_prefix):
         blockers.append("profiler command must include rocprofv3")
-    if "--kernel-trace" not in command:
+    if "--kernel-trace" not in rocprof_prefix:
         blockers.append("profiler command must include --kernel-trace")
     if "scripts/qwen35_batch_retained_bench.py" not in command:
         blockers.append("profiler command must target scripts/qwen35_batch_retained_bench.py")
@@ -1144,9 +1153,9 @@ def _profiler_command_provenance_blockers(
             or profiled_segment[1] != "scripts/qwen35_batch_retained_bench.py"
         ):
             blockers.append("profiler command must launch retained bench after rocprof separator")
-    if _command_arg_value(command, "--output-format") != "csv":
+    if _command_arg_value(rocprof_prefix_command, "--output-format") != "csv":
         blockers.append("profiler command must include --output-format csv")
-    if trace_dir is not None and _command_arg_value(command, "-d") != trace_dir:
+    if trace_dir is not None and _command_arg_value(rocprof_prefix_command, "-d") != trace_dir:
         blockers.append("profiler command -d must match profiler.trace_dir")
     if profiler_artifact_path is not None and _command_arg_value(retained_command, "--profiler-json") != profiler_artifact_path:
         blockers.append("profiler command --profiler-json must match profiler.artifact_path")
