@@ -822,6 +822,10 @@ def _scaling_reference_precondition(
             concurrency = 1
         if expected_concurrency is not None and concurrency != expected_concurrency:
             reasons.append(f"workload.concurrency={concurrency!r} does not match batch_size={expected_concurrency}")
+        if aggregate is not None and per_request is not None and concurrency is not None:
+            expected_aggregate = float(per_request) * int(concurrency)
+            if abs(float(aggregate) - expected_aggregate) > max(1e-9, expected_aggregate * 1e-6):
+                reasons.append("decode aggregate rate does not match per-request rate times concurrency")
         expected_prompt_length = _command_arg_int(command, "--prompt-length")
         raw_prompt_tokens = _reference_label(payload, "prompt_tokens_per_request", "prompt_length")
         if not isinstance(raw_prompt_tokens, int) or isinstance(raw_prompt_tokens, bool):
