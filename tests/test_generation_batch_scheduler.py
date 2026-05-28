@@ -6354,7 +6354,7 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
         "row_execution": "native_compact_caware_layers",
         "native_compact_prefill": True,
         "native_caware_decode": True,
-        "decode_execution": {"full_attention_decode_path": "native_batch", "native_caware_decode": True},
+        "decode_execution": {"full_attention_decode_path": "native_batch", "native_caware_decode": True, "blockers": []},
     }
     fallback = {
         "path": "scheduler_serial_slot_bridge",
@@ -6363,7 +6363,11 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
         "row_execution": "native_linear_batch_with_per_row_full_attention_fallback",
         "native_compact_prefill": False,
         "native_caware_decode": False,
-        "decode_execution": {"full_attention_decode_path": "per_row_splitk_fallback", "native_caware_decode": False},
+        "decode_execution": {
+            "full_attention_decode_path": "per_row_splitk_fallback",
+            "native_caware_decode": False,
+            "blockers": ["full-attention decode used a per-row fallback"],
+        },
     }
 
     assert retained_bench._batch_execution_blockers(valid) == []
@@ -6376,6 +6380,7 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
     assert "execution.batch_execution.native_caware_decode must be true" in blockers
     assert "execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch" in blockers
     assert "execution.batch_execution.decode_execution.native_caware_decode must be true" in blockers
+    assert "execution.batch_execution.decode_execution.blockers must be empty" in blockers
 
 
 def test_qwen35_retained_projection_dispatch_blockers_require_caware_candidate() -> None:
@@ -6687,7 +6692,7 @@ def test_qwen35_retained_payload_blocks_acceptance_without_graph_histogram_evide
             "native_compact_prefill": True,
             "native_caware_decode": True,
             "throughput_claim_eligible": True,
-            "decode_execution": {"full_attention_decode_path": "native_batch", "native_caware_decode": True},
+            "decode_execution": {"full_attention_decode_path": "native_batch", "native_caware_decode": True, "blockers": []},
         },
         "completed": [],
         "request_observability": {},
@@ -6768,7 +6773,7 @@ def test_qwen35_retained_payload_blocks_acceptance_without_memory_evidence(monke
             "native_compact_prefill": True,
             "native_caware_decode": True,
             "throughput_claim_eligible": True,
-            "decode_execution": {"full_attention_decode_path": "native_batch", "native_caware_decode": True},
+            "decode_execution": {"full_attention_decode_path": "native_batch", "native_caware_decode": True, "blockers": []},
         },
         "completed": [],
         "request_observability": {},
@@ -6957,6 +6962,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                 "decode_execution": {
                     "full_attention_decode_path": "native_batch",
                     "native_caware_decode": True,
+                    "blockers": [],
                     "sampler_execution": {
                         "requested_mode": "batched_lm_head",
                         "mode": "batched_lm_head",
@@ -7554,6 +7560,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     non_native_decode_execution["execution"]["batch_execution"]["decode_execution"]["native_caware_decode"] = False
     with pytest.raises(ValueError, match="decode_execution.native_caware_decode must be true"):
         validate_cn_diagnostic_artifact_payload(non_native_decode_execution)
+
+    blocked_decode_execution = json.loads(json.dumps(accepted))
+    blocked_decode_execution["execution"]["batch_execution"]["decode_execution"]["blockers"] = ["decode blocker"]
+    with pytest.raises(ValueError, match="decode_execution.blockers must be empty"):
+        validate_cn_diagnostic_artifact_payload(blocked_decode_execution)
 
     missing_sampler_execution = json.loads(json.dumps(accepted))
     missing_sampler_execution["execution"]["batch_execution"]["decode_execution"].pop("sampler_execution")

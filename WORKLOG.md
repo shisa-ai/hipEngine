@@ -38494,3 +38494,29 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness still passed; retained scaling claims remain blocked on generated-token equality/profiler evidence
 ```
+
+## 2026-05-28 — CONCURRENCY retained decode-execution blocker gate
+
+Materially advanced retained native/P3/P5 promotion gates without closing a queue item or adding a retained c>N performance claim:
+
+- `hipengine/runtime/qwen35_paro_runner.py` now records `decode_execution.blockers` in batch decode metadata, with per-row full-attention fallback explicitly labeled there.
+- `scripts/qwen35_batch_retained_bench.py` now blocks retained promotion unless `execution.batch_execution.decode_execution.blockers == []`.
+- `scripts/qwen35_batch_artifact_schema.py` now rejects accepted/performance-claim c>N artifacts whose decode-execution blockers list is non-empty.
+- Extended retained bench, accepted artifact schema, and resident layout coverage for decode blockers; updated `docs/CONCURRENCY.md` P3/P5 progress text.
+- No retained c>N performance claim was added; generated-token equality and real profiler evidence remain required for promotion.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -k 'retained_batch_execution_blockers_reject_serial_and_fallback_paths or diagnostic_artifact_schema_enforces_accepted_row_gates' -q && python3 -m pytest -q tests/test_qwen35_resident_batch_layout.py -k 'splitk_fallback' -q
+# 4 passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness still passed; retained scaling claims remain blocked on generated-token equality/profiler evidence
+```

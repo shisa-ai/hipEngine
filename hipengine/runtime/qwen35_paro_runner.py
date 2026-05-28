@@ -3288,12 +3288,16 @@ class Qwen35ParoResidentSession:
                 if layer_type != "full_attention":
                     self.runtime.memcpy_async(next_hidden.ptr, out.ptr, rows * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
                 hidden, next_hidden = next_hidden, hidden
+            decode_blockers: list[str] = []
+            if full_attention_decode_path in {"per_row_splitk_fallback", "per_row_context_fallback"}:
+                decode_blockers.append("full-attention decode used a per-row fallback")
             self.last_batch_decode_execution = {
                 "rows": int(rows),
                 "slots": [int(slot) for slot in slots],
                 "max_full_attention_context": int(max_full_attention_context),
                 "full_attention_decode_path": full_attention_decode_path,
                 "native_caware_decode": full_attention_decode_path not in {"per_row_splitk_fallback", "per_row_context_fallback"},
+                "blockers": decode_blockers,
             }
             return hidden
         finally:

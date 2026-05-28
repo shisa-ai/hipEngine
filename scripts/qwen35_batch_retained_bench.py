@@ -979,6 +979,8 @@ def _batch_execution_blockers(batch_execution: Mapping[str, Any]) -> list[str]:
             blockers.append("execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch")
         if decode_execution.get("native_caware_decode") is not True:
             blockers.append("execution.batch_execution.decode_execution.native_caware_decode must be true")
+        if decode_execution.get("blockers") != []:
+            blockers.append("execution.batch_execution.decode_execution.blockers must be empty")
     return blockers
 
 

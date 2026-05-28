@@ -1133,6 +1133,7 @@ def test_qwen35_resident_run_layers_batch_decode_uses_per_row_splitk_fallback_fo
         "max_full_attention_context": 1025,
         "full_attention_decode_path": "per_row_splitk_fallback",
         "native_caware_decode": False,
+        "blockers": ["full-attention decode used a per-row fallback"],
     }
     metadata = session.batch_execution_metadata(scheduler_owned=True, native_decode=True)
     assert not metadata.native_caware_decode
@@ -1140,6 +1141,7 @@ def test_qwen35_resident_run_layers_batch_decode_uses_per_row_splitk_fallback_fo
     assert metadata.decode_execution == session.last_batch_decode_execution
     assert any("per-row fallback" in blocker for blocker in metadata.blockers)
     assert metadata.to_json_dict()["decode_execution"]["full_attention_decode_path"] == "per_row_splitk_fallback"
+    assert metadata.to_json_dict()["decode_execution"]["blockers"] == ["full-attention decode used a per-row fallback"]
 
 
 def test_qwen35_resident_step_batch_native_accepts_long_context_for_splitk_fallback(monkeypatch) -> None:

@@ -854,6 +854,8 @@ def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[
             errors.append("execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch for accepted artifacts")
         if decode_execution.get("native_caware_decode") is not True:
             errors.append("execution.batch_execution.decode_execution.native_caware_decode must be true for accepted artifacts")
+        if decode_execution.get("blockers") != []:
+            errors.append("execution.batch_execution.decode_execution.blockers must be empty for accepted artifacts")
         sampler_execution = decode_execution.get("sampler_execution")
         if not isinstance(sampler_execution, Mapping):
             errors.append("execution.batch_execution.decode_execution.sampler_execution must be an object for accepted artifacts")
