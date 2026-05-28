@@ -2629,8 +2629,13 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if git_dirty is not None and entry.get("git_dirty") is not git_dirty:
                 errors.append("commands[].git_dirty must match git.dirty")
                 break
-    if summary.get("completed_command_count") != len(entries):
-        errors.append("completed_command_count must match len(commands)")
+    completed_command_count = summary.get("completed_command_count")
+    if (
+        not isinstance(completed_command_count, int)
+        or isinstance(completed_command_count, bool)
+        or completed_command_count != len(entries)
+    ):
+        errors.append("completed_command_count must be a typed int matching len(commands)")
     command_count = summary.get("command_count")
     if not isinstance(command_count, int) or isinstance(command_count, bool) or command_count < len(entries):
         errors.append("command_count must be an int greater than or equal to completed_command_count")

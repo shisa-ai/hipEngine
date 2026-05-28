@@ -1845,8 +1845,15 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
             c_sweep.validate_sweep_summary(tampered_command_count)
     tampered_completed_count_type = json.loads(json.dumps(persisted))
     tampered_completed_count_type["completed_command_count"] = "6"
-    with pytest.raises(ValueError, match=r"completed_command_count must match len\(commands\)"):
+    with pytest.raises(ValueError, match=r"completed_command_count must be a typed int matching len\(commands\)"):
         c_sweep.validate_sweep_summary(tampered_completed_count_type)
+    tampered_completed_count_bool = json.loads(json.dumps(persisted))
+    tampered_completed_count_bool["commands"] = tampered_completed_count_bool["commands"][:1]
+    tampered_completed_count_bool["completed_command_count"] = True
+    tampered_completed_count_bool["status_counts"] = {"planned": 1}
+    tampered_completed_count_bool["category_status_counts"] = {"primitive": {"planned": 1}}
+    with pytest.raises(ValueError, match=r"completed_command_count must be a typed int matching len\(commands\)"):
+        c_sweep.validate_sweep_summary(tampered_completed_count_bool)
     tampered_dropped_commands = json.loads(json.dumps(persisted))
     tampered_dropped_commands["commands"] = []
     tampered_dropped_commands["completed_command_count"] = 0
@@ -4115,7 +4122,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         c_sweep.validate_sweep_summary(tampered_git_dirty_status)
     tampered_completed_count = json.loads(json.dumps(persisted))
     tampered_completed_count["completed_command_count"] = 2
-    with pytest.raises(ValueError, match=r"completed_command_count must match len\(commands\)"):
+    with pytest.raises(ValueError, match=r"completed_command_count must be a typed int matching len\(commands\)"):
         c_sweep.validate_sweep_summary(tampered_completed_count)
     tampered_command_count = json.loads(json.dumps(persisted))
     tampered_command_count["command_count"] = 4
