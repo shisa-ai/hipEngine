@@ -5254,6 +5254,10 @@ def test_graph_bucket_cache_clear_resets_entries_and_counters() -> None:
     }
     with pytest.raises(ValueError, match="duration_ns"):
         cache.record_kernel_time_ns(-1)
+    with pytest.raises(ValueError, match="duration_ns"):
+        cache.record_kernel_time_ns(1.5)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="duration_ns"):
+        cache.record_kernel_time_ns(True)  # type: ignore[arg-type]
     cache.clear()
     assert cache.stats.entries == 0
     assert cache.stats.hits == 0

@@ -919,7 +919,7 @@ roll-up/status view.
       by `(C, context bucket, active mask, KV dtype, layer plan, top-k/experts,
       replay length)`. Acceptance: bucket hit/miss stats and profiler evidence
       show replay for common shapes. Progress: graph-bucket stats now serialize
-      `entries`, `hits`, `misses`, `replay_hit_rate`, miss-reason counts, and kernel-time
+      `entries`, `hits`, `misses`, `replay_hit_rate`, miss-reason counts, and typed-integer kernel-time
       histogram buckets from `GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS`; retained accepted-artifact schema requires non-empty known-bucket kernel-time
       histogram evidence plus those
       observability fields plus replay shape-key axes (`context_bucket`,
@@ -1278,7 +1278,7 @@ endpoint live; retained c>N rows include all gates above.
 - [ ] Per-bucket graph-cache observability
       (entries, hits, misses, miss reason, kernel-time histogram). Progress:
       `GraphBucketCache.stats.to_json_dict()` now includes miss-reason counts
-      and kernel-time histogram buckets, retained/serial scripts emit that
+      and typed-integer kernel-time histogram buckets, retained/serial scripts emit that
       shape, accepted-artifact schema shares the runtime bucket taxonomy and requires non-empty known-bucket histogram observations
       for accepted rows, and `/metrics` exports labeled miss-reason and
       known kernel-time-bucket counters; the item remains open until real replay
@@ -1329,7 +1329,7 @@ Establish these before optimizing anything:
       length)`, with an uncaptured fallback for rare shapes.
 - [x] Add graph-bucket cache hit/miss and replay statistics to artifacts.
       Evidence: `GraphBucketStats.to_json_dict()` serializes `entries`,
-      `hits`, `misses`, `replay_hit_rate`, `miss_reasons`, and
+      `hits`, `misses`, `replay_hit_rate`, `miss_reasons`, and typed-integer
       `kernel_time_histogram_ns`; `scripts/qwen35_batch_retained_bench.py` and
       serial diagnostics emit `decode_shape_key` / `graph_bucket_stats`;
       accepted-artifact schema requires those fields and non-empty known-bucket histogram

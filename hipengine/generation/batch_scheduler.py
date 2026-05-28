@@ -13,6 +13,7 @@ from collections import Counter, deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from math import ceil
+from numbers import Integral
 from typing import Iterable, Mapping, Sequence
 
 from hipengine.dispatch import ActiveBatch, BatchShapeKey, RequestState, WorkItem, WorkKind
@@ -455,7 +456,7 @@ class GraphBucketCache:
         return graph
 
     def record_kernel_time_ns(self, duration_ns: int) -> None:
-        if isinstance(duration_ns, bool):
+        if not isinstance(duration_ns, Integral) or isinstance(duration_ns, bool):
             raise ValueError("duration_ns must be a non-negative integer")
         ns = int(duration_ns)
         if ns < 0:
