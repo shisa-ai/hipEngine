@@ -6765,6 +6765,51 @@ def test_qwen35_retained_graph_histogram_blockers_reject_unknown_buckets() -> No
     assert "execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns observation count must cover graph_bucket_stats.hits" in short_histogram
 
 
+def test_qwen35_retained_graph_replay_profiler_evidence_blockers_require_graph_duration() -> None:
+    scheduler_metadata = {
+        "graph_bucket_stats": {
+            "entries": 1,
+            "hits": 1,
+            "misses": 1,
+            "replay_hit_rate": 0.5,
+            "miss_reasons": {"cache_absent": 1},
+            "kernel_time_histogram_ns": {"le_10us": 1},
+        }
+    }
+    profiler = {
+        "kernel_durations_ns": {"qwen35_batch_graph_replay": 100.0, "qwen35_batch_decode": 900.0},
+        "kernel_duration_categories_ns": {
+            "attention": 0.0,
+            "moe": 0.0,
+            "projection": 0.0,
+            "sampling": 0.0,
+            "graph_replay": 100.0,
+            "other": 900.0,
+        },
+        "kernel_duration_category_shares": {
+            "attention": 0.0,
+            "moe": 0.0,
+            "projection": 0.0,
+            "sampling": 0.0,
+            "graph_replay": 0.1,
+            "other": 0.9,
+        },
+    }
+
+    assert retained_bench._graph_replay_profiler_evidence_blockers(scheduler_metadata, profiler) == []
+
+    missing_graph_replay = {
+        **profiler,
+        "kernel_durations_ns": {"qwen35_batch_decode": 1000.0},
+        "kernel_duration_categories_ns": {**profiler["kernel_duration_categories_ns"], "graph_replay": 0.0, "other": 1000.0},
+        "kernel_duration_category_shares": {**profiler["kernel_duration_category_shares"], "graph_replay": 0.0, "other": 1.0},
+    }
+    blockers = retained_bench._graph_replay_profiler_evidence_blockers(scheduler_metadata, missing_graph_replay)
+    assert "profiler.kernel_duration_categories_ns.graph_replay must be positive when graph_bucket_stats.hits is positive" in blockers
+    assert "profiler.kernel_duration_category_shares.graph_replay must be positive when graph_bucket_stats.hits is positive" in blockers
+    assert "profiler.kernel_durations_ns must include a positive graph/replay duration when graph_bucket_stats.hits is positive" in blockers
+
+
 def test_qwen35_retained_payload_blocks_acceptance_without_graph_histogram_evidence(monkeypatch) -> None:
     monkeypatch.setattr(retained_bench, "_hardware_context", lambda: {"gpu": "test"})
     monkeypatch.setattr(retained_bench, "_software_context", lambda: {"python": "test"})
@@ -7010,34 +7055,36 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             "output_format": "csv",
             "trace_dir": "/tmp/hipengine-profile",
             "trace_files": ["/tmp/hipengine-profile/hipengine_kernel_trace.csv"],
-            "trace_kernel_names": ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"],
+            "trace_kernel_names": ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware", "qwen35_batch_graph_replay"],
             "synthesized_fields": [],
             "expected_kernels_present": True,
             "expected_kernel_names": ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"],
             "kernel_durations_ns": {
                 "qwen35_batch_decode": 12345.0,
                 "qwen35_batch_decode_wmma_caware": 2345.0,
+                "qwen35_batch_graph_replay": 100.0,
             },
-            "total_kernel_duration_ns": 14690.0,
+            "total_kernel_duration_ns": 14790.0,
             "kernel_duration_shares": {
-                "qwen35_batch_decode": 12345.0 / 14690.0,
-                "qwen35_batch_decode_wmma_caware": 2345.0 / 14690.0,
+                "qwen35_batch_decode": 12345.0 / 14790.0,
+                "qwen35_batch_decode_wmma_caware": 2345.0 / 14790.0,
+                "qwen35_batch_graph_replay": 100.0 / 14790.0,
             },
             "kernel_duration_categories_ns": {
                 "attention": 0.0,
                 "moe": 0.0,
                 "projection": 2345.0,
                 "sampling": 0.0,
-                "graph_replay": 0.0,
+                "graph_replay": 100.0,
                 "other": 12345.0,
             },
             "kernel_duration_category_shares": {
                 "attention": 0.0,
                 "moe": 0.0,
-                "projection": 2345.0 / 14690.0,
+                "projection": 2345.0 / 14790.0,
                 "sampling": 0.0,
-                "graph_replay": 0.0,
-                "other": 12345.0 / 14690.0,
+                "graph_replay": 100.0 / 14790.0,
+                "other": 12345.0 / 14790.0,
             },
             "cpu_side_total_seconds": 10.0,
             "cpu_side_bottlenecks_seconds": {
@@ -7170,7 +7217,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                     "misses": 1,
                     "replay_hit_rate": 0.5,
                     "miss_reasons": {"cache_absent": 1},
-                    "kernel_time_histogram_ns": {"le_10us": 1, "le_100us": 1},
+                    "kernel_time_histogram_ns": {"le_10us": 2, "le_100us": 1},
                 },
             },
             "seed_tokens": {"0": {"token_id": 0}, "1": {"token_id": 100}},
@@ -8002,6 +8049,15 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     short_graph_bucket_stats["kernel_time_histogram_ns"] = {"le_10us": 1}
     with pytest.raises(ValueError, match="kernel_time_histogram_ns observation count must cover graph_bucket_stats.hits"):
         validate_cn_diagnostic_artifact_payload(short_graph_bucket_histogram)
+
+    missing_graph_replay_profiler_duration = json.loads(json.dumps(accepted))
+    missing_graph_replay_profiler_duration["profiler"]["kernel_duration_categories_ns"]["graph_replay"] = 0.0
+    missing_graph_replay_profiler_duration["profiler"]["kernel_duration_category_shares"]["graph_replay"] = 0.0
+    with pytest.raises(
+        ValueError,
+        match="profiler.kernel_duration_categories_ns.graph_replay must be positive when graph_bucket_stats.hits is positive",
+    ):
+        validate_cn_diagnostic_artifact_payload(missing_graph_replay_profiler_duration)
 
     empty_graph_bucket_cache = json.loads(json.dumps(accepted))
     empty_graph_bucket_cache["execution"]["scheduler_metadata"]["graph_bucket_stats"]["entries"] = 0

@@ -1549,6 +1549,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         _validate_profiler_kernel_duration_total(profiler, kernel_durations, errors)
         _validate_profiler_kernel_duration_shares(profiler, kernel_durations, errors)
         _validate_profiler_kernel_duration_categories(profiler, kernel_durations, errors)
+        _validate_graph_replay_profiler_evidence(payload, profiler, kernel_durations, errors)
         _validate_profiler_cpu_side_bottlenecks(profiler, errors)
         _validate_graph_histogram_profiler_coverage(payload, kernel_durations, errors)
         if isinstance(expected_kernel_names, list):
@@ -1559,6 +1560,41 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
                     errors.append(f"profiler.kernel_durations_ns.{kernel_name} must be positive numeric for accepted artifacts")
     _validate_projection_dispatch_profiler_evidence(payload, profiler, errors)
     _validate_optional_projection_dispatch_candidates(payload, errors)
+
+
+def _validate_graph_replay_profiler_evidence(
+    payload: Mapping[str, Any],
+    profiler: Mapping[str, Any],
+    kernel_durations: Mapping[Any, Any],
+    errors: list[str],
+) -> None:
+    execution = payload.get("execution")
+    scheduler_metadata = execution.get("scheduler_metadata") if isinstance(execution, Mapping) else None
+    graph_stats = scheduler_metadata.get("graph_bucket_stats") if isinstance(scheduler_metadata, Mapping) else None
+    hits = graph_stats.get("hits") if isinstance(graph_stats, Mapping) else None
+    if not isinstance(hits, int) or isinstance(hits, bool) or hits <= 0:
+        return
+    duration_categories = profiler.get("kernel_duration_categories_ns")
+    graph_replay_duration = duration_categories.get("graph_replay") if isinstance(duration_categories, Mapping) else None
+    if not _is_positive_number(graph_replay_duration):
+        errors.append(
+            "profiler.kernel_duration_categories_ns.graph_replay must be positive when graph_bucket_stats.hits is positive for accepted artifacts"
+        )
+    category_shares = profiler.get("kernel_duration_category_shares")
+    graph_replay_share = category_shares.get("graph_replay") if isinstance(category_shares, Mapping) else None
+    if not _is_positive_number(graph_replay_share):
+        errors.append(
+            "profiler.kernel_duration_category_shares.graph_replay must be positive when graph_bucket_stats.hits is positive for accepted artifacts"
+        )
+    if not any(
+        isinstance(kernel_name, str)
+        and _profiler_kernel_duration_category(kernel_name) == "graph_replay"
+        and _is_positive_number(duration_ns)
+        for kernel_name, duration_ns in kernel_durations.items()
+    ):
+        errors.append(
+            "profiler.kernel_durations_ns must include a positive graph/replay duration when graph_bucket_stats.hits is positive for accepted artifacts"
+        )
 
 
 def _validate_graph_histogram_profiler_coverage(payload: Mapping[str, Any], kernel_durations: Mapping[Any, Any], errors: list[str]) -> None:

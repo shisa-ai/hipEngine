@@ -294,6 +294,41 @@ def _graph_bucket_evidence_blockers(scheduler_metadata: Mapping[str, Any]) -> li
     return blockers
 
 
+def _graph_replay_profiler_evidence_blockers(
+    scheduler_metadata: Mapping[str, Any], profiler: Mapping[str, Any]
+) -> list[str]:
+    graph_stats = scheduler_metadata.get("graph_bucket_stats")
+    hits = graph_stats.get("hits") if isinstance(graph_stats, Mapping) else None
+    if not isinstance(hits, int) or isinstance(hits, bool) or hits <= 0:
+        return []
+    blockers: list[str] = []
+    duration_categories = profiler.get("kernel_duration_categories_ns")
+    graph_replay_duration = duration_categories.get("graph_replay") if isinstance(duration_categories, Mapping) else None
+    if not _is_finite_positive_number(graph_replay_duration):
+        blockers.append(
+            "profiler.kernel_duration_categories_ns.graph_replay must be positive when graph_bucket_stats.hits is positive"
+        )
+    category_shares = profiler.get("kernel_duration_category_shares")
+    graph_replay_share = category_shares.get("graph_replay") if isinstance(category_shares, Mapping) else None
+    if not _is_finite_positive_number(graph_replay_share):
+        blockers.append(
+            "profiler.kernel_duration_category_shares.graph_replay must be positive when graph_bucket_stats.hits is positive"
+        )
+    kernel_durations = profiler.get("kernel_durations_ns")
+    if isinstance(kernel_durations, Mapping):
+        has_graph_replay_kernel_duration = any(
+            isinstance(kernel_name, str)
+            and _profiler_kernel_duration_category(kernel_name) == "graph_replay"
+            and _is_finite_positive_number(duration_ns)
+            for kernel_name, duration_ns in kernel_durations.items()
+        )
+        if not has_graph_replay_kernel_duration:
+            blockers.append(
+                "profiler.kernel_durations_ns must include a positive graph/replay duration when graph_bucket_stats.hits is positive"
+            )
+    return blockers
+
+
 def _summarize_samples(samples: Sequence[float]) -> dict[str, Any]:
     values = [float(sample) for sample in samples]
     if not values:
@@ -2226,6 +2261,7 @@ def _build_payload(
     memory_blockers = _memory_evidence_blockers(memory)
     graph_bucket_blockers = _decode_shape_key_blockers(scheduler_metadata, concurrency=args.batch_size, prompt_length=args.prompt_length)
     graph_bucket_blockers.extend(_graph_bucket_evidence_blockers(scheduler_metadata))
+    graph_bucket_blockers.extend(_graph_replay_profiler_evidence_blockers(scheduler_metadata, profiler))
     equality_passed = bool(equality.get("passed"))
     protocol_shape = args.max_layers == 40 and args.prompt_length >= 512 and args.decode_tokens >= 128
     scaling_complete = bool(scaling["complete"])
