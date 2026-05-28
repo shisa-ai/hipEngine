@@ -2817,7 +2817,7 @@ def _validate_validation_summary_output_path(path: Path, summary: Mapping[str, A
     expected_path = f"{source_dir}/{expected_name}" if source_dir else expected_name
     actual_path = _benchmark_results_relative_path(str(path)).replace("\\", "/")
     if actual_path != expected_path:
-        raise ValueError(f"--summary-json path must be {expected_path} for {mode}")
+        raise ValueError(f"{label} must be {expected_path} for {mode}")
 
 
 def main(argv: list[str] | None = None) -> int:

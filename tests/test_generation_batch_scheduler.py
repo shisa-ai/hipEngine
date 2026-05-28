@@ -139,6 +139,11 @@ def test_qwen35_validation_summary_paths_report_active_option(
     assert validate_cn_diagnostic_artifact_main([str(bad_recheck_summary), "--validation-summary"]) == 1
     assert "--validation-summary path must end with .json" in capsys.readouterr().err
 
+    wrong_named_recheck_summary = results_dir / "copy-schema-check.json"
+    wrong_named_recheck_summary.write_text(bad_recheck_summary.read_text(encoding="utf-8"), encoding="utf-8")
+    assert validate_cn_diagnostic_artifact_main([str(wrong_named_recheck_summary), "--validation-summary"]) == 1
+    assert "--validation-summary path must be benchmarks/results/source-schema-check.json" in capsys.readouterr().err
+
 
 def _projection_evidence_payload(
     *,
