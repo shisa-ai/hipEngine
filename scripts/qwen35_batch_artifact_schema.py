@@ -2660,6 +2660,7 @@ def _validation_summary(
     error: str | None = None,
 ) -> dict[str, Any]:
     payload = payload or {}
+    artifact_json_text = _benchmark_results_relative_path(str(artifact_json))
     artifact_path = payload.get("artifact_path")
     status = payload.get("status")
     performance_claim = payload.get("performance_claim")
@@ -2668,7 +2669,7 @@ def _validation_summary(
         "schema": 1,
         "mode": mode,
         "passed": passed,
-        "artifact_json": str(artifact_json),
+        "artifact_json": artifact_json_text,
         "artifact_path": artifact_path if isinstance(artifact_path, str) else None,
         "status": status if isinstance(status, str) else None,
         "performance_claim": performance_claim if isinstance(performance_claim, bool) else None,
@@ -2710,6 +2711,8 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
             errors.append("summary.artifact_path must be a non-empty string or null")
         else:
             _validate_benchmark_results_artifact_path("summary.artifact_path", artifact_path, errors)
+            if _benchmark_results_relative_path(artifact_path) != artifact_path.replace("\\", "/"):
+                errors.append("summary.artifact_path must be a repo-relative benchmarks/results path or null")
     status = summary.get("status")
     if status is not None and (not isinstance(status, str) or not status):
         errors.append("summary.status must be a non-empty string or null")
@@ -2743,6 +2746,8 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
     if mode in {"artifact_schema", "rollup_evidence"} and isinstance(artifact_json, str):
         if not _is_benchmark_results_path(artifact_json):
             errors.append("summary.artifact_json must be under benchmarks/results for validation summaries")
+        elif _benchmark_results_relative_path(artifact_json) != artifact_json.replace("\\", "/"):
+            errors.append("summary.artifact_json must be a repo-relative benchmarks/results path for validation summaries")
         if not artifact_json.replace("\\", "/").rsplit("/", 1)[-1].endswith(".json"):
             errors.append("summary.artifact_json must end with .json for validation summaries")
     if (passed is True or isinstance(benchmark_rollup, Mapping)) and isinstance(artifact_json, str) and isinstance(artifact_path, str):

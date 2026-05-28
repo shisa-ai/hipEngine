@@ -8076,7 +8076,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         "schema": 1,
         "mode": "rollup_evidence",
         "passed": True,
-        "artifact_json": str(artifact_file),
+        "artifact_json": "benchmarks/results/accepted-c2.json",
         "artifact_path": "benchmarks/results/accepted-c2.json",
         "status": "accepted",
         "performance_claim": True,
@@ -8089,6 +8089,14 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     extra_key_summary["rollup_note"] = "accepted"
     with pytest.raises(ValueError, match="summary contains unexpected keys: rollup_note"):
         validate_cn_diagnostic_validation_summary(extra_key_summary)
+    absolute_summary_source = dict(summary)
+    absolute_summary_source["artifact_json"] = str(artifact_file)
+    with pytest.raises(ValueError, match="summary.artifact_json must be a repo-relative benchmarks/results path"):
+        validate_cn_diagnostic_validation_summary(absolute_summary_source)
+    absolute_summary_artifact_path = dict(summary)
+    absolute_summary_artifact_path["artifact_path"] = str(artifact_file)
+    with pytest.raises(ValueError, match="summary.artifact_path must be a repo-relative benchmarks/results path"):
+        validate_cn_diagnostic_validation_summary(absolute_summary_artifact_path)
     missing_summary_artifact_path = dict(summary)
     missing_summary_artifact_path["artifact_path"] = None
     with pytest.raises(ValueError, match="summary.artifact_path must be a non-empty string when summary.passed is true"):
@@ -8221,7 +8229,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     failed_summary = json.loads(failed_summary_file.read_text())
     assert failed_summary["passed"] is False
     assert failed_summary["mode"] == "rollup_evidence"
-    assert failed_summary["artifact_json"] == str(missing_rollup_file)
+    assert failed_summary["artifact_json"] == "benchmarks/results/accepted-c2-missing-rollup.json"
     assert failed_summary["artifact_path"] == "benchmarks/results/accepted-c2.json"
     assert failed_summary["benchmark_rollup"] is None
     assert "benchmark_rollup must be an object" in failed_summary["error"]
