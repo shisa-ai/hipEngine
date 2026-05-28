@@ -1506,10 +1506,18 @@ def _profiler_kernel_evidence_blockers(profiler: Mapping[str, Any]) -> list[str]
         if missing_trace_names:
             blockers.append("profiler.trace_kernel_names must include profiler.kernel_durations_ns keys")
     if isinstance(expected_kernel_names, list):
+        trace_name_set = set()
+        if isinstance(trace_kernel_names, list):
+            trace_name_set = {name for name in trace_kernel_names if isinstance(name, str) and name}
+        missing_expected_trace_name = False
         for kernel_name in expected_kernel_names:
-            if isinstance(kernel_name, str) and kernel_name and not _is_finite_positive_number(kernel_durations.get(kernel_name)):
-                blockers.append(f"profiler.kernel_durations_ns.{kernel_name} must be positive numeric")
-                break
+            if isinstance(kernel_name, str) and kernel_name:
+                if trace_name_set and kernel_name not in trace_name_set and not missing_expected_trace_name:
+                    blockers.append("profiler.trace_kernel_names must include profiler.expected_kernel_names")
+                    missing_expected_trace_name = True
+                if not _is_finite_positive_number(kernel_durations.get(kernel_name)):
+                    blockers.append(f"profiler.kernel_durations_ns.{kernel_name} must be positive numeric")
+                    break
     return blockers
 
 
