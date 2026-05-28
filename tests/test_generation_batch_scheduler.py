@@ -5881,6 +5881,7 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
 
     assert passed["passed"] is True
     assert passed["artifact_path"] == str(artifact)
+    assert passed["source_artifact_path"] == str(artifact)
     assert passed["schema"] == 1
     assert passed["seed"] == 1234
     assert passed["block_size"] == 256
@@ -5908,6 +5909,7 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     assert bool_append["passed"] is False
     assert "append_key_mismatch is missing or not integer zero" in bool_append["reason"]
     assert wrong_artifact_path["passed"] is False
+    assert wrong_artifact_path["source_artifact_path"] == str(artifact)
     assert "artifact_path does not match primitive correctness artifact path" in wrong_artifact_path["reason"]
     assert missing["status"] == "missing"
 
@@ -7545,6 +7547,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             },
             "primitive_batch_correctness": {
                 "artifact_path": "benchmarks/results/primitive-c2.json",
+                "source_artifact_path": "benchmarks/results/primitive-c2.json",
                 "schema": 1,
                 "rows": 2,
                 "seed": 1234,
@@ -8079,8 +8082,19 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
 
     primitive_tmp_artifact = json.loads(json.dumps(accepted))
     primitive_tmp_artifact["correctness"]["primitive_batch_correctness"]["artifact_path"] = "/tmp/primitive-c2.json"
+    primitive_tmp_artifact["correctness"]["primitive_batch_correctness"]["source_artifact_path"] = "/tmp/primitive-c2.json"
     with pytest.raises(ValueError, match="primitive_batch_correctness.artifact_path must be under benchmarks/results"):
         validate_cn_diagnostic_artifact_payload(primitive_tmp_artifact)
+
+    missing_primitive_source_artifact = json.loads(json.dumps(accepted))
+    missing_primitive_source_artifact["correctness"]["primitive_batch_correctness"].pop("source_artifact_path")
+    with pytest.raises(ValueError, match="primitive_batch_correctness.source_artifact_path must be a non-empty string"):
+        validate_cn_diagnostic_artifact_payload(missing_primitive_source_artifact)
+
+    mismatched_primitive_source_artifact = json.loads(json.dumps(accepted))
+    mismatched_primitive_source_artifact["correctness"]["primitive_batch_correctness"]["source_artifact_path"] = "benchmarks/results/other-primitive-c2.json"
+    with pytest.raises(ValueError, match="primitive_batch_correctness.source_artifact_path must match artifact_path"):
+        validate_cn_diagnostic_artifact_payload(mismatched_primitive_source_artifact)
 
     mismatched_primitive_rows = json.loads(json.dumps(accepted))
     mismatched_primitive_rows["correctness"]["primitive_batch_correctness"]["rows"] = 8

@@ -2025,6 +2025,11 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
             primitive_artifact_path,
             errors,
         )
+    primitive_source_artifact_path = primitive.get("source_artifact_path")
+    if not isinstance(primitive_source_artifact_path, str) or not primitive_source_artifact_path:
+        errors.append("correctness.primitive_batch_correctness.source_artifact_path must be a non-empty string for accepted artifacts")
+    elif isinstance(primitive_artifact_path, str) and primitive_artifact_path and primitive_source_artifact_path != primitive_artifact_path:
+        errors.append("correctness.primitive_batch_correctness.source_artifact_path must match artifact_path for accepted artifacts")
     primitive_rows = primitive.get("rows")
     if not isinstance(primitive_rows, int) or isinstance(primitive_rows, bool):
         errors.append("correctness.primitive_batch_correctness.rows must be an int for accepted artifacts")

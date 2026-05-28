@@ -527,6 +527,7 @@ def _primitive_correctness_reference(path: Path | None, *, rows: int) -> dict[st
         reasons.append("schema is missing or not 1")
     source_artifact_path = payload.get("artifact_path")
     if not isinstance(source_artifact_path, str) or not source_artifact_path:
+        source_artifact_path = None
         reasons.append("artifact_path is missing or not a non-empty string")
     elif source_artifact_path != str(path):
         reasons.append("artifact_path does not match primitive correctness artifact path")
@@ -564,6 +565,7 @@ def _primitive_correctness_reference(path: Path | None, *, rows: int) -> dict[st
         reasons.append("attn_batch_vs_numpy_max_abs is missing, non-finite, negative, or above 2e-5")
     return {
         "artifact_path": str(path),
+        "source_artifact_path": source_artifact_path,
         "status": "loaded",
         "schema": payload.get("schema"),
         "rows": payload.get("rows"),
