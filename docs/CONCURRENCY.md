@@ -920,7 +920,7 @@ roll-up/status view.
       replay length)`. Acceptance: bucket hit/miss stats and profiler evidence
       show replay for common shapes. Progress: graph-bucket stats now serialize
       `entries`, `hits`, `misses`, `replay_hit_rate`, miss-reason counts, and typed-integer kernel-time
-      histogram buckets from `GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS`; retained bench profiler summaries populate those buckets, and retained accepted-artifact schema requires non-empty known-bucket kernel-time
+      histogram buckets from `GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS`; retained bench profiler summaries populate those buckets, missing histogram observations block promotion, and retained accepted-artifact schema requires non-empty known-bucket kernel-time
       histogram evidence plus those
       observability fields plus replay shape-key axes (`context_bucket`,
       `top_k`, `experts_per_token`, `replay_steps`, `draft_depth`, and
@@ -1279,7 +1279,7 @@ endpoint live; retained c>N rows include all gates above.
       (entries, hits, misses, miss reason, kernel-time histogram). Progress:
       `GraphBucketCache.stats.to_json_dict()` now includes miss-reason counts
       and typed-integer kernel-time histogram buckets, retained/serial scripts emit that
-      shape, retained bench merges integer profiler kernel durations into the histogram, and accepted-artifact schema shares the runtime bucket taxonomy and requires non-empty known-bucket histogram observations
+      shape, retained bench merges integer profiler kernel durations into the histogram and blocks promotion when no observations remain, and accepted-artifact schema shares the runtime bucket taxonomy and requires non-empty known-bucket histogram observations
       for accepted rows, and `/metrics` exports labeled miss-reason and
       known kernel-time-bucket counters; the item remains open until real replay
       profiler evidence populates kernel-time buckets.

@@ -171,6 +171,25 @@ def _attach_profiler_graph_kernel_time_histogram(scheduler_metadata: dict[str, A
     scheduler_metadata["graph_bucket_stats"] = updated_stats
 
 
+def _graph_kernel_time_histogram_blockers(scheduler_metadata: Mapping[str, Any]) -> list[str]:
+    graph_stats = scheduler_metadata.get("graph_bucket_stats")
+    if not isinstance(graph_stats, Mapping):
+        return ["execution.scheduler_metadata.graph_bucket_stats is missing"]
+    histogram = graph_stats.get("kernel_time_histogram_ns")
+    if not isinstance(histogram, Mapping):
+        return ["execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns is missing"]
+    total_observations = 0
+    blockers: list[str] = []
+    for bucket, count in histogram.items():
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            blockers.append(f"execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns.{bucket} is unavailable or non-integer")
+            continue
+        total_observations += int(count)
+    if total_observations <= 0:
+        blockers.append("execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns has no observations")
+    return blockers
+
+
 def _summarize_samples(samples: Sequence[float]) -> dict[str, Any]:
     values = [float(sample) for sample in samples]
     if not values:
@@ -1207,6 +1226,7 @@ def _build_payload(
     native_caware_decode = bool(batch_execution.get("native_caware_decode"))
     memory = _retained_memory_payload(args, kv_policy, bench)
     memory_blockers = _memory_evidence_blockers(memory)
+    graph_histogram_blockers = _graph_kernel_time_histogram_blockers(scheduler_metadata)
     equality_passed = bool(equality.get("passed"))
     protocol_shape = args.max_layers == 40 and args.prompt_length >= 512 and args.decode_tokens >= 128
     scaling_complete = bool(scaling["complete"])
@@ -1220,6 +1240,7 @@ def _build_payload(
         and scaling_complete
         and profiler_captured
         and not memory_blockers
+        and not graph_histogram_blockers
     )
     primitive_loaded = primitive_correctness.get("status") == "loaded"
     correctness_rejected = bool(bench["finite_logits"] and (not equality_passed or (primitive_loaded and not primitive_passed)))
@@ -1242,6 +1263,7 @@ def _build_payload(
     if not bench["finite_logits"]:
         blocked_reasons.append("non-finite seed or decode logits")
     blocked_reasons.extend(memory_blockers)
+    blocked_reasons.extend(graph_histogram_blockers)
     per_request_observability = dict(bench.get("request_observability", {}))
     admission_timestamps = {
         request_id: row.get("admitted_timestamp")

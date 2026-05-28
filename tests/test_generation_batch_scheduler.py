@@ -5946,6 +5946,104 @@ def test_qwen35_retained_memory_evidence_blockers_cover_required_fields() -> Non
     assert "memory.prefix_sharing.savings_bytes is unavailable or non-finite" in blockers
 
 
+def test_qwen35_retained_payload_blocks_acceptance_without_graph_histogram_evidence(monkeypatch) -> None:
+    monkeypatch.setattr(retained_bench, "_hardware_context", lambda: {"gpu": "test"})
+    monkeypatch.setattr(retained_bench, "_software_context", lambda: {"python": "test"})
+    monkeypatch.setattr(
+        retained_bench,
+        "_build_scaling_comparison",
+        lambda *args, **kwargs: {
+            "complete": True,
+            "native": {"decode_tok_s_aggregate": 128.0, "decode_tok_s_per_request": 64.0},
+            "c1_baseline": {"decode_tok_s_aggregate": 64.0, "decode_tok_s_per_request": 64.0},
+            "serial_bridge_baseline": {"decode_tok_s_aggregate": 96.0, "decode_tok_s_per_request": 48.0},
+            "ratios": {
+                "aggregate_vs_c1": 2.0,
+                "per_request_vs_c1": 1.0,
+                "aggregate_vs_serial_bridge": 128.0 / 96.0,
+                "per_request_vs_serial_bridge": 64.0 / 48.0,
+            },
+        },
+    )
+    monkeypatch.setattr(
+        retained_bench,
+        "_primitive_correctness_reference",
+        lambda *args, **kwargs: {"status": "loaded", "passed": True, "seed": 1234},
+    )
+    monkeypatch.setattr(
+        retained_bench,
+        "_profiler_reference",
+        lambda *args, **kwargs: {"status": "captured", "expected_kernels_present": True, "kernel_durations_ns": {}},
+    )
+    args = argparse.Namespace(
+        batch_size=2,
+        prompt_length=512,
+        decode_tokens=128,
+        warmup_decode_tokens=0,
+        max_layers=40,
+        json=None,
+        model="/tmp/model",
+        kv_storage="bf16",
+        kv_scale_dtype="fp16",
+        kv_scale_granularity="per_token_head",
+        primitive_correctness_json=None,
+        profiler_json=Path("benchmarks/results/profiler-c2.json"),
+        profiler_command=None,
+    )
+    complete_memory = {
+        "allocator_reserved_peak_bytes": 8192,
+        "dynamic_pool": {
+            "evidence": "pool counters captured",
+            "pool_counters": {
+                "current_bytes": 8192,
+                "high_water_observed_bytes": 8192,
+                "grow_events": 0,
+                "grow_failures": 0,
+                "shrink_events": 0,
+                "free_pages": 2,
+                "refcounted_pages": 0,
+            },
+        },
+        "stable_block_id": {"passed": True, "audit": "block ids stable"},
+        "prefix_sharing": {"enabled": False, "savings_bytes": 0},
+    }
+    bench = {
+        "load_seconds": 0.1,
+        "prefill_seconds": 1.0,
+        "warmup_seconds": 0.0,
+        "decode_seconds": 2.0,
+        "warmup_step_seconds": [],
+        "decode_step_seconds": [0.25, 0.5],
+        "seed_tokens": {"0": {"token_id": 10}, "1": {"token_id": 20}},
+        "generated_tokens": {"0": [], "1": []},
+        "scheduler_metadata": {"graph_bucket_stats": {"kernel_time_histogram_ns": {}}},
+        "batch_execution": {
+            "path": "scheduler_native_compact_batch",
+            "native_compact_prefill": True,
+            "native_caware_decode": True,
+            "throughput_claim_eligible": True,
+            "decode_execution": {"full_attention_decode_path": "native_batch", "native_caware_decode": True},
+        },
+        "completed": [],
+        "request_observability": {},
+        "finite_logits": True,
+        "memory": complete_memory,
+    }
+
+    payload = retained_bench._build_payload(
+        args,
+        ["--batch-size", "2"],
+        bench,
+        [512, 512],
+        {"passed": True, "skipped": False, "batch_sequences": [[10], [20]], "c1_sequences": [[10], [20]], "mismatches": []},
+    )
+
+    assert payload["status"] == "blocked"
+    assert payload["performance_claim"] is False
+    assert payload["decision"]["accepted"] is False
+    assert "execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns has no observations" in payload["decision"]["reason"]
+
+
 def test_qwen35_retained_payload_blocks_acceptance_without_memory_evidence(monkeypatch) -> None:
     monkeypatch.setattr(retained_bench, "_hardware_context", lambda: {"gpu": "test"})
     monkeypatch.setattr(retained_bench, "_software_context", lambda: {"python": "test"})
