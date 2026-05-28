@@ -2142,6 +2142,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_git_status["git"]["status_short"] = [1]
     with pytest.raises(ValueError, match="git.status_short must be a string list"):
         c_sweep.validate_sweep_summary(tampered_git_status)
+    tampered_git_dirty_status = json.loads(json.dumps(persisted))
+    tampered_git_dirty_status["git"]["status_short"] = ["?? uv.lock"]
+    with pytest.raises(ValueError, match=r"git\.dirty must match bool\(git\.status_short\)"):
+        c_sweep.validate_sweep_summary(tampered_git_dirty_status)
     tampered_completed_count = json.loads(json.dumps(persisted))
     tampered_completed_count["completed_command_count"] = 2
     with pytest.raises(ValueError, match=r"completed_command_count must match len\(commands\)"):

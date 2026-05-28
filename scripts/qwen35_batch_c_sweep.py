@@ -1361,6 +1361,8 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         status_short = git.get("status_short")
         if not isinstance(status_short, list) or not all(isinstance(item, str) for item in status_short):
             errors.append("git.status_short must be a string list")
+        elif git_dirty is not None and git_dirty is not bool(status_short):
+            errors.append("git.dirty must match bool(git.status_short)")
     if entries:
         for entry in entries:
             if not isinstance(entry.get("category"), str) or not entry.get("category"):
