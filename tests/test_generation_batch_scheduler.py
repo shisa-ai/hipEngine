@@ -5594,6 +5594,30 @@ def test_qwen35_retained_records_decode_graph_bucket_metadata() -> None:
     }
 
 
+def test_qwen35_retained_attaches_profiler_graph_kernel_time_histogram() -> None:
+    scheduler_metadata = {
+        "graph_bucket_stats": {
+            "entries": 1,
+            "hits": 1,
+            "misses": 1,
+            "replay_hit_rate": 0.5,
+            "miss_reasons": {"cache_absent": 1},
+            "kernel_time_histogram_ns": {"le_10us": 1},
+        }
+    }
+    profiler = {
+        "kernel_durations_ns": {
+            "qwen35_graph_replay": 5_000.0,
+            "qwen35_batch_decode": 50_000,
+            "fractional_bad_duration": 1.5,
+        }
+    }
+
+    retained_bench._attach_profiler_graph_kernel_time_histogram(scheduler_metadata, profiler)
+
+    assert scheduler_metadata["graph_bucket_stats"]["kernel_time_histogram_ns"] == {"le_10us": 2, "le_100us": 1}
+
+
 def test_qwen35_retained_profiler_reference_loads_captured_summary(tmp_path: Path) -> None:
     profiler_path = tmp_path / "profiler-summary.json"
     trace_dir = tmp_path / "hipengine-profile-c2"

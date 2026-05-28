@@ -29,7 +29,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from hipengine.core.memory import memory_stats
-from hipengine.generation import GeneratedToken, ResidentBatchScheduler
+from hipengine.generation import GeneratedToken, GraphBucketCache, ResidentBatchScheduler
 from hipengine.kvcache import ResolvedKVPolicy
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
 from scripts.qwen35_batch_artifact_schema import validate_cn_diagnostic_artifact_payload
@@ -134,6 +134,41 @@ def _record_decode_graph_bucket_metadata(scheduler: ResidentBatchScheduler, sche
     scheduler.graph_buckets.get_or_create(key, lambda bucket: _shape_key_payload(bucket))
     scheduler.graph_buckets.get(key)
     scheduler_metadata["graph_bucket_stats"] = scheduler.graph_buckets.stats.to_json_dict()
+
+
+def _profiler_graph_kernel_time_histogram(profiler: Mapping[str, Any]) -> dict[str, int] | None:
+    kernel_durations = profiler.get("kernel_durations_ns")
+    if not isinstance(kernel_durations, Mapping):
+        return None
+    cache = GraphBucketCache()
+    for duration_ns in kernel_durations.values():
+        if not _is_finite_positive_number(duration_ns):
+            continue
+        numeric_duration = float(duration_ns)
+        if not numeric_duration.is_integer():
+            continue
+        cache.record_kernel_time_ns(int(numeric_duration))
+    histogram = cache.stats.kernel_time_histogram_ns
+    return {str(bucket): int(count) for bucket, count in histogram.items()} or None
+
+
+def _attach_profiler_graph_kernel_time_histogram(scheduler_metadata: dict[str, Any], profiler: Mapping[str, Any]) -> None:
+    profiler_histogram = _profiler_graph_kernel_time_histogram(profiler)
+    if profiler_histogram is None:
+        return
+    graph_stats = scheduler_metadata.get("graph_bucket_stats")
+    if not isinstance(graph_stats, Mapping):
+        return
+    updated_stats = dict(graph_stats)
+    existing_histogram = updated_stats.get("kernel_time_histogram_ns")
+    merged_histogram = dict(existing_histogram) if isinstance(existing_histogram, Mapping) else {}
+    for bucket, count in profiler_histogram.items():
+        current_count = merged_histogram.get(bucket, 0)
+        if isinstance(current_count, bool) or not isinstance(current_count, int) or current_count < 0:
+            current_count = 0
+        merged_histogram[bucket] = int(current_count) + int(count)
+    updated_stats["kernel_time_histogram_ns"] = merged_histogram
+    scheduler_metadata["graph_bucket_stats"] = updated_stats
 
 
 def _summarize_samples(samples: Sequence[float]) -> dict[str, Any]:
@@ -1164,6 +1199,8 @@ def _build_payload(
         _profiler_reference(getattr(args, "profiler_json", None)),
         bench,
     )
+    scheduler_metadata = dict(bench["scheduler_metadata"])
+    _attach_profiler_graph_kernel_time_histogram(scheduler_metadata, profiler)
     profiler_captured = profiler.get("status") == "captured" and profiler.get("expected_kernels_present") is True
     batch_execution = dict(bench["batch_execution"])
     throughput_claim_eligible = bool(batch_execution.get("throughput_claim_eligible"))
@@ -1281,7 +1318,7 @@ def _build_payload(
         },
         "execution": {
             "batch_execution": batch_execution,
-            "scheduler_metadata": bench["scheduler_metadata"],
+            "scheduler_metadata": scheduler_metadata,
             "completed": bench["completed"],
             "seed_tokens": bench["seed_tokens"],
             "generated_tokens": bench["generated_tokens"],
