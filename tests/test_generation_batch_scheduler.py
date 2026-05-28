@@ -104,6 +104,7 @@ def _sampler_equality_payload(
         "schema": 1,
         "rows": rows,
         "artifact_path": artifact_path,
+        "source_artifact_path": artifact_path,
         "passed": passed,
         "generated_token_equality": {
             "passed": passed,
@@ -4513,6 +4514,24 @@ def test_batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head(tmp_pat
         json.dumps(_sampler_equality_payload(rows=8, artifact_path="benchmarks/results/qwen35-c8-eq.json")),
         encoding="utf-8",
     )
+    missing_source_equality_payload = _sampler_equality_payload(
+        rows=8,
+        artifact_path="benchmarks/results/qwen35-c8-missing-source-eq.json",
+    )
+    missing_source_equality_payload.pop("source_artifact_path")
+    (artifact_dir / "qwen35-c8-missing-source-eq.json").write_text(
+        json.dumps(missing_source_equality_payload),
+        encoding="utf-8",
+    )
+    wrong_source_equality_payload = _sampler_equality_payload(
+        rows=8,
+        artifact_path="benchmarks/results/qwen35-c8-wrong-source-eq.json",
+    )
+    wrong_source_equality_payload["source_artifact_path"] = "benchmarks/results/qwen35-c8-eq.json"
+    (artifact_dir / "qwen35-c8-wrong-source-eq.json").write_text(
+        json.dumps(wrong_source_equality_payload),
+        encoding="utf-8",
+    )
     monkeypatch.chdir(tmp_path)
 
     serial = plan_batch_sampler_dispatch(rows=2, requested_mode="serial_lm_head")
@@ -4602,6 +4621,26 @@ def test_batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head(tmp_pat
     )
     assert wrong_artifact_path_equality_artifact.mode is BatchSamplerMode.SERIAL_LM_HEAD
     assert "batched LM-head equality artifact artifact_path must match sampler_execution.equality_artifact" in wrong_artifact_path_equality_artifact.blockers
+
+    missing_source_equality_artifact = plan_batch_sampler_dispatch(
+        rows=8,
+        requested_mode="batched_lm_head",
+        c2_equality_green=True,
+        equality_artifact="benchmarks/results/qwen35-c8-missing-source-eq.json",
+        equality_rows=8,
+    )
+    assert missing_source_equality_artifact.mode is BatchSamplerMode.SERIAL_LM_HEAD
+    assert "batched LM-head equality artifact source_artifact_path must be a non-empty string" in missing_source_equality_artifact.blockers
+
+    wrong_source_equality_artifact = plan_batch_sampler_dispatch(
+        rows=8,
+        requested_mode="batched_lm_head",
+        c2_equality_green=True,
+        equality_artifact="benchmarks/results/qwen35-c8-wrong-source-eq.json",
+        equality_rows=8,
+    )
+    assert wrong_source_equality_artifact.mode is BatchSamplerMode.SERIAL_LM_HEAD
+    assert "batched LM-head equality artifact source_artifact_path must match sampler_execution.equality_artifact" in wrong_source_equality_artifact.blockers
 
     allowed = plan_batch_sampler_dispatch(
         rows=8,
@@ -7028,6 +7067,24 @@ def test_qwen35_retained_sampler_execution_blockers_require_native_lm_head_evide
         json.dumps(_sampler_equality_payload(rows=2, artifact_path="benchmarks/results/qwen35-c2-sampler-eq.json")),
         encoding="utf-8",
     )
+    missing_source_sampler_payload = _sampler_equality_payload(
+        rows=2,
+        artifact_path="benchmarks/results/qwen35-c2-sampler-missing-source-eq.json",
+    )
+    missing_source_sampler_payload.pop("source_artifact_path")
+    (artifact_dir / "qwen35-c2-sampler-missing-source-eq.json").write_text(
+        json.dumps(missing_source_sampler_payload),
+        encoding="utf-8",
+    )
+    wrong_source_sampler_payload = _sampler_equality_payload(
+        rows=2,
+        artifact_path="benchmarks/results/qwen35-c2-sampler-wrong-source-eq.json",
+    )
+    wrong_source_sampler_payload["source_artifact_path"] = "benchmarks/results/qwen35-c2-sampler-eq.json"
+    (artifact_dir / "qwen35-c2-sampler-wrong-source-eq.json").write_text(
+        json.dumps(wrong_source_sampler_payload),
+        encoding="utf-8",
+    )
     monkeypatch.chdir(tmp_path)
 
     valid = {
@@ -7098,6 +7155,16 @@ def test_qwen35_retained_sampler_execution_blockers_require_native_lm_head_evide
     wrong_artifact_path["decode_execution"]["sampler_execution"]["equality_artifact"] = "benchmarks/results/qwen35-c2-sampler-wrong-artifact-path-eq.json"
     wrong_artifact_path_blockers = retained_bench._sampler_execution_blockers(wrong_artifact_path, expected_concurrency=2)
     assert "execution.batch_execution.decode_execution.sampler_execution.equality_artifact artifact_path must match sampler_execution.equality_artifact" in wrong_artifact_path_blockers
+
+    missing_source = json.loads(json.dumps(valid))
+    missing_source["decode_execution"]["sampler_execution"]["equality_artifact"] = "benchmarks/results/qwen35-c2-sampler-missing-source-eq.json"
+    missing_source_blockers = retained_bench._sampler_execution_blockers(missing_source, expected_concurrency=2)
+    assert "execution.batch_execution.decode_execution.sampler_execution.equality_artifact source_artifact_path must be a non-empty string" in missing_source_blockers
+
+    wrong_source = json.loads(json.dumps(valid))
+    wrong_source["decode_execution"]["sampler_execution"]["equality_artifact"] = "benchmarks/results/qwen35-c2-sampler-wrong-source-eq.json"
+    wrong_source_blockers = retained_bench._sampler_execution_blockers(wrong_source, expected_concurrency=2)
+    assert "execution.batch_execution.decode_execution.sampler_execution.equality_artifact source_artifact_path must match sampler_execution.equality_artifact" in wrong_source_blockers
 
 
 def test_qwen35_retained_memory_evidence_blockers_cover_required_fields() -> None:
@@ -8455,6 +8522,30 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     wrong_artifact_path_sampler_artifact["execution"]["batch_execution"]["decode_execution"]["sampler_execution"]["equality_artifact"] = "benchmarks/results/qwen35-c2-sampler-wrong-artifact-path-eq.json"
     with pytest.raises(ValueError, match="sampler_execution.equality_artifact artifact_path must match sampler_execution.equality_artifact"):
         validate_cn_diagnostic_artifact_payload(wrong_artifact_path_sampler_artifact)
+
+    missing_source_sampler_payload = _sampler_equality_payload(
+        rows=2,
+        artifact_path="benchmarks/results/qwen35-c2-sampler-missing-source-eq.json",
+    )
+    missing_source_sampler_payload.pop("source_artifact_path")
+    missing_source_sampler_artifact_path = artifact_file.parent / "qwen35-c2-sampler-missing-source-eq.json"
+    missing_source_sampler_artifact_path.write_text(json.dumps(missing_source_sampler_payload), encoding="utf-8")
+    missing_source_sampler_artifact = json.loads(json.dumps(accepted))
+    missing_source_sampler_artifact["execution"]["batch_execution"]["decode_execution"]["sampler_execution"]["equality_artifact"] = "benchmarks/results/qwen35-c2-sampler-missing-source-eq.json"
+    with pytest.raises(ValueError, match="sampler_execution.equality_artifact source_artifact_path must be a non-empty string"):
+        validate_cn_diagnostic_artifact_payload(missing_source_sampler_artifact)
+
+    wrong_source_sampler_payload = _sampler_equality_payload(
+        rows=2,
+        artifact_path="benchmarks/results/qwen35-c2-sampler-wrong-source-eq.json",
+    )
+    wrong_source_sampler_payload["source_artifact_path"] = "benchmarks/results/qwen35-c2-sampler-eq.json"
+    wrong_source_sampler_artifact_path = artifact_file.parent / "qwen35-c2-sampler-wrong-source-eq.json"
+    wrong_source_sampler_artifact_path.write_text(json.dumps(wrong_source_sampler_payload), encoding="utf-8")
+    wrong_source_sampler_artifact = json.loads(json.dumps(accepted))
+    wrong_source_sampler_artifact["execution"]["batch_execution"]["decode_execution"]["sampler_execution"]["equality_artifact"] = "benchmarks/results/qwen35-c2-sampler-wrong-source-eq.json"
+    with pytest.raises(ValueError, match="sampler_execution.equality_artifact source_artifact_path must match sampler_execution.equality_artifact"):
+        validate_cn_diagnostic_artifact_payload(wrong_source_sampler_artifact)
 
     tmp_sampler_artifact = json.loads(json.dumps(accepted))
     tmp_sampler_artifact["execution"]["batch_execution"]["decode_execution"]["sampler_execution"]["equality_artifact"] = "/tmp/qwen35-c2-sampler-eq.json"

@@ -133,6 +133,11 @@ def batch_sampler_equality_payload_blockers(
             blockers.append(f"{label} artifact_path must be a non-empty string")
         elif payload_artifact_path != expected_artifact_path:
             blockers.append(f"{label} artifact_path must match sampler_execution.equality_artifact")
+        payload_source_artifact_path = payload.get("source_artifact_path")
+        if not isinstance(payload_source_artifact_path, str) or not payload_source_artifact_path:
+            blockers.append(f"{label} source_artifact_path must be a non-empty string")
+        elif payload_source_artifact_path != expected_artifact_path:
+            blockers.append(f"{label} source_artifact_path must match sampler_execution.equality_artifact")
     artifact_rows = _artifact_row_count(payload)
     if isinstance(artifact_rows, bool) or not isinstance(artifact_rows, int):
         blockers.append(f"{label} rows must be an integer")
