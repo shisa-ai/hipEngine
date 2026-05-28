@@ -1105,6 +1105,7 @@ def _profiler_command_provenance_blockers(
     expected_inputs: Mapping[str, str] | None,
     expected_build: Mapping[str, Any] | None,
     expected_references: Mapping[str, Any] | None,
+    expected_kv_policy: Mapping[str, str] | None,
 ) -> list[str]:
     blockers: list[str] = []
     if "rocprofv3" not in command:
@@ -1161,6 +1162,19 @@ def _profiler_command_provenance_blockers(
                 blockers.append(f"retained command must include {flag}")
             elif _command_arg_value(command, flag) != expected_value:
                 blockers.append(f"profiler command {flag} must match retained reference artifact")
+    if expected_kv_policy is not None:
+        for key, flag, default_value in (
+            ("kv_storage", "--kv-storage", "auto"),
+            ("kv_scale_dtype", "--kv-scale-dtype", "fp16"),
+            ("kv_scale_granularity", "--kv-scale-granularity", "per_token_head"),
+        ):
+            expected_value = expected_kv_policy.get(key)
+            command_value = _command_arg_value(command, flag)
+            if isinstance(expected_value, str) and expected_value:
+                if command_value is None and expected_value == default_value:
+                    continue
+                if command_value != expected_value:
+                    blockers.append(f"profiler command {flag} must match retained KV policy")
     return blockers
 
 
@@ -1173,6 +1187,7 @@ def _profiler_provenance_blockers(
     expected_inputs: Mapping[str, str] | None = None,
     expected_build: Mapping[str, Any] | None = None,
     expected_references: Mapping[str, Any] | None = None,
+    expected_kv_policy: Mapping[str, str] | None = None,
 ) -> list[str]:
     blockers: list[str] = []
     profiler_artifact_path = profiler.get("artifact_path")
@@ -1219,6 +1234,7 @@ def _profiler_provenance_blockers(
                 expected_inputs=expected_inputs,
                 expected_build=expected_build,
                 expected_references=expected_references,
+                expected_kv_policy=expected_kv_policy,
             )
             for command in command_candidates
         ]
@@ -1868,6 +1884,11 @@ def _build_payload(
             "c1_baseline_json": str(args.c1_baseline_json) if getattr(args, "c1_baseline_json", None) is not None else None,
             "serial_bridge_json": str(args.serial_bridge_json) if getattr(args, "serial_bridge_json", None) is not None else None,
             "primitive_correctness_json": str(args.primitive_correctness_json) if getattr(args, "primitive_correctness_json", None) is not None else None,
+        },
+        expected_kv_policy={
+            "kv_storage": str(getattr(args, "kv_storage", "auto")),
+            "kv_scale_dtype": str(getattr(args, "kv_scale_dtype", "fp16")),
+            "kv_scale_granularity": str(getattr(args, "kv_scale_granularity", "per_token_head")),
         },
     )
     profiler_blockers.extend(_profiler_kernel_evidence_blockers(profiler))

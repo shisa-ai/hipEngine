@@ -5914,7 +5914,7 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
         "output_format": "csv",
         "trace_dir": "/tmp/hipengine-profile-c2",
         "trace_files": ["/tmp/hipengine-profile-c2/hipengine_kernel_trace.csv"],
-        "command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile-c2 -- python3 scripts/qwen35_batch_retained_bench.py --model /models/qwen35 --fixture fixtures/qwen35.json --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --compiler-version-file benchmarks/results/hipcc-version.txt --require-cached-build --json benchmarks/results/native-c2.json --c1-baseline-json benchmarks/results/c1.json --serial-bridge-json benchmarks/results/serial-c2.json --primitive-correctness-json benchmarks/results/primitive-c2.json --profiler-json benchmarks/results/profiler-c2.json",
+        "command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile-c2 -- python3 scripts/qwen35_batch_retained_bench.py --model /models/qwen35 --fixture fixtures/qwen35.json --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --compiler-version-file benchmarks/results/hipcc-version.txt --require-cached-build --kv-storage bf16 --json benchmarks/results/native-c2.json --c1-baseline-json benchmarks/results/c1.json --serial-bridge-json benchmarks/results/serial-c2.json --primitive-correctness-json benchmarks/results/primitive-c2.json --profiler-json benchmarks/results/profiler-c2.json",
     }
     invalid = {
         "artifact_path": "/tmp/profiler-c2.json",
@@ -5932,6 +5932,7 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
         "serial_bridge_json": "benchmarks/results/serial-c2.json",
         "primitive_correctness_json": "benchmarks/results/primitive-c2.json",
     }
+    expected_kv_policy = {"kv_storage": "bf16", "kv_scale_dtype": "fp16", "kv_scale_granularity": "per_token_head"}
 
     assert (
         retained_bench._profiler_provenance_blockers(
@@ -5941,6 +5942,7 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
             expected_inputs=expected_inputs,
             expected_build=expected_build,
             expected_references=expected_references,
+            expected_kv_policy=expected_kv_policy,
         )
         == []
     )
@@ -6026,6 +6028,16 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
         expected_inputs=expected_inputs,
         expected_build=expected_build,
         expected_references=missing_retained_reference,
+    )
+    mismatched_kv_policy = {**valid, "command": valid["command"].replace("--kv-storage bf16", "--kv-storage auto")}
+    assert "profiler command --kv-storage must match retained KV policy" in retained_bench._profiler_provenance_blockers(
+        mismatched_kv_policy,
+        retained_artifact_path="benchmarks/results/native-c2.json",
+        expected_workload=expected_workload,
+        expected_inputs=expected_inputs,
+        expected_build=expected_build,
+        expected_references=expected_references,
+        expected_kv_policy=expected_kv_policy,
     )
     mismatched_model = {**valid, "command": valid["command"].replace("--model /models/qwen35", "--model /models/other")}
     assert "profiler command --model must match retained model" in retained_bench._profiler_provenance_blockers(
