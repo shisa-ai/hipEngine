@@ -2246,6 +2246,16 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_postcondition_field_match["commands"][-1]["postconditions"][0]["profiler_synthesized_fields"] = ["trace_kernel_names"]
     with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler synthesized fields must match when passed"):
         c_sweep.validate_sweep_summary(tampered_postcondition_field_match)
+    tampered_profiler_precondition_field_shape = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_field_shape["commands"][-1]["preconditions"][-1]["profiler_trace_synthesized_fields"] = [1]
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_synthesized_fields must be a string list when retained postcondition passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_field_shape)
+    tampered_profiler_precondition_field_match = json.loads(json.dumps(persisted))
+    postcondition = tampered_profiler_precondition_field_match["commands"][-1]["postconditions"][0]
+    postcondition["profiler_synthesized_fields"] = ["trace_kernel_names"]
+    postcondition["profiler_precondition_synthesized_fields"] = ["trace_kernel_names"]
+    with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler_precondition_synthesized_fields must match profiler_summary precondition"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_field_match)
     tampered_git_dirty = json.loads(json.dumps(persisted))
     tampered_git_dirty["commands"][-1]["git_dirty"] = True
     with pytest.raises(ValueError, match=r"commands\[\]\.git_dirty must match git.dirty"):
