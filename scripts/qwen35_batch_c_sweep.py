@@ -1780,6 +1780,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         if compiler_version_file != option_compiler_version_file:
                             errors.append("commands[].argv compiler-version-file must match options.compiler_version_file")
                             break
+                    option_require_cached_build = options.get("require_cached_build")
+                    if isinstance(option_require_cached_build, bool) and ("--require-cached-build" in argv) != option_require_cached_build:
+                        errors.append("commands[].argv require-cached-build must match options.require_cached_build")
+                        break
             status = entry.get("status")
             if status not in {"planned", "passed", "skipped", "failed"}:
                 errors.append("commands[].status must be planned, passed, skipped, or failed")

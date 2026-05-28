@@ -3565,6 +3565,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_options_compiler_command_mismatch["options"]["compiler_version_file"] = str(output_dir / "hipcc-version.txt")
     with pytest.raises(ValueError, match=r"commands\[\]\.argv compiler-version-file must match options.compiler_version_file"):
         c_sweep.validate_sweep_summary(tampered_options_compiler_command_mismatch)
+    tampered_options_cached_build_command_mismatch = json.loads(json.dumps(persisted))
+    tampered_options_cached_build_command_mismatch["options"]["require_cached_build"] = True
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv require-cached-build must match options.require_cached_build"):
+        c_sweep.validate_sweep_summary(tampered_options_cached_build_command_mismatch)
     tampered_command_argv = json.loads(json.dumps(persisted))
     tampered_command_argv["commands"][-1]["argv"] = []
     with pytest.raises(ValueError, match=r"commands\[\]\.argv must be a non-empty string list"):
