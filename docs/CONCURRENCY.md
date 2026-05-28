@@ -974,7 +974,7 @@ roll-up/status view.
       `correctness.primitive_batch_correctness.artifact_path`, and a concrete
       `rocprofv3 --kernel-trace` profiler command targeting
       `scripts/qwen35_batch_retained_bench.py` after the rocprof `--` separator,
-      with rocprof-only flags (`--kernel-trace`, `--output-format csv`, `-d`) before
+      with unique rocprof-only flags (`--kernel-trace`, `--output-format csv`, `-d`) before
       that separator, and unique retained shape/artifact/reference/cached-build
       flags validated from the post-separator profiled command segment
       (`--model`, `--fixture`, `--batch-size`, `--prompt-length`,
