@@ -427,7 +427,7 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
         misses=8,
         replay_hit_rate=0.0,
         miss_reasons={"cache_absent": 5, "shape_changed": 3},
-        kernel_time_histogram_ns={"le_10us": 2, "le_100us": 4},
+        kernel_time_histogram_ns={"le_10us": 2, "le_100us": 4, "lt_1us": 9},
     )
     app = create_app(
         ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False, metrics="prometheus"),
@@ -468,6 +468,7 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
     assert _labeled_metric_value(metrics.text, "hipengine_graph_bucket_miss_reason_total", reason="shape_changed") == 3
     assert _labeled_metric_value(metrics.text, "hipengine_graph_bucket_kernel_time_bucket_total", bucket="le_10us") == 2
     assert _labeled_metric_value(metrics.text, "hipengine_graph_bucket_kernel_time_bucket_total", bucket="le_100us") == 4
+    assert 'hipengine_graph_bucket_kernel_time_bucket_total{bucket="lt_1us"}' not in metrics.text
 
 
 def test_streaming_chat_completion_lowers_n_to_seeded_rows() -> None:

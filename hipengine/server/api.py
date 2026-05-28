@@ -36,6 +36,7 @@ from hipengine.kvcache import resolve_prefix_cache_mode
 
 
 _LOGGER = logging.getLogger("uvicorn.error")
+_GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS = frozenset(("le_10us", "le_100us", "le_1ms", "le_10ms", "gt_10ms"))
 
 
 @dataclass(frozen=True)
@@ -949,7 +950,10 @@ def _graph_bucket_metric_values(engine: Any | None) -> dict[str, Any]:
     lookups = values["hits"] + values["misses"]
     values["replay_hit_rate"] = values["hits"] / lookups if lookups > 0.0 else 0.0
     values["miss_reasons"] = _non_negative_metric_mapping(data.get("miss_reasons"))
-    values["kernel_time_histogram_ns"] = _non_negative_metric_mapping(data.get("kernel_time_histogram_ns"))
+    kernel_time_histogram = _non_negative_metric_mapping(data.get("kernel_time_histogram_ns"))
+    values["kernel_time_histogram_ns"] = {
+        bucket: value for bucket, value in kernel_time_histogram.items() if bucket in _GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS
+    }
     return values
 
 

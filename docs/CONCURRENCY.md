@@ -925,7 +925,7 @@ roll-up/status view.
       observability fields plus replay shape-key axes (`context_bucket`,
       `top_k`, `experts_per_token`, `replay_steps`, `draft_depth`, and
       `tree_shape`) before a c>N row can be promoted; `/metrics` exposes a
-      hit/miss-derived replay-hit-rate gauge plus labeled miss-reason and kernel-time-bucket counters for live runs.
+      hit/miss-derived replay-hit-rate gauge plus labeled miss-reason and known kernel-time-bucket counters for live runs.
 - [ ] **P3 remove residual serial loops.** Remove full-attention per-row
       fallback, per-row metadata allocation, per-row LM-head launches, and
       Python per-layer dispatch from steady-state native decode. Acceptance:
@@ -1281,7 +1281,7 @@ endpoint live; retained c>N rows include all gates above.
       and kernel-time histogram buckets, retained/serial scripts emit that
       shape, accepted-artifact schema requires non-empty known-bucket histogram observations
       for accepted rows, and `/metrics` exports labeled miss-reason and
-      kernel-time-bucket counters; the item remains open until real replay
+      known kernel-time-bucket counters; the item remains open until real replay
       profiler evidence populates kernel-time buckets.
 - [x] Retained-row gates 4 (admission/completion timestamps + p50/p95) and
       6/7/8 (dynamic pool + stable block id + prefix sharing artifact)
@@ -1333,7 +1333,7 @@ Establish these before optimizing anything:
       `kernel_time_histogram_ns`; `scripts/qwen35_batch_retained_bench.py` and
       serial diagnostics emit `decode_shape_key` / `graph_bucket_stats`;
       accepted-artifact schema requires those fields and non-empty known-bucket histogram
-      observations for accepted rows; `/metrics` exports graph-bucket counters;
+      observations for accepted rows; `/metrics` exports graph-bucket counters and filters kernel-time buckets to that taxonomy;
       covered by
       `test_graph_bucket_cache_clear_resets_entries_and_counters`,
       `test_qwen35_retained_records_decode_graph_bucket_metadata`,
