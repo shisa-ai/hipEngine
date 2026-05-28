@@ -975,8 +975,8 @@ roll-up/status view.
       matching workload shape, finite nonnegative allocator peak bytes,
       dynamic-pool evidence plus finite nonnegative counters,
       stable block-id audit, and prefix-sharing savings,
-      execution scheduler metadata with decode shape-key
-      and non-empty graph-bucket stats, positive finite
+      execution scheduler metadata with decode shape-key active mask
+      length/count matching workload concurrency and non-empty graph-bucket stats, positive finite
       aggregate/per-request throughput whose c-sweep scaling precondition
       concurrency and run-shape labels are typed and match `workload`, and whose
       native scaling copy matches the primary measurements, all

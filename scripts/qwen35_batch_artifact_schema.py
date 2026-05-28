@@ -965,8 +965,14 @@ def _validate_accepted_scheduler_metadata(
         if isinstance(concurrency, int) and not isinstance(concurrency, bool) and active_c != concurrency:
             errors.append("execution.scheduler_metadata.decode_shape_key.active_c must match workload.concurrency for accepted artifacts")
         active_mask = decode_shape_key.get("active_mask")
-        if not isinstance(active_mask, list) or not active_mask or any(not isinstance(item, bool) for item in active_mask):
+        active_mask_valid = isinstance(active_mask, list) and bool(active_mask) and not any(not isinstance(item, bool) for item in active_mask)
+        if not active_mask_valid:
             errors.append("execution.scheduler_metadata.decode_shape_key.active_mask must be a non-empty bool list for accepted artifacts")
+        elif isinstance(concurrency, int) and not isinstance(concurrency, bool):
+            if len(active_mask) != concurrency:
+                errors.append("execution.scheduler_metadata.decode_shape_key.active_mask length must match workload.concurrency for accepted artifacts")
+            if sum(1 for active in active_mask if active) != concurrency:
+                errors.append("execution.scheduler_metadata.decode_shape_key.active_mask true count must match workload.concurrency for accepted artifacts")
         context_bucket = decode_shape_key.get("context_bucket")
         if not isinstance(context_bucket, int) or isinstance(context_bucket, bool) or context_bucket <= 0:
             errors.append("execution.scheduler_metadata.decode_shape_key.context_bucket must be a positive int for accepted artifacts")

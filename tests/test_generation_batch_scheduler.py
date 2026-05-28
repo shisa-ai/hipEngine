@@ -6816,6 +6816,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="decode_shape_key.active_c must match workload.concurrency"):
         validate_cn_diagnostic_artifact_payload(mismatched_decode_shape_key)
 
+    short_decode_active_mask = json.loads(json.dumps(accepted))
+    short_decode_active_mask["execution"]["scheduler_metadata"]["decode_shape_key"]["active_mask"] = [True]
+    with pytest.raises(ValueError, match="decode_shape_key.active_mask length must match workload.concurrency"):
+        validate_cn_diagnostic_artifact_payload(short_decode_active_mask)
+
+    inactive_decode_active_mask = json.loads(json.dumps(accepted))
+    inactive_decode_active_mask["execution"]["scheduler_metadata"]["decode_shape_key"]["active_mask"] = [True, False]
+    with pytest.raises(ValueError, match="decode_shape_key.active_mask true count must match workload.concurrency"):
+        validate_cn_diagnostic_artifact_payload(inactive_decode_active_mask)
+
     missing_decode_context_bucket = json.loads(json.dumps(accepted))
     missing_decode_context_bucket["execution"]["scheduler_metadata"]["decode_shape_key"].pop("context_bucket")
     with pytest.raises(ValueError, match="decode_shape_key.context_bucket must be a positive int"):
