@@ -1748,6 +1748,12 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if any(profiler_precondition.get(field) != expected_path for field, expected_path in profiler_reference_paths.items()):
                         errors.append("commands[].preconditions[].profiler gate artifact paths must match retained command")
                         break
+                    if profiler_precondition.get("profiler_compiler_version_file") != _argv_value(argv, "--compiler-version-file"):
+                        errors.append("commands[].preconditions[].profiler_compiler_version_file must match retained command")
+                        break
+                    if profiler_precondition.get("profiler_require_cached_build") != ("--require-cached-build" in argv):
+                        errors.append("commands[].preconditions[].profiler_require_cached_build must match retained command")
+                        break
                     if profiler_precondition.get("profiler_status") != "captured":
                         errors.append("commands[].preconditions[].profiler_status must be captured when passed")
                         break

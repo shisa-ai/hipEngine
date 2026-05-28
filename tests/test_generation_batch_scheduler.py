@@ -2439,6 +2439,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_profiler_precondition_gate_artifact["commands"][-1]["preconditions"][-1]["serial_bridge_artifact_path"] = str(output_dir / "other-serial.json")
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler gate artifact paths must match retained command"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_gate_artifact)
+    tampered_profiler_precondition_compiler = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_compiler["commands"][-1]["preconditions"][-1]["profiler_compiler_version_file"] = str(output_dir / "other-hipcc-version.txt")
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_compiler_version_file must match retained command"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_compiler)
+    tampered_profiler_precondition_cached_build = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_cached_build["commands"][-1]["preconditions"][-1]["profiler_require_cached_build"] = True
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_require_cached_build must match retained command"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_cached_build)
     tampered_profiler_precondition_status = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_status["commands"][-1]["preconditions"][-1]["profiler_status"] = "missing"
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_status must be captured when passed"):
