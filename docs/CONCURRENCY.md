@@ -931,7 +931,7 @@ roll-up/status view.
       Python per-layer dispatch from steady-state native decode. Acceptance:
       profiler summaries show the removed bottleneck and equality remains
       green. Progress: accepted/performance-claim c>N artifact schema now rejects
-      serial-bridge paths, non-scheduler-owned execution, non-full-native or wrong-layer-limit prefill plans, non-empty batch/prefill/decode-execution blockers, row executions labeled `serial`/`fallback`, missing
+      serial-bridge paths, non-scheduler-owned execution, non-full-native, wrong-path, or wrong-layer-limit prefill plans, non-empty batch/prefill/decode-execution blockers, row executions labeled `serial`/`fallback`, missing
       decode-execution metadata, non-`native_batch` full-attention decode paths,
       per-row full-attention decode fallbacks, and non-native sampler metadata,
       and retained bench now blocks promotion before schema validation for the same serial/fallback batch/decode metadata,
@@ -946,7 +946,7 @@ roll-up/status view.
       JSON artifacts under `benchmarks/results/`. Acceptance: every perf claim
       cites correctness gate, profiler status, exact command, and hardware.
       Progress: accepted/performance-claim c>N artifacts now fail schema
-      validation unless they include fully native scheduler-owned batch/prefill/decode-execution metadata with empty blockers and prefill layer limits matching `workload.max_layers`,
+      validation unless they include fully native scheduler-owned batch/prefill/decode-execution metadata with empty blockers, the known full-native prefill path, and prefill layer limits matching `workload.max_layers`,
       workload native prefill/decode flags set, workload scheduler labels matching the execution path,
       generated-token equality sequence lists matching `workload.concurrency`
       rows and seed + warmup + measured decode token counts per row, with

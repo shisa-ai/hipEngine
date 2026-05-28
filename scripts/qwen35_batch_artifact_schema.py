@@ -834,6 +834,8 @@ def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[
     if not isinstance(native_prefill_plan, Mapping):
         errors.append("execution.batch_execution.native_prefill_plan must be an object for accepted artifacts")
     else:
+        if native_prefill_plan.get("path") != "single_request_native_full":
+            errors.append("execution.batch_execution.native_prefill_plan.path must be single_request_native_full for accepted artifacts")
         if native_prefill_plan.get("full_layer_limit_native") is not True:
             errors.append("execution.batch_execution.native_prefill_plan.full_layer_limit_native must be true for accepted artifacts")
         layer_limit = native_prefill_plan.get("layer_limit")

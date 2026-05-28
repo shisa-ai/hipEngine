@@ -6352,7 +6352,7 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
         "scheduler_owned": True,
         "blockers": [],
         "row_execution": "native_compact_caware_layers",
-        "native_prefill_plan": {"full_layer_limit_native": True, "layer_limit": 40, "blockers": []},
+        "native_prefill_plan": {"path": "single_request_native_full", "full_layer_limit_native": True, "layer_limit": 40, "blockers": []},
         "native_compact_prefill": True,
         "native_caware_decode": True,
         "decode_execution": {"full_attention_decode_path": "native_batch", "native_caware_decode": True, "blockers": []},
@@ -6362,7 +6362,7 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
         "scheduler_owned": False,
         "blockers": ["full-attention decode used a per-row fallback"],
         "row_execution": "native_linear_batch_with_per_row_full_attention_fallback",
-        "native_prefill_plan": {"full_layer_limit_native": False, "layer_limit": 8, "blockers": ["unsupported prefill layer"]},
+        "native_prefill_plan": {"path": "unsupported_layer_type", "full_layer_limit_native": False, "layer_limit": 8, "blockers": ["unsupported prefill layer"]},
         "native_compact_prefill": False,
         "native_caware_decode": False,
         "decode_execution": {
@@ -6379,6 +6379,7 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
     assert "execution.batch_execution.blockers must be empty" in blockers
     assert "execution.batch_execution.row_execution must not contain serial or fallback" in blockers
     assert "execution.batch_execution.native_compact_prefill must be true" in blockers
+    assert "execution.batch_execution.native_prefill_plan.path must be single_request_native_full" in blockers
     assert "execution.batch_execution.native_prefill_plan.full_layer_limit_native must be true" in blockers
     assert "execution.batch_execution.native_prefill_plan.layer_limit must match workload.max_layers" in blockers
     assert "execution.batch_execution.native_prefill_plan.blockers must be empty" in blockers
@@ -6947,7 +6948,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                 "scheduler_owned": True,
                 "blockers": [],
                 "row_execution": "native_compact_caware_layers",
-                "native_prefill_plan": {"full_layer_limit_native": True, "layer_limit": 40, "blockers": []},
+                "native_prefill_plan": {"path": "single_request_native_full", "full_layer_limit_native": True, "layer_limit": 40, "blockers": []},
                 "native_compact_prefill": True,
                 "native_caware_decode": True,
                 "throughput_claim_eligible": True,
@@ -7526,6 +7527,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     blocked_prefill_plan["execution"]["batch_execution"]["native_prefill_plan"]["blockers"] = ["prefill blocker"]
     with pytest.raises(ValueError, match="native_prefill_plan.blockers must be empty"):
         validate_cn_diagnostic_artifact_payload(blocked_prefill_plan)
+
+    wrong_prefill_plan_path = json.loads(json.dumps(accepted))
+    wrong_prefill_plan_path["execution"]["batch_execution"]["native_prefill_plan"]["path"] = "unsupported_layer_type"
+    with pytest.raises(ValueError, match="native_prefill_plan.path must be single_request_native_full"):
+        validate_cn_diagnostic_artifact_payload(wrong_prefill_plan_path)
 
     mismatched_prefill_plan_layers = json.loads(json.dumps(accepted))
     mismatched_prefill_plan_layers["execution"]["batch_execution"]["native_prefill_plan"]["layer_limit"] = 8

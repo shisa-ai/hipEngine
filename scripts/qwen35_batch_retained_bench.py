@@ -973,6 +973,8 @@ def _batch_execution_blockers(batch_execution: Mapping[str, Any], *, expected_ma
     if not isinstance(native_prefill_plan, Mapping):
         blockers.append("execution.batch_execution.native_prefill_plan is missing")
     else:
+        if native_prefill_plan.get("path") != "single_request_native_full":
+            blockers.append("execution.batch_execution.native_prefill_plan.path must be single_request_native_full")
         if native_prefill_plan.get("full_layer_limit_native") is not True:
             blockers.append("execution.batch_execution.native_prefill_plan.full_layer_limit_native must be true")
         if expected_max_layers is not None:
