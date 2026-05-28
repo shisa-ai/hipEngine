@@ -920,7 +920,8 @@ roll-up/status view.
       replay length)`. Acceptance: bucket hit/miss stats and profiler evidence
       show replay for common shapes. Progress: graph-bucket stats now serialize
       `entries`, `hits`, `misses`, `replay_hit_rate`, miss-reason counts, and kernel-time
-      histogram buckets; retained accepted-artifact schema requires those
+      histogram buckets; retained accepted-artifact schema requires non-empty kernel-time
+      histogram evidence plus those
       observability fields plus replay shape-key axes (`context_bucket`,
       `top_k`, `experts_per_token`, `replay_steps`, `draft_depth`, and
       `tree_shape`) before a c>N row can be promoted; `/metrics` exposes a
@@ -1278,9 +1279,10 @@ endpoint live; retained c>N rows include all gates above.
       (entries, hits, misses, miss reason, kernel-time histogram). Progress:
       `GraphBucketCache.stats.to_json_dict()` now includes miss-reason counts
       and kernel-time histogram buckets, retained/serial scripts emit that
-      shape, accepted-artifact schema validates it, and `/metrics` exports
-      labeled miss-reason and kernel-time-bucket counters; the item remains open
-      until real replay profiler evidence populates kernel-time buckets.
+      shape, accepted-artifact schema requires non-empty histogram observations
+      for accepted rows, and `/metrics` exports labeled miss-reason and
+      kernel-time-bucket counters; the item remains open until real replay
+      profiler evidence populates kernel-time buckets.
 - [x] Retained-row gates 4 (admission/completion timestamps + p50/p95) and
       6/7/8 (dynamic pool + stable block id + prefix sharing artifact)
       enforced by the bench harness.
@@ -1327,10 +1329,12 @@ Establish these before optimizing anything:
       length)`, with an uncaptured fallback for rare shapes.
 - [x] Add graph-bucket cache hit/miss and replay statistics to artifacts.
       Evidence: `GraphBucketStats.to_json_dict()` serializes `entries`,
-      `hits`, `misses`, `miss_reasons`, and `kernel_time_histogram_ns`;
-      `scripts/qwen35_batch_retained_bench.py` and serial diagnostics emit
-      `decode_shape_key` / `graph_bucket_stats`; accepted-artifact schema
-      requires those fields; `/metrics` exports graph-bucket counters; covered by
+      `hits`, `misses`, `replay_hit_rate`, `miss_reasons`, and
+      `kernel_time_histogram_ns`; `scripts/qwen35_batch_retained_bench.py` and
+      serial diagnostics emit `decode_shape_key` / `graph_bucket_stats`;
+      accepted-artifact schema requires those fields and non-empty histogram
+      observations for accepted rows; `/metrics` exports graph-bucket counters;
+      covered by
       `test_graph_bucket_cache_clear_resets_entries_and_counters`,
       `test_qwen35_retained_records_decode_graph_bucket_metadata`,
       `test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates`,
