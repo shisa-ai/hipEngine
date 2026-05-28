@@ -57,6 +57,7 @@ _PROFILER_TRACE_KERNEL_NAME_COLUMNS = ("Kernel_Name", "KernelName", "Name")
 _PROFILER_TRACE_START_COLUMNS = ("Start_Timestamp", "StartTimestamp", "StartNs", "Start")
 _PROFILER_TRACE_END_COLUMNS = ("End_Timestamp", "EndTimestamp", "EndNs", "End")
 _PROFILER_TRACE_DURATION_COLUMNS = ("DurationNs", "Duration_NS", "Duration_Ns", "Duration")
+_DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = ("serial", "fallback", "per_row", "per-row")
 _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS = {
     "block_size": 256,
     "max_context_len": 4,
@@ -554,6 +555,11 @@ def _synthesized_profiler_kernel_duration_shares(profiler: Mapping[str, Any]) ->
         if isinstance(kernel_name, str) and kernel_name and _is_finite_positive_number(duration_ns)
     }
     return shares or None
+
+
+def _has_disallowed_profiler_kernel_name_fragment(kernel_name: str) -> bool:
+    lowered = kernel_name.lower()
+    return any(fragment in lowered for fragment in _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS)
 
 
 def _profiler_kernel_duration_category(kernel_name: str) -> str:
@@ -1399,6 +1405,8 @@ def _profiler_kernel_evidence_blockers(profiler: Mapping[str, Any]) -> list[str]
         blockers.append("profiler.trace_kernel_names entries must be non-empty strings")
     elif len(set(trace_kernel_names)) != len(trace_kernel_names):
         blockers.append("profiler.trace_kernel_names entries must be unique")
+    elif any(_has_disallowed_profiler_kernel_name_fragment(name) for name in trace_kernel_names):
+        blockers.append("profiler.trace_kernel_names must not include serial/per-row/fallback kernel names")
     expected_kernel_names = profiler.get("expected_kernel_names")
     if not isinstance(expected_kernel_names, list) or not any(isinstance(name, str) and name for name in expected_kernel_names):
         blockers.append("profiler.expected_kernel_names must be a non-empty string list")
@@ -1406,6 +1414,8 @@ def _profiler_kernel_evidence_blockers(profiler: Mapping[str, Any]) -> list[str]
         blockers.append("profiler.expected_kernel_names entries must be non-empty strings")
     elif len(set(expected_kernel_names)) != len(expected_kernel_names):
         blockers.append("profiler.expected_kernel_names entries must be unique")
+    elif any(_has_disallowed_profiler_kernel_name_fragment(name) for name in expected_kernel_names):
+        blockers.append("profiler.expected_kernel_names must not include serial/per-row/fallback kernel names")
     kernel_durations = profiler.get("kernel_durations_ns")
     if not isinstance(kernel_durations, Mapping) or not kernel_durations:
         blockers.append("profiler.kernel_durations_ns must be a non-empty object")
@@ -1416,6 +1426,10 @@ def _profiler_kernel_evidence_blockers(profiler: Mapping[str, Any]) -> list[str]
     for kernel_name, duration_ns in kernel_durations.items():
         if not isinstance(kernel_name, str) or not kernel_name:
             blockers.append("profiler.kernel_durations_ns keys must be non-empty strings")
+            duration_keys_valid = False
+            break
+        if _has_disallowed_profiler_kernel_name_fragment(kernel_name):
+            blockers.append("profiler.kernel_durations_ns must not include serial/per-row/fallback kernel names")
             duration_keys_valid = False
             break
         if not _is_finite_positive_number(duration_ns):

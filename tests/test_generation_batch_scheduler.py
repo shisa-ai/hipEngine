@@ -6212,11 +6212,21 @@ def test_qwen35_retained_profiler_kernel_evidence_blockers_require_trace_duratio
         "trace_kernel_names": ["qwen35_batch_decode", "qwen35_batch_decode"],
         "expected_kernel_names": ["qwen35_batch_decode_wmma_caware", "qwen35_batch_decode_wmma_caware"],
     }
+    disallowed_names = {
+        **complete,
+        "trace_kernel_names": [*complete["trace_kernel_names"], "qwen35_serial_fallback_decode"],
+        "expected_kernel_names": [*complete["expected_kernel_names"], "qwen35_serial_fallback_decode"],
+        "kernel_durations_ns": {**complete["kernel_durations_ns"], "qwen35_serial_fallback_decode": 1.0},
+    }
 
     assert retained_bench._profiler_kernel_evidence_blockers(complete) == []
     duplicate_blockers = retained_bench._profiler_kernel_evidence_blockers(duplicate_names)
     assert "profiler.trace_kernel_names entries must be unique" in duplicate_blockers
     assert "profiler.expected_kernel_names entries must be unique" in duplicate_blockers
+    disallowed_blockers = retained_bench._profiler_kernel_evidence_blockers(disallowed_names)
+    assert "profiler.trace_kernel_names must not include serial/per-row/fallback kernel names" in disallowed_blockers
+    assert "profiler.expected_kernel_names must not include serial/per-row/fallback kernel names" in disallowed_blockers
+    assert "profiler.kernel_durations_ns must not include serial/per-row/fallback kernel names" in disallowed_blockers
     blockers = retained_bench._profiler_kernel_evidence_blockers(incomplete)
     assert "profiler.trace_kernel_names must include profiler.expected_kernel_names" in blockers
     assert "profiler.kernel_durations_ns.qwen35_batch_decode_wmma_caware must be positive numeric" in blockers
