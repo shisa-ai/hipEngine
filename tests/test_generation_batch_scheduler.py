@@ -4471,7 +4471,23 @@ def test_projection_dispatch_keeps_c1_on_row_gemv_even_with_fast_candidate() -> 
     assert decision.blockers == ()
 
 
-def test_projection_dispatch_evidence_loads_schema_checked_artifact_blocks() -> None:
+def test_projection_dispatch_evidence_loads_schema_checked_artifact_blocks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo_root = tmp_path / "repo"
+    artifact_dir = repo_root / "benchmarks" / "results"
+    artifact_dir.mkdir(parents=True)
+    external_artifact_dir = tmp_path / "external" / "benchmarks" / "results"
+    external_artifact_dir.mkdir(parents=True)
+    external_artifact = external_artifact_dir / "projection-wmma-c4.json"
+    external_artifact.write_text("{}", encoding="utf-8")
+    symlink_artifact = artifact_dir / "projection-wmma-c4-symlink.json"
+    try:
+        symlink_artifact.symlink_to(external_artifact)
+    except (OSError, NotImplementedError):
+        symlink_artifact = None
+    monkeypatch.chdir(repo_root)
+
     payload = {
         "artifact_path": "benchmarks/results/projection-wmma-c4.json",
         "aggregate_vs_row_gemv": 1.35,
@@ -4491,7 +4507,14 @@ def test_projection_dispatch_evidence_loads_schema_checked_artifact_blocks() -> 
     with pytest.raises(ValueError, match="artifact_path must be under benchmarks/results"):
         ProjectionDispatchEvidence.from_json_dict({**payload, "artifact_path": "/tmp/projection-wmma-c4.json"})
     with pytest.raises(ValueError, match="artifact_path must be under benchmarks/results"):
-        ProjectionDispatchEvidence.from_json_dict({**payload, "artifact_path": "benchmarks/results/../tmp/projection-wmma-c4.json"})
+        ProjectionDispatchEvidence.from_json_dict(
+            {**payload, "artifact_path": "benchmarks/results/../tmp/projection-wmma-c4.json"}
+        )
+    if symlink_artifact is not None:
+        with pytest.raises(ValueError, match="artifact_path must be under benchmarks/results"):
+            ProjectionDispatchEvidence.from_json_dict(
+                {**payload, "artifact_path": "benchmarks/results/projection-wmma-c4-symlink.json"}
+            )
     with pytest.raises(ValueError, match="accepted aggregate_vs_row_gemv must be > 1.0"):
         ProjectionDispatchEvidence.from_json_dict({**payload, "aggregate_vs_row_gemv": 1.0})
     with pytest.raises(ValueError, match="accepted per_request_vs_row_gemv must be > 1.0"):

@@ -40904,3 +40904,30 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
 ```
+
+## 2026-05-28 — CONCURRENCY projection evidence symlink guard
+
+Materially advanced C3.4 c-aware projection dispatch gating without closing the queue item or adding a retained c>N performance claim:
+
+- Tightened `hipengine.dispatch.projection` retained evidence path validation so projection speedup artifacts must remain repo-relative `benchmarks/results/` paths whose resolved target stays under the active results tree.
+- Added scheduler coverage proving a symlink under `benchmarks/results/` that targets an external projection evidence artifact is rejected before the projection policy consumes the evidence.
+- Updated `docs/CONCURRENCY.md` C3.4 progress text to record the resolved-target requirement.
+- No queue status changed and no retained c>N performance claim was added.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -k 'projection_dispatch_evidence_loads_schema_checked_artifact_blocks' -q
+# 1 passed
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -q
+# 122 passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
+```

@@ -729,7 +729,8 @@ roll-up/status view.
       `plan_projection_dispatch_from_artifact(...)` schema-check retained
       artifact candidate/evidence lists before the policy can consume them;
       projection speedup evidence must reference an artifact under
-      `benchmarks/results/` and, when accepted, must beat row-GEMV on both
+      `benchmarks/results/` whose resolved target stays inside the active
+      results tree and, when accepted, must beat row-GEMV on both
       aggregate and per-request ratios; accepted c>N artifact schema rejects
       malformed optional `projection_dispatch_candidates` metadata; accepted c>N
       artifact schema now requires `execution.batch_execution.projection_dispatch`

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from pathlib import PurePosixPath
+from pathlib import Path
 from typing import Any
 
 from hipengine.dispatch.fusion import KernelPlanStep
@@ -207,8 +207,19 @@ def _is_positive_number(value: Any) -> bool:
 
 
 def _is_retained_artifact_path(value: str) -> bool:
-    path = PurePosixPath(value)
-    return not path.is_absolute() and len(path.parts) >= 3 and path.parts[:2] == ("benchmarks", "results") and ".." not in path.parts
+    path = Path(value)
+    if (
+        path.is_absolute()
+        or len(path.parts) < 3
+        or path.parts[:2] != ("benchmarks", "results")
+        or ".." in path.parts
+    ):
+        return False
+    results_root = (Path.cwd() / "benchmarks" / "results").resolve()
+    try:
+        return (Path.cwd() / path).resolve().is_relative_to(results_root)
+    except OSError:
+        return False
 
 
 def projection_dispatch_candidates_from_json(payload: Any) -> tuple[ProjectionDispatchCandidate, ...]:
