@@ -300,12 +300,22 @@ def _primitive_correctness_precondition(command: SweepCommand) -> dict[str, Any]
         attn_vs_c1 = payload.get("attn_batch_vs_c1_max_abs")
         if not _is_number(attn_vs_c1) or float(attn_vs_c1) > 1e-6:
             reasons.append("attn_batch_vs_c1_max_abs is missing or above 1e-6")
-    return {
+    result: dict[str, Any] = {
         "kind": "primitive_correctness",
         "artifact_path": str(primitive_path),
         "passed": not reasons,
         "reason": None if not reasons else "; ".join(reasons),
     }
+    if not reasons and isinstance(payload, dict):
+        result.update(
+            {
+                "primitive_rows": int(payload["rows"]),
+                "append_key_mismatch": int(payload["append_key_mismatch"]),
+                "append_value_mismatch": int(payload["append_value_mismatch"]),
+                "attn_batch_vs_c1_max_abs": float(payload["attn_batch_vs_c1_max_abs"]),
+            }
+        )
+    return result
 
 
 def _extract_decode_rates(payload: dict[str, Any]) -> tuple[float | None, float | None]:
@@ -1640,6 +1650,18 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 if [condition.get("artifact_path") for condition in preconditions] != expected_retained_precondition_paths:
                     errors.append("commands[].preconditions[].artifact_path must match retained native gate argv")
                     break
+                primitive_precondition = preconditions[0]
+                if primitive_precondition.get("passed") is True:
+                    if primitive_precondition.get("primitive_rows") != entry.get("batch_size"):
+                        errors.append("commands[].preconditions[].primitive_rows must match retained batch_size")
+                        break
+                    if primitive_precondition.get("append_key_mismatch") != 0 or primitive_precondition.get("append_value_mismatch") != 0:
+                        errors.append("commands[].preconditions[].primitive append mismatches must be zero when passed")
+                        break
+                    attn_vs_c1 = primitive_precondition.get("attn_batch_vs_c1_max_abs")
+                    if not _is_number(attn_vs_c1) or float(attn_vs_c1) > 1e-6:
+                        errors.append("commands[].preconditions[].attn_batch_vs_c1_max_abs must be at most 1e-6 when primitive passed")
+                        break
                 expected_prompt_tokens = int(_argv_value(argv, "--prompt-length"))
                 expected_decode_tokens = int(_argv_value(argv, "--decode-tokens"))
                 scaling_preconditions = (

@@ -1596,6 +1596,14 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
     for precondition in tampered_skipped_failed_precondition["commands"][-1]["preconditions"]:
         precondition["passed"] = True
         precondition["reason"] = None
+    tampered_skipped_failed_precondition["commands"][-1]["preconditions"][0].update(
+        {
+            "primitive_rows": 2,
+            "append_key_mismatch": 0,
+            "append_value_mismatch": 0,
+            "attn_batch_vs_c1_max_abs": 0.0,
+        }
+    )
     tampered_skipped_failed_precondition["commands"][-1]["preconditions"][1].update(
         {
             "workload_concurrency": 1,
@@ -2385,7 +2393,29 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_scaling_precondition_rate["commands"][-1]["preconditions"][1]["decode_tok_s_aggregate"] = 0.0
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.decode rates must be positive numbers when passed"):
         c_sweep.validate_sweep_summary(tampered_scaling_precondition_rate)
+    tampered_primitive_precondition_rows = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_rows["commands"][-1]["preconditions"][0]["primitive_rows"] = 3
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_rows must match retained batch_size"):
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_rows)
+    tampered_primitive_precondition_mismatch = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_mismatch["commands"][-1]["preconditions"][0]["append_key_mismatch"] = 1
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive append mismatches must be zero when passed"):
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_mismatch)
+    tampered_primitive_precondition_attn = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_attn["commands"][-1]["preconditions"][0]["attn_batch_vs_c1_max_abs"] = 1e-3
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.attn_batch_vs_c1_max_abs must be at most 1e-6 when primitive passed"):
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_attn)
     preconditions_by_kind = {item["kind"]: item for item in native["preconditions"]}
+    assert preconditions_by_kind["primitive_correctness"] == {
+        "kind": "primitive_correctness",
+        "artifact_path": str(output_dir / "primitive-c2.json"),
+        "passed": True,
+        "reason": None,
+        "primitive_rows": 2,
+        "append_key_mismatch": 0,
+        "append_value_mismatch": 0,
+        "attn_batch_vs_c1_max_abs": 0.0,
+    }
     assert preconditions_by_kind["c1_baseline"] == {
         "kind": "c1_baseline",
         "artifact_path": str(output_dir / "native-baseline-c1.json"),
