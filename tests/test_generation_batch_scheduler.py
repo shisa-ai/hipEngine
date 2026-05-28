@@ -1548,6 +1548,11 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
     tampered_skipped_preconditions["skipped_preconditions"] = []
     with pytest.raises(ValueError, match="skipped_preconditions must match commands.preconditions"):
         c_sweep.validate_sweep_summary(tampered_skipped_preconditions)
+    tampered_dropped_commands = json.loads(json.dumps(persisted))
+    tampered_dropped_commands["commands"] = []
+    tampered_dropped_commands["completed_command_count"] = 0
+    with pytest.raises(ValueError, match="skipped_preconditions must match commands.preconditions"):
+        c_sweep.validate_sweep_summary(tampered_dropped_commands)
     tampered_skipped_output_tail = json.loads(json.dumps(persisted))
     tampered_skipped_output_tail["commands"][-1]["output_tail"] = "different failure reason"
     with pytest.raises(ValueError, match=r"commands\[\]\.output_tail must match skipped precondition reason"):

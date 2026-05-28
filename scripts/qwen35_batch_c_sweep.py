@@ -1363,6 +1363,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             errors.append("git.status_short must be a string list")
         elif git_dirty is not None and git_dirty is not bool(status_short):
             errors.append("git.dirty must match bool(git.status_short)")
+    expected_skipped_preconditions = _skipped_preconditions(entries)
+    if summary.get("skipped_preconditions") != expected_skipped_preconditions:
+        errors.append("skipped_preconditions must match commands.preconditions")
     if entries:
         for entry in entries:
             if not isinstance(entry.get("category"), str) or not entry.get("category"):
@@ -1601,9 +1604,6 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         expected_precondition_counts = _retained_precondition_counts(entries)
         if summary.get("retained_precondition_counts") != expected_precondition_counts:
             errors.append("retained_precondition_counts must match commands.preconditions")
-        expected_skipped_preconditions = _skipped_preconditions(entries)
-        if summary.get("skipped_preconditions") != expected_skipped_preconditions:
-            errors.append("skipped_preconditions must match commands.preconditions")
         expected_postcondition_counts = _retained_postcondition_counts(entries)
         if summary.get("retained_postcondition_counts") != expected_postcondition_counts:
             errors.append("retained_postcondition_counts must match commands.postconditions")
