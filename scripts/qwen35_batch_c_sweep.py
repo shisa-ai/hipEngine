@@ -1503,6 +1503,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if status == "planned" and float(duration_seconds) != 0.0:
                 errors.append("commands[].duration_seconds must be zero for planned rows")
                 break
+            if status == "skipped" and float(duration_seconds) != 0.0:
+                errors.append("commands[].duration_seconds must be zero for skipped rows")
+                break
             if status != "planned" and not isinstance(entry.get("output_tail"), str):
                 errors.append("commands[].output_tail must be a string for non-planned rows")
                 break
