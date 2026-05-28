@@ -6768,6 +6768,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="stable_block_id|pool_counters"):
         validate_cn_diagnostic_artifact_payload(missing_pool)
 
+    missing_dynamic_pool_evidence = json.loads(json.dumps(accepted))
+    missing_dynamic_pool_evidence["memory"]["dynamic_pool"].pop("evidence")
+    with pytest.raises(ValueError, match="dynamic_pool.evidence must be a non-empty string"):
+        validate_cn_diagnostic_artifact_payload(missing_dynamic_pool_evidence)
+
+    blank_dynamic_pool_evidence = json.loads(json.dumps(accepted))
+    blank_dynamic_pool_evidence["memory"]["dynamic_pool"]["evidence"] = "  "
+    with pytest.raises(ValueError, match="dynamic_pool.evidence must be a non-empty string"):
+        validate_cn_diagnostic_artifact_payload(blank_dynamic_pool_evidence)
+
     missing_stable_block_audit = json.loads(json.dumps(accepted))
     missing_stable_block_audit["memory"]["stable_block_id"].pop("audit")
     with pytest.raises(ValueError, match="stable_block_id.audit must be a non-empty string"):
