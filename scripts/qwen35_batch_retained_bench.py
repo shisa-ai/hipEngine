@@ -171,6 +171,40 @@ def _attach_profiler_graph_kernel_time_histogram(scheduler_metadata: dict[str, A
     scheduler_metadata["graph_bucket_stats"] = updated_stats
 
 
+def _decode_shape_key_blockers(scheduler_metadata: Mapping[str, Any], *, concurrency: int) -> list[str]:
+    decode_shape_key = scheduler_metadata.get("decode_shape_key")
+    if not isinstance(decode_shape_key, Mapping):
+        return ["execution.scheduler_metadata.decode_shape_key is missing"]
+    blockers: list[str] = []
+    if decode_shape_key.get("mode") != "decode":
+        blockers.append("execution.scheduler_metadata.decode_shape_key.mode must be decode")
+    active_c = decode_shape_key.get("active_c")
+    if active_c != int(concurrency):
+        blockers.append("execution.scheduler_metadata.decode_shape_key.active_c must match workload.concurrency")
+    active_mask = decode_shape_key.get("active_mask")
+    if not isinstance(active_mask, list) or not active_mask or any(not isinstance(item, bool) for item in active_mask):
+        blockers.append("execution.scheduler_metadata.decode_shape_key.active_mask must be a non-empty bool list")
+    else:
+        if len(active_mask) != int(concurrency):
+            blockers.append("execution.scheduler_metadata.decode_shape_key.active_mask length must match workload.concurrency")
+        if sum(1 for active in active_mask if active) != int(concurrency):
+            blockers.append("execution.scheduler_metadata.decode_shape_key.active_mask true count must match workload.concurrency")
+    context_bucket = decode_shape_key.get("context_bucket")
+    if isinstance(context_bucket, bool) or not isinstance(context_bucket, int) or context_bucket <= 0:
+        blockers.append("execution.scheduler_metadata.decode_shape_key.context_bucket must be a positive int")
+    for field in ("top_k", "experts_per_token", "draft_depth"):
+        value = decode_shape_key.get(field)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            blockers.append(f"execution.scheduler_metadata.decode_shape_key.{field} must be a non-negative int")
+    replay_steps = decode_shape_key.get("replay_steps")
+    if isinstance(replay_steps, bool) or not isinstance(replay_steps, int) or replay_steps <= 0:
+        blockers.append("execution.scheduler_metadata.decode_shape_key.replay_steps must be a positive int")
+    tree_shape = decode_shape_key.get("tree_shape")
+    if not isinstance(tree_shape, list) or any(isinstance(item, bool) or not isinstance(item, int) or item < 0 for item in tree_shape):
+        blockers.append("execution.scheduler_metadata.decode_shape_key.tree_shape must be a list of non-negative ints")
+    return blockers
+
+
 def _graph_replay_stats_blockers(scheduler_metadata: Mapping[str, Any]) -> list[str]:
     graph_stats = scheduler_metadata.get("graph_bucket_stats")
     if not isinstance(graph_stats, Mapping):
@@ -1290,7 +1324,8 @@ def _build_payload(
     native_caware_decode = bool(batch_execution.get("native_caware_decode"))
     memory = _retained_memory_payload(args, kv_policy, bench)
     memory_blockers = _memory_evidence_blockers(memory)
-    graph_bucket_blockers = _graph_bucket_evidence_blockers(scheduler_metadata)
+    graph_bucket_blockers = _decode_shape_key_blockers(scheduler_metadata, concurrency=args.batch_size)
+    graph_bucket_blockers.extend(_graph_bucket_evidence_blockers(scheduler_metadata))
     equality_passed = bool(equality.get("passed"))
     protocol_shape = args.max_layers == 40 and args.prompt_length >= 512 and args.decode_tokens >= 128
     scaling_complete = bool(scaling["complete"])

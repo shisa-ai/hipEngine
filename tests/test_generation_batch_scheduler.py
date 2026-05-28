@@ -5946,6 +5946,45 @@ def test_qwen35_retained_memory_evidence_blockers_cover_required_fields() -> Non
     assert "memory.prefix_sharing.savings_bytes is unavailable or non-finite" in blockers
 
 
+def test_qwen35_retained_decode_shape_key_blockers_require_concurrency_axes() -> None:
+    valid = {
+        "decode_shape_key": {
+            "mode": "decode",
+            "active_c": 2,
+            "context_bucket": 512,
+            "active_mask": [True, True],
+            "top_k": 0,
+            "experts_per_token": 0,
+            "replay_steps": 1,
+            "draft_depth": 0,
+            "tree_shape": [],
+        }
+    }
+    invalid = {
+        "decode_shape_key": {
+            "mode": "prefill",
+            "active_c": 1,
+            "context_bucket": 0,
+            "active_mask": [True, False],
+            "top_k": -1,
+            "experts_per_token": 0,
+            "replay_steps": 0,
+            "draft_depth": 0,
+            "tree_shape": [0, True],
+        }
+    }
+
+    assert retained_bench._decode_shape_key_blockers(valid, concurrency=2) == []
+    blockers = retained_bench._decode_shape_key_blockers(invalid, concurrency=2)
+    assert "execution.scheduler_metadata.decode_shape_key.mode must be decode" in blockers
+    assert "execution.scheduler_metadata.decode_shape_key.active_c must match workload.concurrency" in blockers
+    assert "execution.scheduler_metadata.decode_shape_key.active_mask true count must match workload.concurrency" in blockers
+    assert "execution.scheduler_metadata.decode_shape_key.context_bucket must be a positive int" in blockers
+    assert "execution.scheduler_metadata.decode_shape_key.top_k must be a non-negative int" in blockers
+    assert "execution.scheduler_metadata.decode_shape_key.replay_steps must be a positive int" in blockers
+    assert "execution.scheduler_metadata.decode_shape_key.tree_shape must be a list of non-negative ints" in blockers
+
+
 def test_qwen35_retained_graph_replay_stats_blockers_require_hit_evidence() -> None:
     valid = {
         "graph_bucket_stats": {
