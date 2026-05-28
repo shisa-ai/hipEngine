@@ -954,8 +954,8 @@ roll-up/status view.
       metadata (`block_size`, `max_context_len`, `num_q_heads`, `num_kv_heads`,
       `head_dim`), reference-gated typed per-row `context_lens` fixture
       coverage, reference-gated typed zero append-mismatch counters,
-      zero batch-vs-c1 attention error, and reference-gated NumPy-oracle
-      attention error ≤ 2e-5,
+      reference-gated exact-zero batch-vs-c1 attention error, and
+      reference-gated NumPy-oracle attention error ≤ 2e-5,
       full 40-layer workload labels with concrete model/quant/KV storage dtype
       plus matching KV policy metadata,
       aggregate token labels and per-row prompt lengths matching per-request

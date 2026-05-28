@@ -4988,6 +4988,10 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     numpy_payload = json.loads(artifact.read_text())
     numpy_payload["attn_batch_vs_numpy_max_abs"] = 1e-3
     mismatched_numpy_artifact.write_text(json.dumps(numpy_payload))
+    mismatched_c1_artifact = tmp_path / "primitive-c2-c1.json"
+    c1_payload = json.loads(artifact.read_text())
+    c1_payload["attn_batch_vs_c1_max_abs"] = 5e-7
+    mismatched_c1_artifact.write_text(json.dumps(c1_payload))
     mismatched_context_artifact = tmp_path / "primitive-c2-context.json"
     context_payload = json.loads(artifact.read_text())
     context_payload["context_lens"] = [2, 1]
@@ -5007,6 +5011,7 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     mismatched_seed = retained_bench._primitive_correctness_reference(mismatched_seed_artifact, rows=2)
     mismatched_shape = retained_bench._primitive_correctness_reference(mismatched_shape_artifact, rows=2)
     mismatched_numpy = retained_bench._primitive_correctness_reference(mismatched_numpy_artifact, rows=2)
+    mismatched_c1 = retained_bench._primitive_correctness_reference(mismatched_c1_artifact, rows=2)
     mismatched_context = retained_bench._primitive_correctness_reference(mismatched_context_artifact, rows=2)
     bool_context = retained_bench._primitive_correctness_reference(bool_context_artifact, rows=2)
     bool_append = retained_bench._primitive_correctness_reference(bool_append_artifact, rows=2)
@@ -5028,6 +5033,8 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     assert "head_dim is missing or not 8" in mismatched_shape["reason"]
     assert mismatched_numpy["passed"] is False
     assert "attn_batch_vs_numpy_max_abs is missing or above 2e-5" in mismatched_numpy["reason"]
+    assert mismatched_c1["passed"] is False
+    assert "attn_batch_vs_c1_max_abs is missing or not 0.0" in mismatched_c1["reason"]
     assert mismatched_context["passed"] is False
     assert "context_lens is missing or does not match fixture coverage" in mismatched_context["reason"]
     assert bool_context["passed"] is False
