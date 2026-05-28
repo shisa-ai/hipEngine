@@ -1014,8 +1014,8 @@ roll-up/status view.
       `--compiler-version-file`, `--require-cached-build`), typed profiler
       precondition workload/warmup/layer labels matching the retained command,
       benchmark/profiler `--json` outputs plus primitive/scaling/compiler-version
-      artifact paths under `benchmarks/results/` with no parent traversal spelling,
-      and the retained bench can now attach a
+      artifact paths resolving under the current `benchmarks/results/` tree with
+      no parent traversal spelling, and the retained bench can now attach a
       captured profiler summary via `--profiler-json` / `--profiler-command`,
       synthesize `profiler.total_kernel_duration_ns`,
       `profiler.kernel_duration_shares`, `profiler.kernel_duration_categories_ns`,

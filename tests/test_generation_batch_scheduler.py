@@ -91,13 +91,28 @@ def test_qwen35_validation_summary_path_rejects_traversal(tmp_path: Path, monkey
     assert not _summary_json_path_is_in_current_results(external_summary)
 
 
-def test_qwen35_artifact_paths_reject_traversal() -> None:
+def test_qwen35_artifact_paths_reject_traversal_and_external_roots(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo_root = tmp_path / "repo"
+    (repo_root / "benchmarks" / "results").mkdir(parents=True)
+    monkeypatch.chdir(repo_root)
+
     errors: list[str] = []
     _validate_benchmark_results_artifact_path("artifact_path", "benchmarks/results/source.json", errors)
+    _validate_benchmark_results_artifact_path(
+        "absolute_artifact_path",
+        str(repo_root / "benchmarks" / "results" / "source.json"),
+        errors,
+    )
     assert errors == []
 
     _validate_benchmark_results_artifact_path("artifact_path", "benchmarks/results/nested/../source.json", errors)
     assert errors == ["artifact_path must not contain parent traversal for accepted artifacts"]
+
+    external_artifact = tmp_path / "external" / "benchmarks" / "results" / "source.json"
+    _validate_benchmark_results_artifact_path("external_artifact_path", str(external_artifact), errors)
+    assert errors[-1] == "external_artifact_path must be under benchmarks/results for accepted artifacts"
 
 
 def test_qwen35_validation_summary_payload_rejects_traversal() -> None:

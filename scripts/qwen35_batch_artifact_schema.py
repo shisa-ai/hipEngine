@@ -517,8 +517,14 @@ def _path_text_contains_parent_traversal(value: str) -> bool:
 
 
 def _is_benchmark_results_path(value: str) -> bool:
-    normalized = value.replace("\\", "/")
-    return normalized.startswith("benchmarks/results/") or "/benchmarks/results/" in normalized
+    results_root = (Path.cwd() / "benchmarks" / "results").resolve()
+    candidate = Path(value)
+    if not candidate.is_absolute():
+        candidate = Path.cwd() / candidate
+    try:
+        return candidate.resolve().is_relative_to(results_root)
+    except OSError:
+        return False
 
 
 def _benchmark_results_relative_path(value: str) -> str:
