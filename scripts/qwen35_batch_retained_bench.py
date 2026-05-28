@@ -171,7 +171,7 @@ def _attach_profiler_graph_kernel_time_histogram(scheduler_metadata: dict[str, A
     scheduler_metadata["graph_bucket_stats"] = updated_stats
 
 
-def _decode_shape_key_blockers(scheduler_metadata: Mapping[str, Any], *, concurrency: int) -> list[str]:
+def _decode_shape_key_blockers(scheduler_metadata: Mapping[str, Any], *, concurrency: int, prompt_length: int) -> list[str]:
     decode_shape_key = scheduler_metadata.get("decode_shape_key")
     if not isinstance(decode_shape_key, Mapping):
         return ["execution.scheduler_metadata.decode_shape_key is missing"]
@@ -192,6 +192,8 @@ def _decode_shape_key_blockers(scheduler_metadata: Mapping[str, Any], *, concurr
     context_bucket = decode_shape_key.get("context_bucket")
     if isinstance(context_bucket, bool) or not isinstance(context_bucket, int) or context_bucket <= 0:
         blockers.append("execution.scheduler_metadata.decode_shape_key.context_bucket must be a positive int")
+    elif context_bucket < int(prompt_length):
+        blockers.append("execution.scheduler_metadata.decode_shape_key.context_bucket must cover workload.prompt_tokens_per_request")
     for field in ("top_k", "experts_per_token", "draft_depth"):
         value = decode_shape_key.get(field)
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
@@ -1324,7 +1326,7 @@ def _build_payload(
     native_caware_decode = bool(batch_execution.get("native_caware_decode"))
     memory = _retained_memory_payload(args, kv_policy, bench)
     memory_blockers = _memory_evidence_blockers(memory)
-    graph_bucket_blockers = _decode_shape_key_blockers(scheduler_metadata, concurrency=args.batch_size)
+    graph_bucket_blockers = _decode_shape_key_blockers(scheduler_metadata, concurrency=args.batch_size, prompt_length=args.prompt_length)
     graph_bucket_blockers.extend(_graph_bucket_evidence_blockers(scheduler_metadata))
     equality_passed = bool(equality.get("passed"))
     protocol_shape = args.max_layers == 40 and args.prompt_length >= 512 and args.decode_tokens >= 128

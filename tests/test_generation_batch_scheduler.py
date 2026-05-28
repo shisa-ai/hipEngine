@@ -5964,7 +5964,7 @@ def test_qwen35_retained_decode_shape_key_blockers_require_concurrency_axes() ->
         "decode_shape_key": {
             "mode": "prefill",
             "active_c": 1,
-            "context_bucket": 0,
+            "context_bucket": 256,
             "active_mask": [True, False],
             "top_k": -1,
             "experts_per_token": 0,
@@ -5974,12 +5974,12 @@ def test_qwen35_retained_decode_shape_key_blockers_require_concurrency_axes() ->
         }
     }
 
-    assert retained_bench._decode_shape_key_blockers(valid, concurrency=2) == []
-    blockers = retained_bench._decode_shape_key_blockers(invalid, concurrency=2)
+    assert retained_bench._decode_shape_key_blockers(valid, concurrency=2, prompt_length=512) == []
+    blockers = retained_bench._decode_shape_key_blockers(invalid, concurrency=2, prompt_length=512)
     assert "execution.scheduler_metadata.decode_shape_key.mode must be decode" in blockers
     assert "execution.scheduler_metadata.decode_shape_key.active_c must match workload.concurrency" in blockers
     assert "execution.scheduler_metadata.decode_shape_key.active_mask true count must match workload.concurrency" in blockers
-    assert "execution.scheduler_metadata.decode_shape_key.context_bucket must be a positive int" in blockers
+    assert "execution.scheduler_metadata.decode_shape_key.context_bucket must cover workload.prompt_tokens_per_request" in blockers
     assert "execution.scheduler_metadata.decode_shape_key.top_k must be a non-negative int" in blockers
     assert "execution.scheduler_metadata.decode_shape_key.replay_steps must be a positive int" in blockers
     assert "execution.scheduler_metadata.decode_shape_key.tree_shape must be a list of non-negative ints" in blockers
