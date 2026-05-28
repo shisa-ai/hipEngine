@@ -6036,6 +6036,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="profiler.trace_files must be under profiler.trace_dir"):
         validate_cn_diagnostic_artifact_payload(profiler_trace_file_outside_trace_dir)
 
+    profiler_trace_file_path_traversal = json.loads(json.dumps(accepted))
+    profiler_trace_file_path_traversal["profiler"]["trace_files"] = ["/tmp/hipengine-profile/../other-profile/hipengine_kernel_trace.csv"]
+    with pytest.raises(ValueError, match="profiler.trace_files must be under profiler.trace_dir"):
+        validate_cn_diagnostic_artifact_payload(profiler_trace_file_path_traversal)
+
     profiler_trace_file_without_kernel_trace_csv = json.loads(json.dumps(accepted))
     profiler_trace_file_without_kernel_trace_csv["profiler"]["trace_files"] = ["/tmp/hipengine-profile/hipengine_api_trace.csv"]
     with pytest.raises(ValueError, match="profiler.trace_files must include a kernel-trace CSV path"):

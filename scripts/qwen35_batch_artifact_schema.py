@@ -10,6 +10,8 @@ from typing import Any
 
 from hipengine.dispatch import ProjectionDispatchEvidence, projection_dispatch_candidates_from_artifact
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
 _REQUIRED_WORKLOAD_FLAGS = (
     "native_compact_prefill",
     "native_caware_decode",
@@ -284,6 +286,17 @@ def _has_disallowed_profiler_kernel_fragment(name: str) -> bool:
 def _is_kernel_trace_csv_path(trace_file: str) -> bool:
     name = Path(trace_file).name.lower()
     return Path(trace_file).suffix.lower() == ".csv" and "kernel" in name and "trace" in name
+
+
+def _resolve_repo_path(path: str | Path) -> Path:
+    path = Path(path)
+    if not path.is_absolute():
+        path = REPO_ROOT / path
+    return path.resolve()
+
+
+def _is_resolved_path_relative_to(path: str | Path, root: str | Path) -> bool:
+    return _resolve_repo_path(path).is_relative_to(_resolve_repo_path(root))
 
 
 def _profiler_kernel_duration_category(kernel_name: str) -> str:
@@ -940,15 +953,12 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     if not _is_nonempty_string_list(profiler_trace_files):
         errors.append("profiler.trace_files must be a non-empty string list for accepted artifacts")
     elif isinstance(profiler_trace_files, list) and isinstance(profiler_trace_dir, str) and profiler_trace_dir:
-        trace_dir_path = Path(profiler_trace_dir)
         for trace_file in profiler_trace_files:
             trace_path = Path(trace_file)
             if trace_path.suffix.lower() != ".csv":
                 errors.append("profiler.trace_files entries must be CSV paths for accepted artifacts")
                 break
-            try:
-                trace_path.relative_to(trace_dir_path)
-            except ValueError:
+            if not _is_resolved_path_relative_to(trace_file, profiler_trace_dir):
                 errors.append("profiler.trace_files must be under profiler.trace_dir for accepted artifacts")
                 break
         if not any(_is_kernel_trace_csv_path(trace_file) for trace_file in profiler_trace_files):
