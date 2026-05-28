@@ -974,12 +974,51 @@ def _projection_dispatch_blockers(
         blockers.append("execution.batch_execution.projection_dispatch.evidence is missing")
     elif evidence.get("accepted") is not True:
         blockers.append("execution.batch_execution.projection_dispatch.evidence.accepted must be true")
+    selected_candidate_entry: Mapping[str, Any] | None = None
     if not isinstance(candidates, list) or not candidates:
         blockers.append("projection_dispatch_candidates must include selected projection candidate")
-    elif isinstance(selected_candidate, str) and selected_candidate and not any(
-        isinstance(candidate, Mapping) and candidate.get("name") == selected_candidate for candidate in candidates
-    ):
-        blockers.append("projection_dispatch_candidates must include selected_candidate")
+    elif isinstance(selected_candidate, str) and selected_candidate:
+        matches = [candidate for candidate in candidates if isinstance(candidate, Mapping) and candidate.get("name") == selected_candidate]
+        if not matches:
+            blockers.append("projection_dispatch_candidates must include selected_candidate")
+        else:
+            selected_candidate_entry = matches[0]
+    if selected_candidate_entry is not None:
+        min_rows = selected_candidate_entry.get("min_rows", 2)
+        max_rows = selected_candidate_entry.get("max_rows")
+        row_bounds_valid = True
+        if isinstance(min_rows, bool) or not isinstance(min_rows, int) or min_rows <= 0:
+            blockers.append("projection_dispatch_candidates selected_candidate.min_rows must be a positive int")
+            row_bounds_valid = False
+        if max_rows is not None and (isinstance(max_rows, bool) or not isinstance(max_rows, int) or max_rows <= 0):
+            blockers.append("projection_dispatch_candidates selected_candidate.max_rows must be a positive int or null")
+            row_bounds_valid = False
+        if row_bounds_valid and isinstance(rows, int) and not isinstance(rows, bool):
+            if rows < int(min_rows) or (isinstance(max_rows, int) and rows > int(max_rows)):
+                blockers.append("projection_dispatch_candidates selected_candidate row bounds must include projection_dispatch.rows")
+        candidate_selection = selected_candidate_entry.get("selection")
+        if not isinstance(candidate_selection, Mapping):
+            blockers.append("projection_dispatch_candidates selected_candidate.selection is missing")
+        elif isinstance(selection, Mapping):
+            expected_selection = {field: candidate_selection.get(field) for field in ("layer", "quant", "variant")}
+            actual_selection = {field: selection.get(field) for field in ("layer", "quant", "variant")}
+            if expected_selection != actual_selection:
+                blockers.append("execution.batch_execution.projection_dispatch.selection must match selected projection_dispatch_candidates entry")
+        candidate_evidence = selected_candidate_entry.get("evidence")
+        if not isinstance(candidate_evidence, Mapping):
+            blockers.append("projection_dispatch_candidates selected_candidate.evidence is missing")
+        elif isinstance(evidence, Mapping):
+            for field in ("artifact_path", "accepted"):
+                if candidate_evidence.get(field) != evidence.get(field):
+                    blockers.append("execution.batch_execution.projection_dispatch.evidence must match selected projection_dispatch_candidates entry")
+                    break
+            else:
+                for field in ("aggregate_vs_row_gemv", "per_request_vs_row_gemv"):
+                    candidate_value = candidate_evidence.get(field)
+                    evidence_value = evidence.get(field)
+                    if not (_is_finite_nonnegative_number(candidate_value) and _is_finite_nonnegative_number(evidence_value)) or float(candidate_value) != float(evidence_value):
+                        blockers.append("execution.batch_execution.projection_dispatch.evidence must match selected projection_dispatch_candidates entry")
+                        break
     return blockers
 
 

@@ -5925,6 +5925,18 @@ def test_qwen35_retained_projection_dispatch_blockers_require_caware_candidate()
             },
         }
     }
+    valid_candidate = {
+        "name": "wmma_caware",
+        "selection": {"layer": "linear", "quant": "w4_paro", "variant": "wmma_caware"},
+        "min_rows": 2,
+        "max_rows": 8,
+        "evidence": {
+            "artifact_path": "benchmarks/results/projection-wmma-c2.json",
+            "aggregate_vs_row_gemv": 1.35,
+            "per_request_vs_row_gemv": 1.10,
+            "accepted": True,
+        },
+    }
     row_gemv_dispatch = {
         "projection_dispatch": {
             "rows": 2,
@@ -5936,12 +5948,20 @@ def test_qwen35_retained_projection_dispatch_blockers_require_caware_candidate()
             "evidence": None,
         }
     }
+    mismatched_candidate = json.loads(json.dumps(valid_candidate))
+    mismatched_candidate["selection"]["variant"] = "mmq_caware"
+    mismatched_candidate["evidence"]["per_request_vs_row_gemv"] = 1.01
+    mismatched_candidate["max_rows"] = 1
 
     assert retained_bench._projection_dispatch_blockers(
         valid_dispatch,
         concurrency=2,
-        candidates=[{"name": "wmma_caware"}],
+        candidates=[valid_candidate],
     ) == []
+    mismatched_blockers = retained_bench._projection_dispatch_blockers(valid_dispatch, concurrency=2, candidates=[mismatched_candidate])
+    assert "projection_dispatch_candidates selected_candidate row bounds must include projection_dispatch.rows" in mismatched_blockers
+    assert "execution.batch_execution.projection_dispatch.selection must match selected projection_dispatch_candidates entry" in mismatched_blockers
+    assert "execution.batch_execution.projection_dispatch.evidence must match selected projection_dispatch_candidates entry" in mismatched_blockers
     blockers = retained_bench._projection_dispatch_blockers(row_gemv_dispatch, concurrency=2, candidates=None)
     assert "execution.batch_execution.projection_dispatch.path must be benchmark_accepted_caware_projection" in blockers
     assert "execution.batch_execution.projection_dispatch.selected_candidate must not be row_gemv" in blockers
