@@ -1298,6 +1298,12 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     tampered_planned_output["commands"][0]["output_tail"] = "dry-run output"
     with pytest.raises(ValueError, match=r"commands\[\]\.output_tail must be absent for planned rows"):
         c_sweep.validate_sweep_summary(tampered_planned_output)
+    tampered_planned_condition = json.loads(json.dumps(persisted))
+    tampered_planned_condition["commands"][0]["preconditions"] = [
+        {"kind": "primitive_correctness", "passed": True}
+    ]
+    with pytest.raises(ValueError, match=r"commands\[\]\.conditions must be absent for planned rows"):
+        c_sweep.validate_sweep_summary(tampered_planned_condition)
     assert all(entry["status"] == "planned" for entry in persisted["commands"])
     assert all(entry["command"] for entry in persisted["commands"])
     assert all(entry["artifact_path"] for entry in persisted["commands"])

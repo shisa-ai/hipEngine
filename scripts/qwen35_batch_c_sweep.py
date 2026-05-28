@@ -1509,6 +1509,11 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if status == "planned" and "output_tail" in entry:
                 errors.append("commands[].output_tail must be absent for planned rows")
                 break
+            if status == "planned" and any(
+                field in entry for field in ("preconditions", "precondition", "postconditions", "postcondition")
+            ):
+                errors.append("commands[].conditions must be absent for planned rows")
+                break
             if status != "planned" and not isinstance(entry.get("output_tail"), str):
                 errors.append("commands[].output_tail must be a string for non-planned rows")
                 break
