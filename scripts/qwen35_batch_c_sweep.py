@@ -1839,12 +1839,22 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         errors.append("commands[].preconditions[].workload_concurrency must be a typed int matching retained scaling gate")
                         scaling_precondition_error = True
                         break
-                    if scaling_precondition.get("prompt_tokens_per_request") != expected_prompt_tokens:
-                        errors.append("commands[].preconditions[].prompt_tokens_per_request must match retained command shape")
+                    prompt_tokens_per_request = scaling_precondition.get("prompt_tokens_per_request")
+                    if (
+                        not isinstance(prompt_tokens_per_request, int)
+                        or isinstance(prompt_tokens_per_request, bool)
+                        or prompt_tokens_per_request != expected_prompt_tokens
+                    ):
+                        errors.append("commands[].preconditions[].prompt_tokens_per_request must be a typed int matching retained command shape")
                         scaling_precondition_error = True
                         break
-                    if scaling_precondition.get("gen_tokens_per_request") != expected_decode_tokens:
-                        errors.append("commands[].preconditions[].gen_tokens_per_request must match retained command shape")
+                    gen_tokens_per_request = scaling_precondition.get("gen_tokens_per_request")
+                    if (
+                        not isinstance(gen_tokens_per_request, int)
+                        or isinstance(gen_tokens_per_request, bool)
+                        or gen_tokens_per_request != expected_decode_tokens
+                    ):
+                        errors.append("commands[].preconditions[].gen_tokens_per_request must be a typed int matching retained command shape")
                         scaling_precondition_error = True
                         break
                     for rate_field in ("decode_tok_s_aggregate", "decode_tok_s_per_request"):

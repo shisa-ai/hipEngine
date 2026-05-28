@@ -2979,8 +2979,16 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         c_sweep.validate_sweep_summary(tampered_scaling_precondition_float_concurrency)
     tampered_scaling_precondition_shape = json.loads(json.dumps(persisted))
     tampered_scaling_precondition_shape["commands"][-1]["preconditions"][2]["prompt_tokens_per_request"] = 17
-    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.prompt_tokens_per_request must match retained command shape"):
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.prompt_tokens_per_request must be a typed int matching retained command shape"):
         c_sweep.validate_sweep_summary(tampered_scaling_precondition_shape)
+    tampered_scaling_precondition_float_prompt = json.loads(json.dumps(persisted))
+    tampered_scaling_precondition_float_prompt["commands"][-1]["preconditions"][2]["prompt_tokens_per_request"] = 16.0
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.prompt_tokens_per_request must be a typed int matching retained command shape"):
+        c_sweep.validate_sweep_summary(tampered_scaling_precondition_float_prompt)
+    tampered_scaling_precondition_float_decode = json.loads(json.dumps(persisted))
+    tampered_scaling_precondition_float_decode["commands"][-1]["preconditions"][1]["gen_tokens_per_request"] = 2.0
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.gen_tokens_per_request must be a typed int matching retained command shape"):
+        c_sweep.validate_sweep_summary(tampered_scaling_precondition_float_decode)
     tampered_scaling_precondition_rate = json.loads(json.dumps(persisted))
     tampered_scaling_precondition_rate["commands"][-1]["preconditions"][1]["decode_tok_s_aggregate"] = 0.0
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.decode rates must be positive numbers when passed"):
