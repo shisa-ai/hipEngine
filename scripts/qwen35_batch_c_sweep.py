@@ -1710,6 +1710,31 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if profiler_precondition.get("profiler_max_layers") != int(_argv_value(argv, "--max-layers")):
                         errors.append("commands[].preconditions[].profiler_max_layers must match retained command shape")
                         break
+                    if profiler_precondition.get("profiler_status") != "captured":
+                        errors.append("commands[].preconditions[].profiler_status must be captured when passed")
+                        break
+                    if profiler_precondition.get("profiler_output_format") != "csv":
+                        errors.append("commands[].preconditions[].profiler_output_format must be csv when passed")
+                        break
+                    profiler_trace_files = profiler_precondition.get("profiler_trace_files")
+                    if (
+                        not isinstance(profiler_trace_files, list)
+                        or not profiler_trace_files
+                        or not all(isinstance(trace_file, str) and trace_file for trace_file in profiler_trace_files)
+                        or not any(_is_kernel_trace_csv_path(trace_file) for trace_file in profiler_trace_files)
+                    ):
+                        errors.append("commands[].preconditions[].profiler_trace_files must include a kernel-trace CSV when passed")
+                        break
+                    profiler_kernel_names = profiler_precondition.get("profiler_trace_kernel_names")
+                    if (
+                        not isinstance(profiler_kernel_names, list)
+                        or not profiler_kernel_names
+                        or not all(isinstance(kernel_name, str) and kernel_name for kernel_name in profiler_kernel_names)
+                        or not any("batch" in kernel_name.lower() for kernel_name in profiler_kernel_names)
+                        or any(_has_disallowed_profiler_kernel_fragment(kernel_name) for kernel_name in profiler_kernel_names)
+                    ):
+                        errors.append("commands[].preconditions[].profiler_trace_kernel_names must include native batch kernels only when passed")
+                        break
             postconditions = entry.get("postconditions")
             preconditions = entry.get("preconditions")
             if isinstance(postconditions, list):

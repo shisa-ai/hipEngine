@@ -2401,6 +2401,18 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_profiler_precondition_shape["commands"][-1]["preconditions"][-1]["profiler_warmup_decode_tokens"] = 2
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_warmup_decode_tokens must match retained command shape"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_shape)
+    tampered_profiler_precondition_status = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_status["commands"][-1]["preconditions"][-1]["profiler_status"] = "missing"
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_status must be captured when passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_status)
+    tampered_profiler_precondition_trace_files = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_trace_files["commands"][-1]["preconditions"][-1]["profiler_trace_files"] = []
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_files must include a kernel-trace CSV when passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_trace_files)
+    tampered_profiler_precondition_kernel_names = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_kernel_names["commands"][-1]["preconditions"][-1]["profiler_trace_kernel_names"] = ["serial_lm_head"]
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_kernel_names must include native batch kernels only when passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_kernel_names)
     tampered_primitive_precondition_rows = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_rows["commands"][-1]["preconditions"][0]["primitive_rows"] = 3
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_rows must match retained batch_size"):
