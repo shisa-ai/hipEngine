@@ -938,9 +938,18 @@ def _scaling_reference_precondition(
     concurrency: int | None = None
     prompt_tokens: int | None = None
     gen_tokens: int | None = None
+    source_artifact_path: str | None = None
     if not isinstance(payload, dict):
         reasons.append("scaling reference artifact root is not an object")
     else:
+        raw_artifact_path = payload.get("artifact_path")
+        if not isinstance(raw_artifact_path, str) or not raw_artifact_path:
+            reasons.append("artifact_path is missing or not a non-empty string")
+        elif raw_artifact_path != str(path):
+            source_artifact_path = raw_artifact_path
+            reasons.append("artifact_path does not match scaling reference artifact path")
+        else:
+            source_artifact_path = raw_artifact_path
         raw_status = payload.get("status")
         status = str(raw_status) if raw_status else "loaded"
         if status in {"failed", "rejected", "rejected_correctness", "missing", "invalid_json"}:
@@ -992,6 +1001,7 @@ def _scaling_reference_precondition(
         "artifact_path": str(path),
         "passed": not reasons,
         "reason": None if not reasons else "; ".join(reasons),
+        "reference_artifact_path": source_artifact_path,
         "reference_status": status,
         "reference_reason": reference_reason,
         "workload_concurrency": concurrency,
@@ -1891,6 +1901,15 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         or prompt_tokens_per_request != expected_prompt_tokens
                     ):
                         errors.append("commands[].preconditions[].prompt_tokens_per_request must be a typed int matching retained command shape")
+                        scaling_precondition_error = True
+                        break
+                    reference_artifact_path = scaling_precondition.get("reference_artifact_path")
+                    if (
+                        not isinstance(reference_artifact_path, str)
+                        or not reference_artifact_path
+                        or reference_artifact_path != scaling_precondition.get("artifact_path")
+                    ):
+                        errors.append("commands[].preconditions[].reference_artifact_path must match scaling reference artifact_path when passed")
                         scaling_precondition_error = True
                         break
                     gen_tokens_per_request = scaling_precondition.get("gen_tokens_per_request")

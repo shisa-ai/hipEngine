@@ -1893,6 +1893,7 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
     )
     tampered_skipped_failed_precondition["commands"][-1]["preconditions"][1].update(
         {
+            "reference_artifact_path": str(output_dir / "native-baseline-c1.json"),
             "workload_concurrency": 1,
             "prompt_tokens_per_request": 16,
             "gen_tokens_per_request": 2,
@@ -1902,6 +1903,7 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
     )
     tampered_skipped_failed_precondition["commands"][-1]["preconditions"][2].update(
         {
+            "reference_artifact_path": str(output_dir / "serial-bridge-c2.json"),
             "workload_concurrency": 2,
             "prompt_tokens_per_request": 16,
             "gen_tokens_per_request": 2,
@@ -1955,6 +1957,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_missing(
         (output_dir / "native-baseline-c1.json").write_text(
             json.dumps(
                 {
+                    "artifact_path": str(output_dir / "native-baseline-c1.json"),
                     "schema": 1,
                     "prompt_length": 16,
                     "decode_tokens": 2,
@@ -1966,6 +1969,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_missing(
         (output_dir / "serial-bridge-c2.json").write_text(
             json.dumps(
                 {
+                    "artifact_path": str(output_dir / "serial-bridge-c2.json"),
                     "schema": 2,
                     "status": "blocked",
                     "workload": {"concurrency": 2, "prompt_tokens_per_request": 16, "gen_tokens_per_request": 2},
@@ -2490,11 +2494,18 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_shape_missing(
     )
     _write_c_sweep_profiler_summary(output_dir, warmup_decode_tokens=1, max_layers=3)
     (output_dir / "native-baseline-c1.json").write_text(
-        json.dumps({"schema": 1, "throughput": {"warmed_decode_tok_s": 10.0}})
+        json.dumps(
+            {
+                "artifact_path": str(output_dir / "native-baseline-c1.json"),
+                "schema": 1,
+                "throughput": {"warmed_decode_tok_s": 10.0},
+            }
+        )
     )
     (output_dir / "serial-bridge-c2.json").write_text(
         json.dumps(
             {
+                "artifact_path": str(output_dir / "serial-bridge-c2.json"),
                 "schema": 2,
                 "status": "blocked",
                 "workload": {"concurrency": 2, "prompt_tokens_per_request": 16, "gen_tokens_per_request": 2},
@@ -2577,6 +2588,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_reason_is_non_null(
     (output_dir / "native-baseline-c1.json").write_text(
         json.dumps(
             {
+                "artifact_path": str(output_dir / "native-baseline-c1.json"),
                 "schema": 1,
                 "prompt_length": 16,
                 "decode_tokens": 2,
@@ -2587,6 +2599,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_reason_is_non_null(
     (output_dir / "serial-bridge-c2.json").write_text(
         json.dumps(
             {
+                "artifact_path": str(output_dir / "serial-bridge-c2.json"),
                 "schema": 2,
                 "status": "blocked",
                 "reason": "decode throughput fields missing",
@@ -2639,12 +2652,63 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_reason_is_non_null(
     }
 
 
+def test_batch_c_sweep_scaling_reference_requires_artifact_path(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    reference_path = output_dir / "serial-bridge-c2.json"
+    reference_payload = {
+        "schema": 2,
+        "status": "blocked",
+        "workload": {"concurrency": 2, "prompt_tokens_per_request": 16, "gen_tokens_per_request": 2},
+        "measurements": {"decode_tok_s_aggregate": 20.0, "decode_tok_s_per_request": 10.0},
+    }
+    reference_path.write_text(json.dumps(reference_payload))
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    missing_artifact_path = c_sweep._scaling_reference_precondition(
+        native,
+        flag="--serial-bridge-json",
+        kind="serial_bridge",
+        expected_concurrency=2,
+    )
+    reference_payload["artifact_path"] = str(output_dir / "other-serial-bridge-c2.json")
+    reference_path.write_text(json.dumps(reference_payload))
+    mismatched_artifact_path = c_sweep._scaling_reference_precondition(
+        native,
+        flag="--serial-bridge-json",
+        kind="serial_bridge",
+        expected_concurrency=2,
+    )
+
+    assert missing_artifact_path["passed"] is False
+    assert missing_artifact_path["reason"] == "artifact_path is missing or not a non-empty string"
+    assert mismatched_artifact_path["passed"] is False
+    assert mismatched_artifact_path["reason"] == "artifact_path does not match scaling reference artifact path"
+
+
 def test_batch_c_sweep_scaling_reference_rejects_nonfinite_rates(tmp_path: Path) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
     (output_dir / "serial-bridge-c2.json").write_text(
         json.dumps(
             {
+                "artifact_path": str(output_dir / "serial-bridge-c2.json"),
                 "schema": 2,
                 "status": "blocked",
                 "workload": {"concurrency": 2, "prompt_tokens_per_request": 16, "gen_tokens_per_request": 2},
@@ -2714,6 +2778,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_rate_arithmetic_mis
     (output_dir / "native-baseline-c1.json").write_text(
         json.dumps(
             {
+                "artifact_path": str(output_dir / "native-baseline-c1.json"),
                 "schema": 1,
                 "prompt_length": 16,
                 "decode_tokens": 2,
@@ -2724,6 +2789,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_rate_arithmetic_mis
     (output_dir / "serial-bridge-c2.json").write_text(
         json.dumps(
             {
+                "artifact_path": str(output_dir / "serial-bridge-c2.json"),
                 "schema": 2,
                 "status": "blocked",
                 "workload": {"concurrency": 2, "prompt_tokens_per_request": 16, "gen_tokens_per_request": 2},
@@ -2802,6 +2868,7 @@ def test_batch_c_sweep_skips_retained_when_profiler_summary_missing(tmp_path: Pa
     (output_dir / "native-baseline-c1.json").write_text(
         json.dumps(
             {
+                "artifact_path": str(output_dir / "native-baseline-c1.json"),
                 "schema": 1,
                 "prompt_length": 16,
                 "decode_tokens": 2,
@@ -2812,6 +2879,7 @@ def test_batch_c_sweep_skips_retained_when_profiler_summary_missing(tmp_path: Pa
     (output_dir / "serial-bridge-c2.json").write_text(
         json.dumps(
             {
+                "artifact_path": str(output_dir / "serial-bridge-c2.json"),
                 "schema": 2,
                 "status": "blocked",
                 "workload": {"concurrency": 2, "prompt_tokens_per_request": 16, "gen_tokens_per_request": 2},
@@ -2891,6 +2959,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     (output_dir / "native-baseline-c1.json").write_text(
         json.dumps(
             {
+                "artifact_path": str(output_dir / "native-baseline-c1.json"),
                 "schema": 1,
                 "prompt_length": 16,
                 "decode_tokens": 2,
@@ -2901,6 +2970,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     (output_dir / "serial-bridge-c2.json").write_text(
         json.dumps(
             {
+                "artifact_path": str(output_dir / "serial-bridge-c2.json"),
                 "schema": 2,
                 "status": "blocked",
                 "workload": {"concurrency": 2, "prompt_tokens_per_request": 16, "gen_tokens_per_request": 2},
@@ -3311,6 +3381,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_gate_argv_filename["commands"][-1]["command"] = shlex.join(retained_argv)
     with pytest.raises(ValueError, match=r"commands\[\]\.argv retained native gate artifact paths must match output_dir filenames"):
         c_sweep.validate_sweep_summary(tampered_gate_argv_filename)
+    tampered_scaling_precondition_artifact = json.loads(json.dumps(persisted))
+    tampered_scaling_precondition_artifact["commands"][-1]["preconditions"][1]["reference_artifact_path"] = str(output_dir / "other-native-baseline-c1.json")
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.reference_artifact_path must match scaling reference artifact_path when passed"):
+        c_sweep.validate_sweep_summary(tampered_scaling_precondition_artifact)
+    tampered_scaling_precondition_missing_artifact = json.loads(json.dumps(persisted))
+    tampered_scaling_precondition_missing_artifact["commands"][-1]["preconditions"][2].pop("reference_artifact_path")
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.reference_artifact_path must match scaling reference artifact_path when passed"):
+        c_sweep.validate_sweep_summary(tampered_scaling_precondition_missing_artifact)
     tampered_scaling_precondition_concurrency = json.loads(json.dumps(persisted))
     tampered_scaling_precondition_concurrency["commands"][-1]["preconditions"][1]["workload_concurrency"] = 2
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.workload_concurrency must be a typed int matching retained scaling gate"):
@@ -3793,6 +3871,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         "artifact_path": str(output_dir / "native-baseline-c1.json"),
         "passed": True,
         "reason": None,
+        "reference_artifact_path": str(output_dir / "native-baseline-c1.json"),
         "reference_status": "loaded",
         "reference_reason": None,
         "workload_concurrency": 1,
@@ -3806,6 +3885,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         "artifact_path": str(output_dir / "serial-bridge-c2.json"),
         "passed": True,
         "reason": None,
+        "reference_artifact_path": str(output_dir / "serial-bridge-c2.json"),
         "reference_status": "blocked",
         "reference_reason": None,
         "workload_concurrency": 2,
@@ -3995,11 +4075,20 @@ def test_batch_c_sweep_fails_retained_row_on_profiler_synthesis_mismatch(tmp_pat
     )
     _write_c_sweep_profiler_summary(output_dir, warmup_decode_tokens=1, max_layers=3)
     (output_dir / "native-baseline-c1.json").write_text(
-        json.dumps({"schema": 1, "prompt_length": 16, "decode_tokens": 2, "throughput": {"warmed_decode_tok_s": 10.0}})
+        json.dumps(
+            {
+                "artifact_path": str(output_dir / "native-baseline-c1.json"),
+                "schema": 1,
+                "prompt_length": 16,
+                "decode_tokens": 2,
+                "throughput": {"warmed_decode_tok_s": 10.0},
+            }
+        )
     )
     (output_dir / "serial-bridge-c2.json").write_text(
         json.dumps(
             {
+                "artifact_path": str(output_dir / "serial-bridge-c2.json"),
                 "schema": 2,
                 "status": "blocked",
                 "workload": {"concurrency": 2, "prompt_tokens_per_request": 16, "gen_tokens_per_request": 2},

@@ -324,6 +324,7 @@ def _build_payload(args: argparse.Namespace, argv: Sequence[str] | None, bench: 
     payload = {
         "schema": 2,
         "status": "accepted" if accepted else "blocked",
+        "artifact_path": str(args.json) if args.json is not None else None,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "run_tag": f"qwen35-paro-c{args.batch_size}-scheduler-serial-bridge",
         "summary": "Qwen3.5/PARO scheduler serial c>N bridge diagnostic benchmark",
