@@ -6122,6 +6122,22 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="commands.profiler must include --model"):
         validate_cn_diagnostic_artifact_payload(profiler_model_before_separator)
 
+    profiler_model_mismatch = json.loads(json.dumps(accepted))
+    profiler_model_mismatch["commands"]["profiler"] = profiler_model_mismatch["commands"]["profiler"].replace(
+        " -d /tmp/hipengine-profile -- python3",
+        " -d /tmp/hipengine-profile --model /models/test-qwen35 -- python3",
+    ).replace(" --model /models/test-qwen35 --fixture", " --model /models/other-qwen35 --fixture")
+    with pytest.raises(ValueError, match="commands.profiler --model must match commands.benchmark --model"):
+        validate_cn_diagnostic_artifact_payload(profiler_model_mismatch)
+
+    profiler_fixture_mismatch = json.loads(json.dumps(accepted))
+    profiler_fixture_mismatch["commands"]["profiler"] = profiler_fixture_mismatch["commands"]["profiler"].replace(
+        " -d /tmp/hipengine-profile -- python3",
+        " -d /tmp/hipengine-profile --fixture fixtures/qwen35.json -- python3",
+    ).replace(" --fixture fixtures/qwen35.json --batch-size", " --fixture fixtures/other-qwen35.json --batch-size")
+    with pytest.raises(ValueError, match="commands.profiler --fixture must match commands.benchmark --fixture"):
+        validate_cn_diagnostic_artifact_payload(profiler_fixture_mismatch)
+
     missing_profiler_json = json.loads(json.dumps(accepted))
     missing_profiler_json["commands"]["profiler"] = "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40"
     with pytest.raises(ValueError, match="commands.profiler must include --json"):

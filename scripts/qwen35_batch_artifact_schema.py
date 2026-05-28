@@ -213,6 +213,21 @@ def _validate_command_model_fixture_flags(command: str, *, field: str, errors: l
         errors.append(f"commands.{field} must include --fixture for accepted artifacts")
 
 
+def _command_pattern_value(command: str, pattern: re.Pattern[str]) -> str | None:
+    match = pattern.search(command)
+    if match is None:
+        return None
+    return match.group(1).strip("'\"")
+
+
+def _validate_profiled_command_matches_benchmark_model_fixture(profiled_command: str, benchmark_command: str, errors: list[str]) -> None:
+    for flag, pattern in (("--model", _COMMAND_MODEL_RE), ("--fixture", _COMMAND_FIXTURE_RE)):
+        profiled_value = _command_pattern_value(profiled_command, pattern)
+        benchmark_value = _command_pattern_value(benchmark_command, pattern)
+        if profiled_value is not None and benchmark_value is not None and profiled_value != benchmark_value:
+            errors.append(f"commands.profiler {flag} must match commands.benchmark {flag} for accepted artifacts")
+
+
 def _validate_command_flag_matches_artifact_path(
     command: str,
     *,
@@ -943,6 +958,8 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         else:
             profiler_profiled_benchmark_command = shlex.join(profiled_command_argv)
             _validate_command_model_fixture_flags(profiler_profiled_benchmark_command, field="profiler", errors=errors)
+            if isinstance(benchmark_command, str):
+                _validate_profiled_command_matches_benchmark_model_fixture(profiler_profiled_benchmark_command, benchmark_command, errors)
             _validate_command_workload_shape(profiler_profiled_benchmark_command, field="profiler", payload=payload, errors=errors)
             _validate_command_json_matches_artifact_path(
                 profiler_profiled_benchmark_command,
