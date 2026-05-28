@@ -5811,6 +5811,43 @@ def test_qwen35_retained_payload_mirrors_fallback_native_decode_label(monkeypatc
     assert "--rows 2" in payload["commands"]["correctness_reference"]
 
 
+def test_qwen35_retained_memory_payload_uses_bench_evidence() -> None:
+    args = argparse.Namespace(
+        batch_size=2,
+        prompt_length=512,
+        decode_tokens=128,
+        warmup_decode_tokens=0,
+        kv_storage="bf16",
+        kv_scale_dtype="fp16",
+        kv_scale_granularity="per_token_head",
+    )
+    kv_policy = retained_bench.resolve_args_kv_policy(args, block_size=256)
+    memory = retained_bench._retained_memory_payload(
+        args,
+        kv_policy,
+        {
+            "memory": {
+                "allocator_reserved_peak_bytes": 16384,
+                "dynamic_pool": {
+                    "enabled": True,
+                    "evidence": "pool counters captured",
+                    "pool_counters": {"current_bytes": 16384, "high_water_observed_bytes": 32768},
+                },
+                "stable_block_id": {"passed": True, "audit": "block ids stable"},
+                "prefix_sharing": {"enabled": True, "savings_bytes": 4096},
+            }
+        },
+    )
+
+    assert memory["allocator_reserved_peak_bytes"] == 16384
+    assert memory["dynamic_pool"]["enabled"] is True
+    assert memory["dynamic_pool"]["pool_counters"]["current_bytes"] == 16384
+    assert memory["dynamic_pool"]["pool_counters"]["grow_events"] == 0
+    assert memory["stable_block_id"] == {"passed": True, "audit": "block ids stable"}
+    assert memory["prefix_sharing"] == {"enabled": True, "savings_bytes": 4096}
+    assert retained_bench._memory_evidence_blockers(memory) == []
+
+
 def test_qwen35_retained_memory_evidence_blockers_cover_required_fields() -> None:
     complete_memory = {
         "allocator_reserved_peak_bytes": 8192,

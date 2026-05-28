@@ -726,8 +726,19 @@ def _build_scaling_comparison(
     }
 
 
-def _retained_memory_payload(args: argparse.Namespace, kv_policy: ResolvedKVPolicy) -> dict[str, Any]:
-    return {
+def _merged_mapping(base: Mapping[str, Any], override: Mapping[str, Any]) -> dict[str, Any]:
+    result = dict(base)
+    for key, value in override.items():
+        current = result.get(key)
+        if isinstance(current, Mapping) and isinstance(value, Mapping):
+            result[key] = _merged_mapping(current, value)
+        else:
+            result[key] = value
+    return result
+
+
+def _retained_memory_payload(args: argparse.Namespace, kv_policy: ResolvedKVPolicy, bench: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    memory = {
         "max_batch_size": args.batch_size,
         "max_sequence_length": args.prompt_length + args.warmup_decode_tokens + args.decode_tokens + 1,
         "kv_policy": kv_policy_json(kv_policy),
@@ -749,6 +760,10 @@ def _retained_memory_payload(args: argparse.Namespace, kv_policy: ResolvedKVPoli
         "stable_block_id": {"passed": False, "audit": "not captured in retained bench"},
         "prefix_sharing": {"enabled": False, "savings_bytes": 0},
     }
+    bench_memory = bench.get("memory") if isinstance(bench, Mapping) else None
+    if isinstance(bench_memory, Mapping):
+        memory = _merged_mapping(memory, bench_memory)
+    return memory
 
 
 def _memory_evidence_blockers(memory: Mapping[str, Any]) -> list[str]:
@@ -1138,7 +1153,7 @@ def _build_payload(
     batch_execution = dict(bench["batch_execution"])
     throughput_claim_eligible = bool(batch_execution.get("throughput_claim_eligible"))
     native_caware_decode = bool(batch_execution.get("native_caware_decode"))
-    memory = _retained_memory_payload(args, kv_policy)
+    memory = _retained_memory_payload(args, kv_policy, bench)
     memory_blockers = _memory_evidence_blockers(memory)
     equality_passed = bool(equality.get("passed"))
     protocol_shape = args.max_layers == 40 and args.prompt_length >= 512 and args.decode_tokens >= 128

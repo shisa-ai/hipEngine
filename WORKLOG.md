@@ -36893,3 +36893,32 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness still passed; retained scaling claims remain blocked on generated-token equality
 ```
+
+## 2026-05-28 — CONCURRENCY retained bench memory evidence merge
+
+Materially advanced P5 retained-row memory gating without closing any queue item or adding a retained c>N performance claim:
+
+- `scripts/qwen35_batch_retained_bench.py::_retained_memory_payload` now deep-merges `bench["memory"]` evidence into the default unavailable memory template before blocker evaluation, preserving default counter keys when a captured payload only supplies a subset.
+- Added direct coverage that bench-provided allocator peak, dynamic-pool counters, stable block-id audit, and prefix-sharing savings populate the retained memory payload and satisfy `_memory_evidence_blockers`.
+- Updated `docs/CONCURRENCY.md` C5.8 evidence to name both retained-bench memory evidence merge and blocker tests.
+- No retained c>N performance claim was added; C2.4/C2.5 generated-token equality artifacts are still missing.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -k 'retained_memory_payload_uses_bench_evidence or retained_memory_evidence_blockers_cover_required_fields or retained_payload_blocks_acceptance_without_memory_evidence' -q
+# 3 passed
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -k 'artifact_schema_enforces_accepted_row_gates or scaling_reference_rejects_nonfinite_rates or batch_c_sweep or retained_memory_payload_uses_bench_evidence or retained_memory_evidence_blockers_cover_required_fields or retained_payload_blocks_acceptance_without_memory_evidence' -q
+# 58 passed
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -k 'primitive_correctness_passed_matches_retained_bounds or primitive_correctness_reference_requires_same_rows or primitive_precondition_requires_typed_append_counters or primitive_precondition_requires_typed_rows or primitive_precondition_requires_context_lens or primitive_precondition_requires_fixture_shape or primitive_precondition_requires_seed or primitive_precondition_requires_numpy_oracle or primitive_precondition_requires_schema or batch_c_sweep or retained_profiler_reference or artifact_schema_enforces_accepted_row_gates or retained_memory_payload_uses_bench_evidence or retained_memory_evidence_blockers_cover_required_fields or retained_payload_blocks_acceptance_without_memory_evidence' -q
+# 62 passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness still passed; retained scaling claims remain blocked on generated-token equality
+```
