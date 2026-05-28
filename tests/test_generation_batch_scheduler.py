@@ -2569,6 +2569,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_profiler_precondition_cpu_total["commands"][-1]["preconditions"][-1]["cpu_side_total_seconds"] = 0.0
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.cpu_side_total_seconds must be positive when profiler passed"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_cpu_total)
+    tampered_profiler_precondition_cpu_sum = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_cpu_sum["commands"][-1]["preconditions"][-1]["cpu_side_total_seconds"] = 11.0
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.cpu_side_bottlenecks_seconds must sum to cpu_side_total_seconds when profiler passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_cpu_sum)
+    tampered_profiler_precondition_cpu_share = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_cpu_share["commands"][-1]["preconditions"][-1]["cpu_side_bottleneck_shares"]["decode"] = 0.6
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.cpu_side_bottleneck_shares must match CPU duration ratios when profiler passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_cpu_share)
     tampered_profiler_precondition_cpu_categories = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_cpu_categories["commands"][-1]["preconditions"][-1]["cpu_side_bottlenecks_seconds"]["decode"] = -1.0
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.cpu-side bottlenecks must include required non-negative categories when profiler passed"):

@@ -1933,6 +1933,25 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     ):
                         errors.append("commands[].preconditions[].cpu-side bottlenecks must include required non-negative categories when profiler passed")
                         break
+                    cpu_side_total = float(profiler_precondition["cpu_side_total_seconds"])
+                    cpu_duration_sum = sum(float(cpu_durations[category]) for category in _PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES)
+                    if abs(cpu_duration_sum - cpu_side_total) > max(1e-9, cpu_side_total * 1e-6):
+                        errors.append("commands[].preconditions[].cpu_side_bottlenecks_seconds must sum to cpu_side_total_seconds when profiler passed")
+                        break
+                    cpu_share_sum = 0.0
+                    cpu_share_error = False
+                    for category in _PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES:
+                        cpu_share = float(cpu_shares[category])
+                        cpu_share_sum += cpu_share
+                        if abs(cpu_share - (float(cpu_durations[category]) / cpu_side_total)) > 1e-6:
+                            errors.append("commands[].preconditions[].cpu_side_bottleneck_shares must match CPU duration ratios when profiler passed")
+                            cpu_share_error = True
+                            break
+                    if cpu_share_error:
+                        break
+                    if abs(cpu_share_sum - 1.0) > 1e-6:
+                        errors.append("commands[].preconditions[].cpu_side_bottleneck_shares must sum to 1.0 when profiler passed")
+                        break
             postconditions = entry.get("postconditions")
             preconditions = entry.get("preconditions")
             if isinstance(postconditions, list):
