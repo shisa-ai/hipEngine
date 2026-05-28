@@ -1787,6 +1787,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if profiler_precondition.get("profiler_output_format") != "csv":
                         errors.append("commands[].preconditions[].profiler_output_format must be csv when passed")
                         break
+                    if _command_text_arg(profiler_command, "--output-format") != "csv":
+                        errors.append("commands[].preconditions[].profiler command --output-format must be csv when passed")
+                        break
                     profiler_trace_dir = profiler_precondition.get("profiler_trace_dir")
                     if not isinstance(profiler_trace_dir, str) or not profiler_trace_dir:
                         errors.append("commands[].preconditions[].profiler_trace_dir must be a non-empty string when passed")

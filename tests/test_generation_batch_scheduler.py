@@ -2588,6 +2588,11 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_profiler_precondition_status["commands"][-1]["preconditions"][-1]["profiler_status"] = "missing"
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_status must be captured when passed"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_status)
+    tampered_profiler_precondition_output_command = json.loads(json.dumps(persisted))
+    profiler_precondition = tampered_profiler_precondition_output_command["commands"][-1]["preconditions"][-1]
+    profiler_precondition["profiler_command"] = profiler_precondition["profiler_command"].replace(" --output-format csv", " --output-format json")
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler command --output-format must be csv when passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_output_command)
     tampered_profiler_precondition_trace_dir = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_trace_dir["commands"][-1]["preconditions"][-1].pop("profiler_trace_dir")
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_dir must be a non-empty string when passed"):
