@@ -1639,6 +1639,7 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
             "append_key_mismatch": 0,
             "append_value_mismatch": 0,
             "attn_batch_vs_c1_max_abs": 0.0,
+            "attn_batch_vs_numpy_max_abs": 5.0e-8,
         }
     )
     tampered_skipped_failed_precondition["commands"][-1]["preconditions"][1].update(
@@ -1688,6 +1689,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_missing(
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
                 "attn_batch_vs_c1_max_abs": 0.0,
+                "attn_batch_vs_numpy_max_abs": 5.0e-8,
             }
         )
     )
@@ -1794,6 +1796,7 @@ def test_batch_c_sweep_primitive_precondition_requires_schema(tmp_path: Path) ->
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
                 "attn_batch_vs_c1_max_abs": 0.0,
+                "attn_batch_vs_numpy_max_abs": 5.0e-8,
             }
         )
     )
@@ -1819,6 +1822,47 @@ def test_batch_c_sweep_primitive_precondition_requires_schema(tmp_path: Path) ->
     }
 
 
+def test_batch_c_sweep_primitive_precondition_requires_numpy_oracle(tmp_path: Path) -> None:
+    primitive_path = tmp_path / "primitive-c2.json"
+    command = c_sweep.SweepCommand(
+        category="native_diagnostic",
+        batch_size=2,
+        artifact_path=tmp_path / "native-diagnostic-c2.json",
+        argv=(
+            "python3",
+            "scripts/qwen35_batch_retained_bench.py",
+            "--primitive-correctness-json",
+            str(primitive_path),
+        ),
+    )
+    primitive_payload = {
+        "schema": 1,
+        "rows": 2,
+        "passed": True,
+        "append_key_mismatch": 0,
+        "append_value_mismatch": 0,
+        "attn_batch_vs_c1_max_abs": 0.0,
+    }
+    primitive_path.write_text(json.dumps(primitive_payload))
+    missing_numpy = c_sweep._primitive_correctness_precondition(command)
+    primitive_payload["attn_batch_vs_numpy_max_abs"] = 1e-3
+    primitive_path.write_text(json.dumps(primitive_payload))
+    high_numpy = c_sweep._primitive_correctness_precondition(command)
+
+    assert missing_numpy == {
+        "kind": "primitive_correctness",
+        "artifact_path": str(primitive_path),
+        "passed": False,
+        "reason": "attn_batch_vs_numpy_max_abs is missing or above 2e-5",
+    }
+    assert high_numpy == {
+        "kind": "primitive_correctness",
+        "artifact_path": str(primitive_path),
+        "passed": False,
+        "reason": "attn_batch_vs_numpy_max_abs is missing or above 2e-5",
+    }
+
+
 def test_batch_c_sweep_skips_retained_when_scaling_reference_shape_missing(
     tmp_path: Path,
     monkeypatch,
@@ -1834,6 +1878,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_shape_missing(
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
                 "attn_batch_vs_c1_max_abs": 0.0,
+                "attn_batch_vs_numpy_max_abs": 5.0e-8,
             }
         )
     )
@@ -1910,6 +1955,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_reason_is_non_null(
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
                 "attn_batch_vs_c1_max_abs": 0.0,
+                "attn_batch_vs_numpy_max_abs": 5.0e-8,
             }
         )
     )
@@ -1994,6 +2040,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_rate_arithmetic_mis
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
                 "attn_batch_vs_c1_max_abs": 0.0,
+                "attn_batch_vs_numpy_max_abs": 5.0e-8,
             }
         )
     )
@@ -2074,6 +2121,7 @@ def test_batch_c_sweep_skips_retained_when_profiler_summary_missing(tmp_path: Pa
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
                 "attn_batch_vs_c1_max_abs": 0.0,
+                "attn_batch_vs_numpy_max_abs": 5.0e-8,
             }
         )
     )
@@ -2153,6 +2201,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
                 "attn_batch_vs_c1_max_abs": 0.0,
+                "attn_batch_vs_numpy_max_abs": 5.0e-8,
             }
         )
     )
@@ -2884,6 +2933,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_primitive_precondition_attn["commands"][-1]["preconditions"][0]["attn_batch_vs_c1_max_abs"] = 1e-3
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.attn_batch_vs_c1_max_abs must be at most 1e-6 when primitive passed"):
         c_sweep.validate_sweep_summary(tampered_primitive_precondition_attn)
+    tampered_primitive_precondition_numpy = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_numpy["commands"][-1]["preconditions"][0]["attn_batch_vs_numpy_max_abs"] = 1e-3
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.attn_batch_vs_numpy_max_abs must be at most 2e-5 when primitive passed"):
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_numpy)
     preconditions_by_kind = {item["kind"]: item for item in native["preconditions"]}
     assert preconditions_by_kind["primitive_correctness"] == {
         "kind": "primitive_correctness",
@@ -2895,6 +2948,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         "append_key_mismatch": 0,
         "append_value_mismatch": 0,
         "attn_batch_vs_c1_max_abs": 0.0,
+        "attn_batch_vs_numpy_max_abs": 5.0e-8,
     }
     assert preconditions_by_kind["c1_baseline"] == {
         "kind": "c1_baseline",
@@ -3089,6 +3143,7 @@ def test_batch_c_sweep_fails_retained_row_on_profiler_synthesis_mismatch(tmp_pat
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
                 "attn_batch_vs_c1_max_abs": 0.0,
+                "attn_batch_vs_numpy_max_abs": 5.0e-8,
             }
         )
     )
@@ -4680,6 +4735,7 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
                 "attn_batch_vs_c1_max_abs": 0.0,
+                "attn_batch_vs_numpy_max_abs": 5.0e-8,
             }
         )
     )

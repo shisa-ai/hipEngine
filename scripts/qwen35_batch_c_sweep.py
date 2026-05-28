@@ -53,6 +53,7 @@ _PROFILER_TRACE_START_COLUMNS = ("Start_Timestamp", "StartTimestamp", "StartNs",
 _PROFILER_TRACE_END_COLUMNS = ("End_Timestamp", "EndTimestamp", "EndNs", "End")
 _PROFILER_TRACE_DURATION_COLUMNS = ("DurationNs", "Duration_NS", "Duration_Ns", "Duration")
 _REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA = 1
+_PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT = 2e-5
 _PROFILER_SYNTHESIZED_FIELDS = (
     "trace_kernel_names",
     "kernel_durations_ns",
@@ -332,6 +333,9 @@ def _primitive_correctness_precondition(command: SweepCommand) -> dict[str, Any]
         attn_vs_c1 = payload.get("attn_batch_vs_c1_max_abs")
         if not _is_number(attn_vs_c1) or float(attn_vs_c1) > 1e-6:
             reasons.append("attn_batch_vs_c1_max_abs is missing or above 1e-6")
+        attn_vs_numpy = payload.get("attn_batch_vs_numpy_max_abs")
+        if not _is_number(attn_vs_numpy) or float(attn_vs_numpy) > _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT:
+            reasons.append("attn_batch_vs_numpy_max_abs is missing or above 2e-5")
     result: dict[str, Any] = {
         "kind": "primitive_correctness",
         "artifact_path": str(primitive_path),
@@ -346,6 +350,7 @@ def _primitive_correctness_precondition(command: SweepCommand) -> dict[str, Any]
                 "append_key_mismatch": int(payload["append_key_mismatch"]),
                 "append_value_mismatch": int(payload["append_value_mismatch"]),
                 "attn_batch_vs_c1_max_abs": float(payload["attn_batch_vs_c1_max_abs"]),
+                "attn_batch_vs_numpy_max_abs": float(payload["attn_batch_vs_numpy_max_abs"]),
             }
         )
     return result
@@ -1721,6 +1726,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     attn_vs_c1 = primitive_precondition.get("attn_batch_vs_c1_max_abs")
                     if not _is_number(attn_vs_c1) or float(attn_vs_c1) > 1e-6:
                         errors.append("commands[].preconditions[].attn_batch_vs_c1_max_abs must be at most 1e-6 when primitive passed")
+                        break
+                    attn_vs_numpy = primitive_precondition.get("attn_batch_vs_numpy_max_abs")
+                    if not _is_number(attn_vs_numpy) or float(attn_vs_numpy) > _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT:
+                        errors.append("commands[].preconditions[].attn_batch_vs_numpy_max_abs must be at most 2e-5 when primitive passed")
                         break
                 expected_prompt_tokens = int(_argv_value(argv, "--prompt-length"))
                 expected_decode_tokens = int(_argv_value(argv, "--decode-tokens"))
