@@ -53,6 +53,7 @@ _PROFILER_TRACE_START_COLUMNS = ("Start_Timestamp", "StartTimestamp", "StartNs",
 _PROFILER_TRACE_END_COLUMNS = ("End_Timestamp", "EndTimestamp", "EndNs", "End")
 _PROFILER_TRACE_DURATION_COLUMNS = ("DurationNs", "Duration_NS", "Duration_Ns", "Duration")
 _REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA = 1
+_REQUIRED_PRIMITIVE_CORRECTNESS_SEED = 1234
 _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT = 2e-5
 _PROFILER_SYNTHESIZED_FIELDS = (
     "trace_kernel_names",
@@ -322,6 +323,13 @@ def _primitive_correctness_precondition(command: SweepCommand) -> dict[str, Any]
             or primitive_schema != _REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA
         ):
             reasons.append("schema is missing or not 1")
+        primitive_seed = payload.get("seed")
+        if (
+            not isinstance(primitive_seed, int)
+            or isinstance(primitive_seed, bool)
+            or primitive_seed != _REQUIRED_PRIMITIVE_CORRECTNESS_SEED
+        ):
+            reasons.append("seed is missing or not 1234")
         if payload.get("rows") != command.batch_size:
             reasons.append(f"rows={payload.get('rows')!r} does not match batch_size={command.batch_size}")
         if payload.get("passed") is not True:
@@ -346,6 +354,7 @@ def _primitive_correctness_precondition(command: SweepCommand) -> dict[str, Any]
         result.update(
             {
                 "primitive_schema": int(payload["schema"]),
+                "primitive_seed": int(payload["seed"]),
                 "primitive_rows": int(payload["rows"]),
                 "append_key_mismatch": int(payload["append_key_mismatch"]),
                 "append_value_mismatch": int(payload["append_value_mismatch"]),
@@ -1716,6 +1725,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 if primitive_precondition.get("passed") is True:
                     if primitive_precondition.get("primitive_schema") != _REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA:
                         errors.append("commands[].preconditions[].primitive_schema must be 1 when primitive passed")
+                        break
+                    if primitive_precondition.get("primitive_seed") != _REQUIRED_PRIMITIVE_CORRECTNESS_SEED:
+                        errors.append("commands[].preconditions[].primitive_seed must be 1234 when primitive passed")
                         break
                     if primitive_precondition.get("primitive_rows") != entry.get("batch_size"):
                         errors.append("commands[].preconditions[].primitive_rows must match retained batch_size")
