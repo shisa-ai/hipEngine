@@ -977,7 +977,7 @@ roll-up/status view.
       with rocprof-only flags (`--kernel-trace`, `--output-format csv`, `-d`) before
       that separator, and the same retained shape/artifact/reference/cached-build
       flags validated from the post-separator profiled command segment
-      (`--compiler-version-file`, `--require-cached-build`),
+      (`--profiler-json`, `--compiler-version-file`, `--require-cached-build`),
       benchmark/profiler `--json` outputs plus primitive/scaling artifact paths
       under `benchmarks/results/`, and the retained bench can now attach a
       captured profiler summary via `--profiler-json` / `--profiler-command`,

@@ -6158,6 +6158,17 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="commands.profiler --profiler-json path must match profiler.artifact_path"):
         validate_cn_diagnostic_artifact_payload(mismatched_profiler_json_reference)
 
+    profiler_json_reference_before_separator = json.loads(json.dumps(accepted))
+    profiler_json_reference_before_separator["commands"]["profiler"] = profiler_json_reference_before_separator["commands"]["profiler"].replace(
+        " --profiler-json benchmarks/results/profiler-c2.json",
+        " --profiler-json benchmarks/results/other-profiler-c2.json",
+    ).replace(
+        " -d /tmp/hipengine-profile -- python3",
+        " -d /tmp/hipengine-profile --profiler-json benchmarks/results/profiler-c2.json -- python3",
+    )
+    with pytest.raises(ValueError, match="commands.profiler --profiler-json path must match profiler.artifact_path"):
+        validate_cn_diagnostic_artifact_payload(profiler_json_reference_before_separator)
+
     profiler_without_require_cached = json.loads(json.dumps(accepted))
     profiler_without_require_cached["commands"]["profiler"] = profiler_without_require_cached["commands"]["profiler"].replace(" --require-cached-build", "")
     with pytest.raises(ValueError, match="commands.profiler must include --require-cached-build"):
