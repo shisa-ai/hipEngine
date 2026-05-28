@@ -924,7 +924,7 @@ roll-up/status view.
       observability fields plus replay shape-key axes (`context_bucket`,
       `top_k`, `experts_per_token`, `replay_steps`, `draft_depth`, and
       `tree_shape`) before a c>N row can be promoted; `/metrics` exposes the
-      labeled miss-reason and kernel-time-bucket counters for live runs.
+      replay-hit-rate gauge plus labeled miss-reason and kernel-time-bucket counters for live runs.
 - [ ] **P3 remove residual serial loops.** Remove full-attention per-row
       fallback, per-row metadata allocation, per-row LM-head launches, and
       Python per-layer dispatch from steady-state native decode. Acceptance:

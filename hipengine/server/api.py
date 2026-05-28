@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import time
 import uuid
 from collections import deque
@@ -858,6 +859,7 @@ def _render_prometheus_metrics(metrics: _ServerMetrics, *, engine: Any | None) -
         "hipengine_graph_bucket_entries": graph["entries"],
         "hipengine_graph_bucket_hits_total": graph["hits"],
         "hipengine_graph_bucket_misses_total": graph["misses"],
+        "hipengine_graph_bucket_replay_hit_rate": graph["replay_hit_rate"],
     }
     help_text = {
         "hipengine_requests_total": "Total generation requests observed by the server.",
@@ -875,6 +877,7 @@ def _render_prometheus_metrics(metrics: _ServerMetrics, *, engine: Any | None) -
         "hipengine_graph_bucket_entries": "Current graph bucket cache entries, or 0 when unavailable.",
         "hipengine_graph_bucket_hits_total": "Graph bucket cache hits, or 0 when unavailable.",
         "hipengine_graph_bucket_misses_total": "Graph bucket cache misses, or 0 when unavailable.",
+        "hipengine_graph_bucket_replay_hit_rate": "Graph bucket replay hit rate, or 0 when unavailable.",
     }
     counter_names = {
         "hipengine_requests_total",
@@ -934,6 +937,7 @@ def _graph_bucket_metric_values(engine: Any | None) -> dict[str, Any]:
         "entries": 0.0,
         "hits": 0.0,
         "misses": 0.0,
+        "replay_hit_rate": 0.0,
         "miss_reasons": {},
         "kernel_time_histogram_ns": {},
     }
@@ -943,6 +947,15 @@ def _graph_bucket_metric_values(engine: Any | None) -> dict[str, Any]:
     data = _stats_to_mapping(stats)
     for key in ("entries", "hits", "misses"):
         values[key] = float(data.get(key, 0) or 0)
+    replay_hit_rate = data.get("replay_hit_rate")
+    if replay_hit_rate is None:
+        lookups = values["hits"] + values["misses"]
+        replay_hit_rate = values["hits"] / lookups if lookups > 0.0 else 0.0
+    try:
+        replay_hit_rate_value = float(replay_hit_rate)
+    except (TypeError, ValueError):
+        replay_hit_rate_value = 0.0
+    values["replay_hit_rate"] = replay_hit_rate_value if math.isfinite(replay_hit_rate_value) and replay_hit_rate_value >= 0.0 else 0.0
     values["miss_reasons"] = _non_negative_metric_mapping(data.get("miss_reasons"))
     values["kernel_time_histogram_ns"] = _non_negative_metric_mapping(data.get("kernel_time_histogram_ns"))
     return values

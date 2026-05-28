@@ -425,6 +425,7 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
         entries=6,
         hits=7,
         misses=8,
+        replay_hit_rate=7 / 15,
         miss_reasons={"cache_absent": 5, "shape_changed": 3},
         kernel_time_histogram_ns={"le_10us": 2, "le_100us": 4},
     )
@@ -462,6 +463,7 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
     assert _metric_value(metrics.text, "hipengine_graph_bucket_entries") == 6
     assert _metric_value(metrics.text, "hipengine_graph_bucket_hits_total") == 7
     assert _metric_value(metrics.text, "hipengine_graph_bucket_misses_total") == 8
+    assert _metric_value(metrics.text, "hipengine_graph_bucket_replay_hit_rate") == 7 / 15
     assert _labeled_metric_value(metrics.text, "hipengine_graph_bucket_miss_reason_total", reason="cache_absent") == 5
     assert _labeled_metric_value(metrics.text, "hipengine_graph_bucket_miss_reason_total", reason="shape_changed") == 3
     assert _labeled_metric_value(metrics.text, "hipengine_graph_bucket_kernel_time_bucket_total", bucket="le_10us") == 2
@@ -624,11 +626,11 @@ def test_chat_endpoint_rejects_non_text_content_parts() -> None:
     assert response.json()["error"]["code"] == "unsupported_content_type"
 
 
-def _metric_value(text: str, name: str) -> int:
+def _metric_value(text: str, name: str) -> float:
     prefix = f"{name} "
     for line in text.splitlines():
         if line.startswith(prefix):
-            return int(float(line.removeprefix(prefix)))
+            return float(line.removeprefix(prefix))
     raise AssertionError(f"metric {name} not found in:\n{text}")
 
 
