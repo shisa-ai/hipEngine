@@ -1703,6 +1703,15 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         break
                 if shape_arg_error:
                     break
+            if entry.get("category") == "primitive":
+                try:
+                    primitive_seed = int(argv[argv.index("--seed") + 1])
+                except (IndexError, ValueError):
+                    errors.append("commands[].argv --seed must have an int value")
+                    break
+                if primitive_seed != _REQUIRED_PRIMITIVE_CORRECTNESS_SEED:
+                    errors.append("commands[].argv --seed must match required primitive correctness seed")
+                    break
             expected_scripts_by_category = {
                 "primitive": {"scripts/qwen35_batch_correctness.py"},
                 "serial_bridge": {"scripts/qwen35_batch_serial_bench.py"},

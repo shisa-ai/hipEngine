@@ -3592,6 +3592,18 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_command_text["commands"][-1]["command"] = "python3 scripts/qwen35_batch_retained_bench.py --tampered"
     with pytest.raises(ValueError, match=r"commands\[\]\.command must match"):
         c_sweep.validate_sweep_summary(tampered_command_text)
+    tampered_primitive_seed = json.loads(json.dumps(persisted))
+    primitive_argv = tampered_primitive_seed["commands"][0]["argv"]
+    primitive_argv[primitive_argv.index("--seed") + 1] = "999"
+    tampered_primitive_seed["commands"][0]["command"] = shlex.join(primitive_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv --seed must match required primitive correctness seed"):
+        c_sweep.validate_sweep_summary(tampered_primitive_seed)
+    tampered_primitive_seed_type = json.loads(json.dumps(persisted))
+    primitive_argv = tampered_primitive_seed_type["commands"][0]["argv"]
+    primitive_argv[primitive_argv.index("--seed") + 1] = "seed"
+    tampered_primitive_seed_type["commands"][0]["command"] = shlex.join(primitive_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv --seed must have an int value"):
+        c_sweep.validate_sweep_summary(tampered_primitive_seed_type)
     tampered_artifact_path = json.loads(json.dumps(persisted))
     tampered_artifact_path["commands"][-1]["artifact_path"] = str(output_dir / "other-native-diagnostic-c2.json")
     with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match commands\[\]\.argv --json"):
