@@ -546,6 +546,23 @@ def _validate_benchmark_results_artifact_path(field: str, value: Any, errors: li
             errors.append(f"{field} must not contain parent traversal for accepted artifacts")
 
 
+def _path_has_benchmark_results_symlink_parent(path: Path) -> bool:
+    results_root = (Path.cwd() / "benchmarks" / "results").resolve()
+    current = path.parent
+    while True:
+        try:
+            current_resolved = current.resolve()
+        except OSError:
+            return False
+        if not current_resolved.is_relative_to(results_root):
+            return False
+        if current.is_symlink():
+            return True
+        if current == current.parent:
+            return False
+        current = current.parent
+
+
 def _load_benchmark_results_json_artifact(field: str, value: str, errors: list[str]) -> Mapping[str, Any] | None:
     if not _is_benchmark_results_path(value):
         return None
@@ -554,6 +571,9 @@ def _load_benchmark_results_json_artifact(field: str, value: str, errors: list[s
         path = Path.cwd() / path
     if path.is_symlink():
         errors.append(f"{field} must point to a regular JSON artifact, not a symlink, for accepted artifacts")
+        return None
+    if _path_has_benchmark_results_symlink_parent(path):
+        errors.append(f"{field} parent directories must not be symlinks for accepted artifacts")
         return None
     if not path.exists():
         errors.append(f"{field} must point to an existing JSON artifact for accepted artifacts")

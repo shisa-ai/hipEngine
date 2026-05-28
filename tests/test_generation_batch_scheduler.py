@@ -126,11 +126,17 @@ def test_qwen35_artifact_reference_loader_rejects_symlinks_and_directories(
     regular_artifact.write_text('{"schema": 1}', encoding="utf-8")
     directory_artifact = artifact_dir / "directory.json"
     directory_artifact.mkdir()
+    real_parent = artifact_dir / "real-parent"
+    real_parent.mkdir()
+    (real_parent / "nested.json").write_text('{"schema": 2}', encoding="utf-8")
     symlink_artifact = artifact_dir / "symlink.json"
+    symlink_parent = artifact_dir / "symlink-parent"
     try:
         symlink_artifact.symlink_to(regular_artifact)
+        symlink_parent.symlink_to(real_parent, target_is_directory=True)
     except (OSError, NotImplementedError):
         symlink_artifact = None
+        symlink_parent = None
     monkeypatch.chdir(repo_root)
 
     errors: list[str] = []
@@ -143,6 +149,16 @@ def test_qwen35_artifact_reference_loader_rejects_symlinks_and_directories(
     if symlink_artifact is not None:
         assert _load_benchmark_results_json_artifact("symlink_path", "benchmarks/results/symlink.json", errors) is None
         assert errors[-1] == "symlink_path must point to a regular JSON artifact, not a symlink, for accepted artifacts"
+    if symlink_parent is not None:
+        assert (
+            _load_benchmark_results_json_artifact(
+                "symlink_parent_path",
+                "benchmarks/results/symlink-parent/nested.json",
+                errors,
+            )
+            is None
+        )
+        assert errors[-1] == "symlink_parent_path parent directories must not be symlinks for accepted artifacts"
 
 
 def test_qwen35_validation_summary_payload_rejects_traversal() -> None:

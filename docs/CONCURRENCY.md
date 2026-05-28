@@ -1017,8 +1017,8 @@ roll-up/status view.
       precondition workload/warmup/layer labels matching the retained command,
       benchmark/profiler `--json` outputs plus primitive/scaling/compiler-version
       artifact paths resolving under the current `benchmarks/results/` tree with
-      no parent traversal spelling and regular-file JSON references rather than
-      symlinks or directories, and the retained bench can now attach a
+      no parent traversal spelling and regular-file JSON references with no
+      symlink file or parent-directory components, and the retained bench can now attach a
       captured profiler summary via `--profiler-json` / `--profiler-command`,
       synthesize `profiler.total_kernel_duration_ns`,
       `profiler.kernel_duration_shares`, `profiler.kernel_duration_categories_ns`,
