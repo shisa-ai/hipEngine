@@ -2744,7 +2744,7 @@ def _validate_summary_json_path(path: Path) -> None:
 
 def _validate_validation_summary_output_path(path: Path, summary: Mapping[str, Any]) -> None:
     _validate_summary_json_path(path)
-    if summary.get("mode") != "rollup_evidence" or summary.get("passed") is not True:
+    if summary.get("mode") != "rollup_evidence":
         return
     artifact_path = summary.get("artifact_path")
     if not isinstance(artifact_path, str) or not artifact_path:
@@ -2752,7 +2752,7 @@ def _validate_validation_summary_output_path(path: Path, summary: Mapping[str, A
     artifact_stem = artifact_path.replace("\\", "/").rsplit("/", 1)[-1].removesuffix(".json")
     expected_name = f"{artifact_stem}-rollup-check.json"
     if path.name != expected_name:
-        raise ValueError(f"--summary-json filename must be {expected_name} for passed rollup evidence")
+        raise ValueError(f"--summary-json filename must be {expected_name} for rollup evidence")
 
 
 def main(argv: list[str] | None = None) -> int:
