@@ -1793,8 +1793,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     ):
                         errors.append("commands[].preconditions[].primitive_context_lens must match fixture coverage when primitive passed")
                         break
-                    if primitive_precondition.get("primitive_rows") != entry.get("batch_size"):
-                        errors.append("commands[].preconditions[].primitive_rows must match retained batch_size")
+                    primitive_rows = primitive_precondition.get("primitive_rows")
+                    batch_size = entry.get("batch_size")
+                    if not isinstance(primitive_rows, int) or isinstance(primitive_rows, bool) or primitive_rows != batch_size:
+                        errors.append("commands[].preconditions[].primitive_rows must be a typed int matching retained batch_size")
                         break
                     if not _is_zero_int(primitive_precondition.get("append_key_mismatch")) or not _is_zero_int(primitive_precondition.get("append_value_mismatch")):
                         errors.append("commands[].preconditions[].primitive append mismatches must be typed integer zeros when passed")

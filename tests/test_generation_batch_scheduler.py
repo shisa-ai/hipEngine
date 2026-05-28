@@ -3266,8 +3266,16 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         c_sweep.validate_sweep_summary(tampered_primitive_precondition_bool_context)
     tampered_primitive_precondition_rows = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_rows["commands"][-1]["preconditions"][0]["primitive_rows"] = 3
-    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_rows must match retained batch_size"):
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_rows must be a typed int matching retained batch_size"):
         c_sweep.validate_sweep_summary(tampered_primitive_precondition_rows)
+    tampered_primitive_precondition_float_rows = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_float_rows["commands"][-1]["preconditions"][0]["primitive_rows"] = 2.0
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_rows must be a typed int matching retained batch_size"):
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_float_rows)
+    tampered_primitive_precondition_bool_rows = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_bool_rows["commands"][-1]["preconditions"][0]["primitive_rows"] = True
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_rows must be a typed int matching retained batch_size"):
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_bool_rows)
     tampered_primitive_precondition_mismatch = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_mismatch["commands"][-1]["preconditions"][0]["append_key_mismatch"] = 1
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive append mismatches must be typed integer zeros when passed"):
