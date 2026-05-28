@@ -1807,6 +1807,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     ):
                         errors.append("commands[].preconditions[].expected_kernel_names must include native batch kernels only when profiler passed")
                         break
+                    if any(kernel_name not in profiler_kernel_names for kernel_name in expected_kernel_names):
+                        errors.append("commands[].preconditions[].expected_kernel_names must be present in profiler_trace_kernel_names")
+                        break
                     kernel_durations = profiler_precondition.get("kernel_durations_ns")
                     if not isinstance(kernel_durations, dict) or not kernel_durations:
                         errors.append("commands[].preconditions[].kernel_durations_ns must contain positive kernel durations when profiler passed")
@@ -1832,6 +1835,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     ]
                     if missing_expected_kernel_duration:
                         errors.append("commands[].preconditions[].kernel_durations_ns must include expected profiler kernels")
+                        break
+                    if any(kernel_name not in profiler_kernel_names for kernel_name in kernel_durations):
+                        errors.append("commands[].preconditions[].kernel_durations_ns keys must be present in profiler_trace_kernel_names")
                         break
                     if not _is_number(profiler_precondition.get("total_kernel_duration_ns")) or float(profiler_precondition["total_kernel_duration_ns"]) <= 0.0:
                         errors.append("commands[].preconditions[].total_kernel_duration_ns must be positive when profiler passed")
