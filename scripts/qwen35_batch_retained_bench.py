@@ -171,6 +171,58 @@ def _attach_profiler_graph_kernel_time_histogram(scheduler_metadata: dict[str, A
     scheduler_metadata["graph_bucket_stats"] = updated_stats
 
 
+def _graph_replay_stats_blockers(scheduler_metadata: Mapping[str, Any]) -> list[str]:
+    graph_stats = scheduler_metadata.get("graph_bucket_stats")
+    if not isinstance(graph_stats, Mapping):
+        return ["execution.scheduler_metadata.graph_bucket_stats is missing"]
+    blockers: list[str] = []
+    integer_fields: dict[str, int] = {}
+    for field in ("entries", "hits", "misses"):
+        value = graph_stats.get(field)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            blockers.append(f"execution.scheduler_metadata.graph_bucket_stats.{field} is unavailable or non-integer")
+            continue
+        integer_fields[field] = int(value)
+    entries = integer_fields.get("entries")
+    hits = integer_fields.get("hits")
+    misses = integer_fields.get("misses")
+    if entries is not None and entries <= 0:
+        blockers.append("execution.scheduler_metadata.graph_bucket_stats.entries must be positive")
+    if hits is not None and hits <= 0:
+        blockers.append("execution.scheduler_metadata.graph_bucket_stats.hits must be positive")
+    replay_hit_rate = graph_stats.get("replay_hit_rate")
+    replay_hit_rate_valid = _is_finite_positive_number(replay_hit_rate) and float(replay_hit_rate) <= 1.0
+    if not replay_hit_rate_valid:
+        blockers.append("execution.scheduler_metadata.graph_bucket_stats.replay_hit_rate must be finite positive <= 1")
+    elif hits is not None and misses is not None and hits + misses > 0:
+        expected_replay_hit_rate = float(hits) / float(hits + misses)
+        if abs(float(replay_hit_rate) - expected_replay_hit_rate) > 1e-9:
+            blockers.append("execution.scheduler_metadata.graph_bucket_stats.replay_hit_rate must match hits / (hits + misses)")
+    if entries is not None and hits is not None and misses is not None and entries > hits + misses:
+        blockers.append("execution.scheduler_metadata.graph_bucket_stats.entries must be covered by hits plus misses")
+    miss_reasons = graph_stats.get("miss_reasons")
+    if not isinstance(miss_reasons, Mapping):
+        blockers.append("execution.scheduler_metadata.graph_bucket_stats.miss_reasons is missing")
+    else:
+        miss_reason_total = 0
+        miss_reason_total_valid = True
+        for reason, count in miss_reasons.items():
+            if not isinstance(reason, str) or not reason:
+                blockers.append("execution.scheduler_metadata.graph_bucket_stats.miss_reasons keys must be non-empty strings")
+                miss_reason_total_valid = False
+                break
+            if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+                blockers.append(f"execution.scheduler_metadata.graph_bucket_stats.miss_reasons.{reason} is unavailable or non-integer")
+                miss_reason_total_valid = False
+                break
+            miss_reason_total += int(count)
+        if misses is not None and misses > 0 and not miss_reasons:
+            blockers.append("execution.scheduler_metadata.graph_bucket_stats.miss_reasons must be non-empty when misses is positive")
+        if misses is not None and miss_reason_total_valid and miss_reason_total != misses:
+            blockers.append("execution.scheduler_metadata.graph_bucket_stats.miss_reasons counts must sum to misses")
+    return blockers
+
+
 def _graph_kernel_time_histogram_blockers(scheduler_metadata: Mapping[str, Any]) -> list[str]:
     graph_stats = scheduler_metadata.get("graph_bucket_stats")
     if not isinstance(graph_stats, Mapping):
@@ -191,6 +243,14 @@ def _graph_kernel_time_histogram_blockers(scheduler_metadata: Mapping[str, Any])
         total_observations += int(count)
     if total_observations <= 0:
         blockers.append("execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns has no observations")
+    return blockers
+
+
+def _graph_bucket_evidence_blockers(scheduler_metadata: Mapping[str, Any]) -> list[str]:
+    blockers = _graph_replay_stats_blockers(scheduler_metadata)
+    for blocker in _graph_kernel_time_histogram_blockers(scheduler_metadata):
+        if blocker not in blockers:
+            blockers.append(blocker)
     return blockers
 
 
@@ -1230,7 +1290,7 @@ def _build_payload(
     native_caware_decode = bool(batch_execution.get("native_caware_decode"))
     memory = _retained_memory_payload(args, kv_policy, bench)
     memory_blockers = _memory_evidence_blockers(memory)
-    graph_histogram_blockers = _graph_kernel_time_histogram_blockers(scheduler_metadata)
+    graph_bucket_blockers = _graph_bucket_evidence_blockers(scheduler_metadata)
     equality_passed = bool(equality.get("passed"))
     protocol_shape = args.max_layers == 40 and args.prompt_length >= 512 and args.decode_tokens >= 128
     scaling_complete = bool(scaling["complete"])
@@ -1244,7 +1304,7 @@ def _build_payload(
         and scaling_complete
         and profiler_captured
         and not memory_blockers
-        and not graph_histogram_blockers
+        and not graph_bucket_blockers
     )
     primitive_loaded = primitive_correctness.get("status") == "loaded"
     correctness_rejected = bool(bench["finite_logits"] and (not equality_passed or (primitive_loaded and not primitive_passed)))
@@ -1267,7 +1327,7 @@ def _build_payload(
     if not bench["finite_logits"]:
         blocked_reasons.append("non-finite seed or decode logits")
     blocked_reasons.extend(memory_blockers)
-    blocked_reasons.extend(graph_histogram_blockers)
+    blocked_reasons.extend(graph_bucket_blockers)
     per_request_observability = dict(bench.get("request_observability", {}))
     admission_timestamps = {
         request_id: row.get("admitted_timestamp")

@@ -5946,6 +5946,32 @@ def test_qwen35_retained_memory_evidence_blockers_cover_required_fields() -> Non
     assert "memory.prefix_sharing.savings_bytes is unavailable or non-finite" in blockers
 
 
+def test_qwen35_retained_graph_replay_stats_blockers_require_hit_evidence() -> None:
+    valid = {
+        "graph_bucket_stats": {
+            "entries": 1,
+            "hits": 1,
+            "misses": 1,
+            "replay_hit_rate": 0.5,
+            "miss_reasons": {"cache_absent": 1},
+        }
+    }
+    missing_hit_evidence = {
+        "graph_bucket_stats": {
+            "entries": 1,
+            "hits": 0,
+            "misses": 1,
+            "replay_hit_rate": 0.0,
+            "miss_reasons": {"cache_absent": 1},
+        }
+    }
+
+    assert retained_bench._graph_replay_stats_blockers(valid) == []
+    blockers = retained_bench._graph_replay_stats_blockers(missing_hit_evidence)
+    assert "execution.scheduler_metadata.graph_bucket_stats.hits must be positive" in blockers
+    assert "execution.scheduler_metadata.graph_bucket_stats.replay_hit_rate must be finite positive <= 1" in blockers
+
+
 def test_qwen35_retained_graph_histogram_blockers_reject_unknown_buckets() -> None:
     blockers = retained_bench._graph_kernel_time_histogram_blockers(
         {"graph_bucket_stats": {"kernel_time_histogram_ns": {"lt_1us": 1, "le_10us": 1}}}
