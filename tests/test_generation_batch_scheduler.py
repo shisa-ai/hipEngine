@@ -3338,6 +3338,17 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     c_sweep.validate_sweep_summary(persisted)
     assert c_sweep.main(["--validate-summary-json", str(summary_path)]) == 0
     if hasattr(os, "symlink"):
+        symlink_output_dir = tmp_path / "artifacts-link"
+        try:
+            symlink_output_dir.symlink_to(output_dir, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            pass
+        else:
+            symlink_output_summary = json.loads(json.dumps(persisted))
+            symlink_output_summary["output_dir"] = str(symlink_output_dir)
+            with pytest.raises(ValueError, match="output_dir must not be a symlink"):
+                c_sweep.validate_sweep_summary(symlink_output_summary)
+
         symlink_artifact_summary = json.loads(json.dumps(persisted))
         primitive_artifact_path = Path(symlink_artifact_summary["commands"][0]["artifact_path"])
         primitive_artifact_target = primitive_artifact_path.with_name("primitive-c2-real.json")

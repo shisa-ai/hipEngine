@@ -1519,8 +1519,14 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     ):
         errors.append("batch_sizes must be a non-empty unique positive-int list")
         batch_sizes = []
-    if not isinstance(summary.get("output_dir"), str) or not summary.get("output_dir"):
+    output_dir_text = summary.get("output_dir")
+    if not isinstance(output_dir_text, str) or not output_dir_text:
         errors.append("output_dir must be a non-empty string")
+    else:
+        output_dir_path = Path(output_dir_text)
+        output_dir_check_path = output_dir_path if output_dir_path.is_absolute() else REPO_ROOT / output_dir_path
+        if output_dir_check_path.is_symlink():
+            errors.append("output_dir must not be a symlink")
     options = summary.get("options")
     if not isinstance(options, Mapping):
         errors.append("options must be an object")
