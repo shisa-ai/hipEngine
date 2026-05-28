@@ -36048,3 +36048,28 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness emitted seed=1234 and passed=true
 ```
+
+## 2026-05-28 — CONCURRENCY primitive script retained-bound pass gate
+
+Materially advanced P5 retained-row correctness gating without closing any queue item or adding a retained c>N performance claim:
+
+- `scripts/qwen35_batch_correctness.py` now computes `passed` with the same primitive bounds required by retained references and accepted artifacts: zero append mismatches, exact `attn_batch_vs_c1_max_abs == 0.0`, and finite nonnegative `attn_batch_vs_numpy_max_abs <= 2e-5`.
+- Added CPU unit coverage for `_primitive_correctness_passed(...)` rejecting append mismatches, small non-zero batch-vs-c1 deltas, NaN/negative NumPy-oracle deltas, and above-threshold NumPy-oracle deltas.
+- Updated the benchmark eligibility gate in `docs/CONCURRENCY.md` to name exact batch-vs-c1 parity plus finite nonnegative NumPy-oracle bounds.
+- No retained c>N performance claim was added; C2.4/C2.5 generated-token equality artifacts are still missing.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -k 'primitive_correctness_passed_matches_retained_bounds or primitive_correctness_reference_requires_same_rows or primitive_precondition_requires_context_lens or primitive_precondition_requires_fixture_shape or primitive_precondition_requires_seed or primitive_precondition_requires_numpy_oracle or primitive_precondition_requires_schema or batch_c_sweep or retained_profiler_reference or artifact_schema_enforces_accepted_row_gates' -q
+# 51 passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness still emitted passed=true under retained-bound predicate
+```

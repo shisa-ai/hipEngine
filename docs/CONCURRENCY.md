@@ -532,7 +532,8 @@ A c>N row is not eligible for `accepted` status until all of these pass:
 
 1. `scripts/qwen35_batch_correctness.py --rows N` passes for the exact
    primitive families used by the runner: `append_key_mismatch=0`,
-   `append_value_mismatch=0`, `attn_batch_vs_c1_max_abs <= 1e-6`.
+   `append_value_mismatch=0`, `attn_batch_vs_c1_max_abs=0.0`, and
+   `0.0 <= attn_batch_vs_numpy_max_abs <= 2e-5`.
 2. The resident batch runner emits generated-token IDs equal to N independent
    c=1 resident runs for the same fixed prompts with greedy sampling and
    SpecDec disabled.

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -81,6 +82,21 @@ def _numpy_attention(
             for token, prob in enumerate(probs):
                 out[row, q_head] += prob * value[row, 0, token, kv_head]
     return out
+
+
+def _primitive_correctness_passed(
+    append_key_mismatch: int,
+    append_value_mismatch: int,
+    batch_vs_c1: float,
+    batch_vs_numpy: float,
+) -> bool:
+    return (
+        append_key_mismatch == 0
+        and append_value_mismatch == 0
+        and float(batch_vs_c1) == 0.0
+        and math.isfinite(float(batch_vs_numpy))
+        and 0.0 <= float(batch_vs_numpy) <= 2e-5
+    )
 
 
 def run(rows: int, *, seed: int = 1234) -> dict[str, object]:
@@ -255,7 +271,12 @@ def run(rows: int, *, seed: int = 1234) -> dict[str, object]:
         "append_value_mismatch": append_value_mismatch,
         "attn_batch_vs_c1_max_abs": batch_vs_c1,
         "attn_batch_vs_numpy_max_abs": batch_vs_numpy,
-        "passed": append_key_mismatch == 0 and append_value_mismatch == 0 and batch_vs_c1 <= 1e-6 and batch_vs_numpy <= 2e-5,
+        "passed": _primitive_correctness_passed(
+            append_key_mismatch,
+            append_value_mismatch,
+            batch_vs_c1,
+            batch_vs_numpy,
+        ),
     }
     return result
 

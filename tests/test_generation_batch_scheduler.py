@@ -46,6 +46,7 @@ from hipengine.generation import (
 from hipengine.kvcache import ChunkedKVPool, FixedPagedKVPolicy
 from hipengine.speculative import AcceptResult, DraftBatch, TargetAcceptSummary, TargetStateCommitBuffers, TargetVerifyBuffers
 from scripts import qwen35_batch_c_sweep as c_sweep
+from scripts import qwen35_batch_correctness as batch_correctness
 from scripts import qwen35_batch_retained_bench as retained_bench
 from scripts.qwen35_batch_artifact_schema import (
     main as validate_cn_diagnostic_artifact_main,
@@ -4939,6 +4940,16 @@ def test_qwen35_retained_scaling_comparison_uses_c1_and_serial_artifacts(tmp_pat
         "aggregate_vs_serial_bridge": 2.0,
         "per_request_vs_serial_bridge": 2.0,
     }
+
+
+def test_qwen35_primitive_correctness_passed_matches_retained_bounds() -> None:
+    assert batch_correctness._primitive_correctness_passed(0, 0, 0.0, 2e-5) is True
+    assert batch_correctness._primitive_correctness_passed(1, 0, 0.0, 1e-8) is False
+    assert batch_correctness._primitive_correctness_passed(0, 1, 0.0, 1e-8) is False
+    assert batch_correctness._primitive_correctness_passed(0, 0, 5e-7, 1e-8) is False
+    assert batch_correctness._primitive_correctness_passed(0, 0, 0.0, math.nan) is False
+    assert batch_correctness._primitive_correctness_passed(0, 0, 0.0, -1e-8) is False
+    assert batch_correctness._primitive_correctness_passed(0, 0, 0.0, 3e-5) is False
 
 
 def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_path: Path) -> None:
