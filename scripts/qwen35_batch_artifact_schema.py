@@ -552,10 +552,19 @@ def _load_benchmark_results_json_artifact(field: str, value: str, errors: list[s
     path = Path(value)
     if not path.is_absolute():
         path = Path.cwd() / path
+    if path.is_symlink():
+        errors.append(f"{field} must point to a regular JSON artifact, not a symlink, for accepted artifacts")
+        return None
+    if not path.exists():
+        errors.append(f"{field} must point to an existing JSON artifact for accepted artifacts")
+        return None
+    if not path.is_file():
+        errors.append(f"{field} must point to a regular JSON artifact for accepted artifacts")
+        return None
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        errors.append(f"{field} must point to an existing JSON artifact for accepted artifacts")
+    except OSError as exc:
+        errors.append(f"{field} must point to a readable JSON artifact for accepted artifacts: {exc}")
         return None
     except json.JSONDecodeError as exc:
         errors.append(f"{field} must point to a valid JSON artifact for accepted artifacts: {exc}")

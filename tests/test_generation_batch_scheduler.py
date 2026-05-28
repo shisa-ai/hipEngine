@@ -51,6 +51,7 @@ from scripts import qwen35_batch_c_sweep as c_sweep
 from scripts import qwen35_batch_correctness as batch_correctness
 from scripts import qwen35_batch_retained_bench as retained_bench
 from scripts.qwen35_batch_artifact_schema import (
+    _load_benchmark_results_json_artifact,
     _summary_json_path_is_in_current_results,
     _validate_benchmark_results_artifact_path,
     _validate_summary_json_path,
@@ -113,6 +114,35 @@ def test_qwen35_artifact_paths_reject_traversal_and_external_roots(
     external_artifact = tmp_path / "external" / "benchmarks" / "results" / "source.json"
     _validate_benchmark_results_artifact_path("external_artifact_path", str(external_artifact), errors)
     assert errors[-1] == "external_artifact_path must be under benchmarks/results for accepted artifacts"
+
+
+def test_qwen35_artifact_reference_loader_rejects_symlinks_and_directories(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo_root = tmp_path / "repo"
+    artifact_dir = repo_root / "benchmarks" / "results"
+    artifact_dir.mkdir(parents=True)
+    regular_artifact = artifact_dir / "source.json"
+    regular_artifact.write_text('{"schema": 1}', encoding="utf-8")
+    directory_artifact = artifact_dir / "directory.json"
+    directory_artifact.mkdir()
+    symlink_artifact = artifact_dir / "symlink.json"
+    try:
+        symlink_artifact.symlink_to(regular_artifact)
+    except (OSError, NotImplementedError):
+        symlink_artifact = None
+    monkeypatch.chdir(repo_root)
+
+    errors: list[str] = []
+    assert _load_benchmark_results_json_artifact("artifact_path", "benchmarks/results/source.json", errors) == {"schema": 1}
+    assert errors == []
+
+    assert _load_benchmark_results_json_artifact("directory_path", "benchmarks/results/directory.json", errors) is None
+    assert errors[-1] == "directory_path must point to a regular JSON artifact for accepted artifacts"
+
+    if symlink_artifact is not None:
+        assert _load_benchmark_results_json_artifact("symlink_path", "benchmarks/results/symlink.json", errors) is None
+        assert errors[-1] == "symlink_path must point to a regular JSON artifact, not a symlink, for accepted artifacts"
 
 
 def test_qwen35_validation_summary_payload_rejects_traversal() -> None:
