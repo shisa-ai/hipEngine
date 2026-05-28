@@ -1641,6 +1641,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if failed_preconditions and entry.get("precondition") != failed_preconditions[0]:
                 errors.append("commands[].precondition must match the first failed precondition")
                 break
+            if not failed_preconditions and "precondition" in entry:
+                errors.append("commands[].precondition must be absent unless a precondition failed")
+                break
         postconditions = entry.get("postconditions")
         if not isinstance(postconditions, list):
             continue

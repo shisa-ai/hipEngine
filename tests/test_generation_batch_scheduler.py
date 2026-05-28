@@ -2172,6 +2172,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_output_tail["commands"][-1]["output_tail"] = ["ok"]
     with pytest.raises(ValueError, match=r"commands\[\]\.output_tail must be a string"):
         c_sweep.validate_sweep_summary(tampered_output_tail)
+    tampered_singular_precondition = json.loads(json.dumps(persisted))
+    tampered_singular_precondition["commands"][-1]["precondition"] = tampered_singular_precondition["commands"][-1]["preconditions"][0]
+    with pytest.raises(ValueError, match=r"commands\[\]\.precondition must be absent unless a precondition failed"):
+        c_sweep.validate_sweep_summary(tampered_singular_precondition)
     tampered_git_dirty = json.loads(json.dumps(persisted))
     tampered_git_dirty["commands"][-1]["git_dirty"] = True
     with pytest.raises(ValueError, match=r"commands\[\]\.git_dirty must match git.dirty"):
