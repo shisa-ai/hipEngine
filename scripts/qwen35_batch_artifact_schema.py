@@ -762,8 +762,11 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
                 if not _is_nonnegative_number(pool_counters.get(field)):
                     errors.append(f"memory.dynamic_pool.pool_counters.{field} must be finite non-negative numeric for accepted artifacts")
     stable_block_id = memory.get("stable_block_id")
-    if isinstance(stable_block_id, Mapping) and stable_block_id.get("passed") is not True:
-        errors.append("memory.stable_block_id.passed must be true for accepted artifacts")
+    if isinstance(stable_block_id, Mapping):
+        if stable_block_id.get("passed") is not True:
+            errors.append("memory.stable_block_id.passed must be true for accepted artifacts")
+        if not isinstance(stable_block_id.get("audit"), str) or not stable_block_id.get("audit"):
+            errors.append("memory.stable_block_id.audit must be a non-empty string for accepted artifacts")
     prefix_sharing = memory.get("prefix_sharing")
     if isinstance(prefix_sharing, Mapping):
         if not isinstance(prefix_sharing.get("enabled"), bool):
