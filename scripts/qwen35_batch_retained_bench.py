@@ -508,6 +508,11 @@ def _primitive_correctness_reference(path: Path | None, *, rows: int) -> dict[st
     artifact_schema = payload.get("schema")
     if not isinstance(artifact_schema, int) or isinstance(artifact_schema, bool) or artifact_schema != 1:
         reasons.append("schema is missing or not 1")
+    source_artifact_path = payload.get("artifact_path")
+    if not isinstance(source_artifact_path, str) or not source_artifact_path:
+        reasons.append("artifact_path is missing or not a non-empty string")
+    elif source_artifact_path != str(path):
+        reasons.append("artifact_path does not match primitive correctness artifact path")
     artifact_rows = payload.get("rows")
     if not isinstance(artifact_rows, int) or isinstance(artifact_rows, bool) or artifact_rows != int(rows):
         reasons.append(f"artifact rows={artifact_rows!r} does not match batch_size={rows}")

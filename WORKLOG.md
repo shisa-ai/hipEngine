@@ -39170,3 +39170,28 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness still passed; retained scaling claims remain blocked on generated-token equality/profiler/scaling evidence
 ```
+
+## 2026-05-28 — CONCURRENCY primitive correctness artifact path binding
+
+Materially advanced retained/P5 primitive correctness gates without closing a queue item or adding a retained c>N performance claim:
+
+- `scripts/qwen35_batch_correctness.py` now writes `artifact_path` into JSON artifacts when `--json` is used.
+- `scripts/qwen35_batch_retained_bench.py` now rejects primitive correctness reference JSON whose self-reported `artifact_path` is missing or does not match the retained `--primitive-correctness-json` path, in addition to the existing schema/shape/row/oracle checks.
+- Extended retained primitive correctness reference tests with mismatched artifact-path rejection; updated `docs/CONCURRENCY.md` C5.8/P5 progress text to name the primitive self-binding requirement.
+- No retained c>N performance claim was added; generated-token equality, profiler evidence, and scaling evidence remain required before promotion.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -k 'primitive_correctness_reference_requires_same_rows' -q
+# 1 passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness still passed and now emits matching artifact_path fields
+```

@@ -288,6 +288,8 @@ def main() -> None:
     parser.add_argument("--json", type=Path)
     args = parser.parse_args()
     result = run(args.rows, seed=args.seed)
+    if args.json is not None:
+        result["artifact_path"] = str(args.json)
     payload = json.dumps(result, indent=2)
     print(payload)
     if args.json is not None:

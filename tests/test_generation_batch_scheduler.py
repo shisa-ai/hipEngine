@@ -5576,76 +5576,81 @@ def test_qwen35_primitive_correctness_passed_matches_retained_bounds() -> None:
 
 def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_path: Path) -> None:
     artifact = tmp_path / "primitive-c2.json"
-    artifact.write_text(
-        json.dumps(
-            {
-                "schema": 1,
-                "rows": 2,
-                "seed": 1234,
-                "block_size": 256,
-                "max_context_len": 4,
-                "num_q_heads": 4,
-                "num_kv_heads": 1,
-                "head_dim": 8,
-                "context_lens": [1, 2],
-                "passed": True,
-                "append_key_mismatch": 0,
-                "append_value_mismatch": 0,
-                "attn_batch_vs_c1_max_abs": 0.0,
-                "attn_batch_vs_numpy_max_abs": 5.0e-8,
-            }
-        )
-    )
+    base_payload = {
+        "schema": 1,
+        "rows": 2,
+        "seed": 1234,
+        "block_size": 256,
+        "max_context_len": 4,
+        "num_q_heads": 4,
+        "num_kv_heads": 1,
+        "head_dim": 8,
+        "context_lens": [1, 2],
+        "passed": True,
+        "append_key_mismatch": 0,
+        "append_value_mismatch": 0,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "attn_batch_vs_numpy_max_abs": 5.0e-8,
+    }
+
+    def write_primitive(path: Path, payload: dict[str, object]) -> None:
+        payload = dict(payload)
+        payload["artifact_path"] = str(path)
+        path.write_text(json.dumps(payload))
+
+    write_primitive(artifact, base_payload)
 
     schema_less_artifact = tmp_path / "primitive-c2-schema-less.json"
-    schema_less_artifact.write_text(
-        json.dumps(
-            {
-                "rows": 2,
-                "passed": True,
-                "append_key_mismatch": 0,
-                "append_value_mismatch": 0,
-                "attn_batch_vs_c1_max_abs": 0.0,
-                "attn_batch_vs_numpy_max_abs": 5.0e-8,
-            }
-        )
+    write_primitive(
+        schema_less_artifact,
+        {
+            "rows": 2,
+            "passed": True,
+            "append_key_mismatch": 0,
+            "append_value_mismatch": 0,
+            "attn_batch_vs_c1_max_abs": 0.0,
+            "attn_batch_vs_numpy_max_abs": 5.0e-8,
+        },
     )
     mismatched_seed_artifact = tmp_path / "primitive-c2-seed.json"
     seed_payload = json.loads(artifact.read_text())
     seed_payload["seed"] = 4321
-    mismatched_seed_artifact.write_text(json.dumps(seed_payload))
+    write_primitive(mismatched_seed_artifact, seed_payload)
     mismatched_shape_artifact = tmp_path / "primitive-c2-shape.json"
     shape_payload = json.loads(artifact.read_text())
     shape_payload["head_dim"] = 16
-    mismatched_shape_artifact.write_text(json.dumps(shape_payload))
+    write_primitive(mismatched_shape_artifact, shape_payload)
     mismatched_numpy_artifact = tmp_path / "primitive-c2-numpy.json"
     numpy_payload = json.loads(artifact.read_text())
     numpy_payload["attn_batch_vs_numpy_max_abs"] = 1e-3
-    mismatched_numpy_artifact.write_text(json.dumps(numpy_payload))
+    write_primitive(mismatched_numpy_artifact, numpy_payload)
     nan_numpy_artifact = tmp_path / "primitive-c2-numpy-nan.json"
     nan_numpy_payload = json.loads(artifact.read_text())
     nan_numpy_payload["attn_batch_vs_numpy_max_abs"] = math.nan
-    nan_numpy_artifact.write_text(json.dumps(nan_numpy_payload))
+    write_primitive(nan_numpy_artifact, nan_numpy_payload)
     negative_numpy_artifact = tmp_path / "primitive-c2-numpy-negative.json"
     negative_numpy_payload = json.loads(artifact.read_text())
     negative_numpy_payload["attn_batch_vs_numpy_max_abs"] = -1e-8
-    negative_numpy_artifact.write_text(json.dumps(negative_numpy_payload))
+    write_primitive(negative_numpy_artifact, negative_numpy_payload)
     mismatched_c1_artifact = tmp_path / "primitive-c2-c1.json"
     c1_payload = json.loads(artifact.read_text())
     c1_payload["attn_batch_vs_c1_max_abs"] = 5e-7
-    mismatched_c1_artifact.write_text(json.dumps(c1_payload))
+    write_primitive(mismatched_c1_artifact, c1_payload)
     mismatched_context_artifact = tmp_path / "primitive-c2-context.json"
     context_payload = json.loads(artifact.read_text())
     context_payload["context_lens"] = [2, 1]
-    mismatched_context_artifact.write_text(json.dumps(context_payload))
+    write_primitive(mismatched_context_artifact, context_payload)
     bool_context_artifact = tmp_path / "primitive-c2-context-bool.json"
     bool_context_payload = json.loads(artifact.read_text())
     bool_context_payload["context_lens"] = [True, 2]
-    bool_context_artifact.write_text(json.dumps(bool_context_payload))
+    write_primitive(bool_context_artifact, bool_context_payload)
     bool_append_artifact = tmp_path / "primitive-c2-append-bool.json"
     bool_append_payload = json.loads(artifact.read_text())
     bool_append_payload["append_key_mismatch"] = False
-    bool_append_artifact.write_text(json.dumps(bool_append_payload))
+    write_primitive(bool_append_artifact, bool_append_payload)
+    wrong_artifact_path_artifact = tmp_path / "primitive-c2-wrong-artifact-path.json"
+    wrong_artifact_path_payload = json.loads(artifact.read_text())
+    wrong_artifact_path_artifact.write_text(json.dumps(wrong_artifact_path_payload))
 
     passed = retained_bench._primitive_correctness_reference(artifact, rows=2)
     mismatched = retained_bench._primitive_correctness_reference(artifact, rows=4)
@@ -5659,6 +5664,7 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     mismatched_context = retained_bench._primitive_correctness_reference(mismatched_context_artifact, rows=2)
     bool_context = retained_bench._primitive_correctness_reference(bool_context_artifact, rows=2)
     bool_append = retained_bench._primitive_correctness_reference(bool_append_artifact, rows=2)
+    wrong_artifact_path = retained_bench._primitive_correctness_reference(wrong_artifact_path_artifact, rows=2)
     missing = retained_bench._primitive_correctness_reference(None, rows=2)
 
     assert passed["passed"] is True
@@ -5689,6 +5695,8 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     assert "context_lens is missing or does not match fixture coverage" in bool_context["reason"]
     assert bool_append["passed"] is False
     assert "append_key_mismatch is missing or not integer zero" in bool_append["reason"]
+    assert wrong_artifact_path["passed"] is False
+    assert "artifact_path does not match primitive correctness artifact path" in wrong_artifact_path["reason"]
     assert missing["status"] == "missing"
 
 

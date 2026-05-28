@@ -870,7 +870,8 @@ roll-up/status view.
       `execution.completed` rows cover every request, carry prompt-token counts
       matching `workload.prompt_lengths`, and match generated-token and
       finish-reason records, no mismatches, and a passing primitive c>N GPU
-      correctness JSON whose `rows` value matches `workload.concurrency`, plus
+      correctness JSON whose self-reported `artifact_path` and `rows` values match
+      the retained reference path and `workload.concurrency`, plus
       retained-bench allocator/memory evidence merge/blockers in
       `test_qwen35_retained_allocator_memory_evidence_from_stats`,
       `test_qwen35_retained_memory_payload_uses_bench_evidence`, and
@@ -956,7 +957,7 @@ roll-up/status view.
       rows covering every request with prompt-token counts matching
       `workload.prompt_lengths` plus matching generated-token and finish-reason
       records,
-      primitive GPU correctness reference typed script schema (`schema=1`), typed row count matching
+      primitive GPU correctness reference typed script schema (`schema=1`), source `artifact_path` matching the retained reference path, typed row count matching
       `workload.concurrency` in both source and summary preconditions,
       reference-/c-sweep-gated typed deterministic `seed=1234` provenance,
       deterministic typed fixture-shape
