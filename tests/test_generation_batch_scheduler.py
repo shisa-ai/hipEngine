@@ -2176,6 +2176,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_output_tail["commands"][-1]["output_tail"] = ["ok"]
     with pytest.raises(ValueError, match=r"commands\[\]\.output_tail must be a string"):
         c_sweep.validate_sweep_summary(tampered_output_tail)
+    tampered_long_output_tail = json.loads(json.dumps(persisted))
+    tampered_long_output_tail["commands"][-1]["output_tail"] = "x" * 4001
+    with pytest.raises(ValueError, match=r"commands\[\]\.output_tail must be no longer than 4000 characters"):
+        c_sweep.validate_sweep_summary(tampered_long_output_tail)
     tampered_singular_precondition = json.loads(json.dumps(persisted))
     tampered_singular_precondition["commands"][-1]["precondition"] = tampered_singular_precondition["commands"][-1]["preconditions"][0]
     with pytest.raises(ValueError, match=r"commands\[\]\.precondition must be absent unless a precondition failed"):

@@ -30,6 +30,7 @@ DEFAULT_MODEL = (
 )
 DEFAULT_FIXTURE = "fixtures/qwen35_paro/parent_512_32_seed1234.json"
 DEFAULT_BATCH_SIZES = (1, 2, 4, 8)
+_OUTPUT_TAIL_MAX_CHARS = 4000
 _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = ("serial", "fallback", "per_row", "per-row")
 _PROFILER_KERNEL_DURATION_CATEGORIES = (
     "attention",
@@ -1259,7 +1260,7 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
                     "status": "passed" if proc.returncode == 0 else "failed",
                     "returncode": proc.returncode,
                     "duration_seconds": time.perf_counter() - start,
-                    "output_tail": proc.stdout[-4000:],
+                    "output_tail": proc.stdout[-_OUTPUT_TAIL_MAX_CHARS:],
                 }
             )
             if entry["status"] == "passed":
@@ -1519,6 +1520,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 break
             if status != "planned" and not isinstance(entry.get("output_tail"), str):
                 errors.append("commands[].output_tail must be a string for non-planned rows")
+                break
+            if isinstance(entry.get("output_tail"), str) and len(entry["output_tail"]) > _OUTPUT_TAIL_MAX_CHARS:
+                errors.append("commands[].output_tail must be no longer than 4000 characters")
                 break
             condition_schema_error = False
             for condition_field in ("preconditions", "postconditions"):
