@@ -3441,6 +3441,32 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
                 if artifact_parent_link.is_symlink():
                     artifact_parent_link.unlink()
 
+            gate_symlink_path = output_dir / "serial-bridge-link.json"
+            try:
+                gate_symlink_path.symlink_to(output_dir / "serial-bridge-c2.json")
+                symlink_gate_summary = json.loads(json.dumps(persisted))
+                retained_argv = symlink_gate_summary["commands"][-1]["argv"]
+                retained_argv[retained_argv.index("--serial-bridge-json") + 1] = str(gate_symlink_path)
+                symlink_gate_summary["commands"][-1]["command"] = shlex.join(retained_argv)
+                with pytest.raises(ValueError, match=r"commands\[\]\.argv retained native gate artifact paths must not be symlinks"):
+                    c_sweep.validate_sweep_summary(symlink_gate_summary)
+            finally:
+                if gate_symlink_path.is_symlink():
+                    gate_symlink_path.unlink()
+
+            gate_parent_link = output_dir / "gate-parent-link"
+            try:
+                gate_parent_link.symlink_to(output_dir, target_is_directory=True)
+                symlink_parent_gate_summary = json.loads(json.dumps(persisted))
+                retained_argv = symlink_parent_gate_summary["commands"][-1]["argv"]
+                retained_argv[retained_argv.index("--serial-bridge-json") + 1] = str(gate_parent_link / "serial-bridge-c2.json")
+                symlink_parent_gate_summary["commands"][-1]["command"] = shlex.join(retained_argv)
+                with pytest.raises(ValueError, match=r"commands\[\]\.argv retained native gate artifact path parent directories must not be symlinks"):
+                    c_sweep.validate_sweep_summary(symlink_parent_gate_summary)
+            finally:
+                if gate_parent_link.is_symlink():
+                    gate_parent_link.unlink()
+
         symlink_artifact_summary = json.loads(json.dumps(persisted))
         primitive_artifact_path = Path(symlink_artifact_summary["commands"][0]["artifact_path"])
         primitive_artifact_target = primitive_artifact_path.with_name("primitive-c2-real.json")

@@ -1736,7 +1736,16 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                             retained_gate_path_error = True
                             break
                         gate_path = Path(gate_text)
-                        gate_abs = (gate_path if gate_path.is_absolute() else REPO_ROOT / gate_path).resolve()
+                        gate_check_path = gate_path if gate_path.is_absolute() else REPO_ROOT / gate_path
+                        if gate_check_path.is_symlink():
+                            errors.append("commands[].argv retained native gate artifact paths must not be symlinks")
+                            retained_gate_path_error = True
+                            break
+                        if _path_has_symlink_parent(gate_check_path):
+                            errors.append("commands[].argv retained native gate artifact path parent directories must not be symlinks")
+                            retained_gate_path_error = True
+                            break
+                        gate_abs = gate_check_path.resolve()
                         if gate_abs != (output_dir_abs / expected_name).resolve():
                             errors.append("commands[].argv retained native gate artifact paths must match output_dir filenames")
                             retained_gate_path_error = True
