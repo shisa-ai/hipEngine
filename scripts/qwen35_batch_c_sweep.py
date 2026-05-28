@@ -1541,7 +1541,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     else:
         output_dir_path = Path(output_dir_text)
         output_dir_check_path = output_dir_path if output_dir_path.is_absolute() else REPO_ROOT / output_dir_path
-        if output_dir_check_path.is_symlink():
+        if _path_has_parent_directory_component(output_dir_text):
+            errors.append("output_dir must not contain parent-directory components")
+        elif output_dir_check_path.is_symlink():
             errors.append("output_dir must not be a symlink")
         elif _path_has_symlink_parent(output_dir_check_path):
             errors.append("output_dir parent directories must not be symlinks")
