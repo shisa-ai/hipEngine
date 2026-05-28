@@ -973,8 +973,9 @@ roll-up/status view.
       a correctness-reference command that names generated-token equality vs
       independent c=1, with an embedded Python invocation of
       `scripts/qwen35_batch_correctness.py` whose own argv carries only
-      `qwen35_batch_correctness.py` flags with unique `--rows` / `--json`, `--rows` matching
-      `workload.concurrency`, and `--json` matching
+      `qwen35_batch_correctness.py` flags with unique `--rows` / `--seed` / `--json`,
+      `--rows` matching `workload.concurrency`, `--seed` matching
+      `correctness.primitive_batch_correctness.seed`, and `--json` matching
       `correctness.primitive_batch_correctness.artifact_path`, and a concrete
       `rocprofv3 --kernel-trace` profiler command targeting
       `scripts/qwen35_batch_retained_bench.py` after the rocprof `--` separator,

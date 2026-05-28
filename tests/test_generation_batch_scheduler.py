@@ -4613,6 +4613,7 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
         json.dumps(
             {
                 "rows": 2,
+                "seed": 1234,
                 "passed": True,
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
@@ -4628,6 +4629,7 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
 
     assert passed["passed"] is True
     assert passed["artifact_path"] == str(artifact)
+    assert passed["seed"] == 1234
     assert mismatched["passed"] is False
     assert "does not match batch_size=4" in mismatched["reason"]
     assert missing["status"] == "missing"
@@ -4929,7 +4931,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                 "git diff --quiet",
             ],
             "benchmark": "python3 scripts/qwen35_batch_retained_bench.py --model /models/test-qwen35 --fixture fixtures/qwen35.json --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json benchmarks/results/accepted-c2.json --c1-baseline-json benchmarks/results/c1.json --serial-bridge-json benchmarks/results/serial-c2.json --primitive-correctness-json benchmarks/results/primitive-c2.json",
-            "correctness_reference": "inline generated-token equality vs independent c=1 plus python3 scripts/qwen35_batch_correctness.py --rows 2 --json benchmarks/results/primitive-c2.json",
+            "correctness_reference": "inline generated-token equality vs independent c=1 plus python3 scripts/qwen35_batch_correctness.py --rows 2 --seed 1234 --json benchmarks/results/primitive-c2.json",
             "profiler": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile -- python3 scripts/qwen35_batch_retained_bench.py --model /models/test-qwen35 --fixture fixtures/qwen35.json --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --compiler-version-file benchmarks/results/hipcc-version.txt --require-cached-build --json benchmarks/results/accepted-c2.json --c1-baseline-json benchmarks/results/c1.json --serial-bridge-json benchmarks/results/serial-c2.json --primitive-correctness-json benchmarks/results/primitive-c2.json --profiler-json benchmarks/results/profiler-c2.json",
         },
         "profiler": {
@@ -5014,6 +5016,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             "primitive_batch_correctness": {
                 "artifact_path": "benchmarks/results/primitive-c2.json",
                 "rows": 2,
+                "seed": 1234,
                 "passed": True,
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
@@ -5449,6 +5452,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     mismatched_primitive_rows["correctness"]["primitive_batch_correctness"]["rows"] = 8
     with pytest.raises(ValueError, match="primitive_batch_correctness.rows must match workload.concurrency"):
         validate_cn_diagnostic_artifact_payload(mismatched_primitive_rows)
+
+    missing_primitive_seed = json.loads(json.dumps(accepted))
+    missing_primitive_seed["correctness"]["primitive_batch_correctness"].pop("seed")
+    with pytest.raises(ValueError, match="primitive_batch_correctness.seed must be an int"):
+        validate_cn_diagnostic_artifact_payload(missing_primitive_seed)
 
     primitive_append_mismatch = json.loads(json.dumps(accepted))
     primitive_append_mismatch["correctness"]["primitive_batch_correctness"]["append_key_mismatch"] = 1
@@ -6057,6 +6065,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     wrong_correctness_rows["commands"]["correctness_reference"] = "python3 scripts/qwen35_batch_correctness.py --rows 8 --json primitive-c8.json"
     with pytest.raises(ValueError, match="commands.correctness_reference --rows must match workload.concurrency"):
         validate_cn_diagnostic_artifact_payload(wrong_correctness_rows)
+
+    wrong_correctness_seed = json.loads(json.dumps(accepted))
+    wrong_correctness_seed["commands"]["correctness_reference"] = wrong_correctness_seed["commands"]["correctness_reference"].replace("--seed 1234", "--seed 4321")
+    with pytest.raises(ValueError, match="commands.correctness_reference --seed must match correctness.primitive_batch_correctness.seed"):
+        validate_cn_diagnostic_artifact_payload(wrong_correctness_seed)
 
     duplicate_correctness_rows = json.loads(json.dumps(accepted))
     duplicate_correctness_rows["commands"]["correctness_reference"] += " --rows 8"

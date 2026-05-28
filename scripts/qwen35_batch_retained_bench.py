@@ -273,6 +273,9 @@ def _primitive_correctness_reference(path: Path | None, *, rows: int) -> dict[st
     artifact_rows = payload.get("rows")
     if not isinstance(artifact_rows, int) or isinstance(artifact_rows, bool) or artifact_rows != int(rows):
         reasons.append(f"artifact rows={artifact_rows!r} does not match batch_size={rows}")
+    artifact_seed = payload.get("seed")
+    if not isinstance(artifact_seed, int) or isinstance(artifact_seed, bool):
+        reasons.append("seed is missing or not an int")
     if payload.get("passed") is not True:
         reasons.append("primitive correctness payload did not pass")
     if payload.get("append_key_mismatch") != 0:
@@ -286,6 +289,7 @@ def _primitive_correctness_reference(path: Path | None, *, rows: int) -> dict[st
         "artifact_path": str(path),
         "status": "loaded",
         "rows": payload.get("rows"),
+        "seed": payload.get("seed"),
         "passed": not reasons,
         "append_key_mismatch": payload.get("append_key_mismatch"),
         "append_value_mismatch": payload.get("append_value_mismatch"),
@@ -722,8 +726,8 @@ def _command(argv: Sequence[str] | None) -> str:
     return " ".join(shlex.quote(part) for part in parts)
 
 
-def _primitive_correctness_command(path: Path | None, *, rows: int) -> str:
-    parts = ["python3", "scripts/qwen35_batch_correctness.py", "--rows", str(rows), "--json"]
+def _primitive_correctness_command(path: Path | None, *, rows: int, seed: int = 1234) -> str:
+    parts = ["python3", "scripts/qwen35_batch_correctness.py", "--rows", str(rows), "--seed", str(seed), "--json"]
     parts.append(str(path) if path is not None else "<primitive-correctness-json>")
     return " ".join(shlex.quote(part) for part in parts)
 
@@ -992,7 +996,13 @@ def _build_payload(
         primitive_correctness_path,
         rows=args.batch_size,
     )
-    correctness_reference_command = _primitive_correctness_command(primitive_correctness_path, rows=args.batch_size)
+    primitive_seed = primitive_correctness.get("seed")
+    correctness_reference_seed = primitive_seed if isinstance(primitive_seed, int) and not isinstance(primitive_seed, bool) else 1234
+    correctness_reference_command = _primitive_correctness_command(
+        primitive_correctness_path,
+        rows=args.batch_size,
+        seed=correctness_reference_seed,
+    )
     profiler = _attach_profiler_cpu_side_bottlenecks(
         _profiler_reference(getattr(args, "profiler_json", None)),
         bench,

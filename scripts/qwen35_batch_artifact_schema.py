@@ -119,6 +119,7 @@ _COMMAND_COMPILER_VERSION_FILE_RE = re.compile(r"(?:^|\s)--compiler-version-file
 _COMMAND_OUTPUT_FORMAT_RE = re.compile(r"(?:^|\s)--output-format(?:=|\s+)(\S+)(?=\s|$)")
 _COMMAND_TRACE_DIR_RE = re.compile(r"(?:^|\s)-d(?:=|\s+)(\S+)(?=\s|$)")
 _CORRECTNESS_ROWS_RE = re.compile(r"(?:^|\s)--rows(?:=|\s+)(\d+)(?=\s|$)")
+_CORRECTNESS_SEED_RE = re.compile(r"(?:^|\s)--seed(?:=|\s+)(\d+)(?=\s|$)")
 _RETAINED_BENCH_UNIQUE_FLAGS = (
     "--model",
     "--fixture",
@@ -134,7 +135,7 @@ _RETAINED_BENCH_UNIQUE_FLAGS = (
     "--compiler-version-file",
     "--require-cached-build",
 )
-_CORRECTNESS_REFERENCE_UNIQUE_FLAGS = ("--rows", "--json")
+_CORRECTNESS_REFERENCE_UNIQUE_FLAGS = ("--rows", "--seed", "--json")
 _CORRECTNESS_SCRIPT_ALLOWED_FLAGS = ("--rows", "--seed", "--json")
 _FULL_COMMIT_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", re.IGNORECASE)
 _ACCEPTED_HARDWARE_ARCH_RE = re.compile(r"gfx[0-9a-f]+", re.IGNORECASE)
@@ -1088,6 +1089,12 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
                     errors.append("commands.correctness_reference --rows must match workload.concurrency for accepted artifacts")
             correctness = payload.get("correctness")
             primitive = correctness.get("primitive_batch_correctness") if isinstance(correctness, Mapping) else None
+            primitive_seed = primitive.get("seed") if isinstance(primitive, Mapping) else None
+            seed_match = _CORRECTNESS_SEED_RE.search(correctness_script_command)
+            if seed_match is None:
+                errors.append("commands.correctness_reference must include --seed <correctness.primitive_batch_correctness.seed> for accepted artifacts")
+            elif isinstance(primitive_seed, int) and not isinstance(primitive_seed, bool) and int(seed_match.group(1)) != primitive_seed:
+                errors.append("commands.correctness_reference --seed must match correctness.primitive_batch_correctness.seed for accepted artifacts")
             primitive_artifact_path = primitive.get("artifact_path") if isinstance(primitive, Mapping) else None
             _validate_command_json_matches_artifact_path(
                 correctness_script_command,
@@ -1562,6 +1569,9 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
         errors.append("correctness.primitive_batch_correctness.rows must be an int for accepted artifacts")
     if concurrency_valid and isinstance(primitive_rows, int) and not isinstance(primitive_rows, bool) and primitive_rows != concurrency:
         errors.append("correctness.primitive_batch_correctness.rows must match workload.concurrency for accepted artifacts")
+    primitive_seed = primitive.get("seed")
+    if not isinstance(primitive_seed, int) or isinstance(primitive_seed, bool):
+        errors.append("correctness.primitive_batch_correctness.seed must be an int for accepted artifacts")
     for field in ("append_key_mismatch", "append_value_mismatch"):
         value = primitive.get(field)
         if not isinstance(value, int) or isinstance(value, bool):
