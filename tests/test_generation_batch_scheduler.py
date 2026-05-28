@@ -5811,6 +5811,44 @@ def test_qwen35_retained_payload_mirrors_fallback_native_decode_label(monkeypatc
     assert "--rows 2" in payload["commands"]["correctness_reference"]
 
 
+def test_qwen35_retained_memory_evidence_blockers_cover_required_fields() -> None:
+    complete_memory = {
+        "allocator_reserved_peak_bytes": 8192,
+        "dynamic_pool": {
+            "evidence": "pool counters captured",
+            "pool_counters": {
+                "current_bytes": 8192,
+                "high_water_observed_bytes": 8192,
+                "grow_events": 0,
+                "grow_failures": 0,
+                "shrink_events": 0,
+                "free_pages": 2,
+                "refcounted_pages": 0,
+            },
+        },
+        "stable_block_id": {"passed": True, "audit": "block ids stable"},
+        "prefix_sharing": {"enabled": False, "savings_bytes": 0},
+    }
+    assert retained_bench._memory_evidence_blockers(complete_memory) == []
+
+    incomplete_memory = json.loads(json.dumps(complete_memory))
+    incomplete_memory["allocator_reserved_peak_bytes"] = float("inf")
+    incomplete_memory["dynamic_pool"]["evidence"] = " "
+    incomplete_memory["dynamic_pool"]["pool_counters"]["free_pages"] = -1
+    incomplete_memory["stable_block_id"] = {"passed": False, "audit": ""}
+    incomplete_memory["prefix_sharing"]["enabled"] = "false"
+    incomplete_memory["prefix_sharing"]["savings_bytes"] = float("inf")
+
+    blockers = retained_bench._memory_evidence_blockers(incomplete_memory)
+    assert "memory.allocator_reserved_peak_bytes is unavailable or non-finite" in blockers
+    assert "memory.dynamic_pool.evidence is missing" in blockers
+    assert "memory.dynamic_pool.pool_counters.free_pages is unavailable or non-finite" in blockers
+    assert "memory.stable_block_id.passed is not true" in blockers
+    assert "memory.stable_block_id.audit is missing" in blockers
+    assert "memory.prefix_sharing.enabled is not bool" in blockers
+    assert "memory.prefix_sharing.savings_bytes is unavailable or non-finite" in blockers
+
+
 def test_qwen35_retained_payload_blocks_acceptance_without_memory_evidence(monkeypatch) -> None:
     monkeypatch.setattr(retained_bench, "_hardware_context", lambda: {"gpu": "test"})
     monkeypatch.setattr(retained_bench, "_software_context", lambda: {"python": "test"})

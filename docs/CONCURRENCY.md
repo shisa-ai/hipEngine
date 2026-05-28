@@ -871,7 +871,9 @@ roll-up/status view.
       matching `workload.prompt_lengths`, and match generated-token and
       finish-reason records, no mismatches, and a passing primitive c>N GPU
       correctness JSON whose `rows` value matches `workload.concurrency`, plus
-      `pytest -q tests/test_generation_batch_scheduler.py -q`.
+      retained-bench memory blockers in
+      `test_qwen35_retained_memory_evidence_blockers_cover_required_fields`,
+      and `pytest -q tests/test_generation_batch_scheduler.py -q`.
 
 ### Performance packets — run only after correctness is green
 
