@@ -1551,6 +1551,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     options = summary.get("options")
     option_model: str | None = None
     option_fixture: str | None = None
+    option_seed: int | None = None
     option_shape_values: dict[str, int] = {}
     if not isinstance(options, Mapping):
         errors.append("options must be an object")
@@ -1566,6 +1567,13 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 option_model = value
             else:
                 option_fixture = value
+        seed_value = options.get("seed")
+        if not isinstance(seed_value, int) or isinstance(seed_value, bool):
+            errors.append("options.seed must be an int")
+        elif seed_value != _REQUIRED_PRIMITIVE_CORRECTNESS_SEED:
+            errors.append("options.seed must match required primitive correctness seed")
+        else:
+            option_seed = seed_value
         for option in ("prompt_length", "decode_tokens", "warmup_decode_tokens", "max_layers"):
             value = options.get(option)
             if not isinstance(value, int) or isinstance(value, bool):
@@ -1773,6 +1781,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     break
                 if primitive_seed != _REQUIRED_PRIMITIVE_CORRECTNESS_SEED:
                     errors.append("commands[].argv --seed must match required primitive correctness seed")
+                    break
+                if option_seed is not None and primitive_seed != option_seed:
+                    errors.append("commands[].argv --seed must match options.seed")
                     break
             expected_scripts_by_category = {
                 "primitive": {"scripts/qwen35_batch_correctness.py"},
@@ -2704,6 +2715,7 @@ def _summary_options(args: argparse.Namespace) -> dict[str, Any]:
         "decode_tokens": int(args.decode_tokens),
         "warmup_decode_tokens": int(args.warmup_decode_tokens),
         "max_layers": int(args.max_layers),
+        "seed": int(args.seed),
         "stop_on_failure": bool(args.stop_on_failure),
         "include_int8": bool(getattr(args, "include_int8", False)),
         "require_cached_build": bool(args.require_cached_build),

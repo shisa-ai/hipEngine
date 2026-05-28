@@ -1808,6 +1808,7 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
         "decode_tokens": 2,
         "warmup_decode_tokens": 1,
         "max_layers": 3,
+        "seed": 1234,
         "stop_on_failure": True,
         "include_int8": False,
         "require_cached_build": False,
@@ -3575,6 +3576,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_shape_option_type["options"]["prompt_length"] = "16"
     with pytest.raises(ValueError, match="options.prompt_length must be an int"):
         c_sweep.validate_sweep_summary(tampered_shape_option_type)
+    tampered_options_seed = json.loads(json.dumps(persisted))
+    tampered_options_seed["options"]["seed"] = 999
+    with pytest.raises(ValueError, match="options.seed must match required primitive correctness seed"):
+        c_sweep.validate_sweep_summary(tampered_options_seed)
+    tampered_options_seed_type = json.loads(json.dumps(persisted))
+    tampered_options_seed_type["options"]["seed"] = "1234"
+    with pytest.raises(ValueError, match="options.seed must be an int"):
+        c_sweep.validate_sweep_summary(tampered_options_seed_type)
     tampered_output_dir = json.loads(json.dumps(persisted))
     tampered_output_dir["output_dir"] = ""
     with pytest.raises(ValueError, match="output_dir must be a non-empty string"):
