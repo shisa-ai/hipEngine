@@ -1774,6 +1774,33 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if not _is_number(profiler_precondition.get("total_kernel_duration_ns")) or float(profiler_precondition["total_kernel_duration_ns"]) <= 0.0:
                         errors.append("commands[].preconditions[].total_kernel_duration_ns must be positive when profiler passed")
                         break
+                    kernel_categories = profiler_precondition.get("kernel_duration_categories_ns")
+                    kernel_category_shares = profiler_precondition.get("kernel_duration_category_shares")
+                    if (
+                        not isinstance(kernel_categories, dict)
+                        or {key for key in kernel_categories if isinstance(key, str)} != set(_PROFILER_KERNEL_DURATION_CATEGORIES)
+                        or any(not _is_number(kernel_categories.get(category)) or float(kernel_categories[category]) < 0.0 for category in _PROFILER_KERNEL_DURATION_CATEGORIES)
+                        or not isinstance(kernel_category_shares, dict)
+                        or {key for key in kernel_category_shares if isinstance(key, str)} != set(_PROFILER_KERNEL_DURATION_CATEGORIES)
+                        or any(not _is_number(kernel_category_shares.get(category)) or float(kernel_category_shares[category]) < 0.0 for category in _PROFILER_KERNEL_DURATION_CATEGORIES)
+                    ):
+                        errors.append("commands[].preconditions[].kernel duration categories must include required non-negative categories when profiler passed")
+                        break
+                    if not _is_number(profiler_precondition.get("cpu_side_total_seconds")) or float(profiler_precondition["cpu_side_total_seconds"]) <= 0.0:
+                        errors.append("commands[].preconditions[].cpu_side_total_seconds must be positive when profiler passed")
+                        break
+                    cpu_durations = profiler_precondition.get("cpu_side_bottlenecks_seconds")
+                    cpu_shares = profiler_precondition.get("cpu_side_bottleneck_shares")
+                    if (
+                        not isinstance(cpu_durations, dict)
+                        or {key for key in cpu_durations if isinstance(key, str)} != set(_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES)
+                        or any(not _is_number(cpu_durations.get(category)) or float(cpu_durations[category]) < 0.0 for category in _PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES)
+                        or not isinstance(cpu_shares, dict)
+                        or {key for key in cpu_shares if isinstance(key, str)} != set(_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES)
+                        or any(not _is_number(cpu_shares.get(category)) or float(cpu_shares[category]) < 0.0 for category in _PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES)
+                    ):
+                        errors.append("commands[].preconditions[].cpu-side bottlenecks must include required non-negative categories when profiler passed")
+                        break
             postconditions = entry.get("postconditions")
             preconditions = entry.get("preconditions")
             if isinstance(postconditions, list):

@@ -2429,6 +2429,18 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_profiler_precondition_total_duration["commands"][-1]["preconditions"][-1]["total_kernel_duration_ns"] = 0.0
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.total_kernel_duration_ns must be positive when profiler passed"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_total_duration)
+    tampered_profiler_precondition_categories = json.loads(json.dumps(persisted))
+    del tampered_profiler_precondition_categories["commands"][-1]["preconditions"][-1]["kernel_duration_categories_ns"]["other"]
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.kernel duration categories must include required non-negative categories when profiler passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_categories)
+    tampered_profiler_precondition_cpu_total = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_cpu_total["commands"][-1]["preconditions"][-1]["cpu_side_total_seconds"] = 0.0
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.cpu_side_total_seconds must be positive when profiler passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_cpu_total)
+    tampered_profiler_precondition_cpu_categories = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_cpu_categories["commands"][-1]["preconditions"][-1]["cpu_side_bottlenecks_seconds"]["decode"] = -1.0
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.cpu-side bottlenecks must include required non-negative categories when profiler passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_cpu_categories)
     tampered_primitive_precondition_rows = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_rows["commands"][-1]["preconditions"][0]["primitive_rows"] = 3
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_rows must match retained batch_size"):
