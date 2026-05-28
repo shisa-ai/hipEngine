@@ -5914,7 +5914,7 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
         "output_format": "csv",
         "trace_dir": "/tmp/hipengine-profile-c2",
         "trace_files": ["/tmp/hipengine-profile-c2/hipengine_kernel_trace.csv"],
-        "command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile-c2 -- python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json benchmarks/results/native-c2.json --profiler-json benchmarks/results/profiler-c2.json",
+        "command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile-c2 -- python3 scripts/qwen35_batch_retained_bench.py --model /models/qwen35 --fixture fixtures/qwen35.json --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json benchmarks/results/native-c2.json --profiler-json benchmarks/results/profiler-c2.json",
     }
     invalid = {
         "artifact_path": "/tmp/profiler-c2.json",
@@ -5925,12 +5925,14 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
     }
 
     expected_workload = {"batch_size": 2, "prompt_length": 512, "decode_tokens": 128, "max_layers": 40}
+    expected_inputs = {"model": "/models/qwen35", "fixture": "fixtures/qwen35.json"}
 
     assert (
         retained_bench._profiler_provenance_blockers(
             valid,
             retained_artifact_path="benchmarks/results/native-c2.json",
             expected_workload=expected_workload,
+            expected_inputs=expected_inputs,
         )
         == []
     )
@@ -5966,6 +5968,23 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
         mismatched_workload,
         retained_artifact_path="benchmarks/results/native-c2.json",
         expected_workload=expected_workload,
+    )
+    mismatched_model = {**valid, "command": valid["command"].replace("--model /models/qwen35", "--model /models/other")}
+    assert "profiler command --model must match retained model" in retained_bench._profiler_provenance_blockers(
+        mismatched_model,
+        retained_artifact_path="benchmarks/results/native-c2.json",
+        expected_workload=expected_workload,
+        expected_inputs=expected_inputs,
+    )
+    mismatched_fixture = {
+        **valid,
+        "command": valid["command"].replace("--fixture fixtures/qwen35.json", "--fixture fixtures/other.json"),
+    }
+    assert "profiler command --fixture must match retained fixture" in retained_bench._profiler_provenance_blockers(
+        mismatched_fixture,
+        retained_artifact_path="benchmarks/results/native-c2.json",
+        expected_workload=expected_workload,
+        expected_inputs=expected_inputs,
     )
     outside_trace_dir = {**valid, "trace_files": ["/tmp/other-profile/hipengine_kernel_trace.csv"]}
     assert "profiler.trace_files entries must be under profiler.trace_dir" in retained_bench._profiler_provenance_blockers(

@@ -1083,6 +1083,10 @@ def _command_int_arg_matches(command: str, flag: str, expected: int) -> bool:
         return False
 
 
+def _command_string_arg_matches(command: str, flag: str, expected: str) -> bool:
+    return _command_arg_value(command, flag) == expected
+
+
 def _profiler_command_provenance_blockers(
     command: str,
     *,
@@ -1090,6 +1094,7 @@ def _profiler_command_provenance_blockers(
     profiler_artifact_path: str | None,
     retained_artifact_path: str | None,
     expected_workload: Mapping[str, int] | None,
+    expected_inputs: Mapping[str, str] | None,
 ) -> list[str]:
     blockers: list[str] = []
     if "rocprofv3" not in command:
@@ -1120,6 +1125,11 @@ def _profiler_command_provenance_blockers(
                 expected_value,
             ):
                 blockers.append(f"profiler command {flag} must match retained workload")
+    if expected_inputs is not None:
+        for key, flag in (("model", "--model"), ("fixture", "--fixture")):
+            expected_value = expected_inputs.get(key)
+            if isinstance(expected_value, str) and expected_value and not _command_string_arg_matches(command, flag, expected_value):
+                blockers.append(f"profiler command {flag} must match retained {key}")
     return blockers
 
 
@@ -1129,6 +1139,7 @@ def _profiler_provenance_blockers(
     profiled_command: str | None = None,
     retained_artifact_path: str | None = None,
     expected_workload: Mapping[str, int] | None = None,
+    expected_inputs: Mapping[str, str] | None = None,
 ) -> list[str]:
     blockers: list[str] = []
     profiler_artifact_path = profiler.get("artifact_path")
@@ -1172,6 +1183,7 @@ def _profiler_provenance_blockers(
                 profiler_artifact_path=retained_profiler_artifact_path,
                 retained_artifact_path=retained_artifact_path,
                 expected_workload=expected_workload,
+                expected_inputs=expected_inputs,
             )
             for command in command_candidates
         ]
@@ -1804,6 +1816,14 @@ def _build_payload(
             "prompt_length": args.prompt_length,
             "decode_tokens": args.decode_tokens,
             "max_layers": args.max_layers,
+        },
+        expected_inputs={
+            key: value
+            for key, value in {
+                "model": str(getattr(args, "model", "")),
+                "fixture": str(getattr(args, "fixture", "")),
+            }.items()
+            if value
         },
     )
     profiler_blockers.extend(_profiler_kernel_evidence_blockers(profiler))
