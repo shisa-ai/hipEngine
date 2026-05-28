@@ -2413,6 +2413,22 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_profiler_precondition_kernel_names["commands"][-1]["preconditions"][-1]["profiler_trace_kernel_names"] = ["serial_lm_head"]
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_kernel_names must include native batch kernels only when passed"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_kernel_names)
+    tampered_profiler_precondition_expected_kernels = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_expected_kernels["commands"][-1]["preconditions"][-1]["expected_kernel_names"] = ["serial_lm_head"]
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.expected_kernel_names must include native batch kernels only when profiler passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_expected_kernels)
+    tampered_profiler_precondition_durations = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_durations["commands"][-1]["preconditions"][-1]["kernel_durations_ns"]["qwen35_batch_decode"] = 0.0
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.kernel_durations_ns must contain positive kernel durations when profiler passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_durations)
+    tampered_profiler_precondition_missing_duration = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_missing_duration["commands"][-1]["preconditions"][-1]["kernel_durations_ns"] = {"qwen35_batch_other": 1.0}
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.kernel_durations_ns must include expected profiler kernels"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_missing_duration)
+    tampered_profiler_precondition_total_duration = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_total_duration["commands"][-1]["preconditions"][-1]["total_kernel_duration_ns"] = 0.0
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.total_kernel_duration_ns must be positive when profiler passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_total_duration)
     tampered_primitive_precondition_rows = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_rows["commands"][-1]["preconditions"][0]["primitive_rows"] = 3
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_rows must match retained batch_size"):
