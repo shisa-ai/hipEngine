@@ -1693,6 +1693,23 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         break
                 if scaling_precondition_error:
                     break
+                profiler_precondition = preconditions[3]
+                if profiler_precondition.get("passed") is True:
+                    if profiler_precondition.get("workload_concurrency") != entry.get("batch_size"):
+                        errors.append("commands[].preconditions[].profiler workload_concurrency must match retained batch_size")
+                        break
+                    if profiler_precondition.get("prompt_tokens_per_request") != expected_prompt_tokens:
+                        errors.append("commands[].preconditions[].profiler prompt_tokens_per_request must match retained command shape")
+                        break
+                    if profiler_precondition.get("gen_tokens_per_request") != expected_decode_tokens:
+                        errors.append("commands[].preconditions[].profiler gen_tokens_per_request must match retained command shape")
+                        break
+                    if profiler_precondition.get("profiler_warmup_decode_tokens") != int(_argv_value(argv, "--warmup-decode-tokens")):
+                        errors.append("commands[].preconditions[].profiler_warmup_decode_tokens must match retained command shape")
+                        break
+                    if profiler_precondition.get("profiler_max_layers") != int(_argv_value(argv, "--max-layers")):
+                        errors.append("commands[].preconditions[].profiler_max_layers must match retained command shape")
+                        break
             postconditions = entry.get("postconditions")
             preconditions = entry.get("preconditions")
             if isinstance(postconditions, list):

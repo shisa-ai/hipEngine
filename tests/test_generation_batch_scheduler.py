@@ -2393,6 +2393,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_scaling_precondition_rate["commands"][-1]["preconditions"][1]["decode_tok_s_aggregate"] = 0.0
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.decode rates must be positive numbers when passed"):
         c_sweep.validate_sweep_summary(tampered_scaling_precondition_rate)
+    tampered_profiler_precondition_concurrency = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_concurrency["commands"][-1]["preconditions"][-1]["workload_concurrency"] = 1
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler workload_concurrency must match retained batch_size"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_concurrency)
+    tampered_profiler_precondition_shape = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_shape["commands"][-1]["preconditions"][-1]["profiler_warmup_decode_tokens"] = 2
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_warmup_decode_tokens must match retained command shape"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_shape)
     tampered_primitive_precondition_rows = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_rows["commands"][-1]["preconditions"][0]["primitive_rows"] = 3
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_rows must match retained batch_size"):
