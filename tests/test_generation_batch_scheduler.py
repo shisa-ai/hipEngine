@@ -1829,6 +1829,10 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     assert persisted["retained_precondition_counts"] == {}
     assert persisted["skipped_preconditions"] == []
     c_sweep.validate_sweep_summary(persisted)
+    tampered_dry_run_type = json.loads(json.dumps(persisted))
+    tampered_dry_run_type["dry_run"] = "true"
+    with pytest.raises(ValueError, match="dry_run must be a bool"):
+        c_sweep.validate_sweep_summary(tampered_dry_run_type)
     tampered_dropped_commands = json.loads(json.dumps(persisted))
     tampered_dropped_commands["commands"] = []
     tampered_dropped_commands["completed_command_count"] = 0
