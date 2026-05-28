@@ -5914,7 +5914,7 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
         "output_format": "csv",
         "trace_dir": "/tmp/hipengine-profile-c2",
         "trace_files": ["/tmp/hipengine-profile-c2/hipengine_kernel_trace.csv"],
-        "command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile-c2 -- python3 scripts/qwen35_batch_retained_bench.py --model /models/qwen35 --fixture fixtures/qwen35.json --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --compiler-version-file benchmarks/results/hipcc-version.txt --require-cached-build --json benchmarks/results/native-c2.json --profiler-json benchmarks/results/profiler-c2.json",
+        "command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile-c2 -- python3 scripts/qwen35_batch_retained_bench.py --model /models/qwen35 --fixture fixtures/qwen35.json --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --compiler-version-file benchmarks/results/hipcc-version.txt --require-cached-build --json benchmarks/results/native-c2.json --c1-baseline-json benchmarks/results/c1.json --serial-bridge-json benchmarks/results/serial-c2.json --primitive-correctness-json benchmarks/results/primitive-c2.json --profiler-json benchmarks/results/profiler-c2.json",
     }
     invalid = {
         "artifact_path": "/tmp/profiler-c2.json",
@@ -5927,6 +5927,11 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
     expected_workload = {"batch_size": 2, "prompt_length": 512, "decode_tokens": 128, "max_layers": 40}
     expected_inputs = {"model": "/models/qwen35", "fixture": "fixtures/qwen35.json"}
     expected_build = {"compiler_version_file": "benchmarks/results/hipcc-version.txt", "require_cached_build": True}
+    expected_references = {
+        "c1_baseline_json": "benchmarks/results/c1.json",
+        "serial_bridge_json": "benchmarks/results/serial-c2.json",
+        "primitive_correctness_json": "benchmarks/results/primitive-c2.json",
+    }
 
     assert (
         retained_bench._profiler_provenance_blockers(
@@ -5935,6 +5940,7 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
             expected_workload=expected_workload,
             expected_inputs=expected_inputs,
             expected_build=expected_build,
+            expected_references=expected_references,
         )
         == []
     )
@@ -6000,6 +6006,27 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
     )
     assert "retained command must include --compiler-version-file" in missing_build_blockers
     assert "retained command must include --require-cached-build" in missing_build_blockers
+    mismatched_reference = {
+        **valid,
+        "command": valid["command"].replace("benchmarks/results/primitive-c2.json", "benchmarks/results/other-primitive.json"),
+    }
+    assert "profiler command --primitive-correctness-json must match retained reference artifact" in retained_bench._profiler_provenance_blockers(
+        mismatched_reference,
+        retained_artifact_path="benchmarks/results/native-c2.json",
+        expected_workload=expected_workload,
+        expected_inputs=expected_inputs,
+        expected_build=expected_build,
+        expected_references=expected_references,
+    )
+    missing_retained_reference = {**expected_references, "serial_bridge_json": None}
+    assert "retained command must include --serial-bridge-json" in retained_bench._profiler_provenance_blockers(
+        valid,
+        retained_artifact_path="benchmarks/results/native-c2.json",
+        expected_workload=expected_workload,
+        expected_inputs=expected_inputs,
+        expected_build=expected_build,
+        expected_references=missing_retained_reference,
+    )
     mismatched_model = {**valid, "command": valid["command"].replace("--model /models/qwen35", "--model /models/other")}
     assert "profiler command --model must match retained model" in retained_bench._profiler_provenance_blockers(
         mismatched_model,

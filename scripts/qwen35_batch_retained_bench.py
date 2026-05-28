@@ -1104,6 +1104,7 @@ def _profiler_command_provenance_blockers(
     expected_workload: Mapping[str, int] | None,
     expected_inputs: Mapping[str, str] | None,
     expected_build: Mapping[str, Any] | None,
+    expected_references: Mapping[str, Any] | None,
 ) -> list[str]:
     blockers: list[str] = []
     if "rocprofv3" not in command:
@@ -1149,6 +1150,17 @@ def _profiler_command_provenance_blockers(
             blockers.append("retained command must include --require-cached-build")
         elif not _command_has_flag(command, "--require-cached-build"):
             blockers.append("profiler command must include --require-cached-build")
+    if expected_references is not None:
+        for key, flag in (
+            ("c1_baseline_json", "--c1-baseline-json"),
+            ("serial_bridge_json", "--serial-bridge-json"),
+            ("primitive_correctness_json", "--primitive-correctness-json"),
+        ):
+            expected_value = expected_references.get(key)
+            if not isinstance(expected_value, str) or not expected_value:
+                blockers.append(f"retained command must include {flag}")
+            elif _command_arg_value(command, flag) != expected_value:
+                blockers.append(f"profiler command {flag} must match retained reference artifact")
     return blockers
 
 
@@ -1160,6 +1172,7 @@ def _profiler_provenance_blockers(
     expected_workload: Mapping[str, int] | None = None,
     expected_inputs: Mapping[str, str] | None = None,
     expected_build: Mapping[str, Any] | None = None,
+    expected_references: Mapping[str, Any] | None = None,
 ) -> list[str]:
     blockers: list[str] = []
     profiler_artifact_path = profiler.get("artifact_path")
@@ -1205,6 +1218,7 @@ def _profiler_provenance_blockers(
                 expected_workload=expected_workload,
                 expected_inputs=expected_inputs,
                 expected_build=expected_build,
+                expected_references=expected_references,
             )
             for command in command_candidates
         ]
@@ -1849,6 +1863,11 @@ def _build_payload(
         expected_build={
             "compiler_version_file": str(args.compiler_version_file) if getattr(args, "compiler_version_file", None) is not None else None,
             "require_cached_build": bool(getattr(args, "require_cached_build", False)),
+        },
+        expected_references={
+            "c1_baseline_json": str(args.c1_baseline_json) if getattr(args, "c1_baseline_json", None) is not None else None,
+            "serial_bridge_json": str(args.serial_bridge_json) if getattr(args, "serial_bridge_json", None) is not None else None,
+            "primitive_correctness_json": str(args.primitive_correctness_json) if getattr(args, "primitive_correctness_json", None) is not None else None,
         },
     )
     profiler_blockers.extend(_profiler_kernel_evidence_blockers(profiler))
