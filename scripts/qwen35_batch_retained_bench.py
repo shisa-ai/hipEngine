@@ -1123,19 +1123,20 @@ def _profiler_command_provenance_blockers(
     if retained_artifact_path is not None and _command_arg_value(command, "--json") != retained_artifact_path:
         blockers.append("profiler command --json must match retained artifact path")
     if expected_workload is not None:
-        for key, flag in (
-            ("batch_size", "--batch-size"),
-            ("prompt_length", "--prompt-length"),
-            ("decode_tokens", "--decode-tokens"),
-            ("max_layers", "--max-layers"),
+        for key, flag, default_value in (
+            ("batch_size", "--batch-size", None),
+            ("prompt_length", "--prompt-length", None),
+            ("decode_tokens", "--decode-tokens", None),
+            ("warmup_decode_tokens", "--warmup-decode-tokens", 8),
+            ("max_layers", "--max-layers", None),
         ):
             expected_value = expected_workload.get(key)
-            if isinstance(expected_value, int) and not isinstance(expected_value, bool) and not _command_int_arg_matches(
-                command,
-                flag,
-                expected_value,
-            ):
-                blockers.append(f"profiler command {flag} must match retained workload")
+            if isinstance(expected_value, int) and not isinstance(expected_value, bool):
+                command_value = _command_arg_value(command, flag)
+                if command_value is None and default_value is not None and int(expected_value) == int(default_value):
+                    continue
+                if not _command_int_arg_matches(command, flag, expected_value):
+                    blockers.append(f"profiler command {flag} must match retained workload")
     if expected_inputs is not None:
         for key, flag in (("model", "--model"), ("fixture", "--fixture")):
             expected_value = expected_inputs.get(key)
@@ -1866,6 +1867,7 @@ def _build_payload(
             "batch_size": args.batch_size,
             "prompt_length": args.prompt_length,
             "decode_tokens": args.decode_tokens,
+            "warmup_decode_tokens": args.warmup_decode_tokens,
             "max_layers": args.max_layers,
         },
         expected_inputs={
