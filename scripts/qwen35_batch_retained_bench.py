@@ -726,6 +726,78 @@ def _build_scaling_comparison(
     }
 
 
+def _retained_memory_payload(args: argparse.Namespace, kv_policy: ResolvedKVPolicy) -> dict[str, Any]:
+    return {
+        "max_batch_size": args.batch_size,
+        "max_sequence_length": args.prompt_length + args.warmup_decode_tokens + args.decode_tokens + 1,
+        "kv_policy": kv_policy_json(kv_policy),
+        "kv_storage_dtype": kv_policy.storage_dtype.value,
+        "allocator_reserved_peak_bytes": None,
+        "dynamic_pool": {
+            "enabled": False,
+            "evidence": "resident retained bench still uses fixed session allocation; C4 pool counters are unavailable here",
+            "pool_counters": {
+                "current_bytes": 0,
+                "high_water_observed_bytes": 0,
+                "grow_events": 0,
+                "grow_failures": 0,
+                "shrink_events": 0,
+                "free_pages": 0,
+                "refcounted_pages": 0,
+            },
+        },
+        "stable_block_id": {"passed": False, "audit": "not captured in retained bench"},
+        "prefix_sharing": {"enabled": False, "savings_bytes": 0},
+    }
+
+
+def _memory_evidence_blockers(memory: Mapping[str, Any]) -> list[str]:
+    blockers: list[str] = []
+    if not _is_finite_nonnegative_number(memory.get("allocator_reserved_peak_bytes")):
+        blockers.append("memory.allocator_reserved_peak_bytes is unavailable or non-finite")
+    dynamic_pool = memory.get("dynamic_pool")
+    if not isinstance(dynamic_pool, Mapping):
+        blockers.append("memory.dynamic_pool evidence is missing")
+    else:
+        evidence = dynamic_pool.get("evidence")
+        if not isinstance(evidence, str) or not evidence.strip():
+            blockers.append("memory.dynamic_pool.evidence is missing")
+        pool_counters = dynamic_pool.get("pool_counters")
+        required_counters = (
+            "current_bytes",
+            "high_water_observed_bytes",
+            "grow_events",
+            "grow_failures",
+            "shrink_events",
+            "free_pages",
+            "refcounted_pages",
+        )
+        if not isinstance(pool_counters, Mapping):
+            blockers.append("memory.dynamic_pool.pool_counters is missing")
+        else:
+            for field in required_counters:
+                if not _is_finite_nonnegative_number(pool_counters.get(field)):
+                    blockers.append(f"memory.dynamic_pool.pool_counters.{field} is unavailable or non-finite")
+    stable_block_id = memory.get("stable_block_id")
+    if not isinstance(stable_block_id, Mapping):
+        blockers.append("memory.stable_block_id evidence is missing")
+    else:
+        if stable_block_id.get("passed") is not True:
+            blockers.append("memory.stable_block_id.passed is not true")
+        audit = stable_block_id.get("audit")
+        if not isinstance(audit, str) or not audit.strip():
+            blockers.append("memory.stable_block_id.audit is missing")
+    prefix_sharing = memory.get("prefix_sharing")
+    if not isinstance(prefix_sharing, Mapping):
+        blockers.append("memory.prefix_sharing evidence is missing")
+    else:
+        if not isinstance(prefix_sharing.get("enabled"), bool):
+            blockers.append("memory.prefix_sharing.enabled is not bool")
+        if not _is_finite_nonnegative_number(prefix_sharing.get("savings_bytes")):
+            blockers.append("memory.prefix_sharing.savings_bytes is unavailable or non-finite")
+    return blockers
+
+
 def _run_capture(command: Sequence[str], *, timeout: float = 5.0) -> dict[str, Any]:
     try:
         proc = subprocess.run(
@@ -1066,6 +1138,8 @@ def _build_payload(
     batch_execution = dict(bench["batch_execution"])
     throughput_claim_eligible = bool(batch_execution.get("throughput_claim_eligible"))
     native_caware_decode = bool(batch_execution.get("native_caware_decode"))
+    memory = _retained_memory_payload(args, kv_policy)
+    memory_blockers = _memory_evidence_blockers(memory)
     equality_passed = bool(equality.get("passed"))
     protocol_shape = args.max_layers == 40 and args.prompt_length >= 512 and args.decode_tokens >= 128
     scaling_complete = bool(scaling["complete"])
@@ -1078,6 +1152,7 @@ def _build_payload(
         and protocol_shape
         and scaling_complete
         and profiler_captured
+        and not memory_blockers
     )
     primitive_loaded = primitive_correctness.get("status") == "loaded"
     correctness_rejected = bool(bench["finite_logits"] and (not equality_passed or (primitive_loaded and not primitive_passed)))
@@ -1099,6 +1174,7 @@ def _build_payload(
         blocked_reasons.append("profiler trace was not captured with expected kernels present")
     if not bench["finite_logits"]:
         blocked_reasons.append("non-finite seed or decode logits")
+    blocked_reasons.extend(memory_blockers)
     per_request_observability = dict(bench.get("request_observability", {}))
     admission_timestamps = {
         request_id: row.get("admitted_timestamp")
@@ -1202,28 +1278,7 @@ def _build_payload(
             "warmup_step_seconds": _summarize_samples(bench["warmup_step_seconds"]),
         },
         "scaling": scaling,
-        "memory": {
-            "max_batch_size": args.batch_size,
-            "max_sequence_length": args.prompt_length + args.warmup_decode_tokens + args.decode_tokens + 1,
-            "kv_policy": kv_policy_json(kv_policy),
-            "kv_storage_dtype": kv_policy.storage_dtype.value,
-            "allocator_reserved_peak_bytes": None,
-            "dynamic_pool": {
-                "enabled": False,
-                "evidence": "resident retained bench still uses fixed session allocation; C4 pool counters are unavailable here",
-                "pool_counters": {
-                    "current_bytes": 0,
-                    "high_water_observed_bytes": 0,
-                    "grow_events": 0,
-                    "grow_failures": 0,
-                    "shrink_events": 0,
-                    "free_pages": 0,
-                    "refcounted_pages": 0,
-                },
-            },
-            "stable_block_id": {"passed": False, "audit": "not captured in retained bench"},
-            "prefix_sharing": {"enabled": False, "savings_bytes": 0},
-        },
+        "memory": memory,
         "profiler": profiler,
         "decision": {
             "accepted": accepted,

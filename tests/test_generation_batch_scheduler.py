@@ -5811,6 +5811,87 @@ def test_qwen35_retained_payload_mirrors_fallback_native_decode_label(monkeypatc
     assert "--rows 2" in payload["commands"]["correctness_reference"]
 
 
+def test_qwen35_retained_payload_blocks_acceptance_without_memory_evidence(monkeypatch) -> None:
+    monkeypatch.setattr(retained_bench, "_hardware_context", lambda: {"gpu": "test"})
+    monkeypatch.setattr(retained_bench, "_software_context", lambda: {"python": "test"})
+    monkeypatch.setattr(
+        retained_bench,
+        "_build_scaling_comparison",
+        lambda *args, **kwargs: {
+            "complete": True,
+            "native": {"decode_tok_s_aggregate": 128.0, "decode_tok_s_per_request": 64.0},
+            "c1_baseline": {"decode_tok_s_aggregate": 64.0, "decode_tok_s_per_request": 64.0},
+            "serial_bridge_baseline": {"decode_tok_s_aggregate": 96.0, "decode_tok_s_per_request": 48.0},
+            "ratios": {
+                "aggregate_vs_c1": 2.0,
+                "per_request_vs_c1": 1.0,
+                "aggregate_vs_serial_bridge": 128.0 / 96.0,
+                "per_request_vs_serial_bridge": 64.0 / 48.0,
+            },
+        },
+    )
+    monkeypatch.setattr(
+        retained_bench,
+        "_primitive_correctness_reference",
+        lambda *args, **kwargs: {"status": "loaded", "passed": True, "seed": 1234},
+    )
+    monkeypatch.setattr(
+        retained_bench,
+        "_profiler_reference",
+        lambda *args, **kwargs: {"status": "captured", "expected_kernels_present": True},
+    )
+    args = argparse.Namespace(
+        batch_size=2,
+        prompt_length=512,
+        decode_tokens=128,
+        warmup_decode_tokens=0,
+        max_layers=40,
+        json=None,
+        model="/tmp/model",
+        kv_storage="bf16",
+        kv_scale_dtype="fp16",
+        kv_scale_granularity="per_token_head",
+        primitive_correctness_json=None,
+        profiler_json=Path("benchmarks/results/profiler-c2.json"),
+        profiler_command=None,
+    )
+    bench = {
+        "load_seconds": 0.1,
+        "prefill_seconds": 1.0,
+        "warmup_seconds": 0.0,
+        "decode_seconds": 2.0,
+        "warmup_step_seconds": [],
+        "decode_step_seconds": [0.25, 0.5],
+        "seed_tokens": {"0": {"token_id": 10}, "1": {"token_id": 20}},
+        "generated_tokens": {"0": [], "1": []},
+        "scheduler_metadata": {},
+        "batch_execution": {
+            "path": "scheduler_native_compact_batch",
+            "native_compact_prefill": True,
+            "native_caware_decode": True,
+            "throughput_claim_eligible": True,
+            "decode_execution": {"full_attention_decode_path": "native_batch", "native_caware_decode": True},
+        },
+        "completed": [],
+        "request_observability": {},
+        "finite_logits": True,
+    }
+
+    payload = retained_bench._build_payload(
+        args,
+        ["--batch-size", "2"],
+        bench,
+        [512, 512],
+        {"passed": True, "skipped": False, "batch_sequences": [[10], [20]], "c1_sequences": [[10], [20]], "mismatches": []},
+    )
+
+    assert payload["status"] == "blocked"
+    assert payload["performance_claim"] is False
+    assert payload["decision"]["accepted"] is False
+    assert "memory.allocator_reserved_peak_bytes" in payload["decision"]["reason"]
+    assert "memory.stable_block_id.passed" in payload["decision"]["reason"]
+
+
 def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
