@@ -3368,6 +3368,29 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
                 if real_profiler_trace_dir.exists():
                     real_profiler_trace_dir.rmdir()
 
+            trace_parent_target = output_dir / "profile-parent-real"
+            trace_parent_link = output_dir / "profile-parent-link"
+            trace_parent_target.mkdir()
+            try:
+                trace_parent_link.symlink_to(trace_parent_target, target_is_directory=True)
+                symlink_parent_trace_dir = trace_parent_link / "profile-c2"
+                symlink_parent_trace_summary = json.loads(json.dumps(persisted))
+                profiler_precondition = symlink_parent_trace_summary["commands"][-1]["preconditions"][-1]
+                old_trace_dir = profiler_precondition["profiler_trace_dir"]
+                profiler_precondition["profiler_trace_dir"] = str(symlink_parent_trace_dir)
+                profiler_precondition["profiler_trace_files"] = [str(symlink_parent_trace_dir / "hipengine_kernel_trace.csv")]
+                profiler_precondition["profiler_command"] = profiler_precondition["profiler_command"].replace(
+                    old_trace_dir,
+                    str(symlink_parent_trace_dir),
+                )
+                with pytest.raises(ValueError, match=r"profiler_trace_dir parent directories must not be symlinks"):
+                    c_sweep.validate_sweep_summary(symlink_parent_trace_summary)
+            finally:
+                if trace_parent_link.is_symlink():
+                    trace_parent_link.unlink()
+                if trace_parent_target.exists():
+                    trace_parent_target.rmdir()
+
         symlink_artifact_summary = json.loads(json.dumps(persisted))
         primitive_artifact_path = Path(symlink_artifact_summary["commands"][0]["artifact_path"])
         primitive_artifact_target = primitive_artifact_path.with_name("primitive-c2-real.json")

@@ -2145,6 +2145,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if profiler_trace_dir_check_path.is_symlink():
                         errors.append("commands[].preconditions[].profiler_trace_dir must not be a symlink when passed")
                         break
+                    if _path_has_symlink_parent(profiler_trace_dir_check_path):
+                        errors.append("commands[].preconditions[].profiler_trace_dir parent directories must not be symlinks when passed")
+                        break
                     output_dir_text = summary.get("output_dir")
                     if isinstance(output_dir_text, str) and output_dir_text:
                         trace_dir_path = Path(profiler_trace_dir)
