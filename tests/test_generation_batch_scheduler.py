@@ -1376,6 +1376,12 @@ def test_batch_c_sweep_stops_and_counts_failed_command(tmp_path: Path, monkeypat
     tampered_failed_returncode["commands"][0]["returncode"] = 0
     with pytest.raises(ValueError, match=r"commands\[\]\.status failed with returncode 0 requires a failed postcondition"):
         c_sweep.validate_sweep_summary(tampered_failed_returncode)
+    tampered_failed_postconditions = json.loads(json.dumps(summary))
+    tampered_failed_postconditions["commands"][0]["postconditions"] = [
+        {"kind": "retained_profiler_synthesis", "passed": False}
+    ]
+    with pytest.raises(ValueError, match=r"commands\[\]\.postconditions must be absent for failed rows with nonzero returncode"):
+        c_sweep.validate_sweep_summary(tampered_failed_postconditions)
     tampered_stop_on_failure = json.loads(json.dumps(summary))
     serial_command = build_sweep_commands(args)[1]
     tampered_stop_on_failure["commands"].append(

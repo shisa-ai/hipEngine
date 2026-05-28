@@ -1562,6 +1562,11 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 for postcondition in postconditions
                 if isinstance(postcondition, dict) and postcondition.get("passed") is not True
             ] if isinstance(postconditions, list) else []
+            if status == "failed" and isinstance(returncode, int) and returncode != 0 and any(
+                field in entry for field in ("postconditions", "postcondition")
+            ):
+                errors.append("commands[].postconditions must be absent for failed rows with nonzero returncode")
+                break
             if status == "passed" and returncode != 0:
                 errors.append("commands[].status passed requires returncode 0")
                 break
