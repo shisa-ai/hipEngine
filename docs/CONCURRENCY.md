@@ -945,7 +945,7 @@ roll-up/status view.
       cites correctness gate, profiler status, exact command, and hardware.
       Progress: accepted/performance-claim c>N artifacts now fail schema
       validation unless they include fully native batch-execution metadata with
-      workload scheduler labels matching the execution path,
+      workload native prefill/decode flags set, workload scheduler labels matching the execution path,
       generated-token equality sequence lists matching `workload.concurrency`
       rows and seed + warmup + measured decode token counts per row, with
       `execution.seed_tokens` / `execution.generated_tokens` matching the seed

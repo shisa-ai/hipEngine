@@ -804,6 +804,9 @@ def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[
     if not isinstance(batch_execution, Mapping):
         errors.append("execution.batch_execution must be an object for accepted artifacts")
         return
+    for field in _REQUIRED_WORKLOAD_FLAGS:
+        if workload.get(field) is not True:
+            errors.append(f"workload.{field} must be true for accepted artifacts")
     for field in _REQUIRED_BATCH_EXECUTION_FLAGS:
         if batch_execution.get(field) is not True:
             errors.append(f"execution.batch_execution.{field} must be true for accepted artifacts")

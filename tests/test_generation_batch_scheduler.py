@@ -6717,6 +6717,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="serial or fallback"):
         validate_cn_diagnostic_artifact_payload(fallback_execution)
 
+    non_native_workload_prefill = json.loads(json.dumps(accepted))
+    non_native_workload_prefill["workload"]["native_compact_prefill"] = False
+    with pytest.raises(ValueError, match="workload.native_compact_prefill must be true"):
+        validate_cn_diagnostic_artifact_payload(non_native_workload_prefill)
+
+    non_native_workload_decode = json.loads(json.dumps(accepted))
+    non_native_workload_decode["workload"]["native_caware_decode"] = False
+    with pytest.raises(ValueError, match="workload.native_caware_decode must be true"):
+        validate_cn_diagnostic_artifact_payload(non_native_workload_decode)
+
     non_native_decode = json.loads(json.dumps(accepted))
     non_native_decode["execution"]["batch_execution"]["native_caware_decode"] = False
     with pytest.raises(ValueError, match="native_caware_decode"):
