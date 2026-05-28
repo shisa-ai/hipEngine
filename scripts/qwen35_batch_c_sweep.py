@@ -2400,9 +2400,14 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if status == "passed" and failed_postconditions:
                 errors.append("commands[].status passed cannot include failed postconditions")
                 break
-            if status == "passed" and summary.get("status") == "passed" and not Path(entry["artifact_path"]).is_file():
-                errors.append("commands[].artifact_path must exist for passed summary rows")
-                break
+            if status == "passed" and summary.get("status") == "passed":
+                artifact_path = Path(entry["artifact_path"])
+                if artifact_path.is_symlink():
+                    errors.append("commands[].artifact_path must be a regular file, not a symlink, for passed summary rows")
+                    break
+                if not artifact_path.is_file():
+                    errors.append("commands[].artifact_path must exist for passed summary rows")
+                    break
             if status == "failed" and returncode == 0 and isinstance(postconditions, list) and postconditions and not failed_postconditions:
                 errors.append("commands[].status failed with returncode 0 cannot include only passed postconditions")
                 break

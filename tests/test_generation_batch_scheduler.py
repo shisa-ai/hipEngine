@@ -3337,6 +3337,23 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     persisted = json.loads(summary_path.read_text())
     c_sweep.validate_sweep_summary(persisted)
     assert c_sweep.main(["--validate-summary-json", str(summary_path)]) == 0
+    if hasattr(os, "symlink"):
+        symlink_artifact_summary = json.loads(json.dumps(persisted))
+        primitive_artifact_path = Path(symlink_artifact_summary["commands"][0]["artifact_path"])
+        primitive_artifact_target = primitive_artifact_path.with_name("primitive-c2-real.json")
+        primitive_artifact_path.replace(primitive_artifact_target)
+        try:
+            primitive_artifact_path.symlink_to(primitive_artifact_target)
+        except (OSError, NotImplementedError):
+            primitive_artifact_target.replace(primitive_artifact_path)
+        else:
+            with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must be a regular file, not a symlink"):
+                c_sweep.validate_sweep_summary(symlink_artifact_summary)
+        finally:
+            if primitive_artifact_path.is_symlink():
+                primitive_artifact_path.unlink()
+            if primitive_artifact_target.exists():
+                primitive_artifact_target.replace(primitive_artifact_path)
     tampered_timestamp = json.loads(json.dumps(persisted))
     tampered_timestamp["timestamp"] = "not-a-timestamp"
     with pytest.raises(ValueError, match="timestamp must be ISO-8601 parseable"):
