@@ -1973,6 +1973,37 @@ def test_batch_c_sweep_rejects_unsafe_compiler_version_file_before_creating_arti
             run_sweep(args)
 
 
+def test_batch_c_sweep_rejects_unsafe_summary_json_before_creating_artifacts(tmp_path: Path, monkeypatch) -> None:
+    output_dir = tmp_path / "artifacts"
+    parent_component_summary = tmp_path / "summary-parent" / ".." / "summary.json"
+    symlink_summary = tmp_path / "summary-link.json"
+    monkeypatch.setattr(
+        c_sweep.subprocess,
+        "run",
+        lambda *args, **kwargs: pytest.fail("unsafe summary-json sweep should fail before launching subprocesses"),
+    )
+
+    args = build_c_sweep_parser().parse_args(
+        ["--dry-run", "--batch-sizes", "2", "--output-dir", str(output_dir), "--summary-json", str(parent_component_summary)]
+    )
+    with pytest.raises(ValueError, match="--summary-json must not contain parent-directory components"):
+        run_sweep(args)
+    assert not output_dir.exists()
+
+    if hasattr(os, "symlink"):
+        target = tmp_path / "summary-real.json"
+        target.write_text("{}\n")
+        try:
+            symlink_summary.symlink_to(target)
+        except (OSError, NotImplementedError):
+            return
+        args = build_c_sweep_parser().parse_args(
+            ["--dry-run", "--batch-sizes", "2", "--output-dir", str(output_dir), "--summary-json", str(symlink_summary)]
+        )
+        with pytest.raises(ValueError, match="--summary-json must not be a symlink"):
+            run_sweep(args)
+
+
 def test_batch_c_sweep_rejects_invalid_shape_before_creating_artifacts(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(
         c_sweep.subprocess,

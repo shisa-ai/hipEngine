@@ -2743,6 +2743,15 @@ def _validate_run_options(args: argparse.Namespace) -> None:
             raise ValueError("--compiler-version-file must not be a symlink")
         if _path_has_symlink_parent(compiler_version_check_path):
             raise ValueError("--compiler-version-file parent directories must not be symlinks")
+    if args.summary_json is not None:
+        summary_json = Path(args.summary_json)
+        if _path_has_parent_directory_component(summary_json):
+            raise ValueError("--summary-json must not contain parent-directory components")
+        summary_json_check_path = summary_json if summary_json.is_absolute() else REPO_ROOT / summary_json
+        if summary_json_check_path.is_symlink():
+            raise ValueError("--summary-json must not be a symlink")
+        if _path_has_symlink_parent(summary_json_check_path):
+            raise ValueError("--summary-json parent directories must not be symlinks")
 
 
 def _summary_options(args: argparse.Namespace) -> dict[str, Any]:
