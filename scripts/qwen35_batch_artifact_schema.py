@@ -1000,6 +1000,20 @@ def _validate_accepted_scheduler_metadata(
             errors.append("execution.scheduler_metadata.graph_bucket_stats.entries must be positive for accepted artifacts")
         if isinstance(hits, int) and not isinstance(hits, bool) and hits <= 0:
             errors.append("execution.scheduler_metadata.graph_bucket_stats.hits must be positive for accepted artifacts")
+        replay_hit_rate = graph_stats.get("replay_hit_rate")
+        replay_hit_rate_valid = _is_positive_number(replay_hit_rate) and float(replay_hit_rate) <= 1.0
+        if not replay_hit_rate_valid:
+            errors.append("execution.scheduler_metadata.graph_bucket_stats.replay_hit_rate must be finite positive <= 1 for accepted artifacts")
+        if (
+            replay_hit_rate_valid
+            and isinstance(hits, int)
+            and not isinstance(hits, bool)
+            and isinstance(misses, int)
+            and not isinstance(misses, bool)
+            and hits + misses > 0
+            and not _numbers_close(float(replay_hit_rate), float(hits) / float(hits + misses))
+        ):
+            errors.append("execution.scheduler_metadata.graph_bucket_stats.replay_hit_rate must match hits / (hits + misses) for accepted artifacts")
         if (
             isinstance(entries, int)
             and not isinstance(entries, bool)

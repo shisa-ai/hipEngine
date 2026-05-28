@@ -5246,6 +5246,7 @@ def test_graph_bucket_cache_clear_resets_entries_and_counters() -> None:
         "entries": 1,
         "hits": 0,
         "misses": 1,
+        "replay_hit_rate": 0.0,
         "miss_reasons": {"shape_changed": 1},
         "kernel_time_histogram_ns": {"le_100us": 1, "le_10us": 1},
     }
@@ -5581,6 +5582,7 @@ def test_qwen35_retained_records_decode_graph_bucket_metadata() -> None:
         "entries": 1,
         "hits": 1,
         "misses": 1,
+        "replay_hit_rate": 0.5,
         "miss_reasons": {"cache_absent": 1},
         "kernel_time_histogram_ns": {},
     }
@@ -6186,6 +6188,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                     "entries": 1,
                     "hits": 1,
                     "misses": 1,
+                    "replay_hit_rate": 0.5,
                     "miss_reasons": {"cache_absent": 1},
                     "kernel_time_histogram_ns": {},
                 },
@@ -6860,6 +6863,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     no_graph_bucket_replay_hits["execution"]["scheduler_metadata"]["graph_bucket_stats"]["hits"] = 0
     with pytest.raises(ValueError, match="graph_bucket_stats.hits must be positive"):
         validate_cn_diagnostic_artifact_payload(no_graph_bucket_replay_hits)
+
+    missing_graph_bucket_replay_rate = json.loads(json.dumps(accepted))
+    missing_graph_bucket_replay_rate["execution"]["scheduler_metadata"]["graph_bucket_stats"].pop("replay_hit_rate")
+    with pytest.raises(ValueError, match="graph_bucket_stats.replay_hit_rate must be finite positive"):
+        validate_cn_diagnostic_artifact_payload(missing_graph_bucket_replay_rate)
+
+    mismatched_graph_bucket_replay_rate = json.loads(json.dumps(accepted))
+    mismatched_graph_bucket_replay_rate["execution"]["scheduler_metadata"]["graph_bucket_stats"]["replay_hit_rate"] = 0.25
+    with pytest.raises(ValueError, match="graph_bucket_stats.replay_hit_rate must match hits"):
+        validate_cn_diagnostic_artifact_payload(mismatched_graph_bucket_replay_rate)
 
     empty_graph_bucket_cache = json.loads(json.dumps(accepted))
     empty_graph_bucket_cache["execution"]["scheduler_metadata"]["graph_bucket_stats"]["entries"] = 0

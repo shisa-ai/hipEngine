@@ -919,7 +919,7 @@ roll-up/status view.
       by `(C, context bucket, active mask, KV dtype, layer plan, top-k/experts,
       replay length)`. Acceptance: bucket hit/miss stats and profiler evidence
       show replay for common shapes. Progress: graph-bucket stats now serialize
-      `entries`, `hits`, `misses`, miss-reason counts, and kernel-time
+      `entries`, `hits`, `misses`, `replay_hit_rate`, miss-reason counts, and kernel-time
       histogram buckets; retained accepted-artifact schema requires those
       observability fields plus replay shape-key axes (`context_bucket`,
       `top_k`, `experts_per_token`, `replay_steps`, `draft_depth`, and
@@ -976,7 +976,7 @@ roll-up/status view.
       dynamic-pool evidence plus finite nonnegative counters,
       stable block-id audit, and prefix-sharing savings,
       execution scheduler metadata with decode shape-key active mask
-      length/count matching workload concurrency plus graph-bucket entry/hit/miss arithmetic and positive replay hits, positive finite
+      length/count matching workload concurrency plus graph-bucket entry/hit/miss arithmetic, positive replay hits, and matching replay-hit-rate, positive finite
       aggregate/per-request throughput whose c-sweep scaling precondition
       concurrency and run-shape labels are typed and match `workload`, and whose
       native scaling copy matches the primary measurements, all
