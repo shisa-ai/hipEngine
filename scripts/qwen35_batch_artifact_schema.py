@@ -2679,6 +2679,20 @@ def _validation_summary(
 
 def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> None:
     errors: list[str] = []
+    allowed_keys = {
+        "schema",
+        "mode",
+        "passed",
+        "artifact_json",
+        "artifact_path",
+        "status",
+        "performance_claim",
+        "benchmark_rollup",
+        "error",
+    }
+    unexpected_keys = sorted(str(key) for key in summary.keys() - allowed_keys)
+    if unexpected_keys:
+        errors.append("summary contains unexpected keys: " + ", ".join(unexpected_keys))
     if summary.get("schema") != 1:
         errors.append("summary.schema must be 1")
     mode = summary.get("mode")

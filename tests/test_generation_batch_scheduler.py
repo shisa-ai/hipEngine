@@ -8085,6 +8085,10 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     }
     validate_cn_diagnostic_validation_summary(summary)
     assert validate_cn_diagnostic_artifact_main([str(summary_file), "--validation-summary"]) == 0
+    extra_key_summary = dict(summary)
+    extra_key_summary["rollup_note"] = "accepted"
+    with pytest.raises(ValueError, match="summary contains unexpected keys: rollup_note"):
+        validate_cn_diagnostic_validation_summary(extra_key_summary)
     missing_summary_artifact_path = dict(summary)
     missing_summary_artifact_path["artifact_path"] = None
     with pytest.raises(ValueError, match="summary.artifact_path must be a non-empty string when summary.passed is true"):
