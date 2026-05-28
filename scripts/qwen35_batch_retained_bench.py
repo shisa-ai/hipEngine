@@ -1087,6 +1087,14 @@ def _command_string_arg_matches(command: str, flag: str, expected: str) -> bool:
     return _command_arg_value(command, flag) == expected
 
 
+def _command_has_flag(command: str, flag: str) -> bool:
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        parts = command.split()
+    return flag in parts
+
+
 def _profiler_command_provenance_blockers(
     command: str,
     *,
@@ -1095,6 +1103,7 @@ def _profiler_command_provenance_blockers(
     retained_artifact_path: str | None,
     expected_workload: Mapping[str, int] | None,
     expected_inputs: Mapping[str, str] | None,
+    expected_build: Mapping[str, Any] | None,
 ) -> list[str]:
     blockers: list[str] = []
     if "rocprofv3" not in command:
@@ -1130,6 +1139,16 @@ def _profiler_command_provenance_blockers(
             expected_value = expected_inputs.get(key)
             if isinstance(expected_value, str) and expected_value and not _command_string_arg_matches(command, flag, expected_value):
                 blockers.append(f"profiler command {flag} must match retained {key}")
+    if expected_build is not None:
+        compiler_version_file = expected_build.get("compiler_version_file")
+        if not isinstance(compiler_version_file, str) or not compiler_version_file:
+            blockers.append("retained command must include --compiler-version-file")
+        elif _command_arg_value(command, "--compiler-version-file") != compiler_version_file:
+            blockers.append("profiler command --compiler-version-file must match retained compiler-version-file")
+        if expected_build.get("require_cached_build") is not True:
+            blockers.append("retained command must include --require-cached-build")
+        elif not _command_has_flag(command, "--require-cached-build"):
+            blockers.append("profiler command must include --require-cached-build")
     return blockers
 
 
@@ -1140,6 +1159,7 @@ def _profiler_provenance_blockers(
     retained_artifact_path: str | None = None,
     expected_workload: Mapping[str, int] | None = None,
     expected_inputs: Mapping[str, str] | None = None,
+    expected_build: Mapping[str, Any] | None = None,
 ) -> list[str]:
     blockers: list[str] = []
     profiler_artifact_path = profiler.get("artifact_path")
@@ -1184,6 +1204,7 @@ def _profiler_provenance_blockers(
                 retained_artifact_path=retained_artifact_path,
                 expected_workload=expected_workload,
                 expected_inputs=expected_inputs,
+                expected_build=expected_build,
             )
             for command in command_candidates
         ]
@@ -1824,6 +1845,10 @@ def _build_payload(
                 "fixture": str(getattr(args, "fixture", "")),
             }.items()
             if value
+        },
+        expected_build={
+            "compiler_version_file": str(args.compiler_version_file) if getattr(args, "compiler_version_file", None) is not None else None,
+            "require_cached_build": bool(getattr(args, "require_cached_build", False)),
         },
     )
     profiler_blockers.extend(_profiler_kernel_evidence_blockers(profiler))

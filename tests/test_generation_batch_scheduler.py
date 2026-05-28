@@ -5914,7 +5914,7 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
         "output_format": "csv",
         "trace_dir": "/tmp/hipengine-profile-c2",
         "trace_files": ["/tmp/hipengine-profile-c2/hipengine_kernel_trace.csv"],
-        "command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile-c2 -- python3 scripts/qwen35_batch_retained_bench.py --model /models/qwen35 --fixture fixtures/qwen35.json --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json benchmarks/results/native-c2.json --profiler-json benchmarks/results/profiler-c2.json",
+        "command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile-c2 -- python3 scripts/qwen35_batch_retained_bench.py --model /models/qwen35 --fixture fixtures/qwen35.json --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --compiler-version-file benchmarks/results/hipcc-version.txt --require-cached-build --json benchmarks/results/native-c2.json --profiler-json benchmarks/results/profiler-c2.json",
     }
     invalid = {
         "artifact_path": "/tmp/profiler-c2.json",
@@ -5926,6 +5926,7 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
 
     expected_workload = {"batch_size": 2, "prompt_length": 512, "decode_tokens": 128, "max_layers": 40}
     expected_inputs = {"model": "/models/qwen35", "fixture": "fixtures/qwen35.json"}
+    expected_build = {"compiler_version_file": "benchmarks/results/hipcc-version.txt", "require_cached_build": True}
 
     assert (
         retained_bench._profiler_provenance_blockers(
@@ -5933,6 +5934,7 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
             retained_artifact_path="benchmarks/results/native-c2.json",
             expected_workload=expected_workload,
             expected_inputs=expected_inputs,
+            expected_build=expected_build,
         )
         == []
     )
@@ -5969,6 +5971,35 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
         retained_artifact_path="benchmarks/results/native-c2.json",
         expected_workload=expected_workload,
     )
+    missing_cached_build = {**valid, "command": valid["command"].replace(" --require-cached-build", "")}
+    assert "profiler command must include --require-cached-build" in retained_bench._profiler_provenance_blockers(
+        missing_cached_build,
+        retained_artifact_path="benchmarks/results/native-c2.json",
+        expected_workload=expected_workload,
+        expected_inputs=expected_inputs,
+        expected_build=expected_build,
+    )
+    mismatched_compiler = {
+        **valid,
+        "command": valid["command"].replace("benchmarks/results/hipcc-version.txt", "benchmarks/results/other-hipcc.txt"),
+    }
+    assert "profiler command --compiler-version-file must match retained compiler-version-file" in retained_bench._profiler_provenance_blockers(
+        mismatched_compiler,
+        retained_artifact_path="benchmarks/results/native-c2.json",
+        expected_workload=expected_workload,
+        expected_inputs=expected_inputs,
+        expected_build=expected_build,
+    )
+    missing_retained_cached = {"compiler_version_file": None, "require_cached_build": False}
+    missing_build_blockers = retained_bench._profiler_provenance_blockers(
+        valid,
+        retained_artifact_path="benchmarks/results/native-c2.json",
+        expected_workload=expected_workload,
+        expected_inputs=expected_inputs,
+        expected_build=missing_retained_cached,
+    )
+    assert "retained command must include --compiler-version-file" in missing_build_blockers
+    assert "retained command must include --require-cached-build" in missing_build_blockers
     mismatched_model = {**valid, "command": valid["command"].replace("--model /models/qwen35", "--model /models/other")}
     assert "profiler command --model must match retained model" in retained_bench._profiler_provenance_blockers(
         mismatched_model,
