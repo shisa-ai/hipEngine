@@ -8105,6 +8105,12 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     non_json_artifact_source_summary["artifact_json"] = str(rollup_root / "benchmarks" / "results" / "accepted-c2.txt")
     with pytest.raises(ValueError, match="summary.artifact_json must end with .json"):
         validate_cn_diagnostic_validation_summary(non_json_artifact_source_summary)
+    nested_artifact_source_summary = dict(summary)
+    nested_artifact_source_summary["artifact_json"] = str(
+        rollup_root / "benchmarks" / "results" / "copies" / "benchmarks" / "results" / "accepted-c2.json"
+    )
+    with pytest.raises(ValueError, match="summary.artifact_json benchmarks/results-relative path must match summary.artifact_path"):
+        validate_cn_diagnostic_validation_summary(nested_artifact_source_summary)
     stale_artifact_json_summary = dict(summary)
     stale_artifact_json_summary["artifact_json"] = str(rollup_root / "benchmarks" / "results" / "other-accepted-c2.json")
     with pytest.raises(ValueError, match="summary.artifact_json must point to summary.artifact_path"):

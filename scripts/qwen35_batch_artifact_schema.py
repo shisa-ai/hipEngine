@@ -517,6 +517,17 @@ def _is_benchmark_results_path(value: str) -> bool:
     return normalized.startswith("benchmarks/results/") or "/benchmarks/results/" in normalized
 
 
+def _benchmark_results_relative_path(value: str) -> str:
+    normalized = value.replace("\\", "/")
+    marker = "benchmarks/results/"
+    if normalized.startswith(marker):
+        return normalized
+    marker_index = normalized.find("/" + marker)
+    if marker_index >= 0:
+        return normalized[marker_index + 1 :]
+    return normalized
+
+
 def _validate_benchmark_results_artifact_path(field: str, value: Any, errors: list[str]) -> None:
     if isinstance(value, str) and value and not _is_benchmark_results_path(value):
         errors.append(f"{field} must be under benchmarks/results for accepted artifacts")
@@ -2723,6 +2734,8 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
         normalized_artifact_path = artifact_path.replace("\\", "/")
         if normalized_artifact_json != normalized_artifact_path and not normalized_artifact_json.endswith("/" + normalized_artifact_path):
             errors.append("summary.artifact_json must point to summary.artifact_path when summary.passed is true or summary.benchmark_rollup is present")
+        if _benchmark_results_relative_path(normalized_artifact_json) != normalized_artifact_path:
+            errors.append("summary.artifact_json benchmarks/results-relative path must match summary.artifact_path")
     error = summary.get("error")
     if passed is True and error is not None:
         errors.append("summary.error must be null when summary.passed is true")
