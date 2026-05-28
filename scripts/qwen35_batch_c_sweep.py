@@ -1792,6 +1792,26 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if profiler_precondition.get("profiler_require_cached_build") != ("--require-cached-build" in argv):
                         errors.append("commands[].preconditions[].profiler_require_cached_build must match retained command")
                         break
+                    profiled_command_flags = (
+                        "--model",
+                        "--fixture",
+                        "--batch-size",
+                        "--prompt-length",
+                        "--decode-tokens",
+                        "--warmup-decode-tokens",
+                        "--max-layers",
+                        "--json",
+                        "--c1-baseline-json",
+                        "--serial-bridge-json",
+                        "--primitive-correctness-json",
+                        "--profiler-json",
+                        "--compiler-version-file",
+                    )
+                    if any(_argv_value(profiled_command_argv, flag) != _argv_value(argv, flag) for flag in profiled_command_flags) or (
+                        "--require-cached-build" in profiled_command_argv
+                    ) != ("--require-cached-build" in argv):
+                        errors.append("commands[].preconditions[].profiler profiled command flags must match retained command")
+                        break
                     profiler_synthesized_fields = profiler_precondition.get("profiler_trace_synthesized_fields")
                     if not isinstance(profiler_synthesized_fields, list) or not all(isinstance(field, str) for field in profiler_synthesized_fields):
                         errors.append("commands[].preconditions[].profiler_trace_synthesized_fields must be a string list when profiler passed")
