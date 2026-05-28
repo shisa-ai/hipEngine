@@ -1586,6 +1586,14 @@ def _validate_graph_replay_profiler_evidence(
         errors.append(
             "profiler.kernel_duration_category_shares.graph_replay must be positive when graph_bucket_stats.hits is positive for accepted artifacts"
         )
+    expected_kernel_names = profiler.get("expected_kernel_names")
+    if isinstance(expected_kernel_names, list) and not any(
+        isinstance(kernel_name, str) and _profiler_kernel_duration_category(kernel_name) == "graph_replay"
+        for kernel_name in expected_kernel_names
+    ):
+        errors.append(
+            "profiler.expected_kernel_names must include a graph/replay kernel when graph_bucket_stats.hits is positive for accepted artifacts"
+        )
     if not any(
         isinstance(kernel_name, str)
         and _profiler_kernel_duration_category(kernel_name) == "graph_replay"

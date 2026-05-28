@@ -6777,6 +6777,7 @@ def test_qwen35_retained_graph_replay_profiler_evidence_blockers_require_graph_d
         }
     }
     profiler = {
+        "expected_kernel_names": ["qwen35_batch_graph_replay"],
         "kernel_durations_ns": {"qwen35_batch_graph_replay": 100.0, "qwen35_batch_decode": 900.0},
         "kernel_duration_categories_ns": {
             "attention": 0.0,
@@ -6800,6 +6801,7 @@ def test_qwen35_retained_graph_replay_profiler_evidence_blockers_require_graph_d
 
     missing_graph_replay = {
         **profiler,
+        "expected_kernel_names": ["qwen35_batch_decode"],
         "kernel_durations_ns": {"qwen35_batch_decode": 1000.0},
         "kernel_duration_categories_ns": {**profiler["kernel_duration_categories_ns"], "graph_replay": 0.0, "other": 1000.0},
         "kernel_duration_category_shares": {**profiler["kernel_duration_category_shares"], "graph_replay": 0.0, "other": 1.0},
@@ -6807,6 +6809,7 @@ def test_qwen35_retained_graph_replay_profiler_evidence_blockers_require_graph_d
     blockers = retained_bench._graph_replay_profiler_evidence_blockers(scheduler_metadata, missing_graph_replay)
     assert "profiler.kernel_duration_categories_ns.graph_replay must be positive when graph_bucket_stats.hits is positive" in blockers
     assert "profiler.kernel_duration_category_shares.graph_replay must be positive when graph_bucket_stats.hits is positive" in blockers
+    assert "profiler.expected_kernel_names must include a graph/replay kernel when graph_bucket_stats.hits is positive" in blockers
     assert "profiler.kernel_durations_ns must include a positive graph/replay duration when graph_bucket_stats.hits is positive" in blockers
 
 
@@ -7058,7 +7061,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             "trace_kernel_names": ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware", "qwen35_batch_graph_replay"],
             "synthesized_fields": [],
             "expected_kernels_present": True,
-            "expected_kernel_names": ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"],
+            "expected_kernel_names": ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware", "qwen35_batch_graph_replay"],
             "kernel_durations_ns": {
                 "qwen35_batch_decode": 12345.0,
                 "qwen35_batch_decode_wmma_caware": 2345.0,
@@ -8058,6 +8061,17 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         match="profiler.kernel_duration_categories_ns.graph_replay must be positive when graph_bucket_stats.hits is positive",
     ):
         validate_cn_diagnostic_artifact_payload(missing_graph_replay_profiler_duration)
+
+    missing_graph_replay_expected_kernel = json.loads(json.dumps(accepted))
+    missing_graph_replay_expected_kernel["profiler"]["expected_kernel_names"] = [
+        "qwen35_batch_decode",
+        "qwen35_batch_decode_wmma_caware",
+    ]
+    with pytest.raises(
+        ValueError,
+        match="profiler.expected_kernel_names must include a graph/replay kernel when graph_bucket_stats.hits is positive",
+    ):
+        validate_cn_diagnostic_artifact_payload(missing_graph_replay_expected_kernel)
 
     empty_graph_bucket_cache = json.loads(json.dumps(accepted))
     empty_graph_bucket_cache["execution"]["scheduler_metadata"]["graph_bucket_stats"]["entries"] = 0

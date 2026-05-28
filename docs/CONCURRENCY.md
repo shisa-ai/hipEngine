@@ -924,7 +924,7 @@ roll-up/status view.
       histogram evidence plus those
       observability fields plus accepted-schema-validated replay shape-key axes (`context_bucket`,
       `top_k`, `experts_per_token`, `replay_steps`, `draft_depth`, and
-      `tree_shape`, with the context bucket covering the workload prompt length), positive profiler `graph_replay` kernel-duration/category/share evidence whenever replay hits are positive, and per-bucket histogram observation counts covering both replay hits and profiler kernel-duration evidence before a c>N row can be promoted; `/metrics` exposes a
+      `tree_shape`, with the context bucket covering the workload prompt length), positive profiler `graph_replay` expected-kernel/duration/category/share evidence whenever replay hits are positive, and per-bucket histogram observation counts covering both replay hits and profiler kernel-duration evidence before a c>N row can be promoted; `/metrics` exposes a
       hit/miss-derived replay-hit-rate gauge plus labeled miss-reason and known kernel-time-bucket counters for live runs.
 - [ ] **P3 remove residual serial loops.** Remove full-attention per-row
       fallback, per-row metadata allocation, per-row LM-head launches, and
@@ -979,7 +979,7 @@ roll-up/status view.
       dynamic-pool evidence plus finite nonnegative counters,
       stable block-id audit, and prefix-sharing savings,
       execution scheduler metadata with decode shape-key active mask
-      length/count matching workload concurrency plus graph-bucket entry/hit/miss arithmetic, positive replay hits, matching replay-hit-rate, and positive profiler graph-replay duration/share evidence, positive finite
+      length/count matching workload concurrency plus graph-bucket entry/hit/miss arithmetic, positive replay hits, matching replay-hit-rate, and positive profiler graph-replay expected-kernel/duration/share evidence, positive finite
       aggregate/per-request throughput whose c-sweep scaling precondition
       concurrency and run-shape labels are typed and match `workload`, and whose
       native scaling copy matches the primary measurements, all

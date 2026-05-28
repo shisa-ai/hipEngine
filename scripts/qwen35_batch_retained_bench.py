@@ -314,6 +314,14 @@ def _graph_replay_profiler_evidence_blockers(
         blockers.append(
             "profiler.kernel_duration_category_shares.graph_replay must be positive when graph_bucket_stats.hits is positive"
         )
+    expected_kernel_names = profiler.get("expected_kernel_names")
+    if isinstance(expected_kernel_names, list) and not any(
+        isinstance(kernel_name, str) and _profiler_kernel_duration_category(kernel_name) == "graph_replay"
+        for kernel_name in expected_kernel_names
+    ):
+        blockers.append(
+            "profiler.expected_kernel_names must include a graph/replay kernel when graph_bucket_stats.hits is positive"
+        )
     kernel_durations = profiler.get("kernel_durations_ns")
     if isinstance(kernel_durations, Mapping):
         has_graph_replay_kernel_duration = any(
