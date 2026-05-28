@@ -2794,11 +2794,15 @@ def _validate_validation_summary_output_path(path: Path, summary: Mapping[str, A
     stem_source = artifact_path if isinstance(artifact_path, str) and artifact_path else summary.get("artifact_json")
     if not isinstance(stem_source, str) or not stem_source:
         return
-    artifact_stem = stem_source.replace("\\", "/").rsplit("/", 1)[-1].removesuffix(".json")
+    normalized_source = stem_source.replace("\\", "/")
+    source_dir, source_name = normalized_source.rsplit("/", 1) if "/" in normalized_source else ("", normalized_source)
+    artifact_stem = source_name.removesuffix(".json")
     suffix = "rollup-check" if mode == "rollup_evidence" else "schema-check"
     expected_name = f"{artifact_stem}-{suffix}.json"
-    if path.name != expected_name:
-        raise ValueError(f"--summary-json filename must be {expected_name} for {mode}")
+    expected_path = f"{source_dir}/{expected_name}" if source_dir else expected_name
+    actual_path = _benchmark_results_relative_path(str(path)).replace("\\", "/")
+    if actual_path != expected_path:
+        raise ValueError(f"--summary-json path must be {expected_path} for {mode}")
 
 
 def main(argv: list[str] | None = None) -> int:

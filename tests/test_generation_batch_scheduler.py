@@ -8111,6 +8111,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     copied_summary_file = rollup_root / "benchmarks" / "results" / "copied-rollup-check.json"
     copied_summary_file.write_text(json.dumps(summary), encoding="utf-8")
     assert validate_cn_diagnostic_artifact_main([str(copied_summary_file), "--validation-summary"]) == 1
+    nested_copied_summary_file = rollup_root / "benchmarks" / "results" / "copies" / "accepted-c2-rollup-check.json"
+    nested_copied_summary_file.parent.mkdir()
+    nested_copied_summary_file.write_text(json.dumps(summary), encoding="utf-8")
+    assert validate_cn_diagnostic_artifact_main([str(nested_copied_summary_file), "--validation-summary"]) == 1
+    nested_rollup_summary_file = rollup_root / "benchmarks" / "results" / "copies" / "accepted-c2-rollup-check.json"
+    nested_rollup_summary_file.unlink()
+    assert validate_cn_diagnostic_artifact_main(
+        [str(artifact_file), "--rollup-evidence", "--summary-json", str(nested_rollup_summary_file)]
+    ) == 1
+    assert not nested_rollup_summary_file.exists()
     outside_summary_file = rollup_root / "tmp" / "copied-rollup-check.json"
     outside_summary_file.parent.mkdir()
     outside_summary_file.write_text(json.dumps(summary), encoding="utf-8")
