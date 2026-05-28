@@ -1073,12 +1073,23 @@ def _is_path_relative_to(child: str, parent: str) -> bool:
         return False
 
 
+def _command_int_arg_matches(command: str, flag: str, expected: int) -> bool:
+    value = _command_arg_value(command, flag)
+    if value is None:
+        return False
+    try:
+        return int(value) == int(expected)
+    except ValueError:
+        return False
+
+
 def _profiler_command_provenance_blockers(
     command: str,
     *,
     trace_dir: str | None,
     profiler_artifact_path: str | None,
     retained_artifact_path: str | None,
+    expected_workload: Mapping[str, int] | None,
 ) -> list[str]:
     blockers: list[str] = []
     if "rocprofv3" not in command:
@@ -1095,6 +1106,20 @@ def _profiler_command_provenance_blockers(
         blockers.append("profiler command --profiler-json must match profiler.artifact_path")
     if retained_artifact_path is not None and _command_arg_value(command, "--json") != retained_artifact_path:
         blockers.append("profiler command --json must match retained artifact path")
+    if expected_workload is not None:
+        for key, flag in (
+            ("batch_size", "--batch-size"),
+            ("prompt_length", "--prompt-length"),
+            ("decode_tokens", "--decode-tokens"),
+            ("max_layers", "--max-layers"),
+        ):
+            expected_value = expected_workload.get(key)
+            if isinstance(expected_value, int) and not isinstance(expected_value, bool) and not _command_int_arg_matches(
+                command,
+                flag,
+                expected_value,
+            ):
+                blockers.append(f"profiler command {flag} must match retained workload")
     return blockers
 
 
@@ -1103,6 +1128,7 @@ def _profiler_provenance_blockers(
     *,
     profiled_command: str | None = None,
     retained_artifact_path: str | None = None,
+    expected_workload: Mapping[str, int] | None = None,
 ) -> list[str]:
     blockers: list[str] = []
     profiler_artifact_path = profiler.get("artifact_path")
@@ -1145,6 +1171,7 @@ def _profiler_provenance_blockers(
                 trace_dir=trace_dir,
                 profiler_artifact_path=retained_profiler_artifact_path,
                 retained_artifact_path=retained_artifact_path,
+                expected_workload=expected_workload,
             )
             for command in command_candidates
         ]
@@ -1772,6 +1799,12 @@ def _build_payload(
         profiler,
         profiled_command=profiled_command,
         retained_artifact_path=retained_artifact_path,
+        expected_workload={
+            "batch_size": args.batch_size,
+            "prompt_length": args.prompt_length,
+            "decode_tokens": args.decode_tokens,
+            "max_layers": args.max_layers,
+        },
     )
     profiler_blockers.extend(_profiler_kernel_evidence_blockers(profiler))
     profiler_blockers.extend(_profiler_cpu_side_bottleneck_blockers(profiler))
