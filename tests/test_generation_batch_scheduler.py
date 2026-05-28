@@ -1595,6 +1595,7 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
     tampered_skipped_failed_precondition = json.loads(json.dumps(persisted))
     for precondition in tampered_skipped_failed_precondition["commands"][-1]["preconditions"]:
         precondition["passed"] = True
+        precondition["reason"] = None
     with pytest.raises(ValueError, match=r"commands\[\]\.precondition must identify a failed precondition"):
         c_sweep.validate_sweep_summary(tampered_skipped_failed_precondition)
     tampered_singular_precondition = json.loads(json.dumps(persisted))
@@ -2313,6 +2314,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_precondition_schema["commands"][-1]["preconditions"][0]["passed"] = "yes"
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.passed must be a bool"):
         c_sweep.validate_sweep_summary(tampered_precondition_schema)
+    tampered_passed_precondition_reason = json.loads(json.dumps(persisted))
+    tampered_passed_precondition_reason["commands"][-1]["preconditions"][0]["reason"] = "unexpected"
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.reason must be null when passed"):
+        c_sweep.validate_sweep_summary(tampered_passed_precondition_reason)
+    tampered_failed_precondition_reason = json.loads(json.dumps(persisted))
+    tampered_failed_precondition_reason["commands"][-1]["preconditions"][0]["passed"] = False
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.reason must be a non-empty string when failed"):
+        c_sweep.validate_sweep_summary(tampered_failed_precondition_reason)
     tampered_postcondition_schema = json.loads(json.dumps(persisted))
     tampered_postcondition_schema["commands"][-1]["postconditions"][0]["kind"] = ""
     with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.kind must be a non-empty string"):

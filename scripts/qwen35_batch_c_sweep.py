@@ -1549,6 +1549,16 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         errors.append(f"commands[].{condition_field}[].passed must be a bool")
                         condition_schema_error = True
                         break
+                    if condition_field == "preconditions":
+                        reason = condition.get("reason")
+                        if condition.get("passed") is True and reason is not None:
+                            errors.append("commands[].preconditions[].reason must be null when passed")
+                            condition_schema_error = True
+                            break
+                        if condition.get("passed") is False and (not isinstance(reason, str) or not reason):
+                            errors.append("commands[].preconditions[].reason must be a non-empty string when failed")
+                            condition_schema_error = True
+                            break
                 if condition_schema_error:
                     break
             if condition_schema_error:
