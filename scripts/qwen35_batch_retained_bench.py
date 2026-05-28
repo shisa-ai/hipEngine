@@ -1120,6 +1120,11 @@ def _join_command_parts(parts: Sequence[str]) -> str:
     return " ".join(shlex.quote(part) for part in parts)
 
 
+def _command_flag_count(parts: Sequence[str], flag: str) -> int:
+    prefix = f"{flag}="
+    return sum(1 for part in parts if part == flag or part.startswith(prefix))
+
+
 def _profiler_command_provenance_blockers(
     command: str,
     *,
@@ -1137,6 +1142,9 @@ def _profiler_command_provenance_blockers(
     rocprof_prefix_command = _join_command_parts(rocprof_prefix)
     if not any(Path(part).name == "rocprofv3" for part in rocprof_prefix):
         blockers.append("profiler command must include rocprofv3")
+    for flag in ("--kernel-trace", "--output-format", "-d"):
+        if _command_flag_count(rocprof_prefix, flag) > 1:
+            blockers.append(f"profiler command {flag} must be unique before rocprof separator")
     if "--kernel-trace" not in rocprof_prefix:
         blockers.append("profiler command must include --kernel-trace")
     if "scripts/qwen35_batch_retained_bench.py" not in command:
@@ -1147,6 +1155,27 @@ def _profiler_command_provenance_blockers(
         blockers.append("profiler command must include rocprof -- separator")
     else:
         retained_command = _join_command_parts(profiled_segment)
+        for flag in (
+            "--model",
+            "--fixture",
+            "--batch-size",
+            "--prompt-length",
+            "--decode-tokens",
+            "--warmup-decode-tokens",
+            "--max-layers",
+            "--compiler-version-file",
+            "--require-cached-build",
+            "--kv-storage",
+            "--kv-scale-dtype",
+            "--kv-scale-granularity",
+            "--json",
+            "--c1-baseline-json",
+            "--serial-bridge-json",
+            "--primitive-correctness-json",
+            "--profiler-json",
+        ):
+            if _command_flag_count(profiled_segment, flag) > 1:
+                blockers.append(f"profiler command {flag} must be unique after rocprof separator")
         if (
             len(profiled_segment) < 2
             or not Path(profiled_segment[0]).name.startswith("python")

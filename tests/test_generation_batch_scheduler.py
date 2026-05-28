@@ -5986,6 +5986,22 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
         post_separator_shadowed_trace_dir,
         retained_artifact_path="benchmarks/results/native-c2.json",
     )
+    duplicate_rocprof_output_format = {
+        **valid,
+        "command": valid["command"].replace("--output-format csv", "--output-format csv --output-format csv"),
+    }
+    assert "profiler command --output-format must be unique before rocprof separator" in retained_bench._profiler_provenance_blockers(
+        duplicate_rocprof_output_format,
+        retained_artifact_path="benchmarks/results/native-c2.json",
+    )
+    duplicate_retained_json = {
+        **valid,
+        "command": valid["command"].replace("--json benchmarks/results/native-c2.json", "--json benchmarks/results/native-c2.json --json benchmarks/results/native-c2.json"),
+    }
+    assert "profiler command --json must be unique after rocprof separator" in retained_bench._profiler_provenance_blockers(
+        duplicate_retained_json,
+        retained_artifact_path="benchmarks/results/native-c2.json",
+    )
     mismatched_profiler_json = {
         **valid,
         "command": valid["command"].replace("benchmarks/results/profiler-c2.json", "benchmarks/results/other-profiler.json"),
