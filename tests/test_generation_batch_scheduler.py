@@ -8234,6 +8234,29 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     ) == 1
     assert not wrong_named_failed_summary_file.exists()
 
+    missing_artifact_and_rollup_payload = json.loads(json.dumps(accepted))
+    missing_artifact_and_rollup_payload.pop("artifact_path")
+    missing_artifact_and_rollup_payload.pop("benchmark_rollup")
+    missing_artifact_and_rollup_file = rollup_root / "benchmarks" / "results" / "missing-artifact-and-rollup.json"
+    missing_artifact_and_rollup_file.write_text(json.dumps(missing_artifact_and_rollup_payload), encoding="utf-8")
+    missing_artifact_and_rollup_summary_file = rollup_root / "benchmarks" / "results" / "missing-artifact-and-rollup-rollup-check.json"
+    assert validate_cn_diagnostic_artifact_main(
+        [str(missing_artifact_and_rollup_file), "--rollup-evidence", "--summary-json", str(missing_artifact_and_rollup_summary_file)]
+    ) == 1
+    missing_artifact_and_rollup_summary = json.loads(missing_artifact_and_rollup_summary_file.read_text())
+    assert missing_artifact_and_rollup_summary["artifact_path"] is None
+    assert validate_cn_diagnostic_artifact_main([str(missing_artifact_and_rollup_summary_file), "--validation-summary"]) == 0
+    wrong_named_missing_artifact_and_rollup_summary_file = rollup_root / "benchmarks" / "results" / "other-missing-artifact-and-rollup-rollup-check.json"
+    assert validate_cn_diagnostic_artifact_main(
+        [
+            str(missing_artifact_and_rollup_file),
+            "--rollup-evidence",
+            "--summary-json",
+            str(wrong_named_missing_artifact_and_rollup_summary_file),
+        ]
+    ) == 1
+    assert not wrong_named_missing_artifact_and_rollup_summary_file.exists()
+
     bad_summary_file = rollup_root / "tmp" / "accepted-c2-rollup-check.json"
     assert validate_cn_diagnostic_artifact_main(
         [str(artifact_file), "--rollup-evidence", "--summary-json", str(bad_summary_file)]
