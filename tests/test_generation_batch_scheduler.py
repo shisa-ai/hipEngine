@@ -8156,6 +8156,13 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     assert artifact_schema_summary["performance_claim"] is True
     assert artifact_schema_summary["benchmark_rollup"] is None
     validate_cn_diagnostic_validation_summary(artifact_schema_summary)
+    assert validate_cn_diagnostic_artifact_main([str(artifact_schema_summary_file), "--validation-summary"]) == 0
+    copied_artifact_schema_summary_file = rollup_root / "benchmarks" / "results" / "copied-schema-check.json"
+    copied_artifact_schema_summary_file.write_text(json.dumps(artifact_schema_summary), encoding="utf-8")
+    assert validate_cn_diagnostic_artifact_main([str(copied_artifact_schema_summary_file), "--validation-summary"]) == 1
+    wrong_named_schema_summary_file = rollup_root / "benchmarks" / "results" / "other-schema-check.json"
+    assert validate_cn_diagnostic_artifact_main([str(artifact_file), "--summary-json", str(wrong_named_schema_summary_file)]) == 1
+    assert not wrong_named_schema_summary_file.exists()
     promotional_schema_summary = dict(artifact_schema_summary)
     promotional_schema_summary["benchmark_rollup"] = accepted["benchmark_rollup"]
     with pytest.raises(ValueError, match="summary.benchmark_rollup requires summary.mode rollup_evidence"):
