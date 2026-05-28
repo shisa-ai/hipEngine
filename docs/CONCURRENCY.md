@@ -965,7 +965,7 @@ roll-up/status view.
       shape times concurrency, full-row admission/completion/per-request
       observability with matching row ids and latency samples for every row in
       `workload.concurrency`, execution scheduler metadata with decode shape-key
-      and non-empty graph-bucket stats, positive
+      and non-empty graph-bucket stats, positive finite
       aggregate/per-request throughput whose c-sweep scaling precondition
       concurrency and run-shape labels are typed and match `workload`, and whose
       native scaling copy matches the primary measurements, all

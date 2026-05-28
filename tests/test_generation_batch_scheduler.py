@@ -2531,6 +2531,50 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_reason_is_non_null(
     }
 
 
+def test_batch_c_sweep_scaling_reference_rejects_nonfinite_rates(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    (output_dir / "serial-bridge-c2.json").write_text(
+        json.dumps(
+            {
+                "schema": 2,
+                "status": "blocked",
+                "workload": {"concurrency": 2, "prompt_tokens_per_request": 16, "gen_tokens_per_request": 2},
+                "measurements": {"decode_tok_s_aggregate": float("nan"), "decode_tok_s_per_request": 10.0},
+            }
+        )
+    )
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._scaling_reference_precondition(
+        native,
+        flag="--serial-bridge-json",
+        kind="serial_bridge",
+        expected_concurrency=2,
+    )
+
+    assert precondition["passed"] is False
+    assert precondition["reason"] == "decode throughput fields must be positive finite numbers"
+    assert math.isnan(precondition["decode_tok_s_aggregate"])
+    assert precondition["decode_tok_s_per_request"] == 10.0
+
+
 def test_batch_c_sweep_skips_retained_when_scaling_reference_rate_arithmetic_mismatches(
     tmp_path: Path,
     monkeypatch,
@@ -3182,8 +3226,16 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         c_sweep.validate_sweep_summary(tampered_scaling_precondition_float_decode)
     tampered_scaling_precondition_rate = json.loads(json.dumps(persisted))
     tampered_scaling_precondition_rate["commands"][-1]["preconditions"][1]["decode_tok_s_aggregate"] = 0.0
-    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.decode rates must be positive numbers when passed"):
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.decode rates must be positive finite numbers when passed"):
         c_sweep.validate_sweep_summary(tampered_scaling_precondition_rate)
+    tampered_scaling_precondition_nan_rate = json.loads(json.dumps(persisted))
+    tampered_scaling_precondition_nan_rate["commands"][-1]["preconditions"][1]["decode_tok_s_aggregate"] = float("nan")
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.decode rates must be positive finite numbers when passed"):
+        c_sweep.validate_sweep_summary(tampered_scaling_precondition_nan_rate)
+    tampered_scaling_precondition_infinite_rate = json.loads(json.dumps(persisted))
+    tampered_scaling_precondition_infinite_rate["commands"][-1]["preconditions"][2]["decode_tok_s_per_request"] = float("inf")
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.decode rates must be positive finite numbers when passed"):
+        c_sweep.validate_sweep_summary(tampered_scaling_precondition_infinite_rate)
     tampered_scaling_precondition_rate_arithmetic = json.loads(json.dumps(persisted))
     tampered_scaling_precondition_rate_arithmetic["commands"][-1]["preconditions"][2]["decode_tok_s_per_request"] = 11.0
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.decode aggregate rate must match per-request rate times concurrency when passed"):

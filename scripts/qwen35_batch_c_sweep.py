@@ -945,6 +945,8 @@ def _scaling_reference_precondition(
         aggregate, per_request = _extract_decode_rates(payload)
         if aggregate is None or per_request is None:
             reasons.append("decode throughput fields are missing")
+        elif not _is_positive_finite_number(aggregate) or not _is_positive_finite_number(per_request):
+            reasons.append("decode throughput fields must be positive finite numbers")
         workload = payload.get("workload")
         raw_concurrency = workload.get("concurrency") if isinstance(workload, dict) else None
         if isinstance(raw_concurrency, int) and not isinstance(raw_concurrency, bool):
@@ -953,7 +955,13 @@ def _scaling_reference_precondition(
             concurrency = 1
         if expected_concurrency is not None and concurrency != expected_concurrency:
             reasons.append(f"workload.concurrency={concurrency!r} does not match batch_size={expected_concurrency}")
-        if aggregate is not None and per_request is not None and concurrency is not None:
+        if (
+            aggregate is not None
+            and per_request is not None
+            and _is_positive_finite_number(aggregate)
+            and _is_positive_finite_number(per_request)
+            and concurrency is not None
+        ):
             expected_aggregate = float(per_request) * int(concurrency)
             if abs(float(aggregate) - expected_aggregate) > max(1e-9, expected_aggregate * 1e-6):
                 reasons.append("decode aggregate rate does not match per-request rate times concurrency")
@@ -1881,8 +1889,8 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         scaling_precondition_error = True
                         break
                     for rate_field in ("decode_tok_s_aggregate", "decode_tok_s_per_request"):
-                        if not _is_number(scaling_precondition.get(rate_field)) or float(scaling_precondition[rate_field]) <= 0.0:
-                            errors.append("commands[].preconditions[].decode rates must be positive numbers when passed")
+                        if not _is_positive_finite_number(scaling_precondition.get(rate_field)):
+                            errors.append("commands[].preconditions[].decode rates must be positive finite numbers when passed")
                             scaling_precondition_error = True
                             break
                     if scaling_precondition_error:
