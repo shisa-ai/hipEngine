@@ -5967,6 +5967,22 @@ def test_qwen35_retained_projection_dispatch_blockers_require_caware_candidate()
     assert "execution.batch_execution.projection_dispatch.evidence.artifact_path must be under benchmarks/results" in bad_evidence_blockers
     assert "execution.batch_execution.projection_dispatch.evidence.aggregate_vs_row_gemv must be > 1.0" in bad_evidence_blockers
     assert "execution.batch_execution.projection_dispatch.evidence.per_request_vs_row_gemv must be > 1.0" in bad_evidence_blockers
+    assert retained_bench._projection_dispatch_profiler_blockers(
+        valid_dispatch,
+        {
+            "expected_kernel_names": ["qwen35_batch_decode_wmma_caware"],
+            "trace_kernel_names": ["qwen35_batch_decode_wmma_caware"],
+            "kernel_durations_ns": {"qwen35_batch_decode_wmma_caware": 12345},
+        },
+    ) == []
+    assert retained_bench._projection_dispatch_profiler_blockers(
+        valid_dispatch,
+        {
+            "expected_kernel_names": ["qwen35_batch_decode"],
+            "trace_kernel_names": ["qwen35_batch_decode"],
+            "kernel_durations_ns": {"qwen35_batch_decode": 12345},
+        },
+    ) == ["profiler kernel names must include selected projection_dispatch candidate or variant"]
     mismatched_blockers = retained_bench._projection_dispatch_blockers(valid_dispatch, concurrency=2, candidates=[mismatched_candidate])
     assert "projection_dispatch_candidates selected_candidate row bounds must include projection_dispatch.rows" in mismatched_blockers
     assert "execution.batch_execution.projection_dispatch.selection must match selected projection_dispatch_candidates entry" in mismatched_blockers

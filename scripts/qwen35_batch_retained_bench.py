@@ -1036,6 +1036,34 @@ def _projection_dispatch_blockers(
     return blockers
 
 
+def _projection_dispatch_profiler_blockers(batch_execution: Mapping[str, Any], profiler: Mapping[str, Any]) -> list[str]:
+    projection_dispatch = batch_execution.get("projection_dispatch")
+    if not isinstance(projection_dispatch, Mapping):
+        return []
+    fragments: list[str] = []
+    selected_candidate = projection_dispatch.get("selected_candidate")
+    if isinstance(selected_candidate, str) and selected_candidate and selected_candidate != "row_gemv":
+        fragments.append(selected_candidate.lower())
+    selection = projection_dispatch.get("selection")
+    variant = selection.get("variant") if isinstance(selection, Mapping) else None
+    if isinstance(variant, str) and variant and variant != "row_gemv":
+        fragments.append(variant.lower())
+    if not fragments:
+        return []
+    profiler_names: list[str] = []
+    for field in ("expected_kernel_names", "trace_kernel_names"):
+        names = profiler.get(field)
+        if isinstance(names, list):
+            profiler_names.extend(name for name in names if isinstance(name, str) and name)
+    kernel_durations = profiler.get("kernel_durations_ns")
+    if isinstance(kernel_durations, Mapping):
+        profiler_names.extend(name for name in kernel_durations if isinstance(name, str) and name)
+    lowered_names = [name.lower() for name in profiler_names]
+    if not lowered_names or not any(fragment in name for fragment in fragments for name in lowered_names):
+        return ["profiler kernel names must include selected projection_dispatch candidate or variant"]
+    return []
+
+
 def _memory_evidence_blockers(memory: Mapping[str, Any]) -> list[str]:
     blockers: list[str] = []
     if not _is_finite_nonnegative_number(memory.get("allocator_reserved_peak_bytes")):
@@ -1432,6 +1460,7 @@ def _build_payload(
         concurrency=args.batch_size,
         candidates=projection_dispatch_candidates,
     )
+    projection_blockers.extend(_projection_dispatch_profiler_blockers(batch_execution, profiler))
     memory = _retained_memory_payload(args, kv_policy, bench)
     memory_blockers = _memory_evidence_blockers(memory)
     graph_bucket_blockers = _decode_shape_key_blockers(scheduler_metadata, concurrency=args.batch_size, prompt_length=args.prompt_length)
