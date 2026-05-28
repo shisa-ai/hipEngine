@@ -1551,6 +1551,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     options = summary.get("options")
     option_model: str | None = None
     option_fixture: str | None = None
+    option_shape_values: dict[str, int] = {}
     if not isinstance(options, Mapping):
         errors.append("options must be an object")
     else:
@@ -1565,6 +1566,16 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 option_model = value
             else:
                 option_fixture = value
+        for option in ("prompt_length", "decode_tokens", "warmup_decode_tokens", "max_layers"):
+            value = options.get(option)
+            if not isinstance(value, int) or isinstance(value, bool):
+                errors.append(f"options.{option} must be an int")
+            elif option == "warmup_decode_tokens" and value < 0:
+                errors.append("options.warmup_decode_tokens must be non-negative")
+            elif option != "warmup_decode_tokens" and value <= 0:
+                errors.append(f"options.{option} must be positive")
+            else:
+                option_shape_values[option] = value
         compiler_version_file = options.get("compiler_version_file")
         if compiler_version_file is not None and not isinstance(compiler_version_file, str):
             errors.append("options.compiler_version_file must be a string or null")
@@ -1727,6 +1738,20 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         shape_arg_error = True
                         break
                 if shape_arg_error:
+                    break
+                shape_option_error = False
+                for option, flag in (
+                    ("prompt_length", "--prompt-length"),
+                    ("decode_tokens", "--decode-tokens"),
+                    ("warmup_decode_tokens", "--warmup-decode-tokens"),
+                    ("max_layers", "--max-layers"),
+                ):
+                    expected_shape_value = option_shape_values.get(option)
+                    if expected_shape_value is not None and _argv_value(argv, flag) != str(expected_shape_value):
+                        errors.append(f"commands[].argv {flag} must match options.{option}")
+                        shape_option_error = True
+                        break
+                if shape_option_error:
                     break
             if entry.get("category") == "primitive":
                 duplicated_primitive_flags = _duplicate_flags(argv, _PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS)
@@ -2675,6 +2700,10 @@ def _summary_options(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "model": str(args.model),
         "fixture": str(args.fixture),
+        "prompt_length": int(args.prompt_length),
+        "decode_tokens": int(args.decode_tokens),
+        "warmup_decode_tokens": int(args.warmup_decode_tokens),
+        "max_layers": int(args.max_layers),
         "stop_on_failure": bool(args.stop_on_failure),
         "include_int8": bool(getattr(args, "include_int8", False)),
         "require_cached_build": bool(args.require_cached_build),

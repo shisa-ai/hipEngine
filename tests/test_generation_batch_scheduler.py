@@ -1804,6 +1804,10 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     assert summary["options"] == {
         "model": "/tmp/model",
         "fixture": "/tmp/fixture.json",
+        "prompt_length": 16,
+        "decode_tokens": 2,
+        "warmup_decode_tokens": 1,
+        "max_layers": 3,
         "stop_on_failure": True,
         "include_int8": False,
         "require_cached_build": False,
@@ -3557,6 +3561,20 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_options_fixture["options"]["fixture"] = "/tmp/other-fixture.json"
     with pytest.raises(ValueError, match=r"commands\[\]\.argv --fixture must match options.fixture"):
         c_sweep.validate_sweep_summary(tampered_options_fixture)
+    for option, value, flag in (
+        ("prompt_length", 17, "--prompt-length"),
+        ("decode_tokens", 3, "--decode-tokens"),
+        ("warmup_decode_tokens", 2, "--warmup-decode-tokens"),
+        ("max_layers", 4, "--max-layers"),
+    ):
+        tampered_shape_option = json.loads(json.dumps(persisted))
+        tampered_shape_option["options"][option] = value
+        with pytest.raises(ValueError, match=rf"commands\[\]\.argv {flag} must match options.{option}"):
+            c_sweep.validate_sweep_summary(tampered_shape_option)
+    tampered_shape_option_type = json.loads(json.dumps(persisted))
+    tampered_shape_option_type["options"]["prompt_length"] = "16"
+    with pytest.raises(ValueError, match="options.prompt_length must be an int"):
+        c_sweep.validate_sweep_summary(tampered_shape_option_type)
     tampered_output_dir = json.loads(json.dumps(persisted))
     tampered_output_dir["output_dir"] = ""
     with pytest.raises(ValueError, match="output_dir must be a non-empty string"):
