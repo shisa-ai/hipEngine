@@ -934,6 +934,7 @@ roll-up/status view.
       serial-bridge paths, non-scheduler-owned execution, non-full-native, wrong-path, wrong-layer-limit, or unsupported-layer-bearing prefill plans, non-empty batch/prefill/decode-execution blockers, row executions labeled `serial`/`fallback`, missing or wrong-shape
       decode-execution row/slot/context metadata, native-batch decode contexts at or beyond 1024 before row-aware split-K lands, non-`native_batch` full-attention decode paths,
       per-row full-attention decode fallbacks, and non-native sampler metadata,
+      runtime short-context native full-attention metadata now reports the retained-compatible `native_batch` path,
       and retained bench now blocks promotion before schema validation for the same serial/fallback batch/decode metadata,
       so residual serial loops cannot be promoted as retained rows while this
       item remains open.

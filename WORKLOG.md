@@ -38695,3 +38695,28 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness still passed; retained scaling claims remain blocked on generated-token equality/profiler evidence
 ```
+
+## 2026-05-28 — CONCURRENCY retained native-batch decode path metadata
+
+Materially advanced retained native/P3 promotion gates without closing a queue item or adding a retained c>N performance claim:
+
+- `hipengine/runtime/qwen35_paro_runner.py` now records short-context native full-attention batch decode as `full_attention_decode_path="native_batch"`, matching the retained/accepted artifact gates instead of self-blocking with the internal `batch_context` label.
+- Added resident layout coverage proving the <1024 native full-attention batch path emits `native_batch`, `native_caware_decode=true`, empty decode blockers, row/slot metadata, and retained-compatible `batch_execution_metadata(...)`.
+- Updated `docs/CONCURRENCY.md` P3 progress text to call out the retained-compatible runtime metadata.
+- No retained c>N performance claim was added; generated-token equality and real profiler evidence remain required for promotion.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_qwen35_resident_batch_layout.py -k 'reports_native_batch_for_short_context or splitk_fallback' -q
+# 3 passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness still passed; retained scaling claims remain blocked on generated-token equality/profiler evidence
+```

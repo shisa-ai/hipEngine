@@ -3219,7 +3219,7 @@ class Qwen35ParoResidentSession:
                     max_full_attention_context = max(max_full_attention_context, max_context)
                     native_full = _env_flag("HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE", True) and max_context < 1024
                     if native_full:
-                        full_attention_decode_path = "batch_context"
+                        full_attention_decode_path = "native_batch"
                         key_cache, value_cache = self._full_cache_all_slots(layer_id)
                         position_tensor, append_spans, decode_spans = self._batch_full_spans(
                             layer_id,
