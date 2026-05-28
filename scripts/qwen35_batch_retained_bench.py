@@ -1073,7 +1073,22 @@ def _is_path_relative_to(child: str, parent: str) -> bool:
         return False
 
 
-def _profiler_provenance_blockers(profiler: Mapping[str, Any]) -> list[str]:
+def _profiler_command_provenance_blockers(command: str, *, trace_dir: str | None) -> list[str]:
+    blockers: list[str] = []
+    if "rocprofv3" not in command:
+        blockers.append("profiler command must include rocprofv3")
+    if "--kernel-trace" not in command:
+        blockers.append("profiler command must include --kernel-trace")
+    if "scripts/qwen35_batch_retained_bench.py" not in command:
+        blockers.append("profiler command must target scripts/qwen35_batch_retained_bench.py")
+    if _command_arg_value(command, "--output-format") != "csv":
+        blockers.append("profiler command must include --output-format csv")
+    if trace_dir is not None and _command_arg_value(command, "-d") != trace_dir:
+        blockers.append("profiler command -d must match profiler.trace_dir")
+    return blockers
+
+
+def _profiler_provenance_blockers(profiler: Mapping[str, Any], *, profiled_command: str | None = None) -> list[str]:
     blockers: list[str] = []
     if not _is_retained_artifact_path(profiler.get("artifact_path")):
         blockers.append("profiler.artifact_path must be under benchmarks/results")
@@ -1099,6 +1114,17 @@ def _profiler_provenance_blockers(profiler: Mapping[str, Any]) -> list[str]:
         if trace_dir is not None and not _is_path_relative_to(trace_file, trace_dir):
             blockers.append("profiler.trace_files entries must be under profiler.trace_dir")
             break
+    command_candidates = [
+        command
+        for command in (profiled_command, profiler.get("command"), profiler.get("profiler_command"))
+        if isinstance(command, str) and command
+    ]
+    if not command_candidates:
+        blockers.append("profiler command must include rocprofv3 --kernel-trace retained bench command")
+    else:
+        command_blockers = [_profiler_command_provenance_blockers(command, trace_dir=trace_dir) for command in command_candidates]
+        if all(command_blocker for command_blocker in command_blockers):
+            blockers.extend(command_blockers[0])
     return blockers
 
 
@@ -1712,10 +1738,11 @@ def _build_payload(
         _profiler_reference(getattr(args, "profiler_json", None)),
         bench,
     )
+    profiled_command = _profiled_command(args, argv)
     scheduler_metadata = dict(bench["scheduler_metadata"])
     _attach_profiler_graph_kernel_time_histogram(scheduler_metadata, profiler)
     profiler_captured = profiler.get("status") == "captured" and profiler.get("expected_kernels_present") is True
-    profiler_blockers = _profiler_provenance_blockers(profiler)
+    profiler_blockers = _profiler_provenance_blockers(profiler, profiled_command=profiled_command)
     profiler_blockers.extend(_profiler_kernel_evidence_blockers(profiler))
     profiler_blockers.extend(_profiler_cpu_side_bottleneck_blockers(profiler))
     batch_execution = dict(bench["batch_execution"])
@@ -1842,7 +1869,7 @@ def _build_payload(
             ],
             "correctness_reference": f"inline generated-token equality vs independent c=1 plus {correctness_reference_command}",
             "benchmark": _command(argv),
-            "profiler": _profiled_command(args, argv),
+            "profiler": profiled_command,
         },
         "correctness": {
             "passed": bool(bench["finite_logits"] and equality_passed and primitive_passed),

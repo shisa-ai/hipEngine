@@ -5914,12 +5914,14 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
         "output_format": "csv",
         "trace_dir": "/tmp/hipengine-profile-c2",
         "trace_files": ["/tmp/hipengine-profile-c2/hipengine_kernel_trace.csv"],
+        "command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile-c2 -- python3 scripts/qwen35_batch_retained_bench.py --batch-size 2",
     }
     invalid = {
         "artifact_path": "/tmp/profiler-c2.json",
         "output_format": "json",
         "trace_dir": "/tmp/hipengine-profile-c2",
         "trace_files": ["/tmp/other-profile/hipengine_api_trace.txt", "/tmp/other-profile/hipengine_api_trace.txt"],
+        "command": "python3 scripts/qwen35_batch_serial_bench.py --output-format json -d /tmp/other-profile",
     }
 
     assert retained_bench._profiler_provenance_blockers(valid) == []
@@ -5929,6 +5931,11 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
     assert "profiler.trace_files entries must be unique" in blockers
     assert "profiler.trace_files must include a kernel-trace CSV" in blockers
     assert "profiler.trace_files entries must be CSV paths" in blockers
+    assert "profiler command must include rocprofv3" in blockers
+    assert "profiler command must include --kernel-trace" in blockers
+    assert "profiler command must target scripts/qwen35_batch_retained_bench.py" in blockers
+    assert "profiler command must include --output-format csv" in blockers
+    assert "profiler command -d must match profiler.trace_dir" in blockers
     outside_trace_dir = {**valid, "trace_files": ["/tmp/other-profile/hipengine_kernel_trace.csv"]}
     assert "profiler.trace_files entries must be under profiler.trace_dir" in retained_bench._profiler_provenance_blockers(
         outside_trace_dir
