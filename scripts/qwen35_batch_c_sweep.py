@@ -1557,6 +1557,15 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         compiler_version_file = options.get("compiler_version_file")
         if compiler_version_file is not None and not isinstance(compiler_version_file, str):
             errors.append("options.compiler_version_file must be a string or null")
+        elif isinstance(compiler_version_file, str):
+            compiler_version_path = Path(compiler_version_file)
+            compiler_version_check_path = compiler_version_path if compiler_version_path.is_absolute() else REPO_ROOT / compiler_version_path
+            if _path_has_parent_directory_component(compiler_version_file):
+                errors.append("options.compiler_version_file must not contain parent-directory components")
+            elif compiler_version_check_path.is_symlink():
+                errors.append("options.compiler_version_file must not be a symlink")
+            elif _path_has_symlink_parent(compiler_version_check_path):
+                errors.append("options.compiler_version_file parent directories must not be symlinks")
     commands = summary.get("commands")
     if not isinstance(commands, list):
         errors.append("commands must be a list")

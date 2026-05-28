@@ -3355,6 +3355,28 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
             with pytest.raises(ValueError, match="output_dir parent directories must not be symlinks"):
                 c_sweep.validate_sweep_summary(symlink_parent_output_summary)
 
+            options_compiler_symlink = output_dir / "hipcc-version-option-link.txt"
+            try:
+                options_compiler_symlink.symlink_to(output_dir / "hipcc-version.txt")
+                symlink_options_compiler_summary = json.loads(json.dumps(persisted))
+                symlink_options_compiler_summary["options"]["compiler_version_file"] = str(options_compiler_symlink)
+                with pytest.raises(ValueError, match="options.compiler_version_file must not be a symlink"):
+                    c_sweep.validate_sweep_summary(symlink_options_compiler_summary)
+            finally:
+                if options_compiler_symlink.is_symlink():
+                    options_compiler_symlink.unlink()
+
+            options_compiler_parent_link = output_dir / "hipcc-option-parent-link"
+            try:
+                options_compiler_parent_link.symlink_to(output_dir, target_is_directory=True)
+                symlink_parent_options_compiler_summary = json.loads(json.dumps(persisted))
+                symlink_parent_options_compiler_summary["options"]["compiler_version_file"] = str(options_compiler_parent_link / "hipcc-version.txt")
+                with pytest.raises(ValueError, match="options.compiler_version_file parent directories must not be symlinks"):
+                    c_sweep.validate_sweep_summary(symlink_parent_options_compiler_summary)
+            finally:
+                if options_compiler_parent_link.is_symlink():
+                    options_compiler_parent_link.unlink()
+
             profiler_trace_dir = Path(persisted["commands"][-1]["preconditions"][-1]["profiler_trace_dir"])
             trace_file_path = Path(persisted["commands"][-1]["preconditions"][-1]["profiler_trace_files"][0])
             trace_file_target = trace_file_path.with_name("hipengine_kernel_trace_real.csv")
@@ -3533,6 +3555,12 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_output_dir_parent_component["output_dir"] = str(tmp_path / "output-parent" / ".." / "artifacts")
     with pytest.raises(ValueError, match="output_dir must not contain parent-directory components"):
         c_sweep.validate_sweep_summary(tampered_output_dir_parent_component)
+    tampered_options_compiler_parent_component = json.loads(json.dumps(persisted))
+    tampered_options_compiler_parent_component["options"]["compiler_version_file"] = str(
+        output_dir / "compiler-option-parent" / ".." / "hipcc-version.txt"
+    )
+    with pytest.raises(ValueError, match="options.compiler_version_file must not contain parent-directory components"):
+        c_sweep.validate_sweep_summary(tampered_options_compiler_parent_component)
     tampered_command_argv = json.loads(json.dumps(persisted))
     tampered_command_argv["commands"][-1]["argv"] = []
     with pytest.raises(ValueError, match=r"commands\[\]\.argv must be a non-empty string list"):
