@@ -5914,7 +5914,7 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
         "output_format": "csv",
         "trace_dir": "/tmp/hipengine-profile-c2",
         "trace_files": ["/tmp/hipengine-profile-c2/hipengine_kernel_trace.csv"],
-        "command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile-c2 -- python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --profiler-json benchmarks/results/profiler-c2.json",
+        "command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-profile-c2 -- python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --json benchmarks/results/native-c2.json --profiler-json benchmarks/results/profiler-c2.json",
     }
     invalid = {
         "artifact_path": "/tmp/profiler-c2.json",
@@ -5924,7 +5924,7 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
         "command": "python3 scripts/qwen35_batch_serial_bench.py --output-format json -d /tmp/other-profile --profiler-json benchmarks/results/other-profiler.json",
     }
 
-    assert retained_bench._profiler_provenance_blockers(valid) == []
+    assert retained_bench._profiler_provenance_blockers(valid, retained_artifact_path="benchmarks/results/native-c2.json") == []
     blockers = retained_bench._profiler_provenance_blockers(invalid)
     assert "profiler.artifact_path must be under benchmarks/results" in blockers
     assert "profiler.output_format must be csv" in blockers
@@ -5941,7 +5941,16 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
         "command": valid["command"].replace("benchmarks/results/profiler-c2.json", "benchmarks/results/other-profiler.json"),
     }
     assert "profiler command --profiler-json must match profiler.artifact_path" in retained_bench._profiler_provenance_blockers(
-        mismatched_profiler_json
+        mismatched_profiler_json,
+        retained_artifact_path="benchmarks/results/native-c2.json",
+    )
+    mismatched_retained_json = {
+        **valid,
+        "command": valid["command"].replace("benchmarks/results/native-c2.json", "benchmarks/results/other-native.json"),
+    }
+    assert "profiler command --json must match retained artifact path" in retained_bench._profiler_provenance_blockers(
+        mismatched_retained_json,
+        retained_artifact_path="benchmarks/results/native-c2.json",
     )
     outside_trace_dir = {**valid, "trace_files": ["/tmp/other-profile/hipengine_kernel_trace.csv"]}
     assert "profiler.trace_files entries must be under profiler.trace_dir" in retained_bench._profiler_provenance_blockers(

@@ -1078,6 +1078,7 @@ def _profiler_command_provenance_blockers(
     *,
     trace_dir: str | None,
     profiler_artifact_path: str | None,
+    retained_artifact_path: str | None,
 ) -> list[str]:
     blockers: list[str] = []
     if "rocprofv3" not in command:
@@ -1092,10 +1093,17 @@ def _profiler_command_provenance_blockers(
         blockers.append("profiler command -d must match profiler.trace_dir")
     if profiler_artifact_path is not None and _command_arg_value(command, "--profiler-json") != profiler_artifact_path:
         blockers.append("profiler command --profiler-json must match profiler.artifact_path")
+    if retained_artifact_path is not None and _command_arg_value(command, "--json") != retained_artifact_path:
+        blockers.append("profiler command --json must match retained artifact path")
     return blockers
 
 
-def _profiler_provenance_blockers(profiler: Mapping[str, Any], *, profiled_command: str | None = None) -> list[str]:
+def _profiler_provenance_blockers(
+    profiler: Mapping[str, Any],
+    *,
+    profiled_command: str | None = None,
+    retained_artifact_path: str | None = None,
+) -> list[str]:
     blockers: list[str] = []
     profiler_artifact_path = profiler.get("artifact_path")
     retained_profiler_artifact_path = profiler_artifact_path if _is_retained_artifact_path(profiler_artifact_path) else None
@@ -1136,6 +1144,7 @@ def _profiler_provenance_blockers(profiler: Mapping[str, Any], *, profiled_comma
                 command,
                 trace_dir=trace_dir,
                 profiler_artifact_path=retained_profiler_artifact_path,
+                retained_artifact_path=retained_artifact_path,
             )
             for command in command_candidates
         ]
@@ -1755,10 +1764,15 @@ def _build_payload(
         bench,
     )
     profiled_command = _profiled_command(args, argv)
+    retained_artifact_path = str(args.json) if args.json is not None else None
     scheduler_metadata = dict(bench["scheduler_metadata"])
     _attach_profiler_graph_kernel_time_histogram(scheduler_metadata, profiler)
     profiler_captured = profiler.get("status") == "captured" and profiler.get("expected_kernels_present") is True
-    profiler_blockers = _profiler_provenance_blockers(profiler, profiled_command=profiled_command)
+    profiler_blockers = _profiler_provenance_blockers(
+        profiler,
+        profiled_command=profiled_command,
+        retained_artifact_path=retained_artifact_path,
+    )
     profiler_blockers.extend(_profiler_kernel_evidence_blockers(profiler))
     profiler_blockers.extend(_profiler_cpu_side_bottleneck_blockers(profiler))
     batch_execution = dict(bench["batch_execution"])
