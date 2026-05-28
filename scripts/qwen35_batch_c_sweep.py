@@ -1943,6 +1943,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if status == "passed" and failed_preconditions:
                 errors.append("commands[].status passed cannot include failed preconditions")
                 break
+            if status == "failed" and failed_preconditions:
+                errors.append("commands[].status failed cannot include failed preconditions")
+                break
             if status == "passed" and returncode != 0:
                 errors.append("commands[].status passed requires returncode 0")
                 break
