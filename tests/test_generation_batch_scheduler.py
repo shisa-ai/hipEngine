@@ -3750,6 +3750,12 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_precondition_argv_path["commands"][-1]["command"] = shlex.join(retained_argv)
     with pytest.raises(ValueError, match=r"commands\[\]\.argv retained native gate artifact paths must match output_dir filenames"):
         c_sweep.validate_sweep_summary(tampered_precondition_argv_path)
+    tampered_precondition_argv_parent_component = json.loads(json.dumps(persisted))
+    retained_argv = tampered_precondition_argv_parent_component["commands"][-1]["argv"]
+    retained_argv[retained_argv.index("--serial-bridge-json") + 1] = str(output_dir / "gate-parent" / ".." / "serial-bridge-c2.json")
+    tampered_precondition_argv_parent_component["commands"][-1]["command"] = shlex.join(retained_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv retained native gate artifact paths must not contain parent-directory components"):
+        c_sweep.validate_sweep_summary(tampered_precondition_argv_parent_component)
     tampered_missing_gate_argv = json.loads(json.dumps(persisted))
     retained_argv = tampered_missing_gate_argv["commands"][-1]["argv"]
     gate_index = retained_argv.index("--profiler-json")

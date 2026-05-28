@@ -1719,6 +1719,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                             errors.append("commands[].argv must include retained native gate artifact flags")
                             retained_gate_path_error = True
                             break
+                        if _path_has_parent_directory_component(gate_text):
+                            errors.append("commands[].argv retained native gate artifact paths must not contain parent-directory components")
+                            retained_gate_path_error = True
+                            break
                         gate_path = Path(gate_text)
                         gate_abs = (gate_path if gate_path.is_absolute() else REPO_ROOT / gate_path).resolve()
                         if gate_abs != (output_dir_abs / expected_name).resolve():
