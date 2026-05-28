@@ -4125,6 +4125,7 @@ class Qwen35ParoResidentSession:
                 requested_mode=sample_mode,
                 c2_equality_green=_env_flag("HIPENGINE_QWEN35_BATCH_SAMPLE_C2_EQ_OK"),
                 equality_artifact=os.environ.get("HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT") or None,
+                equality_rows=os.environ.get("HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS") or None,
             )
         except ValueError as exc:
             raise ValueError("HIPENGINE_QWEN35_BATCH_SAMPLE_MODE must be serial_lm_head or batched_lm_head") from exc

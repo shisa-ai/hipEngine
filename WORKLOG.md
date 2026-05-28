@@ -38796,3 +38796,28 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness still passed; retained scaling claims remain blocked on generated-token equality/profiler evidence
 ```
+
+## 2026-05-28 — CONCURRENCY sampler equality-row promotion gate
+
+Materially advanced retained native/C3.6/P3/P5 promotion gates without closing a queue item or adding a retained c>N performance claim:
+
+- `hipengine.dispatch.sampling.plan_batch_sampler_dispatch(...)` now requires c>N batched LM-head requests to provide equality rows matching the active batch rows; runtime plumbs this through `HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS` and records `sampler_execution.equality_rows`.
+- `scripts/qwen35_batch_retained_bench.py` now blocks retained promotion unless `execution.batch_execution.decode_execution.sampler_execution.equality_rows` matches the requested workload concurrency.
+- `scripts/qwen35_batch_artifact_schema.py` now rejects accepted/performance-claim c>N artifacts whose sampler equality rows are missing or differ from `workload.concurrency`.
+- Updated sampler dispatch/retained/schema tests plus `docs/ENVS.md` and `docs/CONCURRENCY.md` progress text. No retained c>N performance claim was added.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -k 'batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head or retained_sampler_execution_blockers_require_native_lm_head_evidence or diagnostic_artifact_schema_enforces_accepted_row_gates' -q && python3 -m pytest -q tests/test_qwen35_resident_batch_layout.py -k 'sample_batch_batched_lm_head_falls_back_without_c2_evidence or sample_batch_requires_retained_equality_artifact' -q
+# 5 passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness still passed; retained scaling claims remain blocked on generated-token equality/profiler evidence
+```

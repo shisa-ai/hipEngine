@@ -32,6 +32,7 @@ class BatchSamplerDispatchDecision:
     native_row_aware_lm_head: bool
     c2_equality_green: bool
     equality_artifact: str | None
+    equality_rows: int | None
     blockers: tuple[str, ...]
 
     def to_json_dict(self) -> dict[str, Any]:
@@ -42,6 +43,7 @@ class BatchSamplerDispatchDecision:
             "native_row_aware_lm_head": self.native_row_aware_lm_head,
             "c2_equality_green": self.c2_equality_green,
             "equality_artifact": self.equality_artifact,
+            "equality_rows": self.equality_rows,
             "blockers": list(self.blockers),
         }
 
@@ -59,25 +61,48 @@ def _is_retained_artifact_path(value: str) -> bool:
     return not path.is_absolute() and len(path.parts) >= 3 and path.parts[:2] == ("benchmarks", "results") and ".." not in path.parts
 
 
+def _optional_positive_int(value: int | str | None) -> tuple[int | None, bool]:
+    if value is None:
+        return None, True
+    if isinstance(value, bool):
+        return None, False
+    if isinstance(value, int):
+        return (value, True) if value > 0 else (None, False)
+    text = str(value).strip()
+    if not text:
+        return None, True
+    try:
+        parsed = int(text, 10)
+    except ValueError:
+        return None, False
+    if parsed <= 0:
+        return None, False
+    return parsed, True
+
+
 def plan_batch_sampler_dispatch(
     *,
     rows: int,
     requested_mode: BatchSamplerMode | str = BatchSamplerMode.SERIAL_LM_HEAD,
     c2_equality_green: bool = False,
     equality_artifact: str | None = None,
+    equality_rows: int | str | None = None,
 ) -> BatchSamplerDispatchDecision:
     """Plan row sampling for a native batch decode result.
 
     ``serial_lm_head`` always selects the current per-row c=1 LM-head loop.  A
     requested ``batched_lm_head`` is honored for c>N only when generated-token
-    equality evidence is explicitly marked green and an artifact path is
-    supplied.  Otherwise the decision falls back to ``serial_lm_head`` with
-    blockers, preserving correctness and preventing premature throughput claims.
+    equality evidence is explicitly marked green and an artifact path plus row
+    count matching the current batch are supplied.  Otherwise the decision falls
+    back to ``serial_lm_head`` with blockers, preserving correctness and
+    preventing premature throughput claims.
     """
 
     if rows <= 0:
         raise ValueError("rows must be positive")
     requested = _sampler_mode(requested_mode)
+    parsed_equality_rows, equality_rows_valid = _optional_positive_int(equality_rows)
+    recorded_equality_rows = parsed_equality_rows if equality_rows_valid else None
     if requested is BatchSamplerMode.SERIAL_LM_HEAD:
         return BatchSamplerDispatchDecision(
             rows=rows,
@@ -86,6 +111,7 @@ def plan_batch_sampler_dispatch(
             native_row_aware_lm_head=False,
             c2_equality_green=bool(c2_equality_green),
             equality_artifact=equality_artifact,
+            equality_rows=recorded_equality_rows,
             blockers=(),
         )
     if rows == 1:
@@ -96,6 +122,7 @@ def plan_batch_sampler_dispatch(
             native_row_aware_lm_head=True,
             c2_equality_green=bool(c2_equality_green),
             equality_artifact=equality_artifact,
+            equality_rows=recorded_equality_rows,
             blockers=(),
         )
     blockers: list[str] = []
@@ -106,6 +133,12 @@ def plan_batch_sampler_dispatch(
         blockers.append("batched LM-head requires an equality artifact path")
     elif not _is_retained_artifact_path(artifact):
         blockers.append("batched LM-head equality artifact path must be under benchmarks/results")
+    if not equality_rows_valid:
+        blockers.append("batched LM-head equality rows must be a positive integer")
+    elif parsed_equality_rows is None:
+        blockers.append("batched LM-head requires equality rows matching batch rows")
+    elif parsed_equality_rows != rows:
+        blockers.append("batched LM-head equality rows must match batch rows")
     if blockers:
         return BatchSamplerDispatchDecision(
             rows=rows,
@@ -114,6 +147,7 @@ def plan_batch_sampler_dispatch(
             native_row_aware_lm_head=False,
             c2_equality_green=bool(c2_equality_green),
             equality_artifact=artifact,
+            equality_rows=recorded_equality_rows,
             blockers=tuple(blockers),
         )
     return BatchSamplerDispatchDecision(
@@ -123,6 +157,7 @@ def plan_batch_sampler_dispatch(
         native_row_aware_lm_head=True,
         c2_equality_green=True,
         equality_artifact=artifact,
+        equality_rows=parsed_equality_rows,
         blockers=(),
     )
 

@@ -4284,15 +4284,36 @@ def test_batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head() -> No
     assert traversal_artifact.mode is BatchSamplerMode.SERIAL_LM_HEAD
     assert "batched LM-head equality artifact path must be under benchmarks/results" in traversal_artifact.blockers
 
-    allowed = plan_batch_sampler_dispatch(
+    missing_equality_rows = plan_batch_sampler_dispatch(
         rows=8,
         requested_mode="batched_lm_head",
         c2_equality_green=True,
         equality_artifact="benchmarks/results/qwen35-c8-eq.json",
     )
+    assert missing_equality_rows.mode is BatchSamplerMode.SERIAL_LM_HEAD
+    assert "batched LM-head requires equality rows matching batch rows" in missing_equality_rows.blockers
+
+    mismatched_equality_rows = plan_batch_sampler_dispatch(
+        rows=8,
+        requested_mode="batched_lm_head",
+        c2_equality_green=True,
+        equality_artifact="benchmarks/results/qwen35-c8-eq.json",
+        equality_rows=2,
+    )
+    assert mismatched_equality_rows.mode is BatchSamplerMode.SERIAL_LM_HEAD
+    assert "batched LM-head equality rows must match batch rows" in mismatched_equality_rows.blockers
+
+    allowed = plan_batch_sampler_dispatch(
+        rows=8,
+        requested_mode="batched_lm_head",
+        c2_equality_green=True,
+        equality_artifact="benchmarks/results/qwen35-c8-eq.json",
+        equality_rows="8",
+    )
     assert allowed.mode is BatchSamplerMode.BATCHED_LM_HEAD
     assert allowed.native_row_aware_lm_head is True
     assert allowed.to_json_dict()["equality_artifact"] == "benchmarks/results/qwen35-c8-eq.json"
+    assert allowed.to_json_dict()["equality_rows"] == 8
 
     with pytest.raises(ValueError, match="unknown batch sampler mode"):
         plan_batch_sampler_dispatch(rows=2, requested_mode="surprise")
@@ -6530,6 +6551,7 @@ def test_qwen35_retained_sampler_execution_blockers_require_native_lm_head_evide
                 "native_row_aware_lm_head": True,
                 "c2_equality_green": True,
                 "equality_artifact": "benchmarks/results/qwen35-c2-sampler-eq.json",
+                "equality_rows": 2,
                 "blockers": [],
             }
         }
@@ -6543,6 +6565,7 @@ def test_qwen35_retained_sampler_execution_blockers_require_native_lm_head_evide
                 "native_row_aware_lm_head": False,
                 "c2_equality_green": False,
                 "equality_artifact": "/tmp/qwen35-c2-sampler-eq.json",
+                "equality_rows": 1,
                 "blockers": ["batched LM-head requires green c>N generated-token equality evidence"],
             }
         }
@@ -6555,6 +6578,7 @@ def test_qwen35_retained_sampler_execution_blockers_require_native_lm_head_evide
     assert "execution.batch_execution.decode_execution.sampler_execution.native_row_aware_lm_head must be true" in blockers
     assert "execution.batch_execution.decode_execution.sampler_execution.mode must be batched_lm_head" in blockers
     assert "execution.batch_execution.decode_execution.sampler_execution.c2_equality_green must be true" in blockers
+    assert "execution.batch_execution.decode_execution.sampler_execution.equality_rows must match workload.concurrency" in blockers
     assert "execution.batch_execution.decode_execution.sampler_execution.equality_artifact must be under benchmarks/results" in blockers
     assert "execution.batch_execution.decode_execution.sampler_execution.blockers must be empty" in blockers
 
@@ -7052,6 +7076,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                         "native_row_aware_lm_head": True,
                         "c2_equality_green": True,
                         "equality_artifact": "benchmarks/results/qwen35-c2-sampler-eq.json",
+                        "equality_rows": 2,
                         "blockers": [],
                     },
                 },
@@ -7728,6 +7753,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     missing_sampler_equality["execution"]["batch_execution"]["decode_execution"]["sampler_execution"]["c2_equality_green"] = False
     with pytest.raises(ValueError, match="sampler_execution.c2_equality_green must be true"):
         validate_cn_diagnostic_artifact_payload(missing_sampler_equality)
+
+    sampler_equality_row_mismatch = json.loads(json.dumps(accepted))
+    sampler_equality_row_mismatch["execution"]["batch_execution"]["decode_execution"]["sampler_execution"]["equality_rows"] = 1
+    with pytest.raises(ValueError, match="sampler_execution.equality_rows must match workload.concurrency"):
+        validate_cn_diagnostic_artifact_payload(sampler_equality_row_mismatch)
 
     tmp_sampler_artifact = json.loads(json.dumps(accepted))
     tmp_sampler_artifact["execution"]["batch_execution"]["decode_execution"]["sampler_execution"]["equality_artifact"] = "/tmp/qwen35-c2-sampler-eq.json"

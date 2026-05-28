@@ -1025,6 +1025,11 @@ def _validate_accepted_sampler_execution(
         errors.append("execution.batch_execution.decode_execution.sampler_execution.mode must be batched_lm_head for accepted artifacts")
     if sampler_execution.get("c2_equality_green") is not True:
         errors.append("execution.batch_execution.decode_execution.sampler_execution.c2_equality_green must be true for accepted artifacts")
+    equality_rows = sampler_execution.get("equality_rows")
+    if isinstance(equality_rows, bool) or not isinstance(equality_rows, int):
+        errors.append("execution.batch_execution.decode_execution.sampler_execution.equality_rows must be an int for accepted artifacts")
+    elif isinstance(concurrency, int) and not isinstance(concurrency, bool) and equality_rows != concurrency:
+        errors.append("execution.batch_execution.decode_execution.sampler_execution.equality_rows must match workload.concurrency for accepted artifacts")
     equality_artifact = sampler_execution.get("equality_artifact")
     if not isinstance(equality_artifact, str) or not equality_artifact:
         errors.append("execution.batch_execution.decode_execution.sampler_execution.equality_artifact must be a non-empty string for accepted artifacts")

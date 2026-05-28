@@ -1657,6 +1657,12 @@ def _sampler_execution_blockers(batch_execution: Mapping[str, Any], *, expected_
         blockers.append("execution.batch_execution.decode_execution.sampler_execution.mode must be batched_lm_head")
     if sampler_execution.get("c2_equality_green") is not True:
         blockers.append("execution.batch_execution.decode_execution.sampler_execution.c2_equality_green must be true")
+    if expected_concurrency is not None:
+        equality_rows = sampler_execution.get("equality_rows")
+        if isinstance(equality_rows, bool) or not isinstance(equality_rows, int):
+            blockers.append("execution.batch_execution.decode_execution.sampler_execution.equality_rows must be an int")
+        elif equality_rows != int(expected_concurrency):
+            blockers.append("execution.batch_execution.decode_execution.sampler_execution.equality_rows must match workload.concurrency")
     if not _is_retained_artifact_path(sampler_execution.get("equality_artifact")):
         blockers.append("execution.batch_execution.decode_execution.sampler_execution.equality_artifact must be under benchmarks/results")
     if sampler_execution.get("blockers") != []:
