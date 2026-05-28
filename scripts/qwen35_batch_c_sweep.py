@@ -567,6 +567,10 @@ def _path_has_symlink_parent(path: str | Path) -> bool:
     return False
 
 
+def _path_has_parent_directory_component(path: str | Path) -> bool:
+    return ".." in Path(path).parts
+
+
 def _resolve_profiler_trace_file(trace_file: str, *, profiler_path: Path) -> Path:
     path = Path(trace_file)
     if path.is_absolute():
@@ -2184,6 +2188,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         break
                     if any(not _is_resolved_path_relative_to(trace_file, profiler_trace_dir) for trace_file in profiler_trace_files):
                         errors.append("commands[].preconditions[].profiler_trace_files must be under profiler_trace_dir when passed")
+                        break
+                    if any(_path_has_parent_directory_component(trace_file) for trace_file in profiler_trace_files):
+                        errors.append("commands[].preconditions[].profiler_trace_files must not contain parent-directory components when passed")
                         break
                     profiler_kernel_names = profiler_precondition.get("profiler_trace_kernel_names")
                     if (
