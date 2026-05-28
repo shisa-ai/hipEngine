@@ -1802,6 +1802,8 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     assert summary["status"] == "planned"
     assert summary["dry_run"] is True
     assert summary["options"] == {
+        "model": "/tmp/model",
+        "fixture": "/tmp/fixture.json",
         "stop_on_failure": True,
         "include_int8": False,
         "require_cached_build": False,
@@ -3547,6 +3549,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_options["options"]["stop_on_failure"] = "yes"
     with pytest.raises(ValueError, match="options.stop_on_failure must be a bool"):
         c_sweep.validate_sweep_summary(tampered_options)
+    tampered_options_model = json.loads(json.dumps(persisted))
+    tampered_options_model["options"]["model"] = "/tmp/other-model"
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv --model must match options.model"):
+        c_sweep.validate_sweep_summary(tampered_options_model)
+    tampered_options_fixture = json.loads(json.dumps(persisted))
+    tampered_options_fixture["options"]["fixture"] = "/tmp/other-fixture.json"
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv --fixture must match options.fixture"):
+        c_sweep.validate_sweep_summary(tampered_options_fixture)
     tampered_output_dir = json.loads(json.dumps(persisted))
     tampered_output_dir["output_dir"] = ""
     with pytest.raises(ValueError, match="output_dir must be a non-empty string"):

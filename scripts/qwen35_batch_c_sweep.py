@@ -1549,12 +1549,22 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         elif _path_has_symlink_parent(output_dir_check_path):
             errors.append("output_dir parent directories must not be symlinks")
     options = summary.get("options")
+    option_model: str | None = None
+    option_fixture: str | None = None
     if not isinstance(options, Mapping):
         errors.append("options must be an object")
     else:
         for option in ("stop_on_failure", "include_int8", "require_cached_build"):
             if not isinstance(options.get(option), bool):
                 errors.append(f"options.{option} must be a bool")
+        for option in ("model", "fixture"):
+            value = options.get(option)
+            if not isinstance(value, str) or not value:
+                errors.append(f"options.{option} must be a non-empty string")
+            elif option == "model":
+                option_model = value
+            else:
+                option_fixture = value
         compiler_version_file = options.get("compiler_version_file")
         if compiler_version_file is not None and not isinstance(compiler_version_file, str):
             errors.append("options.compiler_version_file must be a string or null")
@@ -1634,6 +1644,17 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 break
             if len(argv) < 2 or not Path(argv[0]).name.startswith("python"):
                 errors.append("commands[].argv must start with a python executable")
+                break
+            command_category = entry.get("category")
+            if command_category in {"serial_bridge", "native_diagnostic", "int8_native_diagnostic"} and option_model is not None:
+                if _argv_value(argv, "--model") != option_model:
+                    errors.append("commands[].argv --model must match options.model")
+                    break
+            fixture_required = command_category in {"serial_bridge", "int8_native_diagnostic"} or (
+                command_category == "native_diagnostic" and entry.get("batch_size") != 1
+            )
+            if fixture_required and option_fixture is not None and _argv_value(argv, "--fixture") != option_fixture:
+                errors.append("commands[].argv --fixture must match options.fixture")
                 break
             duplicated_retained_flags = _duplicate_flags(argv, _RETAINED_BENCH_UNIQUE_FLAGS)
             if duplicated_retained_flags:
@@ -2652,6 +2673,8 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
 
 def _summary_options(args: argparse.Namespace) -> dict[str, Any]:
     return {
+        "model": str(args.model),
+        "fixture": str(args.fixture),
         "stop_on_failure": bool(args.stop_on_failure),
         "include_int8": bool(getattr(args, "include_int8", False)),
         "require_cached_build": bool(args.require_cached_build),
