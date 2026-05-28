@@ -2380,6 +2380,12 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     failed_row.pop("postconditions")
     with pytest.raises(ValueError, match=r"commands\[\]\.status failed cannot include failed preconditions"):
         c_sweep.validate_sweep_summary(tampered_failed_row_failed_precondition)
+    tampered_failed_row_passed_postcondition = json.loads(json.dumps(persisted))
+    failed_row = tampered_failed_row_passed_postcondition["commands"][-1]
+    failed_row["status"] = "failed"
+    failed_row["returncode"] = 0
+    with pytest.raises(ValueError, match=r"commands\[\]\.status failed with returncode 0 cannot include only passed postconditions"):
+        c_sweep.validate_sweep_summary(tampered_failed_row_passed_postcondition)
     tampered_postcondition_schema = json.loads(json.dumps(persisted))
     tampered_postcondition_schema["commands"][-1]["postconditions"][0]["kind"] = ""
     with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.kind must be a non-empty string"):
