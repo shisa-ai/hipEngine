@@ -1037,7 +1037,7 @@ roll-up/status view.
       `profiler.total_kernel_duration_ns`
       matching the duration-map sum, per-kernel duration-share keys/values
       matching `duration / total`, finite category duration/share buckets for
-      attention/MoE/projection/sampling/graph/other, and CPU-side bottleneck
+      attention/MoE/projection/sampling/graph/other, finite CPU-side bottleneck
       duration/share totals, plus an accepted non-row-GEMV
       `projection_dispatch` decision whose selected candidate is listed with
       matching retained speedup evidence and appears in profiler kernel names.

@@ -852,8 +852,8 @@ def _validate_profiler_cpu_side_bottlenecks(profiler: dict[str, Any], reasons: l
     cpu_total = profiler.get("cpu_side_total_seconds")
     durations = profiler.get("cpu_side_bottlenecks_seconds")
     shares = profiler.get("cpu_side_bottleneck_shares")
-    if not _is_number(cpu_total) or float(cpu_total) <= 0.0:
-        reasons.append("cpu_side_total_seconds is missing or non-positive numeric")
+    if not _is_positive_finite_number(cpu_total):
+        reasons.append("cpu_side_total_seconds is missing or non-positive finite numeric")
         return
     if not isinstance(durations, dict) or not durations:
         reasons.append("cpu_side_bottlenecks_seconds is missing or empty")
@@ -871,20 +871,25 @@ def _validate_profiler_cpu_side_bottlenecks(profiler: dict[str, Any], reasons: l
 
     duration_sum = 0.0
     share_sum = 0.0
+    cpu_value_error = False
     for category in _PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES:
         duration_seconds = durations.get(category)
         duration_share = shares.get(category)
-        if not _is_number(duration_seconds) or float(duration_seconds) < 0.0:
-            reasons.append(f"cpu_side_bottlenecks_seconds.{category} is missing or negative numeric")
+        if not _is_nonnegative_finite_number(duration_seconds):
+            reasons.append(f"cpu_side_bottlenecks_seconds.{category} is missing or negative/non-finite numeric")
+            cpu_value_error = True
             continue
         duration_sum += float(duration_seconds)
-        if not _is_number(duration_share) or float(duration_share) < 0.0:
-            reasons.append(f"cpu_side_bottleneck_shares.{category} is missing or negative numeric")
+        if not _is_nonnegative_finite_number(duration_share):
+            reasons.append(f"cpu_side_bottleneck_shares.{category} is missing or negative/non-finite numeric")
+            cpu_value_error = True
             continue
         share_sum += float(duration_share)
         expected_share = float(duration_seconds) / float(cpu_total)
         if abs(float(duration_share) - expected_share) > 1e-6:
             reasons.append(f"cpu_side_bottleneck_shares.{category} does not match cpu-side duration share")
+    if cpu_value_error:
+        return
     tolerance = max(1e-9, float(cpu_total) * 1e-6)
     if abs(duration_sum - float(cpu_total)) > tolerance:
         reasons.append("cpu_side_bottlenecks_seconds does not sum to cpu_side_total_seconds")
@@ -2203,7 +2208,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if abs(category_share_sum - 1.0) > 1e-6:
                         errors.append("commands[].preconditions[].kernel_duration_category_shares must sum to 1.0 when profiler passed")
                         break
-                    if not _is_number(profiler_precondition.get("cpu_side_total_seconds")) or float(profiler_precondition["cpu_side_total_seconds"]) <= 0.0:
+                    if not _is_positive_finite_number(profiler_precondition.get("cpu_side_total_seconds")):
                         errors.append("commands[].preconditions[].cpu_side_total_seconds must be positive when profiler passed")
                         break
                     cpu_durations = profiler_precondition.get("cpu_side_bottlenecks_seconds")
@@ -2211,10 +2216,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if (
                         not isinstance(cpu_durations, dict)
                         or {key for key in cpu_durations if isinstance(key, str)} != set(_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES)
-                        or any(not _is_number(cpu_durations.get(category)) or float(cpu_durations[category]) < 0.0 for category in _PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES)
+                        or any(not _is_nonnegative_finite_number(cpu_durations.get(category)) for category in _PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES)
                         or not isinstance(cpu_shares, dict)
                         or {key for key in cpu_shares if isinstance(key, str)} != set(_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES)
-                        or any(not _is_number(cpu_shares.get(category)) or float(cpu_shares[category]) < 0.0 for category in _PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES)
+                        or any(not _is_nonnegative_finite_number(cpu_shares.get(category)) for category in _PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES)
                     ):
                         errors.append("commands[].preconditions[].cpu-side bottlenecks must include required non-negative categories when profiler passed")
                         break

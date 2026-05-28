@@ -1377,6 +1377,42 @@ def test_batch_c_sweep_profiler_precondition_rejects_nonfinite_kernel_category_d
     }
 
 
+def test_batch_c_sweep_profiler_precondition_rejects_nonfinite_cpu_bottleneck_duration(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"]["cpu_side_bottlenecks_seconds"]["decode"] = float("nan")
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "cpu_side_bottlenecks_seconds.decode is missing or negative/non-finite numeric",
+    }
+
+
 def test_batch_c_sweep_profiler_precondition_rejects_missing_cpu_summary(tmp_path: Path) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
@@ -3452,6 +3488,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_profiler_precondition_cpu_total["commands"][-1]["preconditions"][-1]["cpu_side_total_seconds"] = 0.0
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.cpu_side_total_seconds must be positive when profiler passed"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_cpu_total)
+    tampered_profiler_precondition_infinite_cpu_total = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_infinite_cpu_total["commands"][-1]["preconditions"][-1]["cpu_side_total_seconds"] = float("inf")
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.cpu_side_total_seconds must be positive when profiler passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_infinite_cpu_total)
     tampered_profiler_precondition_cpu_sum = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_cpu_sum["commands"][-1]["preconditions"][-1]["cpu_side_total_seconds"] = 11.0
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.cpu_side_bottlenecks_seconds must sum to cpu_side_total_seconds when profiler passed"):
@@ -3464,6 +3504,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_profiler_precondition_cpu_categories["commands"][-1]["preconditions"][-1]["cpu_side_bottlenecks_seconds"]["decode"] = -1.0
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.cpu-side bottlenecks must include required non-negative categories when profiler passed"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_cpu_categories)
+    tampered_profiler_precondition_nan_cpu_duration = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_nan_cpu_duration["commands"][-1]["preconditions"][-1]["cpu_side_bottlenecks_seconds"]["decode"] = float("nan")
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.cpu-side bottlenecks must include required non-negative categories when profiler passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_nan_cpu_duration)
+    tampered_profiler_precondition_infinite_cpu_share = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_infinite_cpu_share["commands"][-1]["preconditions"][-1]["cpu_side_bottleneck_shares"]["decode"] = float("inf")
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.cpu-side bottlenecks must include required non-negative categories when profiler passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_infinite_cpu_share)
     tampered_primitive_precondition_schema = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_schema["commands"][-1]["preconditions"][0]["primitive_schema"] = 2
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_schema must be typed int 1 when primitive passed"):
