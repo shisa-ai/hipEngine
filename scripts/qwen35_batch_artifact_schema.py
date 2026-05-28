@@ -759,8 +759,8 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
             errors.append("memory.dynamic_pool.pool_counters must be an object for accepted artifacts")
         else:
             for field in _REQUIRED_ACCEPTED_POOL_COUNTER_FIELDS:
-                if not _is_number(pool_counters.get(field)):
-                    errors.append(f"memory.dynamic_pool.pool_counters.{field} must be numeric for accepted artifacts")
+                if not _is_nonnegative_number(pool_counters.get(field)):
+                    errors.append(f"memory.dynamic_pool.pool_counters.{field} must be finite non-negative numeric for accepted artifacts")
     stable_block_id = memory.get("stable_block_id")
     if isinstance(stable_block_id, Mapping) and stable_block_id.get("passed") is not True:
         errors.append("memory.stable_block_id.passed must be true for accepted artifacts")

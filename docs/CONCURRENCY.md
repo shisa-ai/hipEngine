@@ -967,7 +967,8 @@ roll-up/status view.
       after admission, finite nonnegative per-row timing, matching row ids,
       and latency samples matching completion-minus-admission plus derived
       percentiles (`p50` median, `p95 >= p50`) for every row in
-      `workload.concurrency`, execution scheduler metadata with decode shape-key
+      `workload.concurrency`, finite nonnegative dynamic-pool counters,
+      execution scheduler metadata with decode shape-key
       and non-empty graph-bucket stats, positive finite
       aggregate/per-request throughput whose c-sweep scaling precondition
       concurrency and run-shape labels are typed and match `workload`, and whose

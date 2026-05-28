@@ -6768,6 +6768,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="stable_block_id|pool_counters"):
         validate_cn_diagnostic_artifact_payload(missing_pool)
 
+    nonfinite_pool_counter = json.loads(json.dumps(accepted))
+    nonfinite_pool_counter["memory"]["dynamic_pool"]["pool_counters"]["current_bytes"] = float("inf")
+    with pytest.raises(ValueError, match="pool_counters.current_bytes must be finite non-negative numeric"):
+        validate_cn_diagnostic_artifact_payload(nonfinite_pool_counter)
+
+    negative_pool_counter = json.loads(json.dumps(accepted))
+    negative_pool_counter["memory"]["dynamic_pool"]["pool_counters"]["free_pages"] = -1
+    with pytest.raises(ValueError, match="pool_counters.free_pages must be finite non-negative numeric"):
+        validate_cn_diagnostic_artifact_payload(negative_pool_counter)
+
     missing_scaling = dict(accepted)
     missing_scaling.pop("scaling")
     with pytest.raises(ValueError, match="scaling"):
