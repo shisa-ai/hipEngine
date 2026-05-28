@@ -1869,6 +1869,31 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     assert str(tmp_path / "artifacts" / "profiler-c2.json") in retained_c2.argv
 
 
+def test_batch_c_sweep_rejects_wrong_seed_before_creating_artifacts(tmp_path: Path, monkeypatch) -> None:
+    output_dir = tmp_path / "artifacts"
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--dry-run",
+            "--batch-sizes",
+            "2",
+            "--seed",
+            "999",
+            "--output-dir",
+            str(output_dir),
+        ]
+    )
+    monkeypatch.setattr(
+        c_sweep.subprocess,
+        "run",
+        lambda *args, **kwargs: pytest.fail("wrong-seed sweep should fail before launching subprocesses"),
+    )
+
+    with pytest.raises(ValueError, match="--seed must match required primitive correctness seed"):
+        run_sweep(args)
+
+    assert not output_dir.exists()
+
+
 def test_batch_c_sweep_stops_and_counts_failed_command(tmp_path: Path, monkeypatch) -> None:
     args = build_c_sweep_parser().parse_args(
         [

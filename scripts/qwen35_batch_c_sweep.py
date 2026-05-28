@@ -1419,6 +1419,7 @@ def _retained_profiler_synthesis_postcondition(
 
 
 def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
+    _validate_run_options(args)
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     commands = build_sweep_commands(args)
@@ -2705,6 +2706,11 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             break
     if errors:
         raise ValueError("invalid c-sweep summary: " + "; ".join(errors))
+
+
+def _validate_run_options(args: argparse.Namespace) -> None:
+    if int(args.seed) != _REQUIRED_PRIMITIVE_CORRECTNESS_SEED:
+        raise ValueError("--seed must match required primitive correctness seed")
 
 
 def _summary_options(args: argparse.Namespace) -> dict[str, Any]:
