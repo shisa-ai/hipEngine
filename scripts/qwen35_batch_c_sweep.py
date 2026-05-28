@@ -555,6 +555,18 @@ def _is_resolved_path_relative_to(path: str | Path, root: str | Path) -> bool:
     return _resolve_repo_path(path).is_relative_to(_resolve_repo_path(root))
 
 
+def _path_has_symlink_parent(path: str | Path) -> bool:
+    path = Path(path)
+    if not path.is_absolute():
+        path = REPO_ROOT / path
+    current = path.parent
+    while current != current.parent:
+        if current.is_symlink():
+            return True
+        current = current.parent
+    return False
+
+
 def _resolve_profiler_trace_file(trace_file: str, *, profiler_path: Path) -> Path:
     path = Path(trace_file)
     if path.is_absolute():
@@ -1527,6 +1539,8 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         output_dir_check_path = output_dir_path if output_dir_path.is_absolute() else REPO_ROOT / output_dir_path
         if output_dir_check_path.is_symlink():
             errors.append("output_dir must not be a symlink")
+        elif _path_has_symlink_parent(output_dir_check_path):
+            errors.append("output_dir parent directories must not be symlinks")
     options = summary.get("options")
     if not isinstance(options, Mapping):
         errors.append("options must be an object")
