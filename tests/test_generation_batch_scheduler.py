@@ -2340,6 +2340,13 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_precondition_argv_path["commands"][-1]["command"] = shlex.join(retained_argv)
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.artifact_path must match retained native gate argv"):
         c_sweep.validate_sweep_summary(tampered_precondition_argv_path)
+    tampered_missing_gate_argv = json.loads(json.dumps(persisted))
+    retained_argv = tampered_missing_gate_argv["commands"][-1]["argv"]
+    gate_index = retained_argv.index("--profiler-json")
+    del retained_argv[gate_index : gate_index + 2]
+    tampered_missing_gate_argv["commands"][-1]["command"] = shlex.join(retained_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv must include retained native gate artifact flags"):
+        c_sweep.validate_sweep_summary(tampered_missing_gate_argv)
     preconditions_by_kind = {item["kind"]: item for item in native["preconditions"]}
     assert preconditions_by_kind["c1_baseline"] == {
         "kind": "c1_baseline",

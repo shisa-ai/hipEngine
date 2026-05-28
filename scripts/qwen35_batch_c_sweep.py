@@ -1476,6 +1476,16 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if expected_scripts is not None and (len(argv) < 2 or argv[1] not in expected_scripts):
                 errors.append("commands[].category must match commands[].argv script")
                 break
+            if entry.get("category") == "native_diagnostic" and entry.get("batch_size") != 1:
+                retained_gate_flags = (
+                    "--c1-baseline-json",
+                    "--serial-bridge-json",
+                    "--primitive-correctness-json",
+                    "--profiler-json",
+                )
+                if any(not isinstance(_argv_value(argv, flag), str) or not _argv_value(argv, flag) for flag in retained_gate_flags):
+                    errors.append("commands[].argv must include retained native gate artifact flags")
+                    break
             status = entry.get("status")
             if status not in {"planned", "passed", "skipped", "failed"}:
                 errors.append("commands[].status must be planned, passed, skipped, or failed")
