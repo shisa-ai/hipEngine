@@ -1550,6 +1550,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         _validate_profiler_kernel_duration_shares(profiler, kernel_durations, errors)
         _validate_profiler_kernel_duration_categories(profiler, kernel_durations, errors)
         _validate_graph_replay_profiler_evidence(payload, profiler, kernel_durations, errors)
+        _validate_sampler_profiler_evidence(payload, profiler, kernel_durations, errors)
         _validate_profiler_cpu_side_bottlenecks(profiler, errors)
         _validate_graph_histogram_profiler_coverage(payload, kernel_durations, errors)
         if isinstance(expected_kernel_names, list):
@@ -1560,6 +1561,46 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
                     errors.append(f"profiler.kernel_durations_ns.{kernel_name} must be positive numeric for accepted artifacts")
     _validate_projection_dispatch_profiler_evidence(payload, profiler, errors)
     _validate_optional_projection_dispatch_candidates(payload, errors)
+
+
+def _sampler_profiler_name_matches(kernel_name: str) -> bool:
+    lowered = kernel_name.lower()
+    return "batch" in lowered and _profiler_kernel_duration_category(kernel_name) == "sampling"
+
+
+def _validate_sampler_profiler_evidence(
+    payload: Mapping[str, Any],
+    profiler: Mapping[str, Any],
+    kernel_durations: Mapping[Any, Any],
+    errors: list[str],
+) -> None:
+    execution = payload.get("execution")
+    batch_execution = execution.get("batch_execution") if isinstance(execution, Mapping) else None
+    decode_execution = batch_execution.get("decode_execution") if isinstance(batch_execution, Mapping) else None
+    sampler_execution = decode_execution.get("sampler_execution") if isinstance(decode_execution, Mapping) else None
+    if not isinstance(sampler_execution, Mapping):
+        return
+    if sampler_execution.get("mode") != "batched_lm_head" or sampler_execution.get("native_row_aware_lm_head") is not True:
+        return
+    expected_kernel_names = profiler.get("expected_kernel_names")
+    if isinstance(expected_kernel_names, list) and not any(
+        isinstance(kernel_name, str) and _sampler_profiler_name_matches(kernel_name)
+        for kernel_name in expected_kernel_names
+    ):
+        errors.append("profiler.expected_kernel_names must include a native batch sampler/lm_head kernel for accepted artifacts")
+    trace_kernel_names = profiler.get("trace_kernel_names")
+    if isinstance(trace_kernel_names, list) and not any(
+        isinstance(kernel_name, str) and _sampler_profiler_name_matches(kernel_name)
+        for kernel_name in trace_kernel_names
+    ):
+        errors.append("profiler.trace_kernel_names must include a native batch sampler/lm_head kernel for accepted artifacts")
+    if not any(
+        isinstance(kernel_name, str)
+        and _sampler_profiler_name_matches(kernel_name)
+        and _is_positive_number(duration_ns)
+        for kernel_name, duration_ns in kernel_durations.items()
+    ):
+        errors.append("profiler.kernel_durations_ns must include a positive native batch sampler/lm_head duration for accepted artifacts")
 
 
 def _validate_graph_replay_profiler_evidence(

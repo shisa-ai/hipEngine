@@ -1779,6 +1779,42 @@ def _sampler_artifact_row_count(payload: Mapping[str, Any]) -> Any:
     return None
 
 
+def _sampler_profiler_name_matches(kernel_name: str) -> bool:
+    lowered = kernel_name.lower()
+    return "batch" in lowered and _profiler_kernel_duration_category(kernel_name) == "sampling"
+
+
+def _sampler_execution_profiler_blockers(batch_execution: Mapping[str, Any], profiler: Mapping[str, Any]) -> list[str]:
+    decode_execution = batch_execution.get("decode_execution")
+    sampler_execution = decode_execution.get("sampler_execution") if isinstance(decode_execution, Mapping) else None
+    if not isinstance(sampler_execution, Mapping):
+        return []
+    if sampler_execution.get("mode") != "batched_lm_head" or sampler_execution.get("native_row_aware_lm_head") is not True:
+        return []
+    blockers: list[str] = []
+    expected_kernel_names = profiler.get("expected_kernel_names")
+    if isinstance(expected_kernel_names, list) and not any(
+        isinstance(kernel_name, str) and _sampler_profiler_name_matches(kernel_name)
+        for kernel_name in expected_kernel_names
+    ):
+        blockers.append("profiler.expected_kernel_names must include a native batch sampler/lm_head kernel")
+    trace_kernel_names = profiler.get("trace_kernel_names")
+    if isinstance(trace_kernel_names, list) and not any(
+        isinstance(kernel_name, str) and _sampler_profiler_name_matches(kernel_name)
+        for kernel_name in trace_kernel_names
+    ):
+        blockers.append("profiler.trace_kernel_names must include a native batch sampler/lm_head kernel")
+    kernel_durations = profiler.get("kernel_durations_ns")
+    if isinstance(kernel_durations, Mapping) and not any(
+        isinstance(kernel_name, str)
+        and _sampler_profiler_name_matches(kernel_name)
+        and _is_finite_positive_number(duration_ns)
+        for kernel_name, duration_ns in kernel_durations.items()
+    ):
+        blockers.append("profiler.kernel_durations_ns must include a positive native batch sampler/lm_head duration")
+    return blockers
+
+
 def _sampler_execution_blockers(batch_execution: Mapping[str, Any], *, expected_concurrency: int | None = None) -> list[str]:
     decode_execution = batch_execution.get("decode_execution")
     if not isinstance(decode_execution, Mapping):
@@ -2271,6 +2307,7 @@ def _build_payload(
     )
     projection_blockers.extend(_projection_dispatch_profiler_blockers(batch_execution, profiler))
     sampler_blockers = _sampler_execution_blockers(batch_execution, expected_concurrency=args.batch_size)
+    sampler_blockers.extend(_sampler_execution_profiler_blockers(batch_execution, profiler))
     memory = _retained_memory_payload(args, kv_policy, bench)
     memory_blockers = _memory_evidence_blockers(memory)
     graph_bucket_blockers = _decode_shape_key_blockers(scheduler_metadata, concurrency=args.batch_size, prompt_length=args.prompt_length)

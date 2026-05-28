@@ -756,8 +756,8 @@ roll-up/status view.
       sampler decision and falls back to `serial_lm_head` when evidence is
       missing, failed, wrong-row, or points outside retained artifacts, and accepted c>N artifact
       schema requires a native sampler decision with requested mode `batched_lm_head`, row count and equality row count matching `workload.concurrency`, green retained equality
-      evidence plus no blockers, and dispatch/retained bench now block promotion before schema validation unless sampler metadata records an explicitly requested native row-aware batched LM-head decision with matching rows/equality rows, a retained equality artifact whose JSON reports `passed=true` at the same row count, and no blockers, so setting the mode cannot silently create a
-      native sampler claim before same-concurrency equality is green.
+      evidence plus no blockers, and dispatch/retained bench now block promotion before schema validation unless sampler metadata records an explicitly requested native row-aware batched LM-head decision with matching rows/equality rows, a retained equality artifact whose JSON reports `passed=true` at the same row count, matching profiler expected/trace/duration evidence for a native batch sampler/LM-head kernel, and no blockers, so setting the mode cannot silently create a
+      native sampler claim before same-concurrency equality and profiler evidence are green.
 
 ### C4 packets — continuous scheduler and dynamic KV pool
 
@@ -1055,7 +1055,7 @@ roll-up/status view.
       attention/MoE/projection/sampling/graph/other, finite exact-key CPU-side bottleneck
       duration/share totals, plus an accepted non-row-GEMV
       `projection_dispatch` decision whose selected candidate is listed with
-      matching retained speedup evidence and appears in profiler expected/kernel names.
+      matching retained speedup evidence and appears in profiler expected/kernel names, plus native sampler/LM-head expected/trace/duration profiler evidence.
       The scoreboard item remains open until accepted
       artifacts exist and the benchmark rollups are updated.
 

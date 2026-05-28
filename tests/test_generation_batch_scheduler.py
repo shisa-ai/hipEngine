@@ -6649,6 +6649,25 @@ def test_qwen35_retained_sampler_execution_blockers_require_native_lm_head_evide
     }
 
     assert retained_bench._sampler_execution_blockers(valid, expected_concurrency=2) == []
+    assert retained_bench._sampler_execution_profiler_blockers(
+        valid,
+        {
+            "expected_kernel_names": ["qwen35_batch_lm_head"],
+            "trace_kernel_names": ["qwen35_batch_lm_head"],
+            "kernel_durations_ns": {"qwen35_batch_lm_head": 12345},
+        },
+    ) == []
+    missing_sampler_profiler = retained_bench._sampler_execution_profiler_blockers(
+        valid,
+        {
+            "expected_kernel_names": ["qwen35_batch_decode"],
+            "trace_kernel_names": ["qwen35_batch_decode"],
+            "kernel_durations_ns": {"qwen35_batch_decode": 12345},
+        },
+    )
+    assert "profiler.expected_kernel_names must include a native batch sampler/lm_head kernel" in missing_sampler_profiler
+    assert "profiler.trace_kernel_names must include a native batch sampler/lm_head kernel" in missing_sampler_profiler
+    assert "profiler.kernel_durations_ns must include a positive native batch sampler/lm_head duration" in missing_sampler_profiler
     blockers = retained_bench._sampler_execution_blockers(serial, expected_concurrency=2)
     assert "execution.batch_execution.decode_execution.sampler_execution.rows must match workload.concurrency" in blockers
     assert "execution.batch_execution.decode_execution.sampler_execution.requested_mode must be batched_lm_head" in blockers
@@ -7069,36 +7088,48 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             "output_format": "csv",
             "trace_dir": "/tmp/hipengine-profile",
             "trace_files": ["/tmp/hipengine-profile/hipengine_kernel_trace.csv"],
-            "trace_kernel_names": ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware", "qwen35_batch_graph_replay"],
+            "trace_kernel_names": [
+                "qwen35_batch_decode",
+                "qwen35_batch_decode_wmma_caware",
+                "qwen35_batch_graph_replay",
+                "qwen35_batch_lm_head",
+            ],
             "synthesized_fields": [],
             "expected_kernels_present": True,
-            "expected_kernel_names": ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware", "qwen35_batch_graph_replay"],
+            "expected_kernel_names": [
+                "qwen35_batch_decode",
+                "qwen35_batch_decode_wmma_caware",
+                "qwen35_batch_graph_replay",
+                "qwen35_batch_lm_head",
+            ],
             "kernel_durations_ns": {
                 "qwen35_batch_decode": 12345.0,
                 "qwen35_batch_decode_wmma_caware": 2345.0,
                 "qwen35_batch_graph_replay": 100.0,
+                "qwen35_batch_lm_head": 500.0,
             },
-            "total_kernel_duration_ns": 14790.0,
+            "total_kernel_duration_ns": 15290.0,
             "kernel_duration_shares": {
-                "qwen35_batch_decode": 12345.0 / 14790.0,
-                "qwen35_batch_decode_wmma_caware": 2345.0 / 14790.0,
-                "qwen35_batch_graph_replay": 100.0 / 14790.0,
+                "qwen35_batch_decode": 12345.0 / 15290.0,
+                "qwen35_batch_decode_wmma_caware": 2345.0 / 15290.0,
+                "qwen35_batch_graph_replay": 100.0 / 15290.0,
+                "qwen35_batch_lm_head": 500.0 / 15290.0,
             },
             "kernel_duration_categories_ns": {
                 "attention": 0.0,
                 "moe": 0.0,
                 "projection": 2345.0,
-                "sampling": 0.0,
+                "sampling": 500.0,
                 "graph_replay": 100.0,
                 "other": 12345.0,
             },
             "kernel_duration_category_shares": {
                 "attention": 0.0,
                 "moe": 0.0,
-                "projection": 2345.0 / 14790.0,
-                "sampling": 0.0,
-                "graph_replay": 100.0 / 14790.0,
-                "other": 12345.0 / 14790.0,
+                "projection": 2345.0 / 15290.0,
+                "sampling": 500.0 / 15290.0,
+                "graph_replay": 100.0 / 15290.0,
+                "other": 12345.0 / 15290.0,
             },
             "cpu_side_total_seconds": 10.0,
             "cpu_side_bottlenecks_seconds": {
@@ -7231,7 +7262,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                     "misses": 1,
                     "replay_hit_rate": 0.5,
                     "miss_reasons": {"cache_absent": 1},
-                    "kernel_time_histogram_ns": {"le_10us": 2, "le_100us": 1},
+                    "kernel_time_histogram_ns": {"le_10us": 3, "le_100us": 1},
                 },
             },
             "seed_tokens": {"0": {"token_id": 0}, "1": {"token_id": 100}},
@@ -9069,6 +9100,29 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     missing_projection_profiler_kernel["profiler"]["kernel_durations_ns"] = {"qwen35_batch_decode": 12345.0, "qwen35_batch_graph_replay": 100.0}
     with pytest.raises(ValueError, match="profiler kernel names must include selected projection_dispatch candidate or variant"):
         validate_cn_diagnostic_artifact_payload(missing_projection_profiler_kernel)
+
+    missing_sampler_expected_kernel = json.loads(json.dumps(accepted))
+    missing_sampler_expected_kernel["profiler"]["expected_kernel_names"] = [
+        "qwen35_batch_decode",
+        "qwen35_batch_decode_wmma_caware",
+        "qwen35_batch_graph_replay",
+    ]
+    with pytest.raises(ValueError, match="profiler.expected_kernel_names must include a native batch sampler/lm_head kernel"):
+        validate_cn_diagnostic_artifact_payload(missing_sampler_expected_kernel)
+
+    missing_sampler_trace_kernel = json.loads(json.dumps(accepted))
+    missing_sampler_trace_kernel["profiler"]["trace_kernel_names"] = [
+        "qwen35_batch_decode",
+        "qwen35_batch_decode_wmma_caware",
+        "qwen35_batch_graph_replay",
+    ]
+    with pytest.raises(ValueError, match="profiler.trace_kernel_names must include a native batch sampler/lm_head kernel"):
+        validate_cn_diagnostic_artifact_payload(missing_sampler_trace_kernel)
+
+    missing_sampler_duration = json.loads(json.dumps(accepted))
+    missing_sampler_duration["profiler"]["kernel_durations_ns"].pop("qwen35_batch_lm_head")
+    with pytest.raises(ValueError, match="profiler.kernel_durations_ns must include a positive native batch sampler/lm_head duration"):
+        validate_cn_diagnostic_artifact_payload(missing_sampler_duration)
 
     fallback_expected_kernel = json.loads(json.dumps(accepted))
     fallback_expected_kernel["profiler"]["expected_kernel_names"] = ["qwen35_batch_decode", "qwen35_per_row_fallback_decode"]
