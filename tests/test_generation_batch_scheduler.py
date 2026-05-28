@@ -4612,6 +4612,7 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     artifact.write_text(
         json.dumps(
             {
+                "schema": 1,
                 "rows": 2,
                 "seed": 1234,
                 "block_size": 256,
@@ -4629,17 +4630,34 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
         )
     )
 
+    schema_less_artifact = tmp_path / "primitive-c2-schema-less.json"
+    schema_less_artifact.write_text(
+        json.dumps(
+            {
+                "rows": 2,
+                "passed": True,
+                "append_key_mismatch": 0,
+                "append_value_mismatch": 0,
+                "attn_batch_vs_c1_max_abs": 0.0,
+            }
+        )
+    )
+
     passed = retained_bench._primitive_correctness_reference(artifact, rows=2)
     mismatched = retained_bench._primitive_correctness_reference(artifact, rows=4)
+    missing_schema = retained_bench._primitive_correctness_reference(schema_less_artifact, rows=2)
     missing = retained_bench._primitive_correctness_reference(None, rows=2)
 
     assert passed["passed"] is True
     assert passed["artifact_path"] == str(artifact)
+    assert passed["schema"] == 1
     assert passed["seed"] == 1234
     assert passed["block_size"] == 256
     assert passed["context_lens"] == [1, 2]
     assert mismatched["passed"] is False
     assert "does not match batch_size=4" in mismatched["reason"]
+    assert missing_schema["passed"] is False
+    assert "schema is missing or not 1" in missing_schema["reason"]
     assert missing["status"] == "missing"
 
 
@@ -5023,6 +5041,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             },
             "primitive_batch_correctness": {
                 "artifact_path": "benchmarks/results/primitive-c2.json",
+                "schema": 1,
                 "rows": 2,
                 "seed": 1234,
                 "block_size": 256,
@@ -5452,6 +5471,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     missing_primitive["correctness"].pop("primitive_batch_correctness")
     with pytest.raises(ValueError, match="primitive_batch_correctness"):
         validate_cn_diagnostic_artifact_payload(missing_primitive)
+
+    missing_primitive_schema = json.loads(json.dumps(accepted))
+    missing_primitive_schema["correctness"]["primitive_batch_correctness"].pop("schema")
+    with pytest.raises(ValueError, match="primitive_batch_correctness.schema must be 1"):
+        validate_cn_diagnostic_artifact_payload(missing_primitive_schema)
+
+    bool_primitive_schema = json.loads(json.dumps(accepted))
+    bool_primitive_schema["correctness"]["primitive_batch_correctness"]["schema"] = True
+    with pytest.raises(ValueError, match="primitive_batch_correctness.schema must be 1"):
+        validate_cn_diagnostic_artifact_payload(bool_primitive_schema)
 
     failed_primitive = json.loads(json.dumps(accepted))
     failed_primitive["correctness"]["primitive_batch_correctness"]["passed"] = False

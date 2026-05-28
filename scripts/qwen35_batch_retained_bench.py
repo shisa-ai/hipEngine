@@ -270,6 +270,9 @@ def _primitive_correctness_reference(path: Path | None, *, rows: int) -> dict[st
             "reason": "artifact root is not an object",
         }
     reasons: list[str] = []
+    artifact_schema = payload.get("schema")
+    if not isinstance(artifact_schema, int) or isinstance(artifact_schema, bool) or artifact_schema != 1:
+        reasons.append("schema is missing or not 1")
     artifact_rows = payload.get("rows")
     if not isinstance(artifact_rows, int) or isinstance(artifact_rows, bool) or artifact_rows != int(rows):
         reasons.append(f"artifact rows={artifact_rows!r} does not match batch_size={rows}")
@@ -288,6 +291,7 @@ def _primitive_correctness_reference(path: Path | None, *, rows: int) -> dict[st
     return {
         "artifact_path": str(path),
         "status": "loaded",
+        "schema": payload.get("schema"),
         "rows": payload.get("rows"),
         "seed": payload.get("seed"),
         "block_size": payload.get("block_size"),

@@ -948,9 +948,10 @@ roll-up/status view.
       rows covering every request with prompt-token counts matching
       `workload.prompt_lengths` plus matching generated-token and finish-reason
       records,
-      primitive GPU correctness row count matching `workload.concurrency`, seed
-      provenance, deterministic fixture-shape metadata (`block_size`, `max_context_len`,
-      `num_q_heads`, `num_kv_heads`, `head_dim`), per-row `context_lens` fixture
+      primitive GPU correctness script schema (`schema=1`), row count matching
+      `workload.concurrency`, seed provenance, deterministic fixture-shape
+      metadata (`block_size`, `max_context_len`, `num_q_heads`, `num_kv_heads`,
+      `head_dim`), per-row `context_lens` fixture
       coverage, zero append mismatches,
       zero batch-vs-c1 attention error, and NumPy-oracle attention error ≤ 2e-5,
       full 40-layer workload labels with concrete model/quant/KV storage dtype

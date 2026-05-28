@@ -163,6 +163,7 @@ _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS = {
     "num_kv_heads": 1,
     "head_dim": 8,
 }
+_REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA = 1
 _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT = 2e-5
 _ALLOWED_PROFILER_SYNTHESIZED_FIELDS = (
     "trace_kernel_names",
@@ -1561,6 +1562,13 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
     if not isinstance(primitive, Mapping):
         errors.append("correctness.primitive_batch_correctness must be an object for accepted artifacts")
         return
+    primitive_schema = primitive.get("schema")
+    if (
+        not isinstance(primitive_schema, int)
+        or isinstance(primitive_schema, bool)
+        or primitive_schema != _REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA
+    ):
+        errors.append("correctness.primitive_batch_correctness.schema must be 1 for accepted artifacts")
     if primitive.get("passed") is not True:
         errors.append("correctness.primitive_batch_correctness.passed must be true for accepted artifacts")
     primitive_artifact_path = primitive.get("artifact_path")
