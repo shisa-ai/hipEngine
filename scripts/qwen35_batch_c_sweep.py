@@ -1626,7 +1626,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         elif git_dirty is not None and git_dirty is not bool(status_short):
             errors.append("git.dirty must match bool(git.status_short)")
     expected_skipped_preconditions = _skipped_preconditions(entries)
-    if summary.get("skipped_preconditions") != expected_skipped_preconditions:
+    if not _typed_json_like_matches(summary.get("skipped_preconditions"), expected_skipped_preconditions):
         errors.append("skipped_preconditions must match commands.preconditions")
     if entries:
         for entry in entries:
@@ -2671,7 +2671,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     if not _typed_count_mapping_matches(summary.get("retained_postcondition_counts"), expected_postcondition_counts):
         errors.append("retained_postcondition_counts must match commands.postconditions")
     expected_failed_postconditions = _failed_postconditions(entries)
-    if summary.get("failed_postconditions") != expected_failed_postconditions:
+    if not _typed_json_like_matches(summary.get("failed_postconditions"), expected_failed_postconditions):
         errors.append("failed_postconditions must match commands.postconditions")
     for entry in entries:
         preconditions = entry.get("preconditions")
@@ -2764,6 +2764,26 @@ def _summary_options(args: argparse.Namespace) -> dict[str, Any]:
         "require_cached_build": bool(args.require_cached_build),
         "compiler_version_file": None if args.compiler_version_file is None else str(args.compiler_version_file),
     }
+
+
+def _typed_json_like_matches(actual: Any, expected: Any) -> bool:
+    if isinstance(expected, Mapping):
+        if not isinstance(actual, Mapping) or set(actual.keys()) != set(expected.keys()):
+            return False
+        return all(_typed_json_like_matches(actual.get(key), value) for key, value in expected.items())
+    if isinstance(expected, list):
+        if not isinstance(actual, list) or len(actual) != len(expected):
+            return False
+        return all(_typed_json_like_matches(actual_value, expected_value) for actual_value, expected_value in zip(actual, expected))
+    if isinstance(expected, bool):
+        return actual is expected
+    if isinstance(expected, int):
+        return isinstance(actual, int) and not isinstance(actual, bool) and actual == expected
+    if isinstance(expected, float):
+        return isinstance(actual, float) and actual == expected
+    if expected is None:
+        return actual is None
+    return type(actual) is type(expected) and actual == expected
 
 
 def _typed_count_mapping_matches(actual: Any, expected: Mapping[str, Any]) -> bool:

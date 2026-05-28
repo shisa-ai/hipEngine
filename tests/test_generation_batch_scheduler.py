@@ -2399,6 +2399,10 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
     tampered_skipped_preconditions["skipped_preconditions"] = []
     with pytest.raises(ValueError, match="skipped_preconditions must match commands.preconditions"):
         c_sweep.validate_sweep_summary(tampered_skipped_preconditions)
+    tampered_skipped_precondition_batch_type = json.loads(json.dumps(persisted))
+    tampered_skipped_precondition_batch_type["skipped_preconditions"][0]["batch_size"] = 2.0
+    with pytest.raises(ValueError, match="skipped_preconditions must match commands.preconditions"):
+        c_sweep.validate_sweep_summary(tampered_skipped_precondition_batch_type)
     tampered_dropped_commands = json.loads(json.dumps(persisted))
     tampered_dropped_commands["commands"] = []
     tampered_dropped_commands["completed_command_count"] = 0
@@ -5075,6 +5079,10 @@ def test_batch_c_sweep_fails_retained_row_on_profiler_synthesis_mismatch(tmp_pat
     tampered_failed_postconditions["failed_postconditions"] = []
     with pytest.raises(ValueError, match="failed_postconditions must match commands.postconditions"):
         c_sweep.validate_sweep_summary(tampered_failed_postconditions)
+    tampered_failed_postcondition_batch_type = json.loads(json.dumps(summary))
+    tampered_failed_postcondition_batch_type["failed_postconditions"][0]["batch_size"] = 2.0
+    with pytest.raises(ValueError, match="failed_postconditions must match commands.postconditions"):
+        c_sweep.validate_sweep_summary(tampered_failed_postcondition_batch_type)
     tampered_singular_postcondition = json.loads(json.dumps(summary))
     tampered_singular_postcondition["commands"][-1].pop("postcondition")
     with pytest.raises(ValueError, match=r"commands\[\]\.postcondition must match"):
