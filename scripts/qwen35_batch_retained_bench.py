@@ -1402,6 +1402,8 @@ def _profiler_cpu_side_bottleneck_blockers(profiler: Mapping[str, Any]) -> list[
 
 def _profiler_kernel_evidence_blockers(profiler: Mapping[str, Any]) -> list[str]:
     blockers: list[str] = []
+    if profiler.get("expected_kernels_present") is not True:
+        blockers.append("profiler.expected_kernels_present must be true")
     trace_kernel_names = profiler.get("trace_kernel_names")
     if not isinstance(trace_kernel_names, list) or not any(isinstance(name, str) and name for name in trace_kernel_names):
         blockers.append("profiler.trace_kernel_names must be a non-empty string list")

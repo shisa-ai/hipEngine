@@ -6174,6 +6174,7 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
 
 def test_qwen35_retained_profiler_kernel_evidence_blockers_require_trace_durations() -> None:
     complete = {
+        "expected_kernels_present": True,
         "trace_kernel_names": ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"],
         "expected_kernel_names": ["qwen35_batch_decode_wmma_caware"],
         "kernel_durations_ns": {"qwen35_batch_decode": 12345, "qwen35_batch_decode_wmma_caware": 2345},
@@ -6200,6 +6201,7 @@ def test_qwen35_retained_profiler_kernel_evidence_blockers_require_trace_duratio
         },
     }
     incomplete = {
+        "expected_kernels_present": True,
         "trace_kernel_names": ["qwen35_batch_decode"],
         "expected_kernel_names": ["qwen35_batch_decode_wmma_caware"],
         "kernel_durations_ns": {"qwen35_batch_decode_wmma_caware": 0},
@@ -6228,7 +6230,11 @@ def test_qwen35_retained_profiler_kernel_evidence_blockers_require_trace_duratio
         "kernel_duration_category_shares": {**complete["kernel_duration_category_shares"], "projection": 0.0, "other": 1.0},
     }
 
+    missing_expected_present = {**complete, "expected_kernels_present": False}
+
     assert retained_bench._profiler_kernel_evidence_blockers(complete) == []
+    missing_expected_present_blockers = retained_bench._profiler_kernel_evidence_blockers(missing_expected_present)
+    assert "profiler.expected_kernels_present must be true" in missing_expected_present_blockers
     duplicate_blockers = retained_bench._profiler_kernel_evidence_blockers(duplicate_names)
     assert "profiler.trace_kernel_names entries must be unique" in duplicate_blockers
     assert "profiler.expected_kernel_names entries must be unique" in duplicate_blockers
@@ -6247,6 +6253,7 @@ def test_qwen35_retained_profiler_kernel_evidence_blockers_require_trace_duratio
 
 def test_qwen35_retained_profiler_kernel_evidence_blockers_require_duration_arithmetic() -> None:
     profiler = {
+        "expected_kernels_present": True,
         "trace_kernel_names": ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"],
         "expected_kernel_names": ["qwen35_batch_decode_wmma_caware"],
         "kernel_durations_ns": {"qwen35_batch_decode": 100.0, "qwen35_batch_decode_wmma_caware": 300.0},
