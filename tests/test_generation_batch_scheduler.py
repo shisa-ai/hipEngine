@@ -2238,6 +2238,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_failed_postcondition_reason["commands"][-1]["postconditions"][0]["passed"] = False
     with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.reason must be a non-empty string when failed"):
         c_sweep.validate_sweep_summary(tampered_failed_postcondition_reason)
+    tampered_postcondition_field_shape = json.loads(json.dumps(persisted))
+    tampered_postcondition_field_shape["commands"][-1]["postconditions"][0]["profiler_synthesized_fields"] = [1]
+    with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler synthesized fields must be string lists when passed"):
+        c_sweep.validate_sweep_summary(tampered_postcondition_field_shape)
+    tampered_postcondition_field_match = json.loads(json.dumps(persisted))
+    tampered_postcondition_field_match["commands"][-1]["postconditions"][0]["profiler_synthesized_fields"] = ["trace_kernel_names"]
+    with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler synthesized fields must match when passed"):
+        c_sweep.validate_sweep_summary(tampered_postcondition_field_match)
     tampered_git_dirty = json.loads(json.dumps(persisted))
     tampered_git_dirty["commands"][-1]["git_dirty"] = True
     with pytest.raises(ValueError, match=r"commands\[\]\.git_dirty must match git.dirty"):
