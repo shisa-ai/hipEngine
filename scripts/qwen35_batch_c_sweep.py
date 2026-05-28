@@ -1710,6 +1710,21 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if profiler_precondition.get("profiler_max_layers") != int(_argv_value(argv, "--max-layers")):
                         errors.append("commands[].preconditions[].profiler_max_layers must match retained command shape")
                         break
+                    profiler_command = profiler_precondition.get("profiler_command")
+                    if (
+                        not isinstance(profiler_command, str)
+                        or "rocprofv3" not in profiler_command
+                        or "--kernel-trace" not in profiler_command
+                        or "scripts/qwen35_batch_retained_bench.py" not in profiler_command
+                    ):
+                        errors.append("commands[].preconditions[].profiler_command must include rocprofv3 kernel trace retained bench when passed")
+                        break
+                    if _command_text_arg(profiler_command, "--model") != _argv_value(argv, "--model") or profiler_precondition.get("profiler_model") != _argv_value(argv, "--model"):
+                        errors.append("commands[].preconditions[].profiler model must match retained command")
+                        break
+                    if _command_text_arg(profiler_command, "--fixture") != _argv_value(argv, "--fixture") or profiler_precondition.get("profiler_fixture") != _argv_value(argv, "--fixture"):
+                        errors.append("commands[].preconditions[].profiler fixture must match retained command")
+                        break
                     if profiler_precondition.get("profiler_status") != "captured":
                         errors.append("commands[].preconditions[].profiler_status must be captured when passed")
                         break

@@ -2401,6 +2401,18 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_profiler_precondition_shape["commands"][-1]["preconditions"][-1]["profiler_warmup_decode_tokens"] = 2
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_warmup_decode_tokens must match retained command shape"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_shape)
+    tampered_profiler_precondition_command = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_command["commands"][-1]["preconditions"][-1]["profiler_command"] = "python3 scripts/qwen35_batch_retained_bench.py --model /tmp/model --fixture /tmp/fixture.json"
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_command must include rocprofv3 kernel trace retained bench when passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_command)
+    tampered_profiler_precondition_model = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_model["commands"][-1]["preconditions"][-1]["profiler_model"] = "/tmp/other-model"
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler model must match retained command"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_model)
+    tampered_profiler_precondition_fixture = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_fixture["commands"][-1]["preconditions"][-1]["profiler_fixture"] = "/tmp/other-fixture.json"
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler fixture must match retained command"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_fixture)
     tampered_profiler_precondition_status = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_status["commands"][-1]["preconditions"][-1]["profiler_status"] = "missing"
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_status must be captured when passed"):
