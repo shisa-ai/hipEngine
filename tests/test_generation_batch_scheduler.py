@@ -6246,6 +6246,38 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="commands.profiler --decode-tokens must match workload.gen_tokens_per_request"):
         validate_cn_diagnostic_artifact_payload(profiler_wrong_decode_tokens)
 
+    profiler_batch_size_before_separator = json.loads(json.dumps(accepted))
+    profiler_batch_size_before_separator["commands"]["profiler"] = profiler_batch_size_before_separator["commands"]["profiler"].replace(
+        " -d /tmp/hipengine-profile -- python3",
+        " -d /tmp/hipengine-profile --batch-size 2 -- python3",
+    ).replace(" --batch-size 2 --prompt-length", " --batch-size 8 --prompt-length")
+    with pytest.raises(ValueError, match="commands.profiler --batch-size must match workload.concurrency"):
+        validate_cn_diagnostic_artifact_payload(profiler_batch_size_before_separator)
+
+    profiler_prompt_length_before_separator = json.loads(json.dumps(accepted))
+    profiler_prompt_length_before_separator["commands"]["profiler"] = profiler_prompt_length_before_separator["commands"]["profiler"].replace(
+        " -d /tmp/hipengine-profile -- python3",
+        " -d /tmp/hipengine-profile --prompt-length 512 -- python3",
+    ).replace(" --prompt-length 512 --decode-tokens", " --prompt-length 128 --decode-tokens")
+    with pytest.raises(ValueError, match="commands.profiler --prompt-length must match workload.prompt_tokens_per_request"):
+        validate_cn_diagnostic_artifact_payload(profiler_prompt_length_before_separator)
+
+    profiler_decode_tokens_before_separator = json.loads(json.dumps(accepted))
+    profiler_decode_tokens_before_separator["commands"]["profiler"] = profiler_decode_tokens_before_separator["commands"]["profiler"].replace(
+        " -d /tmp/hipengine-profile -- python3",
+        " -d /tmp/hipengine-profile --decode-tokens 128 -- python3",
+    ).replace(" --decode-tokens 128 --max-layers", " --decode-tokens 32 --max-layers")
+    with pytest.raises(ValueError, match="commands.profiler --decode-tokens must match workload.gen_tokens_per_request"):
+        validate_cn_diagnostic_artifact_payload(profiler_decode_tokens_before_separator)
+
+    profiler_max_layers_before_separator = json.loads(json.dumps(accepted))
+    profiler_max_layers_before_separator["commands"]["profiler"] = profiler_max_layers_before_separator["commands"]["profiler"].replace(
+        " -d /tmp/hipengine-profile -- python3",
+        " -d /tmp/hipengine-profile --max-layers 40 -- python3",
+    ).replace(" --max-layers 40 --compiler-version-file", " --max-layers 4 --compiler-version-file")
+    with pytest.raises(ValueError, match="commands.profiler --max-layers must match workload.max_layers"):
+        validate_cn_diagnostic_artifact_payload(profiler_max_layers_before_separator)
+
     not_captured_profiler = json.loads(json.dumps(accepted))
     not_captured_profiler["profiler"]["status"] = "not_captured"
     with pytest.raises(ValueError, match="profiler.status"):

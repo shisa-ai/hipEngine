@@ -977,7 +977,8 @@ roll-up/status view.
       with rocprof-only flags (`--kernel-trace`, `--output-format csv`, `-d`) before
       that separator, and the same retained shape/artifact/reference/cached-build
       flags validated from the post-separator profiled command segment
-      (`--c1-baseline-json`, `--serial-bridge-json`,
+      (`--batch-size`, `--prompt-length`, `--decode-tokens`, `--max-layers`,
+      `--c1-baseline-json`, `--serial-bridge-json`,
       `--primitive-correctness-json`, `--profiler-json`,
       `--compiler-version-file`, `--require-cached-build`),
       benchmark/profiler `--json` outputs plus primitive/scaling/compiler-version
