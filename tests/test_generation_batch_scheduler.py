@@ -3246,12 +3246,20 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_cpu_categories)
     tampered_primitive_precondition_schema = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_schema["commands"][-1]["preconditions"][0]["primitive_schema"] = 2
-    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_schema must be 1 when primitive passed"):
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_schema must be typed int 1 when primitive passed"):
         c_sweep.validate_sweep_summary(tampered_primitive_precondition_schema)
+    tampered_primitive_precondition_bool_schema = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_bool_schema["commands"][-1]["preconditions"][0]["primitive_schema"] = True
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_schema must be typed int 1 when primitive passed"):
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_bool_schema)
     tampered_primitive_precondition_seed = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_seed["commands"][-1]["preconditions"][0]["primitive_seed"] = 4321
-    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_seed must be 1234 when primitive passed"):
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_seed must be typed int 1234 when primitive passed"):
         c_sweep.validate_sweep_summary(tampered_primitive_precondition_seed)
+    tampered_primitive_precondition_float_seed = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_float_seed["commands"][-1]["preconditions"][0]["primitive_seed"] = 1234.0
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_seed must be typed int 1234 when primitive passed"):
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_float_seed)
     tampered_primitive_precondition_shape = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_shape["commands"][-1]["preconditions"][0]["primitive_head_dim"] = 16
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_head_dim must match fixture shape when primitive passed"):

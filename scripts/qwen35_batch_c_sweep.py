@@ -1773,11 +1773,21 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     break
                 primitive_precondition = preconditions[0]
                 if primitive_precondition.get("passed") is True:
-                    if primitive_precondition.get("primitive_schema") != _REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA:
-                        errors.append("commands[].preconditions[].primitive_schema must be 1 when primitive passed")
+                    primitive_schema = primitive_precondition.get("primitive_schema")
+                    if (
+                        not isinstance(primitive_schema, int)
+                        or isinstance(primitive_schema, bool)
+                        or primitive_schema != _REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA
+                    ):
+                        errors.append("commands[].preconditions[].primitive_schema must be typed int 1 when primitive passed")
                         break
-                    if primitive_precondition.get("primitive_seed") != _REQUIRED_PRIMITIVE_CORRECTNESS_SEED:
-                        errors.append("commands[].preconditions[].primitive_seed must be 1234 when primitive passed")
+                    primitive_seed = primitive_precondition.get("primitive_seed")
+                    if (
+                        not isinstance(primitive_seed, int)
+                        or isinstance(primitive_seed, bool)
+                        or primitive_seed != _REQUIRED_PRIMITIVE_CORRECTNESS_SEED
+                    ):
+                        errors.append("commands[].preconditions[].primitive_seed must be typed int 1234 when primitive passed")
                         break
                     primitive_shape_error = False
                     for field, expected_value in _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS.items():

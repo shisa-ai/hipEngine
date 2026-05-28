@@ -949,9 +949,9 @@ roll-up/status view.
       rows covering every request with prompt-token counts matching
       `workload.prompt_lengths` plus matching generated-token and finish-reason
       records,
-      primitive GPU correctness reference script schema (`schema=1`), typed row count matching
+      primitive GPU correctness reference typed script schema (`schema=1`), typed row count matching
       `workload.concurrency` in both source and summary preconditions,
-      reference-/c-sweep-gated deterministic `seed=1234` provenance,
+      reference-/c-sweep-gated typed deterministic `seed=1234` provenance,
       deterministic fixture-shape
       metadata (`block_size`, `max_context_len`, `num_q_heads`, `num_kv_heads`,
       `head_dim`), reference-gated typed per-row `context_lens` fixture
