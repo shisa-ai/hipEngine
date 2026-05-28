@@ -872,7 +872,8 @@ def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[
     else:
         prompt_tokens_per_request = workload.get("prompt_tokens_per_request")
         max_full_attention_context = decode_execution.get("max_full_attention_context")
-        if isinstance(max_full_attention_context, bool) or not isinstance(max_full_attention_context, int):
+        max_full_attention_context_valid = isinstance(max_full_attention_context, int) and not isinstance(max_full_attention_context, bool)
+        if not max_full_attention_context_valid:
             errors.append("execution.batch_execution.decode_execution.max_full_attention_context must be an int for accepted artifacts")
         elif (
             isinstance(prompt_tokens_per_request, int)
@@ -880,6 +881,8 @@ def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[
             and max_full_attention_context < prompt_tokens_per_request
         ):
             errors.append("execution.batch_execution.decode_execution.max_full_attention_context must cover workload.prompt_tokens_per_request for accepted artifacts")
+        elif max_full_attention_context >= 1024:
+            errors.append("execution.batch_execution.decode_execution.max_full_attention_context must be < 1024 until row-aware split-K native decode lands for accepted artifacts")
         concurrency = workload.get("concurrency")
         decode_rows = decode_execution.get("rows")
         if isinstance(decode_rows, bool) or not isinstance(decode_rows, int):

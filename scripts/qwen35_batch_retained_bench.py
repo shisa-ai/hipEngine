@@ -1001,12 +1001,15 @@ def _batch_execution_blockers(
     if not isinstance(decode_execution, Mapping):
         blockers.append("execution.batch_execution.decode_execution is missing")
     else:
+        max_context = decode_execution.get("max_full_attention_context")
+        max_context_valid = isinstance(max_context, int) and not isinstance(max_context, bool)
         if expected_prompt_length is not None:
-            max_context = decode_execution.get("max_full_attention_context")
-            if isinstance(max_context, bool) or not isinstance(max_context, int):
+            if not max_context_valid:
                 blockers.append("execution.batch_execution.decode_execution.max_full_attention_context must be an int")
             elif max_context < int(expected_prompt_length):
                 blockers.append("execution.batch_execution.decode_execution.max_full_attention_context must cover workload.prompt_tokens_per_request")
+        if max_context_valid and max_context >= 1024:
+            blockers.append("execution.batch_execution.decode_execution.max_full_attention_context must be < 1024 until row-aware split-K native decode lands")
         if expected_concurrency is not None:
             decode_rows = decode_execution.get("rows")
             if isinstance(decode_rows, bool) or not isinstance(decode_rows, int):

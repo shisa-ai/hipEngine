@@ -6396,7 +6396,17 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
         },
     }
 
+    long_context = {
+        **valid,
+        "decode_execution": {**valid["decode_execution"], "max_full_attention_context": 1024},
+    }
+
     assert retained_bench._batch_execution_blockers(valid, expected_max_layers=40, expected_concurrency=2, expected_prompt_length=512) == []
+    long_context_blockers = retained_bench._batch_execution_blockers(long_context, expected_max_layers=40, expected_concurrency=2, expected_prompt_length=512)
+    assert (
+        "execution.batch_execution.decode_execution.max_full_attention_context must be < 1024 until row-aware split-K native decode lands"
+        in long_context_blockers
+    )
     blockers = retained_bench._batch_execution_blockers(fallback, expected_max_layers=40, expected_concurrency=2, expected_prompt_length=512)
     assert "execution.batch_execution.path must be scheduler_native_compact_batch" in blockers
     assert "execution.batch_execution.scheduler_owned must be true" in blockers
@@ -7640,6 +7650,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     short_decode_context["execution"]["batch_execution"]["decode_execution"]["max_full_attention_context"] = 256
     with pytest.raises(ValueError, match="decode_execution.max_full_attention_context must cover workload.prompt_tokens_per_request"):
         validate_cn_diagnostic_artifact_payload(short_decode_context)
+
+    long_decode_context = json.loads(json.dumps(accepted))
+    long_decode_context["execution"]["batch_execution"]["decode_execution"]["max_full_attention_context"] = 1024
+    with pytest.raises(ValueError, match="decode_execution.max_full_attention_context must be < 1024"):
+        validate_cn_diagnostic_artifact_payload(long_decode_context)
 
     mismatched_decode_rows = json.loads(json.dumps(accepted))
     mismatched_decode_rows["execution"]["batch_execution"]["decode_execution"]["rows"] = 1
