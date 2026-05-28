@@ -2105,11 +2105,11 @@ def _is_number(value: Any) -> bool:
 
 
 def _is_positive_number(value: Any) -> bool:
-    return _is_number(value) and float(value) > 0.0
+    return _is_number(value) and math.isfinite(float(value)) and float(value) > 0.0
 
 
 def _is_nonnegative_number(value: Any) -> bool:
-    return _is_number(value) and float(value) >= 0.0
+    return _is_number(value) and math.isfinite(float(value)) and float(value) >= 0.0
 
 
 def _is_nonempty_string_list(value: Any) -> bool:

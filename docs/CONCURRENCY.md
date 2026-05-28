@@ -972,7 +972,8 @@ roll-up/status view.
       required positive scaling ratios that mathematically match usable same-shape
       c=1 and usable same-shape/same-concurrency serial bridge
       baselines, aggregate ratios vs both references that beat 1.0,
-      positive decode-step timing samples,
+      accepted-artifact schema checks for positive finite throughput and
+      decode-step timing samples,
       a retained-benchmark command starting with a Python invocation of
       `scripts/qwen35_batch_retained_bench.py` with a top-level artifact path under
       `benchmarks/results/` matched by the

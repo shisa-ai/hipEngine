@@ -6856,10 +6856,25 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="measurements.decode_tok_s_aggregate must be positive numeric"):
         validate_cn_diagnostic_artifact_payload(zero_decode_rate)
 
+    nan_decode_rate = json.loads(json.dumps(accepted))
+    nan_decode_rate["measurements"]["decode_tok_s_aggregate"] = float("nan")
+    with pytest.raises(ValueError, match="measurements.decode_tok_s_aggregate must be positive numeric"):
+        validate_cn_diagnostic_artifact_payload(nan_decode_rate)
+
     zero_baseline_rate = json.loads(json.dumps(accepted))
     zero_baseline_rate["scaling"]["c1_baseline"]["decode_tok_s_per_request"] = 0.0
     with pytest.raises(ValueError, match="c1_baseline.decode_tok_s_per_request must be positive numeric"):
         validate_cn_diagnostic_artifact_payload(zero_baseline_rate)
+
+    infinite_baseline_rate = json.loads(json.dumps(accepted))
+    infinite_baseline_rate["scaling"]["c1_baseline"]["decode_tok_s_per_request"] = float("inf")
+    with pytest.raises(ValueError, match="c1_baseline.decode_tok_s_per_request must be positive numeric"):
+        validate_cn_diagnostic_artifact_payload(infinite_baseline_rate)
+
+    infinite_decode_stdev = json.loads(json.dumps(accepted))
+    infinite_decode_stdev["measurements"]["decode_step_seconds"]["stdev"] = float("inf")
+    with pytest.raises(ValueError, match="measurements.decode_step_seconds.stdev must be non-negative numeric"):
+        validate_cn_diagnostic_artifact_payload(infinite_decode_stdev)
 
     empty_samples = json.loads(json.dumps(accepted))
     empty_samples["measurements"]["decode_step_seconds"]["samples"] = []
