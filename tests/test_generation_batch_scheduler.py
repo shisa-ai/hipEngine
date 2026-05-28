@@ -5961,6 +5961,18 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
         profiled_command=valid["command"],
         retained_artifact_path="benchmarks/results/native-c2.json",
     )
+    placeholder_trace_paths = {
+        **valid,
+        "trace_dir": "<profile-dir>",
+        "trace_files": ["<profile-dir>/hipengine_kernel_trace.csv"],
+        "command": valid["command"].replace("-d /tmp/hipengine-profile-c2", "-d <profile-dir>"),
+    }
+    placeholder_blockers = retained_bench._profiler_provenance_blockers(
+        placeholder_trace_paths,
+        retained_artifact_path="benchmarks/results/native-c2.json",
+    )
+    assert "profiler.trace_dir must be a concrete path" in placeholder_blockers
+    assert "profiler.trace_files entries must be concrete paths" in placeholder_blockers
     blockers = retained_bench._profiler_provenance_blockers(invalid)
     assert "profiler.artifact_path must be under benchmarks/results" in blockers
     assert "profiler.output_format must be csv" in blockers

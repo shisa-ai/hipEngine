@@ -1276,10 +1276,14 @@ def _profiler_provenance_blockers(
     if not isinstance(trace_dir, str) or not trace_dir:
         blockers.append("profiler.trace_dir must be a non-empty string")
         trace_dir = None
+    elif "<" in trace_dir or ">" in trace_dir:
+        blockers.append("profiler.trace_dir must be a concrete path")
     trace_files = profiler.get("trace_files")
     if not isinstance(trace_files, list) or not trace_files or not all(isinstance(trace_file, str) and trace_file for trace_file in trace_files):
         blockers.append("profiler.trace_files must be a non-empty string list")
         return blockers
+    if any("<" in trace_file or ">" in trace_file for trace_file in trace_files):
+        blockers.append("profiler.trace_files entries must be concrete paths")
     if len(set(trace_files)) != len(trace_files):
         blockers.append("profiler.trace_files entries must be unique")
     if not any(Path(trace_file).name.endswith("kernel_trace.csv") for trace_file in trace_files):
