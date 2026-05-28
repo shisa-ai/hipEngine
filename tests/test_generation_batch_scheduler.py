@@ -4614,6 +4614,11 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
             {
                 "rows": 2,
                 "seed": 1234,
+                "block_size": 256,
+                "max_context_len": 4,
+                "num_q_heads": 4,
+                "num_kv_heads": 1,
+                "head_dim": 8,
                 "passed": True,
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
@@ -4630,6 +4635,7 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     assert passed["passed"] is True
     assert passed["artifact_path"] == str(artifact)
     assert passed["seed"] == 1234
+    assert passed["block_size"] == 256
     assert mismatched["passed"] is False
     assert "does not match batch_size=4" in mismatched["reason"]
     assert missing["status"] == "missing"
@@ -5017,6 +5023,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                 "artifact_path": "benchmarks/results/primitive-c2.json",
                 "rows": 2,
                 "seed": 1234,
+                "block_size": 256,
+                "max_context_len": 4,
+                "num_q_heads": 4,
+                "num_kv_heads": 1,
+                "head_dim": 8,
                 "passed": True,
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
@@ -5457,6 +5468,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     missing_primitive_seed["correctness"]["primitive_batch_correctness"].pop("seed")
     with pytest.raises(ValueError, match="primitive_batch_correctness.seed must be an int"):
         validate_cn_diagnostic_artifact_payload(missing_primitive_seed)
+
+    missing_primitive_block_size = json.loads(json.dumps(accepted))
+    missing_primitive_block_size["correctness"]["primitive_batch_correctness"].pop("block_size")
+    with pytest.raises(ValueError, match="primitive_batch_correctness.block_size must be an int"):
+        validate_cn_diagnostic_artifact_payload(missing_primitive_block_size)
+
+    mismatched_primitive_head_dim = json.loads(json.dumps(accepted))
+    mismatched_primitive_head_dim["correctness"]["primitive_batch_correctness"]["head_dim"] = 16
+    with pytest.raises(ValueError, match="primitive_batch_correctness.head_dim must match scripts/qwen35_batch_correctness.py fixture shape"):
+        validate_cn_diagnostic_artifact_payload(mismatched_primitive_head_dim)
 
     primitive_append_mismatch = json.loads(json.dumps(accepted))
     primitive_append_mismatch["correctness"]["primitive_batch_correctness"]["append_key_mismatch"] = 1

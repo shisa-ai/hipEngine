@@ -156,6 +156,13 @@ _REQUIRED_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES = (
     "validation",
     "other",
 )
+_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS = {
+    "block_size": 256,
+    "max_context_len": 4,
+    "num_q_heads": 4,
+    "num_kv_heads": 1,
+    "head_dim": 8,
+}
 _ALLOWED_PROFILER_SYNTHESIZED_FIELDS = (
     "trace_kernel_names",
     "kernel_durations_ns",
@@ -1572,6 +1579,12 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
     primitive_seed = primitive.get("seed")
     if not isinstance(primitive_seed, int) or isinstance(primitive_seed, bool):
         errors.append("correctness.primitive_batch_correctness.seed must be an int for accepted artifacts")
+    for field, expected_value in _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS.items():
+        value = primitive.get(field)
+        if not isinstance(value, int) or isinstance(value, bool):
+            errors.append(f"correctness.primitive_batch_correctness.{field} must be an int for accepted artifacts")
+        elif value != expected_value:
+            errors.append(f"correctness.primitive_batch_correctness.{field} must match scripts/qwen35_batch_correctness.py fixture shape for accepted artifacts")
     for field in ("append_key_mismatch", "append_value_mismatch"):
         value = primitive.get(field)
         if not isinstance(value, int) or isinstance(value, bool):
