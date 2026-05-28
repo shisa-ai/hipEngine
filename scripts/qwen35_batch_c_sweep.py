@@ -2709,6 +2709,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
 
 
 def _validate_run_options(args: argparse.Namespace) -> None:
+    for option in ("model", "fixture"):
+        if not str(getattr(args, option)):
+            flag = "--" + option.replace("_", "-")
+            raise ValueError(f"{flag} must be a non-empty string")
     if int(args.seed) != _REQUIRED_PRIMITIVE_CORRECTNESS_SEED:
         raise ValueError("--seed must match required primitive correctness seed")
     for option, minimum in (

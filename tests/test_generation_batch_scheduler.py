@@ -1994,6 +1994,25 @@ def test_batch_c_sweep_rejects_invalid_shape_before_creating_artifacts(tmp_path:
         assert not output_dir.exists()
 
 
+def test_batch_c_sweep_rejects_empty_model_fixture_before_creating_artifacts(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        c_sweep.subprocess,
+        "run",
+        lambda *args, **kwargs: pytest.fail("empty-input sweep should fail before launching subprocesses"),
+    )
+    for flag, expected in (
+        ("--model", "--model must be a non-empty string"),
+        ("--fixture", "--fixture must be a non-empty string"),
+    ):
+        output_dir = tmp_path / f"artifacts-{flag[2:]}"
+        args = build_c_sweep_parser().parse_args(
+            ["--dry-run", "--batch-sizes", "2", flag, "", "--output-dir", str(output_dir)]
+        )
+        with pytest.raises(ValueError, match=expected):
+            run_sweep(args)
+        assert not output_dir.exists()
+
+
 def test_batch_c_sweep_stops_and_counts_failed_command(tmp_path: Path, monkeypatch) -> None:
     args = build_c_sweep_parser().parse_args(
         [
