@@ -1140,6 +1140,8 @@ def _profiler_command_provenance_blockers(
     blockers: list[str] = []
     rocprof_prefix = _rocprof_command_prefix(command)
     rocprof_prefix_command = _join_command_parts(rocprof_prefix)
+    if not rocprof_prefix or Path(rocprof_prefix[0]).name != "rocprofv3":
+        blockers.append("profiler command must start with rocprofv3")
     if not any(Path(part).name == "rocprofv3" for part in rocprof_prefix):
         blockers.append("profiler command must include rocprofv3")
     for flag in ("--kernel-trace", "--output-format", "-d"):

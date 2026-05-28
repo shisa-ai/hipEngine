@@ -5952,6 +5952,7 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
     assert "profiler.trace_files entries must be unique" in blockers
     assert "profiler.trace_files must include a kernel-trace CSV" in blockers
     assert "profiler.trace_files entries must be CSV paths" in blockers
+    assert "profiler command must start with rocprofv3" in blockers
     assert "profiler command must include rocprofv3" in blockers
     assert "profiler command must include --kernel-trace" in blockers
     assert "profiler command must target scripts/qwen35_batch_retained_bench.py" in blockers
@@ -5964,6 +5965,11 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
     }
     assert "profiler command must launch retained bench after rocprof separator" in retained_bench._profiler_provenance_blockers(
         wrong_profiled_segment,
+        retained_artifact_path="benchmarks/results/native-c2.json",
+    )
+    wrapper_shadowed_rocprof = {**valid, "command": "echo " + valid["command"]}
+    assert "profiler command must start with rocprofv3" in retained_bench._profiler_provenance_blockers(
+        wrapper_shadowed_rocprof,
         retained_artifact_path="benchmarks/results/native-c2.json",
     )
     post_separator_shadowed_kernel_trace = {
