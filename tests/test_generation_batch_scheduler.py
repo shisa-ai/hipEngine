@@ -3592,6 +3592,25 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_command_text["commands"][-1]["command"] = "python3 scripts/qwen35_batch_retained_bench.py --tampered"
     with pytest.raises(ValueError, match=r"commands\[\]\.command must match"):
         c_sweep.validate_sweep_summary(tampered_command_text)
+    tampered_primitive_rows_missing = json.loads(json.dumps(persisted))
+    primitive_argv = tampered_primitive_rows_missing["commands"][0]["argv"]
+    rows_index = primitive_argv.index("--rows")
+    del primitive_argv[rows_index : rows_index + 2]
+    tampered_primitive_rows_missing["commands"][0]["command"] = shlex.join(primitive_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv --rows must have an int value"):
+        c_sweep.validate_sweep_summary(tampered_primitive_rows_missing)
+    tampered_primitive_rows_mismatch = json.loads(json.dumps(persisted))
+    primitive_argv = tampered_primitive_rows_mismatch["commands"][0]["argv"]
+    primitive_argv[primitive_argv.index("--rows") + 1] = "3"
+    tampered_primitive_rows_mismatch["commands"][0]["command"] = shlex.join(primitive_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.batch_size must match commands\[\]\.argv"):
+        c_sweep.validate_sweep_summary(tampered_primitive_rows_mismatch)
+    tampered_primitive_rows_duplicate = json.loads(json.dumps(persisted))
+    primitive_argv = tampered_primitive_rows_duplicate["commands"][0]["argv"]
+    primitive_argv.extend(("--rows", "2"))
+    tampered_primitive_rows_duplicate["commands"][0]["command"] = shlex.join(primitive_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv must not repeat primitive correctness flags"):
+        c_sweep.validate_sweep_summary(tampered_primitive_rows_duplicate)
     tampered_primitive_seed = json.loads(json.dumps(persisted))
     primitive_argv = tampered_primitive_seed["commands"][0]["argv"]
     primitive_argv[primitive_argv.index("--seed") + 1] = "999"

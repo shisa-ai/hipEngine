@@ -101,6 +101,7 @@ _RETAINED_BENCH_UNIQUE_FLAGS = (
     "--compiler-version-file",
     "--require-cached-build",
 )
+_PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS = ("--rows", "--seed")
 
 
 @dataclass(frozen=True, slots=True)
@@ -1704,6 +1705,18 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 if shape_arg_error:
                     break
             if entry.get("category") == "primitive":
+                duplicated_primitive_flags = _duplicate_flags(argv, _PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS)
+                if duplicated_primitive_flags:
+                    errors.append("commands[].argv must not repeat primitive correctness flags")
+                    break
+                try:
+                    primitive_rows = int(argv[argv.index("--rows") + 1])
+                except (IndexError, ValueError):
+                    errors.append("commands[].argv --rows must have an int value")
+                    break
+                if primitive_rows != entry.get("batch_size"):
+                    errors.append("commands[].batch_size must match primitive --rows")
+                    break
                 try:
                     primitive_seed = int(argv[argv.index("--seed") + 1])
                 except (IndexError, ValueError):
