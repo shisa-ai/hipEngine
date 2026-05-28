@@ -6537,6 +6537,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="hardware.rocminfo.command must include rocminfo"):
         validate_cn_diagnostic_artifact_payload(wrong_rocminfo_command)
 
+    spoofed_rocminfo_command = json.loads(json.dumps(accepted))
+    spoofed_rocminfo_command["hardware"]["rocminfo"]["command"] = "echo rocminfo"
+    with pytest.raises(ValueError, match="hardware.rocminfo.command must include rocminfo \\| grep -E"):
+        validate_cn_diagnostic_artifact_payload(spoofed_rocminfo_command)
+
     wrong_rocm_smi_command = json.loads(json.dumps(accepted))
     wrong_rocm_smi_command["hardware"]["rocm_smi"]["command"] = "cat /tmp/hw.txt"
     with pytest.raises(ValueError, match="hardware.rocm_smi.command must include rocm-smi"):

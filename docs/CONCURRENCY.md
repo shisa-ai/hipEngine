@@ -1005,7 +1005,9 @@ roll-up/status view.
       `git rev-parse HEAD`, and `git diff --quiet`,
       concrete non-empty hardware `gpu`/`arch` fields plus successful
       `hardware.rocminfo`/`hardware.rocm_smi` capture objects whose commands
-      match their tools and whose `rocminfo` output includes the recorded arch,
+      include the retained capture fragments (`rocminfo | grep -E`, `Name:|gfx`,
+      `head -4`, and the `rocm-smi --showmeminfo vram --showuse --showtemp` flags)
+      and whose `rocminfo` output includes the recorded arch,
       clean full-commit software fields (`software.hipengine_dirty == false`)
       plus non-empty `hipcc_version`, and captured profiler evidence with a
       `profiler.artifact_path` under `benchmarks/results/`, profiler trace

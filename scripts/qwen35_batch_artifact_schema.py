@@ -64,6 +64,10 @@ _REQUIRED_ACCEPTED_HARDWARE_CAPTURE_FIELDS = (
     "rocminfo",
     "rocm_smi",
 )
+_REQUIRED_ACCEPTED_HARDWARE_CAPTURE_COMMAND_FRAGMENTS = {
+    "rocminfo": ("rocminfo | grep -E", "Name:|gfx", "head -4"),
+    "rocm_smi": ("rocm-smi", "--showmeminfo", "vram", "--showuse", "--showtemp"),
+}
 _REQUIRED_ACCEPTED_COMMAND_FIELDS = (
     "benchmark",
     "correctness_reference",
@@ -907,6 +911,12 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             errors,
             command_fragment=command_fragment,
         )
+        capture = hardware.get(field)
+        command = capture.get("command") if isinstance(capture, Mapping) else None
+        if isinstance(command, str):
+            for fragment in _REQUIRED_ACCEPTED_HARDWARE_CAPTURE_COMMAND_FRAGMENTS[field]:
+                if fragment not in command:
+                    errors.append(f"hardware.{field}.command must include {fragment} for accepted artifacts")
     hardware_arch = hardware.get("arch")
     rocminfo = hardware.get("rocminfo")
     if isinstance(hardware_arch, str) and hardware_arch and isinstance(rocminfo, Mapping):
