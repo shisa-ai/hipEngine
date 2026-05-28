@@ -1030,7 +1030,7 @@ roll-up/status view.
       `benchmarks/README.md` and `benchmarks/CHANGELOG.md` both mention the
       retained artifact path, the README carries `Last updated: YYYY-MM-DD`,
       and the changelog carries a same-line dated `YYYY-MM-DD` artifact entry whose date matches README `Last updated` and includes numeric old→new metric plus percent-delta evidence before promotion, writes self-validating
-      pass/fail summary evidence only under `benchmarks/results/`, requires passed or rollup-bearing summaries' source JSON to point at the retained artifact path, and can
+      pass/fail summary evidence only under `benchmarks/results/`, requires passed rollup summaries to assert `status=accepted`, `performance_claim=true`, and rollup metadata, requires passed or rollup-bearing summaries' source JSON to point at the retained artifact path, and can
       recheck those summaries with `--validation-summary`,
       exact environment capture command entries for `rocminfo | grep -E 'Name:|gfx' | head -4`,
       `rocm-smi --showmeminfo vram --showuse --showtemp`, `hipcc --version`,

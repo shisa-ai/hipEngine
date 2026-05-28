@@ -2700,6 +2700,13 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
                 errors.append("summary.benchmark_rollup.artifact_path must match summary.artifact_path")
             if benchmark_rollup.get("source_artifact_path") != artifact_path:
                 errors.append("summary.benchmark_rollup.source_artifact_path must match summary.artifact_path")
+    if mode == "rollup_evidence" and passed is True:
+        if status != "accepted":
+            errors.append("passed rollup evidence summary.status must be accepted")
+        if performance_claim is not True:
+            errors.append("passed rollup evidence summary.performance_claim must be true")
+        if not isinstance(benchmark_rollup, Mapping):
+            errors.append("passed rollup evidence summary.benchmark_rollup must be an object")
     if (passed is True or isinstance(benchmark_rollup, Mapping)) and isinstance(artifact_json, str) and isinstance(artifact_path, str):
         normalized_artifact_json = artifact_json.replace("\\", "/")
         normalized_artifact_path = artifact_path.replace("\\", "/")
