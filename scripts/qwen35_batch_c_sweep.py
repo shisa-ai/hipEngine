@@ -1655,6 +1655,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         if failed_postconditions and entry.get("postcondition") != failed_postconditions[0]:
             errors.append("commands[].postcondition must match the first failed postcondition")
             break
+        if not failed_postconditions and "postcondition" in entry:
+            errors.append("commands[].postcondition must be absent unless a postcondition failed")
+            break
     if errors:
         raise ValueError("invalid c-sweep summary: " + "; ".join(errors))
 
