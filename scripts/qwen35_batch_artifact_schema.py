@@ -2842,6 +2842,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.validation_summary:
         try:
+            _validate_summary_json_path(args.artifact_json, label="--validation-summary path")
             summary = _load_payload(args.artifact_json)
             validate_cn_diagnostic_validation_summary(summary)
             _validate_validation_summary_output_path(args.artifact_json, summary, label="--validation-summary path")
