@@ -8101,6 +8101,13 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     missing_summary_artifact_path["artifact_path"] = None
     with pytest.raises(ValueError, match="summary.artifact_path must be a non-empty string when summary.passed is true"):
         validate_cn_diagnostic_validation_summary(missing_summary_artifact_path)
+    missing_artifact_extra_rollup_key = json.loads(json.dumps(summary))
+    missing_artifact_extra_rollup_key["passed"] = False
+    missing_artifact_extra_rollup_key["error"] = "rollup evidence failed"
+    missing_artifact_extra_rollup_key["artifact_path"] = None
+    missing_artifact_extra_rollup_key["benchmark_rollup"]["note"] = "promote"
+    with pytest.raises(ValueError, match="summary.benchmark_rollup contains unexpected keys: note"):
+        validate_cn_diagnostic_validation_summary(missing_artifact_extra_rollup_key)
     copied_summary_file = rollup_root / "benchmarks" / "results" / "copied-rollup-check.json"
     copied_summary_file.write_text(json.dumps(summary), encoding="utf-8")
     assert validate_cn_diagnostic_artifact_main([str(copied_summary_file), "--validation-summary"]) == 1
