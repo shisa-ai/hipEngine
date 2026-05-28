@@ -2194,6 +2194,12 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_stray_precondition["commands"][0]["precondition"] = {"kind": "primitive_correctness", "passed": False}
     with pytest.raises(ValueError, match=r"commands\[\]\.precondition must be absent unless preconditions include a failure"):
         c_sweep.validate_sweep_summary(tampered_stray_precondition)
+    tampered_precondition_scope = json.loads(json.dumps(persisted))
+    tampered_precondition_scope["commands"][0]["preconditions"] = [
+        {"kind": "primitive_correctness", "passed": True}
+    ]
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions are only valid for retained native diagnostic rows"):
+        c_sweep.validate_sweep_summary(tampered_precondition_scope)
     tampered_singular_postcondition = json.loads(json.dumps(persisted))
     tampered_singular_postcondition["commands"][-1]["postcondition"] = tampered_singular_postcondition["commands"][-1]["postconditions"][0]
     with pytest.raises(ValueError, match=r"commands\[\]\.postcondition must be absent unless a postcondition failed"):

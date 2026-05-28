@@ -1550,6 +1550,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     break
             if condition_schema_error:
                 break
+            if "preconditions" in entry and (entry.get("category") != "native_diagnostic" or entry.get("batch_size") == 1):
+                errors.append("commands[].preconditions are only valid for retained native diagnostic rows")
+                break
             if status == "failed" and isinstance(returncode, int) and returncode != 0 and any(
                 field in entry for field in ("postconditions", "postcondition")
             ):
