@@ -1725,6 +1725,18 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if _command_text_arg(profiler_command, "--fixture") != _argv_value(argv, "--fixture") or profiler_precondition.get("profiler_fixture") != _argv_value(argv, "--fixture"):
                         errors.append("commands[].preconditions[].profiler fixture must match retained command")
                         break
+                    if _command_text_arg(profiler_command, "--json") != entry.get("artifact_path"):
+                        errors.append("commands[].preconditions[].profiler command --json must match retained artifact")
+                        break
+                    if _command_text_arg(profiler_command, "--profiler-json") != profiler_precondition.get("artifact_path"):
+                        errors.append("commands[].preconditions[].profiler command --profiler-json must match profiler precondition artifact")
+                        break
+                    if any(
+                        _command_text_arg(profiler_command, flag) != _argv_value(argv, flag)
+                        for flag in ("--c1-baseline-json", "--serial-bridge-json", "--primitive-correctness-json")
+                    ):
+                        errors.append("commands[].preconditions[].profiler command gate paths must match retained command")
+                        break
                     if profiler_precondition.get("profiler_status") != "captured":
                         errors.append("commands[].preconditions[].profiler_status must be captured when passed")
                         break
