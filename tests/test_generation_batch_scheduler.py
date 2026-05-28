@@ -5908,6 +5908,32 @@ def test_qwen35_retained_memory_payload_uses_bench_evidence() -> None:
     assert retained_bench._memory_evidence_blockers(memory) == []
 
 
+def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_paths() -> None:
+    valid = {
+        "path": "scheduler_native_compact_batch",
+        "row_execution": "native_compact_caware_layers",
+        "native_compact_prefill": True,
+        "native_caware_decode": True,
+        "decode_execution": {"full_attention_decode_path": "native_batch", "native_caware_decode": True},
+    }
+    fallback = {
+        "path": "scheduler_serial_slot_bridge",
+        "row_execution": "native_linear_batch_with_per_row_full_attention_fallback",
+        "native_compact_prefill": False,
+        "native_caware_decode": False,
+        "decode_execution": {"full_attention_decode_path": "per_row_splitk_fallback", "native_caware_decode": False},
+    }
+
+    assert retained_bench._batch_execution_blockers(valid) == []
+    blockers = retained_bench._batch_execution_blockers(fallback)
+    assert "execution.batch_execution.path must be scheduler_native_compact_batch" in blockers
+    assert "execution.batch_execution.row_execution must not contain serial or fallback" in blockers
+    assert "execution.batch_execution.native_compact_prefill must be true" in blockers
+    assert "execution.batch_execution.native_caware_decode must be true" in blockers
+    assert "execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch" in blockers
+    assert "execution.batch_execution.decode_execution.native_caware_decode must be true" in blockers
+
+
 def test_qwen35_retained_projection_dispatch_blockers_require_caware_candidate() -> None:
     valid_dispatch = {
         "projection_dispatch": {

@@ -934,6 +934,7 @@ roll-up/status view.
       serial-bridge paths, row executions labeled `serial`/`fallback`, missing
       decode-execution metadata, non-`native_batch` full-attention decode paths,
       per-row full-attention decode fallbacks, and non-native sampler metadata,
+      and retained bench now blocks promotion before schema validation for the same serial/fallback batch/decode metadata,
       so residual serial loops cannot be promoted as retained rows while this
       item remains open.
 - [ ] **P4 MoE/projection scaling.** Group routed lanes by expert and switch

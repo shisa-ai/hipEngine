@@ -941,6 +941,33 @@ def _retained_memory_payload(args: argparse.Namespace, kv_policy: ResolvedKVPoli
     return memory
 
 
+def _batch_execution_blockers(batch_execution: Mapping[str, Any]) -> list[str]:
+    blockers: list[str] = []
+    path = batch_execution.get("path")
+    if not isinstance(path, str) or not path:
+        blockers.append("execution.batch_execution.path must be a non-empty string")
+    elif path != "scheduler_native_compact_batch" or "serial" in path:
+        blockers.append("execution.batch_execution.path must be scheduler_native_compact_batch")
+    row_execution = batch_execution.get("row_execution")
+    if not isinstance(row_execution, str) or not row_execution:
+        blockers.append("execution.batch_execution.row_execution must be a non-empty string")
+    elif "serial" in row_execution or "fallback" in row_execution:
+        blockers.append("execution.batch_execution.row_execution must not contain serial or fallback")
+    if batch_execution.get("native_compact_prefill") is not True:
+        blockers.append("execution.batch_execution.native_compact_prefill must be true")
+    if batch_execution.get("native_caware_decode") is not True:
+        blockers.append("execution.batch_execution.native_caware_decode must be true")
+    decode_execution = batch_execution.get("decode_execution")
+    if not isinstance(decode_execution, Mapping):
+        blockers.append("execution.batch_execution.decode_execution is missing")
+    else:
+        if decode_execution.get("full_attention_decode_path") != "native_batch":
+            blockers.append("execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch")
+        if decode_execution.get("native_caware_decode") is not True:
+            blockers.append("execution.batch_execution.decode_execution.native_caware_decode must be true")
+    return blockers
+
+
 def _projection_dispatch_blockers(
     batch_execution: Mapping[str, Any],
     *,
@@ -1475,6 +1502,7 @@ def _build_payload(
     batch_execution = dict(bench["batch_execution"])
     throughput_claim_eligible = bool(batch_execution.get("throughput_claim_eligible"))
     native_caware_decode = bool(batch_execution.get("native_caware_decode"))
+    batch_execution_blockers = _batch_execution_blockers(batch_execution)
     projection_dispatch_candidates = bench.get("projection_dispatch_candidates")
     projection_blockers = _projection_dispatch_blockers(
         batch_execution,
@@ -1499,6 +1527,7 @@ def _build_payload(
         and protocol_shape
         and scaling_complete
         and profiler_captured
+        and not batch_execution_blockers
         and not projection_blockers
         and not sampler_blockers
         and not memory_blockers
@@ -1524,6 +1553,7 @@ def _build_payload(
         blocked_reasons.append("profiler trace was not captured with expected kernels present")
     if not bench["finite_logits"]:
         blocked_reasons.append("non-finite seed or decode logits")
+    blocked_reasons.extend(batch_execution_blockers)
     blocked_reasons.extend(projection_blockers)
     blocked_reasons.extend(sampler_blockers)
     blocked_reasons.extend(memory_blockers)
