@@ -1838,6 +1838,15 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
         tampered_batch_sizes["batch_sizes"] = bad_batch_sizes
         with pytest.raises(ValueError, match="batch_sizes must be a non-empty unique positive-int list"):
             c_sweep.validate_sweep_summary(tampered_batch_sizes)
+    for bad_command_count in (True, "6", 5):
+        tampered_command_count = json.loads(json.dumps(persisted))
+        tampered_command_count["command_count"] = bad_command_count
+        with pytest.raises(ValueError, match="command_count must be an int greater than or equal to completed_command_count"):
+            c_sweep.validate_sweep_summary(tampered_command_count)
+    tampered_completed_count_type = json.loads(json.dumps(persisted))
+    tampered_completed_count_type["completed_command_count"] = "6"
+    with pytest.raises(ValueError, match=r"completed_command_count must match len\(commands\)"):
+        c_sweep.validate_sweep_summary(tampered_completed_count_type)
     tampered_dropped_commands = json.loads(json.dumps(persisted))
     tampered_dropped_commands["commands"] = []
     tampered_dropped_commands["completed_command_count"] = 0
