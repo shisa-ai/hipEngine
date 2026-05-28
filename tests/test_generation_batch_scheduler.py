@@ -655,6 +655,7 @@ def test_batch_c_sweep_profiler_precondition_synthesizes_trace_fields_from_csv(t
     precondition = c_sweep._profiler_summary_precondition(native)
 
     assert precondition["passed"] is True
+    assert precondition["profiler_source_artifact_path"] == str(profiler_path)
     assert precondition["profiler_trace_kernel_names"] == ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"]
     assert precondition["profiler_trace_synthesized_fields"] == [
         "trace_kernel_names",
@@ -3229,6 +3230,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_postcondition_field_match["commands"][-1]["postconditions"][0]["profiler_synthesized_fields"] = ["trace_kernel_names"]
     with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler synthesized fields must match when passed"):
         c_sweep.validate_sweep_summary(tampered_postcondition_field_match)
+    tampered_profiler_source_artifact_path = json.loads(json.dumps(persisted))
+    tampered_profiler_source_artifact_path["commands"][-1]["preconditions"][-1]["profiler_source_artifact_path"] = str(output_dir / "other-profiler-c2.json")
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path must match profiler artifact_path when profiler passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_source_artifact_path)
     tampered_profiler_precondition_field_shape = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_field_shape["commands"][-1]["preconditions"][-1]["profiler_trace_synthesized_fields"] = [1]
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_synthesized_fields must be a string list when profiler passed"):
@@ -3900,6 +3905,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         "passed": True,
         "reason": None,
         "profiler_status": "captured",
+        "profiler_source_artifact_path": str(output_dir / "profiler-c2.json"),
         "profiler_command": (
             f"rocprofv3 --kernel-trace --output-format csv -d {output_dir / 'profile-c2'} -- python3 scripts/qwen35_batch_retained_bench.py "
             "--model /tmp/model --fixture /tmp/fixture.json --batch-size 2 "

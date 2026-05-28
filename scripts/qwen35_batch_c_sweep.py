@@ -1049,12 +1049,16 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
     profiler_trace_files: list[str] = []
     profiler_trace_kernel_names: list[str] = []
     profiler_trace_synthesized_fields: list[str] = []
+    profiler_source_artifact_path: str | None = None
     trace_kernel_names_valid = False
     if not isinstance(profiler, dict):
         reasons.append("profiler summary root is not an object")
     else:
-        if profiler.get("artifact_path") != str(profiler_path):
+        raw_profiler_artifact_path = profiler.get("artifact_path")
+        if raw_profiler_artifact_path != str(profiler_path):
             reasons.append("artifact_path does not match --profiler-json path")
+        elif isinstance(raw_profiler_artifact_path, str):
+            profiler_source_artifact_path = raw_profiler_artifact_path
         raw_rows = profiler.get("rows")
         if raw_rows is None:
             workload = profiler.get("workload")
@@ -1252,6 +1256,7 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
         result.update(
             {
                 "profiler_status": str(profiler["status"]),
+                "profiler_source_artifact_path": profiler_source_artifact_path,
                 "profiler_command": profiler_command,
                 "profiler_output_format": str(profiler["output_format"]),
                 "profiler_trace_dir": str(profiler["trace_dir"]),
@@ -2029,6 +2034,14 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         break
                     if _command_text_arg(profiler_command, "--profiler-json") != profiler_precondition.get("artifact_path"):
                         errors.append("commands[].preconditions[].profiler command --profiler-json must match profiler precondition artifact")
+                        break
+                    profiler_source_artifact_path = profiler_precondition.get("profiler_source_artifact_path")
+                    if (
+                        not isinstance(profiler_source_artifact_path, str)
+                        or not profiler_source_artifact_path
+                        or profiler_source_artifact_path != profiler_precondition.get("artifact_path")
+                    ):
+                        errors.append("commands[].preconditions[].profiler_source_artifact_path must match profiler artifact_path when profiler passed")
                         break
                     if any(
                         _command_text_arg(profiler_command, flag) != _argv_value(argv, flag)
