@@ -5032,6 +5032,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
                 "attn_batch_vs_c1_max_abs": 0.0,
+                "attn_batch_vs_numpy_max_abs": 5.0e-8,
             },
         },
         "execution": {
@@ -5488,6 +5489,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     primitive_attn_mismatch["correctness"]["primitive_batch_correctness"]["attn_batch_vs_c1_max_abs"] = 0.25
     with pytest.raises(ValueError, match="primitive_batch_correctness.attn_batch_vs_c1_max_abs must be 0.0"):
         validate_cn_diagnostic_artifact_payload(primitive_attn_mismatch)
+
+    missing_primitive_numpy_error = json.loads(json.dumps(accepted))
+    missing_primitive_numpy_error["correctness"]["primitive_batch_correctness"].pop("attn_batch_vs_numpy_max_abs")
+    with pytest.raises(ValueError, match="primitive_batch_correctness.attn_batch_vs_numpy_max_abs must be numeric"):
+        validate_cn_diagnostic_artifact_payload(missing_primitive_numpy_error)
+
+    primitive_numpy_mismatch = json.loads(json.dumps(accepted))
+    primitive_numpy_mismatch["correctness"]["primitive_batch_correctness"]["attn_batch_vs_numpy_max_abs"] = 1.0e-3
+    with pytest.raises(ValueError, match="primitive_batch_correctness.attn_batch_vs_numpy_max_abs must be <= 2e-5"):
+        validate_cn_diagnostic_artifact_payload(primitive_numpy_mismatch)
 
     missing_workload_concurrency = json.loads(json.dumps(accepted))
     missing_workload_concurrency["workload"].pop("concurrency")

@@ -163,6 +163,7 @@ _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS = {
     "num_kv_heads": 1,
     "head_dim": 8,
 }
+_PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT = 2e-5
 _ALLOWED_PROFILER_SYNTHESIZED_FIELDS = (
     "trace_kernel_names",
     "kernel_durations_ns",
@@ -1596,6 +1597,11 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
         errors.append("correctness.primitive_batch_correctness.attn_batch_vs_c1_max_abs must be numeric for accepted artifacts")
     elif float(attn_vs_c1) != 0.0:
         errors.append("correctness.primitive_batch_correctness.attn_batch_vs_c1_max_abs must be 0.0 for accepted artifacts")
+    attn_vs_numpy = primitive.get("attn_batch_vs_numpy_max_abs")
+    if not _is_number(attn_vs_numpy):
+        errors.append("correctness.primitive_batch_correctness.attn_batch_vs_numpy_max_abs must be numeric for accepted artifacts")
+    elif float(attn_vs_numpy) > _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT:
+        errors.append("correctness.primitive_batch_correctness.attn_batch_vs_numpy_max_abs must be <= 2e-5 for accepted artifacts")
 
 
 def _validate_generated_token_sequence_lengths(
