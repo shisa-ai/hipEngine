@@ -756,7 +756,7 @@ roll-up/status view.
       sampler decision and falls back to `serial_lm_head` when evidence is
       missing or points outside retained artifacts, and accepted c>N artifact
       schema requires a native sampler decision with green retained equality
-      evidence plus no blockers, so setting the mode cannot silently create a
+      evidence plus no blockers, and retained bench now blocks promotion before schema validation unless sampler metadata records a native row-aware batched LM-head decision with a retained equality artifact and no blockers, so setting the mode cannot silently create a
       native sampler claim before C2 is green.
 
 ### C4 packets — continuous scheduler and dynamic KV pool

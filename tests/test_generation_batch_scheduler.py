@@ -5997,6 +5997,39 @@ def test_qwen35_retained_projection_dispatch_blockers_require_caware_candidate()
     assert "projection_dispatch_candidates must include selected projection candidate" in blockers
 
 
+def test_qwen35_retained_sampler_execution_blockers_require_native_lm_head_evidence() -> None:
+    valid = {
+        "decode_execution": {
+            "sampler_execution": {
+                "mode": "batched_lm_head",
+                "native_row_aware_lm_head": True,
+                "c2_equality_green": True,
+                "equality_artifact": "benchmarks/results/qwen35-c2-sampler-eq.json",
+                "blockers": [],
+            }
+        }
+    }
+    serial = {
+        "decode_execution": {
+            "sampler_execution": {
+                "mode": "serial_lm_head",
+                "native_row_aware_lm_head": False,
+                "c2_equality_green": False,
+                "equality_artifact": "/tmp/qwen35-c2-sampler-eq.json",
+                "blockers": ["batched LM-head requires green c>N generated-token equality evidence"],
+            }
+        }
+    }
+
+    assert retained_bench._sampler_execution_blockers(valid) == []
+    blockers = retained_bench._sampler_execution_blockers(serial)
+    assert "execution.batch_execution.decode_execution.sampler_execution.native_row_aware_lm_head must be true" in blockers
+    assert "execution.batch_execution.decode_execution.sampler_execution.mode must be batched_lm_head" in blockers
+    assert "execution.batch_execution.decode_execution.sampler_execution.c2_equality_green must be true" in blockers
+    assert "execution.batch_execution.decode_execution.sampler_execution.equality_artifact must be under benchmarks/results" in blockers
+    assert "execution.batch_execution.decode_execution.sampler_execution.blockers must be empty" in blockers
+
+
 def test_qwen35_retained_memory_evidence_blockers_cover_required_fields() -> None:
     complete_memory = {
         "allocator_reserved_peak_bytes": 8192,

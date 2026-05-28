@@ -1064,6 +1064,27 @@ def _projection_dispatch_profiler_blockers(batch_execution: Mapping[str, Any], p
     return []
 
 
+def _sampler_execution_blockers(batch_execution: Mapping[str, Any]) -> list[str]:
+    decode_execution = batch_execution.get("decode_execution")
+    if not isinstance(decode_execution, Mapping):
+        return ["execution.batch_execution.decode_execution is missing"]
+    sampler_execution = decode_execution.get("sampler_execution")
+    if not isinstance(sampler_execution, Mapping):
+        return ["execution.batch_execution.decode_execution.sampler_execution is missing"]
+    blockers: list[str] = []
+    if sampler_execution.get("native_row_aware_lm_head") is not True:
+        blockers.append("execution.batch_execution.decode_execution.sampler_execution.native_row_aware_lm_head must be true")
+    if sampler_execution.get("mode") != "batched_lm_head":
+        blockers.append("execution.batch_execution.decode_execution.sampler_execution.mode must be batched_lm_head")
+    if sampler_execution.get("c2_equality_green") is not True:
+        blockers.append("execution.batch_execution.decode_execution.sampler_execution.c2_equality_green must be true")
+    if not _is_retained_artifact_path(sampler_execution.get("equality_artifact")):
+        blockers.append("execution.batch_execution.decode_execution.sampler_execution.equality_artifact must be under benchmarks/results")
+    if sampler_execution.get("blockers") != []:
+        blockers.append("execution.batch_execution.decode_execution.sampler_execution.blockers must be empty")
+    return blockers
+
+
 def _memory_evidence_blockers(memory: Mapping[str, Any]) -> list[str]:
     blockers: list[str] = []
     if not _is_finite_nonnegative_number(memory.get("allocator_reserved_peak_bytes")):
@@ -1461,6 +1482,7 @@ def _build_payload(
         candidates=projection_dispatch_candidates,
     )
     projection_blockers.extend(_projection_dispatch_profiler_blockers(batch_execution, profiler))
+    sampler_blockers = _sampler_execution_blockers(batch_execution)
     memory = _retained_memory_payload(args, kv_policy, bench)
     memory_blockers = _memory_evidence_blockers(memory)
     graph_bucket_blockers = _decode_shape_key_blockers(scheduler_metadata, concurrency=args.batch_size, prompt_length=args.prompt_length)
@@ -1478,6 +1500,7 @@ def _build_payload(
         and scaling_complete
         and profiler_captured
         and not projection_blockers
+        and not sampler_blockers
         and not memory_blockers
         and not graph_bucket_blockers
     )
@@ -1502,6 +1525,7 @@ def _build_payload(
     if not bench["finite_logits"]:
         blocked_reasons.append("non-finite seed or decode logits")
     blocked_reasons.extend(projection_blockers)
+    blocked_reasons.extend(sampler_blockers)
     blocked_reasons.extend(memory_blockers)
     blocked_reasons.extend(graph_bucket_blockers)
     per_request_observability = dict(bench.get("request_observability", {}))
