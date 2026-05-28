@@ -5811,6 +5811,34 @@ def test_qwen35_retained_payload_mirrors_fallback_native_decode_label(monkeypatc
     assert "--rows 2" in payload["commands"]["correctness_reference"]
 
 
+def test_qwen35_retained_allocator_memory_evidence_from_stats() -> None:
+    evidence = retained_bench._allocator_memory_evidence(
+        {
+            "current_allocated_bytes": 1024,
+            "peak_allocated_bytes": 4096,
+            "total_allocated_bytes": 8192,
+            "total_freed_bytes": 4096,
+            "active_allocations": 2,
+            "peak_allocations": 4,
+            "ignored_negative": -1,
+            "ignored_bool": True,
+        }
+    )
+
+    assert evidence["allocator_reserved_peak_bytes"] == 4096
+    assert evidence["allocator_memory_stats"] == {
+        "current_allocated_bytes": 1024,
+        "peak_allocated_bytes": 4096,
+        "total_allocated_bytes": 8192,
+        "total_freed_bytes": 4096,
+        "active_allocations": 2,
+        "peak_allocations": 4,
+    }
+    assert retained_bench._memory_evidence_blockers({**evidence, "dynamic_pool": {}, "stable_block_id": {}, "prefix_sharing": {}}).count(
+        "memory.allocator_reserved_peak_bytes is unavailable or non-finite"
+    ) == 0
+
+
 def test_qwen35_retained_memory_payload_uses_bench_evidence() -> None:
     args = argparse.Namespace(
         batch_size=2,

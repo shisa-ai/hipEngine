@@ -28,6 +28,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from hipengine.core.memory import memory_stats
 from hipengine.generation import GeneratedToken, ResidentBatchScheduler
 from hipengine.kvcache import ResolvedKVPolicy
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
@@ -737,6 +738,19 @@ def _merged_mapping(base: Mapping[str, Any], override: Mapping[str, Any]) -> dic
     return result
 
 
+def _allocator_memory_evidence(stats: Mapping[str, Any]) -> dict[str, Any]:
+    evidence_stats = {
+        key: int(value)
+        for key, value in stats.items()
+        if _is_finite_nonnegative_number(value)
+    }
+    peak = evidence_stats.get("peak_allocated_bytes")
+    return {
+        "allocator_reserved_peak_bytes": peak,
+        "allocator_memory_stats": evidence_stats,
+    }
+
+
 def _retained_memory_payload(args: argparse.Namespace, kv_policy: ResolvedKVPolicy, bench: Mapping[str, Any] | None = None) -> dict[str, Any]:
     memory = {
         "max_batch_size": args.batch_size,
@@ -1046,6 +1060,7 @@ def _run_native_bench(
         "completed": completed_payload,
         "request_observability": request_observability,
         "finite_logits": finite_logits,
+        "memory": _allocator_memory_evidence(memory_stats()),
     }
 
 
