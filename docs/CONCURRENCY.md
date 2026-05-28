@@ -1028,7 +1028,8 @@ roll-up/status view.
       --rollup-evidence --summary-json
       benchmarks/results/<artifact>-rollup-check.json`) verifies live
       `benchmarks/README.md` and `benchmarks/CHANGELOG.md` both mention the
-      retained artifact path before promotion, writes self-validating
+      retained artifact path, the README carries `Last updated: YYYY-MM-DD`,
+      and the changelog carries a dated `YYYY-MM-DD` entry before promotion, writes self-validating
       pass/fail summary evidence only under `benchmarks/results/`, and can
       recheck those summaries with `--validation-summary`,
       exact environment capture command entries for `rocminfo | grep -E 'Name:|gfx' | head -4`,

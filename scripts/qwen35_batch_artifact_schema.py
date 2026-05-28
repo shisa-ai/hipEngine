@@ -134,6 +134,8 @@ _COMMAND_FIXTURE_RE = re.compile(r"(?:^|\s)--fixture(?:=|\s+)(\S+)(?=\s|$)")
 _COMMAND_PROMPT_LENGTH_RE = re.compile(r"(?:^|\s)--prompt-length(?:=|\s+)(\d+)(?=\s|$)")
 _COMMAND_JSON_RE = re.compile(r"(?:^|\s)--json(?:=|\s+)(\S+)(?=\s|$)")
 _COMMAND_PROFILER_JSON_RE = re.compile(r"(?:^|\s)--profiler-json(?:=|\s+)(\S+)(?=\s|$)")
+_ROLLUP_LAST_UPDATED_RE = re.compile(r"(?im)^\s*Last updated\s*:?\s*\d{4}-\d{2}-\d{2}\b")
+_ROLLUP_DATED_CHANGELOG_RE = re.compile(r"(?m)^\s*(?:[-*]\s*)?(?:##\s*)?\d{4}-\d{2}-\d{2}\b")
 _COMMAND_C1_BASELINE_JSON_RE = re.compile(r"(?:^|\s)--c1-baseline-json(?:=|\s+)(\S+)(?=\s|$)")
 _COMMAND_SERIAL_BRIDGE_JSON_RE = re.compile(r"(?:^|\s)--serial-bridge-json(?:=|\s+)(\S+)(?=\s|$)")
 _COMMAND_PRIMITIVE_CORRECTNESS_JSON_RE = re.compile(r"(?:^|\s)--primitive-correctness-json(?:=|\s+)(\S+)(?=\s|$)")
@@ -616,20 +618,22 @@ def validate_cn_diagnostic_rollup_evidence(payload: Mapping[str, Any]) -> None:
         errors.append("benchmark_rollup.artifact_path must match artifact_path for rollup evidence")
     if rollup.get("source_artifact_path") != artifact_path:
         errors.append("benchmark_rollup.source_artifact_path must match artifact_path for rollup evidence")
-    _validate_rollup_file_mentions_artifact(
+    readme_text = _validate_rollup_file_mentions_artifact(
         "benchmark_rollup.readme_path",
         rollup.get("readme_path"),
         expected_path="benchmarks/README.md",
         artifact_path=artifact_path,
         errors=errors,
     )
-    _validate_rollup_file_mentions_artifact(
+    _validate_rollup_readme_metadata(readme_text, errors)
+    changelog_text = _validate_rollup_file_mentions_artifact(
         "benchmark_rollup.changelog_path",
         rollup.get("changelog_path"),
         expected_path="benchmarks/CHANGELOG.md",
         artifact_path=artifact_path,
         errors=errors,
     )
+    _validate_rollup_changelog_metadata(changelog_text, errors)
 
     if errors:
         raise ValueError("invalid c>N benchmark rollup evidence: " + "; ".join(errors))
@@ -642,22 +646,37 @@ def _validate_rollup_file_mentions_artifact(
     expected_path: str,
     artifact_path: Any,
     errors: list[str],
-) -> None:
+) -> str | None:
     if value != expected_path:
         errors.append(f"{field} must be {expected_path} for rollup evidence")
-        return
-    if not isinstance(artifact_path, str) or not artifact_path:
-        return
+        return None
     path = Path(value)
     try:
         text = path.read_text()
     except FileNotFoundError:
         errors.append(f"{field} file does not exist for rollup evidence")
-        return
+        return None
+    if not isinstance(artifact_path, str) or not artifact_path:
+        return text
     normalized_text = text.replace("\\", "/")
     normalized_artifact_path = artifact_path.replace("\\", "/")
     if normalized_artifact_path not in normalized_text:
         errors.append(f"{field} must mention artifact_path for rollup evidence")
+    return text
+
+
+def _validate_rollup_readme_metadata(text: str | None, errors: list[str]) -> None:
+    if text is None:
+        return
+    if _ROLLUP_LAST_UPDATED_RE.search(text) is None:
+        errors.append("benchmark_rollup.readme_path must include Last updated YYYY-MM-DD metadata for rollup evidence")
+
+
+def _validate_rollup_changelog_metadata(text: str | None, errors: list[str]) -> None:
+    if text is None:
+        return
+    if _ROLLUP_DATED_CHANGELOG_RE.search(text) is None:
+        errors.append("benchmark_rollup.changelog_path must include a dated YYYY-MM-DD entry for rollup evidence")
 
 
 def validate_cn_diagnostic_artifact_payload(payload: Mapping[str, Any]) -> None:

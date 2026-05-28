@@ -8047,11 +8047,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     rollup_root = tmp_path / "rollup-repo"
     (rollup_root / "benchmarks").mkdir(parents=True)
     (rollup_root / "benchmarks" / "README.md").write_text(
-        f"retained row: `{accepted['artifact_path']}`\n",
+        f"# Benchmarks\n\nLast updated: 2026-05-28\n\nretained row: `{accepted['artifact_path']}`\n",
         encoding="utf-8",
     )
     (rollup_root / "benchmarks" / "CHANGELOG.md").write_text(
-        f"- retained c>N row; `{accepted['artifact_path']}`\n",
+        f"## 2026-05-28\n\n- retained c>N row; old→new +0.0%; correctness/profiler gates; `{accepted['artifact_path']}`\n",
         encoding="utf-8",
     )
     artifact_file = rollup_root / "benchmarks" / "results" / "accepted-c2.json"
@@ -8152,6 +8152,17 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="benchmark_rollup.readme_path must be benchmarks/README.md"):
         validate_cn_diagnostic_rollup_evidence(wrong_rollup_path)
 
+    (rollup_root / "benchmarks" / "README.md").write_text(
+        f"# Benchmarks\n\nretained row: `{accepted['artifact_path']}`\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="benchmark_rollup.readme_path must include Last updated"):
+        validate_cn_diagnostic_rollup_evidence(accepted)
+    (rollup_root / "benchmarks" / "README.md").write_text(
+        f"# Benchmarks\n\nLast updated: 2026-05-28\n\nretained row: `{accepted['artifact_path']}`\n",
+        encoding="utf-8",
+    )
+
     (rollup_root / "benchmarks" / "CHANGELOG.md").write_text(
         "- retained c>N row without an artifact link\n",
         encoding="utf-8",
@@ -8160,6 +8171,12 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         validate_cn_diagnostic_rollup_evidence(accepted)
     (rollup_root / "benchmarks" / "CHANGELOG.md").write_text(
         f"- retained c>N row; `{accepted['artifact_path']}`\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="benchmark_rollup.changelog_path must include a dated"):
+        validate_cn_diagnostic_rollup_evidence(accepted)
+    (rollup_root / "benchmarks" / "CHANGELOG.md").write_text(
+        f"## 2026-05-28\n\n- retained c>N row; old→new +0.0%; correctness/profiler gates; `{accepted['artifact_path']}`\n",
         encoding="utf-8",
     )
 
