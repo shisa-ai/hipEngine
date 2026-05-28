@@ -6031,7 +6031,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         "observability": {
             "admission_timestamps": {"0": 1.0, "1": 1.1},
             "completion_timestamps": {"0": 2.0, "1": 2.2},
-            "request_latency_seconds": {"p50": 1.0, "p95": 1.25, "samples": [1.0, 1.1]},
+            "request_latency_seconds": {"p50": 1.05, "p95": 1.1, "samples": [1.0, 1.1]},
             "per_request": {
                 "0": {
                     "queue_seconds": 0.1,
@@ -6679,7 +6679,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     missing_per_request["observability"] = {
         "admission_timestamps": {"0": 1.0, "1": 1.1},
         "completion_timestamps": {"0": 2.0, "1": 2.2},
-        "request_latency_seconds": {"p50": 1.0, "p95": 1.25, "samples": [1.0, 1.1]},
+        "request_latency_seconds": {"p50": 1.05, "p95": 1.1, "samples": [1.0, 1.1]},
     }
     with pytest.raises(ValueError, match="per_request"):
         validate_cn_diagnostic_artifact_payload(missing_per_request)
@@ -6703,6 +6703,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     inverted_latency_percentiles["observability"]["request_latency_seconds"]["p95"] = 0.5
     with pytest.raises(ValueError, match=r"request_latency_seconds\.p95 must be >= p50"):
         validate_cn_diagnostic_artifact_payload(inverted_latency_percentiles)
+
+    mismatched_latency_p50 = json.loads(json.dumps(accepted))
+    mismatched_latency_p50["observability"]["request_latency_seconds"]["p50"] = 1.0
+    with pytest.raises(ValueError, match="request_latency_seconds.p50 must match request_latency_seconds.samples median"):
+        validate_cn_diagnostic_artifact_payload(mismatched_latency_p50)
+
+    mismatched_latency_p95 = json.loads(json.dumps(accepted))
+    mismatched_latency_p95["observability"]["request_latency_seconds"]["p95"] = 1.2
+    with pytest.raises(ValueError, match="request_latency_seconds.p95 must match request_latency_seconds.samples p95"):
+        validate_cn_diagnostic_artifact_payload(mismatched_latency_p95)
 
     mismatched_latency_sample = json.loads(json.dumps(accepted))
     mismatched_latency_sample["observability"]["request_latency_seconds"]["samples"][1] = 9.9

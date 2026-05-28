@@ -699,6 +699,20 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
             latency_samples = samples
             if any(not _is_positive_number(sample) for sample in samples):
                 errors.append("observability.request_latency_seconds.samples must contain only positive numbers for accepted artifacts")
+            else:
+                ordered_samples = sorted(float(sample) for sample in samples)
+                midpoint = len(ordered_samples) // 2
+                expected_p50 = (
+                    ordered_samples[midpoint]
+                    if len(ordered_samples) % 2 == 1
+                    else (ordered_samples[midpoint - 1] + ordered_samples[midpoint]) / 2.0
+                )
+                p95_index = min(len(ordered_samples) - 1, math.ceil(0.95 * len(ordered_samples)) - 1)
+                expected_p95 = ordered_samples[p95_index]
+                if _is_positive_number(p50) and not _numbers_close(float(p50), expected_p50):
+                    errors.append("observability.request_latency_seconds.p50 must match request_latency_seconds.samples median for accepted artifacts")
+                if _is_positive_number(p95) and not _numbers_close(float(p95), expected_p95):
+                    errors.append("observability.request_latency_seconds.p95 must match request_latency_seconds.samples p95 for accepted artifacts")
             if concurrency_valid and len(samples) != concurrency:
                 errors.append("observability.request_latency_seconds.samples length must match workload.concurrency for accepted artifacts")
     per_request = observability.get("per_request")
@@ -2139,6 +2153,10 @@ def _is_number(value: Any) -> bool:
 
 def _is_finite_number(value: Any) -> bool:
     return _is_number(value) and math.isfinite(float(value))
+
+
+def _numbers_close(actual: float, expected: float) -> bool:
+    return abs(actual - expected) <= max(1e-9, abs(expected) * 1e-6)
 
 
 def _is_positive_number(value: Any) -> bool:
