@@ -1036,7 +1036,7 @@ roll-up/status view.
       including extra trace-listed entries, carrying positive finite numeric evidence,
       `profiler.total_kernel_duration_ns`
       matching the duration-map sum, per-kernel duration-share keys/values
-      matching `duration / total`, category duration/share buckets for
+      matching `duration / total`, finite category duration/share buckets for
       attention/MoE/projection/sampling/graph/other, and CPU-side bottleneck
       duration/share totals, plus an accepted non-row-GEMV
       `projection_dispatch` decision whose selected candidate is listed with

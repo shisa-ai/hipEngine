@@ -299,6 +299,10 @@ def _is_positive_finite_number(value: Any) -> bool:
     return _is_number(value) and math.isfinite(float(value)) and float(value) > 0.0
 
 
+def _is_nonnegative_finite_number(value: Any) -> bool:
+    return _is_number(value) and math.isfinite(float(value)) and float(value) >= 0.0
+
+
 def _is_zero_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value == 0
 
@@ -789,7 +793,7 @@ def _validate_profiler_kernel_durations(profiler: dict[str, Any], reasons: list[
 
 def _validate_profiler_kernel_duration_categories(profiler: dict[str, Any], reasons: list[str]) -> None:
     total_duration = profiler.get("total_kernel_duration_ns")
-    if not _is_number(total_duration) or float(total_duration) <= 0.0:
+    if not _is_positive_finite_number(total_duration):
         return
     duration_categories = profiler.get("kernel_duration_categories_ns")
     category_shares = profiler.get("kernel_duration_category_shares")
@@ -818,20 +822,25 @@ def _validate_profiler_kernel_duration_categories(profiler: dict[str, Any], reas
 
     duration_sum = 0.0
     share_sum = 0.0
+    category_value_error = False
     for category in _PROFILER_KERNEL_DURATION_CATEGORIES:
         duration_ns = duration_categories.get(category)
         duration_share = category_shares.get(category)
-        if not _is_number(duration_ns) or float(duration_ns) < 0.0:
-            reasons.append(f"kernel_duration_categories_ns.{category} is missing or negative numeric")
+        if not _is_nonnegative_finite_number(duration_ns):
+            reasons.append(f"kernel_duration_categories_ns.{category} is missing or negative/non-finite numeric")
+            category_value_error = True
             continue
         duration_sum += float(duration_ns)
-        if not _is_number(duration_share) or float(duration_share) < 0.0:
-            reasons.append(f"kernel_duration_category_shares.{category} is missing or negative numeric")
+        if not _is_nonnegative_finite_number(duration_share):
+            reasons.append(f"kernel_duration_category_shares.{category} is missing or negative/non-finite numeric")
+            category_value_error = True
             continue
         share_sum += float(duration_share)
         expected_share = float(duration_ns) / float(total_duration)
         if abs(float(duration_share) - expected_share) > 1e-6:
             reasons.append(f"kernel_duration_category_shares.{category} does not match kernel category duration share")
+    if category_value_error:
+        return
     tolerance = max(1.0, float(total_duration) * 1e-6)
     if abs(duration_sum - float(total_duration)) > tolerance:
         reasons.append("kernel_duration_categories_ns does not sum to total_kernel_duration_ns")
@@ -2160,10 +2169,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if (
                         not isinstance(kernel_categories, dict)
                         or {key for key in kernel_categories if isinstance(key, str)} != set(_PROFILER_KERNEL_DURATION_CATEGORIES)
-                        or any(not _is_number(kernel_categories.get(category)) or float(kernel_categories[category]) < 0.0 for category in _PROFILER_KERNEL_DURATION_CATEGORIES)
+                        or any(not _is_nonnegative_finite_number(kernel_categories.get(category)) for category in _PROFILER_KERNEL_DURATION_CATEGORIES)
                         or not isinstance(kernel_category_shares, dict)
                         or {key for key in kernel_category_shares if isinstance(key, str)} != set(_PROFILER_KERNEL_DURATION_CATEGORIES)
-                        or any(not _is_number(kernel_category_shares.get(category)) or float(kernel_category_shares[category]) < 0.0 for category in _PROFILER_KERNEL_DURATION_CATEGORIES)
+                        or any(not _is_nonnegative_finite_number(kernel_category_shares.get(category)) for category in _PROFILER_KERNEL_DURATION_CATEGORIES)
                     ):
                         errors.append("commands[].preconditions[].kernel duration categories must include required non-negative categories when profiler passed")
                         break
