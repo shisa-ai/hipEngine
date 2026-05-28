@@ -425,7 +425,7 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
         entries=6,
         hits=7,
         misses=8,
-        replay_hit_rate=7 / 15,
+        replay_hit_rate=0.0,
         miss_reasons={"cache_absent": 5, "shape_changed": 3},
         kernel_time_histogram_ns={"le_10us": 2, "le_100us": 4},
     )

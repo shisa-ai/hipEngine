@@ -11,7 +11,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import math
 import time
 import uuid
 from collections import deque
@@ -947,15 +946,8 @@ def _graph_bucket_metric_values(engine: Any | None) -> dict[str, Any]:
     data = _stats_to_mapping(stats)
     for key in ("entries", "hits", "misses"):
         values[key] = float(data.get(key, 0) or 0)
-    replay_hit_rate = data.get("replay_hit_rate")
-    if replay_hit_rate is None:
-        lookups = values["hits"] + values["misses"]
-        replay_hit_rate = values["hits"] / lookups if lookups > 0.0 else 0.0
-    try:
-        replay_hit_rate_value = float(replay_hit_rate)
-    except (TypeError, ValueError):
-        replay_hit_rate_value = 0.0
-    values["replay_hit_rate"] = replay_hit_rate_value if math.isfinite(replay_hit_rate_value) and replay_hit_rate_value >= 0.0 else 0.0
+    lookups = values["hits"] + values["misses"]
+    values["replay_hit_rate"] = values["hits"] / lookups if lookups > 0.0 else 0.0
     values["miss_reasons"] = _non_negative_metric_mapping(data.get("miss_reasons"))
     values["kernel_time_histogram_ns"] = _non_negative_metric_mapping(data.get("kernel_time_histogram_ns"))
     return values
