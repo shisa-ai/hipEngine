@@ -8175,6 +8175,15 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     wrong_named_missing_artifact_path_summary_file = rollup_root / "benchmarks" / "results" / "other-missing-artifact-path-schema-check.json"
     assert validate_cn_diagnostic_artifact_main([str(missing_artifact_path_artifact_file), "--summary-json", str(wrong_named_missing_artifact_path_summary_file)]) == 1
     assert not wrong_named_missing_artifact_path_summary_file.exists()
+    outside_schema_artifact_file = rollup_root / "tmp" / "outside-schema.json"
+    outside_schema_artifact_file.write_text(json.dumps(missing_artifact_path_payload), encoding="utf-8")
+    outside_schema_summary_file = rollup_root / "benchmarks" / "results" / "outside-schema-schema-check.json"
+    assert validate_cn_diagnostic_artifact_main([str(outside_schema_artifact_file), "--summary-json", str(outside_schema_summary_file)]) == 1
+    assert not outside_schema_summary_file.exists()
+    outside_schema_summary_source = dict(failed_schema_summary)
+    outside_schema_summary_source["artifact_json"] = str(outside_schema_artifact_file)
+    with pytest.raises(ValueError, match="summary.artifact_json must be under benchmarks/results"):
+        validate_cn_diagnostic_validation_summary(outside_schema_summary_source)
     promotional_schema_summary = dict(artifact_schema_summary)
     promotional_schema_summary["benchmark_rollup"] = accepted["benchmark_rollup"]
     with pytest.raises(ValueError, match="summary.benchmark_rollup requires summary.mode rollup_evidence"):
