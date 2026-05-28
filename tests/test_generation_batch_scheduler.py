@@ -6541,7 +6541,13 @@ def test_qwen35_retained_projection_dispatch_blockers_require_caware_candidate()
     assert "projection_dispatch_candidates must include selected projection candidate" in blockers
 
 
-def test_qwen35_retained_sampler_execution_blockers_require_native_lm_head_evidence() -> None:
+def test_qwen35_retained_sampler_execution_blockers_require_native_lm_head_evidence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    artifact_dir = tmp_path / "benchmarks" / "results"
+    artifact_dir.mkdir(parents=True)
+    (artifact_dir / "qwen35-c2-sampler-eq.json").write_text(json.dumps({"schema": 1, "rows": 2, "passed": True}), encoding="utf-8")
+    (artifact_dir / "qwen35-c2-sampler-failed-eq.json").write_text(json.dumps({"schema": 1, "rows": 2, "passed": False}), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
     valid = {
         "decode_execution": {
             "sampler_execution": {
@@ -6564,7 +6570,7 @@ def test_qwen35_retained_sampler_execution_blockers_require_native_lm_head_evide
                 "mode": "serial_lm_head",
                 "native_row_aware_lm_head": False,
                 "c2_equality_green": False,
-                "equality_artifact": "/tmp/qwen35-c2-sampler-eq.json",
+                "equality_artifact": "benchmarks/results/qwen35-c2-sampler-failed-eq.json",
                 "equality_rows": 1,
                 "blockers": ["batched LM-head requires green c>N generated-token equality evidence"],
             }
@@ -6579,7 +6585,7 @@ def test_qwen35_retained_sampler_execution_blockers_require_native_lm_head_evide
     assert "execution.batch_execution.decode_execution.sampler_execution.mode must be batched_lm_head" in blockers
     assert "execution.batch_execution.decode_execution.sampler_execution.c2_equality_green must be true" in blockers
     assert "execution.batch_execution.decode_execution.sampler_execution.equality_rows must match workload.concurrency" in blockers
-    assert "execution.batch_execution.decode_execution.sampler_execution.equality_artifact must be under benchmarks/results" in blockers
+    assert "execution.batch_execution.decode_execution.sampler_execution.equality_artifact.passed must be true" in blockers
     assert "execution.batch_execution.decode_execution.sampler_execution.blockers must be empty" in blockers
 
 
@@ -7237,6 +7243,15 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         "decision": {"accepted": True},
     }
 
+    artifact_root = tmp_path / "artifact-repo"
+    sampler_artifact_dir = artifact_root / "benchmarks" / "results"
+    sampler_artifact_dir.mkdir(parents=True)
+    (sampler_artifact_dir / "qwen35-c2-sampler-eq.json").write_text(
+        json.dumps({"schema": 1, "rows": 2, "passed": True}),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(artifact_root)
+
     validate_cn_diagnostic_artifact_payload(accepted)
 
     projection_candidate = {
@@ -7278,6 +7293,10 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     artifact_file = rollup_root / "benchmarks" / "results" / "accepted-c2.json"
     artifact_file.parent.mkdir()
     artifact_file.write_text(json.dumps(accepted), encoding="utf-8")
+    (artifact_file.parent / "qwen35-c2-sampler-eq.json").write_text(
+        json.dumps({"schema": 1, "rows": 2, "passed": True}),
+        encoding="utf-8",
+    )
     monkeypatch.chdir(rollup_root)
     validate_cn_diagnostic_rollup_evidence(accepted)
     summary_file = rollup_root / "benchmarks" / "results" / "accepted-c2-rollup-check.json"
@@ -7758,6 +7777,20 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     sampler_equality_row_mismatch["execution"]["batch_execution"]["decode_execution"]["sampler_execution"]["equality_rows"] = 1
     with pytest.raises(ValueError, match="sampler_execution.equality_rows must match workload.concurrency"):
         validate_cn_diagnostic_artifact_payload(sampler_equality_row_mismatch)
+
+    failed_sampler_artifact_path = artifact_file.parent / "qwen35-c2-sampler-failed-eq.json"
+    failed_sampler_artifact_path.write_text(json.dumps({"schema": 1, "rows": 2, "passed": False}), encoding="utf-8")
+    failed_sampler_artifact = json.loads(json.dumps(accepted))
+    failed_sampler_artifact["execution"]["batch_execution"]["decode_execution"]["sampler_execution"]["equality_artifact"] = "benchmarks/results/qwen35-c2-sampler-failed-eq.json"
+    with pytest.raises(ValueError, match="sampler_execution.equality_artifact.passed must be true"):
+        validate_cn_diagnostic_artifact_payload(failed_sampler_artifact)
+
+    wrong_rows_sampler_artifact_path = artifact_file.parent / "qwen35-c2-sampler-wrong-rows-eq.json"
+    wrong_rows_sampler_artifact_path.write_text(json.dumps({"schema": 1, "rows": 1, "passed": True}), encoding="utf-8")
+    wrong_rows_sampler_artifact = json.loads(json.dumps(accepted))
+    wrong_rows_sampler_artifact["execution"]["batch_execution"]["decode_execution"]["sampler_execution"]["equality_artifact"] = "benchmarks/results/qwen35-c2-sampler-wrong-rows-eq.json"
+    with pytest.raises(ValueError, match="sampler_execution.equality_artifact rows must match workload.concurrency"):
+        validate_cn_diagnostic_artifact_payload(wrong_rows_sampler_artifact)
 
     tmp_sampler_artifact = json.loads(json.dumps(accepted))
     tmp_sampler_artifact["execution"]["batch_execution"]["decode_execution"]["sampler_execution"]["equality_artifact"] = "/tmp/qwen35-c2-sampler-eq.json"

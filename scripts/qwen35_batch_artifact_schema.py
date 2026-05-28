@@ -513,6 +513,36 @@ def _validate_benchmark_results_artifact_path(field: str, value: Any, errors: li
         errors.append(f"{field} must be under benchmarks/results for accepted artifacts")
 
 
+def _load_benchmark_results_json_artifact(field: str, value: str, errors: list[str]) -> Mapping[str, Any] | None:
+    if not _is_benchmark_results_path(value):
+        return None
+    path = Path(value)
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        errors.append(f"{field} must point to an existing JSON artifact for accepted artifacts")
+        return None
+    except json.JSONDecodeError as exc:
+        errors.append(f"{field} must point to a valid JSON artifact for accepted artifacts: {exc}")
+        return None
+    if not isinstance(payload, Mapping):
+        errors.append(f"{field} must point to a JSON object artifact for accepted artifacts")
+        return None
+    return payload
+
+
+def _artifact_row_count(payload: Mapping[str, Any]) -> Any:
+    rows = payload.get("rows")
+    if rows is not None:
+        return rows
+    workload = payload.get("workload")
+    if isinstance(workload, Mapping):
+        return workload.get("concurrency")
+    return None
+
+
 def _looks_like_hipcc_version(value: str) -> bool:
     lower = value.lower()
     return any(marker in lower for marker in ("hip version", "hipcc", "amd clang", "clang version"))
@@ -1034,11 +1064,21 @@ def _validate_accepted_sampler_execution(
     if not isinstance(equality_artifact, str) or not equality_artifact:
         errors.append("execution.batch_execution.decode_execution.sampler_execution.equality_artifact must be a non-empty string for accepted artifacts")
     else:
+        equality_artifact_field = "execution.batch_execution.decode_execution.sampler_execution.equality_artifact"
         _validate_benchmark_results_artifact_path(
-            "execution.batch_execution.decode_execution.sampler_execution.equality_artifact",
+            equality_artifact_field,
             equality_artifact,
             errors,
         )
+        equality_artifact_payload = _load_benchmark_results_json_artifact(equality_artifact_field, equality_artifact, errors)
+        if equality_artifact_payload is not None:
+            if equality_artifact_payload.get("passed") is not True:
+                errors.append("execution.batch_execution.decode_execution.sampler_execution.equality_artifact.passed must be true for accepted artifacts")
+            artifact_rows = _artifact_row_count(equality_artifact_payload)
+            if isinstance(artifact_rows, bool) or not isinstance(artifact_rows, int):
+                errors.append("execution.batch_execution.decode_execution.sampler_execution.equality_artifact rows must be an int for accepted artifacts")
+            elif isinstance(concurrency, int) and not isinstance(concurrency, bool) and artifact_rows != concurrency:
+                errors.append("execution.batch_execution.decode_execution.sampler_execution.equality_artifact rows must match workload.concurrency for accepted artifacts")
     blockers = sampler_execution.get("blockers")
     if blockers != []:
         errors.append("execution.batch_execution.decode_execution.sampler_execution.blockers must be empty for accepted artifacts")

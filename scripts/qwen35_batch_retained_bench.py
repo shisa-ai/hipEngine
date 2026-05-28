@@ -1635,6 +1635,31 @@ def _projection_dispatch_profiler_blockers(batch_execution: Mapping[str, Any], p
     return []
 
 
+def _load_sampler_equality_artifact(value: str) -> tuple[Mapping[str, Any] | None, str | None]:
+    path = Path(value)
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None, "equality_artifact must point to an existing JSON artifact"
+    except json.JSONDecodeError as exc:
+        return None, f"equality_artifact must point to a valid JSON artifact: {exc}"
+    if not isinstance(payload, Mapping):
+        return None, "equality_artifact must point to a JSON object artifact"
+    return payload, None
+
+
+def _sampler_artifact_row_count(payload: Mapping[str, Any]) -> Any:
+    rows = payload.get("rows")
+    if rows is not None:
+        return rows
+    workload = payload.get("workload")
+    if isinstance(workload, Mapping):
+        return workload.get("concurrency")
+    return None
+
+
 def _sampler_execution_blockers(batch_execution: Mapping[str, Any], *, expected_concurrency: int | None = None) -> list[str]:
     decode_execution = batch_execution.get("decode_execution")
     if not isinstance(decode_execution, Mapping):
@@ -1663,8 +1688,22 @@ def _sampler_execution_blockers(batch_execution: Mapping[str, Any], *, expected_
             blockers.append("execution.batch_execution.decode_execution.sampler_execution.equality_rows must be an int")
         elif equality_rows != int(expected_concurrency):
             blockers.append("execution.batch_execution.decode_execution.sampler_execution.equality_rows must match workload.concurrency")
-    if not _is_retained_artifact_path(sampler_execution.get("equality_artifact")):
+    equality_artifact = sampler_execution.get("equality_artifact")
+    if not _is_retained_artifact_path(equality_artifact):
         blockers.append("execution.batch_execution.decode_execution.sampler_execution.equality_artifact must be under benchmarks/results")
+    else:
+        equality_artifact_payload, equality_artifact_error = _load_sampler_equality_artifact(str(equality_artifact))
+        if equality_artifact_error is not None:
+            blockers.append(f"execution.batch_execution.decode_execution.sampler_execution.{equality_artifact_error}")
+        elif equality_artifact_payload is not None:
+            if equality_artifact_payload.get("passed") is not True:
+                blockers.append("execution.batch_execution.decode_execution.sampler_execution.equality_artifact.passed must be true")
+            if expected_concurrency is not None:
+                artifact_rows = _sampler_artifact_row_count(equality_artifact_payload)
+                if isinstance(artifact_rows, bool) or not isinstance(artifact_rows, int):
+                    blockers.append("execution.batch_execution.decode_execution.sampler_execution.equality_artifact rows must be an int")
+                elif artifact_rows != int(expected_concurrency):
+                    blockers.append("execution.batch_execution.decode_execution.sampler_execution.equality_artifact rows must match workload.concurrency")
     if sampler_execution.get("blockers") != []:
         blockers.append("execution.batch_execution.decode_execution.sampler_execution.blockers must be empty")
     return blockers

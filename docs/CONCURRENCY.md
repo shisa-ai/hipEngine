@@ -756,7 +756,7 @@ roll-up/status view.
       sampler decision and falls back to `serial_lm_head` when evidence is
       missing or points outside retained artifacts, and accepted c>N artifact
       schema requires a native sampler decision with requested mode `batched_lm_head`, row count and equality row count matching `workload.concurrency`, green retained equality
-      evidence plus no blockers, and retained bench now blocks promotion before schema validation unless sampler metadata records an explicitly requested native row-aware batched LM-head decision with matching rows/equality rows, a retained equality artifact, and no blockers, so setting the mode cannot silently create a
+      evidence plus no blockers, and retained bench now blocks promotion before schema validation unless sampler metadata records an explicitly requested native row-aware batched LM-head decision with matching rows/equality rows, a retained equality artifact whose JSON reports `passed=true` at the same row count, and no blockers, so setting the mode cannot silently create a
       native sampler claim before same-concurrency equality is green.
 
 ### C4 packets — continuous scheduler and dynamic KV pool
@@ -933,7 +933,7 @@ roll-up/status view.
       green. Progress: accepted/performance-claim c>N artifact schema now rejects
       serial-bridge paths, non-scheduler-owned execution, non-full-native, wrong-path, wrong-layer-limit, or unsupported-layer-bearing prefill plans, non-empty batch/prefill/decode-execution blockers, row executions labeled `serial`/`fallback`, missing or wrong-shape
       decode-execution row/slot/context/layer-count metadata, native-batch decode contexts at or beyond 1024 before row-aware split-K lands, non-`native_batch` full-attention decode paths,
-      per-row full-attention decode fallbacks, non-native sampler metadata, sampler requested-mode mismatches, and sampler row/equality-row mismatches,
+      per-row full-attention decode fallbacks, non-native sampler metadata, sampler requested-mode mismatches, sampler row/equality-row mismatches, and failed or wrong-row sampler equality artifacts,
       runtime short-context native full-attention metadata now reports the retained-compatible `native_batch` path,
       and retained bench now blocks promotion before schema validation for the same serial/fallback batch/decode metadata,
       so residual serial loops cannot be promoted as retained rows while this
@@ -948,7 +948,7 @@ roll-up/status view.
       cites correctness gate, profiler status, exact command, and hardware.
       Progress: accepted/performance-claim c>N artifacts now fail schema
       validation unless they include fully native scheduler-owned batch/prefill/decode-execution metadata with empty blockers, the known full-native prefill path, null unsupported-layer fields, positive native full-attention layer evidence, decode rows/slots matching `workload.concurrency`, decode context covering `workload.prompt_tokens_per_request` while staying below the open row-aware split-K threshold, and prefill layer limits matching `workload.max_layers`,
-      workload native prefill/decode flags set, workload scheduler labels matching the execution path, sampler requested mode `batched_lm_head` plus rows/equality rows matching `workload.concurrency`,
+      workload native prefill/decode flags set, workload scheduler labels matching the execution path, sampler requested mode `batched_lm_head` plus rows/equality rows matching `workload.concurrency` and sampler equality artifact JSON reporting the same rows with `passed=true`,
       generated-token equality sequence lists matching `workload.concurrency`
       rows and seed + warmup + measured decode token counts per row, with
       `execution.seed_tokens` / `execution.generated_tokens` matching the seed
