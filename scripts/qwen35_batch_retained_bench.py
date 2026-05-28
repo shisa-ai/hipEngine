@@ -1517,6 +1517,19 @@ def _profiler_cpu_side_bottleneck_blockers(profiler: Mapping[str, Any]) -> list[
     return blockers
 
 
+def _profiler_synthesized_fields_blockers(profiler: Mapping[str, Any]) -> list[str]:
+    synthesized_fields = profiler.get("synthesized_fields")
+    if not isinstance(synthesized_fields, list) or not all(isinstance(field, str) for field in synthesized_fields):
+        return ["profiler.synthesized_fields must be a string list"]
+    blockers: list[str] = []
+    if len(set(synthesized_fields)) != len(synthesized_fields):
+        blockers.append("profiler.synthesized_fields must not contain duplicates")
+    unknown_fields = sorted(set(synthesized_fields) - set(_PROFILER_SYNTHESIZED_FIELDS))
+    if unknown_fields:
+        blockers.append("profiler.synthesized_fields must only name known synthesized profiler fields")
+    return blockers
+
+
 def _profiler_kernel_evidence_blockers(profiler: Mapping[str, Any]) -> list[str]:
     blockers: list[str] = []
     if profiler.get("status") != "captured":
@@ -2189,6 +2202,7 @@ def _build_payload(
             "kv_scale_granularity": str(getattr(args, "kv_scale_granularity", "per_token_head")),
         },
     )
+    profiler_blockers.extend(_profiler_synthesized_fields_blockers(profiler))
     profiler_blockers.extend(_profiler_kernel_evidence_blockers(profiler))
     profiler_blockers.extend(_profiler_cpu_side_bottleneck_blockers(profiler))
     batch_execution = dict(bench["batch_execution"])

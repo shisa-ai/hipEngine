@@ -6220,6 +6220,24 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
     )
 
 
+def test_qwen35_retained_profiler_synthesized_fields_blockers_require_known_unique_strings() -> None:
+    assert retained_bench._profiler_synthesized_fields_blockers({"synthesized_fields": []}) == []
+    assert retained_bench._profiler_synthesized_fields_blockers({"synthesized_fields": ["trace_kernel_names"]}) == []
+
+    missing = retained_bench._profiler_synthesized_fields_blockers({})
+    assert missing == ["profiler.synthesized_fields must be a string list"]
+    malformed = retained_bench._profiler_synthesized_fields_blockers({"synthesized_fields": ["trace_kernel_names", 1]})
+    assert malformed == ["profiler.synthesized_fields must be a string list"]
+    duplicate = retained_bench._profiler_synthesized_fields_blockers(
+        {"synthesized_fields": ["trace_kernel_names", "trace_kernel_names"]}
+    )
+    assert duplicate == ["profiler.synthesized_fields must not contain duplicates"]
+    unknown = retained_bench._profiler_synthesized_fields_blockers(
+        {"synthesized_fields": ["trace_kernel_names", "edited_field"]}
+    )
+    assert unknown == ["profiler.synthesized_fields must only name known synthesized profiler fields"]
+
+
 def test_qwen35_retained_profiler_kernel_evidence_blockers_require_trace_durations() -> None:
     complete = {
         "status": "captured",
