@@ -2703,6 +2703,8 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
     if performance_claim is not None and not isinstance(performance_claim, bool):
         errors.append("summary.performance_claim must be a bool or null")
     benchmark_rollup = summary.get("benchmark_rollup")
+    if (passed is True or benchmark_rollup is not None) and not isinstance(artifact_path, str):
+        errors.append("summary.artifact_path must be a non-empty string when summary.passed is true or summary.benchmark_rollup is present")
     if benchmark_rollup is not None:
         if mode != "rollup_evidence":
             errors.append("summary.benchmark_rollup requires summary.mode rollup_evidence")

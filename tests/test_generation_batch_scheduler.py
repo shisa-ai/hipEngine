@@ -8085,6 +8085,10 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     }
     validate_cn_diagnostic_validation_summary(summary)
     assert validate_cn_diagnostic_artifact_main([str(summary_file), "--validation-summary"]) == 0
+    missing_summary_artifact_path = dict(summary)
+    missing_summary_artifact_path["artifact_path"] = None
+    with pytest.raises(ValueError, match="summary.artifact_path must be a non-empty string when summary.passed is true"):
+        validate_cn_diagnostic_validation_summary(missing_summary_artifact_path)
     copied_summary_file = rollup_root / "benchmarks" / "results" / "copied-rollup-check.json"
     copied_summary_file.write_text(json.dumps(summary), encoding="utf-8")
     assert validate_cn_diagnostic_artifact_main([str(copied_summary_file), "--validation-summary"]) == 1
