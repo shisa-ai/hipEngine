@@ -998,6 +998,8 @@ def _validate_accepted_scheduler_metadata(
         misses = graph_stats.get("misses")
         if isinstance(entries, int) and not isinstance(entries, bool) and entries <= 0:
             errors.append("execution.scheduler_metadata.graph_bucket_stats.entries must be positive for accepted artifacts")
+        if isinstance(hits, int) and not isinstance(hits, bool) and hits <= 0:
+            errors.append("execution.scheduler_metadata.graph_bucket_stats.hits must be positive for accepted artifacts")
         if (
             isinstance(entries, int)
             and not isinstance(entries, bool)

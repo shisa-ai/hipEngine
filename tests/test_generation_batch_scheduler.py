@@ -6856,6 +6856,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="graph_bucket_stats.hits must be a non-negative int"):
         validate_cn_diagnostic_artifact_payload(negative_graph_bucket_hits)
 
+    no_graph_bucket_replay_hits = json.loads(json.dumps(accepted))
+    no_graph_bucket_replay_hits["execution"]["scheduler_metadata"]["graph_bucket_stats"]["hits"] = 0
+    with pytest.raises(ValueError, match="graph_bucket_stats.hits must be positive"):
+        validate_cn_diagnostic_artifact_payload(no_graph_bucket_replay_hits)
+
     empty_graph_bucket_cache = json.loads(json.dumps(accepted))
     empty_graph_bucket_cache["execution"]["scheduler_metadata"]["graph_bucket_stats"]["entries"] = 0
     with pytest.raises(ValueError, match="graph_bucket_stats.entries must be positive"):
