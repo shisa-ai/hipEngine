@@ -5874,6 +5874,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="samples must contain only positive numbers"):
         validate_cn_diagnostic_artifact_payload(zero_sample)
 
+    missing_benchmark_rollup = json.loads(json.dumps(accepted))
+    missing_benchmark_rollup.pop("benchmark_rollup")
+    with pytest.raises(ValueError, match="benchmark_rollup must be an object"):
+        validate_cn_diagnostic_artifact_payload(missing_benchmark_rollup)
+
+    mismatched_benchmark_rollup = json.loads(json.dumps(accepted))
+    mismatched_benchmark_rollup["benchmark_rollup"]["artifact_path"] = "benchmarks/results/other-c2.json"
+    with pytest.raises(ValueError, match="benchmark_rollup.artifact_path must match artifact_path"):
+        validate_cn_diagnostic_artifact_payload(mismatched_benchmark_rollup)
+
     missing_command = json.loads(json.dumps(accepted))
     missing_command["commands"]["benchmark"] = ""
     with pytest.raises(ValueError, match="commands.benchmark"):

@@ -991,8 +991,9 @@ roll-up/status view.
       `profiler.kernel_duration_category_shares`, and CPU-side bottleneck
       summaries from per-kernel durations and retained wall-clock timings when
       the summary omits them, and require `--profiler-json` to match
-      `profiler.artifact_path`; the retained payload declares benchmark rollup
-      files while the post-run `validate_cn_diagnostic_rollup_evidence` gate
+      `profiler.artifact_path`; accepted artifacts now schema-check retained-payload
+      benchmark rollup declarations (`artifact_path`, `benchmarks/README.md`, and
+      `benchmarks/CHANGELOG.md`) while the post-run `validate_cn_diagnostic_rollup_evidence` gate
       (or the CLI `python3 scripts/qwen35_batch_artifact_schema.py <artifact>
       --rollup-evidence --summary-json
       benchmarks/results/<artifact>-rollup-check.json`) verifies live

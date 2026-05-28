@@ -900,8 +900,27 @@ def _validate_accepted_payload_artifact_path(payload: Mapping[str, Any], errors:
     return artifact_path
 
 
+def _validate_accepted_benchmark_rollup_declaration(
+    payload: Mapping[str, Any],
+    *,
+    payload_artifact_path: Any,
+    errors: list[str],
+) -> None:
+    rollup = payload.get("benchmark_rollup")
+    if not isinstance(rollup, Mapping):
+        errors.append("benchmark_rollup must be an object for accepted artifacts")
+        return
+    if rollup.get("artifact_path") != payload_artifact_path:
+        errors.append("benchmark_rollup.artifact_path must match artifact_path for accepted artifacts")
+    if rollup.get("readme_path") != "benchmarks/README.md":
+        errors.append("benchmark_rollup.readme_path must be benchmarks/README.md for accepted artifacts")
+    if rollup.get("changelog_path") != "benchmarks/CHANGELOG.md":
+        errors.append("benchmark_rollup.changelog_path must be benchmarks/CHANGELOG.md for accepted artifacts")
+
+
 def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[str]) -> None:
     payload_artifact_path = _validate_accepted_payload_artifact_path(payload, errors)
+    _validate_accepted_benchmark_rollup_declaration(payload, payload_artifact_path=payload_artifact_path, errors=errors)
     hardware = _mapping_at(payload, "hardware", errors)
     if not hardware:
         errors.append("hardware must be a non-empty object for accepted artifacts")
