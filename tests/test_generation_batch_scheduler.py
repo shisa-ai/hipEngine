@@ -8093,6 +8093,10 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     outside_summary_file.write_text(json.dumps(summary), encoding="utf-8")
     assert validate_cn_diagnostic_artifact_main([str(outside_summary_file), "--validation-summary"]) == 1
 
+    invalid_schema_summary = dict(summary)
+    invalid_schema_summary["schema"] = 2
+    with pytest.raises(ValueError, match="summary.schema must be 1"):
+        validate_cn_diagnostic_validation_summary(invalid_schema_summary)
     invalid_summary = dict(summary)
     invalid_summary["error"] = "unexpected warning"
     with pytest.raises(ValueError, match="summary.error must be null"):
