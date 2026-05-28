@@ -5992,6 +5992,17 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="commands.profiler must include rocprofv3 --kernel-trace"):
         validate_cn_diagnostic_artifact_payload(profiler_without_kernel_trace)
 
+    profiler_kernel_trace_after_separator = json.loads(json.dumps(accepted))
+    profiler_kernel_trace_after_separator["commands"]["profiler"] = profiler_kernel_trace_after_separator["commands"]["profiler"].replace(
+        "rocprofv3 --kernel-trace --output-format",
+        "rocprofv3 --output-format",
+    ).replace(
+        "scripts/qwen35_batch_retained_bench.py --model",
+        "scripts/qwen35_batch_retained_bench.py --kernel-trace --model",
+    )
+    with pytest.raises(ValueError, match="commands.profiler must include --kernel-trace before rocprof separator"):
+        validate_cn_diagnostic_artifact_payload(profiler_kernel_trace_after_separator)
+
     profiler_without_output_format = json.loads(json.dumps(accepted))
     profiler_without_output_format["commands"]["profiler"] = profiler_without_output_format["commands"]["profiler"].replace(
         " --output-format csv",
@@ -6007,6 +6018,17 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     )
     with pytest.raises(ValueError, match="profiler.output_format must match commands.profiler --output-format"):
         validate_cn_diagnostic_artifact_payload(profiler_mismatched_output_format)
+
+    profiler_output_format_after_separator = json.loads(json.dumps(accepted))
+    profiler_output_format_after_separator["commands"]["profiler"] = profiler_output_format_after_separator["commands"]["profiler"].replace(
+        " --output-format csv",
+        "",
+    ).replace(
+        "scripts/qwen35_batch_retained_bench.py --model",
+        "scripts/qwen35_batch_retained_bench.py --output-format csv --model",
+    )
+    with pytest.raises(ValueError, match="commands.profiler must include --output-format csv before rocprof separator"):
+        validate_cn_diagnostic_artifact_payload(profiler_output_format_after_separator)
 
     profiler_without_trace_dir = json.loads(json.dumps(accepted))
     profiler_without_trace_dir["commands"]["profiler"] = profiler_without_trace_dir["commands"]["profiler"].replace(
@@ -6025,6 +6047,17 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     profiler_mismatched_trace_dir["profiler"]["trace_dir"] = "/tmp/other-profile"
     with pytest.raises(ValueError, match="profiler.trace_dir must match commands.profiler -d"):
         validate_cn_diagnostic_artifact_payload(profiler_mismatched_trace_dir)
+
+    profiler_trace_dir_after_separator = json.loads(json.dumps(accepted))
+    profiler_trace_dir_after_separator["commands"]["profiler"] = profiler_trace_dir_after_separator["commands"]["profiler"].replace(
+        " -d /tmp/hipengine-profile",
+        "",
+    ).replace(
+        "scripts/qwen35_batch_retained_bench.py --model",
+        "scripts/qwen35_batch_retained_bench.py -d /tmp/hipengine-profile --model",
+    )
+    with pytest.raises(ValueError, match="commands.profiler must include -d <profiler.trace_dir> before rocprof separator"):
+        validate_cn_diagnostic_artifact_payload(profiler_trace_dir_after_separator)
 
     profiler_missing_trace_files = json.loads(json.dumps(accepted))
     profiler_missing_trace_files["profiler"].pop("trace_files")

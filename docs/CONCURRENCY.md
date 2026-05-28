@@ -973,8 +973,10 @@ roll-up/status view.
       with `--rows` matching `workload.concurrency` and `--json` matching
       `correctness.primitive_batch_correctness.artifact_path`, and a concrete
       `rocprofv3 --kernel-trace` profiler command targeting
-      `scripts/qwen35_batch_retained_bench.py` with the same retained shape flags
-      plus cached-build flags (`--compiler-version-file`, `--require-cached-build`),
+      `scripts/qwen35_batch_retained_bench.py` after the rocprof `--` separator,
+      with rocprof-only flags (`--kernel-trace`, `--output-format csv`, `-d`) before
+      that separator, the same retained shape flags plus cached-build flags
+      (`--compiler-version-file`, `--require-cached-build`),
       benchmark/profiler `--json` outputs plus primitive/scaling artifact paths
       under `benchmarks/results/`, and the retained bench can now attach a
       captured profiler summary via `--profiler-json` / `--profiler-command`,

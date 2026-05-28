@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shlex
 import sys
 from collections.abc import Mapping
 from pathlib import Path
@@ -164,6 +165,13 @@ def _validate_command_workload_shape(command: str, *, field: str, payload: Mappi
         expected = workload.get(workload_key)
         if isinstance(expected, int) and not isinstance(expected, bool) and int(match.group(1)) != expected:
             errors.append(f"commands.{field} {flag} must match workload.{workload_key} for accepted artifacts")
+
+
+def _argv_value(argv: list[str], flag: str) -> str | None:
+    try:
+        return argv[argv.index(flag) + 1]
+    except (ValueError, IndexError):
+        return None
 
 
 def _command_json_path(command: str) -> str | None:
@@ -902,16 +910,35 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     if isinstance(profiler_command, str):
         if "rocprofv3" not in profiler_command or "--kernel-trace" not in profiler_command:
             errors.append("commands.profiler must include rocprofv3 --kernel-trace for accepted artifacts")
-        output_format_match = _COMMAND_OUTPUT_FORMAT_RE.search(profiler_command)
-        if output_format_match is not None:
-            profiler_command_output_format = output_format_match.group(1).strip("'\"")
-        if profiler_command_output_format != "csv":
-            errors.append("commands.profiler must include --output-format csv for accepted artifacts")
-        trace_dir_match = _COMMAND_TRACE_DIR_RE.search(profiler_command)
-        if trace_dir_match is not None:
-            profiler_command_trace_dir = trace_dir_match.group(1).strip("'\"")
-        if profiler_command_trace_dir is None:
-            errors.append("commands.profiler must include -d <profiler.trace_dir> for accepted artifacts")
+        try:
+            profiler_command_argv = shlex.split(profiler_command)
+        except ValueError:
+            profiler_command_argv = []
+            errors.append("commands.profiler must be shell-parseable for accepted artifacts")
+        rocprof_command_argv: list[str] = []
+        profiled_command_argv: list[str] = []
+        if not profiler_command_argv or Path(profiler_command_argv[0]).name != "rocprofv3":
+            errors.append("commands.profiler must start with rocprofv3 for accepted artifacts")
+        elif "--" not in profiler_command_argv:
+            errors.append("commands.profiler must include rocprof command separator for accepted artifacts")
+        else:
+            separator_index = profiler_command_argv.index("--")
+            rocprof_command_argv = profiler_command_argv[:separator_index]
+            profiled_command_argv = profiler_command_argv[separator_index + 1 :]
+            if "--kernel-trace" not in rocprof_command_argv:
+                errors.append("commands.profiler must include --kernel-trace before rocprof separator for accepted artifacts")
+            profiler_command_output_format = _argv_value(rocprof_command_argv, "--output-format")
+            if profiler_command_output_format != "csv":
+                errors.append("commands.profiler must include --output-format csv before rocprof separator for accepted artifacts")
+            profiler_command_trace_dir = _argv_value(rocprof_command_argv, "-d")
+            if profiler_command_trace_dir is None:
+                errors.append("commands.profiler must include -d <profiler.trace_dir> before rocprof separator for accepted artifacts")
+        if (
+            len(profiled_command_argv) < 2
+            or not Path(profiled_command_argv[0]).name.startswith("python")
+            or profiled_command_argv[1] != "scripts/qwen35_batch_retained_bench.py"
+        ):
+            errors.append("commands.profiler must target scripts/qwen35_batch_retained_bench.py after rocprof separator for accepted artifacts")
         if "qwen35_batch_retained_bench.py" not in profiler_command:
             errors.append("commands.profiler must target scripts/qwen35_batch_retained_bench.py for accepted artifacts")
         else:
