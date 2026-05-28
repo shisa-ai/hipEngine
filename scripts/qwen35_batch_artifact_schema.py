@@ -123,6 +123,7 @@ _RETAINED_BENCH_UNIQUE_FLAGS = (
     "--compiler-version-file",
     "--require-cached-build",
 )
+_CORRECTNESS_REFERENCE_UNIQUE_FLAGS = ("--rows", "--json")
 _FULL_COMMIT_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", re.IGNORECASE)
 _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = ("serial", "fallback", "per_row", "per-row")
 _REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES = (
@@ -172,13 +173,17 @@ def _validate_unique_flags(argv: list[str], flags: tuple[str, ...], *, field: st
             errors.append(f"{field} must not repeat {flag} for accepted artifacts")
 
 
-def _validate_retained_bench_unique_flags(command: str, *, field: str, errors: list[str]) -> None:
+def _validate_command_unique_flags(command: str, flags: tuple[str, ...], *, field: str, errors: list[str]) -> None:
     try:
         argv = shlex.split(command)
     except ValueError:
         errors.append(f"commands.{field} must be shell-parseable for accepted artifacts")
         return
-    _validate_unique_flags(argv, _RETAINED_BENCH_UNIQUE_FLAGS, field=f"commands.{field}", errors=errors)
+    _validate_unique_flags(argv, flags, field=f"commands.{field}", errors=errors)
+
+
+def _validate_retained_bench_unique_flags(command: str, *, field: str, errors: list[str]) -> None:
+    _validate_command_unique_flags(command, _RETAINED_BENCH_UNIQUE_FLAGS, field=field, errors=errors)
 
 
 def _validate_command_workload_shape(command: str, *, field: str, payload: Mapping[str, Any], errors: list[str]) -> None:
@@ -937,6 +942,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         if "qwen35_batch_correctness.py" not in correctness_command:
             errors.append("commands.correctness_reference must reference scripts/qwen35_batch_correctness.py for accepted artifacts")
         else:
+            _validate_command_unique_flags(correctness_command, _CORRECTNESS_REFERENCE_UNIQUE_FLAGS, field="correctness_reference", errors=errors)
             rows_match = _CORRECTNESS_ROWS_RE.search(correctness_command)
             if rows_match is None:
                 errors.append("commands.correctness_reference must include --rows <workload.concurrency> for accepted artifacts")

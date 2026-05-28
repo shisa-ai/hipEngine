@@ -5994,6 +5994,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="commands.correctness_reference --rows must match workload.concurrency"):
         validate_cn_diagnostic_artifact_payload(wrong_correctness_rows)
 
+    duplicate_correctness_rows = json.loads(json.dumps(accepted))
+    duplicate_correctness_rows["commands"]["correctness_reference"] += " --rows 8"
+    with pytest.raises(ValueError, match="commands.correctness_reference must not repeat --rows"):
+        validate_cn_diagnostic_artifact_payload(duplicate_correctness_rows)
+
     missing_correctness_json = json.loads(json.dumps(accepted))
     missing_correctness_json["commands"]["correctness_reference"] = "python3 scripts/qwen35_batch_correctness.py --rows 2"
     with pytest.raises(ValueError, match="commands.correctness_reference must include --json"):
@@ -6003,6 +6008,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     mismatched_correctness_json["commands"]["correctness_reference"] = "python3 scripts/qwen35_batch_correctness.py --rows 2 --json benchmarks/results/other-primitive-c2.json"
     with pytest.raises(ValueError, match="commands.correctness_reference --json path must match correctness.primitive_batch_correctness.artifact_path"):
         validate_cn_diagnostic_artifact_payload(mismatched_correctness_json)
+
+    duplicate_correctness_json = json.loads(json.dumps(accepted))
+    duplicate_correctness_json["commands"]["correctness_reference"] += " --json benchmarks/results/other-primitive-c2.json"
+    with pytest.raises(ValueError, match="commands.correctness_reference must not repeat --json"):
+        validate_cn_diagnostic_artifact_payload(duplicate_correctness_json)
 
     missing_profiler = dict(accepted)
     missing_profiler.pop("profiler")

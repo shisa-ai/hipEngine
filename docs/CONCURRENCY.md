@@ -970,7 +970,8 @@ roll-up/status view.
       `--max-layers` matching workload shape fields and baseline/correctness
       reference paths matching the retained artifact payload,
       a correctness-reference command naming `scripts/qwen35_batch_correctness.py`
-      with `--rows` matching `workload.concurrency` and `--json` matching
+      with unique `--rows` / `--json` flags, `--rows` matching
+      `workload.concurrency`, and `--json` matching
       `correctness.primitive_batch_correctness.artifact_path`, and a concrete
       `rocprofv3 --kernel-trace` profiler command targeting
       `scripts/qwen35_batch_retained_bench.py` after the rocprof `--` separator,
