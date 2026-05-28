@@ -1572,66 +1572,66 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if git_dirty is not None and entry.get("git_dirty") is not git_dirty:
                 errors.append("commands[].git_dirty must match git.dirty")
                 break
-        if summary.get("completed_command_count") != len(entries):
-            errors.append("completed_command_count must match len(commands)")
-        command_count = summary.get("command_count")
-        if not isinstance(command_count, int) or isinstance(command_count, bool) or command_count < len(entries):
-            errors.append("command_count must be an int greater than or equal to completed_command_count")
-        elif isinstance(options, Mapping) and isinstance(options.get("include_int8"), bool) and batch_sizes:
-            expected_plan: list[tuple[str, int]] = []
-            for c in batch_sizes:
-                expected_plan.extend([("primitive", c), ("serial_bridge", c), ("native_diagnostic", c)])
-                if options["include_int8"] and c != 1:
-                    expected_plan.append(("int8_native_diagnostic", c))
-            if command_count != len(expected_plan):
-                errors.append("command_count must match batch_sizes/options.include_int8")
-            elif [(entry.get("category"), entry.get("batch_size")) for entry in entries] != expected_plan[: len(entries)]:
-                errors.append("commands[] category/batch_size order must match batch_sizes/options.include_int8")
-        if isinstance(options, Mapping) and options.get("stop_on_failure") is True:
-            for index, entry in enumerate(entries[:-1]):
-                if entry.get("status") in {"failed", "skipped"}:
-                    errors.append("commands[] failed/skipped row must be final when stop_on_failure is true")
-                    break
-        expected_status_counts = _status_counts(entries)
-        if summary.get("status_counts") != expected_status_counts:
-            errors.append("status_counts must match commands")
-        expected_category_status_counts = _category_status_counts(entries)
-        if summary.get("category_status_counts") != expected_category_status_counts:
-            errors.append("category_status_counts must match commands")
-        expected_status = _summary_status(entries)
-        if summary.get("status") != expected_status:
-            errors.append("status must match commands")
-        expected_precondition_counts = _retained_precondition_counts(entries)
-        if summary.get("retained_precondition_counts") != expected_precondition_counts:
-            errors.append("retained_precondition_counts must match commands.preconditions")
-        expected_postcondition_counts = _retained_postcondition_counts(entries)
-        if summary.get("retained_postcondition_counts") != expected_postcondition_counts:
-            errors.append("retained_postcondition_counts must match commands.postconditions")
-        expected_failed_postconditions = _failed_postconditions(entries)
-        if summary.get("failed_postconditions") != expected_failed_postconditions:
-            errors.append("failed_postconditions must match commands.postconditions")
-        for entry in entries:
-            preconditions = entry.get("preconditions")
-            if isinstance(preconditions, list):
-                failed_preconditions = [
-                    precondition
-                    for precondition in preconditions
-                    if isinstance(precondition, dict) and precondition.get("passed") is not True
-                ]
-                if failed_preconditions and entry.get("precondition") != failed_preconditions[0]:
-                    errors.append("commands[].precondition must match the first failed precondition")
-                    break
-            postconditions = entry.get("postconditions")
-            if not isinstance(postconditions, list):
-                continue
-            failed_postconditions = [
-                postcondition
-                for postcondition in postconditions
-                if isinstance(postcondition, dict) and postcondition.get("passed") is not True
-            ]
-            if failed_postconditions and entry.get("postcondition") != failed_postconditions[0]:
-                errors.append("commands[].postcondition must match the first failed postcondition")
+    if summary.get("completed_command_count") != len(entries):
+        errors.append("completed_command_count must match len(commands)")
+    command_count = summary.get("command_count")
+    if not isinstance(command_count, int) or isinstance(command_count, bool) or command_count < len(entries):
+        errors.append("command_count must be an int greater than or equal to completed_command_count")
+    elif isinstance(options, Mapping) and isinstance(options.get("include_int8"), bool) and batch_sizes:
+        expected_plan: list[tuple[str, int]] = []
+        for c in batch_sizes:
+            expected_plan.extend([("primitive", c), ("serial_bridge", c), ("native_diagnostic", c)])
+            if options["include_int8"] and c != 1:
+                expected_plan.append(("int8_native_diagnostic", c))
+        if command_count != len(expected_plan):
+            errors.append("command_count must match batch_sizes/options.include_int8")
+        elif [(entry.get("category"), entry.get("batch_size")) for entry in entries] != expected_plan[: len(entries)]:
+            errors.append("commands[] category/batch_size order must match batch_sizes/options.include_int8")
+    if isinstance(options, Mapping) and options.get("stop_on_failure") is True:
+        for index, entry in enumerate(entries[:-1]):
+            if entry.get("status") in {"failed", "skipped"}:
+                errors.append("commands[] failed/skipped row must be final when stop_on_failure is true")
                 break
+    expected_status_counts = _status_counts(entries)
+    if summary.get("status_counts") != expected_status_counts:
+        errors.append("status_counts must match commands")
+    expected_category_status_counts = _category_status_counts(entries)
+    if summary.get("category_status_counts") != expected_category_status_counts:
+        errors.append("category_status_counts must match commands")
+    expected_status = _summary_status(entries)
+    if summary.get("status") != expected_status:
+        errors.append("status must match commands")
+    expected_precondition_counts = _retained_precondition_counts(entries)
+    if summary.get("retained_precondition_counts") != expected_precondition_counts:
+        errors.append("retained_precondition_counts must match commands.preconditions")
+    expected_postcondition_counts = _retained_postcondition_counts(entries)
+    if summary.get("retained_postcondition_counts") != expected_postcondition_counts:
+        errors.append("retained_postcondition_counts must match commands.postconditions")
+    expected_failed_postconditions = _failed_postconditions(entries)
+    if summary.get("failed_postconditions") != expected_failed_postconditions:
+        errors.append("failed_postconditions must match commands.postconditions")
+    for entry in entries:
+        preconditions = entry.get("preconditions")
+        if isinstance(preconditions, list):
+            failed_preconditions = [
+                precondition
+                for precondition in preconditions
+                if isinstance(precondition, dict) and precondition.get("passed") is not True
+            ]
+            if failed_preconditions and entry.get("precondition") != failed_preconditions[0]:
+                errors.append("commands[].precondition must match the first failed precondition")
+                break
+        postconditions = entry.get("postconditions")
+        if not isinstance(postconditions, list):
+            continue
+        failed_postconditions = [
+            postcondition
+            for postcondition in postconditions
+            if isinstance(postcondition, dict) and postcondition.get("passed") is not True
+        ]
+        if failed_postconditions and entry.get("postcondition") != failed_postconditions[0]:
+            errors.append("commands[].postcondition must match the first failed postcondition")
+            break
     if errors:
         raise ValueError("invalid c-sweep summary: " + "; ".join(errors))
 

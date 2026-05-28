@@ -1281,6 +1281,11 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     assert persisted["retained_precondition_counts"] == {}
     assert persisted["skipped_preconditions"] == []
     c_sweep.validate_sweep_summary(persisted)
+    tampered_dropped_commands = json.loads(json.dumps(persisted))
+    tampered_dropped_commands["commands"] = []
+    tampered_dropped_commands["completed_command_count"] = 0
+    with pytest.raises(ValueError, match="status_counts must match commands"):
+        c_sweep.validate_sweep_summary(tampered_dropped_commands)
     tampered_dry_run_status = json.loads(json.dumps(persisted))
     tampered_dry_run_status["commands"][0]["status"] = "passed"
     with pytest.raises(ValueError, match=r"commands\[\]\.status must be planned for dry-run summaries"):
