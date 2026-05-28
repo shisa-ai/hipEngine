@@ -602,7 +602,18 @@ def _is_retained_artifact_path(value: Any) -> bool:
     if not isinstance(value, str) or not value:
         return False
     path = Path(value)
-    return not path.is_absolute() and len(path.parts) >= 3 and path.parts[:2] == ("benchmarks", "results") and ".." not in path.parts
+    if (
+        path.is_absolute()
+        or len(path.parts) < 3
+        or path.parts[:2] != ("benchmarks", "results")
+        or ".." in path.parts
+    ):
+        return False
+    results_root = (Path.cwd() / "benchmarks" / "results").resolve()
+    try:
+        return (Path.cwd() / path).resolve().is_relative_to(results_root)
+    except OSError:
+        return False
 
 
 def _synthesized_profiler_total_kernel_duration(profiler: Mapping[str, Any]) -> float | None:

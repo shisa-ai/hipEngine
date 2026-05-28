@@ -6539,6 +6539,30 @@ def test_qwen35_retained_payload_mirrors_fallback_native_decode_label(monkeypatc
     assert "--rows 2" in payload["commands"]["correctness_reference"]
 
 
+def test_qwen35_retained_artifact_paths_reject_symlink_escapes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo_root = tmp_path / "repo"
+    artifact_dir = repo_root / "benchmarks" / "results"
+    artifact_dir.mkdir(parents=True)
+    external_artifact_dir = tmp_path / "external" / "benchmarks" / "results"
+    external_artifact_dir.mkdir(parents=True)
+    external_artifact = external_artifact_dir / "source.json"
+    external_artifact.write_text("{}", encoding="utf-8")
+    symlink_artifact = artifact_dir / "external-source.json"
+    try:
+        symlink_artifact.symlink_to(external_artifact)
+    except (OSError, NotImplementedError):
+        symlink_artifact = None
+    monkeypatch.chdir(repo_root)
+
+    assert retained_bench._is_retained_artifact_path("benchmarks/results/source.json")
+    assert not retained_bench._is_retained_artifact_path("/tmp/source.json")
+    assert not retained_bench._is_retained_artifact_path("benchmarks/results/../source.json")
+    if symlink_artifact is not None:
+        assert not retained_bench._is_retained_artifact_path("benchmarks/results/external-source.json")
+
+
 def test_qwen35_retained_allocator_memory_evidence_from_stats() -> None:
     evidence = retained_bench._allocator_memory_evidence(
         {
