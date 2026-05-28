@@ -887,6 +887,12 @@ def _profiler_reference(path: Path | None) -> dict[str, Any]:
     if not isinstance(profiler, Mapping):
         return {"artifact_path": str(path), "status": "invalid_json", "reason": "profiler summary is not an object"}
     result = dict(profiler)
+    profiler_source_artifact_path = result.get("artifact_path")
+    result["source_artifact_path"] = (
+        profiler_source_artifact_path
+        if isinstance(profiler_source_artifact_path, str) and profiler_source_artifact_path
+        else None
+    )
     synthesized_fields: set[str] = set()
     if "kernel_durations_ns" not in result:
         kernel_durations = _synthesized_profiler_kernel_durations_from_traces(result, profiler_path=path)

@@ -1497,6 +1497,11 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         _validate_benchmark_results_artifact_path("profiler.artifact_path", profiler_artifact_path, errors)
         if profiler_profiled_benchmark_command is not None:
             _validate_profiler_command_artifact_reference(profiler_profiled_benchmark_command, profiler_artifact_path, errors)
+    profiler_source_artifact_path = profiler.get("source_artifact_path")
+    if not isinstance(profiler_source_artifact_path, str) or not profiler_source_artifact_path:
+        errors.append("profiler.source_artifact_path must be a non-empty string for accepted artifacts")
+    elif isinstance(profiler_artifact_path, str) and profiler_artifact_path and profiler_source_artifact_path != profiler_artifact_path:
+        errors.append("profiler.source_artifact_path must match artifact_path for accepted artifacts")
     if profiler.get("status") != "captured":
         errors.append("profiler.status must be 'captured' for accepted artifacts")
     profiler_output_format = profiler.get("output_format")

@@ -5983,6 +5983,7 @@ def test_qwen35_retained_profiler_reference_loads_captured_summary(tmp_path: Pat
         json.dumps(
             {
                 "profiler": {
+                    "artifact_path": str(profiler_path),
                     "status": "captured",
                     "command": f"rocprofv3 --kernel-trace --output-format csv -d {trace_dir} -- python3 scripts/qwen35_batch_retained_bench.py",
                     "trace_files": [str(trace_csv)],
@@ -6069,6 +6070,7 @@ def test_qwen35_retained_profiler_reference_loads_captured_summary(tmp_path: Pat
         "other": 0.0,
     }
     assert loaded["artifact_path"] == str(profiler_path)
+    assert loaded["source_artifact_path"] == str(profiler_path)
     assert command is not None
     assert command.startswith("rocprofv3 --kernel-trace")
     assert "scripts/qwen35_batch_retained_bench.py" in command
@@ -7454,6 +7456,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         },
         "profiler": {
             "artifact_path": "benchmarks/results/profiler-c2.json",
+            "source_artifact_path": "benchmarks/results/profiler-c2.json",
             "status": "captured",
             "output_format": "csv",
             "trace_dir": "/tmp/hipengine-profile",
@@ -9153,8 +9156,19 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
 
     tmp_profiler_artifact = json.loads(json.dumps(accepted))
     tmp_profiler_artifact["profiler"]["artifact_path"] = "/tmp/profiler-c2.json"
+    tmp_profiler_artifact["profiler"]["source_artifact_path"] = "/tmp/profiler-c2.json"
     with pytest.raises(ValueError, match="profiler.artifact_path must be under benchmarks/results"):
         validate_cn_diagnostic_artifact_payload(tmp_profiler_artifact)
+
+    missing_profiler_source_artifact = json.loads(json.dumps(accepted))
+    missing_profiler_source_artifact["profiler"].pop("source_artifact_path")
+    with pytest.raises(ValueError, match="profiler.source_artifact_path must be a non-empty string"):
+        validate_cn_diagnostic_artifact_payload(missing_profiler_source_artifact)
+
+    mismatched_profiler_source_artifact = json.loads(json.dumps(accepted))
+    mismatched_profiler_source_artifact["profiler"]["source_artifact_path"] = "benchmarks/results/other-profiler-c2.json"
+    with pytest.raises(ValueError, match="profiler.source_artifact_path must match artifact_path"):
+        validate_cn_diagnostic_artifact_payload(mismatched_profiler_source_artifact)
 
     missing_profiler_command = json.loads(json.dumps(accepted))
     missing_profiler_command["commands"]["profiler"] = None
