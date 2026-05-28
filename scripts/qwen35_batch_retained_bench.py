@@ -1109,6 +1109,10 @@ def _profiled_command_segment(command: str) -> list[str] | None:
     return parts[parts.index("--") + 1 :]
 
 
+def _join_command_parts(parts: Sequence[str]) -> str:
+    return " ".join(shlex.quote(part) for part in parts)
+
+
 def _profiler_command_provenance_blockers(
     command: str,
     *,
@@ -1129,21 +1133,24 @@ def _profiler_command_provenance_blockers(
     if "scripts/qwen35_batch_retained_bench.py" not in command:
         blockers.append("profiler command must target scripts/qwen35_batch_retained_bench.py")
     profiled_segment = _profiled_command_segment(command)
+    retained_command = command
     if profiled_segment is None:
         blockers.append("profiler command must include rocprof -- separator")
-    elif (
-        len(profiled_segment) < 2
-        or not Path(profiled_segment[0]).name.startswith("python")
-        or profiled_segment[1] != "scripts/qwen35_batch_retained_bench.py"
-    ):
-        blockers.append("profiler command must launch retained bench after rocprof separator")
+    else:
+        retained_command = _join_command_parts(profiled_segment)
+        if (
+            len(profiled_segment) < 2
+            or not Path(profiled_segment[0]).name.startswith("python")
+            or profiled_segment[1] != "scripts/qwen35_batch_retained_bench.py"
+        ):
+            blockers.append("profiler command must launch retained bench after rocprof separator")
     if _command_arg_value(command, "--output-format") != "csv":
         blockers.append("profiler command must include --output-format csv")
     if trace_dir is not None and _command_arg_value(command, "-d") != trace_dir:
         blockers.append("profiler command -d must match profiler.trace_dir")
-    if profiler_artifact_path is not None and _command_arg_value(command, "--profiler-json") != profiler_artifact_path:
+    if profiler_artifact_path is not None and _command_arg_value(retained_command, "--profiler-json") != profiler_artifact_path:
         blockers.append("profiler command --profiler-json must match profiler.artifact_path")
-    if retained_artifact_path is not None and _command_arg_value(command, "--json") != retained_artifact_path:
+    if retained_artifact_path is not None and _command_arg_value(retained_command, "--json") != retained_artifact_path:
         blockers.append("profiler command --json must match retained artifact path")
     if expected_workload is not None:
         for key, flag, default_value in (
@@ -1155,25 +1162,25 @@ def _profiler_command_provenance_blockers(
         ):
             expected_value = expected_workload.get(key)
             if isinstance(expected_value, int) and not isinstance(expected_value, bool):
-                command_value = _command_arg_value(command, flag)
+                command_value = _command_arg_value(retained_command, flag)
                 if command_value is None and default_value is not None and int(expected_value) == int(default_value):
                     continue
-                if not _command_int_arg_matches(command, flag, expected_value):
+                if not _command_int_arg_matches(retained_command, flag, expected_value):
                     blockers.append(f"profiler command {flag} must match retained workload")
     if expected_inputs is not None:
         for key, flag in (("model", "--model"), ("fixture", "--fixture")):
             expected_value = expected_inputs.get(key)
-            if isinstance(expected_value, str) and expected_value and not _command_string_arg_matches(command, flag, expected_value):
+            if isinstance(expected_value, str) and expected_value and not _command_string_arg_matches(retained_command, flag, expected_value):
                 blockers.append(f"profiler command {flag} must match retained {key}")
     if expected_build is not None:
         compiler_version_file = expected_build.get("compiler_version_file")
         if not isinstance(compiler_version_file, str) or not compiler_version_file:
             blockers.append("retained command must include --compiler-version-file")
-        elif _command_arg_value(command, "--compiler-version-file") != compiler_version_file:
+        elif _command_arg_value(retained_command, "--compiler-version-file") != compiler_version_file:
             blockers.append("profiler command --compiler-version-file must match retained compiler-version-file")
         if expected_build.get("require_cached_build") is not True:
             blockers.append("retained command must include --require-cached-build")
-        elif not _command_has_flag(command, "--require-cached-build"):
+        elif not _command_has_flag(retained_command, "--require-cached-build"):
             blockers.append("profiler command must include --require-cached-build")
     if expected_references is not None:
         for key, flag in (
@@ -1184,7 +1191,7 @@ def _profiler_command_provenance_blockers(
             expected_value = expected_references.get(key)
             if not isinstance(expected_value, str) or not expected_value:
                 blockers.append(f"retained command must include {flag}")
-            elif _command_arg_value(command, flag) != expected_value:
+            elif _command_arg_value(retained_command, flag) != expected_value:
                 blockers.append(f"profiler command {flag} must match retained reference artifact")
     if expected_kv_policy is not None:
         for key, flag, default_value in (
@@ -1193,7 +1200,7 @@ def _profiler_command_provenance_blockers(
             ("kv_scale_granularity", "--kv-scale-granularity", "per_token_head"),
         ):
             expected_value = expected_kv_policy.get(key)
-            command_value = _command_arg_value(command, flag)
+            command_value = _command_arg_value(retained_command, flag)
             if isinstance(expected_value, str) and expected_value:
                 if command_value is None and expected_value == default_value:
                     continue

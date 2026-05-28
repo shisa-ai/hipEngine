@@ -5982,6 +5982,16 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
         mismatched_retained_json,
         retained_artifact_path="benchmarks/results/native-c2.json",
     )
+    pre_separator_shadowed_json = {
+        **valid,
+        "command": valid["command"]
+        .replace("-- python3", "--json benchmarks/results/native-c2.json -- python3")
+        .replace(" --json benchmarks/results/native-c2.json --c1-baseline-json", " --json benchmarks/results/other-native.json --c1-baseline-json"),
+    }
+    assert "profiler command --json must match retained artifact path" in retained_bench._profiler_provenance_blockers(
+        pre_separator_shadowed_json,
+        retained_artifact_path="benchmarks/results/native-c2.json",
+    )
     mismatched_workload = {**valid, "command": valid["command"].replace("--batch-size 2", "--batch-size 4")}
     assert "profiler command --batch-size must match retained workload" in retained_bench._profiler_provenance_blockers(
         mismatched_workload,
