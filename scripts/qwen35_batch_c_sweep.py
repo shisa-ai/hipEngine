@@ -375,8 +375,9 @@ def _primitive_correctness_precondition(command: SweepCommand) -> dict[str, Any]
         context_lens = payload.get("context_lens")
         if not _primitive_context_lens_matches(context_lens, command.batch_size):
             reasons.append("context_lens is missing or does not match fixture coverage")
-        if payload.get("rows") != command.batch_size:
-            reasons.append(f"rows={payload.get('rows')!r} does not match batch_size={command.batch_size}")
+        primitive_rows = payload.get("rows")
+        if not isinstance(primitive_rows, int) or isinstance(primitive_rows, bool) or primitive_rows != command.batch_size:
+            reasons.append(f"rows={primitive_rows!r} is missing or does not match batch_size={command.batch_size}")
         if payload.get("passed") is not True:
             reasons.append("passed is not true")
         for field in ("append_key_mismatch", "append_value_mismatch"):

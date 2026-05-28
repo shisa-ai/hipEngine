@@ -1893,6 +1893,55 @@ def test_batch_c_sweep_primitive_precondition_requires_seed(tmp_path: Path) -> N
     }
 
 
+def test_batch_c_sweep_primitive_precondition_requires_typed_rows(tmp_path: Path) -> None:
+    primitive_path = tmp_path / "primitive-c2.json"
+    command = c_sweep.SweepCommand(
+        category="native_diagnostic",
+        batch_size=2,
+        artifact_path=tmp_path / "native-diagnostic-c2.json",
+        argv=(
+            "python3",
+            "scripts/qwen35_batch_retained_bench.py",
+            "--primitive-correctness-json",
+            str(primitive_path),
+        ),
+    )
+    primitive_payload = {
+        "schema": 1,
+        "seed": 1234,
+        "rows": 2.0,
+        "block_size": 256,
+        "max_context_len": 4,
+        "num_q_heads": 4,
+        "num_kv_heads": 1,
+        "head_dim": 8,
+        "context_lens": [1, 2],
+        "passed": True,
+        "append_key_mismatch": 0,
+        "append_value_mismatch": 0,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "attn_batch_vs_numpy_max_abs": 5.0e-8,
+    }
+    primitive_path.write_text(json.dumps(primitive_payload))
+    float_rows = c_sweep._primitive_correctness_precondition(command)
+    primitive_payload["rows"] = True
+    primitive_path.write_text(json.dumps(primitive_payload))
+    bool_rows = c_sweep._primitive_correctness_precondition(command)
+
+    assert float_rows == {
+        "kind": "primitive_correctness",
+        "artifact_path": str(primitive_path),
+        "passed": False,
+        "reason": "rows=2.0 is missing or does not match batch_size=2",
+    }
+    assert bool_rows == {
+        "kind": "primitive_correctness",
+        "artifact_path": str(primitive_path),
+        "passed": False,
+        "reason": "rows=True is missing or does not match batch_size=2",
+    }
+
+
 def test_batch_c_sweep_primitive_precondition_requires_fixture_shape(tmp_path: Path) -> None:
     primitive_path = tmp_path / "primitive-c2.json"
     command = c_sweep.SweepCommand(
