@@ -6542,6 +6542,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         with pytest.raises(ValueError, match=f"hardware.{hardware_field}"):
             validate_cn_diagnostic_artifact_payload(missing_hardware_field)
 
+    placeholder_gpu = json.loads(json.dumps(accepted))
+    placeholder_gpu["hardware"]["gpu"] = "GPU 0"
+    with pytest.raises(ValueError, match="hardware.gpu must identify an AMD/Radeon/Instinct GPU"):
+        validate_cn_diagnostic_artifact_payload(placeholder_gpu)
+
     placeholder_arch = json.loads(json.dumps(accepted))
     placeholder_arch["hardware"]["arch"] = "rdna3"
     placeholder_arch["hardware"]["rocminfo"]["output"] = "Name: rdna3"

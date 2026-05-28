@@ -1004,7 +1004,8 @@ roll-up/status view.
       exact environment capture command entries for `rocminfo | grep -E 'Name:|gfx' | head -4`,
       `rocm-smi --showmeminfo vram --showuse --showtemp`, `hipcc --version`,
       `git rev-parse HEAD`, and `git diff --quiet`,
-      concrete non-empty hardware `gpu`/`arch` fields with `arch` formatted as a
+      concrete non-empty hardware `gpu`/`arch` fields with `gpu` identifying an
+      AMD/Radeon/Instinct device and `arch` formatted as a
       `gfx*` architecture string plus successful
       `hardware.rocminfo`/`hardware.rocm_smi` capture objects whose commands
       include the retained capture fragments (`rocminfo | grep -E`, `Name:|gfx`,

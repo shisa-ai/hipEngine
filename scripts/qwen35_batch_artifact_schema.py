@@ -445,6 +445,11 @@ def _looks_like_hipcc_version(value: str) -> bool:
     return any(marker in lower for marker in ("hip version", "hipcc", "amd clang", "clang version"))
 
 
+def _looks_like_amd_gpu_label(value: str) -> bool:
+    lower = value.lower()
+    return any(marker in lower for marker in ("amd", "radeon", "instinct"))
+
+
 def _validate_capture_context(
     field: str,
     value: Any,
@@ -928,6 +933,9 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     for field in _REQUIRED_ACCEPTED_HARDWARE_FIELDS:
         if not isinstance(hardware.get(field), str) or not hardware.get(field):
             errors.append(f"hardware.{field} must be a non-empty string for accepted artifacts")
+    hardware_gpu = hardware.get("gpu")
+    if isinstance(hardware_gpu, str) and hardware_gpu and not _looks_like_amd_gpu_label(hardware_gpu):
+        errors.append("hardware.gpu must identify an AMD/Radeon/Instinct GPU for accepted artifacts")
     hardware_arch = hardware.get("arch")
     if isinstance(hardware_arch, str) and hardware_arch and _ACCEPTED_HARDWARE_ARCH_RE.fullmatch(hardware_arch) is None:
         errors.append("hardware.arch must be a gfx* architecture string for accepted artifacts")
