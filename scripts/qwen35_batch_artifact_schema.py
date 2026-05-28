@@ -994,8 +994,20 @@ def _validate_accepted_scheduler_metadata(
             if not isinstance(graph_stats.get(field), int) or isinstance(graph_stats.get(field), bool) or graph_stats.get(field) < 0:
                 errors.append(f"execution.scheduler_metadata.graph_bucket_stats.{field} must be a non-negative int for accepted artifacts")
         entries = graph_stats.get("entries")
+        hits = graph_stats.get("hits")
+        misses = graph_stats.get("misses")
         if isinstance(entries, int) and not isinstance(entries, bool) and entries <= 0:
             errors.append("execution.scheduler_metadata.graph_bucket_stats.entries must be positive for accepted artifacts")
+        if (
+            isinstance(entries, int)
+            and not isinstance(entries, bool)
+            and isinstance(hits, int)
+            and not isinstance(hits, bool)
+            and isinstance(misses, int)
+            and not isinstance(misses, bool)
+            and entries > hits + misses
+        ):
+            errors.append("execution.scheduler_metadata.graph_bucket_stats.entries must be covered by hits plus misses for accepted artifacts")
         miss_reasons = graph_stats.get("miss_reasons")
         if not isinstance(miss_reasons, Mapping):
             errors.append("execution.scheduler_metadata.graph_bucket_stats.miss_reasons must be an object for accepted artifacts")

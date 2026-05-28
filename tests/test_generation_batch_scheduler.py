@@ -6861,6 +6861,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="graph_bucket_stats.entries must be positive"):
         validate_cn_diagnostic_artifact_payload(empty_graph_bucket_cache)
 
+    uncovered_graph_bucket_entries = json.loads(json.dumps(accepted))
+    uncovered_graph_bucket_entries["execution"]["scheduler_metadata"]["graph_bucket_stats"]["entries"] = 3
+    with pytest.raises(ValueError, match="graph_bucket_stats.entries must be covered by hits plus misses"):
+        validate_cn_diagnostic_artifact_payload(uncovered_graph_bucket_entries)
+
     missing_graph_bucket_miss_reasons = json.loads(json.dumps(accepted))
     missing_graph_bucket_miss_reasons["execution"]["scheduler_metadata"]["graph_bucket_stats"].pop("miss_reasons")
     with pytest.raises(ValueError, match="graph_bucket_stats.miss_reasons"):
