@@ -1567,6 +1567,14 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if "postconditions" in entry and (entry.get("category") != "native_diagnostic" or entry.get("batch_size") == 1):
                 errors.append("commands[].postconditions are only valid for retained native diagnostic rows")
                 break
+            if (
+                entry.get("category") == "native_diagnostic"
+                and entry.get("batch_size") != 1
+                and status == "passed"
+                and "postconditions" not in entry
+            ):
+                errors.append("commands[].postconditions must include retained native postconditions for passed retained rows")
+                break
             if isinstance(entry.get("postconditions"), list) and [
                 condition.get("kind") for condition in entry["postconditions"]
             ] != ["retained_profiler_synthesis"]:
