@@ -543,6 +543,13 @@ def _artifact_row_count(payload: Mapping[str, Any]) -> Any:
     return None
 
 
+def _artifact_is_accepted(payload: Mapping[str, Any]) -> bool:
+    if payload.get("accepted") is True or payload.get("passed") is True or payload.get("status") == "accepted":
+        return True
+    decision = payload.get("decision")
+    return isinstance(decision, Mapping) and decision.get("accepted") is True
+
+
 def _looks_like_hipcc_version(value: str) -> bool:
     lower = value.lower()
     return any(marker in lower for marker in ("hip version", "hipcc", "amd clang", "clang version"))
@@ -1003,6 +1010,19 @@ def _validate_accepted_projection_dispatch(
         else:
             if dispatch_evidence.accepted is not True:
                 errors.append("execution.batch_execution.projection_dispatch.evidence.accepted must be true for accepted artifacts")
+            evidence_artifact_payload = _load_benchmark_results_json_artifact(
+                "execution.batch_execution.projection_dispatch.evidence.artifact_path",
+                dispatch_evidence.artifact_path,
+                errors,
+            )
+            if evidence_artifact_payload is not None:
+                if not _artifact_is_accepted(evidence_artifact_payload):
+                    errors.append("execution.batch_execution.projection_dispatch.evidence.artifact_path artifact must be accepted for accepted artifacts")
+                evidence_artifact_rows = _artifact_row_count(evidence_artifact_payload)
+                if isinstance(evidence_artifact_rows, bool) or not isinstance(evidence_artifact_rows, int):
+                    errors.append("execution.batch_execution.projection_dispatch.evidence.artifact_path rows must be an int for accepted artifacts")
+                elif isinstance(concurrency, int) and not isinstance(concurrency, bool) and evidence_artifact_rows != concurrency:
+                    errors.append("execution.batch_execution.projection_dispatch.evidence.artifact_path rows must match workload.concurrency for accepted artifacts")
 
     if "projection_dispatch_candidates" not in payload:
         errors.append("projection_dispatch_candidates must include selected projection candidate for accepted artifacts")

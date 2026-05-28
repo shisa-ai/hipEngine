@@ -1038,6 +1038,58 @@ def _batch_execution_blockers(
     return blockers
 
 
+def _load_retained_json_artifact(value: str) -> tuple[Mapping[str, Any] | None, str | None]:
+    path = Path(value)
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None, "artifact_path must point to an existing JSON artifact"
+    except json.JSONDecodeError as exc:
+        return None, f"artifact_path must point to a valid JSON artifact: {exc}"
+    if not isinstance(payload, Mapping):
+        return None, "artifact_path must point to a JSON object artifact"
+    return payload, None
+
+
+def _retained_artifact_row_count(payload: Mapping[str, Any]) -> Any:
+    rows = payload.get("rows")
+    if rows is not None:
+        return rows
+    workload = payload.get("workload")
+    if isinstance(workload, Mapping):
+        return workload.get("concurrency")
+    return None
+
+
+def _retained_artifact_accepted(payload: Mapping[str, Any]) -> bool:
+    if payload.get("accepted") is True or payload.get("passed") is True or payload.get("status") == "accepted":
+        return True
+    decision = payload.get("decision")
+    return isinstance(decision, Mapping) and decision.get("accepted") is True
+
+
+def _projection_evidence_artifact_blockers(evidence: Mapping[str, Any], *, concurrency: int) -> list[str]:
+    artifact_path = evidence.get("artifact_path")
+    if not _is_retained_artifact_path(artifact_path):
+        return []
+    payload, error = _load_retained_json_artifact(str(artifact_path))
+    if error is not None:
+        return [f"execution.batch_execution.projection_dispatch.evidence.{error}"]
+    if payload is None:
+        return []
+    blockers: list[str] = []
+    if not _retained_artifact_accepted(payload):
+        blockers.append("execution.batch_execution.projection_dispatch.evidence.artifact_path artifact must be accepted")
+    artifact_rows = _retained_artifact_row_count(payload)
+    if isinstance(artifact_rows, bool) or not isinstance(artifact_rows, int):
+        blockers.append("execution.batch_execution.projection_dispatch.evidence.artifact_path rows must be an int")
+    elif artifact_rows != int(concurrency):
+        blockers.append("execution.batch_execution.projection_dispatch.evidence.artifact_path rows must match workload.concurrency")
+    return blockers
+
+
 def _projection_dispatch_blockers(
     batch_execution: Mapping[str, Any],
     *,
@@ -1081,6 +1133,8 @@ def _projection_dispatch_blockers(
             blockers.append("execution.batch_execution.projection_dispatch.evidence.accepted must be true")
         if not _is_retained_artifact_path(evidence.get("artifact_path")):
             blockers.append("execution.batch_execution.projection_dispatch.evidence.artifact_path must be under benchmarks/results")
+        else:
+            blockers.extend(_projection_evidence_artifact_blockers(evidence, concurrency=concurrency))
         for field in ("aggregate_vs_row_gemv", "per_request_vs_row_gemv"):
             value = evidence.get(field)
             if not _is_finite_positive_number(value) or float(value) <= 1.0:
