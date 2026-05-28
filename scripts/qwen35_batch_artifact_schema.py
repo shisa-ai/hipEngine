@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import shlex
 import sys
@@ -1618,10 +1619,10 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
     elif float(attn_vs_c1) != 0.0:
         errors.append("correctness.primitive_batch_correctness.attn_batch_vs_c1_max_abs must be 0.0 for accepted artifacts")
     attn_vs_numpy = primitive.get("attn_batch_vs_numpy_max_abs")
-    if not _is_number(attn_vs_numpy):
-        errors.append("correctness.primitive_batch_correctness.attn_batch_vs_numpy_max_abs must be numeric for accepted artifacts")
-    elif float(attn_vs_numpy) > _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT:
-        errors.append("correctness.primitive_batch_correctness.attn_batch_vs_numpy_max_abs must be <= 2e-5 for accepted artifacts")
+    if not _is_number(attn_vs_numpy) or not math.isfinite(float(attn_vs_numpy)):
+        errors.append("correctness.primitive_batch_correctness.attn_batch_vs_numpy_max_abs must be finite numeric for accepted artifacts")
+    elif float(attn_vs_numpy) < 0.0 or float(attn_vs_numpy) > _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT:
+        errors.append("correctness.primitive_batch_correctness.attn_batch_vs_numpy_max_abs must be between 0.0 and 2e-5 for accepted artifacts")
 
 
 def _validate_generated_token_sequence_lengths(

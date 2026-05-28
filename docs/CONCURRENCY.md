@@ -955,7 +955,7 @@ roll-up/status view.
       `head_dim`), reference-gated typed per-row `context_lens` fixture
       coverage, reference-gated typed zero append-mismatch counters,
       reference-gated exact-zero batch-vs-c1 attention error, and
-      reference-gated finite NumPy-oracle attention error ≤ 2e-5,
+      reference-gated finite nonnegative NumPy-oracle attention error ≤ 2e-5,
       full 40-layer workload labels with concrete model/quant/KV storage dtype
       plus matching KV policy metadata,
       aggregate token labels and per-row prompt lengths matching per-request

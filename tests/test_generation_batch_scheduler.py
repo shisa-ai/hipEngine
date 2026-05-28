@@ -4993,6 +4993,10 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     nan_numpy_payload = json.loads(artifact.read_text())
     nan_numpy_payload["attn_batch_vs_numpy_max_abs"] = math.nan
     nan_numpy_artifact.write_text(json.dumps(nan_numpy_payload))
+    negative_numpy_artifact = tmp_path / "primitive-c2-numpy-negative.json"
+    negative_numpy_payload = json.loads(artifact.read_text())
+    negative_numpy_payload["attn_batch_vs_numpy_max_abs"] = -1e-8
+    negative_numpy_artifact.write_text(json.dumps(negative_numpy_payload))
     mismatched_c1_artifact = tmp_path / "primitive-c2-c1.json"
     c1_payload = json.loads(artifact.read_text())
     c1_payload["attn_batch_vs_c1_max_abs"] = 5e-7
@@ -5017,6 +5021,7 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     mismatched_shape = retained_bench._primitive_correctness_reference(mismatched_shape_artifact, rows=2)
     mismatched_numpy = retained_bench._primitive_correctness_reference(mismatched_numpy_artifact, rows=2)
     nan_numpy = retained_bench._primitive_correctness_reference(nan_numpy_artifact, rows=2)
+    negative_numpy = retained_bench._primitive_correctness_reference(negative_numpy_artifact, rows=2)
     mismatched_c1 = retained_bench._primitive_correctness_reference(mismatched_c1_artifact, rows=2)
     mismatched_context = retained_bench._primitive_correctness_reference(mismatched_context_artifact, rows=2)
     bool_context = retained_bench._primitive_correctness_reference(bool_context_artifact, rows=2)
@@ -5038,9 +5043,11 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     assert mismatched_shape["passed"] is False
     assert "head_dim is missing or not 8" in mismatched_shape["reason"]
     assert mismatched_numpy["passed"] is False
-    assert "attn_batch_vs_numpy_max_abs is missing, non-finite, or above 2e-5" in mismatched_numpy["reason"]
+    assert "attn_batch_vs_numpy_max_abs is missing, non-finite, negative, or above 2e-5" in mismatched_numpy["reason"]
     assert nan_numpy["passed"] is False
-    assert "attn_batch_vs_numpy_max_abs is missing, non-finite, or above 2e-5" in nan_numpy["reason"]
+    assert "attn_batch_vs_numpy_max_abs is missing, non-finite, negative, or above 2e-5" in nan_numpy["reason"]
+    assert negative_numpy["passed"] is False
+    assert "attn_batch_vs_numpy_max_abs is missing, non-finite, negative, or above 2e-5" in negative_numpy["reason"]
     assert mismatched_c1["passed"] is False
     assert "attn_batch_vs_c1_max_abs is missing or not 0.0" in mismatched_c1["reason"]
     assert mismatched_context["passed"] is False
@@ -5930,12 +5937,22 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
 
     missing_primitive_numpy_error = json.loads(json.dumps(accepted))
     missing_primitive_numpy_error["correctness"]["primitive_batch_correctness"].pop("attn_batch_vs_numpy_max_abs")
-    with pytest.raises(ValueError, match="primitive_batch_correctness.attn_batch_vs_numpy_max_abs must be numeric"):
+    with pytest.raises(ValueError, match="primitive_batch_correctness.attn_batch_vs_numpy_max_abs must be finite numeric"):
         validate_cn_diagnostic_artifact_payload(missing_primitive_numpy_error)
+
+    primitive_numpy_nan = json.loads(json.dumps(accepted))
+    primitive_numpy_nan["correctness"]["primitive_batch_correctness"]["attn_batch_vs_numpy_max_abs"] = math.nan
+    with pytest.raises(ValueError, match="primitive_batch_correctness.attn_batch_vs_numpy_max_abs must be finite numeric"):
+        validate_cn_diagnostic_artifact_payload(primitive_numpy_nan)
+
+    primitive_numpy_negative = json.loads(json.dumps(accepted))
+    primitive_numpy_negative["correctness"]["primitive_batch_correctness"]["attn_batch_vs_numpy_max_abs"] = -1.0e-8
+    with pytest.raises(ValueError, match="primitive_batch_correctness.attn_batch_vs_numpy_max_abs must be between 0.0 and 2e-5"):
+        validate_cn_diagnostic_artifact_payload(primitive_numpy_negative)
 
     primitive_numpy_mismatch = json.loads(json.dumps(accepted))
     primitive_numpy_mismatch["correctness"]["primitive_batch_correctness"]["attn_batch_vs_numpy_max_abs"] = 1.0e-3
-    with pytest.raises(ValueError, match="primitive_batch_correctness.attn_batch_vs_numpy_max_abs must be <= 2e-5"):
+    with pytest.raises(ValueError, match="primitive_batch_correctness.attn_batch_vs_numpy_max_abs must be between 0.0 and 2e-5"):
         validate_cn_diagnostic_artifact_payload(primitive_numpy_mismatch)
 
     missing_workload_concurrency = json.loads(json.dumps(accepted))
