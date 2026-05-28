@@ -2604,6 +2604,11 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_profiler_precondition_trace_files["commands"][-1]["preconditions"][-1]["profiler_trace_files"] = []
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_files must include a kernel-trace CSV when passed"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_trace_files)
+    tampered_profiler_precondition_trace_file_extension = json.loads(json.dumps(persisted))
+    trace_precondition = tampered_profiler_precondition_trace_file_extension["commands"][-1]["preconditions"][-1]
+    trace_precondition["profiler_trace_files"].append(str(output_dir / "profile-c2" / "rocprof-metadata.txt"))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_files must contain only CSV files when passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_trace_file_extension)
     tampered_profiler_precondition_kernel_names = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_kernel_names["commands"][-1]["preconditions"][-1]["profiler_trace_kernel_names"] = ["serial_lm_head"]
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_kernel_names must include native batch kernels only when passed"):

@@ -1803,6 +1803,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     ):
                         errors.append("commands[].preconditions[].profiler_trace_files must include a kernel-trace CSV when passed")
                         break
+                    if any(Path(trace_file).suffix.lower() != ".csv" for trace_file in profiler_trace_files):
+                        errors.append("commands[].preconditions[].profiler_trace_files must contain only CSV files when passed")
+                        break
                     if any(not Path(trace_file).is_relative_to(Path(profiler_trace_dir)) for trace_file in profiler_trace_files):
                         errors.append("commands[].preconditions[].profiler_trace_files must be under profiler_trace_dir when passed")
                         break
