@@ -3262,8 +3262,16 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         c_sweep.validate_sweep_summary(tampered_primitive_precondition_float_seed)
     tampered_primitive_precondition_shape = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_shape["commands"][-1]["preconditions"][0]["primitive_head_dim"] = 16
-    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_head_dim must match fixture shape when primitive passed"):
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_head_dim must be a typed int matching fixture shape when primitive passed"):
         c_sweep.validate_sweep_summary(tampered_primitive_precondition_shape)
+    tampered_primitive_precondition_float_shape = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_float_shape["commands"][-1]["preconditions"][0]["primitive_head_dim"] = 8.0
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_head_dim must be a typed int matching fixture shape when primitive passed"):
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_float_shape)
+    tampered_primitive_precondition_bool_shape = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_bool_shape["commands"][-1]["preconditions"][0]["primitive_num_kv_heads"] = True
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_num_kv_heads must be a typed int matching fixture shape when primitive passed"):
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_bool_shape)
     tampered_primitive_precondition_context_lens = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_context_lens["commands"][-1]["preconditions"][0]["primitive_context_lens"] = [2, 1]
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_context_lens must match fixture coverage when primitive passed"):

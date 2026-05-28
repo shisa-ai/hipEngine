@@ -1791,8 +1791,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         break
                     primitive_shape_error = False
                     for field, expected_value in _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS.items():
-                        if primitive_precondition.get(f"primitive_{field}") != expected_value:
-                            errors.append(f"commands[].preconditions[].primitive_{field} must match fixture shape when primitive passed")
+                        value = primitive_precondition.get(f"primitive_{field}")
+                        if not isinstance(value, int) or isinstance(value, bool) or value != expected_value:
+                            errors.append(f"commands[].preconditions[].primitive_{field} must be a typed int matching fixture shape when primitive passed")
                             primitive_shape_error = True
                             break
                     if primitive_shape_error:
