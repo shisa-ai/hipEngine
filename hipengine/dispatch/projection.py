@@ -268,6 +268,11 @@ def projection_dispatch_evidence_payload_blockers(
     if not isinstance(payload_evidence, Mapping):
         blockers.append(f"{label} must include projection speedup evidence")
         return tuple(blockers)
+    payload_artifact_path = payload_evidence.get("artifact_path")
+    if not isinstance(payload_artifact_path, str) or not payload_artifact_path:
+        blockers.append(f"{label} evidence.artifact_path must be a non-empty string")
+    elif payload_artifact_path != evidence.artifact_path:
+        blockers.append(f"{label} evidence.artifact_path must match projection_dispatch.evidence.artifact_path")
     if payload_evidence.get("accepted") is not True:
         blockers.append(f"{label} evidence.accepted must be true")
     for field, expected in (
