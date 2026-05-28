@@ -3013,7 +3013,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         calls.append(list(argv))
         if len(argv) > 1 and argv[1] == "scripts/qwen35_batch_retained_bench.py":
             (output_dir / "native-diagnostic-c2.json").write_text(
-                json.dumps({"profiler": {"synthesized_fields": []}})
+                json.dumps(
+                    {
+                        "profiler": {
+                            "source_artifact_path": str(output_dir / "profiler-c2.json"),
+                            "synthesized_fields": [],
+                        }
+                    }
+                )
             )
         return FakeProc()
 
@@ -3058,6 +3065,8 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
             "profiler_precondition_artifact_path": str(output_dir / "profiler-c2.json"),
             "passed": True,
             "reason": None,
+            "profiler_precondition_source_artifact_path": str(output_dir / "profiler-c2.json"),
+            "profiler_source_artifact_path": str(output_dir / "profiler-c2.json"),
             "profiler_synthesized_fields": [],
             "profiler_precondition_synthesized_fields": [],
         }
@@ -3222,6 +3231,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_failed_postcondition_reason["commands"][-1]["postconditions"][0]["passed"] = False
     with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.reason must be a non-empty string when failed"):
         c_sweep.validate_sweep_summary(tampered_failed_postcondition_reason)
+    tampered_postcondition_precondition_source = json.loads(json.dumps(persisted))
+    tampered_postcondition_precondition_source["commands"][-1]["postconditions"][0]["profiler_precondition_source_artifact_path"] = str(output_dir / "other-profiler-c2.json")
+    with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler_precondition_source_artifact_path must match profiler_summary precondition"):
+        c_sweep.validate_sweep_summary(tampered_postcondition_precondition_source)
+    tampered_postcondition_source = json.loads(json.dumps(persisted))
+    tampered_postcondition_source["commands"][-1]["postconditions"][0]["profiler_source_artifact_path"] = str(output_dir / "other-profiler-c2.json")
+    with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler_source_artifact_path must match profiler_summary precondition"):
+        c_sweep.validate_sweep_summary(tampered_postcondition_source)
     tampered_postcondition_field_shape = json.loads(json.dumps(persisted))
     tampered_postcondition_field_shape["commands"][-1]["postconditions"][0]["profiler_synthesized_fields"] = [1]
     with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler synthesized fields must be string lists when passed"):
@@ -4131,7 +4148,14 @@ def test_batch_c_sweep_fails_retained_row_on_profiler_synthesis_mismatch(tmp_pat
     def fake_run(argv, **kwargs):
         if len(argv) > 1 and argv[1] == "scripts/qwen35_batch_retained_bench.py":
             (output_dir / "native-diagnostic-c2.json").write_text(
-                json.dumps({"profiler": {"synthesized_fields": ["trace_kernel_names"]}})
+                json.dumps(
+                    {
+                        "profiler": {
+                            "source_artifact_path": str(output_dir / "profiler-c2.json"),
+                            "synthesized_fields": ["trace_kernel_names"],
+                        }
+                    }
+                )
             )
         return FakeProc()
 

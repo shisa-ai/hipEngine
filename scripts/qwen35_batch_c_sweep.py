@@ -1356,6 +1356,7 @@ def _retained_profiler_synthesis_postcondition(
     profiler_precondition = _profiler_summary_precondition_record(preconditions)
     if command.category != "native_diagnostic" or profiler_precondition is None:
         return None
+    expected_source_artifact_path = profiler_precondition.get("profiler_source_artifact_path")
     result: dict[str, Any] = {
         "kind": "retained_profiler_synthesis",
         "artifact_path": str(command.artifact_path),
@@ -1363,6 +1364,8 @@ def _retained_profiler_synthesis_postcondition(
         "passed": False,
         "reason": None,
     }
+    if isinstance(expected_source_artifact_path, str) and expected_source_artifact_path:
+        result["profiler_precondition_source_artifact_path"] = expected_source_artifact_path
     if not command.artifact_path.exists():
         result["reason"] = "retained artifact was not written for profiler provenance cross-check"
         return result
@@ -1383,6 +1386,12 @@ def _retained_profiler_synthesis_postcondition(
     if not isinstance(actual_fields, list) or not all(isinstance(field, str) for field in actual_fields):
         result["reason"] = "retained artifact profiler.synthesized_fields is missing or malformed"
         return result
+    if isinstance(expected_source_artifact_path, str) and expected_source_artifact_path:
+        actual_source_artifact_path = profiler.get("source_artifact_path")
+        result["profiler_source_artifact_path"] = actual_source_artifact_path
+        if actual_source_artifact_path != expected_source_artifact_path:
+            result["reason"] = "retained artifact profiler.source_artifact_path does not match profiler precondition source path"
+            return result
     result["profiler_synthesized_fields"] = list(actual_fields)
     result["profiler_precondition_synthesized_fields"] = list(expected_fields)
     if list(actual_fields) != list(expected_fields):
@@ -2317,6 +2326,18 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 ):
                     errors.append("commands[].postconditions[].profiler_precondition_artifact_path must match profiler_summary precondition")
                     break
+                if isinstance(profiler_precondition, dict) and postcondition.get("passed") is True:
+                    profiler_precondition_source = profiler_precondition.get("profiler_source_artifact_path")
+                    if (
+                        not isinstance(profiler_precondition_source, str)
+                        or not profiler_precondition_source
+                        or postcondition.get("profiler_precondition_source_artifact_path") != profiler_precondition_source
+                    ):
+                        errors.append("commands[].postconditions[].profiler_precondition_source_artifact_path must match profiler_summary precondition")
+                        break
+                    if postcondition.get("profiler_source_artifact_path") != profiler_precondition_source:
+                        errors.append("commands[].postconditions[].profiler_source_artifact_path must match profiler_summary precondition")
+                        break
                 reason = postcondition.get("reason")
                 if postcondition.get("passed") is True and reason is not None:
                     errors.append("commands[].postconditions[].reason must be null when passed")

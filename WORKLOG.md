@@ -39408,3 +39408,30 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
 ```
+
+## 2026-05-28 — CONCURRENCY c-sweep profiler source postcondition binding
+
+Materially advanced retained/P1 c-sweep profiler postcondition gates without closing a queue item or adding a retained c>N performance claim:
+
+- `scripts/qwen35_batch_c_sweep.py` now carries `profiler_precondition_source_artifact_path` and `profiler_source_artifact_path` in passed retained-profiler-synthesis postconditions when the profiler precondition had a source path.
+- The retained-profiler-synthesis postcondition now fails if the retained artifact's `profiler.source_artifact_path` differs from the passed profiler precondition's source path, and `validate_sweep_summary(...)` rejects tampered postcondition source paths.
+- Extended retained c-sweep summary tests with source-path postcondition assertions/tamper coverage; updated `docs/CONCURRENCY.md` P1 progress text to name c-sweep profiler precondition/postcondition source self-binding.
+- No retained c>N performance claim was added; generated-token equality, primitive correctness, profiler capture, and scaling gates remain required before promotion.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -k 'runs_retained_when_all_references_are_usable or retained_profiler_synthesis or fails_retained_row_on_profiler_synthesis_mismatch' -q
+# 4 passed
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -q
+# 118 passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
+```
