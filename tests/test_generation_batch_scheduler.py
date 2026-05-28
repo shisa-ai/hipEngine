@@ -3355,6 +3355,19 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
             with pytest.raises(ValueError, match="output_dir parent directories must not be symlinks"):
                 c_sweep.validate_sweep_summary(symlink_parent_output_summary)
 
+            profiler_trace_dir = Path(persisted["commands"][-1]["preconditions"][-1]["profiler_trace_dir"])
+            real_profiler_trace_dir = profiler_trace_dir.with_name("profile-c2-real")
+            real_profiler_trace_dir.mkdir()
+            try:
+                profiler_trace_dir.symlink_to(real_profiler_trace_dir, target_is_directory=True)
+                with pytest.raises(ValueError, match=r"profiler_trace_dir must not be a symlink"):
+                    c_sweep.validate_sweep_summary(persisted)
+            finally:
+                if profiler_trace_dir.is_symlink():
+                    profiler_trace_dir.unlink()
+                if real_profiler_trace_dir.exists():
+                    real_profiler_trace_dir.rmdir()
+
         symlink_artifact_summary = json.loads(json.dumps(persisted))
         primitive_artifact_path = Path(symlink_artifact_summary["commands"][0]["artifact_path"])
         primitive_artifact_target = primitive_artifact_path.with_name("primitive-c2-real.json")

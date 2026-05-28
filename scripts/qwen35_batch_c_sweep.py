@@ -2138,6 +2138,13 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if _argv_value(rocprof_command_argv, "-d") != profiler_trace_dir:
                         errors.append("commands[].preconditions[].profiler_trace_dir must match profiler command -d")
                         break
+                    profiler_trace_dir_path = Path(profiler_trace_dir)
+                    profiler_trace_dir_check_path = (
+                        profiler_trace_dir_path if profiler_trace_dir_path.is_absolute() else REPO_ROOT / profiler_trace_dir_path
+                    )
+                    if profiler_trace_dir_check_path.is_symlink():
+                        errors.append("commands[].preconditions[].profiler_trace_dir must not be a symlink when passed")
+                        break
                     output_dir_text = summary.get("output_dir")
                     if isinstance(output_dir_text, str) and output_dir_text:
                         trace_dir_path = Path(profiler_trace_dir)
