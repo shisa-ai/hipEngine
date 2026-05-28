@@ -825,6 +825,8 @@ def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[
             errors.append(f"workload.{field} must be true for accepted artifacts")
     if batch_execution.get("scheduler_owned") is not True:
         errors.append("execution.batch_execution.scheduler_owned must be true for accepted artifacts")
+    if batch_execution.get("blockers") != []:
+        errors.append("execution.batch_execution.blockers must be empty for accepted artifacts")
     for field in _REQUIRED_BATCH_EXECUTION_FLAGS:
         if batch_execution.get(field) is not True:
             errors.append(f"execution.batch_execution.{field} must be true for accepted artifacts")
