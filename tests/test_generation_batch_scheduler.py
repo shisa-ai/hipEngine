@@ -2214,6 +2214,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     ]
     with pytest.raises(ValueError, match=r"commands\[\]\.postconditions are only valid for retained native diagnostic rows"):
         c_sweep.validate_sweep_summary(tampered_postcondition_scope)
+    tampered_postcondition_kind = json.loads(json.dumps(persisted))
+    tampered_postcondition_kind["commands"][-1]["postconditions"][0]["kind"] = "other_check"
+    with pytest.raises(ValueError, match=r"commands\[\]\.postconditions must include retained native postcondition kinds"):
+        c_sweep.validate_sweep_summary(tampered_postcondition_kind)
     tampered_git_dirty = json.loads(json.dumps(persisted))
     tampered_git_dirty["commands"][-1]["git_dirty"] = True
     with pytest.raises(ValueError, match=r"commands\[\]\.git_dirty must match git.dirty"):
