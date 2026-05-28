@@ -1063,6 +1063,45 @@ def _projection_dispatch_blockers(
     return blockers
 
 
+def _is_path_relative_to(child: str, parent: str) -> bool:
+    try:
+        child_path = Path(child).expanduser().resolve(strict=False)
+        parent_path = Path(parent).expanduser().resolve(strict=False)
+        child_path.relative_to(parent_path)
+        return True
+    except (OSError, RuntimeError, ValueError):
+        return False
+
+
+def _profiler_provenance_blockers(profiler: Mapping[str, Any]) -> list[str]:
+    blockers: list[str] = []
+    if not _is_retained_artifact_path(profiler.get("artifact_path")):
+        blockers.append("profiler.artifact_path must be under benchmarks/results")
+    if profiler.get("output_format") != "csv":
+        blockers.append("profiler.output_format must be csv")
+    trace_dir = profiler.get("trace_dir")
+    if not isinstance(trace_dir, str) or not trace_dir:
+        blockers.append("profiler.trace_dir must be a non-empty string")
+        trace_dir = None
+    trace_files = profiler.get("trace_files")
+    if not isinstance(trace_files, list) or not trace_files or not all(isinstance(trace_file, str) and trace_file for trace_file in trace_files):
+        blockers.append("profiler.trace_files must be a non-empty string list")
+        return blockers
+    if len(set(trace_files)) != len(trace_files):
+        blockers.append("profiler.trace_files entries must be unique")
+    if not any(Path(trace_file).name.endswith("kernel_trace.csv") for trace_file in trace_files):
+        blockers.append("profiler.trace_files must include a kernel-trace CSV")
+    for trace_file in trace_files:
+        trace_path = Path(trace_file)
+        if trace_path.suffix.lower() != ".csv":
+            blockers.append("profiler.trace_files entries must be CSV paths")
+            break
+        if trace_dir is not None and not _is_path_relative_to(trace_file, trace_dir):
+            blockers.append("profiler.trace_files entries must be under profiler.trace_dir")
+            break
+    return blockers
+
+
 def _profiler_cpu_side_bottleneck_blockers(profiler: Mapping[str, Any]) -> list[str]:
     blockers: list[str] = []
     cpu_total = profiler.get("cpu_side_total_seconds")
@@ -1676,7 +1715,8 @@ def _build_payload(
     scheduler_metadata = dict(bench["scheduler_metadata"])
     _attach_profiler_graph_kernel_time_histogram(scheduler_metadata, profiler)
     profiler_captured = profiler.get("status") == "captured" and profiler.get("expected_kernels_present") is True
-    profiler_blockers = _profiler_kernel_evidence_blockers(profiler)
+    profiler_blockers = _profiler_provenance_blockers(profiler)
+    profiler_blockers.extend(_profiler_kernel_evidence_blockers(profiler))
     profiler_blockers.extend(_profiler_cpu_side_bottleneck_blockers(profiler))
     batch_execution = dict(bench["batch_execution"])
     throughput_claim_eligible = bool(batch_execution.get("throughput_claim_eligible"))

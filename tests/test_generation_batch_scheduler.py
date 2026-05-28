@@ -5908,6 +5908,33 @@ def test_qwen35_retained_memory_payload_uses_bench_evidence() -> None:
     assert retained_bench._memory_evidence_blockers(memory) == []
 
 
+def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_paths() -> None:
+    valid = {
+        "artifact_path": "benchmarks/results/profiler-c2.json",
+        "output_format": "csv",
+        "trace_dir": "/tmp/hipengine-profile-c2",
+        "trace_files": ["/tmp/hipengine-profile-c2/hipengine_kernel_trace.csv"],
+    }
+    invalid = {
+        "artifact_path": "/tmp/profiler-c2.json",
+        "output_format": "json",
+        "trace_dir": "/tmp/hipengine-profile-c2",
+        "trace_files": ["/tmp/other-profile/hipengine_api_trace.txt", "/tmp/other-profile/hipengine_api_trace.txt"],
+    }
+
+    assert retained_bench._profiler_provenance_blockers(valid) == []
+    blockers = retained_bench._profiler_provenance_blockers(invalid)
+    assert "profiler.artifact_path must be under benchmarks/results" in blockers
+    assert "profiler.output_format must be csv" in blockers
+    assert "profiler.trace_files entries must be unique" in blockers
+    assert "profiler.trace_files must include a kernel-trace CSV" in blockers
+    assert "profiler.trace_files entries must be CSV paths" in blockers
+    outside_trace_dir = {**valid, "trace_files": ["/tmp/other-profile/hipengine_kernel_trace.csv"]}
+    assert "profiler.trace_files entries must be under profiler.trace_dir" in retained_bench._profiler_provenance_blockers(
+        outside_trace_dir
+    )
+
+
 def test_qwen35_retained_profiler_kernel_evidence_blockers_require_trace_durations() -> None:
     complete = {
         "trace_kernel_names": ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"],
