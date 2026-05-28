@@ -948,8 +948,11 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     rocminfo = hardware.get("rocminfo")
     if isinstance(hardware_arch, str) and hardware_arch and isinstance(rocminfo, Mapping):
         rocminfo_output = rocminfo.get("output")
-        if isinstance(rocminfo_output, str) and hardware_arch not in rocminfo_output:
-            errors.append("hardware.rocminfo.output must include hardware.arch for accepted artifacts")
+        if isinstance(rocminfo_output, str):
+            if "Name:" not in rocminfo_output:
+                errors.append("hardware.rocminfo.output must include Name: for accepted artifacts")
+            if hardware_arch not in rocminfo_output:
+                errors.append("hardware.rocminfo.output must include hardware.arch for accepted artifacts")
     software = _mapping_at(payload, "software", errors)
     hipengine_commit = software.get("hipengine_commit")
     if not isinstance(hipengine_commit, str) or not hipengine_commit:

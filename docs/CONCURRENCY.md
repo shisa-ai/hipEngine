@@ -1009,7 +1009,7 @@ roll-up/status view.
       `hardware.rocminfo`/`hardware.rocm_smi` capture objects whose commands
       include the retained capture fragments (`rocminfo | grep -E`, `Name:|gfx`,
       `head -4`, and the `rocm-smi --showmeminfo vram --showuse --showtemp` flags)
-      and whose `rocminfo` output includes the recorded arch,
+      and whose `rocminfo` output includes a `Name:` marker plus the recorded arch,
       clean full-commit software fields (`software.hipengine_dirty == false`)
       plus a non-empty `hipcc_version` string containing a hipcc/HIP/clang version marker,
       and captured profiler evidence with a
