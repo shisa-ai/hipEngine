@@ -6362,7 +6362,14 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
         },
         "native_compact_prefill": True,
         "native_caware_decode": True,
-        "decode_execution": {"rows": 2, "slots": [0, 2], "full_attention_decode_path": "native_batch", "native_caware_decode": True, "blockers": []},
+        "decode_execution": {
+            "rows": 2,
+            "slots": [0, 2],
+            "max_full_attention_context": 512,
+            "full_attention_decode_path": "native_batch",
+            "native_caware_decode": True,
+            "blockers": [],
+        },
     }
     fallback = {
         "path": "scheduler_serial_slot_bridge",
@@ -6382,14 +6389,15 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
         "decode_execution": {
             "rows": 1,
             "slots": [0, 0],
+            "max_full_attention_context": 128,
             "full_attention_decode_path": "per_row_splitk_fallback",
             "native_caware_decode": False,
             "blockers": ["full-attention decode used a per-row fallback"],
         },
     }
 
-    assert retained_bench._batch_execution_blockers(valid, expected_max_layers=40, expected_concurrency=2) == []
-    blockers = retained_bench._batch_execution_blockers(fallback, expected_max_layers=40, expected_concurrency=2)
+    assert retained_bench._batch_execution_blockers(valid, expected_max_layers=40, expected_concurrency=2, expected_prompt_length=512) == []
+    blockers = retained_bench._batch_execution_blockers(fallback, expected_max_layers=40, expected_concurrency=2, expected_prompt_length=512)
     assert "execution.batch_execution.path must be scheduler_native_compact_batch" in blockers
     assert "execution.batch_execution.scheduler_owned must be true" in blockers
     assert "execution.batch_execution.blockers must be empty" in blockers
@@ -6402,6 +6410,7 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
     assert "execution.batch_execution.native_prefill_plan.layer_limit must match workload.max_layers" in blockers
     assert "execution.batch_execution.native_prefill_plan.blockers must be empty" in blockers
     assert "execution.batch_execution.native_caware_decode must be true" in blockers
+    assert "execution.batch_execution.decode_execution.max_full_attention_context must cover workload.prompt_tokens_per_request" in blockers
     assert "execution.batch_execution.decode_execution.rows must match workload.concurrency" in blockers
     assert "execution.batch_execution.decode_execution.slots entries must be unique" in blockers
     assert "execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch" in blockers
@@ -6718,7 +6727,14 @@ def test_qwen35_retained_payload_blocks_acceptance_without_graph_histogram_evide
             "native_compact_prefill": True,
             "native_caware_decode": True,
             "throughput_claim_eligible": True,
-            "decode_execution": {"rows": 2, "slots": [0, 1], "full_attention_decode_path": "native_batch", "native_caware_decode": True, "blockers": []},
+            "decode_execution": {
+                "rows": 2,
+                "slots": [0, 1],
+                "max_full_attention_context": 512,
+                "full_attention_decode_path": "native_batch",
+                "native_caware_decode": True,
+                "blockers": [],
+            },
         },
         "completed": [],
         "request_observability": {},
@@ -6799,7 +6815,14 @@ def test_qwen35_retained_payload_blocks_acceptance_without_memory_evidence(monke
             "native_compact_prefill": True,
             "native_caware_decode": True,
             "throughput_claim_eligible": True,
-            "decode_execution": {"rows": 2, "slots": [0, 1], "full_attention_decode_path": "native_batch", "native_caware_decode": True, "blockers": []},
+            "decode_execution": {
+                "rows": 2,
+                "slots": [0, 1],
+                "max_full_attention_context": 512,
+                "full_attention_decode_path": "native_batch",
+                "native_caware_decode": True,
+                "blockers": [],
+            },
         },
         "completed": [],
         "request_observability": {},
@@ -6996,6 +7019,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                 "decode_execution": {
                     "rows": 2,
                     "slots": [0, 1],
+                    "max_full_attention_context": 512,
                     "full_attention_decode_path": "native_batch",
                     "native_caware_decode": True,
                     "blockers": [],
@@ -7611,6 +7635,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     missing_decode_execution["execution"]["batch_execution"].pop("decode_execution")
     with pytest.raises(ValueError, match="decode_execution must be an object"):
         validate_cn_diagnostic_artifact_payload(missing_decode_execution)
+
+    short_decode_context = json.loads(json.dumps(accepted))
+    short_decode_context["execution"]["batch_execution"]["decode_execution"]["max_full_attention_context"] = 256
+    with pytest.raises(ValueError, match="decode_execution.max_full_attention_context must cover workload.prompt_tokens_per_request"):
+        validate_cn_diagnostic_artifact_payload(short_decode_context)
 
     mismatched_decode_rows = json.loads(json.dumps(accepted))
     mismatched_decode_rows["execution"]["batch_execution"]["decode_execution"]["rows"] = 1

@@ -870,6 +870,16 @@ def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[
     if not isinstance(decode_execution, Mapping):
         errors.append("execution.batch_execution.decode_execution must be an object for accepted artifacts")
     else:
+        prompt_tokens_per_request = workload.get("prompt_tokens_per_request")
+        max_full_attention_context = decode_execution.get("max_full_attention_context")
+        if isinstance(max_full_attention_context, bool) or not isinstance(max_full_attention_context, int):
+            errors.append("execution.batch_execution.decode_execution.max_full_attention_context must be an int for accepted artifacts")
+        elif (
+            isinstance(prompt_tokens_per_request, int)
+            and not isinstance(prompt_tokens_per_request, bool)
+            and max_full_attention_context < prompt_tokens_per_request
+        ):
+            errors.append("execution.batch_execution.decode_execution.max_full_attention_context must cover workload.prompt_tokens_per_request for accepted artifacts")
         concurrency = workload.get("concurrency")
         decode_rows = decode_execution.get("rows")
         if isinstance(decode_rows, bool) or not isinstance(decode_rows, int):

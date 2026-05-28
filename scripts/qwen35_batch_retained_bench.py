@@ -956,6 +956,7 @@ def _batch_execution_blockers(
     *,
     expected_max_layers: int | None = None,
     expected_concurrency: int | None = None,
+    expected_prompt_length: int | None = None,
 ) -> list[str]:
     blockers: list[str] = []
     path = batch_execution.get("path")
@@ -1000,6 +1001,12 @@ def _batch_execution_blockers(
     if not isinstance(decode_execution, Mapping):
         blockers.append("execution.batch_execution.decode_execution is missing")
     else:
+        if expected_prompt_length is not None:
+            max_context = decode_execution.get("max_full_attention_context")
+            if isinstance(max_context, bool) or not isinstance(max_context, int):
+                blockers.append("execution.batch_execution.decode_execution.max_full_attention_context must be an int")
+            elif max_context < int(expected_prompt_length):
+                blockers.append("execution.batch_execution.decode_execution.max_full_attention_context must cover workload.prompt_tokens_per_request")
         if expected_concurrency is not None:
             decode_rows = decode_execution.get("rows")
             if isinstance(decode_rows, bool) or not isinstance(decode_rows, int):
@@ -2075,6 +2082,7 @@ def _build_payload(
         batch_execution,
         expected_max_layers=args.max_layers,
         expected_concurrency=args.batch_size,
+        expected_prompt_length=args.prompt_length,
     )
     projection_dispatch_candidates = bench.get("projection_dispatch_candidates")
     projection_blockers = _projection_dispatch_blockers(
