@@ -1009,7 +1009,8 @@ roll-up/status view.
       `head -4`, and the `rocm-smi --showmeminfo vram --showuse --showtemp` flags)
       and whose `rocminfo` output includes the recorded arch,
       clean full-commit software fields (`software.hipengine_dirty == false`)
-      plus non-empty `hipcc_version`, and captured profiler evidence with a
+      plus a non-empty `hipcc_version` string containing a hipcc/HIP/clang version marker,
+      and captured profiler evidence with a
       `profiler.artifact_path` under `benchmarks/results/`, profiler trace
       files canonically contained under `profiler.trace_dir`, native batch
       expected kernel names and duration-map keys (no

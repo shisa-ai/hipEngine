@@ -439,6 +439,11 @@ def _validate_benchmark_results_artifact_path(field: str, value: Any, errors: li
         errors.append(f"{field} must be under benchmarks/results for accepted artifacts")
 
 
+def _looks_like_hipcc_version(value: str) -> bool:
+    lower = value.lower()
+    return any(marker in lower for marker in ("hip version", "hipcc", "amd clang", "clang version"))
+
+
 def _validate_capture_context(
     field: str,
     value: Any,
@@ -934,8 +939,11 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         errors.append("software.hipengine_dirty must be a bool for accepted artifacts")
     elif hipengine_dirty:
         errors.append("software.hipengine_dirty must be false for accepted artifacts")
-    if not isinstance(software.get("hipcc_version"), str) or not software.get("hipcc_version"):
+    hipcc_version = software.get("hipcc_version")
+    if not isinstance(hipcc_version, str) or not hipcc_version:
         errors.append("software.hipcc_version must be a non-empty string for accepted artifacts")
+    elif not _looks_like_hipcc_version(hipcc_version):
+        errors.append("software.hipcc_version must include a hipcc/HIP/clang version marker for accepted artifacts")
     commands = _mapping_at(payload, "commands", errors)
     for field in _REQUIRED_ACCEPTED_COMMAND_FIELDS:
         if not isinstance(commands.get(field), str) or not commands.get(field):

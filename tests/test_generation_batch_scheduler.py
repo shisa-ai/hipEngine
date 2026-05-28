@@ -6577,6 +6577,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="software.hipcc_version"):
         validate_cn_diagnostic_artifact_payload(missing_hipcc_version)
 
+    placeholder_hipcc_version = json.loads(json.dumps(accepted))
+    placeholder_hipcc_version["software"]["hipcc_version"] = "captured"
+    with pytest.raises(ValueError, match="software.hipcc_version must include a hipcc/HIP/clang version marker"):
+        validate_cn_diagnostic_artifact_payload(placeholder_hipcc_version)
+
     incomplete_scaling = dict(accepted)
     incomplete_scaling["scaling"] = {"complete": False}
     with pytest.raises(ValueError, match="scaling.complete|scaling.native"):
