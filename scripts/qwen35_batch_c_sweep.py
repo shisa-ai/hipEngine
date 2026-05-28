@@ -1640,6 +1640,37 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 if [condition.get("artifact_path") for condition in preconditions] != expected_retained_precondition_paths:
                     errors.append("commands[].preconditions[].artifact_path must match retained native gate argv")
                     break
+                expected_prompt_tokens = int(_argv_value(argv, "--prompt-length"))
+                expected_decode_tokens = int(_argv_value(argv, "--decode-tokens"))
+                scaling_preconditions = (
+                    (preconditions[1], 1),
+                    (preconditions[2], entry.get("batch_size")),
+                )
+                scaling_precondition_error = False
+                for scaling_precondition, expected_concurrency in scaling_preconditions:
+                    if scaling_precondition.get("passed") is not True:
+                        continue
+                    if scaling_precondition.get("workload_concurrency") != expected_concurrency:
+                        errors.append("commands[].preconditions[].workload_concurrency must match retained scaling gate")
+                        scaling_precondition_error = True
+                        break
+                    if scaling_precondition.get("prompt_tokens_per_request") != expected_prompt_tokens:
+                        errors.append("commands[].preconditions[].prompt_tokens_per_request must match retained command shape")
+                        scaling_precondition_error = True
+                        break
+                    if scaling_precondition.get("gen_tokens_per_request") != expected_decode_tokens:
+                        errors.append("commands[].preconditions[].gen_tokens_per_request must match retained command shape")
+                        scaling_precondition_error = True
+                        break
+                    for rate_field in ("decode_tok_s_aggregate", "decode_tok_s_per_request"):
+                        if not _is_number(scaling_precondition.get(rate_field)) or float(scaling_precondition[rate_field]) <= 0.0:
+                            errors.append("commands[].preconditions[].decode rates must be positive numbers when passed")
+                            scaling_precondition_error = True
+                            break
+                    if scaling_precondition_error:
+                        break
+                if scaling_precondition_error:
+                    break
             postconditions = entry.get("postconditions")
             preconditions = entry.get("preconditions")
             if isinstance(postconditions, list):

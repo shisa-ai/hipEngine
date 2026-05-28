@@ -1596,6 +1596,24 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
     for precondition in tampered_skipped_failed_precondition["commands"][-1]["preconditions"]:
         precondition["passed"] = True
         precondition["reason"] = None
+    tampered_skipped_failed_precondition["commands"][-1]["preconditions"][1].update(
+        {
+            "workload_concurrency": 1,
+            "prompt_tokens_per_request": 16,
+            "gen_tokens_per_request": 2,
+            "decode_tok_s_aggregate": 10.0,
+            "decode_tok_s_per_request": 10.0,
+        }
+    )
+    tampered_skipped_failed_precondition["commands"][-1]["preconditions"][2].update(
+        {
+            "workload_concurrency": 2,
+            "prompt_tokens_per_request": 16,
+            "gen_tokens_per_request": 2,
+            "decode_tok_s_aggregate": 20.0,
+            "decode_tok_s_per_request": 10.0,
+        }
+    )
     with pytest.raises(ValueError, match=r"commands\[\]\.precondition must identify a failed precondition"):
         c_sweep.validate_sweep_summary(tampered_skipped_failed_precondition)
     tampered_singular_precondition = json.loads(json.dumps(persisted))
@@ -2355,6 +2373,18 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_gate_argv_filename["commands"][-1]["command"] = shlex.join(retained_argv)
     with pytest.raises(ValueError, match=r"commands\[\]\.argv retained native gate artifact paths must match output_dir filenames"):
         c_sweep.validate_sweep_summary(tampered_gate_argv_filename)
+    tampered_scaling_precondition_concurrency = json.loads(json.dumps(persisted))
+    tampered_scaling_precondition_concurrency["commands"][-1]["preconditions"][1]["workload_concurrency"] = 2
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.workload_concurrency must match retained scaling gate"):
+        c_sweep.validate_sweep_summary(tampered_scaling_precondition_concurrency)
+    tampered_scaling_precondition_shape = json.loads(json.dumps(persisted))
+    tampered_scaling_precondition_shape["commands"][-1]["preconditions"][2]["prompt_tokens_per_request"] = 17
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.prompt_tokens_per_request must match retained command shape"):
+        c_sweep.validate_sweep_summary(tampered_scaling_precondition_shape)
+    tampered_scaling_precondition_rate = json.loads(json.dumps(persisted))
+    tampered_scaling_precondition_rate["commands"][-1]["preconditions"][1]["decode_tok_s_aggregate"] = 0.0
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.decode rates must be positive numbers when passed"):
+        c_sweep.validate_sweep_summary(tampered_scaling_precondition_rate)
     preconditions_by_kind = {item["kind"]: item for item in native["preconditions"]}
     assert preconditions_by_kind["c1_baseline"] == {
         "kind": "c1_baseline",
