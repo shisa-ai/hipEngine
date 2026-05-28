@@ -562,6 +562,10 @@ def _has_disallowed_profiler_kernel_name_fragment(kernel_name: str) -> bool:
     return any(fragment in lowered for fragment in _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS)
 
 
+def _has_native_batch_profiler_kernel_name(kernel_names: list[Any]) -> bool:
+    return any(isinstance(name, str) and "batch" in name.lower() for name in kernel_names)
+
+
 def _profiler_kernel_duration_category(kernel_name: str) -> str:
     lowered = kernel_name.lower()
     if "graph" in lowered or "replay" in lowered:
@@ -1407,6 +1411,8 @@ def _profiler_kernel_evidence_blockers(profiler: Mapping[str, Any]) -> list[str]
         blockers.append("profiler.trace_kernel_names entries must be unique")
     elif any(_has_disallowed_profiler_kernel_name_fragment(name) for name in trace_kernel_names):
         blockers.append("profiler.trace_kernel_names must not include serial/per-row/fallback kernel names")
+    elif not _has_native_batch_profiler_kernel_name(trace_kernel_names):
+        blockers.append("profiler.trace_kernel_names must include at least one native batch kernel name")
     expected_kernel_names = profiler.get("expected_kernel_names")
     if not isinstance(expected_kernel_names, list) or not any(isinstance(name, str) and name for name in expected_kernel_names):
         blockers.append("profiler.expected_kernel_names must be a non-empty string list")
@@ -1416,6 +1422,8 @@ def _profiler_kernel_evidence_blockers(profiler: Mapping[str, Any]) -> list[str]
         blockers.append("profiler.expected_kernel_names entries must be unique")
     elif any(_has_disallowed_profiler_kernel_name_fragment(name) for name in expected_kernel_names):
         blockers.append("profiler.expected_kernel_names must not include serial/per-row/fallback kernel names")
+    elif not _has_native_batch_profiler_kernel_name(expected_kernel_names):
+        blockers.append("profiler.expected_kernel_names must include at least one native batch kernel name")
     kernel_durations = profiler.get("kernel_durations_ns")
     if not isinstance(kernel_durations, Mapping) or not kernel_durations:
         blockers.append("profiler.kernel_durations_ns must be a non-empty object")

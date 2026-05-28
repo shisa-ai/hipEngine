@@ -6218,6 +6218,15 @@ def test_qwen35_retained_profiler_kernel_evidence_blockers_require_trace_duratio
         "expected_kernel_names": [*complete["expected_kernel_names"], "qwen35_serial_fallback_decode"],
         "kernel_durations_ns": {**complete["kernel_durations_ns"], "qwen35_serial_fallback_decode": 1.0},
     }
+    generic_kernel_names = {
+        **complete,
+        "trace_kernel_names": ["rocblas_gemm"],
+        "expected_kernel_names": ["rocblas_gemm"],
+        "kernel_durations_ns": {"rocblas_gemm": 14690.0},
+        "kernel_duration_shares": {"rocblas_gemm": 1.0},
+        "kernel_duration_categories_ns": {**complete["kernel_duration_categories_ns"], "projection": 0.0, "other": 14690.0},
+        "kernel_duration_category_shares": {**complete["kernel_duration_category_shares"], "projection": 0.0, "other": 1.0},
+    }
 
     assert retained_bench._profiler_kernel_evidence_blockers(complete) == []
     duplicate_blockers = retained_bench._profiler_kernel_evidence_blockers(duplicate_names)
@@ -6227,6 +6236,9 @@ def test_qwen35_retained_profiler_kernel_evidence_blockers_require_trace_duratio
     assert "profiler.trace_kernel_names must not include serial/per-row/fallback kernel names" in disallowed_blockers
     assert "profiler.expected_kernel_names must not include serial/per-row/fallback kernel names" in disallowed_blockers
     assert "profiler.kernel_durations_ns must not include serial/per-row/fallback kernel names" in disallowed_blockers
+    generic_blockers = retained_bench._profiler_kernel_evidence_blockers(generic_kernel_names)
+    assert "profiler.trace_kernel_names must include at least one native batch kernel name" in generic_blockers
+    assert "profiler.expected_kernel_names must include at least one native batch kernel name" in generic_blockers
     blockers = retained_bench._profiler_kernel_evidence_blockers(incomplete)
     assert "profiler.trace_kernel_names must include profiler.expected_kernel_names" in blockers
     assert "profiler.kernel_durations_ns.qwen35_batch_decode_wmma_caware must be positive numeric" in blockers
