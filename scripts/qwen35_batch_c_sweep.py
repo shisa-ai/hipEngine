@@ -1736,6 +1736,13 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     ):
                         errors.append("commands[].preconditions[].profiler_command must include rocprofv3 kernel trace retained bench when passed")
                         break
+                    try:
+                        profiler_command_argv = shlex.split(profiler_command)
+                    except ValueError:
+                        profiler_command_argv = []
+                    if not profiler_command_argv or Path(profiler_command_argv[0]).name != "rocprofv3":
+                        errors.append("commands[].preconditions[].profiler_command must start with rocprofv3 when passed")
+                        break
                     if _command_text_arg(profiler_command, "--model") != _argv_value(argv, "--model") or profiler_precondition.get("profiler_model") != _argv_value(argv, "--model"):
                         errors.append("commands[].preconditions[].profiler model must match retained command")
                         break
