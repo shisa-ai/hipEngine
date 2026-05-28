@@ -5900,6 +5900,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="primitive_batch_correctness.seed must be an int"):
         validate_cn_diagnostic_artifact_payload(missing_primitive_seed)
 
+    mismatched_primitive_seed = json.loads(json.dumps(accepted))
+    mismatched_primitive_seed["correctness"]["primitive_batch_correctness"]["seed"] = 4321
+    with pytest.raises(ValueError, match="primitive_batch_correctness.seed must match scripts/qwen35_batch_correctness.py deterministic seed"):
+        validate_cn_diagnostic_artifact_payload(mismatched_primitive_seed)
+
     missing_primitive_block_size = json.loads(json.dumps(accepted))
     missing_primitive_block_size["correctness"]["primitive_batch_correctness"].pop("block_size")
     with pytest.raises(ValueError, match="primitive_batch_correctness.block_size must be an int"):

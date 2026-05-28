@@ -165,6 +165,7 @@ _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS = {
     "head_dim": 8,
 }
 _REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA = 1
+_REQUIRED_PRIMITIVE_CORRECTNESS_SEED = 1234
 _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT = 2e-5
 _ALLOWED_PROFILER_SYNTHESIZED_FIELDS = (
     "trace_kernel_names",
@@ -1589,6 +1590,8 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
     primitive_seed = primitive.get("seed")
     if not isinstance(primitive_seed, int) or isinstance(primitive_seed, bool):
         errors.append("correctness.primitive_batch_correctness.seed must be an int for accepted artifacts")
+    elif primitive_seed != _REQUIRED_PRIMITIVE_CORRECTNESS_SEED:
+        errors.append("correctness.primitive_batch_correctness.seed must match scripts/qwen35_batch_correctness.py deterministic seed for accepted artifacts")
     primitive_context_lens = primitive.get("context_lens")
     if not isinstance(primitive_context_lens, list):
         errors.append("correctness.primitive_batch_correctness.context_lens must be a list for accepted artifacts")
