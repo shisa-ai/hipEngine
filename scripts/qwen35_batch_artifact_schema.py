@@ -907,6 +907,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     profiler_command = commands.get("profiler")
     profiler_command_output_format: str | None = None
     profiler_command_trace_dir: str | None = None
+    profiler_profiled_benchmark_command: str | None = None
     if isinstance(profiler_command, str):
         if "rocprofv3" not in profiler_command or "--kernel-trace" not in profiler_command:
             errors.append("commands.profiler must include rocprofv3 --kernel-trace for accepted artifacts")
@@ -939,31 +940,30 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             or profiled_command_argv[1] != "scripts/qwen35_batch_retained_bench.py"
         ):
             errors.append("commands.profiler must target scripts/qwen35_batch_retained_bench.py after rocprof separator for accepted artifacts")
-        if "qwen35_batch_retained_bench.py" not in profiler_command:
-            errors.append("commands.profiler must target scripts/qwen35_batch_retained_bench.py for accepted artifacts")
         else:
-            _validate_command_model_fixture_flags(profiler_command, field="profiler", errors=errors)
-            _validate_command_workload_shape(profiler_command, field="profiler", payload=payload, errors=errors)
+            profiler_profiled_benchmark_command = shlex.join(profiled_command_argv)
+            _validate_command_model_fixture_flags(profiler_profiled_benchmark_command, field="profiler", errors=errors)
+            _validate_command_workload_shape(profiler_profiled_benchmark_command, field="profiler", payload=payload, errors=errors)
             _validate_command_json_matches_artifact_path(
-                profiler_command,
+                profiler_profiled_benchmark_command,
                 field="profiler",
                 artifact_field="artifact_path",
                 artifact_path=payload_artifact_path,
                 errors=errors,
             )
-            _validate_retained_benchmark_reference_paths(profiler_command, field="profiler", payload=payload, errors=errors)
-            if "--require-cached-build" not in profiler_command:
-                errors.append("commands.profiler must include --require-cached-build for accepted artifacts")
-            if _COMMAND_COMPILER_VERSION_FILE_RE.search(profiler_command) is None:
-                errors.append("commands.profiler must include --compiler-version-file for accepted artifacts")
+            _validate_retained_benchmark_reference_paths(profiler_profiled_benchmark_command, field="profiler", payload=payload, errors=errors)
+            if "--require-cached-build" not in profiled_command_argv:
+                errors.append("commands.profiler must include --require-cached-build after rocprof separator for accepted artifacts")
+            if _COMMAND_COMPILER_VERSION_FILE_RE.search(profiler_profiled_benchmark_command) is None:
+                errors.append("commands.profiler must include --compiler-version-file after rocprof separator for accepted artifacts")
     profiler = _mapping_at(payload, "profiler", errors)
     profiler_artifact_path = profiler.get("artifact_path")
     if not isinstance(profiler_artifact_path, str) or not profiler_artifact_path:
         errors.append("profiler.artifact_path must be a non-empty string for accepted artifacts")
     else:
         _validate_benchmark_results_artifact_path("profiler.artifact_path", profiler_artifact_path, errors)
-        if isinstance(profiler_command, str):
-            _validate_profiler_command_artifact_reference(profiler_command, profiler_artifact_path, errors)
+        if profiler_profiled_benchmark_command is not None:
+            _validate_profiler_command_artifact_reference(profiler_profiled_benchmark_command, profiler_artifact_path, errors)
     if profiler.get("status") != "captured":
         errors.append("profiler.status must be 'captured' for accepted artifacts")
     profiler_output_format = profiler.get("output_format")

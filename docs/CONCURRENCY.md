@@ -975,7 +975,8 @@ roll-up/status view.
       `rocprofv3 --kernel-trace` profiler command targeting
       `scripts/qwen35_batch_retained_bench.py` after the rocprof `--` separator,
       with rocprof-only flags (`--kernel-trace`, `--output-format csv`, `-d`) before
-      that separator, the same retained shape flags plus cached-build flags
+      that separator, and the same retained shape/artifact/reference/cached-build
+      flags validated from the post-separator profiled command segment
       (`--compiler-version-file`, `--require-cached-build`),
       benchmark/profiler `--json` outputs plus primitive/scaling artifact paths
       under `benchmarks/results/`, and the retained bench can now attach a

@@ -6114,6 +6114,14 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="commands.profiler must include --model"):
         validate_cn_diagnostic_artifact_payload(missing_profiler_model)
 
+    profiler_model_before_separator = json.loads(json.dumps(accepted))
+    profiler_model_before_separator["commands"]["profiler"] = profiler_model_before_separator["commands"]["profiler"].replace(
+        " -d /tmp/hipengine-profile -- python3 scripts/qwen35_batch_retained_bench.py --model /models/test-qwen35",
+        " -d /tmp/hipengine-profile --model /models/test-qwen35 -- python3 scripts/qwen35_batch_retained_bench.py",
+    )
+    with pytest.raises(ValueError, match="commands.profiler must include --model"):
+        validate_cn_diagnostic_artifact_payload(profiler_model_before_separator)
+
     missing_profiler_json = json.loads(json.dumps(accepted))
     missing_profiler_json["commands"]["profiler"] = "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40"
     with pytest.raises(ValueError, match="commands.profiler must include --json"):
@@ -6123,6 +6131,17 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     tmp_profiler_json["commands"]["profiler"] = "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json /tmp/accepted-c2.json"
     with pytest.raises(ValueError, match="commands.profiler --json path must be under benchmarks/results"):
         validate_cn_diagnostic_artifact_payload(tmp_profiler_json)
+
+    profiler_json_before_separator = json.loads(json.dumps(accepted))
+    profiler_json_before_separator["commands"]["profiler"] = profiler_json_before_separator["commands"]["profiler"].replace(
+        " -d /tmp/hipengine-profile -- python3",
+        " -d /tmp/hipengine-profile --json benchmarks/results/accepted-c2.json -- python3",
+    ).replace(
+        " --json benchmarks/results/accepted-c2.json --c1-baseline-json",
+        " --json benchmarks/results/other-accepted-c2.json --c1-baseline-json",
+    )
+    with pytest.raises(ValueError, match="commands.profiler --json path must match artifact_path"):
+        validate_cn_diagnostic_artifact_payload(profiler_json_before_separator)
 
     missing_profiler_json_reference = json.loads(json.dumps(accepted))
     missing_profiler_json_reference["commands"]["profiler"] = "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json benchmarks/results/accepted-c2.json"
@@ -6143,6 +6162,14 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     profiler_without_require_cached["commands"]["profiler"] = profiler_without_require_cached["commands"]["profiler"].replace(" --require-cached-build", "")
     with pytest.raises(ValueError, match="commands.profiler must include --require-cached-build"):
         validate_cn_diagnostic_artifact_payload(profiler_without_require_cached)
+
+    profiler_require_cached_before_separator = json.loads(json.dumps(accepted))
+    profiler_require_cached_before_separator["commands"]["profiler"] = profiler_require_cached_before_separator["commands"]["profiler"].replace(
+        " -d /tmp/hipengine-profile -- python3",
+        " -d /tmp/hipengine-profile --require-cached-build -- python3",
+    ).replace(" --require-cached-build --json", " --json")
+    with pytest.raises(ValueError, match="commands.profiler must include --require-cached-build after rocprof separator"):
+        validate_cn_diagnostic_artifact_payload(profiler_require_cached_before_separator)
 
     profiler_without_compiler_version = json.loads(json.dumps(accepted))
     profiler_without_compiler_version["commands"]["profiler"] = profiler_without_compiler_version["commands"]["profiler"].replace(" --compiler-version-file benchmarks/results/hipcc-version.txt", "")
