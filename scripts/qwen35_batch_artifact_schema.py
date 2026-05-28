@@ -107,6 +107,20 @@ _UNUSABLE_ACCEPTED_SCALING_BASELINE_STATUSES = {
     "rejected_correctness",
 }
 _GRAPH_KERNEL_TIME_HISTOGRAM_BUCKET_SET = frozenset(GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS)
+
+
+def _graph_kernel_time_histogram_bucket_ns(duration_ns: int) -> str:
+    if duration_ns <= 10_000:
+        return GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS[0]
+    if duration_ns <= 100_000:
+        return GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS[1]
+    if duration_ns <= 1_000_000:
+        return GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS[2]
+    if duration_ns <= 10_000_000:
+        return GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS[3]
+    return GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS[4]
+
+
 _COMMAND_BATCH_SIZE_RE = re.compile(r"(?:^|\s)--batch-size(?:=|\s+)(\d+)(?=\s|$)")
 _COMMAND_DECODE_TOKENS_RE = re.compile(r"(?:^|\s)--decode-tokens(?:=|\s+)(\d+)(?=\s|$)")
 _COMMAND_MAX_LAYERS_RE = re.compile(r"(?:^|\s)--max-layers(?:=|\s+)(\d+)(?=\s|$)")
@@ -1413,15 +1427,25 @@ def _validate_graph_histogram_profiler_coverage(payload: Mapping[str, Any], kern
             return
         histogram_total += int(count)
     profiler_integer_duration_count = 0
+    expected_bucket_counts: dict[str, int] = {}
     for kernel_name, duration_ns in kernel_durations.items():
         if not isinstance(kernel_name, str) or not kernel_name or _has_disallowed_profiler_kernel_fragment(kernel_name):
             continue
         if _is_positive_number(duration_ns) and float(duration_ns).is_integer():
             profiler_integer_duration_count += 1
+            bucket = _graph_kernel_time_histogram_bucket_ns(int(duration_ns))
+            expected_bucket_counts[bucket] = expected_bucket_counts.get(bucket, 0) + 1
     if profiler_integer_duration_count > 0 and histogram_total < profiler_integer_duration_count:
         errors.append(
             "execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns observation count must cover profiler.kernel_durations_ns for accepted artifacts"
         )
+    for bucket, expected_count in sorted(expected_bucket_counts.items()):
+        observed_count = histogram.get(bucket, 0)
+        if not isinstance(observed_count, int) or isinstance(observed_count, bool) or observed_count < expected_count:
+            errors.append(
+                "execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns bucket counts must cover profiler.kernel_durations_ns for accepted artifacts"
+            )
+            break
 
 
 def _validate_profiler_kernel_duration_total(

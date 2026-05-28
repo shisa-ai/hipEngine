@@ -924,7 +924,7 @@ roll-up/status view.
       histogram evidence plus those
       observability fields plus accepted-schema-validated replay shape-key axes (`context_bucket`,
       `top_k`, `experts_per_token`, `replay_steps`, `draft_depth`, and
-      `tree_shape`, with the context bucket covering the workload prompt length) and histogram observation counts covering profiler kernel-duration evidence before a c>N row can be promoted; `/metrics` exposes a
+      `tree_shape`, with the context bucket covering the workload prompt length) and per-bucket histogram observation counts covering profiler kernel-duration evidence before a c>N row can be promoted; `/metrics` exposes a
       hit/miss-derived replay-hit-rate gauge plus labeled miss-reason and known kernel-time-bucket counters for live runs.
 - [ ] **P3 remove residual serial loops.** Remove full-attention per-row
       fallback, per-row metadata allocation, per-row LM-head launches, and
@@ -1279,7 +1279,7 @@ endpoint live; retained c>N rows include all gates above.
       (entries, hits, misses, miss reason, kernel-time histogram). Progress:
       `GraphBucketCache.stats.to_json_dict()` now includes miss-reason counts
       and typed-integer kernel-time histogram buckets, retained/serial scripts emit that
-      shape, retained bench validates decode shape-key axes (including context-bucket coverage for the workload prompt length) and merges integer profiler kernel durations into the histogram, blocking promotion when shape keys are invalid, hit/miss/replay-rate stats are invalid, no known-bucket observations remain, or unknown buckets appear, and accepted-artifact schema shares the runtime bucket taxonomy and requires context-bucket workload coverage plus known-bucket histogram observations that cover profiler kernel-duration evidence
+      shape, retained bench validates decode shape-key axes (including context-bucket coverage for the workload prompt length) and merges integer profiler kernel durations into the histogram, blocking promotion when shape keys are invalid, hit/miss/replay-rate stats are invalid, no known-bucket observations remain, or unknown buckets appear, and accepted-artifact schema shares the runtime bucket taxonomy and requires context-bucket workload coverage plus per-bucket known-bucket histogram observations that cover profiler kernel-duration evidence
       for accepted rows, and `/metrics` exports labeled miss-reason and
       known kernel-time-bucket counters; the item remains open until real replay
       profiler evidence populates kernel-time buckets.
