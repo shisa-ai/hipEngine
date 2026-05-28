@@ -326,8 +326,12 @@ def _primitive_correctness_reference(path: Path | None, *, rows: int) -> dict[st
     if not _is_number(attn_vs_c1) or float(attn_vs_c1) != 0.0:
         reasons.append("attn_batch_vs_c1_max_abs is missing or not 0.0")
     attn_vs_numpy = payload.get("attn_batch_vs_numpy_max_abs")
-    if not _is_number(attn_vs_numpy) or float(attn_vs_numpy) > _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT:
-        reasons.append("attn_batch_vs_numpy_max_abs is missing or above 2e-5")
+    if (
+        not _is_number(attn_vs_numpy)
+        or not math.isfinite(float(attn_vs_numpy))
+        or float(attn_vs_numpy) > _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT
+    ):
+        reasons.append("attn_batch_vs_numpy_max_abs is missing, non-finite, or above 2e-5")
     return {
         "artifact_path": str(path),
         "status": "loaded",

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import shlex
 from dataclasses import replace
 from pathlib import Path
@@ -4988,6 +4989,10 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     numpy_payload = json.loads(artifact.read_text())
     numpy_payload["attn_batch_vs_numpy_max_abs"] = 1e-3
     mismatched_numpy_artifact.write_text(json.dumps(numpy_payload))
+    nan_numpy_artifact = tmp_path / "primitive-c2-numpy-nan.json"
+    nan_numpy_payload = json.loads(artifact.read_text())
+    nan_numpy_payload["attn_batch_vs_numpy_max_abs"] = math.nan
+    nan_numpy_artifact.write_text(json.dumps(nan_numpy_payload))
     mismatched_c1_artifact = tmp_path / "primitive-c2-c1.json"
     c1_payload = json.loads(artifact.read_text())
     c1_payload["attn_batch_vs_c1_max_abs"] = 5e-7
@@ -5011,6 +5016,7 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     mismatched_seed = retained_bench._primitive_correctness_reference(mismatched_seed_artifact, rows=2)
     mismatched_shape = retained_bench._primitive_correctness_reference(mismatched_shape_artifact, rows=2)
     mismatched_numpy = retained_bench._primitive_correctness_reference(mismatched_numpy_artifact, rows=2)
+    nan_numpy = retained_bench._primitive_correctness_reference(nan_numpy_artifact, rows=2)
     mismatched_c1 = retained_bench._primitive_correctness_reference(mismatched_c1_artifact, rows=2)
     mismatched_context = retained_bench._primitive_correctness_reference(mismatched_context_artifact, rows=2)
     bool_context = retained_bench._primitive_correctness_reference(bool_context_artifact, rows=2)
@@ -5032,7 +5038,9 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     assert mismatched_shape["passed"] is False
     assert "head_dim is missing or not 8" in mismatched_shape["reason"]
     assert mismatched_numpy["passed"] is False
-    assert "attn_batch_vs_numpy_max_abs is missing or above 2e-5" in mismatched_numpy["reason"]
+    assert "attn_batch_vs_numpy_max_abs is missing, non-finite, or above 2e-5" in mismatched_numpy["reason"]
+    assert nan_numpy["passed"] is False
+    assert "attn_batch_vs_numpy_max_abs is missing, non-finite, or above 2e-5" in nan_numpy["reason"]
     assert mismatched_c1["passed"] is False
     assert "attn_batch_vs_c1_max_abs is missing or not 0.0" in mismatched_c1["reason"]
     assert mismatched_context["passed"] is False
