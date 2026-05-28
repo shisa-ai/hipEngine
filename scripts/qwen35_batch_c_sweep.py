@@ -2158,7 +2158,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     kernel_duration_shares = profiler_precondition.get("kernel_duration_shares")
                     if (
                         not isinstance(kernel_duration_shares, dict)
-                        or {key for key in kernel_duration_shares if isinstance(key, str)} != {key for key in kernel_durations if isinstance(key, str)}
+                        or set(kernel_duration_shares) != set(kernel_durations)
                         or any(not _is_positive_finite_number(kernel_duration_shares.get(kernel_name)) for kernel_name in kernel_durations)
                     ):
                         errors.append("commands[].preconditions[].kernel_duration_shares must match kernel_durations_ns keys with positive shares when profiler passed")

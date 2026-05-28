@@ -1035,7 +1035,7 @@ roll-up/status view.
       serial/per-row/fallback labels) present with every duration-map entry,
       including extra trace-listed entries, carrying positive finite numeric evidence,
       `profiler.total_kernel_duration_ns`
-      matching the duration-map sum, per-kernel duration-share keys/values
+      matching the duration-map sum, exact per-kernel duration-share keys/values
       matching `duration / total`, finite exact-key category duration/share buckets for
       attention/MoE/projection/sampling/graph/other, finite exact-key CPU-side bottleneck
       duration/share totals, plus an accepted non-row-GEMV
