@@ -954,8 +954,9 @@ roll-up/status view.
       reference-/c-sweep-gated typed deterministic `seed=1234` provenance,
       deterministic typed fixture-shape
       metadata (`block_size`, `max_context_len`, `num_q_heads`, `num_kv_heads`,
-      `head_dim`) in summary preconditions, reference-gated typed per-row `context_lens` fixture
-      coverage, reference-/c-sweep-gated typed source zero append-mismatch counters,
+      `head_dim`) in summary preconditions, reference-/c-sweep-gated typed
+      per-row `context_lens` fixture coverage,
+      reference-/c-sweep-gated typed source zero append-mismatch counters,
       reference-/c-sweep-gated exact-zero batch-vs-c1 attention error, and
       reference-/c-sweep-gated finite nonnegative NumPy-oracle attention error ≤ 2e-5,
       full 40-layer workload labels with concrete model/quant/KV storage dtype

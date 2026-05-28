@@ -2023,6 +2023,9 @@ def test_batch_c_sweep_primitive_precondition_requires_context_lens(tmp_path: Pa
     primitive_payload["context_lens"] = [2, 1]
     primitive_path.write_text(json.dumps(primitive_payload))
     wrong_context_lens = c_sweep._primitive_correctness_precondition(command)
+    primitive_payload["context_lens"] = [True, 2]
+    primitive_path.write_text(json.dumps(primitive_payload))
+    bool_context_lens = c_sweep._primitive_correctness_precondition(command)
 
     assert missing_context_lens == {
         "kind": "primitive_correctness",
@@ -2031,6 +2034,12 @@ def test_batch_c_sweep_primitive_precondition_requires_context_lens(tmp_path: Pa
         "reason": "context_lens is missing or does not match fixture coverage",
     }
     assert wrong_context_lens == {
+        "kind": "primitive_correctness",
+        "artifact_path": str(primitive_path),
+        "passed": False,
+        "reason": "context_lens is missing or does not match fixture coverage",
+    }
+    assert bool_context_lens == {
         "kind": "primitive_correctness",
         "artifact_path": str(primitive_path),
         "passed": False,
