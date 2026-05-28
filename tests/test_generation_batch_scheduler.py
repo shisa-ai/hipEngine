@@ -68,6 +68,22 @@ from scripts.qwen35_batch_int8_diagnostic import build_parser as build_int8_diag
 from scripts.qwen35_batch_serial_bench import _load_prompt_slices, _summarize_samples
 
 
+def _projection_evidence_payload(
+    *,
+    rows: int,
+    accepted: bool = True,
+    aggregate_vs_row_gemv: float = 1.35,
+    per_request_vs_row_gemv: float = 1.10,
+) -> dict[str, object]:
+    return {
+        "schema": 1,
+        "rows": rows,
+        "accepted": accepted,
+        "aggregate_vs_row_gemv": aggregate_vs_row_gemv,
+        "per_request_vs_row_gemv": per_request_vs_row_gemv,
+    }
+
+
 def _sampler_equality_payload(
     *,
     rows: int,
@@ -6538,9 +6554,10 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
 def test_qwen35_retained_projection_dispatch_blockers_require_caware_candidate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     artifact_dir = tmp_path / "benchmarks" / "results"
     artifact_dir.mkdir(parents=True)
-    (artifact_dir / "projection-wmma-c2.json").write_text(json.dumps({"schema": 1, "rows": 2, "accepted": True}), encoding="utf-8")
-    (artifact_dir / "projection-wmma-c2-rejected.json").write_text(json.dumps({"schema": 1, "rows": 2, "accepted": False}), encoding="utf-8")
-    (artifact_dir / "projection-wmma-c2-wrong-rows.json").write_text(json.dumps({"schema": 1, "rows": 1, "accepted": True}), encoding="utf-8")
+    (artifact_dir / "projection-wmma-c2.json").write_text(json.dumps(_projection_evidence_payload(rows=2)), encoding="utf-8")
+    (artifact_dir / "projection-wmma-c2-rejected.json").write_text(json.dumps(_projection_evidence_payload(rows=2, accepted=False)), encoding="utf-8")
+    (artifact_dir / "projection-wmma-c2-wrong-rows.json").write_text(json.dumps(_projection_evidence_payload(rows=1)), encoding="utf-8")
+    (artifact_dir / "projection-wmma-c2-missing-ratios.json").write_text(json.dumps({"schema": 1, "rows": 2, "accepted": True}), encoding="utf-8")
     monkeypatch.chdir(tmp_path)
 
     valid_dispatch = {
@@ -6595,6 +6612,8 @@ def test_qwen35_retained_projection_dispatch_blockers_require_caware_candidate(t
     rejected_evidence_dispatch["projection_dispatch"]["evidence"]["artifact_path"] = "benchmarks/results/projection-wmma-c2-rejected.json"
     wrong_rows_evidence_dispatch = json.loads(json.dumps(valid_dispatch))
     wrong_rows_evidence_dispatch["projection_dispatch"]["evidence"]["artifact_path"] = "benchmarks/results/projection-wmma-c2-wrong-rows.json"
+    missing_ratio_evidence_dispatch = json.loads(json.dumps(valid_dispatch))
+    missing_ratio_evidence_dispatch["projection_dispatch"]["evidence"]["artifact_path"] = "benchmarks/results/projection-wmma-c2-missing-ratios.json"
 
     assert retained_bench._projection_dispatch_blockers(
         valid_dispatch,
@@ -6609,6 +6628,9 @@ def test_qwen35_retained_projection_dispatch_blockers_require_caware_candidate(t
     assert "execution.batch_execution.projection_dispatch.evidence.artifact_path artifact must be accepted" in rejected_evidence_blockers
     wrong_rows_evidence_blockers = retained_bench._projection_dispatch_blockers(wrong_rows_evidence_dispatch, concurrency=2, candidates=[valid_candidate])
     assert "execution.batch_execution.projection_dispatch.evidence.artifact_path rows must match workload.concurrency" in wrong_rows_evidence_blockers
+    missing_ratio_blockers = retained_bench._projection_dispatch_blockers(missing_ratio_evidence_dispatch, concurrency=2, candidates=[valid_candidate])
+    assert "execution.batch_execution.projection_dispatch.evidence.artifact_path evidence.aggregate_vs_row_gemv must be positive numeric" in missing_ratio_blockers
+    assert "execution.batch_execution.projection_dispatch.evidence.artifact_path evidence.per_request_vs_row_gemv must be positive numeric" in missing_ratio_blockers
     assert retained_bench._projection_dispatch_profiler_blockers(
         valid_dispatch,
         {
@@ -7472,7 +7494,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         encoding="utf-8",
     )
     (sampler_artifact_dir / "projection-wmma-c2.json").write_text(
-        json.dumps({"schema": 1, "rows": 2, "accepted": True}),
+        json.dumps(_projection_evidence_payload(rows=2)),
         encoding="utf-8",
     )
     monkeypatch.chdir(artifact_root)
@@ -7506,7 +7528,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         validate_cn_diagnostic_artifact_payload(slow_projection_candidates)
 
     (sampler_artifact_dir / "projection-wmma-c2-rejected.json").write_text(
-        json.dumps({"schema": 1, "rows": 2, "accepted": False}),
+        json.dumps(_projection_evidence_payload(rows=2, accepted=False)),
         encoding="utf-8",
     )
     rejected_projection_evidence = json.loads(json.dumps(accepted))
@@ -7516,7 +7538,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         validate_cn_diagnostic_artifact_payload(rejected_projection_evidence)
 
     (sampler_artifact_dir / "projection-wmma-c2-wrong-rows.json").write_text(
-        json.dumps({"schema": 1, "rows": 1, "accepted": True}),
+        json.dumps(_projection_evidence_payload(rows=1)),
         encoding="utf-8",
     )
     wrong_rows_projection_evidence = json.loads(json.dumps(accepted))
@@ -7524,6 +7546,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     wrong_rows_projection_evidence["projection_dispatch_candidates"][0]["evidence"]["artifact_path"] = "benchmarks/results/projection-wmma-c2-wrong-rows.json"
     with pytest.raises(ValueError, match="projection_dispatch.evidence.artifact_path rows must match workload.concurrency"):
         validate_cn_diagnostic_artifact_payload(wrong_rows_projection_evidence)
+
+    (sampler_artifact_dir / "projection-wmma-c2-missing-ratios.json").write_text(
+        json.dumps({"schema": 1, "rows": 2, "accepted": True}),
+        encoding="utf-8",
+    )
+    missing_ratios_projection_evidence = json.loads(json.dumps(accepted))
+    missing_ratios_projection_evidence["execution"]["batch_execution"]["projection_dispatch"]["evidence"]["artifact_path"] = "benchmarks/results/projection-wmma-c2-missing-ratios.json"
+    missing_ratios_projection_evidence["projection_dispatch_candidates"][0]["evidence"]["artifact_path"] = "benchmarks/results/projection-wmma-c2-missing-ratios.json"
+    with pytest.raises(ValueError, match="projection_dispatch.evidence.artifact_path evidence.aggregate_vs_row_gemv must be positive numeric"):
+        validate_cn_diagnostic_artifact_payload(missing_ratios_projection_evidence)
 
     rollup_root = tmp_path / "rollup-repo"
     (rollup_root / "benchmarks").mkdir(parents=True)
@@ -7543,7 +7575,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         encoding="utf-8",
     )
     (artifact_file.parent / "projection-wmma-c2.json").write_text(
-        json.dumps({"schema": 1, "rows": 2, "accepted": True}),
+        json.dumps(_projection_evidence_payload(rows=2)),
         encoding="utf-8",
     )
     monkeypatch.chdir(rollup_root)

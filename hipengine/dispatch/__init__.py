@@ -21,6 +21,7 @@ from hipengine.dispatch.projection import (
     plan_projection_dispatch,
     plan_projection_dispatch_from_artifact,
     projection_dispatch_candidates_from_artifact,
+    projection_dispatch_evidence_payload_blockers,
     projection_dispatch_candidates_from_json,
 )
 from hipengine.dispatch.sampling import (
@@ -59,6 +60,7 @@ __all__ = [
     "plan_projection_dispatch_from_artifact",
     "projection_dispatch_candidates_from_artifact",
     "projection_dispatch_candidates_from_json",
+    "projection_dispatch_evidence_payload_blockers",
     "plan_batch_sampler_dispatch",
     "resolve_paged_attn_decode",
     "resolve_paged_kv_write",

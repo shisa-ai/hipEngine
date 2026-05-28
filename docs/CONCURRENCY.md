@@ -736,7 +736,7 @@ roll-up/status view.
       to name an evidence-backed non-row-GEMV c-aware path whose selected
       candidate is present in `projection_dispatch_candidates` and profiler
       expected/trace/duration kernel names; retained native batch metadata records a `projection_dispatch` row-GEMV fallback
-      with an explicit blocker when no c-aware projection candidate is available; and retained bench now blocks promotion before schema validation unless projection dispatch names an evidence-backed non-row-GEMV c-aware candidate present in `projection_dispatch_candidates` with matching row bounds, selection, retained artifact path, an accepted same-row evidence artifact JSON, >1 aggregate/per-request ratios, evidence, and profiler expected/trace/duration kernel names. The
+      with an explicit blocker when no c-aware projection candidate is available; and retained bench now blocks promotion before schema validation unless projection dispatch names an evidence-backed non-row-GEMV c-aware candidate present in `projection_dispatch_candidates` with matching row bounds, selection, retained artifact path, an accepted same-row evidence artifact JSON carrying matching >1 aggregate/per-request row-GEMV speedup ratios, evidence, and profiler expected/trace/duration kernel names. The
       item remains open until runtime projection call sites are wired to this
       policy and retained benchmark artifacts provide the required ratios.
 - [x] **C3.5 GGUF c>N template.** Port the Qwen/PARO equality template to
@@ -948,7 +948,7 @@ roll-up/status view.
       cites correctness gate, profiler status, exact command, and hardware.
       Progress: accepted/performance-claim c>N artifacts now fail schema
       validation unless they include fully native scheduler-owned batch/prefill/decode-execution metadata with empty blockers, the known full-native prefill path, null unsupported-layer fields, positive native full-attention layer evidence, decode rows/slots matching `workload.concurrency`, decode context covering `workload.prompt_tokens_per_request` while staying below the open row-aware split-K threshold, and prefill layer limits matching `workload.max_layers`,
-      workload native prefill/decode flags set, workload scheduler labels matching the execution path, projection evidence artifact JSON reporting accepted same-row evidence, sampler requested mode `batched_lm_head` plus rows/equality rows matching `workload.concurrency` and sampler equality artifact JSON reporting the same rows with generated-token equality vs independent c=1 (`passed=true`, `skipped=false`, matching batch/c1 sequence lists, empty mismatches),
+      workload native prefill/decode flags set, workload scheduler labels matching the execution path, projection evidence artifact JSON reporting accepted same-row evidence with matching >1 aggregate/per-request row-GEMV speedup ratios, sampler requested mode `batched_lm_head` plus rows/equality rows matching `workload.concurrency` and sampler equality artifact JSON reporting the same rows with generated-token equality vs independent c=1 (`passed=true`, `skipped=false`, matching batch/c1 sequence lists, empty mismatches),
       generated-token equality sequence lists matching `workload.concurrency`
       rows and seed + warmup + measured decode token counts per row, with
       `execution.seed_tokens` / `execution.generated_tokens` matching the seed

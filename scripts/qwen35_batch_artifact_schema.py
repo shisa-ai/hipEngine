@@ -14,6 +14,7 @@ from hipengine.dispatch import (
     ProjectionDispatchEvidence,
     batch_sampler_equality_payload_blockers,
     projection_dispatch_candidates_from_artifact,
+    projection_dispatch_evidence_payload_blockers,
 )
 from hipengine.generation import GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS
 
@@ -1022,11 +1023,17 @@ def _validate_accepted_projection_dispatch(
             if evidence_artifact_payload is not None:
                 if not _artifact_is_accepted(evidence_artifact_payload):
                     errors.append("execution.batch_execution.projection_dispatch.evidence.artifact_path artifact must be accepted for accepted artifacts")
-                evidence_artifact_rows = _artifact_row_count(evidence_artifact_payload)
-                if isinstance(evidence_artifact_rows, bool) or not isinstance(evidence_artifact_rows, int):
-                    errors.append("execution.batch_execution.projection_dispatch.evidence.artifact_path rows must be an int for accepted artifacts")
-                elif isinstance(concurrency, int) and not isinstance(concurrency, bool) and evidence_artifact_rows != concurrency:
-                    errors.append("execution.batch_execution.projection_dispatch.evidence.artifact_path rows must match workload.concurrency for accepted artifacts")
+                expected_rows = concurrency if isinstance(concurrency, int) and not isinstance(concurrency, bool) else rows
+                if isinstance(expected_rows, int) and not isinstance(expected_rows, bool):
+                    errors.extend(
+                        f"{blocker} for accepted artifacts"
+                        for blocker in projection_dispatch_evidence_payload_blockers(
+                            evidence_artifact_payload,
+                            dispatch_evidence,
+                            rows=expected_rows,
+                            label="execution.batch_execution.projection_dispatch.evidence.artifact_path",
+                        )
+                    )
 
     if "projection_dispatch_candidates" not in payload:
         errors.append("projection_dispatch_candidates must include selected projection candidate for accepted artifacts")

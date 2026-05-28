@@ -231,6 +231,59 @@ def projection_dispatch_candidates_from_json(payload: Any) -> tuple[ProjectionDi
     return tuple(candidates)
 
 
+def _projection_evidence_from_payload(payload: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    direct_fields = ("aggregate_vs_row_gemv", "per_request_vs_row_gemv", "accepted")
+    if any(field in payload for field in direct_fields):
+        return payload
+    evidence = payload.get("evidence")
+    if isinstance(evidence, Mapping):
+        return evidence
+    execution = payload.get("execution")
+    batch_execution = execution.get("batch_execution") if isinstance(execution, Mapping) else None
+    projection_dispatch = batch_execution.get("projection_dispatch") if isinstance(batch_execution, Mapping) else None
+    evidence = projection_dispatch.get("evidence") if isinstance(projection_dispatch, Mapping) else None
+    return evidence if isinstance(evidence, Mapping) else None
+
+
+def projection_dispatch_evidence_payload_blockers(
+    payload: Mapping[str, Any],
+    evidence: ProjectionDispatchEvidence,
+    *,
+    rows: int,
+    label: str = "projection dispatch evidence artifact",
+) -> tuple[str, ...]:
+    """Return blockers for artifact-embedded c-aware projection speedup evidence."""
+
+    blockers: list[str] = []
+    artifact_rows = payload.get("rows")
+    if artifact_rows is None:
+        workload = payload.get("workload")
+        if isinstance(workload, Mapping):
+            artifact_rows = workload.get("concurrency")
+    if isinstance(artifact_rows, bool) or not isinstance(artifact_rows, int):
+        blockers.append(f"{label} rows must be an integer")
+    elif artifact_rows != rows:
+        blockers.append(f"{label} rows must match workload.concurrency")
+    payload_evidence = _projection_evidence_from_payload(payload)
+    if not isinstance(payload_evidence, Mapping):
+        blockers.append(f"{label} must include projection speedup evidence")
+        return tuple(blockers)
+    if payload_evidence.get("accepted") is not True:
+        blockers.append(f"{label} evidence.accepted must be true")
+    for field, expected in (
+        ("aggregate_vs_row_gemv", evidence.aggregate_vs_row_gemv),
+        ("per_request_vs_row_gemv", evidence.per_request_vs_row_gemv),
+    ):
+        value = payload_evidence.get(field)
+        if not _is_positive_number(value):
+            blockers.append(f"{label} evidence.{field} must be positive numeric")
+        elif float(value) <= 1.0:
+            blockers.append(f"{label} evidence.{field} must be > 1.0")
+        elif float(value) != float(expected):
+            blockers.append(f"{label} evidence.{field} must match projection_dispatch.evidence.{field}")
+    return tuple(blockers)
+
+
 def projection_dispatch_candidates_from_artifact(
     payload: Mapping[str, Any],
     *,
@@ -363,6 +416,7 @@ __all__ = [
     "ProjectionDispatchEvidence",
     "ProjectionKernelSelection",
     "plan_projection_dispatch",
+    "projection_dispatch_evidence_payload_blockers",
     "plan_projection_dispatch_from_artifact",
     "projection_dispatch_candidates_from_artifact",
     "projection_dispatch_candidates_from_json",

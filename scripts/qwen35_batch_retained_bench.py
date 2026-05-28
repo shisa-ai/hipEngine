@@ -29,7 +29,11 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from hipengine.core.memory import memory_stats
-from hipengine.dispatch import batch_sampler_equality_payload_blockers
+from hipengine.dispatch import (
+    ProjectionDispatchEvidence,
+    batch_sampler_equality_payload_blockers,
+    projection_dispatch_evidence_payload_blockers,
+)
 from hipengine.generation import GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS, GeneratedToken, GraphBucketCache, ResidentBatchScheduler
 from hipengine.kvcache import ResolvedKVPolicy
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
@@ -1129,11 +1133,25 @@ def _projection_evidence_artifact_blockers(evidence: Mapping[str, Any], *, concu
     blockers: list[str] = []
     if not _retained_artifact_accepted(payload):
         blockers.append("execution.batch_execution.projection_dispatch.evidence.artifact_path artifact must be accepted")
-    artifact_rows = _retained_artifact_row_count(payload)
-    if isinstance(artifact_rows, bool) or not isinstance(artifact_rows, int):
-        blockers.append("execution.batch_execution.projection_dispatch.evidence.artifact_path rows must be an int")
-    elif artifact_rows != int(concurrency):
-        blockers.append("execution.batch_execution.projection_dispatch.evidence.artifact_path rows must match workload.concurrency")
+    try:
+        parsed_evidence = ProjectionDispatchEvidence.from_json_dict(evidence)
+    except ValueError:
+        parsed_evidence = None
+    if parsed_evidence is not None:
+        blockers.extend(
+            projection_dispatch_evidence_payload_blockers(
+                payload,
+                parsed_evidence,
+                rows=int(concurrency),
+                label="execution.batch_execution.projection_dispatch.evidence.artifact_path",
+            )
+        )
+    else:
+        artifact_rows = _retained_artifact_row_count(payload)
+        if isinstance(artifact_rows, bool) or not isinstance(artifact_rows, int):
+            blockers.append("execution.batch_execution.projection_dispatch.evidence.artifact_path rows must be an int")
+        elif artifact_rows != int(concurrency):
+            blockers.append("execution.batch_execution.projection_dispatch.evidence.artifact_path rows must match workload.concurrency")
     return blockers
 
 
