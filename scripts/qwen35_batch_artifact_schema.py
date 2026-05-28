@@ -2822,6 +2822,8 @@ def _summary_json_path_has_non_directory_parent(path: Path) -> bool:
 def _validate_summary_json_path(path: Path, *, label: str = "--summary-json path", must_exist: bool = False) -> None:
     if not _summary_json_path_is_in_current_results(path):
         raise ValueError(f"{label} must be under the current repo benchmarks/results for retained validation evidence")
+    if ".." in path.parts:
+        raise ValueError(f"{label} must not contain parent traversal for retained validation evidence")
     if path.suffix != ".json":
         raise ValueError(f"{label} must end with .json for retained validation evidence")
     if path.is_symlink():

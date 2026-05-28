@@ -98,6 +98,16 @@ def test_qwen35_validation_summary_paths_report_active_option(
 
     source_artifact = results_dir / "source.json"
     source_artifact.write_text("{}", encoding="utf-8")
+    traversal_dir = results_dir / "nested"
+    traversal_dir.mkdir()
+    traversal_summary = traversal_dir / ".." / "source-schema-check.json"
+    assert validate_cn_diagnostic_artifact_main([str(source_artifact), "--summary-json", str(traversal_summary)]) == 1
+    assert "--summary-json path must not contain parent traversal" in capsys.readouterr().err
+    assert validate_cn_diagnostic_artifact_main([str(traversal_summary), "--validation-summary"]) == 1
+    assert "--validation-summary path must not contain parent traversal" in capsys.readouterr().err
+    with pytest.raises(ValueError, match="custom summary path must not contain parent traversal"):
+        _validate_summary_json_path(traversal_summary, label="custom summary path")
+
     parent_file = results_dir / "parent-file"
     parent_file.write_text("not a directory", encoding="utf-8")
     parent_file_summary = parent_file / "source-schema-check.json"
