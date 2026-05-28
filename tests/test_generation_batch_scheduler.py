@@ -90,6 +90,27 @@ def test_qwen35_validation_summary_path_rejects_traversal(tmp_path: Path, monkey
     assert not _summary_json_path_is_in_current_results(external_summary)
 
 
+def test_qwen35_validation_summary_payload_rejects_traversal() -> None:
+    summary = {
+        "schema": 1,
+        "mode": "artifact_schema",
+        "passed": False,
+        "artifact_json": "benchmarks/results/nested/../source.json",
+        "artifact_path": "benchmarks/results/nested/../source.json",
+        "status": None,
+        "performance_claim": None,
+        "benchmark_rollup": None,
+        "error": "schema validation failed",
+    }
+
+    with pytest.raises(ValueError, match="summary.artifact_json must not contain parent traversal"):
+        validate_cn_diagnostic_validation_summary(summary)
+
+    summary["artifact_json"] = "benchmarks/results/source.json"
+    with pytest.raises(ValueError, match="summary.artifact_path must not contain parent traversal"):
+        validate_cn_diagnostic_validation_summary(summary)
+
+
 def test_qwen35_validation_summary_paths_report_active_option(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

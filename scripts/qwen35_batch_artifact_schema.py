@@ -512,6 +512,10 @@ def _validate_profiler_synthesized_fields(profiler: Mapping[str, Any], errors: l
         errors.append("profiler.synthesized_fields must only name known synthesized profiler fields for accepted artifacts")
 
 
+def _path_text_contains_parent_traversal(value: str) -> bool:
+    return ".." in value.replace("\\", "/").split("/")
+
+
 def _is_benchmark_results_path(value: str) -> bool:
     normalized = value.replace("\\", "/")
     return normalized.startswith("benchmarks/results/") or "/benchmarks/results/" in normalized
@@ -2711,6 +2715,8 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
             errors.append("summary.artifact_path must be a non-empty string or null")
         else:
             _validate_benchmark_results_artifact_path("summary.artifact_path", artifact_path, errors)
+            if _path_text_contains_parent_traversal(artifact_path):
+                errors.append("summary.artifact_path must not contain parent traversal")
             if _benchmark_results_relative_path(artifact_path) != artifact_path.replace("\\", "/"):
                 errors.append("summary.artifact_path must be a repo-relative benchmarks/results path or null")
     status = summary.get("status")
@@ -2753,6 +2759,8 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
             errors.append("summary.artifact_json must be under benchmarks/results for validation summaries")
         elif _benchmark_results_relative_path(artifact_json) != artifact_json.replace("\\", "/"):
             errors.append("summary.artifact_json must be a repo-relative benchmarks/results path for validation summaries")
+        if _path_text_contains_parent_traversal(artifact_json):
+            errors.append("summary.artifact_json must not contain parent traversal for validation summaries")
         if not artifact_json.replace("\\", "/").rsplit("/", 1)[-1].endswith(".json"):
             errors.append("summary.artifact_json must end with .json for validation summaries")
     if (passed is True or isinstance(benchmark_rollup, Mapping)) and isinstance(artifact_json, str) and isinstance(artifact_path, str):
