@@ -1395,9 +1395,17 @@ def _profiler_kernel_evidence_blockers(profiler: Mapping[str, Any]) -> list[str]
     trace_kernel_names = profiler.get("trace_kernel_names")
     if not isinstance(trace_kernel_names, list) or not any(isinstance(name, str) and name for name in trace_kernel_names):
         blockers.append("profiler.trace_kernel_names must be a non-empty string list")
+    elif not all(isinstance(name, str) and name for name in trace_kernel_names):
+        blockers.append("profiler.trace_kernel_names entries must be non-empty strings")
+    elif len(set(trace_kernel_names)) != len(trace_kernel_names):
+        blockers.append("profiler.trace_kernel_names entries must be unique")
     expected_kernel_names = profiler.get("expected_kernel_names")
     if not isinstance(expected_kernel_names, list) or not any(isinstance(name, str) and name for name in expected_kernel_names):
         blockers.append("profiler.expected_kernel_names must be a non-empty string list")
+    elif not all(isinstance(name, str) and name for name in expected_kernel_names):
+        blockers.append("profiler.expected_kernel_names entries must be non-empty strings")
+    elif len(set(expected_kernel_names)) != len(expected_kernel_names):
+        blockers.append("profiler.expected_kernel_names entries must be unique")
     kernel_durations = profiler.get("kernel_durations_ns")
     if not isinstance(kernel_durations, Mapping) or not kernel_durations:
         blockers.append("profiler.kernel_durations_ns must be a non-empty object")

@@ -6207,7 +6207,16 @@ def test_qwen35_retained_profiler_kernel_evidence_blockers_require_trace_duratio
         "kernel_duration_shares": {"qwen35_batch_decode_wmma_caware": 1.0},
     }
 
+    duplicate_names = {
+        **complete,
+        "trace_kernel_names": ["qwen35_batch_decode", "qwen35_batch_decode"],
+        "expected_kernel_names": ["qwen35_batch_decode_wmma_caware", "qwen35_batch_decode_wmma_caware"],
+    }
+
     assert retained_bench._profiler_kernel_evidence_blockers(complete) == []
+    duplicate_blockers = retained_bench._profiler_kernel_evidence_blockers(duplicate_names)
+    assert "profiler.trace_kernel_names entries must be unique" in duplicate_blockers
+    assert "profiler.expected_kernel_names entries must be unique" in duplicate_blockers
     blockers = retained_bench._profiler_kernel_evidence_blockers(incomplete)
     assert "profiler.kernel_durations_ns.qwen35_batch_decode_wmma_caware must be positive numeric" in blockers
     assert "profiler.trace_kernel_names must include profiler.kernel_durations_ns keys" in blockers
