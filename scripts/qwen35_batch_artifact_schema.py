@@ -533,8 +533,11 @@ def _benchmark_results_relative_path(value: str) -> str:
 
 
 def _validate_benchmark_results_artifact_path(field: str, value: Any, errors: list[str]) -> None:
-    if isinstance(value, str) and value and not _is_benchmark_results_path(value):
-        errors.append(f"{field} must be under benchmarks/results for accepted artifacts")
+    if isinstance(value, str) and value:
+        if not _is_benchmark_results_path(value):
+            errors.append(f"{field} must be under benchmarks/results for accepted artifacts")
+        if _path_text_contains_parent_traversal(value):
+            errors.append(f"{field} must not contain parent traversal for accepted artifacts")
 
 
 def _load_benchmark_results_json_artifact(field: str, value: str, errors: list[str]) -> Mapping[str, Any] | None:

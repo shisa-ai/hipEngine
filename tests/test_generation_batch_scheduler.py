@@ -52,6 +52,7 @@ from scripts import qwen35_batch_correctness as batch_correctness
 from scripts import qwen35_batch_retained_bench as retained_bench
 from scripts.qwen35_batch_artifact_schema import (
     _summary_json_path_is_in_current_results,
+    _validate_benchmark_results_artifact_path,
     _validate_summary_json_path,
     main as validate_cn_diagnostic_artifact_main,
     validate_cn_diagnostic_artifact_payload,
@@ -88,6 +89,15 @@ def test_qwen35_validation_summary_path_rejects_traversal(tmp_path: Path, monkey
     external_summary = tmp_path / "external" / "benchmarks" / "results" / "summary.json"
     external_summary.parent.mkdir(parents=True)
     assert not _summary_json_path_is_in_current_results(external_summary)
+
+
+def test_qwen35_artifact_paths_reject_traversal() -> None:
+    errors: list[str] = []
+    _validate_benchmark_results_artifact_path("artifact_path", "benchmarks/results/source.json", errors)
+    assert errors == []
+
+    _validate_benchmark_results_artifact_path("artifact_path", "benchmarks/results/nested/../source.json", errors)
+    assert errors == ["artifact_path must not contain parent traversal for accepted artifacts"]
 
 
 def test_qwen35_validation_summary_payload_rejects_traversal() -> None:
