@@ -1854,6 +1854,20 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     tampered_completed_count_bool["category_status_counts"] = {"primitive": {"planned": 1}}
     with pytest.raises(ValueError, match=r"completed_command_count must be a typed int matching len\(commands\)"):
         c_sweep.validate_sweep_summary(tampered_completed_count_bool)
+    tampered_status_count_bool = json.loads(json.dumps(persisted))
+    tampered_status_count_bool["commands"] = tampered_status_count_bool["commands"][:1]
+    tampered_status_count_bool["completed_command_count"] = 1
+    tampered_status_count_bool["status_counts"] = {"planned": True}
+    tampered_status_count_bool["category_status_counts"] = {"primitive": {"planned": 1}}
+    with pytest.raises(ValueError, match="status_counts must match commands"):
+        c_sweep.validate_sweep_summary(tampered_status_count_bool)
+    tampered_category_status_count_bool = json.loads(json.dumps(persisted))
+    tampered_category_status_count_bool["commands"] = tampered_category_status_count_bool["commands"][:1]
+    tampered_category_status_count_bool["completed_command_count"] = 1
+    tampered_category_status_count_bool["status_counts"] = {"planned": 1}
+    tampered_category_status_count_bool["category_status_counts"] = {"primitive": {"planned": True}}
+    with pytest.raises(ValueError, match="category_status_counts must match commands"):
+        c_sweep.validate_sweep_summary(tampered_category_status_count_bool)
     tampered_dropped_commands = json.loads(json.dumps(persisted))
     tampered_dropped_commands["commands"] = []
     tampered_dropped_commands["completed_command_count"] = 0
@@ -4146,6 +4160,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_category_status_counts["category_status_counts"] = {}
     with pytest.raises(ValueError, match="category_status_counts must match commands"):
         c_sweep.validate_sweep_summary(tampered_category_status_counts)
+    tampered_precondition_count_bool = json.loads(json.dumps(persisted))
+    tampered_precondition_count_bool["retained_precondition_counts"]["primitive_correctness"]["passed"] = True
+    with pytest.raises(ValueError, match="retained_precondition_counts must match commands.preconditions"):
+        c_sweep.validate_sweep_summary(tampered_precondition_count_bool)
     tampered_status = json.loads(json.dumps(persisted))
     tampered_status["status"] = "blocked"
     with pytest.raises(ValueError, match="status must match commands"):
@@ -4161,6 +4179,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_postcondition_counts["retained_postcondition_counts"] = {}
     with pytest.raises(ValueError, match="retained_postcondition_counts must match commands.postconditions"):
         c_sweep.validate_sweep_summary(tampered_postcondition_counts)
+    tampered_postcondition_count_bool = json.loads(json.dumps(persisted))
+    tampered_postcondition_count_bool["retained_postcondition_counts"]["retained_profiler_synthesis"]["passed"] = True
+    with pytest.raises(ValueError, match="retained_postcondition_counts must match commands.postconditions"):
+        c_sweep.validate_sweep_summary(tampered_postcondition_count_bool)
     tampered_precondition_schema = json.loads(json.dumps(persisted))
     tampered_precondition_schema["commands"][-1]["preconditions"][0]["passed"] = "yes"
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.passed must be a bool"):

@@ -2655,19 +2655,19 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 errors.append("commands[] failed/skipped row must be final when stop_on_failure is true")
                 break
     expected_status_counts = _status_counts(entries)
-    if summary.get("status_counts") != expected_status_counts:
+    if not _typed_count_mapping_matches(summary.get("status_counts"), expected_status_counts):
         errors.append("status_counts must match commands")
     expected_category_status_counts = _category_status_counts(entries)
-    if summary.get("category_status_counts") != expected_category_status_counts:
+    if not _typed_count_mapping_matches(summary.get("category_status_counts"), expected_category_status_counts):
         errors.append("category_status_counts must match commands")
     expected_status = _summary_status(entries)
     if summary.get("status") != expected_status:
         errors.append("status must match commands")
     expected_precondition_counts = _retained_precondition_counts(entries)
-    if summary.get("retained_precondition_counts") != expected_precondition_counts:
+    if not _typed_count_mapping_matches(summary.get("retained_precondition_counts"), expected_precondition_counts):
         errors.append("retained_precondition_counts must match commands.preconditions")
     expected_postcondition_counts = _retained_postcondition_counts(entries)
-    if summary.get("retained_postcondition_counts") != expected_postcondition_counts:
+    if not _typed_count_mapping_matches(summary.get("retained_postcondition_counts"), expected_postcondition_counts):
         errors.append("retained_postcondition_counts must match commands.postconditions")
     expected_failed_postconditions = _failed_postconditions(entries)
     if summary.get("failed_postconditions") != expected_failed_postconditions:
@@ -2763,6 +2763,20 @@ def _summary_options(args: argparse.Namespace) -> dict[str, Any]:
         "require_cached_build": bool(args.require_cached_build),
         "compiler_version_file": None if args.compiler_version_file is None else str(args.compiler_version_file),
     }
+
+
+def _typed_count_mapping_matches(actual: Any, expected: Mapping[str, Any]) -> bool:
+    if not isinstance(actual, Mapping) or set(actual.keys()) != set(expected.keys()):
+        return False
+    for key, expected_value in expected.items():
+        actual_value = actual.get(key)
+        if isinstance(expected_value, Mapping):
+            if not _typed_count_mapping_matches(actual_value, expected_value):
+                return False
+            continue
+        if not isinstance(actual_value, int) or isinstance(actual_value, bool) or actual_value != expected_value:
+            return False
+    return True
 
 
 def _status_counts(entries: Sequence[dict[str, Any]]) -> dict[str, int]:
