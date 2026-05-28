@@ -958,6 +958,8 @@ def _batch_execution_blockers(batch_execution: Mapping[str, Any]) -> list[str]:
         blockers.append("execution.batch_execution.path must be a non-empty string")
     elif path != "scheduler_native_compact_batch" or "serial" in path:
         blockers.append("execution.batch_execution.path must be scheduler_native_compact_batch")
+    if batch_execution.get("scheduler_owned") is not True:
+        blockers.append("execution.batch_execution.scheduler_owned must be true")
     row_execution = batch_execution.get("row_execution")
     if not isinstance(row_execution, str) or not row_execution:
         blockers.append("execution.batch_execution.row_execution must be a non-empty string")
