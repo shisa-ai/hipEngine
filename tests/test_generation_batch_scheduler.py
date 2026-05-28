@@ -2176,6 +2176,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_singular_precondition["commands"][-1]["precondition"] = tampered_singular_precondition["commands"][-1]["preconditions"][0]
     with pytest.raises(ValueError, match=r"commands\[\]\.precondition must be absent unless a precondition failed"):
         c_sweep.validate_sweep_summary(tampered_singular_precondition)
+    tampered_stray_precondition = json.loads(json.dumps(persisted))
+    tampered_stray_precondition["commands"][0]["precondition"] = {"kind": "primitive_correctness", "passed": False}
+    with pytest.raises(ValueError, match=r"commands\[\]\.precondition must be absent unless preconditions include a failure"):
+        c_sweep.validate_sweep_summary(tampered_stray_precondition)
     tampered_singular_postcondition = json.loads(json.dumps(persisted))
     tampered_singular_postcondition["commands"][-1]["postcondition"] = tampered_singular_postcondition["commands"][-1]["postconditions"][0]
     with pytest.raises(ValueError, match=r"commands\[\]\.postcondition must be absent unless a postcondition failed"):

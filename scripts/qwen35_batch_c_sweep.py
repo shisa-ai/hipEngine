@@ -1644,6 +1644,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if not failed_preconditions and "precondition" in entry:
                 errors.append("commands[].precondition must be absent unless a precondition failed")
                 break
+        elif "precondition" in entry:
+            errors.append("commands[].precondition must be absent unless preconditions include a failure")
+            break
         postconditions = entry.get("postconditions")
         if not isinstance(postconditions, list):
             continue
