@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import shlex
 from dataclasses import replace
 from pathlib import Path
@@ -111,6 +112,12 @@ def test_qwen35_validation_summary_paths_report_active_option(
     missing_recheck_summary = results_dir / "missing-schema-check.json"
     assert validate_cn_diagnostic_artifact_main([str(missing_recheck_summary), "--validation-summary"]) == 1
     assert "--validation-summary path must exist as a .json file" in capsys.readouterr().err
+
+    if hasattr(os, "mkfifo"):
+        fifo_recheck_summary = results_dir / "fifo-schema-check.json"
+        os.mkfifo(fifo_recheck_summary)
+        assert validate_cn_diagnostic_artifact_main([str(fifo_recheck_summary), "--validation-summary"]) == 1
+        assert "--validation-summary path must be a regular .json file" in capsys.readouterr().err
 
     bad_recheck_summary = results_dir / "source-schema-check.txt"
     bad_recheck_summary.write_text(

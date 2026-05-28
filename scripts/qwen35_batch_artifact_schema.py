@@ -2794,6 +2794,8 @@ def _validate_summary_json_path(path: Path, *, label: str = "--summary-json path
         raise ValueError(f"{label} must end with .json for retained validation evidence")
     if path.exists() and path.is_dir():
         raise ValueError(f"{label} must be a .json file, not a directory, for retained validation evidence")
+    if path.exists() and not path.is_file():
+        raise ValueError(f"{label} must be a regular .json file for retained validation evidence")
     if must_exist and not path.exists():
         raise ValueError(f"{label} must exist as a .json file for retained validation evidence")
 
