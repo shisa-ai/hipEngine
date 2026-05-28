@@ -1794,6 +1794,15 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if _command_text_arg(profiler_command, "-d") != profiler_trace_dir:
                         errors.append("commands[].preconditions[].profiler_trace_dir must match profiler command -d")
                         break
+                    output_dir_text = summary.get("output_dir")
+                    if isinstance(output_dir_text, str) and output_dir_text:
+                        trace_dir_path = Path(profiler_trace_dir)
+                        output_dir_path = Path(output_dir_text)
+                        trace_dir_abs = (trace_dir_path if trace_dir_path.is_absolute() else REPO_ROOT / trace_dir_path).resolve()
+                        output_dir_abs = (output_dir_path if output_dir_path.is_absolute() else REPO_ROOT / output_dir_path).resolve()
+                        if not trace_dir_abs.is_relative_to(output_dir_abs):
+                            errors.append("commands[].preconditions[].profiler_trace_dir must be under output_dir when passed")
+                            break
                     profiler_trace_files = profiler_precondition.get("profiler_trace_files")
                     if (
                         not isinstance(profiler_trace_files, list)

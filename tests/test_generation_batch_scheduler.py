@@ -2596,6 +2596,16 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_profiler_precondition_trace_dir_command["commands"][-1]["preconditions"][-1]["profiler_trace_dir"] = str(output_dir / "other-profile-c2")
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_dir must match profiler command -d"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_trace_dir_command)
+    tampered_profiler_precondition_trace_dir_output = json.loads(json.dumps(persisted))
+    profiler_precondition = tampered_profiler_precondition_trace_dir_output["commands"][-1]["preconditions"][-1]
+    outside_trace_dir = tmp_path / "outside-profile-c2"
+    profiler_precondition["profiler_trace_dir"] = str(outside_trace_dir)
+    profiler_precondition["profiler_trace_files"] = [str(outside_trace_dir / "hipengine_kernel_trace.csv")]
+    profiler_argv = shlex.split(profiler_precondition["profiler_command"])
+    profiler_argv[profiler_argv.index("-d") + 1] = str(outside_trace_dir)
+    profiler_precondition["profiler_command"] = shlex.join(profiler_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_dir must be under output_dir when passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_trace_dir_output)
     tampered_profiler_precondition_trace_file_scope = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_trace_file_scope["commands"][-1]["preconditions"][-1]["profiler_trace_files"] = [str(output_dir / "other-profile-c2" / "hipengine_kernel_trace.csv")]
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_files must be under profiler_trace_dir when passed"):
