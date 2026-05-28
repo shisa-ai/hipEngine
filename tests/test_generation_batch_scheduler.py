@@ -8094,6 +8094,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     stale_artifact_json_summary["artifact_json"] = str(rollup_root / "benchmarks" / "results" / "other-accepted-c2.json")
     with pytest.raises(ValueError, match="summary.artifact_json must point to summary.artifact_path"):
         validate_cn_diagnostic_validation_summary(stale_artifact_json_summary)
+    stale_failed_rollup_summary = dict(stale_artifact_json_summary)
+    stale_failed_rollup_summary["passed"] = False
+    stale_failed_rollup_summary["error"] = "rollup evidence failed"
+    with pytest.raises(ValueError, match="summary.artifact_json must point to summary.artifact_path"):
+        validate_cn_diagnostic_validation_summary(stale_failed_rollup_summary)
     stale_rollup_summary = json.loads(json.dumps(summary))
     stale_rollup_summary["benchmark_rollup"]["source_artifact_path"] = "benchmarks/results/other-accepted-c2.json"
     with pytest.raises(ValueError, match="summary.benchmark_rollup.source_artifact_path must match summary.artifact_path"):

@@ -2700,11 +2700,11 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
                 errors.append("summary.benchmark_rollup.artifact_path must match summary.artifact_path")
             if benchmark_rollup.get("source_artifact_path") != artifact_path:
                 errors.append("summary.benchmark_rollup.source_artifact_path must match summary.artifact_path")
-    if passed is True and isinstance(artifact_json, str) and isinstance(artifact_path, str):
+    if (passed is True or isinstance(benchmark_rollup, Mapping)) and isinstance(artifact_json, str) and isinstance(artifact_path, str):
         normalized_artifact_json = artifact_json.replace("\\", "/")
         normalized_artifact_path = artifact_path.replace("\\", "/")
         if normalized_artifact_json != normalized_artifact_path and not normalized_artifact_json.endswith("/" + normalized_artifact_path):
-            errors.append("summary.artifact_json must point to summary.artifact_path when summary.passed is true")
+            errors.append("summary.artifact_json must point to summary.artifact_path when summary.passed is true or summary.benchmark_rollup is present")
     error = summary.get("error")
     if passed is True and error is not None:
         errors.append("summary.error must be null when summary.passed is true")
