@@ -2431,6 +2431,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_profiler_precondition_gate_path["commands"][-1]["preconditions"][-1]["profiler_command"] = shlex.join(profiler_argv)
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler command gate paths must match retained command"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_gate_path)
+    tampered_profiler_precondition_retained_artifact = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_retained_artifact["commands"][-1]["preconditions"][-1]["retained_artifact_path"] = str(output_dir / "other-native.json")
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler retained_artifact_path must match retained artifact"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_retained_artifact)
+    tampered_profiler_precondition_gate_artifact = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_gate_artifact["commands"][-1]["preconditions"][-1]["serial_bridge_artifact_path"] = str(output_dir / "other-serial.json")
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler gate artifact paths must match retained command"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_gate_artifact)
     tampered_profiler_precondition_status = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_status["commands"][-1]["preconditions"][-1]["profiler_status"] = "missing"
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_status must be captured when passed"):
