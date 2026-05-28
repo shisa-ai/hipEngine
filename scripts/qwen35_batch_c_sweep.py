@@ -1582,6 +1582,11 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 errors.append("command_count must match batch_sizes/options.include_int8")
             elif [(entry.get("category"), entry.get("batch_size")) for entry in entries] != expected_plan[: len(entries)]:
                 errors.append("commands[] category/batch_size order must match batch_sizes/options.include_int8")
+        if isinstance(options, Mapping) and options.get("stop_on_failure") is True:
+            for index, entry in enumerate(entries[:-1]):
+                if entry.get("status") in {"failed", "skipped"}:
+                    errors.append("commands[] failed/skipped row must be final when stop_on_failure is true")
+                    break
         expected_status_counts = _status_counts(entries)
         if summary.get("status_counts") != expected_status_counts:
             errors.append("status_counts must match commands")

@@ -1357,6 +1357,27 @@ def test_batch_c_sweep_stops_and_counts_failed_command(tmp_path: Path, monkeypat
     tampered_failed_returncode["commands"][0]["returncode"] = 0
     with pytest.raises(ValueError, match=r"commands\[\]\.status failed with returncode 0 requires a failed postcondition"):
         c_sweep.validate_sweep_summary(tampered_failed_returncode)
+    tampered_stop_on_failure = json.loads(json.dumps(summary))
+    serial_command = build_sweep_commands(args)[1]
+    tampered_stop_on_failure["commands"].append(
+        {
+            "category": serial_command.category,
+            "batch_size": serial_command.batch_size,
+            "command": serial_command.command,
+            "argv": list(serial_command.argv),
+            "artifact_path": str(serial_command.artifact_path),
+            "git_dirty": False,
+            "status": "failed",
+            "returncode": 1,
+            "duration_seconds": 0.1,
+            "output_tail": "serial failed\n",
+        }
+    )
+    tampered_stop_on_failure["completed_command_count"] = 2
+    tampered_stop_on_failure["status_counts"] = {"failed": 2}
+    tampered_stop_on_failure["category_status_counts"] = {"primitive": {"failed": 1}, "serial_bridge": {"failed": 1}}
+    with pytest.raises(ValueError, match=r"commands\[\] failed/skipped row must be final"):
+        c_sweep.validate_sweep_summary(tampered_stop_on_failure)
     assert len(calls) == 1
     assert calls[0][1] == "scripts/qwen35_batch_correctness.py"
 
