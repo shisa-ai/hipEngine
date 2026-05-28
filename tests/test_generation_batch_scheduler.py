@@ -6525,6 +6525,7 @@ def test_qwen35_retained_sampler_execution_blockers_require_native_lm_head_evide
         "decode_execution": {
             "sampler_execution": {
                 "rows": 2,
+                "requested_mode": "batched_lm_head",
                 "mode": "batched_lm_head",
                 "native_row_aware_lm_head": True,
                 "c2_equality_green": True,
@@ -6537,6 +6538,7 @@ def test_qwen35_retained_sampler_execution_blockers_require_native_lm_head_evide
         "decode_execution": {
             "sampler_execution": {
                 "rows": 1,
+                "requested_mode": "serial_lm_head",
                 "mode": "serial_lm_head",
                 "native_row_aware_lm_head": False,
                 "c2_equality_green": False,
@@ -6549,6 +6551,7 @@ def test_qwen35_retained_sampler_execution_blockers_require_native_lm_head_evide
     assert retained_bench._sampler_execution_blockers(valid, expected_concurrency=2) == []
     blockers = retained_bench._sampler_execution_blockers(serial, expected_concurrency=2)
     assert "execution.batch_execution.decode_execution.sampler_execution.rows must match workload.concurrency" in blockers
+    assert "execution.batch_execution.decode_execution.sampler_execution.requested_mode must be batched_lm_head" in blockers
     assert "execution.batch_execution.decode_execution.sampler_execution.native_row_aware_lm_head must be true" in blockers
     assert "execution.batch_execution.decode_execution.sampler_execution.mode must be batched_lm_head" in blockers
     assert "execution.batch_execution.decode_execution.sampler_execution.c2_equality_green must be true" in blockers
@@ -7705,6 +7708,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     missing_sampler_execution["execution"]["batch_execution"]["decode_execution"].pop("sampler_execution")
     with pytest.raises(ValueError, match="sampler_execution must be an object"):
         validate_cn_diagnostic_artifact_payload(missing_sampler_execution)
+
+    serial_sampler_request = json.loads(json.dumps(accepted))
+    serial_sampler_request["execution"]["batch_execution"]["decode_execution"]["sampler_execution"]["requested_mode"] = "serial_lm_head"
+    with pytest.raises(ValueError, match="sampler_execution.requested_mode must be batched_lm_head"):
+        validate_cn_diagnostic_artifact_payload(serial_sampler_request)
 
     serial_sampler = json.loads(json.dumps(accepted))
     serial_sampler["execution"]["batch_execution"]["decode_execution"]["sampler_execution"]["native_row_aware_lm_head"] = False

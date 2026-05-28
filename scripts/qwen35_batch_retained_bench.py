@@ -1649,6 +1649,8 @@ def _sampler_execution_blockers(batch_execution: Mapping[str, Any], *, expected_
             blockers.append("execution.batch_execution.decode_execution.sampler_execution.rows must be an int")
         elif rows != int(expected_concurrency):
             blockers.append("execution.batch_execution.decode_execution.sampler_execution.rows must match workload.concurrency")
+    if sampler_execution.get("requested_mode") != "batched_lm_head":
+        blockers.append("execution.batch_execution.decode_execution.sampler_execution.requested_mode must be batched_lm_head")
     if sampler_execution.get("native_row_aware_lm_head") is not True:
         blockers.append("execution.batch_execution.decode_execution.sampler_execution.native_row_aware_lm_head must be true")
     if sampler_execution.get("mode") != "batched_lm_head":

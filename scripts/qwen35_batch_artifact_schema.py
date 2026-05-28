@@ -1017,6 +1017,8 @@ def _validate_accepted_sampler_execution(
         errors.append("execution.batch_execution.decode_execution.sampler_execution.rows must be an int for accepted artifacts")
     elif isinstance(concurrency, int) and not isinstance(concurrency, bool) and rows != concurrency:
         errors.append("execution.batch_execution.decode_execution.sampler_execution.rows must match workload.concurrency for accepted artifacts")
+    if sampler_execution.get("requested_mode") != "batched_lm_head":
+        errors.append("execution.batch_execution.decode_execution.sampler_execution.requested_mode must be batched_lm_head for accepted artifacts")
     if sampler_execution.get("native_row_aware_lm_head") is not True:
         errors.append("execution.batch_execution.decode_execution.sampler_execution.native_row_aware_lm_head must be true for accepted artifacts")
     if sampler_execution.get("mode") != "batched_lm_head":
