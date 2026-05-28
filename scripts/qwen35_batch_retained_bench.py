@@ -1635,7 +1635,7 @@ def _projection_dispatch_profiler_blockers(batch_execution: Mapping[str, Any], p
     return []
 
 
-def _sampler_execution_blockers(batch_execution: Mapping[str, Any]) -> list[str]:
+def _sampler_execution_blockers(batch_execution: Mapping[str, Any], *, expected_concurrency: int | None = None) -> list[str]:
     decode_execution = batch_execution.get("decode_execution")
     if not isinstance(decode_execution, Mapping):
         return ["execution.batch_execution.decode_execution is missing"]
@@ -1643,6 +1643,12 @@ def _sampler_execution_blockers(batch_execution: Mapping[str, Any]) -> list[str]
     if not isinstance(sampler_execution, Mapping):
         return ["execution.batch_execution.decode_execution.sampler_execution is missing"]
     blockers: list[str] = []
+    if expected_concurrency is not None:
+        rows = sampler_execution.get("rows")
+        if isinstance(rows, bool) or not isinstance(rows, int):
+            blockers.append("execution.batch_execution.decode_execution.sampler_execution.rows must be an int")
+        elif rows != int(expected_concurrency):
+            blockers.append("execution.batch_execution.decode_execution.sampler_execution.rows must match workload.concurrency")
     if sampler_execution.get("native_row_aware_lm_head") is not True:
         blockers.append("execution.batch_execution.decode_execution.sampler_execution.native_row_aware_lm_head must be true")
     if sampler_execution.get("mode") != "batched_lm_head":
@@ -2097,7 +2103,7 @@ def _build_payload(
         candidates=projection_dispatch_candidates,
     )
     projection_blockers.extend(_projection_dispatch_profiler_blockers(batch_execution, profiler))
-    sampler_blockers = _sampler_execution_blockers(batch_execution)
+    sampler_blockers = _sampler_execution_blockers(batch_execution, expected_concurrency=args.batch_size)
     memory = _retained_memory_payload(args, kv_policy, bench)
     memory_blockers = _memory_evidence_blockers(memory)
     graph_bucket_blockers = _decode_shape_key_blockers(scheduler_metadata, concurrency=args.batch_size, prompt_length=args.prompt_length)

@@ -6524,6 +6524,7 @@ def test_qwen35_retained_sampler_execution_blockers_require_native_lm_head_evide
     valid = {
         "decode_execution": {
             "sampler_execution": {
+                "rows": 2,
                 "mode": "batched_lm_head",
                 "native_row_aware_lm_head": True,
                 "c2_equality_green": True,
@@ -6535,6 +6536,7 @@ def test_qwen35_retained_sampler_execution_blockers_require_native_lm_head_evide
     serial = {
         "decode_execution": {
             "sampler_execution": {
+                "rows": 1,
                 "mode": "serial_lm_head",
                 "native_row_aware_lm_head": False,
                 "c2_equality_green": False,
@@ -6544,8 +6546,9 @@ def test_qwen35_retained_sampler_execution_blockers_require_native_lm_head_evide
         }
     }
 
-    assert retained_bench._sampler_execution_blockers(valid) == []
-    blockers = retained_bench._sampler_execution_blockers(serial)
+    assert retained_bench._sampler_execution_blockers(valid, expected_concurrency=2) == []
+    blockers = retained_bench._sampler_execution_blockers(serial, expected_concurrency=2)
+    assert "execution.batch_execution.decode_execution.sampler_execution.rows must match workload.concurrency" in blockers
     assert "execution.batch_execution.decode_execution.sampler_execution.native_row_aware_lm_head must be true" in blockers
     assert "execution.batch_execution.decode_execution.sampler_execution.mode must be batched_lm_head" in blockers
     assert "execution.batch_execution.decode_execution.sampler_execution.c2_equality_green must be true" in blockers
@@ -7040,6 +7043,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                     "native_caware_decode": True,
                     "blockers": [],
                     "sampler_execution": {
+                        "rows": 2,
                         "requested_mode": "batched_lm_head",
                         "mode": "batched_lm_head",
                         "native_row_aware_lm_head": True,
@@ -7691,6 +7695,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     blocked_decode_execution["execution"]["batch_execution"]["decode_execution"]["blockers"] = ["decode blocker"]
     with pytest.raises(ValueError, match="decode_execution.blockers must be empty"):
         validate_cn_diagnostic_artifact_payload(blocked_decode_execution)
+
+    sampler_row_mismatch = json.loads(json.dumps(accepted))
+    sampler_row_mismatch["execution"]["batch_execution"]["decode_execution"]["sampler_execution"]["rows"] = 1
+    with pytest.raises(ValueError, match="sampler_execution.rows must match workload.concurrency"):
+        validate_cn_diagnostic_artifact_payload(sampler_row_mismatch)
 
     missing_sampler_execution = json.loads(json.dumps(accepted))
     missing_sampler_execution["execution"]["batch_execution"]["decode_execution"].pop("sampler_execution")

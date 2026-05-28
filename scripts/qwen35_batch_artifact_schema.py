@@ -916,7 +916,7 @@ def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[
         if not isinstance(sampler_execution, Mapping):
             errors.append("execution.batch_execution.decode_execution.sampler_execution must be an object for accepted artifacts")
         else:
-            _validate_accepted_sampler_execution(sampler_execution, errors)
+            _validate_accepted_sampler_execution(sampler_execution, workload, errors)
     _validate_accepted_projection_dispatch(payload, batch_execution, workload, errors)
     scheduler_metadata = execution.get("scheduler_metadata")
     if not isinstance(scheduler_metadata, Mapping):
@@ -1006,7 +1006,17 @@ def _validate_accepted_projection_dispatch(
             errors.append("execution.batch_execution.projection_dispatch.evidence must match selected projection_dispatch_candidates entry for accepted artifacts")
 
 
-def _validate_accepted_sampler_execution(sampler_execution: Mapping[str, Any], errors: list[str]) -> None:
+def _validate_accepted_sampler_execution(
+    sampler_execution: Mapping[str, Any],
+    workload: Mapping[str, Any],
+    errors: list[str],
+) -> None:
+    concurrency = workload.get("concurrency")
+    rows = sampler_execution.get("rows")
+    if isinstance(rows, bool) or not isinstance(rows, int):
+        errors.append("execution.batch_execution.decode_execution.sampler_execution.rows must be an int for accepted artifacts")
+    elif isinstance(concurrency, int) and not isinstance(concurrency, bool) and rows != concurrency:
+        errors.append("execution.batch_execution.decode_execution.sampler_execution.rows must match workload.concurrency for accepted artifacts")
     if sampler_execution.get("native_row_aware_lm_head") is not True:
         errors.append("execution.batch_execution.decode_execution.sampler_execution.native_row_aware_lm_head must be true for accepted artifacts")
     if sampler_execution.get("mode") != "batched_lm_head":
