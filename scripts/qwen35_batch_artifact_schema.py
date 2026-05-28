@@ -1111,6 +1111,7 @@ def _validate_accepted_sampler_execution(
                         equality_artifact_payload,
                         rows=expected_rows,
                         label="execution.batch_execution.decode_execution.sampler_execution.equality_artifact",
+                        expected_artifact_path=equality_artifact,
                     )
                 )
     blockers = sampler_execution.get("blockers")

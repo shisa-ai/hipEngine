@@ -89,6 +89,7 @@ def _projection_evidence_payload(
 def _sampler_equality_payload(
     *,
     rows: int,
+    artifact_path: str,
     passed: bool = True,
     skipped: bool = False,
     batch_sequences: list[list[int]] | None = None,
@@ -102,6 +103,7 @@ def _sampler_equality_payload(
     return {
         "schema": 1,
         "rows": rows,
+        "artifact_path": artifact_path,
         "passed": passed,
         "generated_token_equality": {
             "passed": passed,
@@ -4302,10 +4304,23 @@ def test_projection_dispatch_selects_best_evidence_green_cN_candidate() -> None:
 def test_batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     artifact_dir = tmp_path / "benchmarks" / "results"
     artifact_dir.mkdir(parents=True)
-    (artifact_dir / "qwen35-c8-eq.json").write_text(json.dumps(_sampler_equality_payload(rows=8)), encoding="utf-8")
-    (artifact_dir / "qwen35-c8-failed-eq.json").write_text(json.dumps(_sampler_equality_payload(rows=8, passed=False)), encoding="utf-8")
-    (artifact_dir / "qwen35-c8-wrong-rows-eq.json").write_text(json.dumps(_sampler_equality_payload(rows=2)), encoding="utf-8")
+    (artifact_dir / "qwen35-c8-eq.json").write_text(
+        json.dumps(_sampler_equality_payload(rows=8, artifact_path="benchmarks/results/qwen35-c8-eq.json")),
+        encoding="utf-8",
+    )
+    (artifact_dir / "qwen35-c8-failed-eq.json").write_text(
+        json.dumps(_sampler_equality_payload(rows=8, artifact_path="benchmarks/results/qwen35-c8-failed-eq.json", passed=False)),
+        encoding="utf-8",
+    )
+    (artifact_dir / "qwen35-c8-wrong-rows-eq.json").write_text(
+        json.dumps(_sampler_equality_payload(rows=2, artifact_path="benchmarks/results/qwen35-c8-wrong-rows-eq.json")),
+        encoding="utf-8",
+    )
     (artifact_dir / "qwen35-c8-primitive-only-eq.json").write_text(json.dumps({"schema": 1, "rows": 8, "passed": True}), encoding="utf-8")
+    (artifact_dir / "qwen35-c8-wrong-artifact-path-eq.json").write_text(
+        json.dumps(_sampler_equality_payload(rows=8, artifact_path="benchmarks/results/qwen35-c8-eq.json")),
+        encoding="utf-8",
+    )
     monkeypatch.chdir(tmp_path)
 
     serial = plan_batch_sampler_dispatch(rows=2, requested_mode="serial_lm_head")
@@ -4385,6 +4400,16 @@ def test_batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head(tmp_pat
     )
     assert primitive_only_equality_artifact.mode is BatchSamplerMode.SERIAL_LM_HEAD
     assert "batched LM-head equality artifact must include generated-token equality details" in primitive_only_equality_artifact.blockers
+
+    wrong_artifact_path_equality_artifact = plan_batch_sampler_dispatch(
+        rows=8,
+        requested_mode="batched_lm_head",
+        c2_equality_green=True,
+        equality_artifact="benchmarks/results/qwen35-c8-wrong-artifact-path-eq.json",
+        equality_rows=8,
+    )
+    assert wrong_artifact_path_equality_artifact.mode is BatchSamplerMode.SERIAL_LM_HEAD
+    assert "batched LM-head equality artifact artifact_path must match sampler_execution.equality_artifact" in wrong_artifact_path_equality_artifact.blockers
 
     allowed = plan_batch_sampler_dispatch(
         rows=8,
@@ -6717,9 +6742,19 @@ def test_qwen35_retained_projection_dispatch_blockers_require_caware_candidate(t
 def test_qwen35_retained_sampler_execution_blockers_require_native_lm_head_evidence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     artifact_dir = tmp_path / "benchmarks" / "results"
     artifact_dir.mkdir(parents=True)
-    (artifact_dir / "qwen35-c2-sampler-eq.json").write_text(json.dumps(_sampler_equality_payload(rows=2)), encoding="utf-8")
-    (artifact_dir / "qwen35-c2-sampler-failed-eq.json").write_text(json.dumps(_sampler_equality_payload(rows=2, passed=False)), encoding="utf-8")
+    (artifact_dir / "qwen35-c2-sampler-eq.json").write_text(
+        json.dumps(_sampler_equality_payload(rows=2, artifact_path="benchmarks/results/qwen35-c2-sampler-eq.json")),
+        encoding="utf-8",
+    )
+    (artifact_dir / "qwen35-c2-sampler-failed-eq.json").write_text(
+        json.dumps(_sampler_equality_payload(rows=2, artifact_path="benchmarks/results/qwen35-c2-sampler-failed-eq.json", passed=False)),
+        encoding="utf-8",
+    )
     (artifact_dir / "qwen35-c2-sampler-primitive-only-eq.json").write_text(json.dumps({"schema": 1, "rows": 2, "passed": True}), encoding="utf-8")
+    (artifact_dir / "qwen35-c2-sampler-wrong-artifact-path-eq.json").write_text(
+        json.dumps(_sampler_equality_payload(rows=2, artifact_path="benchmarks/results/qwen35-c2-sampler-eq.json")),
+        encoding="utf-8",
+    )
     monkeypatch.chdir(tmp_path)
 
     valid = {
@@ -6785,6 +6820,11 @@ def test_qwen35_retained_sampler_execution_blockers_require_native_lm_head_evide
     primitive_only["decode_execution"]["sampler_execution"]["equality_artifact"] = "benchmarks/results/qwen35-c2-sampler-primitive-only-eq.json"
     primitive_only_blockers = retained_bench._sampler_execution_blockers(primitive_only, expected_concurrency=2)
     assert "execution.batch_execution.decode_execution.sampler_execution.equality_artifact must include generated-token equality details" in primitive_only_blockers
+
+    wrong_artifact_path = json.loads(json.dumps(valid))
+    wrong_artifact_path["decode_execution"]["sampler_execution"]["equality_artifact"] = "benchmarks/results/qwen35-c2-sampler-wrong-artifact-path-eq.json"
+    wrong_artifact_path_blockers = retained_bench._sampler_execution_blockers(wrong_artifact_path, expected_concurrency=2)
+    assert "execution.batch_execution.decode_execution.sampler_execution.equality_artifact artifact_path must match sampler_execution.equality_artifact" in wrong_artifact_path_blockers
 
 
 def test_qwen35_retained_memory_evidence_blockers_cover_required_fields() -> None:
@@ -7512,7 +7552,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     sampler_artifact_dir = artifact_root / "benchmarks" / "results"
     sampler_artifact_dir.mkdir(parents=True)
     (sampler_artifact_dir / "qwen35-c2-sampler-eq.json").write_text(
-        json.dumps(_sampler_equality_payload(rows=2)),
+        json.dumps(_sampler_equality_payload(rows=2, artifact_path="benchmarks/results/qwen35-c2-sampler-eq.json")),
         encoding="utf-8",
     )
     (sampler_artifact_dir / "projection-wmma-c2.json").write_text(
@@ -7603,7 +7643,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     artifact_file.parent.mkdir()
     artifact_file.write_text(json.dumps(accepted), encoding="utf-8")
     (artifact_file.parent / "qwen35-c2-sampler-eq.json").write_text(
-        json.dumps(_sampler_equality_payload(rows=2)),
+        json.dumps(_sampler_equality_payload(rows=2, artifact_path="benchmarks/results/qwen35-c2-sampler-eq.json")),
         encoding="utf-8",
     )
     (artifact_file.parent / "projection-wmma-c2.json").write_text(
@@ -8092,14 +8132,20 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         validate_cn_diagnostic_artifact_payload(sampler_equality_row_mismatch)
 
     failed_sampler_artifact_path = artifact_file.parent / "qwen35-c2-sampler-failed-eq.json"
-    failed_sampler_artifact_path.write_text(json.dumps(_sampler_equality_payload(rows=2, passed=False)), encoding="utf-8")
+    failed_sampler_artifact_path.write_text(
+        json.dumps(_sampler_equality_payload(rows=2, artifact_path="benchmarks/results/qwen35-c2-sampler-failed-eq.json", passed=False)),
+        encoding="utf-8",
+    )
     failed_sampler_artifact = json.loads(json.dumps(accepted))
     failed_sampler_artifact["execution"]["batch_execution"]["decode_execution"]["sampler_execution"]["equality_artifact"] = "benchmarks/results/qwen35-c2-sampler-failed-eq.json"
     with pytest.raises(ValueError, match="sampler_execution.equality_artifact must report passed=true"):
         validate_cn_diagnostic_artifact_payload(failed_sampler_artifact)
 
     wrong_rows_sampler_artifact_path = artifact_file.parent / "qwen35-c2-sampler-wrong-rows-eq.json"
-    wrong_rows_sampler_artifact_path.write_text(json.dumps(_sampler_equality_payload(rows=1)), encoding="utf-8")
+    wrong_rows_sampler_artifact_path.write_text(
+        json.dumps(_sampler_equality_payload(rows=1, artifact_path="benchmarks/results/qwen35-c2-sampler-wrong-rows-eq.json")),
+        encoding="utf-8",
+    )
     wrong_rows_sampler_artifact = json.loads(json.dumps(accepted))
     wrong_rows_sampler_artifact["execution"]["batch_execution"]["decode_execution"]["sampler_execution"]["equality_artifact"] = "benchmarks/results/qwen35-c2-sampler-wrong-rows-eq.json"
     with pytest.raises(ValueError, match="sampler_execution.equality_artifact rows must match batch rows"):
@@ -8111,6 +8157,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     primitive_only_sampler_artifact["execution"]["batch_execution"]["decode_execution"]["sampler_execution"]["equality_artifact"] = "benchmarks/results/qwen35-c2-sampler-primitive-only-eq.json"
     with pytest.raises(ValueError, match="sampler_execution.equality_artifact must include generated-token equality details"):
         validate_cn_diagnostic_artifact_payload(primitive_only_sampler_artifact)
+
+    wrong_artifact_path_sampler_artifact_path = artifact_file.parent / "qwen35-c2-sampler-wrong-artifact-path-eq.json"
+    wrong_artifact_path_sampler_artifact_path.write_text(
+        json.dumps(_sampler_equality_payload(rows=2, artifact_path="benchmarks/results/qwen35-c2-sampler-eq.json")),
+        encoding="utf-8",
+    )
+    wrong_artifact_path_sampler_artifact = json.loads(json.dumps(accepted))
+    wrong_artifact_path_sampler_artifact["execution"]["batch_execution"]["decode_execution"]["sampler_execution"]["equality_artifact"] = "benchmarks/results/qwen35-c2-sampler-wrong-artifact-path-eq.json"
+    with pytest.raises(ValueError, match="sampler_execution.equality_artifact artifact_path must match sampler_execution.equality_artifact"):
+        validate_cn_diagnostic_artifact_payload(wrong_artifact_path_sampler_artifact)
 
     tmp_sampler_artifact = json.loads(json.dumps(accepted))
     tmp_sampler_artifact["execution"]["batch_execution"]["decode_execution"]["sampler_execution"]["equality_artifact"] = "/tmp/qwen35-c2-sampler-eq.json"

@@ -107,6 +107,7 @@ def batch_sampler_equality_payload_blockers(
     *,
     rows: int,
     label: str = "batched LM-head equality artifact",
+    expected_artifact_path: str | None = None,
 ) -> tuple[str, ...]:
     """Return blockers for native batched-LM-head equality evidence.
 
@@ -126,6 +127,12 @@ def batch_sampler_equality_payload_blockers(
         passed = passed or equality.get("passed") is True
     if not passed:
         blockers.append(f"{label} must report passed=true")
+    if expected_artifact_path is not None:
+        payload_artifact_path = payload.get("artifact_path")
+        if not isinstance(payload_artifact_path, str) or not payload_artifact_path:
+            blockers.append(f"{label} artifact_path must be a non-empty string")
+        elif payload_artifact_path != expected_artifact_path:
+            blockers.append(f"{label} artifact_path must match sampler_execution.equality_artifact")
     artifact_rows = _artifact_row_count(payload)
     if isinstance(artifact_rows, bool) or not isinstance(artifact_rows, int):
         blockers.append(f"{label} rows must be an integer")
@@ -167,7 +174,7 @@ def _equality_artifact_blockers(value: str, *, rows: int) -> tuple[str, ...]:
         return (f"batched LM-head equality artifact must be valid JSON: {exc}",)
     if not isinstance(payload, Mapping):
         return ("batched LM-head equality artifact must be a JSON object",)
-    return batch_sampler_equality_payload_blockers(payload, rows=rows)
+    return batch_sampler_equality_payload_blockers(payload, rows=rows, expected_artifact_path=value)
 
 
 def plan_batch_sampler_dispatch(

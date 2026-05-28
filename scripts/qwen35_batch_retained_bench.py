@@ -1883,6 +1883,7 @@ def _sampler_execution_blockers(batch_execution: Mapping[str, Any], *, expected_
                         equality_artifact_payload,
                         rows=int(artifact_expected_rows),
                         label="execution.batch_execution.decode_execution.sampler_execution.equality_artifact",
+                        expected_artifact_path=str(equality_artifact),
                     )
                 )
     if sampler_execution.get("blockers") != []:
