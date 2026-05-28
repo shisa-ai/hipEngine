@@ -1063,6 +1063,68 @@ def _projection_dispatch_blockers(
     return blockers
 
 
+def _profiler_cpu_side_bottleneck_blockers(profiler: Mapping[str, Any]) -> list[str]:
+    blockers: list[str] = []
+    cpu_total = profiler.get("cpu_side_total_seconds")
+    total_valid = _is_finite_positive_number(cpu_total)
+    if not total_valid:
+        blockers.append("profiler.cpu_side_total_seconds must be positive numeric")
+    expected_keys = set(_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES)
+    durations = profiler.get("cpu_side_bottlenecks_seconds")
+    duration_values_valid = False
+    duration_sum = 0.0
+    if not isinstance(durations, Mapping) or not durations:
+        blockers.append("profiler.cpu_side_bottlenecks_seconds must be a non-empty object")
+    else:
+        duration_keys = {key for key in durations if isinstance(key, str) and key}
+        if len(duration_keys) != len(durations):
+            blockers.append("profiler.cpu_side_bottlenecks_seconds keys must be non-empty strings")
+        elif duration_keys != expected_keys:
+            blockers.append("profiler.cpu_side_bottlenecks_seconds keys must match known categories")
+        else:
+            duration_values_valid = True
+            for category in _PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES:
+                duration_seconds = durations[category]
+                if not _is_finite_nonnegative_number(duration_seconds):
+                    blockers.append(f"profiler.cpu_side_bottlenecks_seconds.{category} must be finite nonnegative numeric")
+                    duration_values_valid = False
+                    break
+                duration_sum += float(duration_seconds)
+            if duration_values_valid and total_valid and not math.isclose(
+                duration_sum, float(cpu_total), rel_tol=1e-6, abs_tol=1e-9
+            ):
+                blockers.append("profiler.cpu_side_bottlenecks_seconds must sum to profiler.cpu_side_total_seconds")
+    shares = profiler.get("cpu_side_bottleneck_shares")
+    share_values_valid = False
+    share_sum = 0.0
+    if not isinstance(shares, Mapping) or not shares:
+        blockers.append("profiler.cpu_side_bottleneck_shares must be a non-empty object")
+    else:
+        share_keys = {key for key in shares if isinstance(key, str) and key}
+        if len(share_keys) != len(shares):
+            blockers.append("profiler.cpu_side_bottleneck_shares keys must be non-empty strings")
+        elif share_keys != expected_keys:
+            blockers.append("profiler.cpu_side_bottleneck_shares keys must match known categories")
+        else:
+            share_values_valid = True
+            for category in _PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES:
+                share = shares[category]
+                if not _is_finite_nonnegative_number(share):
+                    blockers.append(f"profiler.cpu_side_bottleneck_shares.{category} must be finite nonnegative numeric")
+                    share_values_valid = False
+                    break
+                share_sum += float(share)
+                if total_valid and duration_values_valid:
+                    expected_share = float(durations[category]) / float(cpu_total)
+                    if not math.isclose(float(share), expected_share, rel_tol=1e-6, abs_tol=1e-9):
+                        blockers.append(f"profiler.cpu_side_bottleneck_shares.{category} must match duration/total")
+                        share_values_valid = False
+                        break
+            if share_values_valid and not math.isclose(share_sum, 1.0, rel_tol=1e-6, abs_tol=1e-9):
+                blockers.append("profiler.cpu_side_bottleneck_shares must sum to 1.0")
+    return blockers
+
+
 def _profiler_kernel_evidence_blockers(profiler: Mapping[str, Any]) -> list[str]:
     blockers: list[str] = []
     trace_kernel_names = profiler.get("trace_kernel_names")
@@ -1615,6 +1677,7 @@ def _build_payload(
     _attach_profiler_graph_kernel_time_histogram(scheduler_metadata, profiler)
     profiler_captured = profiler.get("status") == "captured" and profiler.get("expected_kernels_present") is True
     profiler_blockers = _profiler_kernel_evidence_blockers(profiler)
+    profiler_blockers.extend(_profiler_cpu_side_bottleneck_blockers(profiler))
     batch_execution = dict(bench["batch_execution"])
     throughput_claim_eligible = bool(batch_execution.get("throughput_claim_eligible"))
     native_caware_decode = bool(batch_execution.get("native_caware_decode"))

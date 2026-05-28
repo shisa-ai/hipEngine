@@ -5998,6 +5998,45 @@ def test_qwen35_retained_profiler_kernel_evidence_blockers_require_duration_arit
     assert "profiler.kernel_duration_category_shares.projection must match category/total" in category_share_blockers
 
 
+def test_qwen35_retained_profiler_cpu_side_bottleneck_blockers_require_arithmetic() -> None:
+    profiler = {
+        "cpu_side_total_seconds": 10.0,
+        "cpu_side_bottlenecks_seconds": {
+            "load": 1.0,
+            "prefill": 2.0,
+            "warmup_decode": 0.0,
+            "decode": 7.0,
+            "validation": 0.0,
+            "other": 0.0,
+        },
+        "cpu_side_bottleneck_shares": {
+            "load": 0.1,
+            "prefill": 0.2,
+            "warmup_decode": 0.0,
+            "decode": 0.7,
+            "validation": 0.0,
+            "other": 0.0,
+        },
+    }
+    stale_total = {**profiler, "cpu_side_total_seconds": 11.0}
+    stale_share = {
+        **profiler,
+        "cpu_side_bottleneck_shares": {**profiler["cpu_side_bottleneck_shares"], "decode": 0.6},
+    }
+    missing_category = {
+        **profiler,
+        "cpu_side_bottlenecks_seconds": {"load": 1.0, "prefill": 2.0, "decode": 7.0},
+    }
+
+    assert retained_bench._profiler_cpu_side_bottleneck_blockers(profiler) == []
+    total_blockers = retained_bench._profiler_cpu_side_bottleneck_blockers(stale_total)
+    assert "profiler.cpu_side_bottlenecks_seconds must sum to profiler.cpu_side_total_seconds" in total_blockers
+    share_blockers = retained_bench._profiler_cpu_side_bottleneck_blockers(stale_share)
+    assert "profiler.cpu_side_bottleneck_shares.decode must match duration/total" in share_blockers
+    missing_category_blockers = retained_bench._profiler_cpu_side_bottleneck_blockers(missing_category)
+    assert "profiler.cpu_side_bottlenecks_seconds keys must match known categories" in missing_category_blockers
+
+
 def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_paths() -> None:
     valid = {
         "path": "scheduler_native_compact_batch",
