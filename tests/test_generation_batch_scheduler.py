@@ -2230,6 +2230,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_postcondition_profiler_path["commands"][-1]["postconditions"][0]["profiler_precondition_artifact_path"] = str(output_dir / "other-profiler.json")
     with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler_precondition_artifact_path must match profiler_summary precondition"):
         c_sweep.validate_sweep_summary(tampered_postcondition_profiler_path)
+    tampered_passed_postcondition_reason = json.loads(json.dumps(persisted))
+    tampered_passed_postcondition_reason["commands"][-1]["postconditions"][0]["reason"] = "unexpected"
+    with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.reason must be null when passed"):
+        c_sweep.validate_sweep_summary(tampered_passed_postcondition_reason)
+    tampered_failed_postcondition_reason = json.loads(json.dumps(persisted))
+    tampered_failed_postcondition_reason["commands"][-1]["postconditions"][0]["passed"] = False
+    with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.reason must be a non-empty string when failed"):
+        c_sweep.validate_sweep_summary(tampered_failed_postcondition_reason)
     tampered_git_dirty = json.loads(json.dumps(persisted))
     tampered_git_dirty["commands"][-1]["git_dirty"] = True
     with pytest.raises(ValueError, match=r"commands\[\]\.git_dirty must match git.dirty"):

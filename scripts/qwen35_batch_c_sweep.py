@@ -1616,6 +1616,13 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 ):
                     errors.append("commands[].postconditions[].profiler_precondition_artifact_path must match profiler_summary precondition")
                     break
+                reason = postcondition.get("reason")
+                if postcondition.get("passed") is True and reason is not None:
+                    errors.append("commands[].postconditions[].reason must be null when passed")
+                    break
+                if postcondition.get("passed") is False and (not isinstance(reason, str) or not reason):
+                    errors.append("commands[].postconditions[].reason must be a non-empty string when failed")
+                    break
             failed_postconditions = [
                 postcondition
                 for postcondition in postconditions
