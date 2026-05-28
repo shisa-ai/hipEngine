@@ -50,6 +50,7 @@ from scripts import qwen35_batch_c_sweep as c_sweep
 from scripts import qwen35_batch_correctness as batch_correctness
 from scripts import qwen35_batch_retained_bench as retained_bench
 from scripts.qwen35_batch_artifact_schema import (
+    _summary_json_path_is_in_current_results,
     main as validate_cn_diagnostic_artifact_main,
     validate_cn_diagnostic_artifact_payload,
     validate_cn_diagnostic_rollup_evidence,
@@ -66,6 +67,21 @@ from scripts.qwen35_batch_hidden_bisect import (
 )
 from scripts.qwen35_batch_int8_diagnostic import build_parser as build_int8_diagnostic_parser, run as run_int8_diagnostic
 from scripts.qwen35_batch_serial_bench import _load_prompt_slices, _summarize_samples
+
+
+def test_qwen35_validation_summary_path_rejects_traversal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo_root = tmp_path / "repo"
+    (repo_root / "benchmarks" / "results").mkdir(parents=True)
+    (repo_root / "tmp").mkdir()
+    monkeypatch.chdir(repo_root)
+
+    assert _summary_json_path_is_in_current_results(Path("benchmarks/results/summary.json"))
+    assert _summary_json_path_is_in_current_results(repo_root / "benchmarks" / "results" / "summary.json")
+    assert not _summary_json_path_is_in_current_results(Path("benchmarks/results/../../tmp/summary.json"))
+
+    external_summary = tmp_path / "external" / "benchmarks" / "results" / "summary.json"
+    external_summary.parent.mkdir(parents=True)
+    assert not _summary_json_path_is_in_current_results(external_summary)
 
 
 def _projection_evidence_payload(

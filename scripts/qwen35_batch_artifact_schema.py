@@ -2779,14 +2779,12 @@ def _write_validation_summary(path: Path, summary: Mapping[str, Any]) -> None:
 
 
 def _summary_json_path_is_in_current_results(path: Path) -> bool:
-    normalized = str(path).replace("\\", "/")
-    if path.is_absolute():
-        results_root = (Path.cwd() / "benchmarks" / "results").resolve()
-        try:
-            return path.resolve().is_relative_to(results_root)
-        except OSError:
-            return False
-    return normalized.startswith("benchmarks/results/")
+    results_root = (Path.cwd() / "benchmarks" / "results").resolve()
+    candidate = path if path.is_absolute() else Path.cwd() / path
+    try:
+        return candidate.resolve().is_relative_to(results_root)
+    except OSError:
+        return False
 
 
 def _validate_summary_json_path(path: Path) -> None:
