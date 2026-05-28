@@ -39545,3 +39545,31 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
 ```
+
+## 2026-05-28 — CONCURRENCY artifact-bound changelog evidence
+
+Materially advanced P5 rollup promotion gates without closing a queue item or adding a retained c>N performance claim:
+
+- `validate_cn_diagnostic_rollup_evidence(...)` now requires the `benchmarks/CHANGELOG.md` line that mentions the retained artifact to carry the `YYYY-MM-DD` date, so a dated header plus stale artifact bullet cannot satisfy promotion.
+- The artifact-bearing changelog line must also include old→new metric and percent-delta evidence.
+- Extended the accepted-row schema/rollup test with same-line date binding, missing old→new, and missing percent-delta cases.
+- Updated `docs/CONCURRENCY.md` P5 progress text to require same-line dated artifact changelog evidence with old→new and percent delta.
+- No retained c>N performance claim was added; this only strengthens post-run promotion checks.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -k 'diagnostic_artifact_schema_enforces_accepted_row_gates' -q
+# 1 passed
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -q
+# 118 passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
+```

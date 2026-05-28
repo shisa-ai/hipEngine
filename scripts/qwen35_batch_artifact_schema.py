@@ -136,6 +136,8 @@ _COMMAND_JSON_RE = re.compile(r"(?:^|\s)--json(?:=|\s+)(\S+)(?=\s|$)")
 _COMMAND_PROFILER_JSON_RE = re.compile(r"(?:^|\s)--profiler-json(?:=|\s+)(\S+)(?=\s|$)")
 _ROLLUP_LAST_UPDATED_RE = re.compile(r"(?im)^\s*Last updated\s*:?\s*\d{4}-\d{2}-\d{2}\b")
 _ROLLUP_DATED_CHANGELOG_RE = re.compile(r"(?m)^\s*(?:[-*]\s*)?(?:##\s*)?\d{4}-\d{2}-\d{2}\b")
+_ROLLUP_PERCENT_DELTA_RE = re.compile(r"[+-]?\d+(?:\.\d+)?\s*%")
+_ROLLUP_OLD_NEW_RE = re.compile(r"\S+\s*(?:→|->)\s*\S+")
 _COMMAND_C1_BASELINE_JSON_RE = re.compile(r"(?:^|\s)--c1-baseline-json(?:=|\s+)(\S+)(?=\s|$)")
 _COMMAND_SERIAL_BRIDGE_JSON_RE = re.compile(r"(?:^|\s)--serial-bridge-json(?:=|\s+)(\S+)(?=\s|$)")
 _COMMAND_PRIMITIVE_CORRECTNESS_JSON_RE = re.compile(r"(?:^|\s)--primitive-correctness-json(?:=|\s+)(\S+)(?=\s|$)")
@@ -633,7 +635,7 @@ def validate_cn_diagnostic_rollup_evidence(payload: Mapping[str, Any]) -> None:
         artifact_path=artifact_path,
         errors=errors,
     )
-    _validate_rollup_changelog_metadata(changelog_text, errors)
+    _validate_rollup_changelog_metadata(changelog_text, artifact_path, errors)
 
     if errors:
         raise ValueError("invalid c>N benchmark rollup evidence: " + "; ".join(errors))
@@ -672,11 +674,25 @@ def _validate_rollup_readme_metadata(text: str | None, errors: list[str]) -> Non
         errors.append("benchmark_rollup.readme_path must include Last updated YYYY-MM-DD metadata for rollup evidence")
 
 
-def _validate_rollup_changelog_metadata(text: str | None, errors: list[str]) -> None:
+def _validate_rollup_changelog_metadata(text: str | None, artifact_path: Any, errors: list[str]) -> None:
     if text is None:
         return
     if _ROLLUP_DATED_CHANGELOG_RE.search(text) is None:
         errors.append("benchmark_rollup.changelog_path must include a dated YYYY-MM-DD entry for rollup evidence")
+    if not isinstance(artifact_path, str) or not artifact_path:
+        return
+    normalized_artifact_path = artifact_path.replace("\\", "/")
+    artifact_lines = [line for line in text.replace("\\", "/").splitlines() if normalized_artifact_path in line]
+    if not artifact_lines:
+        return
+    dated_artifact_lines = [line for line in artifact_lines if _ROLLUP_DATED_CHANGELOG_RE.search(line)]
+    if not dated_artifact_lines:
+        errors.append("benchmark_rollup.changelog_path artifact entry must include YYYY-MM-DD date for rollup evidence")
+        return
+    if not any(_ROLLUP_OLD_NEW_RE.search(line) for line in dated_artifact_lines):
+        errors.append("benchmark_rollup.changelog_path artifact entry must include old→new metric marker for rollup evidence")
+    if not any(_ROLLUP_PERCENT_DELTA_RE.search(line) for line in dated_artifact_lines):
+        errors.append("benchmark_rollup.changelog_path artifact entry must include percent delta for rollup evidence")
 
 
 def validate_cn_diagnostic_artifact_payload(payload: Mapping[str, Any]) -> None:

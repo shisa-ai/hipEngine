@@ -8051,7 +8051,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         encoding="utf-8",
     )
     (rollup_root / "benchmarks" / "CHANGELOG.md").write_text(
-        f"## 2026-05-28\n\n- retained c>N row; old→new +0.0%; correctness/profiler gates; `{accepted['artifact_path']}`\n",
+        f"- 2026-05-28 retained c>N row; old→new +0.0%; correctness/profiler gates; `{accepted['artifact_path']}`\n",
         encoding="utf-8",
     )
     artifact_file = rollup_root / "benchmarks" / "results" / "accepted-c2.json"
@@ -8170,13 +8170,25 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="benchmark_rollup.changelog_path must mention artifact_path"):
         validate_cn_diagnostic_rollup_evidence(accepted)
     (rollup_root / "benchmarks" / "CHANGELOG.md").write_text(
-        f"- retained c>N row; `{accepted['artifact_path']}`\n",
+        f"## 2026-05-28\n\n- retained c>N row; old→new +0.0%; correctness/profiler gates; `{accepted['artifact_path']}`\n",
         encoding="utf-8",
     )
-    with pytest.raises(ValueError, match="benchmark_rollup.changelog_path must include a dated"):
+    with pytest.raises(ValueError, match="benchmark_rollup.changelog_path artifact entry must include YYYY-MM-DD date"):
         validate_cn_diagnostic_rollup_evidence(accepted)
     (rollup_root / "benchmarks" / "CHANGELOG.md").write_text(
-        f"## 2026-05-28\n\n- retained c>N row; old→new +0.0%; correctness/profiler gates; `{accepted['artifact_path']}`\n",
+        f"- 2026-05-28 retained c>N row; +0.0%; correctness/profiler gates; `{accepted['artifact_path']}`\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="benchmark_rollup.changelog_path artifact entry must include old→new"):
+        validate_cn_diagnostic_rollup_evidence(accepted)
+    (rollup_root / "benchmarks" / "CHANGELOG.md").write_text(
+        f"- 2026-05-28 retained c>N row; old→new; correctness/profiler gates; `{accepted['artifact_path']}`\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="benchmark_rollup.changelog_path artifact entry must include percent delta"):
+        validate_cn_diagnostic_rollup_evidence(accepted)
+    (rollup_root / "benchmarks" / "CHANGELOG.md").write_text(
+        f"- 2026-05-28 retained c>N row; old→new +0.0%; correctness/profiler gates; `{accepted['artifact_path']}`\n",
         encoding="utf-8",
     )
 
