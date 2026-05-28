@@ -4996,6 +4996,10 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     bool_context_payload = json.loads(artifact.read_text())
     bool_context_payload["context_lens"] = [True, 2]
     bool_context_artifact.write_text(json.dumps(bool_context_payload))
+    bool_append_artifact = tmp_path / "primitive-c2-append-bool.json"
+    bool_append_payload = json.loads(artifact.read_text())
+    bool_append_payload["append_key_mismatch"] = False
+    bool_append_artifact.write_text(json.dumps(bool_append_payload))
 
     passed = retained_bench._primitive_correctness_reference(artifact, rows=2)
     mismatched = retained_bench._primitive_correctness_reference(artifact, rows=4)
@@ -5005,6 +5009,7 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     mismatched_numpy = retained_bench._primitive_correctness_reference(mismatched_numpy_artifact, rows=2)
     mismatched_context = retained_bench._primitive_correctness_reference(mismatched_context_artifact, rows=2)
     bool_context = retained_bench._primitive_correctness_reference(bool_context_artifact, rows=2)
+    bool_append = retained_bench._primitive_correctness_reference(bool_append_artifact, rows=2)
     missing = retained_bench._primitive_correctness_reference(None, rows=2)
 
     assert passed["passed"] is True
@@ -5027,6 +5032,8 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     assert "context_lens is missing or does not match fixture coverage" in mismatched_context["reason"]
     assert bool_context["passed"] is False
     assert "context_lens is missing or does not match fixture coverage" in bool_context["reason"]
+    assert bool_append["passed"] is False
+    assert "append_key_mismatch is missing or not integer zero" in bool_append["reason"]
     assert missing["status"] == "missing"
 
 

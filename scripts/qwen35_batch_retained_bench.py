@@ -80,6 +80,10 @@ def _primitive_context_lens_matches(value: Any, rows: int) -> bool:
     )
 
 
+def _is_zero_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value == 0
+
+
 _PROFILER_SYNTHESIZED_FIELDS = (
     "trace_kernel_names",
     "kernel_durations_ns",
@@ -315,10 +319,9 @@ def _primitive_correctness_reference(path: Path | None, *, rows: int) -> dict[st
         reasons.append("context_lens is missing or does not match fixture coverage")
     if payload.get("passed") is not True:
         reasons.append("primitive correctness payload did not pass")
-    if payload.get("append_key_mismatch") != 0:
-        reasons.append("append_key_mismatch is non-zero")
-    if payload.get("append_value_mismatch") != 0:
-        reasons.append("append_value_mismatch is non-zero")
+    for field in ("append_key_mismatch", "append_value_mismatch"):
+        if not _is_zero_int(payload.get(field)):
+            reasons.append(f"{field} is missing or not integer zero")
     attn_vs_c1 = payload.get("attn_batch_vs_c1_max_abs")
     if not _is_number(attn_vs_c1) or float(attn_vs_c1) > 1e-6:
         reasons.append("attn_batch_vs_c1_max_abs is missing or above 1e-6")
