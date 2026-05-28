@@ -1734,6 +1734,12 @@ def _projection_dispatch_profiler_blockers(batch_execution: Mapping[str, Any], p
         fragments.append(variant.lower())
     if not fragments:
         return []
+    blockers: list[str] = []
+    expected_kernel_names = profiler.get("expected_kernel_names")
+    if isinstance(expected_kernel_names, list):
+        expected_lower_names = [name.lower() for name in expected_kernel_names if isinstance(name, str) and name]
+        if not any(fragment in name for fragment in fragments for name in expected_lower_names):
+            blockers.append("profiler.expected_kernel_names must include selected projection_dispatch candidate or variant")
     profiler_names: list[str] = []
     for field in ("expected_kernel_names", "trace_kernel_names"):
         names = profiler.get(field)
@@ -1744,8 +1750,8 @@ def _projection_dispatch_profiler_blockers(batch_execution: Mapping[str, Any], p
         profiler_names.extend(name for name in kernel_durations if isinstance(name, str) and name)
     lowered_names = [name.lower() for name in profiler_names]
     if not lowered_names or not any(fragment in name for fragment in fragments for name in lowered_names):
-        return ["profiler kernel names must include selected projection_dispatch candidate or variant"]
-    return []
+        blockers.append("profiler kernel names must include selected projection_dispatch candidate or variant")
+    return blockers
 
 
 def _load_sampler_equality_artifact(value: str) -> tuple[Mapping[str, Any] | None, str | None]:

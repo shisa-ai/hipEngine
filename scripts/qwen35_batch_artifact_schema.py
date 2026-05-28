@@ -1837,6 +1837,9 @@ def _validate_projection_dispatch_profiler_evidence(
     profiler_names: list[str] = []
     expected_kernel_names = profiler.get("expected_kernel_names")
     if isinstance(expected_kernel_names, list):
+        expected_lower_names = [name.lower() for name in expected_kernel_names if isinstance(name, str) and name]
+        if not any(fragment in name for fragment in fragments for name in expected_lower_names):
+            errors.append("profiler.expected_kernel_names must include selected projection_dispatch candidate or variant for accepted artifacts")
         profiler_names.extend(name for name in expected_kernel_names if isinstance(name, str) and name)
     kernel_durations = profiler.get("kernel_durations_ns")
     if isinstance(kernel_durations, Mapping):
