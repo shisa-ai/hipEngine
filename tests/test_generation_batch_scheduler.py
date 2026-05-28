@@ -6699,6 +6699,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="request_latency_seconds.samples must contain only positive numbers"):
         validate_cn_diagnostic_artifact_payload(zero_latency_sample)
 
+    inverted_latency_percentiles = json.loads(json.dumps(accepted))
+    inverted_latency_percentiles["observability"]["request_latency_seconds"]["p95"] = 0.5
+    with pytest.raises(ValueError, match=r"request_latency_seconds\.p95 must be >= p50"):
+        validate_cn_diagnostic_artifact_payload(inverted_latency_percentiles)
+
     short_admission_timestamps = json.loads(json.dumps(accepted))
     short_admission_timestamps["observability"]["admission_timestamps"].pop("1")
     with pytest.raises(ValueError, match="admission_timestamps length must match workload.concurrency"):

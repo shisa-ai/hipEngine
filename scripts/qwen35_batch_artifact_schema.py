@@ -683,10 +683,14 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
                 break
     latency = observability.get("request_latency_seconds")
     if isinstance(latency, Mapping):
-        if not _is_positive_number(latency.get("p50")):
+        p50 = latency.get("p50")
+        p95 = latency.get("p95")
+        if not _is_positive_number(p50):
             errors.append("observability.request_latency_seconds.p50 must be positive numeric for accepted artifacts")
-        if not _is_positive_number(latency.get("p95")):
+        if not _is_positive_number(p95):
             errors.append("observability.request_latency_seconds.p95 must be positive numeric for accepted artifacts")
+        if _is_positive_number(p50) and _is_positive_number(p95) and float(p95) < float(p50):
+            errors.append("observability.request_latency_seconds.p95 must be >= p50 for accepted artifacts")
         samples = latency.get("samples")
         if not isinstance(samples, list) or not samples:
             errors.append("observability.request_latency_seconds.samples must be a non-empty list for accepted artifacts")
