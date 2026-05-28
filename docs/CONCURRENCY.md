@@ -1000,7 +1000,8 @@ roll-up/status view.
       retained artifact path before promotion, writes self-validating
       pass/fail summary evidence only under `benchmarks/results/`, and can
       recheck those summaries with `--validation-summary`,
-      environment capture commands for `rocminfo`, `rocm-smi`, `hipcc --version`,
+      exact environment capture command entries for `rocminfo | grep -E 'Name:|gfx' | head -4`,
+      `rocm-smi --showmeminfo vram --showuse --showtemp`, `hipcc --version`,
       `git rev-parse HEAD`, and `git diff --quiet`,
       concrete non-empty hardware `gpu`/`arch` fields plus successful
       `hardware.rocminfo`/`hardware.rocm_smi` capture objects whose commands

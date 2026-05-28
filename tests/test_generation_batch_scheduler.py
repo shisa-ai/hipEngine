@@ -5894,6 +5894,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="commands.environment must include git diff --quiet"):
         validate_cn_diagnostic_artifact_payload(missing_git_environment_command)
 
+    spoofed_environment_command = json.loads(json.dumps(accepted))
+    spoofed_environment_command["commands"]["environment"][0] = "echo rocminfo"
+    with pytest.raises(ValueError, match="commands.environment must include exact command"):
+        validate_cn_diagnostic_artifact_payload(spoofed_environment_command)
+
     wrong_benchmark_command = json.loads(json.dumps(accepted))
     wrong_benchmark_command["commands"]["benchmark"] = "python3 scripts/qwen35_batch_serial_bench.py --batch-size 2"
     with pytest.raises(ValueError, match="commands.benchmark must reference scripts/qwen35_batch_retained_bench.py"):

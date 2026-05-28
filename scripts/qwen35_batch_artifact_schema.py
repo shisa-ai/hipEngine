@@ -76,6 +76,13 @@ _REQUIRED_ACCEPTED_ENVIRONMENT_COMMAND_FRAGMENTS = (
     "git rev-parse HEAD",
     "git diff --quiet",
 )
+_REQUIRED_ACCEPTED_ENVIRONMENT_COMMANDS = (
+    "rocminfo | grep -E 'Name:|gfx' | head -4",
+    "rocm-smi --showmeminfo vram --showuse --showtemp",
+    "hipcc --version",
+    "git rev-parse HEAD",
+    "git diff --quiet",
+)
 _REQUIRED_ACCEPTED_SCALING_BASELINES = (
     "c1_baseline",
     "serial_bridge_baseline",
@@ -931,6 +938,9 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         for fragment in _REQUIRED_ACCEPTED_ENVIRONMENT_COMMAND_FRAGMENTS:
             if fragment not in joined_environment_commands:
                 errors.append(f"commands.environment must include {fragment} for accepted artifacts")
+        for command in _REQUIRED_ACCEPTED_ENVIRONMENT_COMMANDS:
+            if command not in environment_commands:
+                errors.append(f"commands.environment must include exact command `{command}` for accepted artifacts")
     benchmark_command = commands.get("benchmark")
     if isinstance(benchmark_command, str):
         if "qwen35_batch_retained_bench.py" not in benchmark_command:
