@@ -5955,8 +5955,17 @@ def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_pat
     assert "profiler command must include rocprofv3" in blockers
     assert "profiler command must include --kernel-trace" in blockers
     assert "profiler command must target scripts/qwen35_batch_retained_bench.py" in blockers
+    assert "profiler command must include rocprof -- separator" in blockers
     assert "profiler command must include --output-format csv" in blockers
     assert "profiler command -d must match profiler.trace_dir" in blockers
+    wrong_profiled_segment = {
+        **valid,
+        "command": valid["command"].replace("-- python3 scripts/qwen35_batch_retained_bench.py", "-- python3 scripts/qwen35_batch_serial_bench.py"),
+    }
+    assert "profiler command must launch retained bench after rocprof separator" in retained_bench._profiler_provenance_blockers(
+        wrong_profiled_segment,
+        retained_artifact_path="benchmarks/results/native-c2.json",
+    )
     mismatched_profiler_json = {
         **valid,
         "command": valid["command"].replace("benchmarks/results/profiler-c2.json", "benchmarks/results/other-profiler.json"),

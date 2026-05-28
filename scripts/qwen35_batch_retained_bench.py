@@ -1095,6 +1095,20 @@ def _command_has_flag(command: str, flag: str) -> bool:
     return flag in parts
 
 
+def _split_command_parts(command: str) -> list[str]:
+    try:
+        return shlex.split(command)
+    except ValueError:
+        return command.split()
+
+
+def _profiled_command_segment(command: str) -> list[str] | None:
+    parts = _split_command_parts(command)
+    if "--" not in parts:
+        return None
+    return parts[parts.index("--") + 1 :]
+
+
 def _profiler_command_provenance_blockers(
     command: str,
     *,
@@ -1114,6 +1128,15 @@ def _profiler_command_provenance_blockers(
         blockers.append("profiler command must include --kernel-trace")
     if "scripts/qwen35_batch_retained_bench.py" not in command:
         blockers.append("profiler command must target scripts/qwen35_batch_retained_bench.py")
+    profiled_segment = _profiled_command_segment(command)
+    if profiled_segment is None:
+        blockers.append("profiler command must include rocprof -- separator")
+    elif (
+        len(profiled_segment) < 2
+        or not Path(profiled_segment[0]).name.startswith("python")
+        or profiled_segment[1] != "scripts/qwen35_batch_retained_bench.py"
+    ):
+        blockers.append("profiler command must launch retained bench after rocprof separator")
     if _command_arg_value(command, "--output-format") != "csv":
         blockers.append("profiler command must include --output-format csv")
     if trace_dir is not None and _command_arg_value(command, "-d") != trace_dir:
