@@ -2780,6 +2780,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             summary = _load_payload(args.artifact_json)
             validate_cn_diagnostic_validation_summary(summary)
+            _validate_validation_summary_output_path(args.artifact_json, summary)
         except Exception as exc:
             print(f"invalid c>N diagnostic artifact: {exc}", file=sys.stderr)
             return 1
