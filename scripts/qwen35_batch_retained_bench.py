@@ -934,6 +934,55 @@ def _retained_memory_payload(args: argparse.Namespace, kv_policy: ResolvedKVPoli
     return memory
 
 
+def _projection_dispatch_blockers(
+    batch_execution: Mapping[str, Any],
+    *,
+    concurrency: int,
+    candidates: Any = None,
+) -> list[str]:
+    projection_dispatch = batch_execution.get("projection_dispatch")
+    if not isinstance(projection_dispatch, Mapping):
+        return ["execution.batch_execution.projection_dispatch is missing"]
+    blockers: list[str] = []
+    rows = projection_dispatch.get("rows")
+    if isinstance(rows, bool) or not isinstance(rows, int) or rows <= 1:
+        blockers.append("execution.batch_execution.projection_dispatch.rows must be an int > 1")
+    elif rows != int(concurrency):
+        blockers.append("execution.batch_execution.projection_dispatch.rows must match workload.concurrency")
+    if projection_dispatch.get("path") != "benchmark_accepted_caware_projection":
+        blockers.append("execution.batch_execution.projection_dispatch.path must be benchmark_accepted_caware_projection")
+    selected_candidate = projection_dispatch.get("selected_candidate")
+    if not isinstance(selected_candidate, str) or not selected_candidate:
+        blockers.append("execution.batch_execution.projection_dispatch.selected_candidate is missing")
+    elif selected_candidate == "row_gemv":
+        blockers.append("execution.batch_execution.projection_dispatch.selected_candidate must not be row_gemv")
+    if projection_dispatch.get("throughput_claim_eligible") is not True:
+        blockers.append("execution.batch_execution.projection_dispatch.throughput_claim_eligible must be true")
+    if projection_dispatch.get("blockers") != []:
+        blockers.append("execution.batch_execution.projection_dispatch.blockers must be empty")
+    selection = projection_dispatch.get("selection")
+    if not isinstance(selection, Mapping):
+        blockers.append("execution.batch_execution.projection_dispatch.selection is missing")
+    else:
+        for field in ("layer", "quant", "variant"):
+            if not isinstance(selection.get(field), str) or not selection.get(field):
+                blockers.append(f"execution.batch_execution.projection_dispatch.selection.{field} is missing")
+        if selection.get("variant") == "row_gemv":
+            blockers.append("execution.batch_execution.projection_dispatch.selection.variant must not be row_gemv")
+    evidence = projection_dispatch.get("evidence")
+    if not isinstance(evidence, Mapping):
+        blockers.append("execution.batch_execution.projection_dispatch.evidence is missing")
+    elif evidence.get("accepted") is not True:
+        blockers.append("execution.batch_execution.projection_dispatch.evidence.accepted must be true")
+    if not isinstance(candidates, list) or not candidates:
+        blockers.append("projection_dispatch_candidates must include selected projection candidate")
+    elif isinstance(selected_candidate, str) and selected_candidate and not any(
+        isinstance(candidate, Mapping) and candidate.get("name") == selected_candidate for candidate in candidates
+    ):
+        blockers.append("projection_dispatch_candidates must include selected_candidate")
+    return blockers
+
+
 def _memory_evidence_blockers(memory: Mapping[str, Any]) -> list[str]:
     blockers: list[str] = []
     if not _is_finite_nonnegative_number(memory.get("allocator_reserved_peak_bytes")):
@@ -1324,6 +1373,12 @@ def _build_payload(
     batch_execution = dict(bench["batch_execution"])
     throughput_claim_eligible = bool(batch_execution.get("throughput_claim_eligible"))
     native_caware_decode = bool(batch_execution.get("native_caware_decode"))
+    projection_dispatch_candidates = bench.get("projection_dispatch_candidates")
+    projection_blockers = _projection_dispatch_blockers(
+        batch_execution,
+        concurrency=args.batch_size,
+        candidates=projection_dispatch_candidates,
+    )
     memory = _retained_memory_payload(args, kv_policy, bench)
     memory_blockers = _memory_evidence_blockers(memory)
     graph_bucket_blockers = _decode_shape_key_blockers(scheduler_metadata, concurrency=args.batch_size, prompt_length=args.prompt_length)
@@ -1340,6 +1395,7 @@ def _build_payload(
         and protocol_shape
         and scaling_complete
         and profiler_captured
+        and not projection_blockers
         and not memory_blockers
         and not graph_bucket_blockers
     )
@@ -1363,6 +1419,7 @@ def _build_payload(
         blocked_reasons.append("profiler trace was not captured with expected kernels present")
     if not bench["finite_logits"]:
         blocked_reasons.append("non-finite seed or decode logits")
+    blocked_reasons.extend(projection_blockers)
     blocked_reasons.extend(memory_blockers)
     blocked_reasons.extend(graph_bucket_blockers)
     per_request_observability = dict(bench.get("request_observability", {}))
@@ -1479,6 +1536,8 @@ def _build_payload(
             "Batch split-K decode remains out of scope; this accepted protocol keeps context < 1024.",
         ],
     }
+    if isinstance(projection_dispatch_candidates, list):
+        payload["projection_dispatch_candidates"] = projection_dispatch_candidates
     validate_cn_diagnostic_artifact_payload(payload)
     return payload
 

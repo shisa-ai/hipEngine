@@ -5908,6 +5908,50 @@ def test_qwen35_retained_memory_payload_uses_bench_evidence() -> None:
     assert retained_bench._memory_evidence_blockers(memory) == []
 
 
+def test_qwen35_retained_projection_dispatch_blockers_require_caware_candidate() -> None:
+    valid_dispatch = {
+        "projection_dispatch": {
+            "rows": 2,
+            "selected_candidate": "wmma_caware",
+            "path": "benchmark_accepted_caware_projection",
+            "selection": {"layer": "linear", "quant": "w4_paro", "variant": "wmma_caware"},
+            "throughput_claim_eligible": True,
+            "blockers": [],
+            "evidence": {
+                "artifact_path": "benchmarks/results/projection-wmma-c2.json",
+                "aggregate_vs_row_gemv": 1.35,
+                "per_request_vs_row_gemv": 1.10,
+                "accepted": True,
+            },
+        }
+    }
+    row_gemv_dispatch = {
+        "projection_dispatch": {
+            "rows": 2,
+            "selected_candidate": "row_gemv",
+            "path": "row_gemv_until_caware_benchmark",
+            "selection": {"layer": "linear", "quant": "w4_paro", "variant": "row_gemv"},
+            "throughput_claim_eligible": False,
+            "blockers": ["wmma_caware: missing benchmark evidence"],
+            "evidence": None,
+        }
+    }
+
+    assert retained_bench._projection_dispatch_blockers(
+        valid_dispatch,
+        concurrency=2,
+        candidates=[{"name": "wmma_caware"}],
+    ) == []
+    blockers = retained_bench._projection_dispatch_blockers(row_gemv_dispatch, concurrency=2, candidates=None)
+    assert "execution.batch_execution.projection_dispatch.path must be benchmark_accepted_caware_projection" in blockers
+    assert "execution.batch_execution.projection_dispatch.selected_candidate must not be row_gemv" in blockers
+    assert "execution.batch_execution.projection_dispatch.throughput_claim_eligible must be true" in blockers
+    assert "execution.batch_execution.projection_dispatch.blockers must be empty" in blockers
+    assert "execution.batch_execution.projection_dispatch.selection.variant must not be row_gemv" in blockers
+    assert "execution.batch_execution.projection_dispatch.evidence is missing" in blockers
+    assert "projection_dispatch_candidates must include selected projection candidate" in blockers
+
+
 def test_qwen35_retained_memory_evidence_blockers_cover_required_fields() -> None:
     complete_memory = {
         "allocator_reserved_peak_bytes": 8192,
