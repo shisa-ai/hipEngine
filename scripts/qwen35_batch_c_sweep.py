@@ -62,6 +62,13 @@ _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS = {
     "head_dim": 8,
 }
 _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT = 2e-5
+
+
+def _required_primitive_context_lens(rows: int) -> list[int]:
+    max_context_len = _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS["max_context_len"]
+    return [(idx % max_context_len) + 1 for idx in range(rows)]
+
+
 _PROFILER_SYNTHESIZED_FIELDS = (
     "trace_kernel_names",
     "kernel_durations_ns",
@@ -341,6 +348,14 @@ def _primitive_correctness_precondition(command: SweepCommand) -> dict[str, Any]
             value = payload.get(field)
             if not isinstance(value, int) or isinstance(value, bool) or value != expected_value:
                 reasons.append(f"{field} is missing or not {expected_value}")
+        context_lens = payload.get("context_lens")
+        expected_context_lens = _required_primitive_context_lens(command.batch_size)
+        if (
+            not isinstance(context_lens, list)
+            or any(not isinstance(value, int) or isinstance(value, bool) for value in context_lens)
+            or context_lens != expected_context_lens
+        ):
+            reasons.append("context_lens is missing or does not match fixture coverage")
         if payload.get("rows") != command.batch_size:
             reasons.append(f"rows={payload.get('rows')!r} does not match batch_size={command.batch_size}")
         if payload.get("passed") is not True:
@@ -370,6 +385,7 @@ def _primitive_correctness_precondition(command: SweepCommand) -> dict[str, Any]
                     f"primitive_{field}": int(payload[field])
                     for field in _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS
                 },
+                "primitive_context_lens": list(payload["context_lens"]),
                 "primitive_rows": int(payload["rows"]),
                 "append_key_mismatch": int(payload["append_key_mismatch"]),
                 "append_value_mismatch": int(payload["append_value_mismatch"]),
@@ -1751,6 +1767,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                             primitive_shape_error = True
                             break
                     if primitive_shape_error:
+                        break
+                    expected_context_lens = _required_primitive_context_lens(int(entry.get("batch_size")))
+                    if primitive_precondition.get("primitive_context_lens") != expected_context_lens:
+                        errors.append("commands[].preconditions[].primitive_context_lens must match fixture coverage when primitive passed")
                         break
                     if primitive_precondition.get("primitive_rows") != entry.get("batch_size"):
                         errors.append("commands[].preconditions[].primitive_rows must match retained batch_size")

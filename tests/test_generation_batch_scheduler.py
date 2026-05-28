@@ -1641,6 +1641,7 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
             "primitive_num_q_heads": 4,
             "primitive_num_kv_heads": 1,
             "primitive_head_dim": 8,
+            "primitive_context_lens": [1, 2],
             "primitive_rows": 2,
             "append_key_mismatch": 0,
             "append_value_mismatch": 0,
@@ -1697,6 +1698,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_missing(
                 "num_q_heads": 4,
                 "num_kv_heads": 1,
                 "head_dim": 8,
+                "context_lens": [1, 2],
                 "passed": True,
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
@@ -1810,6 +1812,7 @@ def test_batch_c_sweep_primitive_precondition_requires_schema(tmp_path: Path) ->
                 "num_q_heads": 4,
                 "num_kv_heads": 1,
                 "head_dim": 8,
+                "context_lens": [1, 2],
                 "passed": True,
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
@@ -1861,6 +1864,7 @@ def test_batch_c_sweep_primitive_precondition_requires_seed(tmp_path: Path) -> N
         "num_q_heads": 4,
         "num_kv_heads": 1,
         "head_dim": 8,
+        "context_lens": [1, 2],
         "passed": True,
         "append_key_mismatch": 0,
         "append_value_mismatch": 0,
@@ -1908,6 +1912,7 @@ def test_batch_c_sweep_primitive_precondition_requires_fixture_shape(tmp_path: P
         "num_q_heads": 4,
         "num_kv_heads": 1,
         "head_dim": 8,
+        "context_lens": [1, 2],
         "passed": True,
         "append_key_mismatch": 0,
         "append_value_mismatch": 0,
@@ -1934,6 +1939,54 @@ def test_batch_c_sweep_primitive_precondition_requires_fixture_shape(tmp_path: P
     }
 
 
+def test_batch_c_sweep_primitive_precondition_requires_context_lens(tmp_path: Path) -> None:
+    primitive_path = tmp_path / "primitive-c2.json"
+    command = c_sweep.SweepCommand(
+        category="native_diagnostic",
+        batch_size=2,
+        artifact_path=tmp_path / "native-diagnostic-c2.json",
+        argv=(
+            "python3",
+            "scripts/qwen35_batch_retained_bench.py",
+            "--primitive-correctness-json",
+            str(primitive_path),
+        ),
+    )
+    primitive_payload = {
+        "schema": 1,
+        "seed": 1234,
+        "rows": 2,
+        "block_size": 256,
+        "max_context_len": 4,
+        "num_q_heads": 4,
+        "num_kv_heads": 1,
+        "head_dim": 8,
+        "passed": True,
+        "append_key_mismatch": 0,
+        "append_value_mismatch": 0,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "attn_batch_vs_numpy_max_abs": 5.0e-8,
+    }
+    primitive_path.write_text(json.dumps(primitive_payload))
+    missing_context_lens = c_sweep._primitive_correctness_precondition(command)
+    primitive_payload["context_lens"] = [2, 1]
+    primitive_path.write_text(json.dumps(primitive_payload))
+    wrong_context_lens = c_sweep._primitive_correctness_precondition(command)
+
+    assert missing_context_lens == {
+        "kind": "primitive_correctness",
+        "artifact_path": str(primitive_path),
+        "passed": False,
+        "reason": "context_lens is missing or does not match fixture coverage",
+    }
+    assert wrong_context_lens == {
+        "kind": "primitive_correctness",
+        "artifact_path": str(primitive_path),
+        "passed": False,
+        "reason": "context_lens is missing or does not match fixture coverage",
+    }
+
+
 def test_batch_c_sweep_primitive_precondition_requires_numpy_oracle(tmp_path: Path) -> None:
     primitive_path = tmp_path / "primitive-c2.json"
     command = c_sweep.SweepCommand(
@@ -1956,6 +2009,7 @@ def test_batch_c_sweep_primitive_precondition_requires_numpy_oracle(tmp_path: Pa
         "num_q_heads": 4,
         "num_kv_heads": 1,
         "head_dim": 8,
+        "context_lens": [1, 2],
         "passed": True,
         "append_key_mismatch": 0,
         "append_value_mismatch": 0,
@@ -1998,6 +2052,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_shape_missing(
                 "num_q_heads": 4,
                 "num_kv_heads": 1,
                 "head_dim": 8,
+                "context_lens": [1, 2],
                 "passed": True,
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
@@ -2081,6 +2136,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_reason_is_non_null(
                 "num_q_heads": 4,
                 "num_kv_heads": 1,
                 "head_dim": 8,
+                "context_lens": [1, 2],
                 "passed": True,
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
@@ -2172,6 +2228,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_rate_arithmetic_mis
                 "num_q_heads": 4,
                 "num_kv_heads": 1,
                 "head_dim": 8,
+                "context_lens": [1, 2],
                 "passed": True,
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
@@ -2259,6 +2316,7 @@ def test_batch_c_sweep_skips_retained_when_profiler_summary_missing(tmp_path: Pa
                 "num_q_heads": 4,
                 "num_kv_heads": 1,
                 "head_dim": 8,
+                "context_lens": [1, 2],
                 "passed": True,
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
@@ -2345,6 +2403,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
                 "num_q_heads": 4,
                 "num_kv_heads": 1,
                 "head_dim": 8,
+                "context_lens": [1, 2],
                 "passed": True,
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
@@ -3077,6 +3136,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_primitive_precondition_shape["commands"][-1]["preconditions"][0]["primitive_head_dim"] = 16
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_head_dim must match fixture shape when primitive passed"):
         c_sweep.validate_sweep_summary(tampered_primitive_precondition_shape)
+    tampered_primitive_precondition_context_lens = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_context_lens["commands"][-1]["preconditions"][0]["primitive_context_lens"] = [2, 1]
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_context_lens must match fixture coverage when primitive passed"):
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_context_lens)
     tampered_primitive_precondition_rows = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_rows["commands"][-1]["preconditions"][0]["primitive_rows"] = 3
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_rows must match retained batch_size"):
@@ -3106,6 +3169,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         "primitive_num_q_heads": 4,
         "primitive_num_kv_heads": 1,
         "primitive_head_dim": 8,
+        "primitive_context_lens": [1, 2],
         "primitive_rows": 2,
         "append_key_mismatch": 0,
         "append_value_mismatch": 0,
@@ -3307,6 +3371,7 @@ def test_batch_c_sweep_fails_retained_row_on_profiler_synthesis_mismatch(tmp_pat
                 "num_q_heads": 4,
                 "num_kv_heads": 1,
                 "head_dim": 8,
+                "context_lens": [1, 2],
                 "passed": True,
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
