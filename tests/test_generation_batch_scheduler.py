@@ -2184,6 +2184,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_singular_postcondition["commands"][-1]["postcondition"] = tampered_singular_postcondition["commands"][-1]["postconditions"][0]
     with pytest.raises(ValueError, match=r"commands\[\]\.postcondition must be absent unless a postcondition failed"):
         c_sweep.validate_sweep_summary(tampered_singular_postcondition)
+    tampered_stray_postcondition = json.loads(json.dumps(persisted))
+    tampered_stray_postcondition["commands"][0]["postcondition"] = {"kind": "retained_profiler_synthesis", "passed": False}
+    with pytest.raises(ValueError, match=r"commands\[\]\.postcondition must be absent unless postconditions include a failure"):
+        c_sweep.validate_sweep_summary(tampered_stray_postcondition)
     tampered_git_dirty = json.loads(json.dumps(persisted))
     tampered_git_dirty["commands"][-1]["git_dirty"] = True
     with pytest.raises(ValueError, match=r"commands\[\]\.git_dirty must match git.dirty"):

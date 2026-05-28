@@ -1649,6 +1649,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             break
         postconditions = entry.get("postconditions")
         if not isinstance(postconditions, list):
+            if "postcondition" in entry:
+                errors.append("commands[].postcondition must be absent unless postconditions include a failure")
+                break
             continue
         failed_postconditions = [
             postcondition
