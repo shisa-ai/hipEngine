@@ -1568,6 +1568,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 errors.append("commands[].status failed with returncode 0 requires a failed postcondition")
                 break
             if status == "skipped":
+                if "postconditions" in entry or "postcondition" in entry:
+                    errors.append("commands[].postconditions must be absent for skipped rows")
+                    break
                 preconditions = entry.get("preconditions")
                 if not isinstance(preconditions, list):
                     errors.append("commands[].preconditions must be a list for skipped rows")
