@@ -2081,8 +2081,8 @@ def _valid_request_observability(row: Any, errors: list[str]) -> bool:
             errors.append(f"observability.per_request.*.{field} is required for accepted artifacts")
             ok = False
     for field in ("queue_seconds", "prefill_seconds", "decode_seconds"):
-        if field in row and not _is_number(row.get(field)):
-            errors.append(f"observability.per_request.*.{field} must be numeric for accepted artifacts")
+        if field in row and not _is_nonnegative_number(row.get(field)):
+            errors.append(f"observability.per_request.*.{field} must be finite non-negative numeric for accepted artifacts")
             ok = False
     for field in ("kv_pages_owned", "kv_pages_peak"):
         if field in row and not isinstance(row.get(field), int):

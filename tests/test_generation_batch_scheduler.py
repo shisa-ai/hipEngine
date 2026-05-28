@@ -6720,6 +6720,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="per_request length must match workload.concurrency"):
         validate_cn_diagnostic_artifact_payload(short_per_request)
 
+    nonfinite_per_request_timing = json.loads(json.dumps(accepted))
+    nonfinite_per_request_timing["observability"]["per_request"]["0"]["decode_seconds"] = float("inf")
+    with pytest.raises(ValueError, match=r"observability\.per_request\.\*\.decode_seconds must be finite non-negative numeric"):
+        validate_cn_diagnostic_artifact_payload(nonfinite_per_request_timing)
+
+    negative_per_request_timing = json.loads(json.dumps(accepted))
+    negative_per_request_timing["observability"]["per_request"]["0"]["queue_seconds"] = -0.1
+    with pytest.raises(ValueError, match=r"observability\.per_request\.\*\.queue_seconds must be finite non-negative numeric"):
+        validate_cn_diagnostic_artifact_payload(negative_per_request_timing)
+
     missing_pool = dict(accepted)
     missing_pool["memory"] = {
         "dynamic_pool": {"evidence": "initial chunk sufficed"},
