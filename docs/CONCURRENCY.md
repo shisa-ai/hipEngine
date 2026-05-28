@@ -972,7 +972,8 @@ roll-up/status view.
       reference paths matching the retained artifact payload,
       a correctness-reference command that names generated-token equality vs
       independent c=1, with an embedded Python invocation of
-      `scripts/qwen35_batch_correctness.py` and unique `--rows` / `--json` flags, `--rows` matching
+      `scripts/qwen35_batch_correctness.py` whose own argv carries unique
+      `--rows` / `--json` flags, `--rows` matching
       `workload.concurrency`, and `--json` matching
       `correctness.primitive_batch_correctness.artifact_path`, and a concrete
       `rocprofv3 --kernel-trace` profiler command targeting

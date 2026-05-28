@@ -212,19 +212,21 @@ def _validate_retained_bench_command_target(command: str, *, field: str, errors:
         errors.append(f"commands.{field} must start with python scripts/qwen35_batch_retained_bench.py for accepted artifacts")
 
 
-def _validate_embedded_python_script_command(command: str, script: str, *, field: str, errors: list[str]) -> None:
+def _embedded_python_script_argv(command: str, script: str, *, field: str, errors: list[str]) -> list[str] | None:
     try:
         argv = shlex.split(command)
     except ValueError:
         errors.append(f"commands.{field} must be shell-parseable for accepted artifacts")
-        return
+        return None
     script_indices = [idx for idx, token in enumerate(argv) if token == script]
     if len(script_indices) != 1:
         errors.append(f"commands.{field} must include exactly one python {script} invocation for accepted artifacts")
-        return
+        return None
     script_index = script_indices[0]
     if script_index == 0 or not _is_python_executable(argv[script_index - 1]):
         errors.append(f"commands.{field} must invoke {script} with python for accepted artifacts")
+        return None
+    return argv[script_index - 1 :]
 
 
 def _validate_command_workload_shape(command: str, *, field: str, payload: Mapping[str, Any], errors: list[str]) -> None:
@@ -1043,14 +1045,15 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         if "qwen35_batch_correctness.py" not in correctness_command:
             errors.append("commands.correctness_reference must reference scripts/qwen35_batch_correctness.py for accepted artifacts")
         else:
-            _validate_embedded_python_script_command(
+            correctness_script_argv = _embedded_python_script_argv(
                 correctness_command,
                 "scripts/qwen35_batch_correctness.py",
                 field="correctness_reference",
                 errors=errors,
             )
+            correctness_script_command = shlex.join(correctness_script_argv) if correctness_script_argv is not None else correctness_command
             _validate_command_unique_flags(correctness_command, _CORRECTNESS_REFERENCE_UNIQUE_FLAGS, field="correctness_reference", errors=errors)
-            rows_match = _CORRECTNESS_ROWS_RE.search(correctness_command)
+            rows_match = _CORRECTNESS_ROWS_RE.search(correctness_script_command)
             if rows_match is None:
                 errors.append("commands.correctness_reference must include --rows <workload.concurrency> for accepted artifacts")
             else:
@@ -1062,7 +1065,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             primitive = correctness.get("primitive_batch_correctness") if isinstance(correctness, Mapping) else None
             primitive_artifact_path = primitive.get("artifact_path") if isinstance(primitive, Mapping) else None
             _validate_command_json_matches_artifact_path(
-                correctness_command,
+                correctness_script_command,
                 field="correctness_reference",
                 artifact_field="correctness.primitive_batch_correctness.artifact_path",
                 artifact_path=primitive_artifact_path,

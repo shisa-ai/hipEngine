@@ -6035,6 +6035,14 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="commands.correctness_reference must name generated-token equality vs independent c=1"):
         validate_cn_diagnostic_artifact_payload(missing_correctness_oracle_text)
 
+    correctness_flags_before_script = json.loads(json.dumps(accepted))
+    correctness_flags_before_script["commands"]["correctness_reference"] = (
+        "inline generated-token equality vs independent c=1 plus --rows 2 "
+        "--json benchmarks/results/primitive-c2.json python3 scripts/qwen35_batch_correctness.py"
+    )
+    with pytest.raises(ValueError, match="commands.correctness_reference must include --rows"):
+        validate_cn_diagnostic_artifact_payload(correctness_flags_before_script)
+
     missing_correctness_rows = json.loads(json.dumps(accepted))
     missing_correctness_rows["commands"]["correctness_reference"] = "python3 scripts/qwen35_batch_correctness.py --json primitive-c2.json"
     with pytest.raises(ValueError, match="commands.correctness_reference must include --rows"):
