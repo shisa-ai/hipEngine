@@ -977,6 +977,10 @@ def _batch_execution_blockers(batch_execution: Mapping[str, Any], *, expected_ma
             blockers.append("execution.batch_execution.native_prefill_plan.path must be single_request_native_full")
         if native_prefill_plan.get("full_layer_limit_native") is not True:
             blockers.append("execution.batch_execution.native_prefill_plan.full_layer_limit_native must be true")
+        if "first_unsupported_layer" not in native_prefill_plan or native_prefill_plan.get("first_unsupported_layer") is not None:
+            blockers.append("execution.batch_execution.native_prefill_plan.first_unsupported_layer must be null")
+        if "first_unsupported_type" not in native_prefill_plan or native_prefill_plan.get("first_unsupported_type") is not None:
+            blockers.append("execution.batch_execution.native_prefill_plan.first_unsupported_type must be null")
         if expected_max_layers is not None:
             layer_limit = native_prefill_plan.get("layer_limit")
             if isinstance(layer_limit, bool) or not isinstance(layer_limit, int):

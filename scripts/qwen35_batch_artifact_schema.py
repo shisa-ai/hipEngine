@@ -838,6 +838,10 @@ def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[
             errors.append("execution.batch_execution.native_prefill_plan.path must be single_request_native_full for accepted artifacts")
         if native_prefill_plan.get("full_layer_limit_native") is not True:
             errors.append("execution.batch_execution.native_prefill_plan.full_layer_limit_native must be true for accepted artifacts")
+        if "first_unsupported_layer" not in native_prefill_plan or native_prefill_plan.get("first_unsupported_layer") is not None:
+            errors.append("execution.batch_execution.native_prefill_plan.first_unsupported_layer must be null for accepted artifacts")
+        if "first_unsupported_type" not in native_prefill_plan or native_prefill_plan.get("first_unsupported_type") is not None:
+            errors.append("execution.batch_execution.native_prefill_plan.first_unsupported_type must be null for accepted artifacts")
         layer_limit = native_prefill_plan.get("layer_limit")
         max_layers = workload.get("max_layers")
         if isinstance(layer_limit, bool) or not isinstance(layer_limit, int):
