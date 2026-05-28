@@ -975,7 +975,7 @@ roll-up/status view.
       `rocprofv3 --kernel-trace` profiler command targeting
       `scripts/qwen35_batch_retained_bench.py` after the rocprof `--` separator,
       with rocprof-only flags (`--kernel-trace`, `--output-format csv`, `-d`) before
-      that separator, and the same retained shape/artifact/reference/cached-build
+      that separator, and unique retained shape/artifact/reference/cached-build
       flags validated from the post-separator profiled command segment
       (`--model`, `--fixture`, `--batch-size`, `--prompt-length`,
       `--decode-tokens`, `--max-layers`, `--c1-baseline-json`, `--serial-bridge-json`,

@@ -5907,6 +5907,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="commands.benchmark --batch-size must match workload.concurrency"):
         validate_cn_diagnostic_artifact_payload(wrong_benchmark_batch_size)
 
+    duplicate_benchmark_batch_size = json.loads(json.dumps(accepted))
+    duplicate_benchmark_batch_size["commands"]["benchmark"] = duplicate_benchmark_batch_size["commands"]["benchmark"] + " --batch-size 8"
+    with pytest.raises(ValueError, match="commands.benchmark must not repeat --batch-size"):
+        validate_cn_diagnostic_artifact_payload(duplicate_benchmark_batch_size)
+
     missing_benchmark_prompt_length = json.loads(json.dumps(accepted))
     missing_benchmark_prompt_length["commands"]["benchmark"] = "python3 scripts/qwen35_batch_retained_bench.py --batch-size 2 --decode-tokens 128 --max-layers 40 --json accepted.json"
     with pytest.raises(ValueError, match="commands.benchmark must include --prompt-length"):
@@ -6269,6 +6274,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     ).replace(" --batch-size 2 --prompt-length", " --batch-size 8 --prompt-length")
     with pytest.raises(ValueError, match="commands.profiler --batch-size must match workload.concurrency"):
         validate_cn_diagnostic_artifact_payload(profiler_batch_size_before_separator)
+
+    duplicate_profiler_json = json.loads(json.dumps(accepted))
+    duplicate_profiler_json["commands"]["profiler"] = duplicate_profiler_json["commands"]["profiler"] + " --json benchmarks/results/other-accepted-c2.json"
+    with pytest.raises(ValueError, match="commands.profiler must not repeat --json"):
+        validate_cn_diagnostic_artifact_payload(duplicate_profiler_json)
 
     profiler_prompt_length_before_separator = json.loads(json.dumps(accepted))
     profiler_prompt_length_before_separator["commands"]["profiler"] = profiler_prompt_length_before_separator["commands"]["profiler"].replace(

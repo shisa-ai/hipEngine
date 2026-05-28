@@ -108,6 +108,21 @@ _COMMAND_COMPILER_VERSION_FILE_RE = re.compile(r"(?:^|\s)--compiler-version-file
 _COMMAND_OUTPUT_FORMAT_RE = re.compile(r"(?:^|\s)--output-format(?:=|\s+)(\S+)(?=\s|$)")
 _COMMAND_TRACE_DIR_RE = re.compile(r"(?:^|\s)-d(?:=|\s+)(\S+)(?=\s|$)")
 _CORRECTNESS_ROWS_RE = re.compile(r"(?:^|\s)--rows(?:=|\s+)(\d+)(?=\s|$)")
+_RETAINED_BENCH_UNIQUE_FLAGS = (
+    "--model",
+    "--fixture",
+    "--batch-size",
+    "--prompt-length",
+    "--decode-tokens",
+    "--max-layers",
+    "--json",
+    "--c1-baseline-json",
+    "--serial-bridge-json",
+    "--primitive-correctness-json",
+    "--profiler-json",
+    "--compiler-version-file",
+    "--require-cached-build",
+)
 _FULL_COMMIT_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", re.IGNORECASE)
 _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = ("serial", "fallback", "per_row", "per-row")
 _REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES = (
@@ -144,6 +159,22 @@ def _mapping_at(payload: Mapping[str, Any], key: str, errors: list[str]) -> Mapp
         errors.append(f"{key} must be an object")
         return {}
     return value
+
+
+def _flag_token_matches(token: str, flag: str) -> bool:
+    return token == flag or token.startswith(f"{flag}=")
+
+
+def _validate_retained_bench_unique_flags(command: str, *, field: str, errors: list[str]) -> None:
+    try:
+        argv = shlex.split(command)
+    except ValueError:
+        errors.append(f"commands.{field} must be shell-parseable for accepted artifacts")
+        return
+    for flag in _RETAINED_BENCH_UNIQUE_FLAGS:
+        count = sum(1 for token in argv if _flag_token_matches(token, flag))
+        if count > 1:
+            errors.append(f"commands.{field} must not repeat {flag} for accepted artifacts")
 
 
 def _validate_command_workload_shape(command: str, *, field: str, payload: Mapping[str, Any], errors: list[str]) -> None:
@@ -886,6 +917,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         if "qwen35_batch_retained_bench.py" not in benchmark_command:
             errors.append("commands.benchmark must reference scripts/qwen35_batch_retained_bench.py for accepted artifacts")
         else:
+            _validate_retained_bench_unique_flags(benchmark_command, field="benchmark", errors=errors)
             _validate_command_model_fixture_flags(benchmark_command, field="benchmark", errors=errors)
             _validate_command_workload_shape(benchmark_command, field="benchmark", payload=payload, errors=errors)
             _validate_command_json_matches_artifact_path(
@@ -957,6 +989,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             errors.append("commands.profiler must target scripts/qwen35_batch_retained_bench.py after rocprof separator for accepted artifacts")
         else:
             profiler_profiled_benchmark_command = shlex.join(profiled_command_argv)
+            _validate_retained_bench_unique_flags(profiler_profiled_benchmark_command, field="profiler", errors=errors)
             _validate_command_model_fixture_flags(profiler_profiled_benchmark_command, field="profiler", errors=errors)
             if isinstance(benchmark_command, str):
                 _validate_profiled_command_matches_benchmark_model_fixture(profiler_profiled_benchmark_command, benchmark_command, errors)
