@@ -749,6 +749,10 @@ def _validate_profiler_kernel_durations(profiler: dict[str, Any], reasons: list[
     if not isinstance(duration_shares, dict) or not duration_shares:
         reasons.append("kernel_duration_shares is missing or empty")
         return
+    if any(not isinstance(key, str) or not key for key in kernel_durations):
+        reasons.append("kernel_durations_ns keys must be non-empty strings")
+    if any(not isinstance(key, str) or not key for key in duration_shares):
+        reasons.append("kernel_duration_shares keys must be non-empty strings")
     duration_keys = {key for key in kernel_durations if isinstance(key, str) and key}
     share_keys = {key for key in duration_shares if isinstance(key, str) and key}
     if duration_keys != share_keys:

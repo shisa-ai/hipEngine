@@ -1031,7 +1031,7 @@ roll-up/status view.
       and captured profiler evidence with a
       `profiler.artifact_path` under `benchmarks/results/`, profiler trace
       files canonically contained under `profiler.trace_dir`, native batch
-      expected kernel names and duration-map keys (no
+      expected kernel names and duration/share-map keys as non-empty strings (no
       serial/per-row/fallback labels) present with every duration-map entry,
       including extra trace-listed entries, carrying positive numeric evidence,
       `profiler.total_kernel_duration_ns`

@@ -36348,3 +36348,30 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness still passed; retained scaling claims remain blocked on generated-token equality
 ```
+
+## 2026-05-28 — CONCURRENCY c-sweep profiler duration key gate
+
+Materially advanced P5 retained-row profiler gating without closing any queue item or adding a retained c>N performance claim:
+
+- `scripts/qwen35_batch_c_sweep.py` profiler summary validation now rejects `kernel_durations_ns` and `kernel_duration_shares` maps with non-string or empty keys instead of silently ignoring those keys while comparing filtered key sets.
+- Added c-sweep profiler precondition coverage for empty duration-map and share-map keys; both now fail with explicit key-shape errors.
+- Updated `docs/CONCURRENCY.md` P5 notes to require duration/share-map keys to be non-empty strings before retained rows can support claims.
+- No retained c>N performance claim was added; C2.4/C2.5 generated-token equality artifacts are still missing.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -k 'profiler_precondition_rejects_empty_kernel_duration_or_share_keys or profiler_precondition_rejects_nonpositive_extra_kernel_duration or profiler_precondition_rejects_missing_kernel_shares or batch_c_sweep' -q
+# 50 passed
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -k 'primitive_correctness_passed_matches_retained_bounds or primitive_correctness_reference_requires_same_rows or primitive_precondition_requires_typed_append_counters or primitive_precondition_requires_typed_rows or primitive_precondition_requires_context_lens or primitive_precondition_requires_fixture_shape or primitive_precondition_requires_seed or primitive_precondition_requires_numpy_oracle or primitive_precondition_requires_schema or batch_c_sweep or retained_profiler_reference or artifact_schema_enforces_accepted_row_gates' -q
+# 55 passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness still passed; retained scaling claims remain blocked on generated-token equality
+```

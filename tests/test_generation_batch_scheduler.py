@@ -1162,6 +1162,51 @@ def test_batch_c_sweep_profiler_precondition_rejects_nonpositive_extra_kernel_du
     }
 
 
+def test_batch_c_sweep_profiler_precondition_rejects_empty_kernel_duration_or_share_keys(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    duration_key_payload = json.loads(profiler_path.read_text())
+    duration_key_payload["profiler"]["kernel_durations_ns"][""] = 123.0
+    profiler_path.write_text(json.dumps(duration_key_payload))
+    assert c_sweep._profiler_summary_precondition(native) == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "kernel_durations_ns keys must be non-empty strings",
+    }
+
+    share_key_payload = json.loads(profiler_path.read_text())
+    share_key_payload["profiler"]["kernel_durations_ns"].pop("")
+    share_key_payload["profiler"]["kernel_duration_shares"][""] = 0.1
+    profiler_path.write_text(json.dumps(share_key_payload))
+    assert c_sweep._profiler_summary_precondition(native) == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "kernel_duration_shares keys must be non-empty strings",
+    }
+
+
 def test_batch_c_sweep_profiler_precondition_rejects_missing_kernel_categories(tmp_path: Path) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
