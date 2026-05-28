@@ -1668,6 +1668,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         if failed_postconditions and entry.get("postcondition") != failed_postconditions[0]:
             errors.append("commands[].postcondition must match the first failed postcondition")
             break
+        if failed_postconditions and entry.get("output_tail") != str(failed_postconditions[0].get("reason")):
+            errors.append("commands[].output_tail must match failed postcondition reason")
+            break
         if not failed_postconditions and "postcondition" in entry:
             errors.append("commands[].postcondition must be absent unless a postcondition failed")
             break

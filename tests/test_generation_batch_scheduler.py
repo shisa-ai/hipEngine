@@ -2535,6 +2535,10 @@ def test_batch_c_sweep_fails_retained_row_on_profiler_synthesis_mismatch(tmp_pat
     tampered_singular_postcondition["commands"][-1].pop("postcondition")
     with pytest.raises(ValueError, match=r"commands\[\]\.postcondition must match"):
         c_sweep.validate_sweep_summary(tampered_singular_postcondition)
+    tampered_postcondition_output_tail = json.loads(json.dumps(summary))
+    tampered_postcondition_output_tail["commands"][-1]["output_tail"] = "different postcondition failure"
+    with pytest.raises(ValueError, match=r"commands\[\]\.output_tail must match failed postcondition reason"):
+        c_sweep.validate_sweep_summary(tampered_postcondition_output_tail)
 
 
 def test_batch_c_sweep_can_plan_int8_blocked_diagnostics(tmp_path: Path) -> None:
