@@ -1550,6 +1550,14 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     break
             if condition_schema_error:
                 break
+            if status == "failed" and isinstance(returncode, int) and returncode != 0 and any(
+                field in entry for field in ("postconditions", "postcondition")
+            ):
+                errors.append("commands[].postconditions must be absent for failed rows with nonzero returncode")
+                break
+            if "postconditions" in entry and (entry.get("category") != "native_diagnostic" or entry.get("batch_size") == 1):
+                errors.append("commands[].postconditions are only valid for retained native diagnostic rows")
+                break
             if entry.get("category") == "native_diagnostic" and entry.get("batch_size") != 1 and status != "planned":
                 preconditions = entry.get("preconditions")
                 expected_retained_kinds = ["primitive_correctness", "c1_baseline", "serial_bridge", "profiler_summary"]
@@ -1562,11 +1570,6 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 for postcondition in postconditions
                 if isinstance(postcondition, dict) and postcondition.get("passed") is not True
             ] if isinstance(postconditions, list) else []
-            if status == "failed" and isinstance(returncode, int) and returncode != 0 and any(
-                field in entry for field in ("postconditions", "postcondition")
-            ):
-                errors.append("commands[].postconditions must be absent for failed rows with nonzero returncode")
-                break
             if status == "passed" and returncode != 0:
                 errors.append("commands[].status passed requires returncode 0")
                 break

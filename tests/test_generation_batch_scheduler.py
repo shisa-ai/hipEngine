@@ -2202,6 +2202,12 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_stray_postcondition["commands"][0]["postcondition"] = {"kind": "retained_profiler_synthesis", "passed": False}
     with pytest.raises(ValueError, match=r"commands\[\]\.postcondition must be absent unless postconditions include a failure"):
         c_sweep.validate_sweep_summary(tampered_stray_postcondition)
+    tampered_postcondition_scope = json.loads(json.dumps(persisted))
+    tampered_postcondition_scope["commands"][0]["postconditions"] = [
+        {"kind": "retained_profiler_synthesis", "passed": True}
+    ]
+    with pytest.raises(ValueError, match=r"commands\[\]\.postconditions are only valid for retained native diagnostic rows"):
+        c_sweep.validate_sweep_summary(tampered_postcondition_scope)
     tampered_git_dirty = json.loads(json.dumps(persisted))
     tampered_git_dirty["commands"][-1]["git_dirty"] = True
     with pytest.raises(ValueError, match=r"commands\[\]\.git_dirty must match git.dirty"):
