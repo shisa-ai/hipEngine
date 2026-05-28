@@ -432,7 +432,21 @@ def _scaling_reference(path: Path | None, *, default_workload_concurrency: int |
             "decode_tok_s_per_request": None,
             "reason": "artifact root is not an object",
         }
+    reasons: list[str] = []
+    reference_artifact_path = None
+    source_artifact_path = payload.get("artifact_path")
+    if not isinstance(source_artifact_path, str) or not source_artifact_path:
+        reasons.append("artifact_path is missing or not a non-empty string")
+    elif source_artifact_path != str(path):
+        reference_artifact_path = source_artifact_path
+        reasons.append("artifact_path does not match scaling reference artifact path")
+    else:
+        reference_artifact_path = source_artifact_path
     aggregate, per_request = _extract_decode_rates(payload)
+    throughput_missing = aggregate is None or per_request is None
+    if reasons:
+        aggregate = None
+        per_request = None
     workload = payload.get("workload")
     workload_concurrency = None
     prompt_tokens_per_request = None
@@ -458,9 +472,12 @@ def _scaling_reference(path: Path | None, *, default_workload_concurrency: int |
     if workload_concurrency is None and default_workload_concurrency is not None:
         workload_concurrency = int(default_workload_concurrency)
     status = str(payload.get("status") or "loaded")
-    reason = None if aggregate is not None and per_request is not None else "decode throughput fields missing"
+    if throughput_missing:
+        reasons.append("decode throughput fields missing")
+    reason = None if not reasons else "; ".join(reasons)
     return {
         "artifact_path": str(path),
+        "reference_artifact_path": reference_artifact_path,
         "status": status,
         "run_tag": payload.get("run_tag"),
         "workload_concurrency": workload_concurrency,

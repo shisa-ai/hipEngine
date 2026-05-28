@@ -5676,6 +5676,7 @@ def test_qwen35_retained_scaling_comparison_uses_c1_and_serial_artifacts(tmp_pat
     c1.write_text(
         json.dumps(
             {
+                "artifact_path": str(c1),
                 "run_tag": "c1",
                 "prompt_length": 512,
                 "decode_tokens": 128,
@@ -5687,6 +5688,7 @@ def test_qwen35_retained_scaling_comparison_uses_c1_and_serial_artifacts(tmp_pat
     serial.write_text(
         json.dumps(
             {
+                "artifact_path": str(serial),
                 "run_tag": "serial-c2",
                 "status": "blocked",
                 "workload": {"concurrency": 2, "prompt_tokens_per_request": 512, "gen_tokens_per_request": 128},
@@ -5708,12 +5710,14 @@ def test_qwen35_retained_scaling_comparison_uses_c1_and_serial_artifacts(tmp_pat
     assert scaling["complete"] is True
     assert scaling["c1_baseline"]["status"] == "loaded"
     assert scaling["c1_baseline"]["reason"] is None
+    assert scaling["c1_baseline"]["reference_artifact_path"] == str(c1)
     assert scaling["c1_baseline"]["workload_concurrency"] == 1
     assert scaling["c1_baseline"]["prompt_tokens_per_request"] == 512
     assert scaling["c1_baseline"]["gen_tokens_per_request"] == 128
     assert scaling["c1_baseline"]["decode_tok_s_aggregate"] == 5.0
     assert scaling["serial_bridge_baseline"]["status"] == "blocked"
     assert scaling["serial_bridge_baseline"]["reason"] is None
+    assert scaling["serial_bridge_baseline"]["reference_artifact_path"] == str(serial)
     assert scaling["serial_bridge_baseline"]["workload_concurrency"] == 2
     assert scaling["serial_bridge_baseline"]["prompt_tokens_per_request"] == 512
     assert scaling["serial_bridge_baseline"]["gen_tokens_per_request"] == 128
@@ -5724,6 +5728,52 @@ def test_qwen35_retained_scaling_comparison_uses_c1_and_serial_artifacts(tmp_pat
         "aggregate_vs_serial_bridge": 2.0,
         "per_request_vs_serial_bridge": 2.0,
     }
+
+
+def test_qwen35_retained_scaling_reference_requires_artifact_path(tmp_path: Path) -> None:
+    c1 = tmp_path / "native-baseline-c1.json"
+    c1_payload = {
+        "prompt_length": 512,
+        "decode_tokens": 128,
+        "throughput": {"warmed_decode_tok_s": 5.0},
+    }
+    c1.write_text(json.dumps(c1_payload))
+    missing_artifact_path = retained_bench._scaling_reference(c1, default_workload_concurrency=1)
+    c1_payload["artifact_path"] = str(tmp_path / "other-native-baseline-c1.json")
+    c1.write_text(json.dumps(c1_payload))
+    mismatched_artifact_path = retained_bench._scaling_reference(c1, default_workload_concurrency=1)
+
+    assert missing_artifact_path["status"] == "loaded"
+    assert missing_artifact_path["reason"] == "artifact_path is missing or not a non-empty string"
+    assert missing_artifact_path["decode_tok_s_aggregate"] is None
+    assert missing_artifact_path["decode_tok_s_per_request"] is None
+    assert missing_artifact_path["reference_artifact_path"] is None
+    assert mismatched_artifact_path["status"] == "loaded"
+    assert mismatched_artifact_path["reason"] == "artifact_path does not match scaling reference artifact path"
+    assert mismatched_artifact_path["decode_tok_s_aggregate"] is None
+    assert mismatched_artifact_path["decode_tok_s_per_request"] is None
+    assert mismatched_artifact_path["reference_artifact_path"] == str(tmp_path / "other-native-baseline-c1.json")
+
+    serial = tmp_path / "serial-bridge-c2.json"
+    serial.write_text(
+        json.dumps(
+            {
+                "artifact_path": str(serial),
+                "status": "blocked",
+                "workload": {"concurrency": 2, "prompt_tokens_per_request": 512, "gen_tokens_per_request": 128},
+                "measurements": {"decode_tok_s_aggregate": 8.0, "decode_tok_s_per_request": 4.0},
+            }
+        )
+    )
+    args = argparse.Namespace(c1_baseline_json=c1, serial_bridge_json=serial)
+    scaling = retained_bench._build_scaling_comparison(
+        args,
+        native_decode_tok_s_aggregate=16.0,
+        native_decode_tok_s_per_request=8.0,
+    )
+    assert scaling["complete"] is False
+    assert scaling["ratios"]["aggregate_vs_c1"] is None
+    assert scaling["ratios"]["aggregate_vs_serial_bridge"] == 2.0
 
 
 def test_qwen35_primitive_correctness_passed_matches_retained_bounds() -> None:
