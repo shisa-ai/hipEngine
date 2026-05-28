@@ -747,6 +747,8 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
             _valid_request_observability(row, errors)
 
     memory = _mapping_at(payload, "memory", errors)
+    if not _is_nonnegative_number(memory.get("allocator_reserved_peak_bytes")):
+        errors.append("memory.allocator_reserved_peak_bytes must be finite non-negative numeric for accepted artifacts")
     for field in _REQUIRED_ACCEPTED_POOL_FIELDS:
         if not isinstance(memory.get(field), Mapping):
             errors.append(f"memory.{field} must be an object for accepted artifacts")

@@ -6102,6 +6102,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             },
         },
         "memory": {
+            "allocator_reserved_peak_bytes": 8192,
             "dynamic_pool": {
                 "evidence": "initial chunk sufficed",
                 "grow_events": 0,
@@ -6765,8 +6766,18 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         "dynamic_pool": {"evidence": "initial chunk sufficed"},
         "prefix_sharing": {"enabled": False, "savings_bytes": 0},
     }
-    with pytest.raises(ValueError, match="stable_block_id|pool_counters"):
+    with pytest.raises(ValueError, match="stable_block_id|pool_counters|allocator_reserved_peak_bytes"):
         validate_cn_diagnostic_artifact_payload(missing_pool)
+
+    nonfinite_allocator_peak = json.loads(json.dumps(accepted))
+    nonfinite_allocator_peak["memory"]["allocator_reserved_peak_bytes"] = float("inf")
+    with pytest.raises(ValueError, match="allocator_reserved_peak_bytes must be finite non-negative numeric"):
+        validate_cn_diagnostic_artifact_payload(nonfinite_allocator_peak)
+
+    negative_allocator_peak = json.loads(json.dumps(accepted))
+    negative_allocator_peak["memory"]["allocator_reserved_peak_bytes"] = -1
+    with pytest.raises(ValueError, match="allocator_reserved_peak_bytes must be finite non-negative numeric"):
+        validate_cn_diagnostic_artifact_payload(negative_allocator_peak)
 
     missing_dynamic_pool_evidence = json.loads(json.dumps(accepted))
     missing_dynamic_pool_evidence["memory"]["dynamic_pool"].pop("evidence")

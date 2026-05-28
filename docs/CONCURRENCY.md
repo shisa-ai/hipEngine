@@ -967,8 +967,9 @@ roll-up/status view.
       after admission, finite nonnegative per-row timing, matching row ids,
       and latency samples matching completion-minus-admission plus derived
       percentiles (`p50` median, `p95 >= p50`) for every row in
-      `workload.concurrency`, dynamic-pool evidence plus finite nonnegative
-      counters, stable block-id audit, and prefix-sharing savings,
+      `workload.concurrency`, finite nonnegative allocator peak bytes,
+      dynamic-pool evidence plus finite nonnegative counters,
+      stable block-id audit, and prefix-sharing savings,
       execution scheduler metadata with decode shape-key
       and non-empty graph-bucket stats, positive finite
       aggregate/per-request throughput whose c-sweep scaling precondition
