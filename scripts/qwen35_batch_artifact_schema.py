@@ -2661,7 +2661,7 @@ def _validation_summary(
         "artifact_path": artifact_path if isinstance(artifact_path, str) else None,
         "status": status if isinstance(status, str) else None,
         "performance_claim": performance_claim if isinstance(performance_claim, bool) else None,
-        "benchmark_rollup": benchmark_rollup if isinstance(benchmark_rollup, Mapping) else None,
+        "benchmark_rollup": benchmark_rollup if mode == "rollup_evidence" and isinstance(benchmark_rollup, Mapping) else None,
         "error": error,
     }
 
@@ -2693,6 +2693,8 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
         errors.append("summary.performance_claim must be a bool or null")
     benchmark_rollup = summary.get("benchmark_rollup")
     if benchmark_rollup is not None:
+        if mode != "rollup_evidence":
+            errors.append("summary.benchmark_rollup requires summary.mode rollup_evidence")
         if not isinstance(benchmark_rollup, Mapping):
             errors.append("summary.benchmark_rollup must be an object or null")
         elif isinstance(artifact_path, str):
