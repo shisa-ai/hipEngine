@@ -26932,3 +26932,13 @@ RuntimeError: git -C /home/lhl/amd-gpu-tuning/nano-vllm-amd rev-parse --short HE
 ```
 
 No HIP kernel code was copied or ported. P6 must remain blocked until the parent source path is restored or `docs/source_lineage.json` is intentionally updated to the available source-of-truth path.
+
+## 2026-05-29 — StepFun P0 kernel-lineage preflight unblocked
+
+The available parent checkout for the kernel-lineage audit is `/home/lhl/github/lhl/nano-vllm-amd` on branch `gfx1100-qwen3.5`, HEAD `5bfaa85`; the recorded baseline `22405a9` is present in that checkout. Repointed `docs/source_lineage.json` from the missing `/home/lhl/amd-gpu-tuning/nano-vllm-amd` path to this checkout and re-ran the required pre-port drift check:
+
+```bash
+python3 scripts/check_lineage.py --kind kernel --diff stat
+```
+
+Result: the command now runs. It reports four tracked kernel sources as drifted since baseline `22405a9`: `csrc/amd/qwen35_expert.hip` (+1003/-8), `csrc/amd/smoke.hip` (+35), `nanovllm/native/qwen35/paroquant_kernels.py` (+998/-178), and `nanovllm/native/qwen35/paroquant_fusedw4.py` (+398). These are Qwen/PARO lineage files rather than a Step GGUF Q3_K kernel source; inspect relevant drift before copying any code from them. No HIP kernel code was copied in this step.

@@ -11,7 +11,7 @@
   ],
   "repositories": {
     "nano-vllm-amd": {
-      "path": "/home/lhl/amd-gpu-tuning/nano-vllm-amd",
+      "path": "/home/lhl/github/lhl/nano-vllm-amd",
       "baseline_ref": "22405a9",
       "baseline_note": "Last manual KERNELS.md catalog audit before adding scripts/check_lineage.py."
     }
