@@ -630,9 +630,10 @@ roll-up/status view.
       failing fixture and generated-token equality progresses past the old
       idx-13 failure. Progress: decode batch rows now use grouped compact MoE
       scratch for `tokens>1` instead of selected-MoE c1 wrappers, and
-      decode-execution metadata reports `moe_decode_path`/`moe_decode_rows` plus
-      grouped-compact and selected-c1 fallback layer counts so retained gates
-      can reject stale selected-c1 MoE paths; CPU coverage now locks the
+      decode-execution metadata reports `moe_decode_path`/`moe_decode_rows`,
+      grouped-compact and selected-c1 fallback layer counts, and per-layer
+      decode traces so retained gates and diagnostics can reject stale
+      selected-c1 MoE paths; CPU coverage now locks the
       token-major routed-lane → token-row, selected-expert → expert-group,
       sorted routing-weight, weighted selected-branch accumulation, and
       lane-to-sorted-row helper semantics used by grouped MoE combine metadata,

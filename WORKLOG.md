@@ -43989,3 +43989,30 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
 ```
+
+## 2026-05-29 — CONCURRENCY per-layer decode execution trace
+
+Advanced C2.3/P3 without closing a queue item or adding a retained c>N performance claim. Native batch decode metadata now carries a per-layer execution trace so hidden-bisection and retained diagnostics can identify whether each layer used native batch full-attention, grouped-compact MoE, or the per-row selected-c1 fallback path.
+
+- Added `decode_execution.layer_executions` in `Qwen35ParoResidentSession._run_layers_batch_decode(...)` with layer index/type, rows, slots, full-attention path, native-caware flag, MoE path, max context for full-attention layers, and split counts for per-row fallbacks.
+- Extended resident-layout tests for short-context native full-attention and long-context per-row split-K fallback metadata.
+- Updated `docs/CONCURRENCY.md` C2.3 progress text with the per-layer trace coverage while leaving the item open because generated-token equality and the hidden-state mismatch are not fixed.
+- No queue status changed and no generated-token equality or retained performance/scaling claim was added.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_qwen35_resident_batch_layout.py -k 'run_layers_batch_decode_reports_native_batch_for_short_context or run_layers_batch_decode_uses_per_row_splitk_fallback_for_long_context' -q
+# 2 passed
+python3 -m pytest -q tests/test_qwen35_resident_batch_layout.py -q
+# passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
+```
