@@ -44590,3 +44590,23 @@ python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/
 Result: `/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-all-per-row-focus1269.json` emitted `status=mismatch_found`, `performance_claim=false`, `workload.batch_decode_moe_path=selected_c1`, `workload.batch_decode_linear_path=per_row`, `workload.batch_decode_full_attention_path=per_row`, `native_caware_decode=false`, and decode metadata `moe_decode_path=selected_c1_forced_with_per_row_full_attention_fallback`, `moe_grouped_compact_layers=0`, `moe_selected_c1_fallback_layers=8`, blockers `[MoE forced, linear per-row, full-attention per-row]`. Focused row-0 dim-1269 drift is exact at L5, `0.00146484375` at L6, `0.001953125` at L7, and `0.002197265625` at L8 (`elements_over_atol=1`); row 1 stays at or below `0.00048828125`; tokens still match for the one-token reduced run.
 
 Interpretation: even when all c>N decode subpaths are replaced by per-row c=1-style fallbacks, the reduced hidden drift persists. That points the next fix toward compact-prefill-produced slot state, per-slot state selection, or scratch/alias lifetime differences in the resident batch session, rather than grouped MoE, native linear-attention batch segments, or native full-attention batch kernels in isolation.
+
+## 2026-05-29 — CONCURRENCY prefill-hidden comparison trace
+
+Advanced C2.3 by adding final-prefill hidden comparisons to the hidden-bisect harness. I originally looked for a safe prefill-path switch, but the existing runner has no slot-aware single-request prefill API; instead, the low-risk diagnostic is to compare the compact packed prefill final hidden rows against the independent c=1 final hidden rows before decode starts.
+
+Code/test changes:
+
+- `scripts/qwen35_batch_hidden_bisect.py` now captures `prefill_hidden_bits` for the compact batch session immediately after `prefill_native_packed()` and for each independent c=1 session immediately after `prefill_native()`.
+- Each layer summary now includes `prefill_hidden_passed` and a `prefill` block with per-row hidden comparisons plus `batch_prefill_execution`; this is diagnostic evidence and does not weaken the decode correctness gate.
+- CPU tests cover the new `prefill` summary block while preserving existing batch decode execution trace coverage.
+
+Diagnostic command:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 1 --max-layers 8 --layer-limits 5-8 --max-sequence-length 1024 --hidden-atol 0.002 --focus-hidden-flat-index 1269 --batch-decode-moe-path selected_c1 --batch-decode-linear-path per_row --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-all-per-row-prefill-focus1269.json >/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-all-per-row-prefill-focus1269.stdout
+```
+
+Result: `/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-all-per-row-prefill-focus1269.json` emitted `status=mismatch_found`, `hidden_atol=0.002`, and `performance_claim=false`. Final prefill hidden passes for every L5-L8 layer limit under `0.002`: the focused dim-1269 prefill diffs are L5 row0/row1 `0.0/0.0009765625`, L6 `0.0009765625/0.001953125`, L7 `0.0/0.0`, and L8 `0.0009765625/0.0`. The first decode step still fails at L8 row 0 dim 1269 with `abs_diff=0.002197265625`, while row 1 stays at `0.00048828125` and `first_token_mismatch=null`.
+
+Interpretation: compact prefill's final hidden rows are not the immediate blocker at the 2e-3 diagnostic threshold. The drift appears when decoding from the packed-prefill state even with all c>N decode subpaths forced per-row, so the next target is decode-time slot state/KV state selection or scratch/alias lifetime, not final prefill hidden.

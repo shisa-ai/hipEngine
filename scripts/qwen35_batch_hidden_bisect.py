@@ -27,6 +27,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, host_array_ptr
+from hipengine.core.tensor import Tensor
 from hipengine.generation import ResidentBatchScheduler
 from hipengine.kvcache import FixedPagedKVPolicy
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
@@ -38,6 +39,8 @@ class HiddenRun:
     seed_tokens: list[int]
     generated_tokens: list[list[int]]
     hidden_bits_by_step: list[np.ndarray]
+    prefill_hidden_bits: np.ndarray | None = None
+    prefill_execution: dict[str, Any] | None = None
     decode_execution_by_step: list[dict[str, Any] | None] = field(default_factory=list)
 
 
@@ -477,6 +480,10 @@ def _prefill_batch(
     return seed_tokens
 
 
+def _batch_prefill_hidden_tensor(session: Qwen35ParoResidentSession, *, rows: int) -> Tensor:
+    return Tensor.from_handle(session.batch_hidden.ptr, (rows, session.config.hidden_size), DType.FP16, session.device)
+
+
 def _run_batch_hidden(
     runner: Qwen35ParoNextTokenRunner,
     prompts: list[list[int]],
@@ -498,6 +505,10 @@ def _run_batch_hidden(
         kv_policy=FixedPagedKVPolicy(block_size=256, storage_dtype=DType.BF16),
     ) as session:
         seed_tokens = _prefill_batch(session, prompts, decode_tokens=decode_tokens)
+        session.runtime.device_synchronize()
+        prefill_hidden_bits = _copy_hidden_bits(session, _batch_prefill_hidden_tensor(session, rows=rows), rows=rows)
+        prefill_execution = getattr(session, "last_prefill_execution", None)
+        prefill_execution_copy = json.loads(json.dumps(prefill_execution)) if isinstance(prefill_execution, dict) else None
         next_tokens = list(seed_tokens)
         generated_tokens = [[] for _ in prompts]
         hidden_bits_by_step: list[np.ndarray] = []
@@ -528,6 +539,8 @@ def _run_batch_hidden(
             seed_tokens=seed_tokens,
             generated_tokens=generated_tokens,
             hidden_bits_by_step=hidden_bits_by_step,
+            prefill_hidden_bits=prefill_hidden_bits,
+            prefill_execution=prefill_execution_copy,
             decode_execution_by_step=decode_execution_by_step,
         )
 
@@ -545,6 +558,7 @@ def _run_c1_hidden(
     rows = len(prompts)
     seed_tokens: list[int] = []
     generated_tokens: list[list[int]] = []
+    prefill_hidden_bits = np.empty((rows, runner.config.hidden_size), dtype=np.uint16)
     hidden_by_step = [np.empty((rows, runner.config.hidden_size), dtype=np.uint16) for _ in range(decode_tokens)]
     with Qwen35ParoResidentSession(
         runner,
@@ -561,6 +575,8 @@ def _run_c1_hidden(
                 raise RuntimeError("c=1 prefill did not produce a seed token")
             next_token = int(result.token_id)
             seed_tokens.append(next_token)
+            session.runtime.device_synchronize()
+            prefill_hidden_bits[row : row + 1] = _copy_hidden_bits(session, session.hidden, rows=1)
             row_generated: list[int] = []
             for step in range(decode_tokens):
                 position = len(prompt) + step
@@ -574,7 +590,12 @@ def _run_c1_hidden(
                 row_generated.append(next_token)
             generated_tokens.append(row_generated)
             session.reset()
-    return HiddenRun(seed_tokens=seed_tokens, generated_tokens=generated_tokens, hidden_bits_by_step=hidden_by_step)
+    return HiddenRun(
+        seed_tokens=seed_tokens,
+        generated_tokens=generated_tokens,
+        hidden_bits_by_step=hidden_by_step,
+        prefill_hidden_bits=prefill_hidden_bits,
+    )
 
 
 def _token_mismatches(batch: HiddenRun, c1: HiddenRun) -> list[dict[str, Any]]:
@@ -605,6 +626,38 @@ def _layer_limit_metadata(layer_limit: int, layer_types: Sequence[str] | None) -
     return metadata
 
 
+def _prefill_summary(
+    batch: HiddenRun,
+    c1: HiddenRun,
+    *,
+    atol: float,
+    focus_hidden_flat_indices: Sequence[int] = (),
+) -> dict[str, Any] | None:
+    if batch.prefill_hidden_bits is None or c1.prefill_hidden_bits is None:
+        return None
+    rows: list[dict[str, Any]] = []
+    for row in range(batch.prefill_hidden_bits.shape[0]):
+        rows.append(
+            {
+                "row": row,
+                "hidden_comparison": hidden_comparison(
+                    batch.prefill_hidden_bits[row : row + 1],
+                    c1.prefill_hidden_bits[row : row + 1],
+                    atol=atol,
+                    selected_flat_indices=focus_hidden_flat_indices,
+                ),
+            }
+        )
+    summary: dict[str, Any] = {
+        "stage": "prefill_final_hidden",
+        "hidden_passed": all(row["hidden_comparison"]["passed"] for row in rows),
+        "rows": rows,
+    }
+    if batch.prefill_execution is not None:
+        summary["batch_prefill_execution"] = batch.prefill_execution
+    return summary
+
+
 def _summarize_layer_limit(
     batch: HiddenRun,
     c1: HiddenRun,
@@ -614,6 +667,7 @@ def _summarize_layer_limit(
     layer_types: Sequence[str] | None = None,
     focus_hidden_flat_indices: Sequence[int] = (),
 ) -> dict[str, Any]:
+    prefill = _prefill_summary(batch, c1, atol=atol, focus_hidden_flat_indices=focus_hidden_flat_indices)
     steps: list[dict[str, Any]] = []
     for step, (batch_bits, c1_bits) in enumerate(zip(batch.hidden_bits_by_step, c1.hidden_bits_by_step, strict=True)):
         rows: list[dict[str, Any]] = []
@@ -634,9 +688,10 @@ def _summarize_layer_limit(
             step_summary["batch_decode_execution"] = batch.decode_execution_by_step[step]
         steps.append(step_summary)
     token_mismatches = _token_mismatches(batch, c1)
-    return {
+    summary = {
         "layer_limit": int(layer_limit),
         **_layer_limit_metadata(layer_limit, layer_types),
+        "prefill_hidden_passed": True if prefill is None else bool(prefill["hidden_passed"]),
         "hidden_passed": all(row["hidden_comparison"]["passed"] for step in steps for row in step["rows"]),
         "token_passed": not token_mismatches,
         "seed_tokens": {"batch": batch.seed_tokens, "c1": c1.seed_tokens},
@@ -644,6 +699,9 @@ def _summarize_layer_limit(
         "token_mismatches": token_mismatches,
         "steps": steps,
     }
+    if prefill is not None:
+        summary["prefill"] = prefill
+    return summary
 
 
 def build_parser() -> argparse.ArgumentParser:

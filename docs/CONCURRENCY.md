@@ -729,9 +729,16 @@ roll-up/status view.
       combines selected-c1 MoE, per-row linear attention, and per-row
       full-attention fallbacks (`moe_grouped_compact_layers=0`,
       `moe_selected_c1_fallback_layers=8`); it still fails first at L8 on row 0
-      dim 1269 (`max_abs=0.002197265625`, no token mismatch). This keeps the
-      live fix target on row-0-specific slot state / scratch lifetime after
-      compact prefill, rather than any single native batch decode subpath.
+      dim 1269 (`max_abs=0.002197265625`, no token mismatch). The prefill-aware
+      refresh
+      `/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-all-per-row-prefill-focus1269.json`
+      adds final-prefill hidden comparisons for the same run; compact prefill
+      vs independent c=1 final hidden passes at every L5-L8 limit under
+      `hidden_atol=0.002` (L8 row-0 dim 1269 is only `0.0009765625`), while
+      the first decode step still reaches `0.002197265625`. This keeps the live
+      fix target on row-0-specific decode-time slot state/KV state selection or
+      scratch alias lifetime, not final prefill hidden or any single native
+      batch decode subpath.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

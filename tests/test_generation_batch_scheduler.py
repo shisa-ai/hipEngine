@@ -6472,14 +6472,25 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         seed_tokens=[10, 20],
         generated_tokens=[[11], [21]],
         hidden_bits_by_step=[hidden],
+        prefill_hidden_bits=hidden.copy(),
+        prefill_execution={"path": "native_prefill_compact_cN"},
         decode_execution_by_step=[decode_execution],
     )
-    c1 = HiddenRun(seed_tokens=[10, 20], generated_tokens=[[11], [21]], hidden_bits_by_step=[hidden.copy()])
+    c1 = HiddenRun(
+        seed_tokens=[10, 20],
+        generated_tokens=[[11], [21]],
+        hidden_bits_by_step=[hidden.copy()],
+        prefill_hidden_bits=hidden.copy(),
+    )
 
     summary = _summarize_layer_limit(batch, c1, layer_limit=1, atol=0.0, layer_types=("full_attention",))
 
     assert summary["hidden_passed"] is True
+    assert summary["prefill_hidden_passed"] is True
     assert summary["token_passed"] is True
+    assert summary["prefill"]["stage"] == "prefill_final_hidden"
+    assert summary["prefill"]["hidden_passed"] is True
+    assert summary["prefill"]["batch_prefill_execution"] == {"path": "native_prefill_compact_cN"}
     assert summary["steps"][0]["batch_decode_execution"] == decode_execution
 
 
