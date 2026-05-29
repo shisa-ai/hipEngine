@@ -4070,6 +4070,13 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_command_empty_inline_value["commands"][-1]["command"] = shlex.join(retained_argv)
     with pytest.raises(ValueError, match=r"commands\[\]\.argv flag values must be non-empty"):
         c_sweep.validate_sweep_summary(tampered_command_empty_inline_value)
+    tampered_primitive_empty_inline_value = json.loads(json.dumps(persisted))
+    primitive_argv = tampered_primitive_empty_inline_value["commands"][0]["argv"]
+    rows_index = primitive_argv.index("--rows")
+    primitive_argv[rows_index : rows_index + 2] = ["--rows="]
+    tampered_primitive_empty_inline_value["commands"][0]["command"] = shlex.join(primitive_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv flag values must be non-empty"):
+        c_sweep.validate_sweep_summary(tampered_primitive_empty_inline_value)
     tampered_blank_command_text = json.loads(json.dumps(persisted))
     tampered_blank_command_text["commands"][-1]["command"] = "   "
     with pytest.raises(ValueError, match=r"commands\[\]\.command must be a non-empty string"):
