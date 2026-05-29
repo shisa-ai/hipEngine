@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
-from typing import Sequence
+from typing import Callable, Sequence
 
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipRuntime, get_hip_runtime
@@ -3562,6 +3562,7 @@ class Qwen35ParoDecodeState:
         force_selected_c1_moe: bool = False,
         force_per_row_input_rmsnorm: bool = False,
         force_per_row_post_attention: bool = False,
+        post_input_rmsnorm_trace: Callable[[Qwen35ParoAttentionScratch], None] | None = None,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -3596,6 +3597,8 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
+        if post_input_rmsnorm_trace is not None:
+            post_input_rmsnorm_trace(attention_scratch)
         _query, _key, _value, gate = self.prepare_full_attention_qkv_fp16_decode_rows(
             attention_scratch,
             cos_table=cos_table,

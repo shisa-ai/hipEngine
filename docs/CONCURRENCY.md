@@ -1087,14 +1087,17 @@ roll-up/status view.
       remains hidden-only red: L8 still first fails final hidden at decode step 6
       / row 0 / dim 1269 (`max_abs=0.02734375`), and the post-layer `attn_input`
       trace still first fails at L8 decode step 0 / row 0 / dim 1269
-      (`max_abs=0.015625`). L4 final hidden/token remains green but the stage
-      rollup now reports trace-only `query`/`attn_context` drift, so the next
-      target is an immediate post-RMSNorm/pre-QKV trace or scratch-alias audit,
-      not treating the input RMSNorm kernel alone as fixed. The per-row
-      fallback's ≤0.004 FP16/state amplification is a diagnostic tolerance
-      question only; do not re-open full-attention context math, layer-4 state
-      mapping, native linear segment metadata, output trace/copy semantics, or
-      grouped MoE output yet.
+      (`max_abs=0.015625`). The new immediate `attn_input_pre_qkv` trace passes
+      at L4 and L8, so the input RMSNorm output itself is aligned; the drift
+      appears after pre-QKV scratch mutation/trace timing, with L8 `query` first
+      failing at step 0 / dim 2357 (`max_abs=0.005970478057861328`) and
+      `attn_context` still failing at dim 2812. Next target: audit
+      `prepare_full_attention_qkv_fp16_decode_rows` scratch aliasing and trace
+      whether `attn_input` is overwritten after rotate/project, not the input
+      RMSNorm kernel. The per-row fallback's ≤0.004 FP16/state amplification is
+      a diagnostic tolerance question only; do not re-open full-attention
+      context math, layer-4 state mapping, native linear segment metadata,
+      output trace/copy semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

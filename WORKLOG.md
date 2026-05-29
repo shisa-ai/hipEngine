@@ -46357,3 +46357,42 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (`264` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: C2.3 remains open, new fallback/artifact are diagnostic and non-retained, no queue item was marked complete, native c>N generated-token equality remains open, and no performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY pre-QKV full-attention input trace
+
+Added an immediate post-input-RMSNorm / pre-QKV trace stage for native full-attention decode:
+
+- `hipengine/runtime/qwen35_paro.py`: `run_full_attention_moe_decode_batch_layer_fp16()` accepts an optional `post_input_rmsnorm_trace` callback and invokes it immediately after input RMSNorm.
+- `hipengine/runtime/qwen35_paro_runner.py`: hidden-bisect/full-attention traces now include `attn_input_pre_qkv` before `prepare_full_attention_qkv_fp16_decode_rows()` mutates scratch.
+- `scripts/qwen35_batch_hidden_bisect.py`: `DECODE_FULL_ATTENTION_TRACE_STAGES` includes `attn_input_pre_qkv`, so top-level and per-layer stage rollups can distinguish immediate RMSNorm output from post-layer scratch state.
+- Unit coverage: synthetic hidden-bisect full-attention summaries cover the new stage and its rollup pass behavior.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_summary_embeds_batch_decode_execution_trace -q
+```
+
+Result: PASS.
+
+Refreshed the per-row-attn-input C2.3 probe:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 4,8 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-moe-path selected_c1 --batch-decode-attn-input-path per_row --batch-decode-post-attn-path per_row --json /tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-native-full-core-perrow-attninput-linear-postattn-selected-c1-atol4e-3-focus1269.json
+```
+
+Result: still `status=mismatch_found`, `failure_modes=["hidden"]`, `token_passed=true`, `performance_claim=false`, `native_caware_decode=false`. First final-hidden mismatch remains L8 decode step 6 / row 0 / dim 1269 (`max_abs=0.02734375`). New `attn_input_pre_qkv` stage passes for L4 and L8 (`failed_rows=[]`), while post-layer `attn_input` still first fails at L8 decode step 0 / row 0 / dim 1269 (`max_abs=0.015625`). L8 `query` first fails at step 0 / dim 2357 (`max_abs=0.005970478057861328`) and `attn_context` at dim 2812 (`max_abs=0.008107900619506836`). Context oracle remains unchanged: only `batch_numpy_vs_c1_numpy` fails; `batch_context_vs_numpy` and `c1_context_vs_numpy` pass. Updated `docs/CONCURRENCY.md`: input RMSNorm output itself is aligned; next target is `prepare_full_attention_qkv_fp16_decode_rows` scratch aliasing / whether `attn_input` is overwritten after rotate/project.
+
+Full validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (`264` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: C2.3 remains open, the new trace and refreshed artifact are diagnostic/non-retained, no queue item was marked complete, native c>N generated-token equality remains open, and no performance/scaling claim was added.

@@ -6927,6 +6927,7 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     decode_full_attention = {
         0: {
             "input": hidden.copy(),
+            "attn_input_pre_qkv": hidden.copy(),
             "gate": hidden.copy(),
             "query": query.copy(),
             "attn_context": attn_context.copy(),
@@ -7062,6 +7063,7 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     assert summary["decode_linear_inputs"]["steps"][0]["layers"][0]["rows"][0]["hidden_comparison"]["max_abs"] == 0.0
     assert summary["decode_full_attention"]["stage"] == "decode_full_attention"
     assert summary["decode_full_attention"]["passed"] is True
+    assert summary["decode_full_attention"]["stage_passed"]["attn_input_pre_qkv"] is True
     assert summary["decode_full_attention"]["stage_passed"]["query"] is True
     assert summary["decode_full_attention"]["stage_passed"]["attn_context"] is True
     assert summary["decode_full_attention"]["stage_passed"]["gated_attn"] is True
@@ -7077,11 +7079,18 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         "failure_row_count": 0,
         "first_failure": None,
     }
+    assert stage_failures["stages"]["attn_input_pre_qkv"] == {
+        "passed": True,
+        "failure_rows": [],
+        "failure_row_count": 0,
+        "first_failure": None,
+    }
     assert "first_mismatch" not in summary["decode_full_attention"]
     assert summary["decode_full_attention"]["worst_diff"]["stage"] == "input"
     assert summary["decode_full_attention"]["worst_diff"]["max_abs"] == 0.0
     assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["query"]["rows"][0]["comparison_kind"] == "fp32"
     assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["attn_context"]["rows"][0]["comparison_kind"] == "fp32"
+    assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["attn_input_pre_qkv"]["passed"] is True
     assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["residual"]["passed"] is True
     assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["mlp_input"]["passed"] is True
     assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["output"]["passed"] is True
@@ -7236,6 +7245,13 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         "first_failure": expected_top_level_full_attention_failure,
     }
     assert top_level_full_attention_rollup["stages"]["attn_context"] == {
+        "passed": True,
+        "failure_rows": [],
+        "failure_row_count": 0,
+        "failure_comparison_kinds": [],
+        "first_failure": None,
+    }
+    assert top_level_full_attention_rollup["stages"]["attn_input_pre_qkv"] == {
         "passed": True,
         "failure_rows": [],
         "failure_row_count": 0,

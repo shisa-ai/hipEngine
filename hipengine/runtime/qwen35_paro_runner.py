@@ -2946,7 +2946,17 @@ class Qwen35ParoResidentSession:
         rows: int,
         stream: int = 0,
     ) -> None:
-        if stage not in {"input", "attn_input", "gate", "gated_attn", "o_proj", "residual", "mlp_input", "output"}:
+        if stage not in {
+            "input",
+            "attn_input_pre_qkv",
+            "attn_input",
+            "gate",
+            "gated_attn",
+            "o_proj",
+            "residual",
+            "mlp_input",
+            "output",
+        }:
             raise ValueError("decode full-attention trace stage is not recognized")
         self._trace_tensor_bits(
             trace_attr="_decode_full_attention_trace",
@@ -3826,6 +3836,23 @@ class Qwen35ParoResidentSession:
                             moe_scratch = self._ensure_moe_decode_batch_scratch(layer_id, rows, force_selected_c1_moe=True)
                         else:
                             moe_scratch = self._ensure_moe_decode_batch_scratch(layer_id, rows)
+                        post_input_rmsnorm_trace = None
+                        if isinstance(getattr(self, "_decode_full_attention_trace", None), list):
+                            def post_input_rmsnorm_trace(
+                                attention_scratch: Qwen35ParoAttentionScratch,
+                                *,
+                                _layer_id: int = layer_id,
+                                _rows: int = rows,
+                                _stream: int = stream,
+                            ) -> None:
+                                self._trace_decode_full_attention(
+                                    layer_id=_layer_id,
+                                    stage="attn_input_pre_qkv",
+                                    hidden=attention_scratch.attn_input,
+                                    rows=_rows,
+                                    stream=_stream,
+                                )
+
                         out = state.run_full_attention_moe_decode_batch_layer_fp16(
                             hidden,
                             key_cache=key_cache,
@@ -3842,6 +3869,7 @@ class Qwen35ParoResidentSession:
                             force_selected_c1_moe=force_selected_c1_moe,
                             force_per_row_input_rmsnorm=force_per_row_full_attention_input,
                             force_per_row_post_attention=force_per_row_post_attention,
+                            post_input_rmsnorm_trace=post_input_rmsnorm_trace,
                             library=self.libraries,
                             stream=stream,
                         )

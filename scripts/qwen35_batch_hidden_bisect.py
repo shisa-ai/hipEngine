@@ -36,6 +36,7 @@ from scripts.qwen35_batch_retained_bench import DEFAULT_FIXTURE, DEFAULT_MODEL, 
 
 DECODE_FULL_ATTENTION_TRACE_STAGES = (
     "input",
+    "attn_input_pre_qkv",
     "attn_input",
     "gate",
     "query",
