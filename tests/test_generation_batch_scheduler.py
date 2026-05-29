@@ -10605,6 +10605,27 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
         "execution.batch_execution.decode_execution.layer_executions[1].linear_attention_output_path must be native_batch or absent"
         in linear_output_blockers
     )
+    full_attention_boundary_diagnostic = json.loads(json.dumps(valid))
+    full_attention_boundary_diagnostic["decode_execution"]["layer_executions"][0][
+        "full_attention_input_decode_path"
+    ] = "per_row_rmsnorm_fallback"
+    full_attention_boundary_diagnostic["decode_execution"]["layer_executions"][0][
+        "post_attention_decode_path"
+    ] = "per_row_add_rmsnorm_fallback"
+    full_attention_boundary_blockers = retained_bench._batch_execution_blockers(
+        full_attention_boundary_diagnostic,
+        expected_max_layers=40,
+        expected_concurrency=2,
+        expected_prompt_length=512,
+    )
+    assert (
+        "execution.batch_execution.decode_execution.layer_executions[0].full_attention_input_decode_path must be absent for native retained decode"
+        in full_attention_boundary_blockers
+    )
+    assert (
+        "execution.batch_execution.decode_execution.layer_executions[0].post_attention_decode_path must be absent for native retained decode"
+        in full_attention_boundary_blockers
+    )
     long_context_blockers = retained_bench._batch_execution_blockers(long_context, expected_max_layers=40, expected_concurrency=2, expected_prompt_length=512)
     assert (
         "execution.batch_execution.decode_execution.max_full_attention_context must be < 1024 until row-aware split-K native decode lands"
@@ -12567,6 +12588,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     fallback_layer_execution["execution"]["batch_execution"]["decode_execution"]["layer_executions"][0]["moe_decode_path"] = "selected_c1_per_row_fallback"
     with pytest.raises(ValueError, match=r"layer_executions\[0\].moe_decode_path must be grouped_compact"):
         validate_cn_diagnostic_artifact_payload(fallback_layer_execution)
+
+    diagnostic_full_attention_boundary_layer = json.loads(json.dumps(accepted))
+    boundary_layer = diagnostic_full_attention_boundary_layer["execution"]["batch_execution"]["decode_execution"]["layer_executions"][0]
+    boundary_layer["full_attention_input_decode_path"] = "per_row_rmsnorm_fallback"
+    boundary_layer["post_attention_decode_path"] = "per_row_add_rmsnorm_fallback"
+    with pytest.raises(ValueError) as boundary_error:
+        validate_cn_diagnostic_artifact_payload(diagnostic_full_attention_boundary_layer)
+    boundary_error_message = str(boundary_error.value)
+    assert "layer_executions[0].full_attention_input_decode_path must be absent for native retained decode" in boundary_error_message
+    assert "layer_executions[0].post_attention_decode_path must be absent for native retained decode" in boundary_error_message
 
     diagnostic_linear_output_layer = json.loads(json.dumps(accepted))
     diagnostic_decode_execution = diagnostic_linear_output_layer["execution"]["batch_execution"]["decode_execution"]

@@ -1101,6 +1101,10 @@ def _decode_layer_execution_blockers(
                 blockers.append(f"{label}.max_context must cover workload.prompt_tokens_per_request")
             if "num_splits_per_row" in layer:
                 blockers.append(f"{label}.num_splits_per_row must be absent for native retained decode")
+            if "full_attention_input_decode_path" in layer:
+                blockers.append(f"{label}.full_attention_input_decode_path must be absent for native retained decode")
+            if "post_attention_decode_path" in layer:
+                blockers.append(f"{label}.post_attention_decode_path must be absent for native retained decode")
         elif layer_type == "linear_attention":
             if full_attention_path != "not_applicable":
                 blockers.append(f"{label}.full_attention_decode_path must be not_applicable")
