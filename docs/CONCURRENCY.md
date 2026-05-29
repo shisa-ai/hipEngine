@@ -1068,6 +1068,9 @@ roll-up/status view.
       full-attention decode post-attention add/RMSNorm boundary through token-1
       row kernels, labels the decode as a diagnostic fallback, and is covered by
       `test_qwen35_resident_run_layers_batch_decode_can_force_per_row_post_attention_probe`.
+      Combined input+post boundary diagnostic metadata is covered by
+      `test_qwen35_resident_run_layers_batch_decode_combined_full_attention_boundary_probes_are_non_native`,
+      which asserts both per-layer and top-level native-caware flags stay false.
       The first focused artifact,
       `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-perrow-postattn-atol4e-3-focus1269.json`,
       remains hidden-only red (`token_passed=true`, `failure_modes=["hidden"]`):
