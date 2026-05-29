@@ -307,9 +307,12 @@ decode is correct.
 - [x] Establish a llama.cpp oracle command for tokenization and short greedy
   next-token checks. If llama.cpp cannot run the full model on the same machine,
   use it for metadata/tokenizer/slice or a smaller exported fixture.
-- [ ] For any kernel port/tuning, read `docs/KERNELS.md` and run
+- [~] For any kernel port/tuning, read `docs/KERNELS.md` and run
   `python3 scripts/check_lineage.py --kind kernel --diff stat` before copying
-  code.
+  code. 2026-05-29: `docs/KERNELS.md` was read; lineage check is blocked
+  because `/home/lhl/amd-gpu-tuning/nano-vllm-amd` is absent on this machine.
+  Do not copy or port HIP kernels until the parent source path is restored or
+  `docs/source_lineage.json` is intentionally updated.
 
 **Acceptance:** WORKLOG preflight entry with hardware, memory, paths, and oracle
 plan; no runtime correctness or performance claim yet. 2026-05-29 preflight

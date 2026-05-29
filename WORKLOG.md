@@ -26916,3 +26916,19 @@ python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_
 ```
 
 Results: Step replay pytest passed (`3 passed`), guard passed (`53 passed` plus CPU fixture checks), and the StepFun punchlist metric dropped from 18 to 15. These are CPU-reference replay fixtures only; no performance claim is made.
+
+## 2026-05-29 — StepFun P0 kernel-lineage preflight blocked
+
+Before attempting any StepFun HIP Q3_K kernel port, re-read `docs/KERNELS.md` end-to-end for the current kernel catalog, port playbook, correctness gate, JIT cache/profiling workflow, and lineage-drift procedure. Attempted the required lineage check:
+
+```bash
+python3 scripts/check_lineage.py --kind kernel --diff stat
+```
+
+Result: blocked before any diff because the configured parent repo path is missing on this machine:
+
+```text
+RuntimeError: git -C /home/lhl/amd-gpu-tuning/nano-vllm-amd rev-parse --short HEAD failed: fatal: cannot change to '/home/lhl/amd-gpu-tuning/nano-vllm-amd': No such file or directory
+```
+
+No HIP kernel code was copied or ported. P6 must remain blocked until the parent source path is restored or `docs/source_lineage.json` is intentionally updated to the available source-of-truth path.
