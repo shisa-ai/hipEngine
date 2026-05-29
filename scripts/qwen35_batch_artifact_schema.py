@@ -150,6 +150,14 @@ DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_NAMES = (
     "decode_full_kv_current_source_failure_summary",
     "prefill_full_kv_prefix_failure_summary",
 )
+DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_FRAGMENTS = (
+    "hidden_mismatch",
+    "hidden_bit_drift",
+    "bit_drift_summary",
+    "kv_prefix_failure_summary",
+    "kv_current_source_failure_summary",
+    "context_oracle_failure_summary",
+)
 _REQUIRED_ACCEPTED_SCALING_BASELINES = (
     "c1_baseline",
     "serial_bridge_baseline",
@@ -276,6 +284,15 @@ DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS = (
 )
 
 
+def _disallowed_accepted_diagnostic_trace_field_reason(key_label: str) -> str | None:
+    if key_label in DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_NAMES:
+        return key_label
+    for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_FRAGMENTS:
+        if fragment in key_label:
+            return fragment
+    return None
+
+
 def _validate_no_disallowed_diagnostic_metadata(
     value: Any,
     *,
@@ -294,9 +311,9 @@ def _validate_no_disallowed_diagnostic_metadata(
             for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_EVIDENCE_FRAGMENTS:
                 if fragment in key_label:
                     errors.append(f"{child_path} must not include diagnostic evidence {fragment} for accepted artifacts")
-            for field_name in DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_NAMES:
-                if key_label == field_name:
-                    errors.append(f"{child_path} must not include diagnostic trace field {field_name} for accepted artifacts")
+            trace_field_reason = _disallowed_accepted_diagnostic_trace_field_reason(key_label)
+            if trace_field_reason is not None:
+                errors.append(f"{child_path} must not include diagnostic trace field {trace_field_reason} for accepted artifacts")
             _validate_no_disallowed_diagnostic_metadata(child, path=child_path, errors=errors)
     elif isinstance(value, list):
         for index, child in enumerate(value):
@@ -3235,6 +3252,7 @@ def main(argv: list[str] | None = None) -> int:
 __all__ = [
     "DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS",
     "DISALLOWED_ACCEPTED_DIAGNOSTIC_EVIDENCE_FRAGMENTS",
+    "DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_FRAGMENTS",
     "DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_NAMES",
     "main",
     "validate_cn_diagnostic_artifact_payload",

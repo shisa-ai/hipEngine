@@ -55,6 +55,7 @@ from scripts.qwen35_batch_artifact_schema import (
     DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS,
     DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS,
     DISALLOWED_ACCEPTED_DIAGNOSTIC_EVIDENCE_FRAGMENTS,
+    DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_FRAGMENTS,
     DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_NAMES,
     _load_benchmark_results_json_artifact,
     _summary_json_path_is_in_current_results,
@@ -13485,6 +13486,19 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     diagnostic_trace_metadata_error_message = str(diagnostic_trace_metadata_error.value)
     for trace_field in DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_NAMES:
         assert f"correctness.{trace_field} must not include diagnostic trace field {trace_field}" in diagnostic_trace_metadata_error_message
+
+    future_diagnostic_trace_metadata = json.loads(json.dumps(accepted))
+    future_diagnostic_trace_metadata["correctness"].update(
+        {f"future_{fragment}_rollup": {"diagnostic": True} for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_FRAGMENTS}
+    )
+    with pytest.raises(ValueError) as future_diagnostic_trace_metadata_error:
+        validate_cn_diagnostic_artifact_payload(future_diagnostic_trace_metadata)
+    future_diagnostic_trace_metadata_error_message = str(future_diagnostic_trace_metadata_error.value)
+    for trace_fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_FRAGMENTS:
+        assert (
+            f"correctness.future_{trace_fragment}_rollup must not include diagnostic trace field {trace_fragment}"
+            in future_diagnostic_trace_metadata_error_message
+        )
 
     wrong_benchmark_command = json.loads(json.dumps(accepted))
     wrong_benchmark_command["commands"]["benchmark"] = "python3 scripts/qwen35_batch_serial_bench.py --batch-size 2"
