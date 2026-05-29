@@ -65,7 +65,19 @@ _PROFILER_TRACE_KERNEL_NAME_COLUMNS = ("Kernel_Name", "KernelName", "Name")
 _PROFILER_TRACE_START_COLUMNS = ("Start_Timestamp", "StartTimestamp", "StartNs", "Start")
 _PROFILER_TRACE_END_COLUMNS = ("End_Timestamp", "EndTimestamp", "EndNs", "End")
 _PROFILER_TRACE_DURATION_COLUMNS = ("DurationNs", "Duration_NS", "Duration_Ns", "Duration")
-_DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = ("serial", "fallback", "per_row", "per-row")
+_DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = (
+    "serial",
+    "fallback",
+    "per_row",
+    "per-row",
+    "selected_c1",
+    "selected-c1",
+    "batch_gemv",
+    "batch-gemv",
+    "splitk",
+    "split_k",
+    "split-k",
+)
 _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS = {
     "block_size": 256,
     "max_context_len": 4,

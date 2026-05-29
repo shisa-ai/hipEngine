@@ -31,7 +31,19 @@ DEFAULT_MODEL = (
 DEFAULT_FIXTURE = "fixtures/qwen35_paro/parent_512_32_seed1234.json"
 DEFAULT_BATCH_SIZES = (1, 2, 4, 8)
 _OUTPUT_TAIL_MAX_CHARS = 4000
-_DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = ("serial", "fallback", "per_row", "per-row")
+_DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = (
+    "serial",
+    "fallback",
+    "per_row",
+    "per-row",
+    "selected_c1",
+    "selected-c1",
+    "batch_gemv",
+    "batch-gemv",
+    "splitk",
+    "split_k",
+    "split-k",
+)
 _PROFILER_KERNEL_DURATION_CATEGORIES = (
     "attention",
     "moe",

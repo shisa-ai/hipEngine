@@ -1220,7 +1220,7 @@ def test_batch_c_sweep_profiler_precondition_rejects_wrong_workload_command(tmp_
     }
 
 
-def test_batch_c_sweep_profiler_precondition_rejects_serial_or_fallback_kernel_names(tmp_path: Path) -> None:
+def test_batch_c_sweep_profiler_precondition_rejects_diagnostic_kernel_names(tmp_path: Path) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
     _write_c_sweep_profiler_summary(output_dir, rows=2)
@@ -1242,12 +1242,12 @@ def test_batch_c_sweep_profiler_precondition_rejects_serial_or_fallback_kernel_n
     )
     profiler_path = output_dir / "profiler-c2.json"
     payload = json.loads(profiler_path.read_text())
-    payload["profiler"]["expected_kernel_names"].append("qwen35_per_row_fallback_decode")
-    payload["profiler"]["kernel_durations_ns"]["qwen35_per_row_fallback_decode"] = 12345.0
+    payload["profiler"]["expected_kernel_names"].append("qwen35_selected_c1_decode")
+    payload["profiler"]["kernel_durations_ns"]["qwen35_selected_c1_decode"] = 12345.0
     payload["profiler"]["total_kernel_duration_ns"] = 24690.0
     payload["profiler"]["kernel_duration_shares"] = {
         "qwen35_batch_decode": 0.5,
-        "qwen35_per_row_fallback_decode": 0.5,
+        "qwen35_selected_c1_decode": 0.5,
     }
     payload["profiler"]["kernel_duration_categories_ns"]["other"] = 24690.0
     profiler_path.write_text(json.dumps(payload))
@@ -10378,9 +10378,9 @@ def test_qwen35_retained_profiler_kernel_evidence_blockers_require_trace_duratio
     }
     disallowed_names = {
         **complete,
-        "trace_kernel_names": [*complete["trace_kernel_names"], "qwen35_serial_fallback_decode"],
-        "expected_kernel_names": [*complete["expected_kernel_names"], "qwen35_serial_fallback_decode"],
-        "kernel_durations_ns": {**complete["kernel_durations_ns"], "qwen35_serial_fallback_decode": 1.0},
+        "trace_kernel_names": [*complete["trace_kernel_names"], "qwen35_selected_c1_decode"],
+        "expected_kernel_names": [*complete["expected_kernel_names"], "qwen35_selected_c1_decode"],
+        "kernel_durations_ns": {**complete["kernel_durations_ns"], "qwen35_selected_c1_decode": 1.0},
     }
     generic_kernel_names = {
         **complete,
@@ -14162,13 +14162,18 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         validate_cn_diagnostic_artifact_payload(missing_sampler_duration)
 
     fallback_expected_kernel = json.loads(json.dumps(accepted))
-    fallback_expected_kernel["profiler"]["expected_kernel_names"] = ["qwen35_batch_decode", "qwen35_per_row_fallback_decode"]
+    fallback_expected_kernel["profiler"]["expected_kernel_names"] = ["qwen35_batch_decode", "qwen35_selected_c1_decode"]
     fallback_expected_kernel["profiler"]["kernel_durations_ns"] = {
         "qwen35_batch_decode": 12345.0,
-        "qwen35_per_row_fallback_decode": 12345.0,
+        "qwen35_selected_c1_decode": 12345.0,
     }
     with pytest.raises(ValueError, match="expected_kernel_names must not include serial/per-row/fallback"):
         validate_cn_diagnostic_artifact_payload(fallback_expected_kernel)
+
+    splitk_trace_kernel = json.loads(json.dumps(accepted))
+    splitk_trace_kernel["profiler"]["trace_kernel_names"].append("qwen35_splitk_decode")
+    with pytest.raises(ValueError, match="trace_kernel_names must not include serial/per-row/fallback"):
+        validate_cn_diagnostic_artifact_payload(splitk_trace_kernel)
 
     missing_kernel_durations = json.loads(json.dumps(accepted))
     missing_kernel_durations["profiler"].pop("kernel_durations_ns")
@@ -14236,7 +14241,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         validate_cn_diagnostic_artifact_payload(mismatched_cpu_bottleneck_share)
 
     fallback_kernel_duration = json.loads(json.dumps(accepted))
-    fallback_kernel_duration["profiler"]["kernel_durations_ns"]["qwen35_per_row_fallback_decode"] = 12345.0
+    fallback_kernel_duration["profiler"]["kernel_durations_ns"]["qwen35_batch_gemv_output"] = 12345.0
     with pytest.raises(ValueError, match="kernel_durations_ns must not include serial/per-row/fallback"):
         validate_cn_diagnostic_artifact_payload(fallback_kernel_duration)
 

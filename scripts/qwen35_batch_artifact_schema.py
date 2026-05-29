@@ -229,7 +229,19 @@ _CORRECTNESS_REFERENCE_UNIQUE_FLAGS = ("--rows", "--seed", "--json")
 _CORRECTNESS_SCRIPT_ALLOWED_FLAGS = ("--rows", "--seed", "--json")
 _FULL_COMMIT_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", re.IGNORECASE)
 _ACCEPTED_HARDWARE_ARCH_RE = re.compile(r"gfx[0-9a-f]+", re.IGNORECASE)
-_DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = ("serial", "fallback", "per_row", "per-row")
+_DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = (
+    "serial",
+    "fallback",
+    "per_row",
+    "per-row",
+    "selected_c1",
+    "selected-c1",
+    "batch_gemv",
+    "batch-gemv",
+    "splitk",
+    "split_k",
+    "split-k",
+)
 _REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES = (
     "attention",
     "moe",
