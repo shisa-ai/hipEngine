@@ -834,11 +834,19 @@ roll-up/status view.
       same `state_indices=[0]`. A grouped-MoE + native-linear c=2 probe at
       `/tmp/hipengine-hidden-bisect-L8-512-16-native-linear-grouped-decode-metadata-focus1269.json`
       records `state_indices=[0,1]` and fails later at the old row-0 idx-13
-      token boundary. The reduced prefill drift is fixed, all-per-row fallback,
-      grouped compact MoE, singleton row setup, and segment state-index mapping
-      are not the blocker at this shape; the next C2.3 target is the c>1 native
-      linear segment decode kernel path itself, followed by native
-      full-attention decode state/rounding accumulation.
+      token boundary. A post-singleton c=2 control refresh shows the correctness
+      bridge boundaries explicitly: c1-linear + per-row full attention at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-per-row-full-per-row-after-singleton-focus1269.json`
+      is green (`status=eq_ok`, all decode input/state/hidden/token gates true),
+      while c1-linear + native full attention at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-per-row-full-native-after-singleton-focus1269.json`
+      still fails at decode step 6 / generated index 7 (`row 0`, dim 1269,
+      `max_abs=0.027587890625`, tokens still green). The reduced prefill drift
+      is fixed, all-per-row fallback, grouped compact MoE, singleton row setup,
+      and segment state-index mapping are not the blocker at this shape; the
+      next C2.3 targets are c>1 native full-attention decode and c>1 native
+      linear segment decode, with the per-row linear/full fallbacks serving only
+      as non-retained correctness controls until native paths pass.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

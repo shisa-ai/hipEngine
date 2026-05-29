@@ -44894,3 +44894,21 @@ python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/
 ```
 
 Result: `/tmp/hipengine-hidden-bisect-L8-512-16-c1-single-row-c1-linear-focus1269.json` is `status=eq_ok`, with `decode_linear_input_passed=true`, `decode_linear_state_passed=true`, `hidden_passed=true`, and `token_passed=true`. Step-0 metadata records `linear_attention_segment_metadata={"cu_seqlens":[0,1],"state_indices":[0]}`, layer path `single_row_c1`, and no linear fallback blocker. This closes the reduced rows=1 native-segment mismatch by avoiding the segment-length-1 kernel; C2.3 remains open for c>1 native linear segments and native full-attention decode.
+
+## 2026-05-29 — CONCURRENCY post-singleton c2 decode controls
+
+Advanced C2.3 by refreshing the c=2/L8/16 decode matrix after the singleton c1-linear bridge. Shape: Qwen3.5 PARO BF16, c=2, prompt 512, decode 16, L8, `hidden_atol=0.002`, `state_atol=1e-6`, fixture `/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json`, no performance claim.
+
+Commands/artifacts:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-per-row-full-per-row-after-singleton-focus1269.json >/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-per-row-full-per-row-after-singleton-focus1269.stdout
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-full-attn-path native_batch --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-per-row-full-native-after-singleton-focus1269.json >/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-per-row-full-native-after-singleton-focus1269.stdout
+```
+
+Results:
+
+- `/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-per-row-full-per-row-after-singleton-focus1269.json`: `status=eq_ok`, `decode_linear_input_passed=true`, `decode_linear_state_passed=true`, `hidden_passed=true`, `token_passed=true`; metadata labels both linear and full-attention fallbacks, so this is a non-retained correctness control only.
+- `/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-per-row-full-native-after-singleton-focus1269.json`: `status=mismatch_found`, `token_passed=true`, `hidden_passed=false`, first hidden mismatch at decode step 6 / generated index 7 on row 0 dim 1269 (`max_abs=0.027587890625`). Linear-input mismatches begin at that same step downstream of native full attention (layer 4 row 0 dim 1504 `max_abs=0.008148193359375`; layer 5/6 row 0 dim 1269 grows to `0.0224609375`/`0.03076171875`).
+
+Interpretation: after avoiding rows=1 segment-length-1 linear kernels, the c=2 all-fallback control remains green and native full attention remains a standalone decode blocker. C2.3 still needs native c>1 full-attention decode and native c>1 linear segment decode to pass; per-row controls are useful correctness oracles but not retained c>N evidence.
