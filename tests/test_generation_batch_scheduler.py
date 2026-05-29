@@ -95,6 +95,7 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES,
     RETAINED_ARTIFACT_REQUIRED_SCALING_BASELINES,
     RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS,
+    RETAINED_ARTIFACT_RETAINED_PRECONDITION_KINDS,
     RETAINED_ARTIFACT_REQUIRED_SCALING_RATIOS,
     RETAINED_ARTIFACT_UNUSABLE_SCALING_BASELINE_STATUSES,
 )
@@ -989,6 +990,8 @@ def test_batch_c_sweep_profiler_precondition_synthesizes_trace_fields_from_csv(t
     assert c_sweep._PROFILER_SYNTHESIZED_FIELDS is RETAINED_ARTIFACT_PROFILER_TRACE_SYNTHESIZED_FIELDS
     assert c_sweep._RETAINED_BENCH_UNIQUE_FLAGS is RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS
     assert c_sweep._PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS is RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS
+    assert c_sweep._RETAINED_PRECONDITION_KINDS is RETAINED_ARTIFACT_RETAINED_PRECONDITION_KINDS
+    assert precondition["kind"] == RETAINED_ARTIFACT_RETAINED_PRECONDITION_KINDS[-1]
     assert precondition["passed"] is True
     assert precondition["profiler_source_artifact_path"] == str(profiler_path)
     assert precondition["profiler_trace_kernel_names"] == ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"]

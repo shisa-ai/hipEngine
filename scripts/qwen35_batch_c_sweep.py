@@ -38,6 +38,7 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_REQUIRED_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES,
     RETAINED_ARTIFACT_REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES,
     RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS,
+    RETAINED_ARTIFACT_RETAINED_PRECONDITION_KINDS,
     RETAINED_ARTIFACT_UNUSABLE_SCALING_BASELINE_STATUSES,
 )
 
@@ -90,6 +91,7 @@ def _primitive_context_lens_matches(value: Any, rows: int) -> bool:
 _PROFILER_SYNTHESIZED_FIELDS = RETAINED_ARTIFACT_PROFILER_TRACE_SYNTHESIZED_FIELDS
 _RETAINED_BENCH_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS
 _PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS = RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS
+_RETAINED_PRECONDITION_KINDS = RETAINED_ARTIFACT_RETAINED_PRECONDITION_KINDS
 _SWEEP_COMMAND_KNOWN_FLAGS = tuple(dict.fromkeys(_RETAINED_BENCH_UNIQUE_FLAGS + _PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS))
 
 
@@ -339,14 +341,14 @@ def _primitive_correctness_precondition(command: SweepCommand) -> dict[str, Any]
     primitive_path, error = _command_arg_path(
         command,
         "--primitive-correctness-json",
-        kind="primitive_correctness",
+        kind=_RETAINED_PRECONDITION_KINDS[0],
     )
     if error is not None:
         return error
     assert primitive_path is not None
     if not primitive_path.exists():
         return {
-            "kind": "primitive_correctness",
+            "kind": _RETAINED_PRECONDITION_KINDS[0],
             "artifact_path": str(primitive_path),
             "passed": False,
             "reason": "primitive correctness artifact does not exist",
@@ -355,7 +357,7 @@ def _primitive_correctness_precondition(command: SweepCommand) -> dict[str, Any]
         payload = json.loads(primitive_path.read_text())
     except Exception as exc:
         return {
-            "kind": "primitive_correctness",
+            "kind": _RETAINED_PRECONDITION_KINDS[0],
             "artifact_path": str(primitive_path),
             "passed": False,
             "reason": f"primitive correctness artifact is invalid JSON: {type(exc).__name__}: {exc}",
@@ -405,7 +407,7 @@ def _primitive_correctness_precondition(command: SweepCommand) -> dict[str, Any]
         if not _is_bounded_primitive_numpy_oracle(attn_vs_numpy):
             reasons.append("attn_batch_vs_numpy_max_abs is missing, non-finite, negative, or above 2e-5")
     result: dict[str, Any] = {
-        "kind": "primitive_correctness",
+        "kind": _RETAINED_PRECONDITION_KINDS[0],
         "artifact_path": str(primitive_path),
         "passed": not reasons,
         "reason": None if not reasons else "; ".join(reasons),
@@ -988,7 +990,7 @@ def _scaling_reference_precondition(
         raw_concurrency = workload.get("concurrency") if isinstance(workload, dict) else None
         if isinstance(raw_concurrency, int) and not isinstance(raw_concurrency, bool):
             concurrency = raw_concurrency
-        if kind == "c1_baseline" and concurrency is None:
+        if kind == _RETAINED_PRECONDITION_KINDS[1] and concurrency is None:
             concurrency = 1
         if expected_concurrency is not None and concurrency != expected_concurrency:
             reasons.append(f"workload.concurrency={concurrency!r} does not match batch_size={expected_concurrency}")
@@ -1038,14 +1040,14 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
     profiler_path, error = _command_arg_path(
         command,
         "--profiler-json",
-        kind="profiler_summary",
+        kind=_RETAINED_PRECONDITION_KINDS[3],
     )
     if error is not None:
         return error
     assert profiler_path is not None
     if not profiler_path.exists():
         return {
-            "kind": "profiler_summary",
+            "kind": _RETAINED_PRECONDITION_KINDS[3],
             "artifact_path": str(profiler_path),
             "passed": False,
             "reason": "profiler summary artifact does not exist",
@@ -1054,7 +1056,7 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
         payload = json.loads(profiler_path.read_text())
     except Exception as exc:
         return {
-            "kind": "profiler_summary",
+            "kind": _RETAINED_PRECONDITION_KINDS[3],
             "artifact_path": str(profiler_path),
             "passed": False,
             "reason": f"profiler summary artifact is invalid JSON: {type(exc).__name__}: {exc}",
@@ -1268,7 +1270,7 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
         _validate_profiler_kernel_duration_categories(profiler, reasons)
         _validate_profiler_cpu_side_bottlenecks(profiler, reasons)
     result: dict[str, Any] = {
-        "kind": "profiler_summary",
+        "kind": _RETAINED_PRECONDITION_KINDS[3],
         "artifact_path": str(profiler_path),
         "passed": not reasons,
         "reason": None if not reasons else "; ".join(reasons),
@@ -1340,13 +1342,13 @@ def _native_retained_preconditions(command: SweepCommand) -> tuple[dict[str, Any
         _scaling_reference_precondition(
             command,
             flag="--c1-baseline-json",
-            kind="c1_baseline",
+            kind=_RETAINED_PRECONDITION_KINDS[1],
             expected_concurrency=1,
         ),
         _scaling_reference_precondition(
             command,
             flag="--serial-bridge-json",
-            kind="serial_bridge",
+            kind=_RETAINED_PRECONDITION_KINDS[2],
             expected_concurrency=command.batch_size,
         ),
         _profiler_summary_precondition(command),
@@ -1366,7 +1368,7 @@ def _profiler_summary_precondition_record(preconditions: Sequence[dict[str, Any]
     if preconditions is None:
         return None
     for precondition in preconditions:
-        if precondition.get("kind") == "profiler_summary" and precondition.get("passed") is True:
+        if precondition.get("kind") == _RETAINED_PRECONDITION_KINDS[3] and precondition.get("passed") is True:
             return precondition
     return None
 
@@ -2287,7 +2289,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 break
             if entry.get("category") == "native_diagnostic" and entry.get("batch_size") != 1 and status != "planned":
                 preconditions = entry.get("preconditions")
-                expected_retained_kinds = ["primitive_correctness", "c1_baseline", "serial_bridge", "profiler_summary"]
+                expected_retained_kinds = list(_RETAINED_PRECONDITION_KINDS)
                 if not isinstance(preconditions, list) or [condition.get("kind") for condition in preconditions] != expected_retained_kinds:
                     errors.append("commands[].preconditions must include retained native gate kinds")
                     break
@@ -3135,7 +3137,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     if summary.get("status") != expected_status:
         errors.append("status must match commands")
     retained_precondition_counts = summary.get("retained_precondition_counts")
-    if not _count_top_labels_within(retained_precondition_counts, {"primitive_correctness", "c1_baseline", "serial_bridge", "profiler_summary"}):
+    if not _count_top_labels_within(retained_precondition_counts, set(_RETAINED_PRECONDITION_KINDS)):
         errors.append("retained_precondition_counts must contain only known retained precondition labels")
     if not _count_leaf_labels_within(retained_precondition_counts, {"passed", "failed"}):
         errors.append("retained_precondition_counts must contain only passed/failed status labels")
