@@ -3703,6 +3703,11 @@ class Qwen35ParoResidentSession:
                                 "linear_attention_decode_path": (
                                     "single_row_c1" if use_single_row_c1_linear else "selected_c1_per_row_fallback"
                                 ),
+                                "linear_attention_segment_metadata": linear_segment_metadata,
+                                "linear_attention_row_state_map": [
+                                    {"row": int(row), "slot": int(slot), "state_index": int(slot)}
+                                    for row, slot in enumerate(slots)
+                                ],
                                 "full_attention_decode_path": "not_applicable",
                                 "native_caware_decode": False,
                                 "moe_decode_path": row_moe_path,
@@ -3742,6 +3747,11 @@ class Qwen35ParoResidentSession:
                                 "rows": int(rows),
                                 "slots": [int(slot) for slot in slots],
                                 "linear_attention_decode_path": "native_batch_segments",
+                                "linear_attention_segment_metadata": linear_segment_metadata,
+                                "linear_attention_row_state_map": [
+                                    {"row": int(row), "slot": int(slot), "state_index": int(slot)}
+                                    for row, slot in enumerate(slots)
+                                ],
                                 "full_attention_decode_path": "not_applicable",
                                 "native_caware_decode": True,
                                 "moe_decode_path": layer_moe_path,

@@ -985,8 +985,12 @@ roll-up/status view.
       lifts the focused step/layer execution into the history: step 6 is layer 4
       `linear_attention` over rows `[0,1]` / slots `[0,1]` with
       `linear_attention_decode_path=selected_c1_per_row_fallback` and
-      `native_caware_decode=false`. The next C2.3 work should isolate the layer-4
-      state update input at step 6, not re-open the already oracle-green reduced
+      `native_caware_decode=false`. The row-map refresh at
+      `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-state-focus-rowmap2e-3-focus1269.json`
+      records `linear_attention_row_state_map=[{row:0,slot:0,state_index:0},{row:1,slot:1,state_index:1}]`
+      and matching `state_indices=[0,1]`, so the step-6 drift is not a row/slot
+      metadata swap. The next C2.3 work should isolate the layer-4 state update
+      input values at step 6, not re-open the already oracle-green reduced
       full-attention context path or native linear segment metadata.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial

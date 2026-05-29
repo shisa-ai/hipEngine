@@ -2258,6 +2258,11 @@ def test_qwen35_resident_linear_batch_decode_can_force_per_row_probe(monkeypatch
                 "rows": 2,
                 "slots": [0, 2],
                 "linear_attention_decode_path": "selected_c1_per_row_fallback",
+                "linear_attention_segment_metadata": {"cu_seqlens": [0, 1, 2], "state_indices": [0, 2]},
+                "linear_attention_row_state_map": [
+                    {"row": 0, "slot": 0, "state_index": 0},
+                    {"row": 1, "slot": 2, "state_index": 2},
+                ],
                 "full_attention_decode_path": "not_applicable",
                 "native_caware_decode": False,
                 "moe_decode_path": "selected_c1_per_row_linear_fallback",
