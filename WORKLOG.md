@@ -44976,3 +44976,30 @@ Results:
 - `/tmp/hipengine-hidden-bisect-L8-512-16-c2-full-attn-substages-focus1269.json`: `status=mismatch_found`, `token_passed=true`, first final hidden mismatch remains decode step 6 / generated index 7 row 0 dim 1269 (`max_abs=0.027587890625`), while `decode_full_attention.first_mismatch` is earlier at decode step 0 / generated index 1, layer 7 `attn_input`, row 0 dim 1269 (`max_abs=0.015625`, 6 elements over atol).
 
 Interpretation: the first full-attention layer (layer 3) is green in isolation at L4 for this reduced c=2 shape, but a subthreshold drift propagates through the intervening per-row linear layers and is amplified by the layer-7 full-attention input RMSNorm. The next native-full investigation should compare layer-7 inputs/normalization and the accumulated layer-3→7 path, not only the layer-3 attention context kernel.
+
+## 2026-05-29 — CONCURRENCY compact linear first-mismatch summaries
+
+Advanced C2.3 by adding compact `first_mismatch` records to the decode linear-input and linear-state hidden-bisect summaries. This avoids manual scans of the large per-step payload when comparing the layer-3→7 path after the full-attention substage trace.
+
+Code/test changes:
+
+- `scripts/qwen35_batch_hidden_bisect.py` now emits `decode_linear_inputs.first_mismatch` with decode step, generated index, layer, row, max diff, flat index, and elements-over-atol.
+- The same script emits `decode_linear_states.first_mismatch` with decode step, generated index, layer, state name, row, max diff, index, and elements-over-atol.
+- `test_hidden_bisect_summary_embeds_batch_decode_execution_trace` covers both green omission and synthetic mismatch payloads for the new fields.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py
+python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_summary_embeds_batch_decode_execution_trace -q
+```
+
+Diagnostic:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-full-attn-path native_batch --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-first-mismatch-focus1269.json >/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-first-mismatch-focus1269.stdout
+```
+
+Result: `/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-first-mismatch-focus1269.json` is `status=mismatch_found`, `token_passed=true`. Its compact summaries report `decode_linear_states.first_mismatch={decode_step:0, generated_index:1, layer_index:4, state:"conv", row:0, max_abs:0.0078125, max_abs_index:[64,3], elements_over_atol:5264}` and `decode_linear_inputs.first_mismatch={decode_step:6, generated_index:7, layer_index:4, row:0, max_abs:0.008148193359375, max_abs_flat_index:1504, elements_over_atol:770}`. The full-attention substage first mismatch remains layer 7 `attn_input` at decode step 0 / row 0 dim 1269 (`max_abs=0.015625`), and final hidden mismatch remains decode step 6 / row 0 dim 1269 (`max_abs=0.027587890625`).
+
+Interpretation: strict linear state drift is visible immediately after the first post-layer-3 per-row linear layer, while linear input and final hidden drift cross the 0.002 hidden tolerance later. The next fix should audit why layer-4 per-row fallback updates/copies conv state differently from independent c=1 after a native-full layer-3 control that is green at L4.

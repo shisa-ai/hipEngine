@@ -6577,6 +6577,7 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     ]
     assert summary["decode_linear_inputs"]["stage"] == "decode_linear_inputs"
     assert summary["decode_linear_inputs"]["passed"] is True
+    assert "first_mismatch" not in summary["decode_linear_inputs"]
     assert summary["decode_linear_inputs"]["steps"][0]["layers"][0]["rows"][0]["hidden_comparison"]["max_abs"] == 0.0
     assert summary["decode_full_attention"]["stage"] == "decode_full_attention"
     assert summary["decode_full_attention"]["passed"] is True
@@ -6585,8 +6586,57 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["output"]["passed"] is True
     assert summary["decode_linear_states"]["stage"] == "decode_linear_states"
     assert summary["decode_linear_states"]["passed"] is True
+    assert "first_mismatch" not in summary["decode_linear_states"]
     assert summary["decode_linear_states"]["steps"][0]["layers"][0]["states"]["recurrent"]["max_abs"] == 0.0
     assert summary["steps"][0]["batch_decode_execution"] == decode_execution
+
+    bad_decode_inputs = {0: hidden.copy()}
+    bad_decode_inputs[0][0, 1] = 0x4200
+    bad_linear_state = {
+        0: {
+            "conv": linear_state[0]["conv"].copy(),
+            "recurrent": linear_state[0]["recurrent"].copy(),
+        }
+    }
+    bad_linear_state[0]["conv"][1, 0, 0] = 7.0
+    bad_batch = HiddenRun(
+        seed_tokens=[10, 20],
+        generated_tokens=[[11], [21]],
+        hidden_bits_by_step=[hidden.copy()],
+        prefill_hidden_bits=hidden.copy(),
+        prefill_linear_states=linear_state,
+        prefill_linear_inputs=linear_inputs,
+        decode_linear_inputs_by_step=[bad_decode_inputs],
+        decode_full_attention_by_step=[decode_full_attention],
+        decode_linear_states_by_step=[bad_linear_state],
+    )
+    bad_summary = _summarize_layer_limit(
+        bad_batch,
+        c1,
+        layer_limit=1,
+        atol=0.0,
+        layer_types=("full_attention",),
+    )
+    assert bad_summary["decode_linear_inputs"]["first_mismatch"] == {
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 0,
+        "row": 0,
+        "max_abs": 1.0,
+        "max_abs_flat_index": 1,
+        "max_abs_index": [0, 1],
+        "elements_over_atol": 1,
+    }
+    assert bad_summary["decode_linear_states"]["first_mismatch"] == {
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 0,
+        "state": "conv",
+        "row": 1,
+        "max_abs": 4.0,
+        "max_abs_index": [0, 0],
+        "elements_over_atol": 1,
+    }
 
 
 def test_gguf_cN_diagnostic_template_records_blocked_c2_command(tmp_path: Path) -> None:

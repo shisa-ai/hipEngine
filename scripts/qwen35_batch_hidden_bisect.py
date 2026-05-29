@@ -1077,12 +1077,37 @@ def _decode_linear_input_summary(
                 "layers": layers,
             }
         )
-    return {
+    first_mismatch: dict[str, Any] | None = None
+    for step_summary in steps:
+        for layer in step_summary["layers"]:
+            for row in layer["rows"]:
+                if row["passed"]:
+                    continue
+                comparison = row["hidden_comparison"]
+                first_mismatch = {
+                    "decode_step": int(step_summary["decode_step"]),
+                    "generated_index": int(step_summary["generated_index"]),
+                    "layer_index": int(layer["layer_index"]),
+                    "row": int(row["row"]),
+                    "max_abs": float(comparison["max_abs"]),
+                    "max_abs_flat_index": int(comparison["max_abs_flat_index"]),
+                    "max_abs_index": comparison["max_abs_index"],
+                    "elements_over_atol": int(comparison["elements_over_atol"]),
+                }
+                break
+            if first_mismatch is not None:
+                break
+        if first_mismatch is not None:
+            break
+    result = {
         "stage": "decode_linear_inputs",
         "hidden_atol": float(atol),
         "passed": all(step["passed"] for step in steps),
         "steps": steps,
     }
+    if first_mismatch is not None:
+        result["first_mismatch"] = first_mismatch
+    return result
 
 
 def _decode_full_attention_summary(
@@ -1223,12 +1248,42 @@ def _decode_linear_state_summary(
                 "layers": layers,
             }
         )
-    return {
+    first_mismatch: dict[str, Any] | None = None
+    for step_summary in steps:
+        for layer in step_summary["layers"]:
+            for state_name in ("conv", "recurrent"):
+                state_summary = layer["states"].get(state_name)
+                if state_summary is None:
+                    continue
+                for row in state_summary.get("row_summaries", []):
+                    if row["passed"]:
+                        continue
+                    first_mismatch = {
+                        "decode_step": int(step_summary["decode_step"]),
+                        "generated_index": int(step_summary["generated_index"]),
+                        "layer_index": int(layer["layer_index"]),
+                        "state": state_name,
+                        "row": int(row["row"]),
+                        "max_abs": float(row["max_abs"]),
+                        "max_abs_index": row["max_abs_index"],
+                        "elements_over_atol": int(row["elements_over_atol"]),
+                    }
+                    break
+                if first_mismatch is not None:
+                    break
+            if first_mismatch is not None:
+                break
+        if first_mismatch is not None:
+            break
+    result = {
         "stage": "decode_linear_states",
         "state_atol": float(atol),
         "passed": all(step["passed"] for step in steps),
         "steps": steps,
     }
+    if first_mismatch is not None:
+        result["first_mismatch"] = first_mismatch
+    return result
 
 
 def _prefill_linear_input_summary(

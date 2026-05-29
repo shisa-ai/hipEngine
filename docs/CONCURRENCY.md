@@ -866,10 +866,18 @@ roll-up/status view.
       (`row 0`, dim 1269, `max_abs=0.015625`). The matching layer-3-only
       control at
       `/tmp/hipengine-hidden-bisect-L4-512-16-c2-full-attn-substages-focus1269.json`
-      is green across all full-attention substages, so the next native-full
-      investigation should compare the second full-attention layer after the
-      intervening per-row linear layers, not only the first layer-3 attention
-      kernel in isolation.
+      is green across all full-attention substages. The compact linear-first
+      refresh at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-first-mismatch-focus1269.json`
+      adds `decode_linear_inputs.first_mismatch` and
+      `decode_linear_states.first_mismatch`; it shows the strict state trace
+      first diverges earlier at decode step 0, layer 4 `conv` row 0
+      (`max_abs=0.0078125`), while visible linear input drift first appears at
+      decode step 6, layer 4 row 0 dim 1504 (`max_abs=0.008148193359375`). The
+      next native-full investigation should compare the second full-attention
+      layer after the intervening per-row linear layers and the accumulated
+      layer-4 state drift, not only the first layer-3 attention kernel in
+      isolation.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions
