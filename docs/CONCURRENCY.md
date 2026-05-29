@@ -923,13 +923,25 @@ roll-up/status view.
       `decode_full_kv_samples` still passes at zero tolerance (`bit_mismatch=0`,
       worst `max_abs=0.0`) while `attn_context` still fails.
       The query refresh at
-      `/tmp/hipengine-hidden-bisect-L4-512-16-c2-query-focus1269.json` also shows
-      the FP32 `query` launch input is exact (`max_abs=0.0`) while
-      `attn_context` remains the first mismatching substage (`max_abs=2.1604321002960205`).
-      The next native-full investigation should compare wider retained K/V cache
-      contents or the context kernel launch path itself, while treating sampled
-      K/V tail, query, live-count/block metadata, dense-vs-paged c1 context math,
-      and standalone batch append/context primitives as model-shape green.
+      `/tmp/hipengine-hidden-bisect-L4-512-16-c2-query-focus1269.json` also showed
+      the FP32 `query` launch input was exact (`max_abs=0.0`) while
+      `attn_context` remained the first mismatching substage (`max_abs=2.1604321002960205`).
+      The context-oracle refresh found the launch-path asymmetry: c1 slot spans
+      advertised `max_live_count=max_sequence_length=1024`, which routed the
+      513-token c1 reference through split-K while native c=2 used the live
+      513-token batch context path. `hipengine/runtime/qwen35_paro_runner.py`
+      now keeps host `position_arr`/`context_arr` current and `_slot_full_spans`
+      uses those live counts. Evidence:
+      `/tmp/hipengine-hidden-bisect-L4-512-1-c2-context-oracle-live-max-focus1269.json`
+      has exact input/query and NumPy-oracle-green context (`batch_context_vs_numpy`
+      `5.960464477539062e-07`, `c1_context_vs_numpy` `2.384185791015625e-06`,
+      `batch_numpy_vs_c1_numpy=0.0`), and
+      `/tmp/hipengine-hidden-bisect-L4-512-16-c2-context-oracle-live-max-atol1e-3-focus1269.json`
+      is `status=eq_ok` with `token_passed=true`, `hidden_passed=true`, and
+      `decode_full_context_oracle.passed=true`. L8 still remains open because
+      the later linear-attention state drift reaches layer 7 context (`batch_numpy_vs_c1_numpy`
+      `0.5023813247680664` at decode step 10 in
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-per-row-full-native-live-max-atol1e-3-focus1269.json`).
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

@@ -45353,3 +45353,41 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (`259` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with concrete multipoint KV diagnostic evidence, and no retained c>N performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY live full-attention span max + context oracle
+
+Advanced C2.3 by adding a NumPy BF16-KV context oracle to `scripts/qwen35_batch_hidden_bisect.py` and fixing the c1 full-attention span metadata that it exposed. The oracle copies each full-attention layer's live retained K/V prefix, recomputes context from the traced FP32 query, and reports `batch_context_vs_numpy`, `c1_context_vs_numpy`, and `batch_numpy_vs_c1_numpy` per row/layer/step.
+
+Root cause found: c1 `_slot_full_spans()` advertised `decode_spans.max_live_count=max_sequence_length` (1024 in the 512-token diagnostic), so `_requires_full_attention_split_decode()` routed the 513-token c1 reference through split-K while native c=2 used the live 513-token batch context path. `hipengine/runtime/qwen35_paro_runner.py` now keeps host `position_arr`/`context_arr` current in `_set_position`, `_set_slot_position`, and `_set_batch_positions`, and `_slot_full_spans()` derives `append/decode max_live_count` from those live host counts when available.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py tests/test_qwen35_resident_batch_layout.py
+pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_summary_embeds_batch_decode_execution_trace tests/test_generation_batch_scheduler.py::test_hidden_bisect_full_kv_sample_positions_cover_page_boundaries tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_slot_full_spans_use_live_counts_for_decode_threshold tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_slot_full_spans_follow_int8_policy_metadata -q
+```
+
+Diagnostics:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 1 --max-layers 4 --layer-limits 4 --max-sequence-length 1024 --hidden-atol 0 --state-atol 0 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-full-attn-path native_batch --json /tmp/hipengine-hidden-bisect-L4-512-1-c2-context-oracle-live-max-focus1269.json >/tmp/hipengine-hidden-bisect-L4-512-1-c2-context-oracle-live-max-focus1269.stdout
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 4 --layer-limits 4 --max-sequence-length 1024 --hidden-atol 0 --state-atol 0 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-full-attn-path native_batch --json /tmp/hipengine-hidden-bisect-L4-512-16-c2-context-oracle-live-max-focus1269.json >/tmp/hipengine-hidden-bisect-L4-512-16-c2-context-oracle-live-max-focus1269.stdout
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 4 --layer-limits 4 --max-sequence-length 1024 --hidden-atol 0.001 --state-atol 0 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-full-attn-path native_batch --json /tmp/hipengine-hidden-bisect-L4-512-16-c2-context-oracle-live-max-atol1e-3-focus1269.json >/tmp/hipengine-hidden-bisect-L4-512-16-c2-context-oracle-live-max-atol1e-3-focus1269.stdout
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.001 --state-atol 0 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-full-attn-path native_batch --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-per-row-full-native-live-max-atol1e-3-focus1269.json >/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-per-row-full-native-live-max-atol1e-3-focus1269.stdout
+```
+
+Results: the L4 one-step strict diagnostic keeps input/gate/query exact; `attn_context` now differs only at reduction noise (`max_abs=2.6226043701171875e-06`) and the oracle is green (`batch_context_vs_numpy=5.960464477539062e-07`, `c1_context_vs_numpy=2.384185791015625e-06`, `batch_numpy_vs_c1_numpy=0.0`). The L4 16-token strict diagnostic also has oracle PASS; worst oracle diff is `7.3909759521484375e-06`. With `hidden_atol=0.001`, the L4 512/16 native-full diagnostic is `status=eq_ok`, `token_passed=true`, `hidden_passed=true`. L8 remains open: `/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-per-row-full-native-live-max-atol1e-3-focus1269.json` still fails at decode step 6 / row 0 dim 1269 and the context oracle shows the later layer-7 drift is input/KV/query-derived (`batch_numpy_vs_c1_numpy=0.5023813247680664` at decode step 10), consistent with the existing layer-4 linear state drift.
+
+Loop validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (`260` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with concrete live-span/context-oracle evidence, and no retained c>N performance/scaling claim was added.

@@ -35,6 +35,7 @@ from scripts.qwen35_batch_retained_bench import DEFAULT_FIXTURE, DEFAULT_MODEL, 
 
 
 DECODE_FULL_ATTENTION_TRACE_STAGES = ("input", "attn_input", "gate", "query", "attn_context", "gated_attn", "o_proj", "output")
+DECODE_FULL_CONTEXT_ORACLE_ATOL = 3.0e-5
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,7 @@ class HiddenRun:
     prefill_linear_inputs: dict[int, list[np.ndarray]] = field(default_factory=dict)
     decode_linear_inputs_by_step: list[dict[int, np.ndarray]] = field(default_factory=list)
     decode_full_attention_by_step: list[dict[int, dict[str, np.ndarray]]] = field(default_factory=list)
+    decode_full_context_oracles_by_step: list[dict[int, dict[str, np.ndarray]]] = field(default_factory=list)
     decode_full_kv_samples_by_step: list[dict[int, dict[str, np.ndarray | tuple[str, ...]]]] = field(default_factory=list)
     decode_linear_states_by_step: list[dict[int, dict[str, np.ndarray]]] = field(default_factory=list)
     decode_execution_by_step: list[dict[str, Any] | None] = field(default_factory=list)
@@ -749,6 +751,149 @@ def _stack_decode_full_attention_rows(
     }
 
 
+def _numpy_full_attention_context_row(
+    query: np.ndarray,
+    key_bits: np.ndarray,
+    value_bits: np.ndarray,
+    *,
+    scale: float,
+) -> np.ndarray:
+    query_f32 = np.asarray(query, dtype=np.float32)
+    key = _bf16_bits_to_f32(key_bits)
+    value = _bf16_bits_to_f32(value_bits)
+    if query_f32.ndim != 2 or key.ndim != 3 or value.ndim != 3:
+        raise ValueError("full-attention context oracle expects query [heads,dim] and KV [tokens,kv_heads,dim]")
+    if key.shape != value.shape:
+        raise ValueError("full-attention context oracle key/value shapes must match")
+    num_q_heads, head_dim = (int(dim) for dim in query_f32.shape)
+    context_len, num_kv_heads, kv_head_dim = (int(dim) for dim in key.shape)
+    if context_len <= 0:
+        raise ValueError("full-attention context oracle requires at least one live token")
+    if kv_head_dim != head_dim or num_q_heads % num_kv_heads != 0:
+        raise ValueError("full-attention context oracle has incompatible query/KV shapes")
+    kv_group = num_q_heads // num_kv_heads
+    out = np.empty((num_q_heads, head_dim), dtype=np.float32)
+    for q_head in range(num_q_heads):
+        kv_head = q_head // kv_group
+        scores = np.empty((context_len,), dtype=np.float32)
+        for token in range(context_len):
+            scores[token] = float(np.sum(query_f32[q_head] * key[token, kv_head], dtype=np.float32) * scale)
+        probs = np.exp(scores - np.max(scores)).astype(np.float32)
+        probs /= np.sum(probs, dtype=np.float32)
+        out[q_head] = np.sum(probs[:, None] * value[:, kv_head, :], axis=0, dtype=np.float32)
+    return out
+
+
+def _copy_decode_full_kv_prefix_bits(
+    session: Qwen35ParoResidentSession,
+    *,
+    layer_id: int,
+    slot: int,
+    live_count: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    if live_count <= 0:
+        raise ValueError("live_count must be positive")
+    key_cache, value_cache = session._slot_full_cache(layer_id, int(slot))
+    if key_cache.dtype != DType.BF16 or value_cache.dtype != DType.BF16:
+        raise ValueError("full-attention context oracle currently expects BF16 retained KV")
+    if len(key_cache.shape) != 4 or len(value_cache.shape) != 4:
+        raise ValueError(f"full-attention KV cache for layer {layer_id} must be rank-4")
+    blocks, block_size, num_kv_heads, head_dim = (int(dim) for dim in key_cache.shape)
+    if int(live_count) > blocks * block_size:
+        raise ValueError("live_count exceeds retained KV cache capacity")
+    shape = (int(live_count), num_kv_heads, head_dim)
+    nbytes = int(np.prod(shape)) * DType.BF16.itemsize
+    key_bits = np.empty(shape, dtype=np.uint16)
+    value_bits = np.empty(shape, dtype=np.uint16)
+    copy_device_to_host(
+        host_array_ptr(key_bits),
+        DeviceBuffer(key_cache.ptr, nbytes),
+        runtime=session.runtime,
+    )
+    copy_device_to_host(
+        host_array_ptr(value_bits),
+        DeviceBuffer(value_cache.ptr, nbytes),
+        runtime=session.runtime,
+    )
+    return key_bits, value_bits
+
+
+def _decode_full_context_oracles_from_trace(
+    session: Qwen35ParoResidentSession,
+    traced_layers: dict[int, dict[str, np.ndarray]],
+    *,
+    rows: int,
+    positions: Sequence[int],
+    slots: Sequence[int],
+) -> dict[int, dict[str, np.ndarray]]:
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    if len(positions) != rows or len(slots) != rows:
+        raise ValueError("positions and slots must match rows")
+    if not traced_layers:
+        return {}
+    num_q_heads = int(session.config.num_attention_heads)
+    head_dim = int(session.config.head_dim)
+    scale = np.float32(head_dim ** -0.5)
+    context_lens = np.asarray([int(position) + 1 for position in positions], dtype=np.int64)
+    oracles: dict[int, dict[str, np.ndarray]] = {}
+    for layer_id, stages in traced_layers.items():
+        if "query" not in stages or "attn_context" not in stages:
+            continue
+        query_flat = np.asarray(stages["query"], dtype=np.float32)
+        expected_width = num_q_heads * head_dim
+        if query_flat.shape != (rows, expected_width):
+            raise ValueError(
+                f"decode full-attention query trace for layer {layer_id} has shape {query_flat.shape}, "
+                f"expected {(rows, expected_width)}"
+            )
+        query = query_flat.reshape(rows, num_q_heads, head_dim)
+        context = np.empty((rows, num_q_heads, head_dim), dtype=np.float32)
+        for row, (slot, live_count) in enumerate(zip(slots, context_lens, strict=True)):
+            key_bits, value_bits = _copy_decode_full_kv_prefix_bits(
+                session,
+                layer_id=int(layer_id),
+                slot=int(slot),
+                live_count=int(live_count),
+            )
+            context[row] = _numpy_full_attention_context_row(
+                query[row],
+                key_bits,
+                value_bits,
+                scale=float(scale),
+            )
+        oracles[int(layer_id)] = {
+            "context": context.reshape(rows, expected_width),
+            "context_lens": context_lens.copy(),
+        }
+    return oracles
+
+
+def _merge_decode_full_context_oracle_rows(
+    target: dict[int, dict[str, list[np.ndarray]]],
+    captured: dict[int, dict[str, np.ndarray]],
+) -> None:
+    for layer_id, payload in captured.items():
+        target_layer = target.setdefault(int(layer_id), {"context": [], "context_lens": []})
+        for key in ("context", "context_lens"):
+            array = np.asarray(payload[key])
+            if int(array.shape[0]) != 1:
+                raise ValueError("c=1 decode full-context oracle traces must contain exactly one row")
+            target_layer.setdefault(key, []).append(array.copy())
+
+
+def _stack_decode_full_context_oracle_rows(
+    rows_by_layer: dict[int, dict[str, list[np.ndarray]]]
+) -> dict[int, dict[str, np.ndarray]]:
+    return {
+        int(layer_id): {
+            "context": np.concatenate(payload.get("context", []), axis=0),
+            "context_lens": np.concatenate(payload.get("context_lens", []), axis=0),
+        }
+        for layer_id, payload in rows_by_layer.items()
+    }
+
+
 DECODE_FULL_KV_SAMPLE_LABELS = ("first", "page0_last", "page1_first", "previous", "current")
 
 
@@ -916,6 +1061,7 @@ def _run_batch_hidden(
         hidden_bits_by_step: list[np.ndarray] = []
         decode_linear_inputs_by_step: list[dict[int, np.ndarray]] = []
         decode_full_attention_by_step: list[dict[int, dict[str, np.ndarray]]] = []
+        decode_full_context_oracles_by_step: list[dict[int, dict[str, np.ndarray]]] = []
         decode_full_kv_samples_by_step: list[dict[int, dict[str, np.ndarray | tuple[str, ...]]]] = []
         decode_linear_states_by_step: list[dict[int, dict[str, np.ndarray]]] = []
         decode_execution_by_step: list[dict[str, Any] | None] = []
@@ -940,8 +1086,18 @@ def _run_batch_hidden(
             decode_linear_inputs_by_step.append(
                 _decode_linear_input_layers_from_trace(getattr(session, "_decode_linear_input_trace", None))
             )
-            decode_full_attention_by_step.append(
-                _decode_full_attention_layers_from_trace(getattr(session, "_decode_full_attention_trace", None))
+            decode_full_attention_layers = _decode_full_attention_layers_from_trace(
+                getattr(session, "_decode_full_attention_trace", None)
+            )
+            decode_full_attention_by_step.append(decode_full_attention_layers)
+            decode_full_context_oracles_by_step.append(
+                _decode_full_context_oracles_from_trace(
+                    session,
+                    decode_full_attention_layers,
+                    rows=rows,
+                    positions=positions,
+                    slots=tuple(range(rows)),
+                )
             )
             decode_full_kv_samples_by_step.append(
                 _copy_decode_full_kv_samples(
@@ -968,6 +1124,7 @@ def _run_batch_hidden(
             prefill_linear_inputs=prefill_linear_inputs,
             decode_linear_inputs_by_step=decode_linear_inputs_by_step,
             decode_full_attention_by_step=decode_full_attention_by_step,
+            decode_full_context_oracles_by_step=decode_full_context_oracles_by_step,
             decode_full_kv_samples_by_step=decode_full_kv_samples_by_step,
             decode_linear_states_by_step=decode_linear_states_by_step,
             decode_execution_by_step=decode_execution_by_step,
@@ -992,6 +1149,9 @@ def _run_c1_hidden(
     prefill_linear_input_rows: dict[int, list[np.ndarray]] = {}
     decode_linear_input_rows_by_step: list[dict[int, list[np.ndarray]]] = [{} for _ in range(decode_tokens)]
     decode_full_attention_rows_by_step: list[dict[int, dict[str, list[np.ndarray]]]] = [{} for _ in range(decode_tokens)]
+    decode_full_context_oracle_rows_by_step: list[dict[int, dict[str, list[np.ndarray]]]] = [
+        {} for _ in range(decode_tokens)
+    ]
     decode_full_kv_sample_rows_by_step: list[dict[int, dict[str, list[np.ndarray] | tuple[str, ...]]]] = [
         {} for _ in range(decode_tokens)
     ]
@@ -1040,9 +1200,22 @@ def _run_c1_hidden(
                     decode_linear_input_rows_by_step[step],
                     _decode_linear_input_layers_from_trace(getattr(session, "_decode_linear_input_trace", None)),
                 )
+                decode_full_attention_layers = _decode_full_attention_layers_from_trace(
+                    getattr(session, "_decode_full_attention_trace", None)
+                )
                 _merge_decode_full_attention_rows(
                     decode_full_attention_rows_by_step[step],
-                    _decode_full_attention_layers_from_trace(getattr(session, "_decode_full_attention_trace", None)),
+                    decode_full_attention_layers,
+                )
+                _merge_decode_full_context_oracle_rows(
+                    decode_full_context_oracle_rows_by_step[step],
+                    _decode_full_context_oracles_from_trace(
+                        session,
+                        decode_full_attention_layers,
+                        rows=1,
+                        positions=(position,),
+                        slots=(0,),
+                    ),
                 )
                 _merge_decode_full_kv_sample_rows(
                     decode_full_kv_sample_rows_by_step[step],
@@ -1069,6 +1242,10 @@ def _run_c1_hidden(
         ],
         decode_full_attention_by_step=[
             _stack_decode_full_attention_rows(rows_by_layer) for rows_by_layer in decode_full_attention_rows_by_step
+        ],
+        decode_full_context_oracles_by_step=[
+            _stack_decode_full_context_oracle_rows(rows_by_layer)
+            for rows_by_layer in decode_full_context_oracle_rows_by_step
         ],
         decode_full_kv_samples_by_step=[
             _stack_decode_full_kv_sample_rows(rows_by_layer) for rows_by_layer in decode_full_kv_sample_rows_by_step
@@ -1442,6 +1619,125 @@ def _decode_full_attention_summary(
     return result
 
 
+def _decode_full_context_oracle_summary(
+    batch: HiddenRun,
+    c1: HiddenRun,
+    *,
+    atol: float = DECODE_FULL_CONTEXT_ORACLE_ATOL,
+) -> dict[str, Any] | None:
+    if not batch.decode_full_context_oracles_by_step or not c1.decode_full_context_oracles_by_step:
+        return None
+    if not any(step_layers for step_layers in batch.decode_full_context_oracles_by_step) or not any(
+        step_layers for step_layers in c1.decode_full_context_oracles_by_step
+    ):
+        return None
+    oracle_atol = max(float(atol), float(DECODE_FULL_CONTEXT_ORACLE_ATOL))
+    steps: list[dict[str, Any]] = []
+    first_mismatch: dict[str, Any] | None = None
+    worst_diff: dict[str, Any] | None = None
+    for step, (batch_oracle_layers, c1_oracle_layers) in enumerate(
+        zip(batch.decode_full_context_oracles_by_step, c1.decode_full_context_oracles_by_step, strict=True)
+    ):
+        batch_trace_layers = batch.decode_full_attention_by_step[step] if step < len(batch.decode_full_attention_by_step) else {}
+        c1_trace_layers = c1.decode_full_attention_by_step[step] if step < len(c1.decode_full_attention_by_step) else {}
+        layers: list[dict[str, Any]] = []
+        for layer_id in sorted(set(batch_oracle_layers) & set(c1_oracle_layers)):
+            if layer_id not in batch_trace_layers or layer_id not in c1_trace_layers:
+                continue
+            if "attn_context" not in batch_trace_layers[layer_id] or "attn_context" not in c1_trace_layers[layer_id]:
+                continue
+            batch_payload = batch_oracle_layers[layer_id]
+            c1_payload = c1_oracle_layers[layer_id]
+            batch_context = np.asarray(batch_trace_layers[layer_id]["attn_context"], dtype=np.float32)
+            c1_context = np.asarray(c1_trace_layers[layer_id]["attn_context"], dtype=np.float32)
+            batch_oracle = np.asarray(batch_payload["context"], dtype=np.float32)
+            c1_oracle = np.asarray(c1_payload["context"], dtype=np.float32)
+            batch_lens = np.asarray(batch_payload["context_lens"], dtype=np.int64)
+            c1_lens = np.asarray(c1_payload["context_lens"], dtype=np.int64)
+            if batch_context.shape != batch_oracle.shape or c1_context.shape != c1_oracle.shape:
+                raise ValueError(
+                    f"decode full-context oracle shape differs for step {step}, layer {layer_id}: "
+                    f"batch_context={batch_context.shape} batch_oracle={batch_oracle.shape} "
+                    f"c1_context={c1_context.shape} c1_oracle={c1_oracle.shape}"
+                )
+            if batch_oracle.shape != c1_oracle.shape or batch_lens.shape != c1_lens.shape:
+                raise ValueError(
+                    f"decode full-context oracle c>N/c1 shape differs for step {step}, layer {layer_id}: "
+                    f"batch={batch_oracle.shape}/{batch_lens.shape} c1={c1_oracle.shape}/{c1_lens.shape}"
+                )
+            row_summaries: list[dict[str, Any]] = []
+            for row in range(int(batch_oracle.shape[0])):
+                comparisons = {
+                    "batch_context_vs_numpy": numeric_comparison(
+                        batch_context[row : row + 1],
+                        batch_oracle[row : row + 1],
+                        atol=oracle_atol,
+                    ),
+                    "c1_context_vs_numpy": numeric_comparison(
+                        c1_context[row : row + 1],
+                        c1_oracle[row : row + 1],
+                        atol=oracle_atol,
+                    ),
+                    "batch_numpy_vs_c1_numpy": numeric_comparison(
+                        batch_oracle[row : row + 1],
+                        c1_oracle[row : row + 1],
+                        atol=oracle_atol,
+                    ),
+                }
+                row_summary = {
+                    "row": int(row),
+                    "context_len": int(batch_lens[row]),
+                    "context_len_match": bool(batch_lens[row] == c1_lens[row]),
+                    "passed": bool(batch_lens[row] == c1_lens[row])
+                    and all(bool(comparison["passed"]) for comparison in comparisons.values()),
+                    **comparisons,
+                }
+                row_summaries.append(row_summary)
+                for comparison_name, comparison in comparisons.items():
+                    mismatch = {
+                        "decode_step": int(step),
+                        "generated_index": int(step + 1),
+                        "layer_index": int(layer_id),
+                        "row": int(row),
+                        "comparison": comparison_name,
+                        "max_abs": float(comparison["max_abs"]),
+                        "max_abs_flat_index": int(comparison["max_abs_flat_index"]),
+                        "max_abs_index": comparison["max_abs_index"],
+                        "elements_over_atol": int(comparison["elements_over_atol"]),
+                    }
+                    if first_mismatch is None and (not row_summary["context_len_match"] or not bool(comparison["passed"])):
+                        first_mismatch = mismatch
+                    if worst_diff is None or float(comparison["max_abs"]) > float(worst_diff["max_abs"]):
+                        worst_diff = {**mismatch, "passed": bool(comparison["passed"])}
+            layers.append(
+                {
+                    "layer_index": int(layer_id),
+                    "passed": all(row["passed"] for row in row_summaries),
+                    "rows": row_summaries,
+                }
+            )
+        steps.append(
+            {
+                "decode_step": int(step),
+                "generated_index": int(step + 1),
+                "passed": all(layer["passed"] for layer in layers),
+                "layers": layers,
+            }
+        )
+    result = {
+        "stage": "decode_full_context_oracle",
+        "oracle": "numpy_softmax_bf16_kv",
+        "oracle_atol": float(oracle_atol),
+        "passed": all(step_summary["passed"] for step_summary in steps),
+        "steps": steps,
+    }
+    if first_mismatch is not None:
+        result["first_mismatch"] = first_mismatch
+    if worst_diff is not None:
+        result["worst_diff"] = worst_diff
+    return result
+
+
 def _decode_full_kv_sample_summary(
     batch: HiddenRun,
     c1: HiddenRun,
@@ -1719,6 +2015,7 @@ def _summarize_layer_limit(
         atol=atol,
         focus_hidden_flat_indices=focus_hidden_flat_indices,
     )
+    decode_full_context_oracle = _decode_full_context_oracle_summary(batch, c1)
     decode_full_kv_samples = _decode_full_kv_sample_summary(batch, c1, atol=0.0)
     decode_linear_states = _decode_linear_state_summary(batch, c1, atol=state_atol)
     steps: list[dict[str, Any]] = []
@@ -1754,6 +2051,9 @@ def _summarize_layer_limit(
         "decode_full_attention_output_passed": (
             True if decode_full_attention is None else bool(decode_full_attention["output_passed"])
         ),
+        "decode_full_context_oracle_passed": (
+            True if decode_full_context_oracle is None else bool(decode_full_context_oracle["passed"])
+        ),
         "decode_full_kv_sample_passed": True if decode_full_kv_samples is None else bool(decode_full_kv_samples["passed"]),
         "decode_linear_state_passed": True if decode_linear_states is None else bool(decode_linear_states["passed"]),
         "hidden_passed": all(row["hidden_comparison"]["passed"] for step in steps for row in step["rows"]),
@@ -1773,6 +2073,8 @@ def _summarize_layer_limit(
         summary["decode_linear_inputs"] = decode_linear_inputs
     if decode_full_attention is not None:
         summary["decode_full_attention"] = decode_full_attention
+    if decode_full_context_oracle is not None:
+        summary["decode_full_context_oracle"] = decode_full_context_oracle
     if decode_full_kv_samples is not None:
         summary["decode_full_kv_samples"] = decode_full_kv_samples
     if decode_linear_states is not None:

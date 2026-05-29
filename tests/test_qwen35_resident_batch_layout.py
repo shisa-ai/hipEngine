@@ -337,6 +337,24 @@ def test_qwen35_resident_slot_full_spans_follow_int8_policy_metadata() -> None:
     assert append_spans.scale_metadata.k_scale.ptr == session.full_cache_scales[4][2].ptr + slot_scale_elems * DType.FP16.itemsize
 
 
+def test_qwen35_resident_slot_full_spans_use_live_counts_for_decode_threshold() -> None:
+    session, _captured = _resident_allocation_session()
+    session.max_sequence_length = 1024
+    session.block_table = _tensor(0x300000, (session.blocks,), DType.INT32)
+    session.position_buf = DeviceBuffer(0x310000, session.max_batch_size * DType.INT64.itemsize)
+    session.context_buf = DeviceBuffer(0x320000, session.max_batch_size * DType.INT64.itemsize)
+    session.position_arr = np.asarray([512, 7], dtype=np.int64)
+    session.context_arr = session.position_arr + np.int64(1)
+
+    _position, append_spans, decode_spans = session._slot_full_spans(0, 0)
+    _position1, append_spans1, decode_spans1 = session._slot_full_spans(0, 1)
+
+    assert append_spans.max_live_count == 512
+    assert decode_spans.max_live_count == 513
+    assert append_spans1.max_live_count == 7
+    assert decode_spans1.max_live_count == 8
+
+
 def test_qwen35_resident_native_prefill_layers_use_int8_retained_cache_and_bf16_oracle() -> None:
     device = Device("hip", 0)
     session, _captured = _resident_allocation_session(storage_dtype="int8_per_token_head")

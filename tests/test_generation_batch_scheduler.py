@@ -6530,6 +6530,12 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
             "output": hidden.copy(),
         }
     }
+    decode_full_context_oracle = {
+        0: {
+            "context": attn_context.copy(),
+            "context_lens": np.array([3, 3], dtype=np.int64),
+        }
+    }
     kv_bits = np.array([[[[0x3F80]], [[0x4000]], [[0x4040]]], [[[0x4080]], [[0x40A0]], [[0x40C0]]]], dtype=np.uint16)
     decode_full_kv_samples = {
         0: {
@@ -6549,6 +6555,7 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         prefill_linear_inputs=linear_inputs,
         decode_linear_inputs_by_step=[decode_linear_inputs],
         decode_full_attention_by_step=[decode_full_attention],
+        decode_full_context_oracles_by_step=[decode_full_context_oracle],
         decode_full_kv_samples_by_step=[decode_full_kv_samples],
         decode_linear_states_by_step=[linear_state],
         decode_execution_by_step=[decode_execution],
@@ -6562,6 +6569,7 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         prefill_linear_inputs=linear_inputs,
         decode_linear_inputs_by_step=[decode_linear_inputs],
         decode_full_attention_by_step=[decode_full_attention],
+        decode_full_context_oracles_by_step=[decode_full_context_oracle],
         decode_full_kv_samples_by_step=[decode_full_kv_samples],
         decode_linear_states_by_step=[linear_state],
     )
@@ -6647,6 +6655,11 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["query"]["rows"][0]["comparison_kind"] == "fp32"
     assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["attn_context"]["rows"][0]["comparison_kind"] == "fp32"
     assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["output"]["passed"] is True
+    assert summary["decode_full_context_oracle_passed"] is True
+    assert summary["decode_full_context_oracle"]["stage"] == "decode_full_context_oracle"
+    assert summary["decode_full_context_oracle"]["passed"] is True
+    assert summary["decode_full_context_oracle"]["steps"][0]["layers"][0]["rows"][0]["batch_context_vs_numpy"]["max_abs"] == 0.0
+    assert summary["decode_full_context_oracle"]["steps"][0]["layers"][0]["rows"][0]["batch_numpy_vs_c1_numpy"]["max_abs"] == 0.0
     assert summary["decode_full_kv_sample_passed"] is True
     assert summary["decode_full_kv_samples"]["stage"] == "decode_full_kv_samples"
     assert summary["decode_full_kv_samples"]["passed"] is True

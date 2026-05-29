@@ -2144,17 +2144,24 @@ class Qwen35ParoResidentSession:
         position_tensor = self._slot_scalar_tensor(self.position_buf, slot, DType.INT64)
         context_tensor = self._slot_scalar_tensor(self.context_buf, slot, DType.INT64)
         scale_metadata = self._slot_full_scale_metadata(layer_id, slot)
+        append_max_live_count = self.max_sequence_length - 1
+        decode_max_live_count = self.max_sequence_length
+        position_arr = getattr(self, "position_arr", None)
+        context_arr = getattr(self, "context_arr", None)
+        if position_arr is not None and context_arr is not None and int(slot) < len(position_arr):
+            append_max_live_count = max(0, int(position_arr[int(slot)]))
+            decode_max_live_count = max(1, int(context_arr[int(slot)]))
         append_spans = KVLiveSpans.paged_uniform(
             block_table=self.block_table,
             live_counts=position_tensor,
-            max_live_count=self.max_sequence_length - 1,
+            max_live_count=append_max_live_count,
             storage_dtype=self.kv_storage_dtype,
             scale_metadata=scale_metadata,
         )
         decode_spans = KVLiveSpans.paged_uniform(
             block_table=self.block_table,
             live_counts=context_tensor,
-            max_live_count=self.max_sequence_length,
+            max_live_count=decode_max_live_count,
             storage_dtype=self.kv_storage_dtype,
             scale_metadata=scale_metadata,
         )
@@ -4689,6 +4696,9 @@ class Qwen35ParoResidentSession:
         for position in pos:
             self._check_position(position)
         pos_arr = np.asarray(pos, dtype=np.int64)
+        if hasattr(self, "position_arr") and hasattr(self, "context_arr"):
+            self.position_arr[: len(pos)] = pos_arr
+            self.context_arr[: len(pos)] = pos_arr + np.int64(1)
         pos_buf = malloc(pos_arr.nbytes, runtime=self.runtime)
         mask_buf = None
         try:
@@ -4738,6 +4748,9 @@ class Qwen35ParoResidentSession:
         )
 
     def _set_position(self, position: int, *, stream: int = 0) -> None:
+        if hasattr(self, "position_arr") and hasattr(self, "context_arr"):
+            self.position_arr[0] = int(position)
+            self.context_arr[0] = int(position) + 1
         set_decode_position_i64(
             self.position_buf.ptr,
             self.context_buf.ptr,
@@ -4748,6 +4761,9 @@ class Qwen35ParoResidentSession:
         )
 
     def _set_slot_position(self, position: int, *, slot: int, stream: int = 0) -> None:
+        if hasattr(self, "position_arr") and hasattr(self, "context_arr"):
+            self.position_arr[int(slot)] = int(position)
+            self.context_arr[int(slot)] = int(position) + 1
         set_decode_position_i64(
             self.position_buf.ptr + int(slot) * DType.INT64.itemsize,
             self.context_buf.ptr + int(slot) * DType.INT64.itemsize,
