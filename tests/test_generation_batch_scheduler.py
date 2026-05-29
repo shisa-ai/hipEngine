@@ -6245,6 +6245,7 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert payload["workload"]["native_compact_prefill"] is True
     assert payload["workload"]["focus_hidden_flat_indices"] == []
     assert payload["workload"]["prefill_linear_state_atol"] == 1.0e-6
+    assert payload["workload"]["batch_prefill_linear_path"] == "packed_segments"
     assert payload["workload"]["batch_decode_moe_path"] == "grouped_compact"
     assert payload["workload"]["batch_decode_linear_path"] == "batch_segments"
     assert payload["workload"]["batch_decode_full_attention_path"] == "native_batch"

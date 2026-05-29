@@ -687,6 +687,69 @@ def test_qwen35_resident_prefill_native_packed_wires_metadata_layers_and_commit(
     assert calls == ["metadata", "embed", "layers", "sync:0", "commit:False", "restore"]
     assert session.last_prefill_execution["path"] == "native_prefill_compact_cN"
     assert session.last_prefill_execution["slot_ids"] == [0, 1]
+    assert session.last_prefill_execution["linear_attention_prefill_path"] == "packed_segments"
+    assert session.last_prefill_execution["blockers"] == []
+
+
+def test_qwen35_resident_run_native_prefill_packed_layers_can_force_per_segment_linear(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR", "1")
+    device = Device("hip", 0)
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.device = device
+    session.config = SimpleNamespace(hidden_size=4, layer_types=("linear_attention",))
+    session.prefill_hidden = Tensor.from_handle(0x1000, (3, 4), DType.FP16, device)
+    session.hidden_nbytes = 4 * DType.FP16.itemsize
+    session.max_batch_size = 3
+    session.libraries = {}
+    conv = Tensor.from_handle(0x3000, (2, 2), DType.FP32, device)
+    recurrent = Tensor.from_handle(0x4000, (1, 2, 1), DType.FP32, device)
+    conv_nbytes = 2 * 2 * DType.FP32.itemsize
+    recurrent_nbytes = 1 * 2 * 1 * DType.FP32.itemsize
+    session.linear_states = {
+        0: (
+            conv,
+            recurrent,
+            SimpleNamespace(ptr=0x3000, nbytes=3 * conv_nbytes),
+            SimpleNamespace(ptr=0x4000, nbytes=3 * recurrent_nbytes),
+            np.zeros((3, 2, 2), dtype=np.float32),
+            np.zeros((3, 1, 2, 1), dtype=np.float32),
+        )
+    }
+    session._ensure_linear_prefill_scratch = lambda *, tokens: SimpleNamespace(name="linear", tokens=tokens)
+    session._ensure_moe_prefill_scratch = lambda layer_id, *, tokens: SimpleNamespace(name="moe", layer_id=layer_id, tokens=tokens)
+    copies: list[tuple[int, int, int, int]] = []
+
+    class FakeRuntime:
+        def memcpy_async(self, dst, src, nbytes, kind, stream):
+            copies.append((int(dst), int(src), int(nbytes), int(stream)))
+
+    class FakeState:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def run_linear_attention_moe_c1_layer_fp16(self, hidden, **kwargs):
+            self.calls.append((hidden, kwargs))
+            return Tensor.from_handle(0x8000 + 0x100 * len(self.calls), hidden.shape, DType.FP16, device)
+
+    state = FakeState()
+    session.runtime = FakeRuntime()
+    session.states = [state]
+    slab = SimpleNamespace(rows=3, request_count=2, cu_seqlens_q=(0, 2, 3), physical_slot_ids=(0, 2))
+    metadata = SimpleNamespace()
+
+    out = session._run_native_prefill_packed_layers(slab, metadata, stream=9)
+
+    assert out.ptr == 0x1000
+    assert session._last_packed_prefill_linear_path == "per_segment"
+    assert session._last_packed_prefill_blockers == ["linear-attention packed prefill forced to per-segment diagnostic path"]
+    assert [call[0].ptr for call in state.calls] == [0x1000, 0x1000 + 2 * session.hidden_nbytes]
+    assert [call[1]["tokens"] for call in state.calls] == [2, 1]
+    assert [call[1]["conv_state"].ptr for call in state.calls] == [0x3000, 0x3000 + 2 * conv_nbytes]
+    assert [call[1]["recurrent_state"].ptr for call in state.calls] == [0x4000, 0x4000 + 2 * recurrent_nbytes]
+    assert copies == [
+        (0x1000, 0x8100, 2 * session.hidden_nbytes, 9),
+        (0x1000 + 2 * session.hidden_nbytes, 0x8200, session.hidden_nbytes, 9),
+    ]
 
 
 def test_qwen35_resident_commit_packed_prefill_final_rows_updates_slots(monkeypatch) -> None:

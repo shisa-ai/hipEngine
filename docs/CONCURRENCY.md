@@ -746,10 +746,17 @@ roll-up/status view.
       `/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-all-per-row-state-rows-focus1269.json`
       adds per-row state maxima: at L6/layer 5, row 0 is the larger recurrent
       offender (`0.0072229355573654175` vs row 1 `0.0025315284729003906`),
-      while conv is large for both rows (`0.0078125`). This keeps the live fix
-      target on packed-prefill linear-state materialization / slot-state
-      selection, especially row-0 recurrent state, not final prefill hidden or
-      any single native batch decode subpath.
+      while conv is large for both rows (`0.0078125`). A per-segment linear
+      prefill diagnostic at
+      `/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-perseg-prefill-all-per-row-focus1269.json`
+      forces `HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR=1` and
+      records `linear_attention_prefill_path=per_segment`; it still leaves
+      `prefill_linear_state_passed=false` and the same L8 row-0 dim-1269 decode
+      failure (`max_abs=0.002197265625`, no token mismatch). This keeps the
+      live fix target on packed-prefill linear-state materialization / slot-state
+      contents, especially row-0 recurrent state, not final prefill hidden,
+      segment state-index ordering alone, or any single native batch decode
+      subpath.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

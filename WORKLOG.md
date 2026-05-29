@@ -44649,3 +44649,24 @@ python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/
 Result: `/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-all-per-row-state-rows-focus1269.json` emitted `status=mismatch_found`, `performance_claim=false`, and `prefill_linear_state_passed=false` for each L5-L8 limit. At L6/layer 5, conv state is large for both rows (`row0 max_abs=0.0078125`, `row1 max_abs=0.0078125`), while recurrent state is larger on row 0 (`row0 max_abs=0.0072229355573654175` at `[30,72,10]`; `row1 max_abs=0.0025315284729003906` at `[30,92,10]`). The decode failure remains L8 row 0 dim 1269 (`abs_diff=0.002197265625`) with no one-token token mismatch.
 
 Interpretation: the packed-prefill state mismatch is not a single-row-only conv issue, but the recurrent state has a stronger row-0 component aligned with the later row-0 hidden drift. The next implementation target should inspect packed linear prefill's state write indexing/order for recurrent state rows, with conv state still a related broad mismatch.
+
+## 2026-05-29 — CONCURRENCY per-segment linear-prefill isolation
+
+Advanced C2.3 by adding a diagnostic packed-prefill linear-attention path switch. The row-scoped state artifact pointed at packed-prefill linear state, so this iteration distinguishes the segment/state-index kernel path from per-request c=1-style linear prefill.
+
+Code/test changes:
+
+- Added `HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR`; when set, `_run_native_prefill_packed_layers()` runs each linear-attention packed-prefill segment through `run_linear_attention_moe_c1_layer_fp16()` with that segment's physical slot state, while leaving the rest of packed prefill unchanged.
+- `prefill_native_packed()` now records `linear_attention_prefill_path` and `blockers` in `last_prefill_execution` so diagnostics can prove whether packed segments or the per-segment fallback ran.
+- `scripts/qwen35_batch_hidden_bisect.py` exposes this as `--batch-prefill-linear-path {packed_segments,per_segment}` and records it in `workload.batch_prefill_linear_path`.
+- CPU coverage locks both the default packed-prefill metadata and the forced per-segment linear-prefill routing/copies.
+
+Diagnostic command:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 1 --max-layers 8 --layer-limits 5-8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-prefill-linear-path per_segment --batch-decode-moe-path selected_c1 --batch-decode-linear-path per_row --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-perseg-prefill-all-per-row-focus1269.json >/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-perseg-prefill-all-per-row-focus1269.stdout
+```
+
+Result: `/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-perseg-prefill-all-per-row-focus1269.json` emitted `status=mismatch_found`, `performance_claim=false`, `workload.batch_prefill_linear_path=per_segment`, and `batch_prefill_execution.linear_attention_prefill_path=per_segment` with blocker `linear-attention packed prefill forced to per-segment diagnostic path`. The per-segment path does **not** clear the state drift: `prefill_linear_state_passed=false` still appears for L5-L8, and bad state layers match the packed-segment probe (for example L6 layer 4/5 state mismatches remain). Final prefill hidden still passes, and the all-per-row decode step still fails at L8 row 0 dim 1269 (`abs_diff=0.002197265625`) with `first_token_mismatch=null`.
+
+Interpretation: the bug is not isolated to the segment/state-index linear-attention prefill kernel entry point. Per-segment c=1-style linear prefill still consumes packed-prefill context through the rest of the resident packed path and leaves the same state/decode drift, so the next target is the actual slot state contents produced around packed prefill (including full-attention/hidden inputs before later linear layers), not merely the state-index vector used by `run_linear_attention_prefill_out_proj_segments_fp16()`.

@@ -1727,6 +1727,8 @@ class Qwen35ParoResidentSession:
                 "slot_ids": list(slab.physical_slot_ids),
                 "linear_prefix_layers": native_prefill_plan.linear_prefix_layers,
                 "layer_limit": native_prefill_plan.layer_limit,
+                "linear_attention_prefill_path": getattr(self, "_last_packed_prefill_linear_path", "packed_segments"),
+                "blockers": list(getattr(self, "_last_packed_prefill_blockers", [])),
                 "decode_scratch_released_for_prefill": minimize_prefill_workspace_overlap,
             }
             return results
@@ -2909,25 +2911,62 @@ class Qwen35ParoResidentSession:
     ) -> Tensor:
         rows = int(slab.rows)
         hidden = self._prefill_hidden_view_for_rows(rows)
+        force_per_segment_linear = _env_flag("HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR")
+        self._last_packed_prefill_linear_path = "per_segment" if force_per_segment_linear else "packed_segments"
+        self._last_packed_prefill_blockers = (
+            ["linear-attention packed prefill forced to per-segment diagnostic path"] if force_per_segment_linear else []
+        )
         for layer_id, state in enumerate(self.states):
             layer_type = self.config.layer_types[layer_id]
+            copied_layer_output = False
             if layer_type == "linear_attention":
-                conv_state, recurrent_state, _conv_buf, _recurrent_buf, _conv_zero, _recurrent_zero = self.linear_states[layer_id]
-                linear_scratch = self._ensure_linear_prefill_scratch(tokens=rows)
-                moe_scratch = self._ensure_grouped_moe_prefill_scratch(layer_id, tokens=rows)
-                out = state.run_linear_attention_moe_packed_prefill_layer_fp16(
-                    hidden,
-                    conv_state=conv_state,
-                    recurrent_state=recurrent_state,
-                    cu_seqlens=metadata.cu_seqlens_q,
-                    state_indices=metadata.state_indices,
-                    segments=slab.request_count,
-                    linear_scratch=linear_scratch,
-                    moe_scratch=moe_scratch,
-                    tokens=rows,
-                    library=self.libraries,
-                    stream=stream,
-                )
+                if force_per_segment_linear:
+                    for segment_index in range(int(slab.request_count)):
+                        start = int(slab.cu_seqlens_q[segment_index])
+                        end = int(slab.cu_seqlens_q[segment_index + 1])
+                        segment_rows = end - start
+                        if segment_rows <= 0:
+                            continue
+                        slot = int(slab.physical_slot_ids[segment_index])
+                        hidden_chunk = self._prefill_row_matrix_view(hidden, start, segment_rows)
+                        conv_state, recurrent_state = self._slot_linear_state(layer_id, slot)
+                        linear_scratch = self._ensure_linear_prefill_scratch(tokens=segment_rows)
+                        moe_scratch = self._ensure_moe_prefill_scratch(layer_id, tokens=segment_rows)
+                        out = state.run_linear_attention_moe_c1_layer_fp16(
+                            hidden_chunk,
+                            conv_state=conv_state,
+                            recurrent_state=recurrent_state,
+                            linear_scratch=linear_scratch,
+                            moe_scratch=moe_scratch,
+                            tokens=segment_rows,
+                            library=self.libraries,
+                            stream=stream,
+                        )
+                        self.runtime.memcpy_async(
+                            hidden_chunk.ptr,
+                            out.ptr,
+                            segment_rows * self.hidden_nbytes,
+                            HipMemcpyKind.DEVICE_TO_DEVICE,
+                            stream,
+                        )
+                    copied_layer_output = True
+                else:
+                    conv_state, recurrent_state, _conv_buf, _recurrent_buf, _conv_zero, _recurrent_zero = self.linear_states[layer_id]
+                    linear_scratch = self._ensure_linear_prefill_scratch(tokens=rows)
+                    moe_scratch = self._ensure_grouped_moe_prefill_scratch(layer_id, tokens=rows)
+                    out = state.run_linear_attention_moe_packed_prefill_layer_fp16(
+                        hidden,
+                        conv_state=conv_state,
+                        recurrent_state=recurrent_state,
+                        cu_seqlens=metadata.cu_seqlens_q,
+                        state_indices=metadata.state_indices,
+                        segments=slab.request_count,
+                        linear_scratch=linear_scratch,
+                        moe_scratch=moe_scratch,
+                        tokens=rows,
+                        library=self.libraries,
+                        stream=stream,
+                    )
             elif layer_type == "full_attention":
                 key_cache, value_cache = self._full_cache_all_slots(layer_id)
                 attention_scratch = self._ensure_full_prefill_scratch(tokens=rows)
@@ -2954,7 +2993,8 @@ class Qwen35ParoResidentSession:
                 )
             else:
                 raise ValueError(f"unsupported layer type {layer_type!r} at layer {layer_id}")
-            self.runtime.memcpy_async(hidden.ptr, out.ptr, rows * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
+            if not copied_layer_output:
+                self.runtime.memcpy_async(hidden.ptr, out.ptr, rows * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
         return hidden
 
     def _run_linear_prefill_layers(self, *, tokens: int, layer_limit: int | None = None, stream: int = 0) -> Tensor:
