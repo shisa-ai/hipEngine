@@ -6259,6 +6259,12 @@ def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:
     assert passed["passed"] is True
     assert failed["passed"] is False
     assert failed["bit_mismatch"] == 1
+    decode_execution = {
+        "rows": 2,
+        "full_attention_decode_path": "native_batch",
+        "moe_decode_path": "grouped_compact",
+        "layer_executions": [{"layer_index": 1, "layer_type": "linear_attention"}],
+    }
     first = _first_hidden_mismatch(
         [
             {"layer_limit": 1, "steps": [{"decode_step": 0, "generated_index": 1, "rows": [{"row": 0, "hidden_comparison": passed}]}]},
@@ -6266,7 +6272,14 @@ def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:
                 "layer_limit": 2,
                 "last_layer_index": 1,
                 "last_layer_type": "linear_attention",
-                "steps": [{"decode_step": 3, "generated_index": 4, "rows": [{"row": 1, "hidden_comparison": failed}]}],
+                "steps": [
+                    {
+                        "decode_step": 3,
+                        "generated_index": 4,
+                        "batch_decode_execution": decode_execution,
+                        "rows": [{"row": 1, "hidden_comparison": failed}],
+                    }
+                ],
             },
         ]
     )
@@ -6279,6 +6292,7 @@ def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:
         "bit_mismatch": 1,
         "last_layer_index": 1,
         "last_layer_type": "linear_attention",
+        "batch_decode_execution": decode_execution,
     }
 
 

@@ -111,6 +111,9 @@ def _first_hidden_mismatch(layer_summaries: Sequence[dict[str, Any]]) -> dict[st
                         result["last_layer_index"] = int(summary["last_layer_index"])
                     if "last_layer_type" in summary:
                         result["last_layer_type"] = str(summary["last_layer_type"])
+                    decode_execution = step.get("batch_decode_execution")
+                    if isinstance(decode_execution, dict):
+                        result["batch_decode_execution"] = decode_execution
                     return result
     return None
 

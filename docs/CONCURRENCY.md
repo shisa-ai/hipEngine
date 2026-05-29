@@ -644,9 +644,10 @@ roll-up/status view.
       `/tmp/hipengine-hidden-bisect-L6-512-1-layer-type.json` tags that reduced
       first mismatch to `last_layer_index=5`, `last_layer_type=linear_attention`,
       and hidden-bisection summaries now embed per-step
-      `batch_decode_execution.layer_executions` traces for the native batch path,
-      keeping C2.3 focused on the linear-attention+MoE layer rather than sampler
-      or split-K paths.
+      `batch_decode_execution.layer_executions` traces for the native batch path
+      plus copy the failing step's trace into the top-level first-hidden-mismatch
+      record, keeping C2.3 focused on the linear-attention+MoE layer rather than
+      sampler or split-K paths.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

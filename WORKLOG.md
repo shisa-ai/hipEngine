@@ -44072,3 +44072,30 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
 ```
+
+## 2026-05-29 — CONCURRENCY hidden-bisection first-mismatch trace
+
+Advanced C2.3 without closing the selected-MoE lane-map item or adding a retained c>N performance claim. The hidden-bisection diagnostic now copies the failing step's native batch decode-execution trace into `correctness.first_hidden_mismatch`, so future C2.3 artifacts expose the layer-level native/full-attention/grouped-MoE path at the top-level mismatch pointer instead of requiring manual lookup in `layer_summaries[].steps[]`.
+
+- Updated `_first_hidden_mismatch(...)` in `scripts/qwen35_batch_hidden_bisect.py` to include `batch_decode_execution` when the mismatching step carries a decode trace.
+- Extended `test_hidden_bisect_helpers_find_first_hidden_mismatch` to prove the top-level first-hidden-mismatch record preserves the native batch decode trace.
+- Updated `docs/CONCURRENCY.md` C2.3 progress text with the top-level first-mismatch trace coverage while leaving the item open because generated-token equality and the hidden-state mismatch are not fixed.
+- No queue status changed and no generated-token equality or retained performance/scaling claim was added.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -k 'hidden_bisect' -q
+# 3 passed
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -q
+# passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
+```
