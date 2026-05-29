@@ -27089,3 +27089,15 @@ python3 -m pytest -q tests/test_stepfun_resident_session.py
 ```
 
 Result: `4 passed`. Full Step layer composition, KV cache allocation, logits, and llama.cpp next-token parity remain open.
+
+## 2026-05-29 — StepFun materialization test hardening
+
+Hardened `tests/test_stepfun_materialize.py` for task #17: the materialization plan now asserts coverage across all three split GGUF shards and `gguf_q8_0` root embedding layout; split-shard payload access checks both layer 0 and layer 44 tensors from different shard files; selected-slot HIP materialization now includes a third-shard Q3_K tensor and checks torch-free behavior after load/free.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_materialize.py
+```
+
+Result: `4 passed`.

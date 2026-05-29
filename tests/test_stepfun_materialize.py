@@ -64,24 +64,34 @@ def test_stepfun_materialization_plan_covers_split_mixed_quant_tensors() -> None
         "gguf_q5_k": 177,
         "gguf_q8_0": 2,
     }
+    assert len({spec.source.source_path for spec in plan.specs}) == 3
     assert plan.root_specs["token_embedding"].layout == LAYOUT_RAW_GGUF
+    assert plan.root_specs["token_embedding"].quant_key == "gguf_q8_0"
     assert plan.root_specs["output_norm"].layout == LAYOUT_DENSE_F32
     assert plan.layer_specs[0]["attn_q"].quant_key == "gguf_q3_k"
     assert plan.layer_specs[0]["attn_output"].quant_key == "gguf_q5_k"
     assert plan.layer_specs[3]["ffn_gate_inp"].quant_key == "f32"
+    assert plan.layer_specs[44]["attn_q"].source.source_path.name.endswith(
+        "00003-of-00003.gguf"
+    )
 
 
 def test_stepfun_split_tensor_data_matches_source_shard_reader_without_torch() -> None:
     had_torch = "torch" in sys.modules
     _, model_map = _model_map()
-    tensor = model_map.layer(0).tensor("attn_q")
+    tensors = (
+        model_map.layer(0).tensor("attn_q"),
+        model_map.layer(44).tensor("attn_q"),
+    )
+    assert len({tensor.source_path for tensor in tensors}) == 2
 
-    split_view = stepfun_split_tensor_data(tensor)
-    direct_view = GGUFReader(tensor.source_path).tensor_data(tensor.name)
+    for tensor in tensors:
+        split_view = stepfun_split_tensor_data(tensor)
+        direct_view = GGUFReader(tensor.source_path).tensor_data(tensor.name)
 
-    assert split_view.shape == tensor.byte_shape == direct_view.shape
-    assert split_view.dtype == direct_view.dtype
-    np.testing.assert_array_equal(np.asarray(split_view[:2]), np.asarray(direct_view[:2]))
+        assert split_view.shape == tensor.byte_shape == direct_view.shape
+        assert split_view.dtype == direct_view.dtype
+        np.testing.assert_array_equal(np.asarray(split_view[:2]), np.asarray(direct_view[:2]))
     if not had_torch:
         assert "torch" not in sys.modules
 
@@ -102,10 +112,12 @@ def test_stepfun_raw_q3_weight_resolves_existing_linear_dispatch() -> None:
 def test_stepfun_selected_slot_materialization_loads_and_frees_device_weights() -> None:
     info, _ = _model_map()
     runtime = get_hip_runtime()
+    had_torch = "torch" in sys.modules
     selected = (
         "root.output_norm",
         "layers.0.attn_q",
         "layers.3.ffn_gate_inp",
+        "layers.44.attn_q",
     )
     expected_nbytes = sum(
         info.tensor(name).nbytes
@@ -113,6 +125,7 @@ def test_stepfun_selected_slot_materialization_loads_and_frees_device_weights() 
             "output_norm.weight",
             "blk.0.attn_q.weight",
             "blk.3.ffn_gate_inp.weight",
+            "blk.44.attn_q.weight",
         )
     )
     reset_memory_stats()
@@ -123,11 +136,16 @@ def test_stepfun_selected_slot_materialization_loads_and_frees_device_weights() 
         assert weights.root("output_norm").spec.layout == LAYOUT_DENSE_F32
         assert weights.layer(0).weight("attn_q").spec.quant_key == "gguf_q3_k"
         assert weights.layer(3).weight("ffn_gate_inp").spec.quant_key == "f32"
+        assert weights.layer(44).weight("attn_q").spec.source.source_path.name.endswith(
+            "00003-of-00003.gguf"
+        )
         assert weights.allocated_nbytes == expected_nbytes
         stats = memory_stats()
         assert stats["current_allocated_bytes"] == expected_nbytes
-        assert stats["active_allocations"] == 3
+        assert stats["active_allocations"] == len(selected)
     finally:
         weights.free(runtime=runtime)
 
     assert memory_stats()["current_allocated_bytes"] == 0
+    if not had_torch:
+        assert "torch" not in sys.modules
