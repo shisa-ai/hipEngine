@@ -45820,3 +45820,36 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (`262` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with post-attention component evidence, and no retained c>N performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY full-attention RMSNorm oracle
+
+Advanced C2.3 diagnostics by adding an inferred post-attention RMSNorm oracle to full-attention trace summaries. For each row, the oracle infers the RMSNorm weight transform from the independent c=1 `residual`/`mlp_input` pair, applies it to the native c>N residual, rounds to FP16 like the trace, and compares against the native c>N `mlp_input`.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py
+pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_summary_embeds_batch_decode_execution_trace tests/test_generation_batch_scheduler.py::test_hidden_bisect_transition_records_focus_state_history -q
+```
+
+Diagnostic:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 4,8 --max-sequence-length 1024 --hidden-atol 0.001 --state-atol 0 --state-focus-atol 0.002 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-full-attn-path native_batch --json /tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-rmsnorm-oracle-focus1269.json >/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-rmsnorm-oracle-focus1269.stdout
+```
+
+Result: `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-rmsnorm-oracle-focus1269.json` is `status=mismatch_found`. At step 6 / layer 3, `mlp_input` remains the first bad producer stage (`max_abs=0.00390625`, dim 100, `elements_over_atol=4`). The inferred RMSNorm oracle reduces the unexplained difference to two FP16-ulp-sized over-tolerance elements (`max_abs=0.001953125`, dims 135/2012; residual RMS c>N=0.044248536079479046 vs c1=0.044247783623735035). This suggests the small green residual drift explains most of the `mlp_input` divergence, with a remaining one-ulp gap under the strict `hidden_atol=0.001` gate.
+
+Loop validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (`262` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with RMSNorm-oracle evidence, and no retained c>N performance/scaling claim was added.

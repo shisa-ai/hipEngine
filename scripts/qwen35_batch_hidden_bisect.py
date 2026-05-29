@@ -276,6 +276,48 @@ def _trace_array_to_f32(array: np.ndarray) -> np.ndarray:
     return np.asarray(array, dtype=np.float32)
 
 
+def _inferred_rmsnorm_oracle_comparison(
+    *,
+    batch_residual: np.ndarray,
+    batch_mlp_input: np.ndarray,
+    c1_residual: np.ndarray,
+    c1_mlp_input: np.ndarray,
+    atol: float,
+    eps: float = 1.0e-6,
+) -> dict[str, Any]:
+    batch_residual = np.asarray(batch_residual, dtype=np.float32)
+    batch_mlp_input = np.asarray(batch_mlp_input, dtype=np.float32)
+    c1_residual = np.asarray(c1_residual, dtype=np.float32)
+    c1_mlp_input = np.asarray(c1_mlp_input, dtype=np.float32)
+    if batch_residual.shape != batch_mlp_input.shape or c1_residual.shape != c1_mlp_input.shape:
+        raise ValueError(
+            "RMSNorm oracle residual/mlp_input shapes differ: "
+            f"batch_residual={batch_residual.shape} batch_mlp_input={batch_mlp_input.shape} "
+            f"c1_residual={c1_residual.shape} c1_mlp_input={c1_mlp_input.shape}"
+        )
+    if batch_residual.shape != c1_residual.shape:
+        raise ValueError(
+            f"RMSNorm oracle c>N/c1 shapes differ: batch={batch_residual.shape} c1={c1_residual.shape}"
+        )
+    batch_rms = float(np.sqrt(float(np.mean(batch_residual * batch_residual)) + float(eps)))
+    c1_rms = float(np.sqrt(float(np.mean(c1_residual * c1_residual)) + float(eps)))
+    valid = np.abs(c1_residual) > 1.0e-7
+    expected = batch_mlp_input.copy()
+    if np.any(valid):
+        inferred_weight = np.zeros_like(c1_residual, dtype=np.float32)
+        inferred_weight[valid] = c1_mlp_input[valid] * np.float32(c1_rms) / c1_residual[valid]
+        expected[valid] = batch_residual[valid] * inferred_weight[valid] / np.float32(batch_rms)
+    # The traced mlp_input is FP16, so round the inferred expectation to the
+    # same dtype before applying the hidden-state tolerance.
+    expected = expected.astype(np.float16).astype(np.float32)
+    comparison = numeric_comparison(batch_mlp_input, expected, atol=atol)
+    comparison["batch_residual_rms"] = batch_rms
+    comparison["c1_residual_rms"] = c1_rms
+    comparison["inferred_weight_valid_elements"] = int(np.count_nonzero(valid))
+    comparison["ignored_c1_zero_residual_elements"] = int(valid.size - np.count_nonzero(valid))
+    return comparison
+
+
 def _numeric_abs_diff_at_flat_index(batch: np.ndarray, c1: np.ndarray, flat_index: int) -> dict[str, Any]:
     if batch.shape != c1.shape:
         raise ValueError(f"numeric shapes differ: batch={batch.shape!r} c1={c1.shape!r}")
@@ -613,6 +655,12 @@ def _compact_comparison(comparison: dict[str, Any]) -> dict[str, Any]:
         compact["bit_mismatch"] = int(comparison.get("bit_mismatch", 0))
     if "top_abs_diffs" in comparison:
         compact["top_abs_diffs"] = comparison.get("top_abs_diffs", [])[:3]
+    for key in ("batch_residual_rms", "c1_residual_rms"):
+        if key in comparison:
+            compact[key] = float(comparison[key])
+    for key in ("inferred_weight_valid_elements", "ignored_c1_zero_residual_elements"):
+        if key in comparison:
+            compact[key] = int(comparison[key])
     return compact
 
 
@@ -787,6 +835,34 @@ def _decode_full_attention_layer_focus_at(
                     focus.pop("stage_delta_passed")
                 elif first_bad_delta is not None:
                     focus["first_over_atol_stage_delta"] = first_bad_delta
+            stage_oracles = layer.get("stage_oracles", {})
+            if isinstance(stage_oracles, dict):
+                focus["stage_oracle_passed"] = {}
+                focus["stage_oracles"] = {}
+                first_bad_oracle: dict[str, Any] | None = None
+                for oracle_name, oracle_summary in stage_oracles.items():
+                    if not isinstance(oracle_summary, dict):
+                        continue
+                    for row in oracle_summary.get("rows", []):
+                        if int(row.get("row", -1)) != row_index or not isinstance(row.get("oracle_comparison"), dict):
+                            continue
+                        compact = _compact_comparison(row["oracle_comparison"])
+                        compact["comparison_kind"] = str(row.get("comparison_kind", "unknown"))
+                        focus["stage_oracles"][str(oracle_name)] = compact
+                        focus["stage_oracle_passed"][str(oracle_name)] = bool(compact["passed"])
+                        if first_bad_oracle is None and not bool(compact["passed"]):
+                            first_bad_oracle = {
+                                "stage_oracle": str(oracle_name),
+                                "max_abs": float(compact["max_abs"]),
+                                "max_abs_index": compact.get("max_abs_index", []),
+                                "elements_over_atol": int(compact.get("elements_over_atol", 0)),
+                            }
+                        break
+                if not focus["stage_oracles"]:
+                    focus.pop("stage_oracles")
+                    focus.pop("stage_oracle_passed")
+                elif first_bad_oracle is not None:
+                    focus["first_over_atol_stage_oracle"] = first_bad_oracle
             if first_bad_stage is not None:
                 focus["first_over_atol_stage"] = first_bad_stage
             return focus if focus["stages"] else None
@@ -2074,6 +2150,39 @@ def _decode_full_attention_summary(
                     "passed": all(row["passed"] for row in row_delta_summaries),
                     "rows": row_delta_summaries,
                 }
+            stage_oracle_summaries: dict[str, Any] = {}
+            if all(stage in layer_batch and stage in layer_c1 for stage in ("residual", "mlp_input")):
+                batch_residual = _trace_array_to_f32(layer_batch["residual"])
+                batch_mlp_input = _trace_array_to_f32(layer_batch["mlp_input"])
+                c1_residual = _trace_array_to_f32(layer_c1["residual"])
+                c1_mlp_input = _trace_array_to_f32(layer_c1["mlp_input"])
+                if batch_residual.shape != batch_mlp_input.shape or c1_residual.shape != c1_mlp_input.shape:
+                    raise ValueError(
+                        f"decode full-attention residual/mlp_input trace shape differs for step {step}, layer {layer_id}: "
+                        f"batch_residual={batch_residual.shape} batch_mlp_input={batch_mlp_input.shape} "
+                        f"c1_residual={c1_residual.shape} c1_mlp_input={c1_mlp_input.shape}"
+                    )
+                row_oracle_summaries: list[dict[str, Any]] = []
+                for row in range(int(batch_residual.shape[0])):
+                    comparison = _inferred_rmsnorm_oracle_comparison(
+                        batch_residual=batch_residual[row : row + 1],
+                        batch_mlp_input=batch_mlp_input[row : row + 1],
+                        c1_residual=c1_residual[row : row + 1],
+                        c1_mlp_input=c1_mlp_input[row : row + 1],
+                        atol=atol,
+                    )
+                    row_oracle_summaries.append(
+                        {
+                            "row": int(row),
+                            "comparison_kind": "fp32_inferred_rmsnorm_from_c1",
+                            "oracle_comparison": comparison,
+                            "passed": bool(comparison["passed"]),
+                        }
+                    )
+                stage_oracle_summaries["mlp_input_from_residual_inferred_weight"] = {
+                    "passed": all(row["passed"] for row in row_oracle_summaries),
+                    "rows": row_oracle_summaries,
+                }
             layer_summary = {
                 "layer_index": int(layer_id),
                 "passed": all(stage_summary["passed"] for stage_summary in stage_summaries.values()),
@@ -2081,6 +2190,8 @@ def _decode_full_attention_summary(
             }
             if stage_delta_summaries:
                 layer_summary["stage_deltas"] = stage_delta_summaries
+            if stage_oracle_summaries:
+                layer_summary["stage_oracles"] = stage_oracle_summaries
             layers.append(layer_summary)
         steps.append(
             {

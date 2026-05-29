@@ -6685,6 +6685,9 @@ def test_hidden_bisect_transition_records_focus_state_history() -> None:
                                     "stage_deltas": {
                                         "output_minus_o_proj": {"passed": True, "rows": [{"row": 0, "comparison_kind": "fp32_delta", "delta_comparison": passed, "passed": True}]}
                                     },
+                                    "stage_oracles": {
+                                        "mlp_input_from_residual_inferred_weight": {"passed": True, "rows": [{"row": 0, "comparison_kind": "fp32_inferred_rmsnorm_from_c1", "oracle_comparison": passed, "passed": True}]}
+                                    },
                                 }
                             ],
                         },
@@ -6700,6 +6703,9 @@ def test_hidden_bisect_transition_records_focus_state_history() -> None:
                                     },
                                     "stage_deltas": {
                                         "output_minus_o_proj": {"passed": False, "rows": [{"row": 0, "comparison_kind": "fp32_delta", "delta_comparison": failed, "passed": False}]}
+                                    },
+                                    "stage_oracles": {
+                                        "mlp_input_from_residual_inferred_weight": {"passed": False, "rows": [{"row": 0, "comparison_kind": "fp32_inferred_rmsnorm_from_c1", "oracle_comparison": failed, "passed": False}]}
                                     },
                                 }
                             ],
@@ -6754,6 +6760,8 @@ def test_hidden_bisect_transition_records_focus_state_history() -> None:
     assert producer["stages"]["output"]["passed"] is False
     assert producer["first_over_atol_stage_delta"]["stage_delta"] == "output_minus_o_proj"
     assert producer["stage_deltas"]["output_minus_o_proj"]["passed"] is False
+    assert producer["first_over_atol_stage_oracle"]["stage_oracle"] == "mlp_input_from_residual_inferred_weight"
+    assert producer["stage_oracles"]["mlp_input_from_residual_inferred_weight"]["passed"] is False
     assert [entry["batch_decode_layer_execution"]["layer_type"] for entry in history] == ["linear_attention", "linear_attention"]
     assert history[1]["batch_decode_layer_execution"]["linear_attention_segment_metadata"] == {"state_indices": [0]}
     assert [entry["same_focus_index_in_top_abs_diffs"] for entry in history] == [False, True]
@@ -6957,6 +6965,10 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     output_delta = summary["decode_full_attention"]["steps"][0]["layers"][0]["stage_deltas"]["output_minus_o_proj"]
     assert output_delta["passed"] is True
     assert output_delta["rows"][0]["delta_comparison"]["max_abs"] == 0.0
+    rmsnorm_oracle = summary["decode_full_attention"]["steps"][0]["layers"][0]["stage_oracles"]["mlp_input_from_residual_inferred_weight"]
+    assert rmsnorm_oracle["passed"] is True
+    assert rmsnorm_oracle["rows"][0]["oracle_comparison"]["max_abs"] == 0.0
+    assert rmsnorm_oracle["rows"][0]["oracle_comparison"]["inferred_weight_valid_elements"] == 2
     assert summary["decode_full_context_oracle_passed"] is True
     assert summary["decode_full_context_oracle"]["stage"] == "decode_full_context_oracle"
     assert summary["decode_full_context_oracle"]["passed"] is True

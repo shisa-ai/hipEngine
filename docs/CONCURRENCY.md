@@ -1003,10 +1003,16 @@ roll-up/status view.
       at `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-post-attn-components-focus1269.json`
       traces `residual` and `mlp_input`: layer-3 `residual` is green
       (`max_abs=0.000244140625`, no elements over tolerance), but `mlp_input` is
-      the first bad stage (`max_abs=0.00390625`, dim 100). The next C2.3 work
-      should isolate the batched post-attention RMSNorm path after `o_proj`; do
-      not re-open full-attention context, layer-4 state mapping, native linear
-      segment metadata, output trace/copy semantics, or grouped MoE output yet.
+      the first bad stage (`max_abs=0.00390625`, dim 100). The RMSNorm-oracle refresh
+      at `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-rmsnorm-oracle-focus1269.json`
+      infers the post-attention RMSNorm transform from the c=1 residual/mlp pair;
+      applying it to the c=2 residual leaves only two over-tolerance FP16-ulp
+      differences (`max_abs=0.001953125`, dims 135/2012), so the residual's small
+      green drift explains much of `mlp_input` but not the last one-ulp gap. The
+      next C2.3 work should decide whether this RMSNorm amplification is acceptable
+      under the equality gate or needs a stricter c>N post-attention path; do not
+      re-open full-attention context, layer-4 state mapping, native linear segment
+      metadata, output trace/copy semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions
