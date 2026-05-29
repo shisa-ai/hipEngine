@@ -41,6 +41,8 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_RETAINED_CONDITION_STATUS_LABELS,
     RETAINED_ARTIFACT_RETAINED_POSTCONDITION_KINDS,
     RETAINED_ARTIFACT_RETAINED_PRECONDITION_KINDS,
+    RETAINED_ARTIFACT_SWEEP_COMMAND_CATEGORIES,
+    RETAINED_ARTIFACT_SWEEP_COMMAND_STATUS_LABELS,
     RETAINED_ARTIFACT_UNUSABLE_SCALING_BASELINE_STATUSES,
 )
 
@@ -96,6 +98,20 @@ _PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS = RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_UN
 _RETAINED_PRECONDITION_KINDS = RETAINED_ARTIFACT_RETAINED_PRECONDITION_KINDS
 _RETAINED_POSTCONDITION_KINDS = RETAINED_ARTIFACT_RETAINED_POSTCONDITION_KINDS
 _RETAINED_CONDITION_STATUS_LABELS = RETAINED_ARTIFACT_RETAINED_CONDITION_STATUS_LABELS
+_SWEEP_COMMAND_CATEGORIES = RETAINED_ARTIFACT_SWEEP_COMMAND_CATEGORIES
+_SWEEP_COMMAND_STATUS_LABELS = RETAINED_ARTIFACT_SWEEP_COMMAND_STATUS_LABELS
+(
+    _PRIMITIVE_COMMAND_CATEGORY,
+    _SERIAL_BRIDGE_COMMAND_CATEGORY,
+    _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY,
+    _INT8_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY,
+) = _SWEEP_COMMAND_CATEGORIES
+(
+    _PLANNED_COMMAND_STATUS,
+    _PASSED_COMMAND_STATUS,
+    _SKIPPED_COMMAND_STATUS,
+    _FAILED_COMMAND_STATUS,
+) = _SWEEP_COMMAND_STATUS_LABELS
 _SWEEP_COMMAND_KNOWN_FLAGS = tuple(dict.fromkeys(_RETAINED_BENCH_UNIQUE_FLAGS + _PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS))
 
 
@@ -141,7 +157,7 @@ def build_sweep_commands(args: argparse.Namespace) -> tuple[SweepCommand, ...]:
         primitive_json = output_dir / f"primitive-c{c}.json"
         commands.append(
             SweepCommand(
-                category="primitive",
+                category=_PRIMITIVE_COMMAND_CATEGORY,
                 batch_size=c,
                 artifact_path=primitive_json,
                 argv=(
@@ -160,7 +176,7 @@ def build_sweep_commands(args: argparse.Namespace) -> tuple[SweepCommand, ...]:
         serial_json = output_dir / f"serial-bridge-c{c}.json"
         commands.append(
             SweepCommand(
-                category="serial_bridge",
+                category=_SERIAL_BRIDGE_COMMAND_CATEGORY,
                 batch_size=c,
                 artifact_path=serial_json,
                 argv=tuple(
@@ -198,7 +214,7 @@ def build_sweep_commands(args: argparse.Namespace) -> tuple[SweepCommand, ...]:
                 native_argv.append("--require-cached-build")
             commands.append(
                 SweepCommand(
-                    category="native_diagnostic",
+                    category=_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY,
                     batch_size=c,
                     artifact_path=native_json,
                     argv=tuple(native_argv),
@@ -227,7 +243,7 @@ def build_sweep_commands(args: argparse.Namespace) -> tuple[SweepCommand, ...]:
         )
         commands.append(
             SweepCommand(
-                category="native_diagnostic",
+                category=_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY,
                 batch_size=c,
                 artifact_path=native_json,
                 argv=tuple(native_argv),
@@ -237,7 +253,7 @@ def build_sweep_commands(args: argparse.Namespace) -> tuple[SweepCommand, ...]:
             int8_json = output_dir / f"int8-native-diagnostic-c{c}.json"
             commands.append(
                 SweepCommand(
-                    category="int8_native_diagnostic",
+                    category=_INT8_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY,
                     batch_size=c,
                     artifact_path=int8_json,
                     argv=(
@@ -1339,7 +1355,7 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
 
 
 def _native_retained_preconditions(command: SweepCommand) -> tuple[dict[str, Any], ...] | None:
-    if command.category != "native_diagnostic" or command.batch_size <= 1:
+    if command.category != _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY or command.batch_size <= 1:
         return None
     return (
         _primitive_correctness_precondition(command),
@@ -1382,7 +1398,7 @@ def _retained_profiler_synthesis_postcondition(
     preconditions: Sequence[dict[str, Any]] | None,
 ) -> dict[str, Any] | None:
     profiler_precondition = _profiler_summary_precondition_record(preconditions)
-    if command.category != "native_diagnostic" or profiler_precondition is None:
+    if command.category != _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY or profiler_precondition is None:
         return None
     expected_source_artifact_path = profiler_precondition.get("profiler_source_artifact_path")
     result: dict[str, Any] = {
@@ -1449,7 +1465,7 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
             "git_dirty": git["dirty"],
         }
         if args.dry_run:
-            entry.update({"status": "planned", "returncode": None, "duration_seconds": 0.0})
+            entry.update({"status": _PLANNED_COMMAND_STATUS, "returncode": None, "duration_seconds": 0.0})
         else:
             preconditions = _native_retained_preconditions(command)
             if preconditions is not None:
@@ -1458,7 +1474,7 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
             if precondition is not None:
                 entry.update(
                     {
-                        "status": "skipped",
+                        "status": _SKIPPED_COMMAND_STATUS,
                         "returncode": None,
                         "duration_seconds": 0.0,
                         "precondition": precondition,
@@ -1480,22 +1496,22 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
             )
             entry.update(
                 {
-                    "status": "passed" if proc.returncode == 0 else "failed",
+                    "status": _PASSED_COMMAND_STATUS if proc.returncode == 0 else _FAILED_COMMAND_STATUS,
                     "returncode": proc.returncode,
                     "duration_seconds": time.perf_counter() - start,
                     "output_tail": proc.stdout[-_OUTPUT_TAIL_MAX_CHARS:],
                 }
             )
-            if entry["status"] == "passed":
+            if entry["status"] == _PASSED_COMMAND_STATUS:
                 postcondition = _retained_profiler_synthesis_postcondition(command, preconditions)
                 if postcondition is not None:
                     entry["postconditions"] = [postcondition]
                     if postcondition["passed"] is not True:
-                        entry["status"] = "failed"
+                        entry["status"] = _FAILED_COMMAND_STATUS
                         entry["postcondition"] = postcondition
                         entry["output_tail"] = str(postcondition["reason"])
         entries.append(entry)
-        if entry["status"] == "failed" and args.stop_on_failure:
+        if entry["status"] == _FAILED_COMMAND_STATUS and args.stop_on_failure:
             break
 
     summary = {
@@ -1959,12 +1975,16 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 errors.append("commands[].argv must start with a python executable")
                 break
             command_category = entry.get("category")
-            if command_category in {"serial_bridge", "native_diagnostic", "int8_native_diagnostic"} and option_model is not None:
+            if command_category in {
+                _SERIAL_BRIDGE_COMMAND_CATEGORY,
+                _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY,
+                _INT8_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY,
+            } and option_model is not None:
                 if _argv_value(argv, "--model") != option_model:
                     errors.append("commands[].argv --model must match options.model")
                     break
-            fixture_required = command_category in {"serial_bridge", "int8_native_diagnostic"} or (
-                command_category == "native_diagnostic" and entry.get("batch_size") != 1
+            fixture_required = command_category in {_SERIAL_BRIDGE_COMMAND_CATEGORY, _INT8_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY} or (
+                command_category == _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY and entry.get("batch_size") != 1
             )
             if fixture_required and option_fixture is not None and _argv_value(argv, "--fixture") != option_fixture:
                 errors.append("commands[].argv --fixture must match options.fixture")
@@ -1993,13 +2013,13 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 category = entry.get("category")
                 batch_size = entry.get("batch_size")
                 expected_artifact_name = None
-                if category == "primitive":
+                if category == _PRIMITIVE_COMMAND_CATEGORY:
                     expected_artifact_name = f"primitive-c{batch_size}.json"
-                elif category == "serial_bridge":
+                elif category == _SERIAL_BRIDGE_COMMAND_CATEGORY:
                     expected_artifact_name = f"serial-bridge-c{batch_size}.json"
-                elif category == "native_diagnostic":
+                elif category == _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY:
                     expected_artifact_name = "native-baseline-c1.json" if batch_size == 1 else f"native-diagnostic-c{batch_size}.json"
-                elif category == "int8_native_diagnostic":
+                elif category == _INT8_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY:
                     expected_artifact_name = f"int8-native-diagnostic-c{batch_size}.json"
                 if expected_artifact_name is not None and artifact_abs != (output_dir_abs / expected_artifact_name).resolve():
                     errors.append("commands[].artifact_path must match category/batch-size filename")
@@ -2021,7 +2041,11 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if declared_batch_size is not None and declared_batch_size != entry.get("batch_size"):
                 errors.append("commands[].batch_size must match commands[].argv --batch-size/--rows")
                 break
-            if entry.get("category") in {"serial_bridge", "native_diagnostic", "int8_native_diagnostic"}:
+            if entry.get("category") in {
+                _SERIAL_BRIDGE_COMMAND_CATEGORY,
+                _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY,
+                _INT8_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY,
+            }:
                 shape_arg_error = False
                 for shape_flag in ("--prompt-length", "--decode-tokens", "--warmup-decode-tokens", "--max-layers"):
                     try:
@@ -2055,7 +2079,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         break
                 if shape_option_error:
                     break
-            if entry.get("category") == "primitive":
+            if entry.get("category") == _PRIMITIVE_COMMAND_CATEGORY:
                 duplicated_primitive_flags = _duplicate_flags(argv, _PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS)
                 if duplicated_primitive_flags:
                     errors.append("commands[].argv must not repeat primitive correctness flags")
@@ -2080,16 +2104,16 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     errors.append("commands[].argv --seed must match options.seed")
                     break
             expected_scripts_by_category = {
-                "primitive": {"scripts/qwen35_batch_correctness.py"},
-                "serial_bridge": {"scripts/qwen35_batch_serial_bench.py"},
-                "native_diagnostic": {"scripts/qwen35_paro_bench.py", "scripts/qwen35_batch_retained_bench.py"},
-                "int8_native_diagnostic": {"scripts/qwen35_batch_int8_diagnostic.py"},
+                _PRIMITIVE_COMMAND_CATEGORY: {"scripts/qwen35_batch_correctness.py"},
+                _SERIAL_BRIDGE_COMMAND_CATEGORY: {"scripts/qwen35_batch_serial_bench.py"},
+                _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY: {"scripts/qwen35_paro_bench.py", "scripts/qwen35_batch_retained_bench.py"},
+                _INT8_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY: {"scripts/qwen35_batch_int8_diagnostic.py"},
             }
             expected_scripts = expected_scripts_by_category.get(entry.get("category"))
             if expected_scripts is not None and (len(argv) < 2 or argv[1] not in expected_scripts):
                 errors.append("commands[].category must match commands[].argv script")
                 break
-            if entry.get("category") == "native_diagnostic" and entry.get("batch_size") != 1:
+            if entry.get("category") == _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY and entry.get("batch_size") != 1:
                 retained_gate_flags = (
                     "--c1-baseline-json",
                     "--serial-bridge-json",
@@ -2150,7 +2174,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 if _path_has_symlink_parent(compiler_version_check_path):
                     errors.append("commands[].argv compiler-version-file parent directories must not be symlinks")
                     break
-            if entry.get("category") in {"serial_bridge", "native_diagnostic"} and isinstance(options, Mapping):
+            if entry.get("category") in {_SERIAL_BRIDGE_COMMAND_CATEGORY, _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY} and isinstance(options, Mapping):
                 option_compiler_version_file = options.get("compiler_version_file")
                 if option_compiler_version_file is None or isinstance(option_compiler_version_file, str):
                     if compiler_version_file != option_compiler_version_file:
@@ -2161,19 +2185,19 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     errors.append("commands[].argv require-cached-build must match options.require_cached_build")
                     break
             status = entry.get("status")
-            if status not in {"planned", "passed", "skipped", "failed"}:
+            if status not in set(_SWEEP_COMMAND_STATUS_LABELS):
                 errors.append("commands[].status must be planned, passed, skipped, or failed")
                 break
             dry_run = summary.get("dry_run")
             if isinstance(dry_run, bool):
-                if dry_run and status != "planned":
+                if dry_run and status != _PLANNED_COMMAND_STATUS:
                     errors.append("commands[].status must be planned for dry-run summaries")
                     break
-                if not dry_run and status == "planned":
+                if not dry_run and status == _PLANNED_COMMAND_STATUS:
                     errors.append("commands[].status cannot be planned for executed summaries")
                     break
             returncode = entry.get("returncode")
-            if status in {"planned", "skipped"}:
+            if status in {_PLANNED_COMMAND_STATUS, _SKIPPED_COMMAND_STATUS}:
                 if returncode is not None:
                     errors.append("commands[].returncode must be null for planned/skipped rows")
                     break
@@ -2191,24 +2215,24 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if not math.isfinite(float(duration_seconds)):
                 errors.append("commands[].duration_seconds must be finite")
                 break
-            if status == "planned" and float(duration_seconds) != 0.0:
+            if status == _PLANNED_COMMAND_STATUS and float(duration_seconds) != 0.0:
                 errors.append("commands[].duration_seconds must be zero for planned rows")
                 break
-            if status == "skipped" and float(duration_seconds) != 0.0:
+            if status == _SKIPPED_COMMAND_STATUS and float(duration_seconds) != 0.0:
                 errors.append("commands[].duration_seconds must be zero for skipped rows")
                 break
-            if status == "planned" and "output_tail" in entry:
+            if status == _PLANNED_COMMAND_STATUS and "output_tail" in entry:
                 errors.append("commands[].output_tail must be absent for planned rows")
                 break
-            if status == "planned" and any(
+            if status == _PLANNED_COMMAND_STATUS and any(
                 field in entry for field in ("preconditions", "precondition", "postconditions", "postcondition")
             ):
                 errors.append("commands[].conditions must be absent for planned rows")
                 break
-            if status == "planned" and set(entry) != expected_planned_command_keys:
+            if status == _PLANNED_COMMAND_STATUS and set(entry) != expected_planned_command_keys:
                 errors.append("commands[] planned rows must contain exactly planned command keys")
                 break
-            if status != "planned" and not isinstance(entry.get("output_tail"), str):
+            if status != _PLANNED_COMMAND_STATUS and not isinstance(entry.get("output_tail"), str):
                 errors.append("commands[].output_tail must be a string for non-planned rows")
                 break
             if isinstance(entry.get("output_tail"), str) and len(entry["output_tail"]) > _OUTPUT_TAIL_MAX_CHARS:
@@ -2264,24 +2288,24 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     break
             if condition_schema_error:
                 break
-            if "preconditions" in entry and (entry.get("category") != "native_diagnostic" or entry.get("batch_size") == 1):
+            if "preconditions" in entry and (entry.get("category") != _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY or entry.get("batch_size") == 1):
                 errors.append("commands[].preconditions are only valid for retained native diagnostic rows")
                 break
-            if status == "failed" and isinstance(returncode, int) and returncode != 0 and any(
+            if status == _FAILED_COMMAND_STATUS and isinstance(returncode, int) and returncode != 0 and any(
                 field in entry for field in ("postconditions", "postcondition")
             ):
                 errors.append("commands[].postconditions must be absent for failed rows with nonzero returncode")
                 break
-            if status == "skipped" and any(field in entry for field in ("postconditions", "postcondition")):
+            if status == _SKIPPED_COMMAND_STATUS and any(field in entry for field in ("postconditions", "postcondition")):
                 errors.append("commands[].postconditions must be absent for skipped rows")
                 break
-            if "postconditions" in entry and (entry.get("category") != "native_diagnostic" or entry.get("batch_size") == 1):
+            if "postconditions" in entry and (entry.get("category") != _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY or entry.get("batch_size") == 1):
                 errors.append("commands[].postconditions are only valid for retained native diagnostic rows")
                 break
             if (
-                entry.get("category") == "native_diagnostic"
+                entry.get("category") == _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY
                 and entry.get("batch_size") != 1
-                and status == "passed"
+                and status == _PASSED_COMMAND_STATUS
                 and "postconditions" not in entry
             ):
                 errors.append("commands[].postconditions must include retained native postconditions for passed retained rows")
@@ -2291,7 +2315,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             ] != list(_RETAINED_POSTCONDITION_KINDS):
                 errors.append("commands[].postconditions must include retained native postcondition kinds")
                 break
-            if entry.get("category") == "native_diagnostic" and entry.get("batch_size") != 1 and status != "planned":
+            if entry.get("category") == _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY and entry.get("batch_size") != 1 and status != _PLANNED_COMMAND_STATUS:
                 preconditions = entry.get("preconditions")
                 expected_retained_kinds = list(_RETAINED_PRECONDITION_KINDS)
                 if not isinstance(preconditions, list) or [condition.get("kind") for condition in preconditions] != expected_retained_kinds:
@@ -3031,19 +3055,19 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 for precondition in preconditions
                 if isinstance(precondition, dict) and precondition.get("passed") is not True
             ] if isinstance(preconditions, list) else []
-            if status == "passed" and failed_preconditions:
+            if status == _PASSED_COMMAND_STATUS and failed_preconditions:
                 errors.append("commands[].status passed cannot include failed preconditions")
                 break
-            if status == "failed" and failed_preconditions:
+            if status == _FAILED_COMMAND_STATUS and failed_preconditions:
                 errors.append("commands[].status failed cannot include failed preconditions")
                 break
-            if status == "passed" and returncode != 0:
+            if status == _PASSED_COMMAND_STATUS and returncode != 0:
                 errors.append("commands[].status passed requires returncode 0")
                 break
-            if status == "passed" and failed_postconditions:
+            if status == _PASSED_COMMAND_STATUS and failed_postconditions:
                 errors.append("commands[].status passed cannot include failed postconditions")
                 break
-            if status == "passed" and summary.get("status") == "passed":
+            if status == _PASSED_COMMAND_STATUS and summary.get("status") == "passed":
                 artifact_path = Path(entry["artifact_path"])
                 if artifact_path.is_symlink():
                     errors.append("commands[].artifact_path must be a regular file, not a symlink, for passed summary rows")
@@ -3051,13 +3075,13 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 if not artifact_path.is_file():
                     errors.append("commands[].artifact_path must exist for passed summary rows")
                     break
-            if status == "failed" and returncode == 0 and isinstance(postconditions, list) and postconditions and not failed_postconditions:
+            if status == _FAILED_COMMAND_STATUS and returncode == 0 and isinstance(postconditions, list) and postconditions and not failed_postconditions:
                 errors.append("commands[].status failed with returncode 0 cannot include only passed postconditions")
                 break
-            if status == "failed" and returncode == 0 and not failed_postconditions:
+            if status == _FAILED_COMMAND_STATUS and returncode == 0 and not failed_postconditions:
                 errors.append("commands[].status failed with returncode 0 requires a failed postcondition")
                 break
-            if status == "skipped":
+            if status == _SKIPPED_COMMAND_STATUS:
                 if "postconditions" in entry or "postcondition" in entry:
                     errors.append("commands[].postconditions must be absent for skipped rows")
                     break
@@ -3082,7 +3106,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 if set(entry) != expected_skipped_command_keys:
                     errors.append("commands[] skipped rows must contain exactly skipped command keys")
                     break
-            if status in {"passed", "failed"} and not any(
+            if status in {_PASSED_COMMAND_STATUS, _FAILED_COMMAND_STATUS} and not any(
                 field in entry for field in ("preconditions", "precondition", "postconditions", "postcondition")
             ) and set(entry) != expected_simple_executed_command_keys:
                 errors.append("commands[] simple executed rows must contain exactly executed command keys")
@@ -3107,20 +3131,24 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     elif isinstance(options, Mapping) and isinstance(options.get("include_int8"), bool) and batch_sizes:
         expected_plan: list[tuple[str, int]] = []
         for c in batch_sizes:
-            expected_plan.extend([("primitive", c), ("serial_bridge", c), ("native_diagnostic", c)])
+            expected_plan.extend([
+                (_PRIMITIVE_COMMAND_CATEGORY, c),
+                (_SERIAL_BRIDGE_COMMAND_CATEGORY, c),
+                (_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY, c),
+            ])
             if options["include_int8"] and c != 1:
-                expected_plan.append(("int8_native_diagnostic", c))
+                expected_plan.append((_INT8_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY, c))
         if command_count != len(expected_plan):
             errors.append("command_count must match batch_sizes/options.include_int8")
         elif [(entry.get("category"), entry.get("batch_size")) for entry in entries] != expected_plan[: len(entries)]:
             errors.append("commands[] category/batch_size order must match batch_sizes/options.include_int8")
     if isinstance(options, Mapping) and options.get("stop_on_failure") is True:
         for index, entry in enumerate(entries[:-1]):
-            if entry.get("status") in {"failed", "skipped"}:
+            if entry.get("status") in {_FAILED_COMMAND_STATUS, _SKIPPED_COMMAND_STATUS}:
                 errors.append("commands[] failed/skipped row must be final when stop_on_failure is true")
                 break
     status_counts = summary.get("status_counts")
-    if not _count_leaf_labels_within(status_counts, {"planned", "passed", "skipped", "failed"}):
+    if not _count_leaf_labels_within(status_counts, set(_SWEEP_COMMAND_STATUS_LABELS)):
         errors.append("status_counts must contain only known command status labels")
     if not _count_leaf_values_are_nonnegative_ints(status_counts):
         errors.append("status_counts must contain only non-negative integer count values")
@@ -3128,9 +3156,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     if not _typed_count_mapping_matches(status_counts, expected_status_counts):
         errors.append("status_counts must match commands")
     category_status_counts = summary.get("category_status_counts")
-    if not _count_top_labels_within(category_status_counts, {"primitive", "serial_bridge", "native_diagnostic", "int8_native_diagnostic"}):
+    if not _count_top_labels_within(category_status_counts, set(_SWEEP_COMMAND_CATEGORIES)):
         errors.append("category_status_counts must contain only known command category labels")
-    if not _count_leaf_labels_within(category_status_counts, {"planned", "passed", "skipped", "failed"}):
+    if not _count_leaf_labels_within(category_status_counts, set(_SWEEP_COMMAND_STATUS_LABELS)):
         errors.append("category_status_counts must contain only known command status labels")
     if not _count_leaf_values_are_nonnegative_ints(category_status_counts):
         errors.append("category_status_counts must contain only non-negative integer count values")
@@ -3418,7 +3446,7 @@ def _failed_postconditions(entries: Sequence[dict[str, Any]]) -> list[dict[str, 
 def _skipped_preconditions(entries: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
     skipped: list[dict[str, Any]] = []
     for entry in entries:
-        if entry.get("status") != "skipped":
+        if entry.get("status") != _SKIPPED_COMMAND_STATUS:
             continue
         precondition = entry.get("precondition")
         if not isinstance(precondition, dict):
@@ -3437,11 +3465,11 @@ def _skipped_preconditions(entries: Sequence[dict[str, Any]]) -> list[dict[str, 
 
 
 def _summary_status(entries: Sequence[dict[str, Any]]) -> str:
-    if any(entry["status"] == "failed" for entry in entries):
+    if any(entry["status"] == _FAILED_COMMAND_STATUS for entry in entries):
         return "failed"
-    if any(entry["status"] == "skipped" for entry in entries):
+    if any(entry["status"] == _SKIPPED_COMMAND_STATUS for entry in entries):
         return "blocked"
-    if all(entry["status"] == "planned" for entry in entries):
+    if all(entry["status"] == _PLANNED_COMMAND_STATUS for entry in entries):
         return "planned"
     return "passed"
 
