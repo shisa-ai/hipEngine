@@ -26721,3 +26721,13 @@ WHEEL=/tmp/hipengine-release-v021.QhOZ2d/dist/hipengine-0.2.2-py3-none-manylinux
 ```
 
 Results: compileall passed; full pytest passed on CPython 3.10.16 (including the explicit `--python 3.10` run); server CLI smoke passed; `python3 -m build` produced `hipengine-0.2.2.tar.gz` and `hipengine-0.2.2-py3-none-manylinux_2_39_x86_64.whl`; wheel metadata reports `Root-Is-Purelib: false` and tag `py3-none-manylinux_2_39_x86_64`; `twine check` passed for both artifacts; isolated wheel server CLI smoke passed. Rebuild artifacts after this log append before publishing so `dist/` matches the final commit.
+
+## 2026-05-29 — Step 3.7 Flash bring-up review
+
+Reviewed the public Step 3.7 Flash blog, the `stepfun-ai/Step-3.7-Flash-NVFP4` HF config/model metadata at snapshot `36afbf6e15100cdc2d7a5b79d7e95d276ed33679`, the local HF cache state, and local GGUF shards under `/data/models/gguf/`. Created `docs/STEPFUN.md` with the text-model architecture summary, GGUF/NVFP4 format notes, hipEngine gap analysis, and recommended text-only GGUF Q3_K_L bring-up order. Important findings: the user-mentioned `/data/gguf/` path was not present; the local GGUF shards are under `/data/models/gguf/` and total 102.50 GB; the HF cache currently has metadata plus eight incomplete large blobs; Step GGUF reports `general.architecture='step35'`, split count 3, and tokenizer pre `deepseek-v3`, so it needs a separate Step model/tokenizer/GGUF split-loader path rather than Qwen3.5 special-casing.
+
+Validation:
+
+```bash
+git diff --check
+```
