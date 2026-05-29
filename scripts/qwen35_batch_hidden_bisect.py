@@ -2546,6 +2546,46 @@ def _decode_linear_input_bit_drift_record(
     return record
 
 
+def _decode_linear_input_producer_context(summary: dict[str, Any], record: dict[str, Any]) -> dict[str, Any]:
+    decode_step = int(record.get("decode_step", -1))
+    target_layer_index = int(record.get("layer_index", -1))
+    row_index = int(record.get("row", -1))
+    producer_layer_index = target_layer_index - 1
+    context: dict[str, Any] = {
+        "decode_step": decode_step,
+        "row": row_index,
+        "target_layer_index": target_layer_index,
+        "producer_layer_index": producer_layer_index,
+    }
+    if producer_layer_index < 0:
+        context.update({"available": False, "reason": "target layer has no previous layer producer"})
+        return context
+    producer_execution = _layer_execution_at_step(summary, decode_step=decode_step, layer_index=producer_layer_index)
+    if producer_execution is not None:
+        context["producer_layer_execution"] = producer_execution
+    producer_full_attention = _decode_full_attention_layer_focus_at(
+        summary,
+        decode_step=decode_step,
+        layer_index=producer_layer_index,
+        row_index=row_index,
+    )
+    if producer_full_attention is not None:
+        context.update(
+            {
+                "available": True,
+                "producer_kind": "decode_full_attention",
+                "producer_full_attention": producer_full_attention,
+            }
+        )
+        return context
+    producer_layer_type = producer_execution.get("layer_type") if isinstance(producer_execution, dict) else None
+    reason = "no decode full-attention producer trace for previous layer"
+    if producer_layer_type:
+        reason = f"no decode full-attention producer trace for previous layer type {producer_layer_type}"
+    context.update({"available": False, "reason": reason})
+    return context
+
+
 def _decode_linear_input_bit_drift_rollup(layer_summaries: Sequence[dict[str, Any]]) -> dict[str, Any]:
     layer_rollups: dict[int, dict[str, Any]] = {}
     first_bit_drift: dict[str, Any] | None = None
@@ -2579,6 +2619,7 @@ def _decode_linear_input_bit_drift_rollup(layer_summaries: Sequence[dict[str, An
                         row_summary,
                         layer_limit=layer_limit,
                     )
+                    record["producer_context"] = _decode_linear_input_producer_context(summary, record)
                     rollup["passed"] = False
                     rollup["total_bit_mismatch"] = int(rollup["total_bit_mismatch"]) + bit_mismatch
                     if rollup["first_bit_drift"] is None:

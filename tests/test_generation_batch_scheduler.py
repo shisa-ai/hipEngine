@@ -6459,6 +6459,10 @@ def test_hidden_bisect_current_source_rollup_promotes_failures() -> None:
                         "decode_step": 0,
                         "layers": [
                             {
+                                "layer_index": 2,
+                                "stages": dict([stage_summary("output", passed=True, max_abs=0.0)]),
+                            },
+                            {
                                 "layer_index": 3,
                                 "stages": dict(
                                     [
@@ -6586,7 +6590,8 @@ def test_hidden_bisect_current_source_rollup_promotes_failures() -> None:
 
     linear_bit_rollup = _decode_linear_input_bit_drift_rollup(layer_summaries)
     assert linear_bit_rollup["drift_layers"] == [3]
-    assert linear_bit_rollup["first_bit_drift"] == {
+    linear_first = linear_bit_rollup["first_bit_drift"]
+    assert {key: linear_first[key] for key in linear_first if key != "producer_context"} == {
         "layer_limit": 8,
         "decode_step": 0,
         "generated_index": 1,
@@ -6599,6 +6604,13 @@ def test_hidden_bisect_current_source_rollup_promotes_failures() -> None:
         "max_abs_index": [0, 1269],
         "elements_over_atol": 0,
     }
+    producer_context = linear_first["producer_context"]
+    assert producer_context["available"] is True
+    assert producer_context["producer_kind"] == "decode_full_attention"
+    assert producer_context["producer_layer_index"] == 2
+    assert producer_context["target_layer_index"] == 3
+    assert producer_context["producer_full_attention"]["layer_index"] == 2
+    assert list(producer_context["producer_full_attention"]["stages"]) == ["output"]
     assert linear_bit_rollup["layers"]["3"] == {
         "passed": False,
         "bit_drift_rows": [0],
