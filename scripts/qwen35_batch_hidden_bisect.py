@@ -3693,7 +3693,7 @@ def _decode_full_kv_source_stage_context_stages(source_stage: str) -> tuple[str,
 def _decode_full_attention_row_stage_record(stage: str, row_summary: dict[str, Any]) -> dict[str, Any]:
     comparison = row_summary.get("hidden_comparison", {})
     max_abs_flat_index = comparison.get("max_abs_flat_index") if isinstance(comparison, dict) else None
-    return {
+    record = {
         "stage": stage,
         "passed": bool(row_summary.get("passed", False)),
         "comparison_kind": str(row_summary.get("comparison_kind", "unknown")),
@@ -3702,6 +3702,9 @@ def _decode_full_attention_row_stage_record(stage: str, row_summary: dict[str, A
         "max_abs_index": comparison.get("max_abs_index", []) if isinstance(comparison, dict) else [],
         "elements_over_atol": int(comparison.get("elements_over_atol", 0)) if isinstance(comparison, dict) else 0,
     }
+    if isinstance(comparison, dict) and "bit_mismatch" in comparison:
+        record["bit_mismatch"] = int(comparison.get("bit_mismatch", 0))
+    return record
 
 
 def _decode_full_attention_stage_context_for_current_source(
@@ -3744,6 +3747,10 @@ def _decode_full_attention_stage_context_for_current_source(
             if not records:
                 return None
             first_failed_stage = next((record for record in records if not bool(record.get("passed", False))), None)
+            first_bit_mismatch_stage = next(
+                (record for record in records if int(record.get("bit_mismatch", 0)) > 0),
+                None,
+            )
             source_stage_record = next((record for record in records if record.get("stage") == source_stage), None)
             return {
                 "decode_step": decode_step,
@@ -3752,7 +3759,9 @@ def _decode_full_attention_stage_context_for_current_source(
                 "source_stage": source_stage,
                 "context_stage_count": len(records),
                 "first_failed_stage": first_failed_stage,
+                "first_bit_mismatch_stage": first_bit_mismatch_stage,
                 "source_stage_record": source_stage_record,
+                "current_source_bit_mismatch": int(failure.get("bit_mismatch", 0)),
                 "stages": records,
             }
     return None
