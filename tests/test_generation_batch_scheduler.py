@@ -9891,6 +9891,8 @@ def test_qwen35_retained_profiler_reference_loads_captured_summary(tmp_path: Pat
     assert retained_bench._PROFILER_TRACE_END_COLUMNS is RETAINED_ARTIFACT_PROFILER_TRACE_END_COLUMNS
     assert retained_bench._PROFILER_TRACE_DURATION_COLUMNS is RETAINED_ARTIFACT_PROFILER_TRACE_DURATION_COLUMNS
     assert retained_bench._PROFILER_SYNTHESIZED_FIELDS is RETAINED_ARTIFACT_PROFILER_SYNTHESIZED_FIELDS
+    assert retained_bench._RETAINED_GATE_FLAGS is RETAINED_ARTIFACT_RETAINED_GATE_FLAGS
+    assert retained_bench._RETAINED_GATE_LABELS is RETAINED_ARTIFACT_RETAINED_GATE_LABELS
     assert loaded["status"] == "captured"
     assert loaded["output_format"] == "csv"
     assert loaded["trace_dir"] == str(trace_dir)

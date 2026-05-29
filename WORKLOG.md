@@ -48235,3 +48235,23 @@ git diff -- docs/CONCURRENCY.md docs/BENCHMARK.md benchmarks/README.md benchmark
 ```
 
 Result: targeted accepted-artifact gate-flag test PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and the change only tightens accepted-artifact retained gate provenance evidence plumbing.
+
+## 2026-05-29 — CONCURRENCY shared retained-bench gate flags
+
+Reused the shared retained gate-artifact flag tuple in `scripts/qwen35_batch_retained_bench.py`. Retained-bench profiler provenance now checks unique profiled-command flags, profiler JSON references, retained reference artifacts, and argparse gate arguments through `RETAINED_ARTIFACT_RETAINED_GATE_FLAGS` / `RETAINED_ARTIFACT_RETAINED_GATE_LABELS`. CPU tests assert retained-bench consumes both shared tuples while exercising captured profiler summaries and provenance blockers. This extends the gate-flag sharing across c-sweep, accepted-artifact schema, and retained-bench runtime validation.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_retained_bench.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_retained_profiler_reference_loads_captured_summary tests/test_generation_batch_scheduler.py::test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_paths -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/CONCURRENCY.md docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md WORKLOG.md && git diff --check
+```
+
+Result: targeted retained-bench gate-flag tests PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and the change only tightens retained-bench gate artifact provenance evidence plumbing.

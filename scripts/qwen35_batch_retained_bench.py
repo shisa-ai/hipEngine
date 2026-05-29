@@ -49,6 +49,8 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_PROFILER_TRACE_KERNEL_NAME_COLUMNS,
     RETAINED_ARTIFACT_PROFILER_TRACE_START_COLUMNS,
     RETAINED_ARTIFACT_PROFILER_SYNTHESIZED_FIELDS,
+    RETAINED_ARTIFACT_RETAINED_GATE_FLAGS,
+    RETAINED_ARTIFACT_RETAINED_GATE_LABELS,
     RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SEED,
     RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS,
     RETAINED_ARTIFACT_REQUIRED_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES,
@@ -66,6 +68,8 @@ _PROFILER_TRACE_KERNEL_NAME_COLUMNS = RETAINED_ARTIFACT_PROFILER_TRACE_KERNEL_NA
 _PROFILER_TRACE_START_COLUMNS = RETAINED_ARTIFACT_PROFILER_TRACE_START_COLUMNS
 _PROFILER_TRACE_END_COLUMNS = RETAINED_ARTIFACT_PROFILER_TRACE_END_COLUMNS
 _PROFILER_TRACE_DURATION_COLUMNS = RETAINED_ARTIFACT_PROFILER_TRACE_DURATION_COLUMNS
+_RETAINED_GATE_FLAGS = RETAINED_ARTIFACT_RETAINED_GATE_FLAGS
+_RETAINED_GATE_LABELS = RETAINED_ARTIFACT_RETAINED_GATE_LABELS
 _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS
 _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS = RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS
 _REQUIRED_PRIMITIVE_CORRECTNESS_SEED = RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SEED
@@ -1507,10 +1511,7 @@ def _profiler_command_provenance_blockers(
             "--kv-scale-dtype",
             "--kv-scale-granularity",
             "--json",
-            "--c1-baseline-json",
-            "--serial-bridge-json",
-            "--primitive-correctness-json",
-            "--profiler-json",
+            *_RETAINED_GATE_FLAGS,
         ):
             if _command_flag_count(profiled_segment, flag) > 1:
                 blockers.append(f"profiler command {flag} must be unique after rocprof separator")
@@ -1526,8 +1527,9 @@ def _profiler_command_provenance_blockers(
         blockers.append("profiler command must include --output-format csv")
     if trace_dir is not None and _command_arg_value(rocprof_prefix_command, "-d") != trace_dir:
         blockers.append("profiler command -d must match profiler.trace_dir")
-    if profiler_artifact_path is not None and _command_arg_value(retained_command, "--profiler-json") != profiler_artifact_path:
-        blockers.append("profiler command --profiler-json must match profiler.artifact_path")
+    profiler_json_flag = _RETAINED_GATE_FLAGS[3]
+    if profiler_artifact_path is not None and _command_arg_value(retained_command, profiler_json_flag) != profiler_artifact_path:
+        blockers.append(f"profiler command {profiler_json_flag} must match profiler.artifact_path")
     if retained_artifact_path is not None and _command_arg_value(retained_command, "--json") != retained_artifact_path:
         blockers.append("profiler command --json must match retained artifact path")
     if expected_workload is not None:
@@ -1561,11 +1563,7 @@ def _profiler_command_provenance_blockers(
         elif not _command_has_flag(retained_command, "--require-cached-build"):
             blockers.append("profiler command must include --require-cached-build")
     if expected_references is not None:
-        for key, flag in (
-            ("c1_baseline_json", "--c1-baseline-json"),
-            ("serial_bridge_json", "--serial-bridge-json"),
-            ("primitive_correctness_json", "--primitive-correctness-json"),
-        ):
+        for key, flag in zip(_RETAINED_GATE_LABELS[:3], _RETAINED_GATE_FLAGS[:3]):
             expected_value = expected_references.get(key)
             if not isinstance(expected_value, str) or not expected_value:
                 blockers.append(f"retained command must include {flag}")
@@ -2667,10 +2665,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--skip-generated-equality", action="store_true")
-    parser.add_argument("--c1-baseline-json", type=Path, help="c=1 baseline artifact used for retained scaling ratios")
-    parser.add_argument("--serial-bridge-json", type=Path, help="scheduler serial-bridge artifact for retained scaling ratios")
-    parser.add_argument("--primitive-correctness-json", type=Path, help="scripts/qwen35_batch_correctness.py JSON for this c>N row count")
-    parser.add_argument("--profiler-json", type=Path, help="Captured rocprofv3 summary JSON to attach to retained evidence")
+    parser.add_argument(_RETAINED_GATE_FLAGS[0], type=Path, help="c=1 baseline artifact used for retained scaling ratios")
+    parser.add_argument(_RETAINED_GATE_FLAGS[1], type=Path, help="scheduler serial-bridge artifact for retained scaling ratios")
+    parser.add_argument(_RETAINED_GATE_FLAGS[2], type=Path, help="scripts/qwen35_batch_correctness.py JSON for this c>N row count")
+    parser.add_argument(_RETAINED_GATE_FLAGS[3], type=Path, help="Captured rocprofv3 summary JSON to attach to retained evidence")
     parser.add_argument("--profiler-command", help="Exact rocprofv3 --kernel-trace command that produced --profiler-json")
     add_kv_policy_args(parser, help_prefix="Resident KV storage for retained native c>N benchmark")
     parser.add_argument("--json", type=Path, help="Optional path to write JSON output")
