@@ -2880,6 +2880,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         errors.append("commands[].postconditions[].profiler_source_artifact_path must match profiler_summary precondition")
                         break
                 reason = postcondition.get("reason")
+                source_mismatch_reason = "retained artifact profiler.source_artifact_path does not match profiler precondition source path"
                 if (
                     isinstance(profiler_precondition, dict)
                     and postcondition.get("passed") is not True
@@ -2895,7 +2896,20 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 if (
                     isinstance(profiler_precondition, dict)
                     and postcondition.get("passed") is not True
-                    and reason != "retained artifact profiler.source_artifact_path does not match profiler precondition source path"
+                    and reason == source_mismatch_reason
+                    and (
+                        not isinstance(profiler_precondition_source, str)
+                        or not profiler_precondition_source
+                        or "profiler_source_artifact_path" not in postcondition
+                        or postcondition.get("profiler_source_artifact_path") == profiler_precondition_source
+                    )
+                ):
+                    errors.append("commands[].postconditions[].profiler_source_artifact_path must document source mismatch when source check failed")
+                    break
+                if (
+                    isinstance(profiler_precondition, dict)
+                    and postcondition.get("passed") is not True
+                    and reason != source_mismatch_reason
                     and "profiler_source_artifact_path" in postcondition
                     and postcondition.get("profiler_source_artifact_path") != profiler_precondition_source
                 ):
