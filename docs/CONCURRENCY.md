@@ -821,8 +821,13 @@ roll-up/status view.
       `/tmp/hipengine-hidden-bisect-L8-512-16-c1-batch-segments-decode-metadata-focus1269.json`
       still fails hidden equality with `rows=1`, `state_indices=[0]`, and
       `decode_linear_input_passed=true` (first hidden mismatch: step 11 / dim
-      1543, `max_abs=0.010478973388671875`). A grouped-MoE + native-linear
-      c=2 probe at
+      1543, `max_abs=0.010478973388671875`). The matching rows=1 forced-c1
+      linear wrapper at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c1-forced-linear-per-row-decode-focus1269.json`
+      is green (`status=eq_ok`, hidden/token/state/input gates all true),
+      confirming that the divergence is inside the native segment linear-decode
+      wrapper/kernel path rather than row setup, full-attention fallback, or
+      later selected-c1 MoE. A grouped-MoE + native-linear c=2 probe at
       `/tmp/hipengine-hidden-bisect-L8-512-16-native-linear-grouped-decode-metadata-focus1269.json`
       records `state_indices=[0,1]` and fails later at the old row-0 idx-13
       token boundary. The reduced prefill drift is fixed, all-per-row fallback,

@@ -3419,7 +3419,7 @@ class Qwen35ParoResidentSession:
         native_full_attention_layers = 0
         dense_mlp = int(getattr(self.config, "num_experts", 1) or 0) <= 0
         force_selected_c1_moe = (not dense_mlp) and rows > 1 and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE")
-        force_per_row_linear = rows > 1 and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR")
+        force_per_row_linear = _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR")
         moe_decode_path = "dense_mlp" if dense_mlp else ("selected_c1" if rows == 1 else ("selected_c1_forced" if force_selected_c1_moe else "grouped_compact"))
         moe_grouped_compact_layers = 0
         moe_selected_c1_fallback_layers = 0
