@@ -94,6 +94,18 @@ _REQUIRED_ACCEPTED_ENVIRONMENT_COMMANDS = (
     "git rev-parse HEAD",
     "git diff --quiet",
 )
+_DISALLOWED_ACCEPTED_DIAGNOSTIC_ENVIRONMENT_FRAGMENTS = (
+    "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE",
+    "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR",
+    "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_PROJECTIONS",
+    "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_STATE",
+    "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT",
+    "HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE=0",
+    "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT",
+    "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN",
+    "HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR",
+    "HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_FULL_ATTN",
+)
 _REQUIRED_ACCEPTED_SCALING_BASELINES = (
     "c1_baseline",
     "serial_bridge_baseline",
@@ -1597,6 +1609,9 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         for command in _REQUIRED_ACCEPTED_ENVIRONMENT_COMMANDS:
             if command not in environment_commands:
                 errors.append(f"commands.environment must include exact command `{command}` for accepted artifacts")
+        for fragment in _DISALLOWED_ACCEPTED_DIAGNOSTIC_ENVIRONMENT_FRAGMENTS:
+            if fragment in joined_environment_commands:
+                errors.append(f"commands.environment must not include diagnostic override {fragment} for accepted artifacts")
     benchmark_command = commands.get("benchmark")
     if isinstance(benchmark_command, str):
         if "qwen35_batch_retained_bench.py" not in benchmark_command:
