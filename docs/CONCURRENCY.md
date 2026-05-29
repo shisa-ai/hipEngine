@@ -640,14 +640,15 @@ roll-up/status view.
       but
       `/tmp/hipengine-hidden-bisect-L1-8-512-1-grouped.json` still reports the
       first hidden mismatch at layer-limit 6 (row 0, generated index 1), and the
-      old row-0 token idx-13 mismatch remains. New diagnostic metadata in
-      `/tmp/hipengine-hidden-bisect-L6-512-1-layer-type.json` tags that reduced
-      first mismatch to `last_layer_index=5`, `last_layer_type=linear_attention`,
-      and hidden-bisection summaries now embed per-step
-      `batch_decode_execution.layer_executions` traces for the native batch path
-      plus copy the failing step's trace into the top-level first-hidden-mismatch
-      record, keeping C2.3 focused on the linear-attention+MoE layer rather than
-      sampler or split-K paths.
+      old row-0 token idx-13 mismatch remains. Latest traced diagnostic
+      `/tmp/hipengine-hidden-bisect-L6-512-1-traced.json` still emits
+      `status=mismatch_found` at layer-limit 6 (row 0, generated index 1,
+      `max_abs=0.00146484375`, no token mismatch) and now copies the failing
+      step's `batch_decode_execution.layer_executions` into
+      `correctness.first_hidden_mismatch`; that trace shows native batch
+      full-attention at layer 3 and grouped-compact MoE on all six decoded
+      layers, keeping C2.3 focused on the linear-attention+MoE layer rather than
+      sampler, selected-c1 fallback, or split-K paths.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions
