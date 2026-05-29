@@ -2883,6 +2883,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         errors.append("commands[].postconditions[].profiler_source_artifact_path must match profiler_summary precondition")
                         break
                 reason = postcondition.get("reason")
+                source_malformed_reason = "retained artifact profiler.source_artifact_path is missing or malformed"
                 source_mismatch_reason = "retained artifact profiler.source_artifact_path does not match profiler precondition source path"
                 if (
                     isinstance(profiler_precondition, dict)
@@ -2897,6 +2898,21 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     errors.append("commands[].postconditions[].profiler_precondition_source_artifact_path must match profiler_summary precondition when present")
                     break
                 source_artifact_path = postcondition.get("profiler_source_artifact_path")
+                if (
+                    isinstance(profiler_precondition, dict)
+                    and postcondition.get("passed") is not True
+                    and reason == source_malformed_reason
+                    and any(
+                        key in postcondition
+                        for key in (
+                            "profiler_source_artifact_path",
+                            "profiler_synthesized_fields",
+                            "profiler_precondition_synthesized_fields",
+                        )
+                    )
+                ):
+                    errors.append("commands[].postconditions[] malformed source failures must not include source or synthesized-field evidence")
+                    break
                 if (
                     isinstance(profiler_precondition, dict)
                     and postcondition.get("passed") is not True

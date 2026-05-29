@@ -5475,6 +5475,11 @@ def test_batch_c_sweep_fails_retained_row_on_profiler_synthesis_mismatch(tmp_pat
         missing_source_summary["commands"][-1]["postconditions"][0].pop(key, None)
     missing_source_summary["commands"][-1]["postcondition"] = missing_source_summary["commands"][-1]["postconditions"][0]
     c_sweep.validate_sweep_summary(missing_source_summary)
+    tampered_missing_source_with_source = json.loads(json.dumps(missing_source_summary))
+    tampered_missing_source_with_source["commands"][-1]["postconditions"][0]["profiler_source_artifact_path"] = str(output_dir / "profiler-c2.json")
+    tampered_missing_source_with_source["commands"][-1]["postcondition"] = tampered_missing_source_with_source["commands"][-1]["postconditions"][0]
+    with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\] malformed source failures must not include source or synthesized-field evidence"):
+        c_sweep.validate_sweep_summary(tampered_missing_source_with_source)
     tampered_failed_postcondition_precondition_source = json.loads(json.dumps(summary))
     tampered_failed_postcondition_precondition_source["commands"][-1]["postconditions"][0]["profiler_precondition_source_artifact_path"] = str(output_dir / "stale-profiler.json")
     tampered_failed_postcondition_precondition_source["commands"][-1]["postcondition"] = tampered_failed_postcondition_precondition_source["commands"][-1]["postconditions"][0]
