@@ -2448,6 +2448,18 @@ def test_batch_c_sweep_no_stop_counts_failed_and_skipped_rows(tmp_path: Path, mo
             "reason": "primitive correctness artifact does not exist",
         }
     ]
+    tampered_partial_no_stop = json.loads(json.dumps(summary))
+    tampered_partial_no_stop["commands"] = tampered_partial_no_stop["commands"][:2]
+    tampered_partial_no_stop["completed_command_count"] = 2
+    tampered_partial_no_stop["status_counts"] = {"failed": 1, "passed": 1}
+    tampered_partial_no_stop["category_status_counts"] = {
+        "primitive": {"failed": 1},
+        "serial_bridge": {"passed": 1},
+    }
+    tampered_partial_no_stop["retained_precondition_counts"] = {}
+    tampered_partial_no_stop["skipped_preconditions"] = []
+    with pytest.raises(ValueError, match="non-stop summaries must include all planned commands"):
+        c_sweep.validate_sweep_summary(tampered_partial_no_stop)
     assert len(calls) == 2
     assert calls[0][1] == "scripts/qwen35_batch_correctness.py"
     assert calls[1][1] == "scripts/qwen35_batch_serial_bench.py"
