@@ -269,6 +269,68 @@ def qwen35_grouped_moe_sorted_lanes_from_selected_experts(
     return tuple(lane for group in groups for lane in group)
 
 
+def qwen35_grouped_moe_sorted_routing_weights(
+    routing_weights: Sequence[Sequence[float]],
+    sorted_lanes: Sequence[int],
+    *,
+    tokens: int,
+    top_k: int,
+) -> tuple[float, ...]:
+    """Return routing weights in grouped-MoE sorted-lane order."""
+
+    if len(routing_weights) != tokens or any(len(row) != top_k for row in routing_weights):
+        raise ValueError("routing_weights shape must match tokens * top_k")
+    lane_to_row_rank = tuple((lane // top_k, lane % top_k) for lane in range(tokens * top_k))
+    lane_to_sorted_row = qwen35_grouped_moe_lane_to_sorted_row(sorted_lanes, tokens=tokens, top_k=top_k)
+    sorted_weights = [0.0] * len(sorted_lanes)
+    for lane, sorted_row in enumerate(lane_to_sorted_row):
+        token_row, expert_rank = lane_to_row_rank[lane]
+        weight = routing_weights[token_row][expert_rank]
+        if isinstance(weight, bool) or not isinstance(weight, int | float):
+            raise ValueError("routing_weights entries must be numeric")
+        sorted_weights[sorted_row] = float(weight)
+    return tuple(sorted_weights)
+
+
+def qwen35_grouped_moe_weighted_token_sums(
+    sorted_values: Sequence[Sequence[float]],
+    sorted_weights: Sequence[float],
+    sorted_lanes: Sequence[int],
+    *,
+    tokens: int,
+    top_k: int,
+) -> tuple[tuple[float, ...], ...]:
+    """Mirror grouped-MoE weighted selected-branch accumulation on CPU."""
+
+    total_lanes = tokens * top_k
+    if len(sorted_values) != total_lanes:
+        raise ValueError("sorted_values length must match tokens * top_k")
+    if len(sorted_weights) != total_lanes:
+        raise ValueError("sorted_weights length must match tokens * top_k")
+    feature_size = len(sorted_values[0]) if sorted_values else 0
+    if feature_size <= 0 or any(len(row) != feature_size for row in sorted_values):
+        raise ValueError("sorted_values rows must have a consistent non-empty feature size")
+    lane_to_sorted_row = qwen35_grouped_moe_lane_to_sorted_row(sorted_lanes, tokens=tokens, top_k=top_k)
+    out: list[tuple[float, ...]] = []
+    for token in range(tokens):
+        features: list[float] = []
+        for col in range(feature_size):
+            acc = 0.0
+            for expert_rank in range(top_k):
+                lane = token * top_k + expert_rank
+                sorted_row = lane_to_sorted_row[lane]
+                value = sorted_values[sorted_row][col]
+                weight = sorted_weights[sorted_row]
+                if isinstance(value, bool) or not isinstance(value, int | float):
+                    raise ValueError("sorted_values entries must be numeric")
+                if isinstance(weight, bool) or not isinstance(weight, int | float):
+                    raise ValueError("sorted_weights entries must be numeric")
+                acc += float(value) * float(weight)
+            features.append(acc)
+        out.append(tuple(features))
+    return tuple(out)
+
+
 @dataclass(frozen=True)
 class Qwen35ParoAttentionScratch:
     attn_input: Tensor

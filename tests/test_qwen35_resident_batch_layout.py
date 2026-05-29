@@ -21,7 +21,9 @@ from hipengine.runtime.qwen35_paro import (
     qwen35_grouped_moe_lane_rows,
     qwen35_grouped_moe_lane_to_sorted_row,
     qwen35_grouped_moe_sorted_lanes_from_selected_experts,
+    qwen35_grouped_moe_sorted_routing_weights,
     qwen35_grouped_moe_sorted_token_rows,
+    qwen35_grouped_moe_weighted_token_sums,
 )
 from hipengine.runtime import qwen35_paro_runner as runner_module
 from hipengine.runtime.qwen35_paro_runner import (
@@ -1462,6 +1464,35 @@ def test_qwen35_grouped_moe_selected_experts_build_expert_groups() -> None:
         qwen35_grouped_moe_expert_lane_groups(((0, True),), num_experts=3)
     with pytest.raises(ValueError, match="selected_experts entries must be expert ints in range"):
         qwen35_grouped_moe_expert_lane_groups(((0, 3),), num_experts=3)
+
+
+def test_qwen35_grouped_moe_weighted_sums_match_token_major_selected_branch() -> None:
+    selected_experts = ((2, 0), (1, 2), (0, 1))
+    routing_weights = ((0.25, 0.75), (0.5, 0.125), (0.875, 0.375))
+    token_major_values = ((10.0, 1.0), (20.0, 2.0), (30.0, 3.0), (40.0, 4.0), (50.0, 5.0), (60.0, 6.0))
+    sorted_lanes = qwen35_grouped_moe_sorted_lanes_from_selected_experts(selected_experts, num_experts=3)
+    sorted_values = tuple(token_major_values[lane] for lane in sorted_lanes)
+    sorted_weights = qwen35_grouped_moe_sorted_routing_weights(routing_weights, sorted_lanes, tokens=3, top_k=2)
+
+    grouped = qwen35_grouped_moe_weighted_token_sums(sorted_values, sorted_weights, sorted_lanes, tokens=3, top_k=2)
+    selected_c1 = tuple(
+        tuple(
+            sum(token_major_values[token * 2 + expert_rank][col] * routing_weights[token][expert_rank] for expert_rank in range(2))
+            for col in range(2)
+        )
+        for token in range(3)
+    )
+
+    assert sorted_weights == (0.75, 0.875, 0.5, 0.375, 0.25, 0.125)
+    for grouped_row, selected_row in zip(grouped, selected_c1, strict=True):
+        assert grouped_row == pytest.approx(selected_row)
+
+    with pytest.raises(ValueError, match=r"routing_weights shape must match tokens \* top_k"):
+        qwen35_grouped_moe_sorted_routing_weights(((1.0,),), sorted_lanes, tokens=3, top_k=2)
+    with pytest.raises(ValueError, match="sorted_values rows must have a consistent non-empty feature size"):
+        qwen35_grouped_moe_weighted_token_sums(((1.0,), (2.0, 3.0)), (1.0, 1.0), (0, 1), tokens=1, top_k=2)
+    with pytest.raises(ValueError, match="sorted_weights entries must be numeric"):
+        qwen35_grouped_moe_weighted_token_sums(((1.0,), (2.0,)), (1.0, True), (0, 1), tokens=1, top_k=2)
 
 
 def test_qwen35_resident_decode_batch_uses_grouped_moe_scratch_for_rows_gt1() -> None:

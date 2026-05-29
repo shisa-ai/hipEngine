@@ -633,7 +633,8 @@ roll-up/status view.
       decode-execution metadata reports `moe_decode_path`/`moe_decode_rows` plus
       grouped-compact and selected-c1 fallback layer counts so retained gates
       can reject stale selected-c1 MoE paths; CPU coverage now locks the
-      token-major routed-lane → token-row, selected-expert → expert-group, and
+      token-major routed-lane → token-row, selected-expert → expert-group,
+      sorted routing-weight, weighted selected-branch accumulation, and
       lane-to-sorted-row helper semantics used by grouped MoE combine metadata,
       but
       `/tmp/hipengine-hidden-bisect-L1-8-512-1-grouped.json` still reports the
