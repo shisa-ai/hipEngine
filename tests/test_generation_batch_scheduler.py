@@ -13432,6 +13432,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             in str(diagnostic_command_error.value)
         )
 
+    diagnostic_structured_metadata = json.loads(json.dumps(accepted))
+    diagnostic_structured_metadata["diagnostic_environment"] = {
+        "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_STATE": "1"
+    }
+    with pytest.raises(ValueError) as diagnostic_structured_metadata_error:
+        validate_cn_diagnostic_artifact_payload(diagnostic_structured_metadata)
+    assert "diagnostic_environment.HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_STATE" in str(
+        diagnostic_structured_metadata_error.value
+    )
+
     wrong_benchmark_command = json.loads(json.dumps(accepted))
     wrong_benchmark_command["commands"]["benchmark"] = "python3 scripts/qwen35_batch_serial_bench.py --batch-size 2"
     with pytest.raises(ValueError, match="commands.benchmark must reference scripts/qwen35_batch_retained_bench.py"):

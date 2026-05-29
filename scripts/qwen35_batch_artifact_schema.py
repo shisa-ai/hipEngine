@@ -232,6 +232,32 @@ DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS = (
 )
 
 
+def _validate_no_disallowed_diagnostic_metadata(
+    value: Any,
+    *,
+    path: str,
+    errors: list[str],
+) -> None:
+    if path == "commands" or path.startswith("commands."):
+        return
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            key_label = str(key)
+            child_path = f"{path}.{key_label}" if path else key_label
+            for fragment in _DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS:
+                if fragment in key_label:
+                    errors.append(f"{child_path} must not include diagnostic override {fragment} for accepted artifacts")
+            _validate_no_disallowed_diagnostic_metadata(child, path=child_path, errors=errors)
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            _validate_no_disallowed_diagnostic_metadata(child, path=f"{path}[{index}]", errors=errors)
+    elif isinstance(value, str):
+        for fragment in _DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS:
+            if fragment in value:
+                errors.append(f"{path} must not include diagnostic override {fragment} for accepted artifacts")
+
+
+
 def _mapping_at(payload: Mapping[str, Any], key: str, errors: list[str]) -> Mapping[str, Any]:
     value = payload.get(key)
     if not isinstance(value, Mapping):
@@ -834,6 +860,7 @@ def validate_cn_diagnostic_artifact_payload(payload: Mapping[str, Any]) -> None:
 
     accepted = bool(decision.get("accepted"))
     if accepted or status == "accepted" or performance_claim is True:
+        _validate_no_disallowed_diagnostic_metadata(payload, path="", errors=errors)
         _validate_accepted_retained_gates(payload, errors)
         _validate_accepted_execution_gates(payload, errors)
         _validate_accepted_correctness_gates(payload, correctness, errors)
