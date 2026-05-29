@@ -45853,3 +45853,29 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (`262` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with RMSNorm-oracle evidence, and no retained c>N performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY per-row full-attention control artifact
+
+Ran the C2.3 hidden-bisect control with both native linear segments and native full-attention disabled to check whether the c=1-equivalent per-row full-attention path clears the layer-4 state drift before changing tolerances or kernels.
+
+Diagnostic:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 4,8 --max-sequence-length 1024 --hidden-atol 0.001 --state-atol 0 --state-focus-atol 0.002 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-perrow-fullattn-focus1269.json >/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-perrow-fullattn-focus1269.stdout
+```
+
+Result: `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-perrow-fullattn-focus1269.json` is still `status=mismatch_found`, but the first hidden over-atol case moves to layer-limit 4 / decode step 1 / row 1 with one element over tolerance (`max_abs=0.00146484375` at focus dim 1269) under `per_row_context_fallback` and `selected_c1_per_row_fallback`. This control reduces and shifts the failure, so native full-attention/post-attention is not the only c>N equality source; small FP16 state drift from the per-row fallback can also cross the strict `hidden_atol=0.001` gate.
+
+Loop validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (`262` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with per-row full-attention control evidence, and no retained c>N performance/scaling claim was added.

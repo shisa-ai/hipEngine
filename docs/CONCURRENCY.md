@@ -1009,10 +1009,19 @@ roll-up/status view.
       applying it to the c=2 residual leaves only two over-tolerance FP16-ulp
       differences (`max_abs=0.001953125`, dims 135/2012), so the residual's small
       green drift explains much of `mlp_input` but not the last one-ulp gap. The
-      next C2.3 work should decide whether this RMSNorm amplification is acceptable
-      under the equality gate or needs a stricter c>N post-attention path; do not
-      re-open full-attention context, layer-4 state mapping, native linear segment
-      metadata, output trace/copy semantics, or grouped MoE output yet.
+      per-row full-attention control at
+      `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-perrow-fullattn-focus1269.json`
+      disables both native linear segments and native full-attention; it still
+      reports `status=mismatch_found`, but the first hidden over-atol case moves to
+      layer-limit 4 / decode step 1 / row 1 with only one element over tolerance
+      (`max_abs=0.00146484375` at focus dim 1269) under `per_row_context_fallback`.
+      This means native full-attention/post-attention is not the only c>N equality
+      source; small FP16 state drift from the per-row fallback can also cross the
+      strict `hidden_atol=0.001` gate. The next C2.3 work should decide whether this
+      RMSNorm/state amplification is acceptable under the equality gate or needs a
+      stricter c>N post-attention/state path; do not re-open full-attention context,
+      layer-4 state mapping, native linear segment metadata, output trace/copy
+      semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions
