@@ -3845,6 +3845,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_unknown_condition_key["commands"][-1]["preconditions"][0]["unexpected"] = "field"
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\] must contain only c-sweep condition schema keys"):
         c_sweep.validate_sweep_summary(tampered_unknown_condition_key)
+    tampered_primitive_precondition_keys = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_keys["commands"][-1]["preconditions"][0]["profiler_status"] = "captured"
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\] passed primitive_correctness must contain exactly primitive precondition keys"):
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_keys)
     tampered_profiler_precondition_keys = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_keys["commands"][-1]["preconditions"][3]["primitive_seed"] = 1234
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\] passed profiler_summary must contain exactly profiler precondition keys"):

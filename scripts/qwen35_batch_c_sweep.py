@@ -1765,6 +1765,26 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         "profiler_synthesized_fields",
         "profiler_precondition_synthesized_fields",
     }
+    expected_passed_primitive_precondition_keys = {
+        "kind",
+        "artifact_path",
+        "passed",
+        "reason",
+        "primitive_schema",
+        "primitive_artifact_path",
+        "primitive_seed",
+        "primitive_block_size",
+        "primitive_max_context_len",
+        "primitive_num_q_heads",
+        "primitive_num_kv_heads",
+        "primitive_head_dim",
+        "primitive_context_lens",
+        "primitive_rows",
+        "append_key_mismatch",
+        "append_value_mismatch",
+        "attn_batch_vs_c1_max_abs",
+        "attn_batch_vs_numpy_max_abs",
+    }
     expected_passed_profiler_precondition_keys = {
         "kind",
         "artifact_path",
@@ -2298,6 +2318,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     attn_vs_numpy = primitive_precondition.get("attn_batch_vs_numpy_max_abs")
                     if not _is_bounded_primitive_numpy_oracle(attn_vs_numpy):
                         errors.append("commands[].preconditions[].attn_batch_vs_numpy_max_abs must be finite between 0.0 and 2e-5 when primitive passed")
+                        break
+                    if set(primitive_precondition) != expected_passed_primitive_precondition_keys:
+                        errors.append("commands[].preconditions[] passed primitive_correctness must contain exactly primitive precondition keys")
                         break
                 expected_prompt_tokens = int(_argv_value(argv, "--prompt-length"))
                 expected_decode_tokens = int(_argv_value(argv, "--decode-tokens"))
