@@ -64,6 +64,17 @@ _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS = {
 _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT = 2e-5
 
 
+def _is_python_executable(executable: str) -> bool:
+    name = Path(executable).name
+    if name == "python":
+        return True
+    if not name.startswith("python"):
+        return False
+    suffix = name[len("python") :]
+    version_suffix = suffix.rstrip("dmt")
+    return bool(version_suffix) and all(part.isdecimal() for part in version_suffix.split("."))
+
+
 def _required_primitive_context_lens(rows: int) -> list[int]:
     max_context_len = _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS["max_context_len"]
     return [(idx % max_context_len) + 1 for idx in range(rows)]
@@ -1678,7 +1689,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if command_text != shlex.join(argv):
                 errors.append("commands[].command must match shlex.join(commands[].argv)")
                 break
-            if len(argv) < 2 or not Path(argv[0]).name.startswith("python"):
+            if len(argv) < 2 or not _is_python_executable(argv[0]):
                 errors.append("commands[].argv must start with a python executable")
                 break
             command_category = entry.get("category")
@@ -2204,7 +2215,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         break
                     if (
                         len(profiled_command_argv) < 2
-                        or not Path(profiled_command_argv[0]).name.startswith("python")
+                        or not _is_python_executable(profiled_command_argv[0])
                         or profiled_command_argv[1] != "scripts/qwen35_batch_retained_bench.py"
                     ):
                         errors.append("commands[].preconditions[].profiler_command must launch retained bench after rocprof separator when passed")
