@@ -756,7 +756,18 @@ roll-up/status view.
       live fix target on packed-prefill linear-state materialization / slot-state
       contents, especially row-0 recurrent state, not final prefill hidden,
       segment state-index ordering alone, or any single native batch decode
-      subpath.
+      subpath. A pre-linear-input trace at
+      `/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-all-per-row-inputs-focus1269.json`
+      shows the state drift is input-driven before those later linear layers:
+      `prefill_linear_input_passed=false` from L5 onward, with the first bad
+      layer-4 input already after full-attention layer 3 (row 0
+      `max_abs=0.0059814453125` at prompt token 10 dim 751; row 1
+      `0.00305938720703125` at token 176 dim 1237). Layer-5/layer-6 inputs
+      then grow (`0.00951385498046875` and `0.01171875` row-0 maxima), while
+      final prefill hidden still passes and the L8 decode failure remains row 0
+      dim 1269 (`0.002197265625`, no token mismatch). Next fix target is the
+      compact full-attention/prefill hidden sequence that feeds layer 4+, not
+      linear-state writeback in isolation.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

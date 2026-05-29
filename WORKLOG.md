@@ -44670,3 +44670,23 @@ python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/
 Result: `/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-perseg-prefill-all-per-row-focus1269.json` emitted `status=mismatch_found`, `performance_claim=false`, `workload.batch_prefill_linear_path=per_segment`, and `batch_prefill_execution.linear_attention_prefill_path=per_segment` with blocker `linear-attention packed prefill forced to per-segment diagnostic path`. The per-segment path does **not** clear the state drift: `prefill_linear_state_passed=false` still appears for L5-L8, and bad state layers match the packed-segment probe (for example L6 layer 4/5 state mismatches remain). Final prefill hidden still passes, and the all-per-row decode step still fails at L8 row 0 dim 1269 (`abs_diff=0.002197265625`) with `first_token_mismatch=null`.
 
 Interpretation: the bug is not isolated to the segment/state-index linear-attention prefill kernel entry point. Per-segment c=1-style linear prefill still consumes packed-prefill context through the rest of the resident packed path and leaves the same state/decode drift, so the next target is the actual slot state contents produced around packed prefill (including full-attention/hidden inputs before later linear layers), not merely the state-index vector used by `run_linear_attention_prefill_out_proj_segments_fp16()`.
+
+## 2026-05-29 — CONCURRENCY pre-linear prefill input trace
+
+Advanced C2.3 by adding a compact-prefill pre-linear-input trace. The per-segment linear-prefill diagnostic did not clear state drift, so this iteration records the hidden sequence that enters each linear-attention prefill layer and compares compact packed prefill against independent c=1 before decode.
+
+Code/test changes:
+
+- Added `Qwen35ParoResidentSession._trace_prefill_linear_input()`; when a diagnostic list is attached as `_prefill_linear_input_trace`, native packed and c=1 full prefill copy the FP16 hidden input before every linear-attention prefill layer.
+- `scripts/qwen35_batch_hidden_bisect.py` now splits those traced prompt rows by request, carries `prefill_linear_inputs` in `HiddenRun`, and emits a `prefill_linear_inputs` summary with full-prompt and last-token comparisons per request/layer.
+- CPU tests cover the runner trace copier and the hidden-bisect summary block, including focused last-token coordinates.
+
+Diagnostic command:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 1 --max-layers 8 --layer-limits 5-8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-decode-moe-path selected_c1 --batch-decode-linear-path per_row --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-all-per-row-inputs-focus1269.json >/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-all-per-row-inputs-focus1269.stdout
+```
+
+Result: `/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-all-per-row-inputs-focus1269.json` emitted `status=mismatch_found`, `performance_claim=false`, and `prefill_linear_input_passed=false` from L5 onward. At L5, layer-4 prefill input already differs after full-attention layer 3: row 0 `max_abs=0.0059814453125` at prompt token 10 dim 751, row 1 `max_abs=0.00305938720703125` at token 176 dim 1237. L6/layer-5 input grows to row-0 `0.00951385498046875`; L7/L8 layer-6 input reaches row-0 `0.01171875`. The final-token focus dim 1269 is still exact at layer-4/5 inputs, then nonzero at layer-6 input (row 0 `0.0009765625`, row 1 `0.001953125`). Final prefill hidden remains green under `hidden_atol=0.002`, and the all-per-row decode step still fails only at L8 row 0 dim 1269 (`abs_diff=0.002197265625`) with `first_token_mismatch=null`.
+
+Interpretation: the packed-prefill linear state mismatch is input-driven before the later linear layers; the first visible source is the compact full-attention/MoE prefill output that feeds layer 4, not linear-state writeback in isolation. The next implementation target should inspect full-attention packed prefill (including varlen attention vs c=1 attention and grouped MoE immediately after layer 3), then re-run the same trace to see whether layer-4 input and downstream state drift clear.

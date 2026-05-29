@@ -691,6 +691,42 @@ def test_qwen35_resident_prefill_native_packed_wires_metadata_layers_and_commit(
     assert session.last_prefill_execution["blockers"] == []
 
 
+def test_qwen35_resident_trace_prefill_linear_input_copies_bits(monkeypatch) -> None:
+    device = Device("hip", 0)
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.config = SimpleNamespace(hidden_size=3)
+    synced: list[int] = []
+    session.runtime = SimpleNamespace(stream_synchronize=lambda stream: synced.append(int(stream)))
+    session._prefill_linear_input_trace = []
+    arrays: dict[int, np.ndarray] = {}
+
+    def fake_host_array_ptr(array):
+        arrays[0xABC] = array
+        return 0xABC
+
+    def fake_copy_device_to_host(host_ptr, buffer, *, runtime=None):
+        assert int(buffer.ptr) == 0x1000
+        assert int(buffer.nbytes) == 2 * 3 * DType.FP16.itemsize
+        arrays[int(host_ptr)][:] = np.array([[0x3C00, 0x4000, 0x4200], [0x4400, 0x4500, 0x4600]], dtype=np.uint16)
+
+    monkeypatch.setattr(runner_module, "host_array_ptr", fake_host_array_ptr)
+    monkeypatch.setattr(runner_module, "copy_device_to_host", fake_copy_device_to_host)
+
+    session._trace_prefill_linear_input(
+        layer_id=5,
+        hidden=Tensor.from_handle(0x1000, (2, 3), DType.FP16, device),
+        rows=2,
+        stream=7,
+    )
+
+    assert synced == [7]
+    assert session._prefill_linear_input_trace[0]["layer_index"] == 5
+    np.testing.assert_array_equal(
+        session._prefill_linear_input_trace[0]["bits"],
+        np.array([[0x3C00, 0x4000, 0x4200], [0x4400, 0x4500, 0x4600]], dtype=np.uint16),
+    )
+
+
 def test_qwen35_resident_run_native_prefill_packed_layers_can_force_per_segment_linear(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR", "1")
     device = Device("hip", 0)

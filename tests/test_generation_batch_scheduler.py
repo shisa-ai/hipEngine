@@ -6476,6 +6476,12 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
             "recurrent": np.array([[[[5.0]]], [[[6.0]]]], dtype=np.float32),
         }
     }
+    linear_inputs = {
+        0: [
+            np.array([[0x3C00, 0x4000], [0x4200, 0x4400]], dtype=np.uint16),
+            np.array([[0x3C00, 0x4000]], dtype=np.uint16),
+        ]
+    }
     batch = HiddenRun(
         seed_tokens=[10, 20],
         generated_tokens=[[11], [21]],
@@ -6483,6 +6489,7 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         prefill_hidden_bits=hidden.copy(),
         prefill_execution={"path": "native_prefill_compact_cN"},
         prefill_linear_states=linear_state,
+        prefill_linear_inputs=linear_inputs,
         decode_execution_by_step=[decode_execution],
     )
     c1 = HiddenRun(
@@ -6491,12 +6498,21 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         hidden_bits_by_step=[hidden.copy()],
         prefill_hidden_bits=hidden.copy(),
         prefill_linear_states=linear_state,
+        prefill_linear_inputs=linear_inputs,
     )
 
-    summary = _summarize_layer_limit(batch, c1, layer_limit=1, atol=0.0, layer_types=("full_attention",))
+    summary = _summarize_layer_limit(
+        batch,
+        c1,
+        layer_limit=1,
+        atol=0.0,
+        layer_types=("full_attention",),
+        focus_hidden_flat_indices=(1,),
+    )
 
     assert summary["hidden_passed"] is True
     assert summary["prefill_hidden_passed"] is True
+    assert summary["prefill_linear_input_passed"] is True
     assert summary["prefill_linear_state_passed"] is True
     assert summary["token_passed"] is True
     assert summary["prefill"]["stage"] == "prefill_final_hidden"
@@ -6504,6 +6520,22 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     assert summary["prefill"]["batch_prefill_execution"] == {"path": "native_prefill_compact_cN"}
     assert summary["prefill_linear_states"]["stage"] == "prefill_linear_states"
     assert summary["prefill_linear_states"]["passed"] is True
+    assert summary["prefill_linear_inputs"]["stage"] == "prefill_linear_inputs"
+    assert summary["prefill_linear_inputs"]["passed"] is True
+    linear_input = summary["prefill_linear_inputs"]["layers"][0]["rows"][0]
+    assert linear_input["tokens"] == 2
+    assert linear_input["last_token_hidden_comparison"]["selected_abs_diffs"] == [
+        {
+            "flat_index": 1,
+            "index": [0, 1],
+            "abs_diff": 0.0,
+            "signed_diff": 0.0,
+            "batch_value": 4.0,
+            "c1_value": 4.0,
+            "batch_bits": 17408,
+            "c1_bits": 17408,
+        }
+    ]
     conv_state = summary["prefill_linear_states"]["layers"][0]["states"]["conv"]
     assert conv_state["max_abs"] == 0.0
     assert conv_state["row_summaries"] == [

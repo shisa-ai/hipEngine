@@ -42,6 +42,7 @@ class HiddenRun:
     prefill_hidden_bits: np.ndarray | None = None
     prefill_execution: dict[str, Any] | None = None
     prefill_linear_states: dict[int, dict[str, np.ndarray]] = field(default_factory=dict)
+    prefill_linear_inputs: dict[int, list[np.ndarray]] = field(default_factory=dict)
     decode_execution_by_step: list[dict[str, Any] | None] = field(default_factory=list)
 
 
@@ -606,6 +607,44 @@ def _copy_prefill_linear_states(session: Qwen35ParoResidentSession, *, rows: int
     return states
 
 
+def _prefill_linear_input_rows_from_trace(
+    trace: Sequence[dict[str, Any]] | None,
+    *,
+    prompt_lengths: Sequence[int],
+) -> dict[int, list[np.ndarray]]:
+    rows_by_layer: dict[int, list[np.ndarray]] = {}
+    if not trace:
+        return rows_by_layer
+    total_tokens = sum(int(length) for length in prompt_lengths)
+    for entry in trace:
+        layer_id = int(entry["layer_index"])
+        bits = np.asarray(entry["bits"], dtype=np.uint16)
+        if bits.ndim != 2:
+            raise ValueError(f"prefill linear input trace for layer {layer_id} must be rank-2")
+        if int(bits.shape[0]) < total_tokens:
+            raise ValueError(
+                f"prefill linear input trace for layer {layer_id} has {bits.shape[0]} rows, expected at least {total_tokens}"
+            )
+        offset = 0
+        rows: list[np.ndarray] = []
+        for length in prompt_lengths:
+            end = offset + int(length)
+            rows.append(bits[offset:end].copy())
+            offset = end
+        rows_by_layer[layer_id] = rows
+    return rows_by_layer
+
+
+def _merge_prefill_linear_input_rows(
+    target: dict[int, list[np.ndarray]],
+    captured: dict[int, list[np.ndarray]],
+) -> None:
+    for layer_id, rows in captured.items():
+        if len(rows) != 1:
+            raise ValueError("c=1 prefill input traces must contain exactly one row")
+        target.setdefault(int(layer_id), []).append(rows[0].copy())
+
+
 def _merge_prefill_linear_state_row(
     target: dict[int, dict[str, list[np.ndarray]]],
     captured: dict[int, dict[str, np.ndarray]],
@@ -648,10 +687,15 @@ def _run_batch_hidden(
         require_cached_build=require_cached_build,
         kv_policy=FixedPagedKVPolicy(block_size=256, storage_dtype=DType.BF16),
     ) as session:
+        session._prefill_linear_input_trace = []
         seed_tokens = _prefill_batch(session, prompts, decode_tokens=decode_tokens)
         session.runtime.device_synchronize()
         prefill_hidden_bits = _copy_hidden_bits(session, _batch_prefill_hidden_tensor(session, rows=rows), rows=rows)
         prefill_linear_states = _copy_prefill_linear_states(session, rows=rows)
+        prefill_linear_inputs = _prefill_linear_input_rows_from_trace(
+            getattr(session, "_prefill_linear_input_trace", None),
+            prompt_lengths=[len(prompt) for prompt in prompts],
+        )
         prefill_execution = getattr(session, "last_prefill_execution", None)
         prefill_execution_copy = json.loads(json.dumps(prefill_execution)) if isinstance(prefill_execution, dict) else None
         next_tokens = list(seed_tokens)
@@ -687,6 +731,7 @@ def _run_batch_hidden(
             prefill_hidden_bits=prefill_hidden_bits,
             prefill_execution=prefill_execution_copy,
             prefill_linear_states=prefill_linear_states,
+            prefill_linear_inputs=prefill_linear_inputs,
             decode_execution_by_step=decode_execution_by_step,
         )
 
@@ -706,6 +751,7 @@ def _run_c1_hidden(
     generated_tokens: list[list[int]] = []
     prefill_hidden_bits = np.empty((rows, runner.config.hidden_size), dtype=np.uint16)
     prefill_linear_state_rows: dict[int, dict[str, list[np.ndarray]]] = {}
+    prefill_linear_input_rows: dict[int, list[np.ndarray]] = {}
     hidden_by_step = [np.empty((rows, runner.config.hidden_size), dtype=np.uint16) for _ in range(decode_tokens)]
     with Qwen35ParoResidentSession(
         runner,
@@ -717,6 +763,7 @@ def _run_c1_hidden(
         kv_policy=FixedPagedKVPolicy(block_size=256, storage_dtype=DType.BF16),
     ) as session:
         for row, prompt in enumerate(prompts):
+            session._prefill_linear_input_trace = []
             result = session.prefill_native(prompt, sample=True)
             if result is None:
                 raise RuntimeError("c=1 prefill did not produce a seed token")
@@ -727,6 +774,13 @@ def _run_c1_hidden(
             _merge_prefill_linear_state_row(
                 prefill_linear_state_rows,
                 _copy_prefill_linear_states(session, rows=1),
+            )
+            _merge_prefill_linear_input_rows(
+                prefill_linear_input_rows,
+                _prefill_linear_input_rows_from_trace(
+                    getattr(session, "_prefill_linear_input_trace", None),
+                    prompt_lengths=[len(prompt)],
+                ),
             )
             row_generated: list[int] = []
             for step in range(decode_tokens):
@@ -747,6 +801,7 @@ def _run_c1_hidden(
         hidden_bits_by_step=hidden_by_step,
         prefill_hidden_bits=prefill_hidden_bits,
         prefill_linear_states=_stack_prefill_linear_state_rows(prefill_linear_state_rows),
+        prefill_linear_inputs=prefill_linear_input_rows,
     )
 
 
@@ -844,6 +899,56 @@ def _prefill_linear_state_summary(
     }
 
 
+def _prefill_linear_input_summary(
+    batch: HiddenRun,
+    c1: HiddenRun,
+    *,
+    atol: float,
+    focus_hidden_flat_indices: Sequence[int] = (),
+) -> dict[str, Any] | None:
+    if not batch.prefill_linear_inputs or not c1.prefill_linear_inputs:
+        return None
+    layers: list[dict[str, Any]] = []
+    for layer_id in sorted(set(batch.prefill_linear_inputs) & set(c1.prefill_linear_inputs)):
+        batch_rows = batch.prefill_linear_inputs[layer_id]
+        c1_rows = c1.prefill_linear_inputs[layer_id]
+        if len(batch_rows) != len(c1_rows):
+            raise ValueError(
+                f"prefill linear input trace row count differs for layer {layer_id}: batch={len(batch_rows)} c1={len(c1_rows)}"
+            )
+        row_summaries: list[dict[str, Any]] = []
+        for row, (batch_bits, c1_bits) in enumerate(zip(batch_rows, c1_rows, strict=True)):
+            full_comparison = hidden_comparison(batch_bits, c1_bits, atol=atol)
+            last_token_comparison = hidden_comparison(
+                batch_bits[-1:],
+                c1_bits[-1:],
+                atol=atol,
+                selected_flat_indices=focus_hidden_flat_indices,
+            )
+            row_summaries.append(
+                {
+                    "row": int(row),
+                    "tokens": int(batch_bits.shape[0]),
+                    "hidden_comparison": full_comparison,
+                    "last_token_hidden_comparison": last_token_comparison,
+                    "passed": bool(full_comparison["passed"]),
+                }
+            )
+        layers.append(
+            {
+                "layer_index": int(layer_id),
+                "passed": all(row["passed"] for row in row_summaries),
+                "rows": row_summaries,
+            }
+        )
+    return {
+        "stage": "prefill_linear_inputs",
+        "hidden_atol": float(atol),
+        "passed": all(layer["passed"] for layer in layers),
+        "layers": layers,
+    }
+
+
 def _summarize_layer_limit(
     batch: HiddenRun,
     c1: HiddenRun,
@@ -856,6 +961,12 @@ def _summarize_layer_limit(
 ) -> dict[str, Any]:
     prefill = _prefill_summary(batch, c1, atol=atol, focus_hidden_flat_indices=focus_hidden_flat_indices)
     prefill_linear_states = _prefill_linear_state_summary(batch, c1, atol=state_atol)
+    prefill_linear_inputs = _prefill_linear_input_summary(
+        batch,
+        c1,
+        atol=atol,
+        focus_hidden_flat_indices=focus_hidden_flat_indices,
+    )
     steps: list[dict[str, Any]] = []
     for step, (batch_bits, c1_bits) in enumerate(zip(batch.hidden_bits_by_step, c1.hidden_bits_by_step, strict=True)):
         rows: list[dict[str, Any]] = []
@@ -880,6 +991,7 @@ def _summarize_layer_limit(
         "layer_limit": int(layer_limit),
         **_layer_limit_metadata(layer_limit, layer_types),
         "prefill_hidden_passed": True if prefill is None else bool(prefill["hidden_passed"]),
+        "prefill_linear_input_passed": True if prefill_linear_inputs is None else bool(prefill_linear_inputs["passed"]),
         "prefill_linear_state_passed": True if prefill_linear_states is None else bool(prefill_linear_states["passed"]),
         "hidden_passed": all(row["hidden_comparison"]["passed"] for step in steps for row in step["rows"]),
         "token_passed": not token_mismatches,
@@ -892,6 +1004,8 @@ def _summarize_layer_limit(
         summary["prefill"] = prefill
     if prefill_linear_states is not None:
         summary["prefill_linear_states"] = prefill_linear_states
+    if prefill_linear_inputs is not None:
+        summary["prefill_linear_inputs"] = prefill_linear_inputs
     return summary
 
 
