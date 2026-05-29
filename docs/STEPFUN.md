@@ -407,18 +407,19 @@ shows the expected kernels, with no full-model claim yet.
 
 ### P7 — Step norms, RoPE, and attention-gate primitives
 
-- [ ] Add RMSNorm variant with Step scale semantics `(weight + 1)` and epsilon
+- [x] Add RMSNorm variant with Step scale semantics `(weight + 1)` and epsilon
   `1e-5`.
-- [ ] Add RoPE table/cache support for full-attention layers: theta 5e6,
+- [x] Add RoPE table/cache support for full-attention layers: theta 5e6,
   llama3 scaling, partial factor 0.5.
-- [ ] Add RoPE support for sliding-attention layers: theta 1e4, no llama3
+- [x] Add RoPE support for sliding-attention layers: theta 1e4, no llama3
   scaling, full factor 1.0.
-- [ ] Add head-wise attention gate primitive/fusion:
+- [x] Add head-wise attention gate primitive/fusion:
   `attn_output[head] *= sigmoid(g_proj(x)[head])` before `o_proj`.
-- [ ] Keep unfused CPU/reference fallbacks for every fused primitive.
+- [x] Keep unfused CPU/reference fallbacks for every fused primitive.
 
-**Acceptance:** primitive tests pass against CPU reference for representative
-full and sliding layers.
+**Acceptance:** `python3 -m pytest -q tests/test_stepfun_primitives.py` passes
+against CPU reference checks for representative full and sliding layer
+primitives.
 
 ### P8 — Full and sliding GQA attention
 

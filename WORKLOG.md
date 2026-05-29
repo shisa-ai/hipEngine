@@ -26860,3 +26860,17 @@ python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_
 ```
 
 Results: guard passed (`39 passed` plus CPU fixture checks). The punchlist metric dropped from 35 to 32 by completing the Strix Halo identity, shard-size, and tokenizer-oracle portions of P0; full load memory remains partial/open.
+
+## 2026-05-29 — StepFun P7 CPU primitive references
+
+Implemented CPU-reference primitives for StepFun layer bring-up. Added `step_rmsnorm()` with `(weight + 1)` scale semantics and eps `1e-5`, Step RoPE table/application helpers for full-attention partial-RoPE llama3 scaling and sliding-attention full-RoPE/no-scaling modes, and a head-wise attention gate primitive applying sigmoid gates per head before output projection. Added `tests/test_stepfun_primitives.py` covering RMSNorm offset semantics, full/sliding RoPE table shapes and scaling, partial-dimension RoPE application, and per-head sigmoid gating. These are unfused CPU/reference fallbacks; no HIP kernel or performance claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_primitives.py
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+```
+
+Results: Step primitive pytest passed (`4 passed`), guard passed (`43 passed` plus CPU fixture checks), and the StepFun punchlist metric dropped from 32 to 27 by completing P7.

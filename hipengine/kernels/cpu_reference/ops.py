@@ -30,6 +30,12 @@ def rmsnorm(x: ArrayLike, weight: ArrayLike, eps: float = 1e-6) -> np.ndarray:
     return (x_arr * np.reciprocal(np.sqrt(variance + eps))) * weight_arr
 
 
+def step_rmsnorm(x: ArrayLike, weight: ArrayLike, eps: float = 1e-5) -> np.ndarray:
+    """StepFun RMSNorm where checkpoint weights are offsets from one."""
+
+    return rmsnorm(x, np.asarray(weight, dtype=np.float32) + np.float32(1.0), eps=eps)
+
+
 def linear(x: ArrayLike, weight: ArrayLike, bias: ArrayLike | None = None) -> np.ndarray:
     x_arr = np.asarray(x, dtype=np.float32)
     weight_arr = np.asarray(weight, dtype=np.float32)
@@ -181,6 +187,82 @@ def rotate(
     if x_pass.shape[-1] == 0:
         return rotated
     return np.concatenate((rotated, x_pass), axis=-1)
+
+
+def step_rope_tables(
+    *,
+    max_positions: int,
+    head_dim: int = 128,
+    partial_factor: float = 1.0,
+    theta: float = 10_000.0,
+    llama3_scaling: bool = False,
+    factor: float = 2.0,
+    original_max_position_embeddings: int = 131_072,
+    low_freq_factor: float = 1.0,
+    high_freq_factor: float = 32.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Build StepFun RoPE tables for full or sliding attention layers."""
+
+    positions = np.arange(int(max_positions), dtype=np.float32)[:, None]
+    rotary_dim = int(round(float(head_dim) * float(partial_factor)))
+    if rotary_dim <= 0 or rotary_dim % 2:
+        raise ValueError("rotary_dim derived from head_dim*partial_factor must be positive and even")
+    dims = np.arange(rotary_dim // 2, dtype=np.float32)[None, :]
+    inv_freq = np.power(np.float32(theta), -2.0 * dims / np.float32(rotary_dim))
+    if llama3_scaling:
+        inv_freq = _apply_llama3_rope_scaling(
+            inv_freq,
+            factor=float(factor),
+            original_max_position_embeddings=int(original_max_position_embeddings),
+            low_freq_factor=float(low_freq_factor),
+            high_freq_factor=float(high_freq_factor),
+        )
+    freqs = positions * inv_freq
+    return np.cos(freqs).astype(np.float32), np.sin(freqs).astype(np.float32)
+
+
+def step_apply_rope(
+    x: ArrayLike,
+    positions: ArrayLike,
+    *,
+    head_dim: int = 128,
+    partial_factor: float = 1.0,
+    theta: float = 10_000.0,
+    llama3_scaling: bool = False,
+) -> np.ndarray:
+    """Apply StepFun split-half RoPE to head-shaped vectors."""
+
+    x_arr = np.asarray(x, dtype=np.float32)
+    pos = np.asarray(positions, dtype=np.int64).reshape(-1)
+    if x_arr.shape[0] != pos.shape[0]:
+        raise ValueError("positions must have one entry for x.shape[0]")
+    max_position = int(np.max(pos)) + 1 if pos.size else 0
+    cos, sin = step_rope_tables(
+        max_positions=max_position,
+        head_dim=head_dim,
+        partial_factor=partial_factor,
+        theta=theta,
+        llama3_scaling=llama3_scaling,
+    )
+    cos_pos = cos[pos]
+    sin_pos = sin[pos]
+    while cos_pos.ndim < x_arr.ndim:
+        cos_pos = np.expand_dims(cos_pos, axis=1)
+        sin_pos = np.expand_dims(sin_pos, axis=1)
+    rotary_dim = int(round(float(head_dim) * float(partial_factor)))
+    return rotate(x_arr, cos_pos, sin_pos, rotary_dim=rotary_dim)
+
+
+def step_headwise_attention_gate(attn_output: ArrayLike, gate_logits: ArrayLike) -> np.ndarray:
+    """Apply StepFun per-head sigmoid gate before the attention output projection."""
+
+    out = np.asarray(attn_output, dtype=np.float32)
+    gate = np.asarray(gate_logits, dtype=np.float32)
+    if out.ndim < 2:
+        raise ValueError("attn_output must include head and head_dim axes")
+    if gate.shape != out.shape[:-1]:
+        raise ValueError("gate_logits must match attn_output shape without head_dim")
+    return out * _sigmoid(gate)[..., None]
 
 
 def attention_decode(
@@ -741,6 +823,7 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
     kernels = {
         "embed": embed,
         "rmsnorm": rmsnorm,
+        "step_rmsnorm": step_rmsnorm,
         "linear": linear,
         "qkv_proj": qkv_proj,
         "gguf_q8_0_gemv": gguf_q8_0_gemv,
@@ -749,6 +832,8 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
         "gguf_q6_k_gemv": gguf_q6_k_gemv,
         "gguf_q4_k_pack8_gemv": gguf_q4_k_pack8_gemv,
         "rotate": rotate,
+        "step_apply_rope": step_apply_rope,
+        "step_headwise_attention_gate": step_headwise_attention_gate,
         "attention_decode": attention_decode,
         "kv_dequant": kv_dequant_int8_per_token_head,
         "paged_attn_decode": paged_attn_decode_int8_per_token_head,
@@ -852,6 +937,26 @@ def _validate_segments(cu: np.ndarray, slots: np.ndarray, total_rows: int, state
         raise ValueError("cu_seqlens segments must be non-empty and increasing")
     if np.any(slots < 0) or np.any(slots >= state_slots):
         raise ValueError("state_indices reference state slot outside state")
+
+
+def _apply_llama3_rope_scaling(
+    inv_freq: np.ndarray,
+    *,
+    factor: float,
+    original_max_position_embeddings: int,
+    low_freq_factor: float,
+    high_freq_factor: float,
+) -> np.ndarray:
+    wavelen = (2.0 * np.pi) / inv_freq
+    low_freq_wavelen = float(original_max_position_embeddings) / float(low_freq_factor)
+    high_freq_wavelen = float(original_max_position_embeddings) / float(high_freq_factor)
+    inv_freq_scaled = np.where(wavelen > low_freq_wavelen, inv_freq / factor, inv_freq)
+    smooth = (
+        float(original_max_position_embeddings) / wavelen - low_freq_factor
+    ) / (high_freq_factor - low_freq_factor)
+    smoothed = (1.0 - smooth) * (inv_freq / factor) + smooth * inv_freq
+    medium = (wavelen <= low_freq_wavelen) & (wavelen >= high_freq_wavelen)
+    return np.where(medium, smoothed, inv_freq_scaled).astype(np.float32)
 
 
 def _half_rotary_table(value: ArrayLike, half: int, name: str) -> np.ndarray:
