@@ -881,10 +881,19 @@ roll-up/status view.
       (`max_abs=0.00048828125`). The matching L8 artifact
       `/tmp/hipengine-hidden-bisect-L8-512-16-c2-worst-diff-focus1269.json`
       shows worst drift later in layer 7 `attn_input` (`max_abs=0.3984375`) and
-      layer-4 `conv` state (`max_abs=0.390625`). The next native-full
-      investigation should compare the second full-attention layer after the
-      intervening per-row linear layers and the accumulated layer-4 state drift,
-      not only the first layer-3 attention kernel in isolation.
+      layer-4 `conv` state (`max_abs=0.390625`). Zero-tolerance controls then
+      bracket the bit-exactness issue: before the first full-attention layer,
+      `/tmp/hipengine-hidden-bisect-L3-512-16-c2-strict-before-full-focus1269.json`
+      is exact (`status=eq_ok` with `hidden_atol=0`), and the all-per-row L4
+      control
+      `/tmp/hipengine-hidden-bisect-L4-512-16-c2-strict-all-per-row-focus1269.json`
+      is also exact, while native-full L4
+      `/tmp/hipengine-hidden-bisect-L4-512-16-c2-strict-native-full-focus1269.json`
+      fails immediately at generated index 1 (`token_passed=true`, row 0 dim
+      1269, `max_abs=0.00048828125`). The next native-full investigation should
+      compare the second full-attention layer after the intervening per-row
+      linear layers and the accumulated layer-4 state drift, while treating the
+      first layer-3 native-full path as tolerance-green but not bit-exact.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

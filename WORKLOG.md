@@ -45033,3 +45033,23 @@ Results:
 - `/tmp/hipengine-hidden-bisect-L8-512-16-c2-worst-diff-focus1269.json`: `status=mismatch_found`, `token_passed=true`; full-attention `worst_diff` is layer 7 `attn_input`, row 0 dim 1269, `max_abs=0.3984375`; linear input `worst_diff` is layer 6 row 0 dim 1269, `max_abs=0.03076171875`; linear state `worst_diff` is layer 4 `conv` row 0, `max_abs=0.390625`.
 
 Interpretation: layer-3 native-full decode is still green in isolation but not bit-exact; its largest subthreshold output drift is at the same row/dim later amplified by layer-7. The largest L8 drift is accumulated through layer-4 conv state and subsequent per-row linear layers, so the next fix should audit layer-4 conv-state parity after a native-full layer-3 output that is only approximately equal.
+
+## 2026-05-29 — CONCURRENCY strict layer-3 native-full controls
+
+Advanced C2.3 documentation with zero-tolerance controls around the first full-attention layer. These are correctness diagnostics only and do not change the retained gate; they clarify that the L4 native-full path is tolerance-green at `hidden_atol=0.002` but not bit-exact.
+
+Commands/artifacts:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 3 --layer-limits 3 --max-sequence-length 1024 --hidden-atol 0 --state-atol 0 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-full-attn-path native_batch --json /tmp/hipengine-hidden-bisect-L3-512-16-c2-strict-before-full-focus1269.json >/tmp/hipengine-hidden-bisect-L3-512-16-c2-strict-before-full-focus1269.stdout
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 4 --layer-limits 4 --max-sequence-length 1024 --hidden-atol 0 --state-atol 0 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L4-512-16-c2-strict-all-per-row-focus1269.json >/tmp/hipengine-hidden-bisect-L4-512-16-c2-strict-all-per-row-focus1269.stdout
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 4 --layer-limits 4 --max-sequence-length 1024 --hidden-atol 0 --state-atol 0 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-full-attn-path native_batch --json /tmp/hipengine-hidden-bisect-L4-512-16-c2-strict-native-full-focus1269.json >/tmp/hipengine-hidden-bisect-L4-512-16-c2-strict-native-full-focus1269.stdout
+```
+
+Results:
+
+- `/tmp/hipengine-hidden-bisect-L3-512-16-c2-strict-before-full-focus1269.json`: `status=eq_ok`, `hidden_atol=0`; c=2 is bit-exact through the three pre-full per-row linear layers.
+- `/tmp/hipengine-hidden-bisect-L4-512-16-c2-strict-all-per-row-focus1269.json`: `status=eq_ok`, `hidden_atol=0`; the all-per-row full-attention fallback remains bit-exact through layer 3.
+- `/tmp/hipengine-hidden-bisect-L4-512-16-c2-strict-native-full-focus1269.json`: `status=mismatch_found`, `token_passed=true`; first final hidden mismatch is generated index 1, row 0 dim 1269 (`max_abs=0.00048828125`, 1103 elements over zero tolerance). This same shape is tolerance-green at `hidden_atol=0.002` in `/tmp/hipengine-hidden-bisect-L4-512-16-c2-worst-diff-focus1269.json`.
+
+Interpretation: strict controls confirm the first native-full layer introduces bit-level BF16 drift even though it stays below the current hidden tolerance; the all-per-row fallback does not. The larger L8 failure is likely amplification of this tolerance-green drift through later per-row linear state, so the next fix should either make native-full L4 bit-exact enough for downstream state or add a focused oracle that compares native-full attention/MoE substages before state amplification.
