@@ -1845,6 +1845,10 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     tampered_extra_git_key["git"]["unexpected"] = "field"
     with pytest.raises(ValueError, match="git must contain exactly the c-sweep provenance keys"):
         c_sweep.validate_sweep_summary(tampered_extra_git_key)
+    tampered_missing_planned_returncode = json.loads(json.dumps(persisted))
+    tampered_missing_planned_returncode["commands"][0].pop("returncode")
+    with pytest.raises(ValueError, match=r"commands\[\] planned rows must contain exactly planned command keys"):
+        c_sweep.validate_sweep_summary(tampered_missing_planned_returncode)
     tampered_missing_git_key = json.loads(json.dumps(persisted))
     tampered_missing_git_key["git"].pop("status_short")
     with pytest.raises(ValueError, match="git must contain exactly the c-sweep provenance keys"):

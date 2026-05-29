@@ -1713,6 +1713,17 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         "postconditions",
         "postcondition",
     }
+    expected_planned_command_keys = {
+        "category",
+        "batch_size",
+        "command",
+        "argv",
+        "artifact_path",
+        "git_dirty",
+        "status",
+        "returncode",
+        "duration_seconds",
+    }
     if entries:
         for entry in entries:
             if not set(entry).issubset(expected_command_keys):
@@ -2003,6 +2014,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 field in entry for field in ("preconditions", "precondition", "postconditions", "postcondition")
             ):
                 errors.append("commands[].conditions must be absent for planned rows")
+                break
+            if status == "planned" and set(entry) != expected_planned_command_keys:
+                errors.append("commands[] planned rows must contain exactly planned command keys")
                 break
             if status != "planned" and not isinstance(entry.get("output_tail"), str):
                 errors.append("commands[].output_tail must be a string for non-planned rows")
