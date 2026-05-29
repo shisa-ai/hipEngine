@@ -1841,6 +1841,11 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     tampered_dry_run_type["dry_run"] = "true"
     with pytest.raises(ValueError, match="dry_run must be a bool"):
         c_sweep.validate_sweep_summary(tampered_dry_run_type)
+    for option in ("model", "fixture"):
+        tampered_blank_label = json.loads(json.dumps(persisted))
+        tampered_blank_label["options"][option] = "   "
+        with pytest.raises(ValueError, match=rf"options\.{option} must be a non-empty string"):
+            c_sweep.validate_sweep_summary(tampered_blank_label)
     for bad_batch_sizes in ([True], [2, 2], [0], ["2"]):
         tampered_batch_sizes = json.loads(json.dumps(persisted))
         tampered_batch_sizes["batch_sizes"] = bad_batch_sizes
@@ -2240,13 +2245,14 @@ def test_batch_c_sweep_rejects_empty_model_fixture_before_creating_artifacts(tmp
         ("--model", "--model must be a non-empty string"),
         ("--fixture", "--fixture must be a non-empty string"),
     ):
-        output_dir = tmp_path / f"artifacts-{flag[2:]}"
-        args = build_c_sweep_parser().parse_args(
-            ["--dry-run", "--batch-sizes", "2", flag, "", "--output-dir", str(output_dir)]
-        )
-        with pytest.raises(ValueError, match=expected):
-            run_sweep(args)
-        assert not output_dir.exists()
+        for suffix, value in (("empty", ""), ("blank", "   ")):
+            output_dir = tmp_path / f"artifacts-{flag[2:]}-{suffix}"
+            args = build_c_sweep_parser().parse_args(
+                ["--dry-run", "--batch-sizes", "2", flag, value, "--output-dir", str(output_dir)]
+            )
+            with pytest.raises(ValueError, match=expected):
+                run_sweep(args)
+            assert not output_dir.exists()
 
     typed_model_args = build_c_sweep_parser().parse_args(
         ["--dry-run", "--batch-sizes", "2", "--output-dir", str(tmp_path / "typed-model")]

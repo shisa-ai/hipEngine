@@ -1575,7 +1575,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 errors.append(f"options.{option} must be a bool")
         for option in ("model", "fixture"):
             value = options.get(option)
-            if not isinstance(value, str) or not value:
+            if not isinstance(value, str) or not value.strip():
                 errors.append(f"options.{option} must be a non-empty string")
             elif option == "model":
                 option_model = value
@@ -2744,7 +2744,7 @@ def _validate_cli_path_option(flag: str, path: str | Path) -> None:
 def _validate_run_options(args: argparse.Namespace) -> None:
     for option in ("model", "fixture"):
         value = getattr(args, option, None)
-        if not isinstance(value, str) or not value:
+        if not isinstance(value, str) or not value.strip():
             flag = "--" + option.replace("_", "-")
             raise ValueError(f"{flag} must be a non-empty string")
     for option in ("dry_run", "stop_on_failure", "include_int8", "require_cached_build"):
