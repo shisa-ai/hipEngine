@@ -439,18 +439,20 @@ boundaries. Native/AOTriton profiling remains deferred until decode correctness.
 
 ### P9 — Dense MLP and Step MoE
 
-- [ ] Wire dense MLP for layers 0-2 with `ffn_gate/up/down.weight` names.
-- [ ] Implement router semantics for MoE layers 3-44: FP32 gate matmul, sigmoid,
+- [x] Wire dense MLP for layers 0-2 with `ffn_gate/up/down.weight` names.
+- [x] Implement router semantics for MoE layers 3-44: FP32 gate matmul, sigmoid,
   add router bias for top-k selection, gather unbiased probabilities, normalize
   selected weights, then multiply by routing scale 3.0.
-- [ ] Implement top-k 8 over 288 experts, expert gate/up/down projections,
+- [x] Implement top-k 8 over 288 experts, expert gate/up/down projections,
   shared expert gate/up/down path, and routed+shared sum.
-- [ ] Handle non-zero `swiglu_limits` / `swiglu_limits_shared` in the last layers.
-- [ ] Start with c=1 decode; batch/expert grouping optimization can follow after
+- [x] Handle non-zero `swiglu_limits` / `swiglu_limits_shared` in the last layers.
+- [x] Start with c=1 decode; batch/expert grouping optimization can follow after
   correctness.
 
-**Acceptance:** router/top-k/shared-expert tests pass against CPU reference or a
-llama.cpp/HF activation fixture.
+**Acceptance:** `python3 -m pytest -q tests/test_stepfun_moe.py` passes for
+CPU-reference dense SwiGLU, router-bias top-k semantics, routed+shared MoE,
+288-expert/top-8 c=1 shape, and non-zero SwiGLU limits. Expert grouping and HIP
+optimization remain deferred until correctness.
 
 ### P10 — One-layer and block replay
 

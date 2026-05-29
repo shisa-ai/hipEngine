@@ -26888,3 +26888,17 @@ python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_
 ```
 
 Results: Step attention pytest passed (`4 passed`), guard passed (`47 passed` plus CPU fixture checks), and the StepFun punchlist metric dropped from 27 to 23 by completing the CPU/reference portions of P8.
+
+## 2026-05-29 — StepFun P9 CPU dense MLP and MoE references
+
+Implemented CPU-reference StepFun dense/shared SwiGLU and MoE helpers. Added `step_dense_mlp()` for `ffn_gate/up/down.weight` semantics with non-zero `swiglu_limits`, `step_moe_router()` for FP32 sigmoid routing with router-bias top-k selection, unbiased gathered probabilities, selected-weight normalization, and routing scale 3.0, plus `step_moe_mlp()` for routed expert gate/up/down projections, top-k 8 over 288 experts, optional shared expert path, and c=1 decode-shaped inputs. Registered the helpers under CPU-reference kernel keys.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_moe.py
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+```
+
+Results: Step MoE pytest passed (`3 passed`), guard passed (`50 passed` plus CPU fixture checks), and the StepFun punchlist metric dropped from 23 to 18. HIP expert grouping and performance work remain deferred.

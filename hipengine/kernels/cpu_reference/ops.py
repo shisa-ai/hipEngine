@@ -265,6 +265,158 @@ def step_headwise_attention_gate(attn_output: ArrayLike, gate_logits: ArrayLike)
     return out * _sigmoid(gate)[..., None]
 
 
+def step_dense_mlp(
+    x: ArrayLike,
+    gate_weight: ArrayLike,
+    up_weight: ArrayLike,
+    down_weight: ArrayLike,
+    *,
+    swiglu_limit: float | None = None,
+) -> np.ndarray:
+    """Reference Step dense/shared SwiGLU MLP.
+
+    Step clamps the activated gate to ``<= swiglu_limit`` and the up projection
+    to ``[-swiglu_limit, swiglu_limit]`` when a non-zero per-layer limit is
+    configured for the last layers.
+    """
+
+    hidden = np.asarray(x, dtype=np.float32)
+    gate = _silu(linear(hidden, gate_weight))
+    up = linear(hidden, up_weight)
+    if swiglu_limit is not None:
+        limit = float(swiglu_limit)
+        gate = np.minimum(gate, np.float32(limit))
+        up = np.clip(up, np.float32(-limit), np.float32(limit))
+    return linear(gate * up, down_weight).astype(np.float32)
+
+
+def step_moe_router(
+    x: ArrayLike,
+    router_weight: ArrayLike,
+    *,
+    router_bias: ArrayLike | None = None,
+    top_k: int = 8,
+    routing_scale: float = 3.0,
+    normalize_selected: bool = True,
+    eps: float = 1e-20,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Reference Step router for MoE layers.
+
+    The Step 3.5/3.7 GGUF path uses FP32 gate matmul, sigmoid routing
+    probabilities, optional router bias *only* for top-k selection, unbiased
+    gathered probabilities for weights, selected-weight normalization, and a
+    final routing scale (3.0 in the public configs).
+    """
+
+    hidden = np.asarray(x, dtype=np.float32)
+    if hidden.ndim < 2:
+        raise ValueError("x must have shape [..., hidden_size]")
+    leading_shape = hidden.shape[:-1]
+    rows = hidden.reshape(-1, hidden.shape[-1])
+    weight = np.asarray(router_weight, dtype=np.float32)
+    if weight.ndim != 2 or weight.shape[1] != hidden.shape[-1]:
+        raise ValueError("router_weight must have shape [num_experts, hidden_size]")
+    k = int(top_k)
+    if k <= 0 or k > weight.shape[0]:
+        raise ValueError("top_k must be in [1, num_experts]")
+
+    logits = np.matmul(rows, weight.T).astype(np.float32)
+    probs = _sigmoid(logits).astype(np.float32)
+    ranking = probs
+    if router_bias is not None:
+        bias = np.asarray(router_bias, dtype=np.float32).reshape(-1)
+        if bias.shape != (weight.shape[0],):
+            raise ValueError("router_bias must have shape [num_experts]")
+        ranking = probs + bias[None, :]
+
+    selected = np.argsort(-ranking, axis=1)[:, :k].astype(np.int64)
+    selected_probs = np.take_along_axis(probs, selected, axis=1).astype(np.float32)
+    if normalize_selected:
+        denom = np.sum(selected_probs, axis=1, keepdims=True) + np.float32(eps)
+        selected_weights = selected_probs / denom
+    else:
+        selected_weights = selected_probs
+    selected_weights = (selected_weights * np.float32(routing_scale)).astype(np.float32)
+    return (
+        selected_weights.reshape(*leading_shape, k),
+        selected.reshape(*leading_shape, k),
+        logits.reshape(*leading_shape, weight.shape[0]),
+    )
+
+
+def step_moe_mlp(
+    x: ArrayLike,
+    router_weight: ArrayLike,
+    expert_gate_weight: ArrayLike,
+    expert_up_weight: ArrayLike,
+    expert_down_weight: ArrayLike,
+    *,
+    router_bias: ArrayLike | None = None,
+    shared_gate_weight: ArrayLike | None = None,
+    shared_up_weight: ArrayLike | None = None,
+    shared_down_weight: ArrayLike | None = None,
+    top_k: int = 8,
+    routing_scale: float = 3.0,
+    swiglu_limit: float | None = None,
+    shared_swiglu_limit: float | None = None,
+    return_router: bool = False,
+) -> np.ndarray | tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Reference Step MoE MLP with routed experts plus optional shared expert."""
+
+    hidden = np.asarray(x, dtype=np.float32)
+    if hidden.ndim < 2:
+        raise ValueError("x must have shape [..., hidden_size]")
+    leading_shape = hidden.shape[:-1]
+    rows = hidden.reshape(-1, hidden.shape[-1])
+    gate_w = np.asarray(expert_gate_weight, dtype=np.float32)
+    up_w = np.asarray(expert_up_weight, dtype=np.float32)
+    down_w = np.asarray(expert_down_weight, dtype=np.float32)
+    if gate_w.shape != up_w.shape or gate_w.ndim != 3:
+        raise ValueError("expert gate/up weights must have shape [num_experts, intermediate, hidden_size]")
+    if down_w.shape != (gate_w.shape[0], hidden.shape[-1], gate_w.shape[1]):
+        raise ValueError("expert_down_weight must have shape [num_experts, hidden_size, intermediate]")
+
+    routing_weights, selected_experts, _ = step_moe_router(
+        rows,
+        router_weight,
+        router_bias=router_bias,
+        top_k=top_k,
+        routing_scale=routing_scale,
+    )
+    routing_rows = routing_weights.reshape(rows.shape[0], int(top_k))
+    expert_rows = selected_experts.reshape(rows.shape[0], int(top_k))
+    out = np.zeros_like(rows, dtype=np.float32)
+    for row in range(rows.shape[0]):
+        token = rows[row : row + 1]
+        for slot in range(int(top_k)):
+            expert = int(expert_rows[row, slot])
+            expert_out = step_dense_mlp(
+                token,
+                gate_w[expert],
+                up_w[expert],
+                down_w[expert],
+                swiglu_limit=swiglu_limit,
+            )[0]
+            out[row] += expert_out * routing_rows[row, slot]
+
+    shared_weights = (shared_gate_weight, shared_up_weight, shared_down_weight)
+    if any(weight_value is not None for weight_value in shared_weights):
+        if not all(weight_value is not None for weight_value in shared_weights):
+            raise ValueError("shared_gate_weight/shared_up_weight/shared_down_weight must be provided together")
+        out += step_dense_mlp(
+            rows,
+            shared_gate_weight,
+            shared_up_weight,
+            shared_down_weight,
+            swiglu_limit=shared_swiglu_limit,
+        )
+
+    out = out.reshape(*leading_shape, hidden.shape[-1]).astype(np.float32)
+    if return_router:
+        return out, routing_weights.reshape(*leading_shape, int(top_k)), selected_experts.reshape(*leading_shape, int(top_k))
+    return out
+
+
 def step_kv_live_span_bounds(
     live_counts: ArrayLike,
     *,
@@ -935,6 +1087,9 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
         "rotate": rotate,
         "step_apply_rope": step_apply_rope,
         "step_headwise_attention_gate": step_headwise_attention_gate,
+        "step_dense_mlp": step_dense_mlp,
+        "step_moe_router": step_moe_router,
+        "step_moe_mlp": step_moe_mlp,
         "step_gqa_attention_decode": step_gqa_attention_decode,
         "step_gqa_attention_prefill": step_gqa_attention_prefill,
         "attention_decode": attention_decode,
