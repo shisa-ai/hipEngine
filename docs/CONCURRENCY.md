@@ -105,10 +105,13 @@ What is still not green:
   c=2/4/8 KV append/full-attention correctness passes, but generated-token
   equality is still missing for the full c=2 512/128 gate and therefore for
   c=4/c=8.
-- Hidden-state bisection narrowed the active mismatch to the linear-attention +
-  grouped-MoE boundary (`/tmp/hipengine-hidden-bisect-L1-8-512-1-grouped.json`,
-  first mismatch at layer-limit 6). C2.3/C2.4/C2.5 remain the correctness
-  priority.
+- Hidden-state bisection now separates generated-token equality from hidden drift:
+  focused L4/L8 controls keep tokens green, but native full-attention remains a
+  hidden-only failure at L8 even at `hidden_atol=0.004`
+  (`/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-native-fullattn-atol4e-3-focus1269.json`).
+  The matching selected-c1 MoE control preserves the failure, so grouped-compact
+  MoE is not the source of that larger native-full drift. C2.3/C2.4/C2.5 remain
+  the correctness priority.
 - Long-context c>N still uses a per-row split-K fallback label; no long-context
   native c>N claim is allowed until the split-K reducer is row-aware.
 - INT8 c>N parity, runtime projection dispatch evidence, native LM-head/sampler,
@@ -123,10 +126,10 @@ What is still not green:
 | Public `LLM.generate()` / loop adapter | The public generator can be wrapped by `SubmitPollTextGenerator`, preserving outputs while exercising submit/poll semantics in tests. | `hipengine/generation/engine_loop.py:SubmitPollTextGenerator`; `pytest -q tests/test_generation_batch_scheduler.py -q`. | Native Qwen/PARO c>N decode equality and retained benchmark evidence. |
 | Engine loop / scheduler | `ResidentEngineLoop` and `ResidentBatchScheduler` own pending/admitted queues, slots, active masks, compact prefill slabs, decode work, graph bucket keys, completion routing, and unified reclaim. | `hipengine/generation/engine_loop.py:ResidentEngineLoop`; `hipengine/generation/batch_scheduler.py`; scheduler tests. | Runtime equality/perf gates, not host-loop shape. |
 | Prefill | BF16 compact/native prompt-list prefill is live; scheduler tests cover chunk/policy plumbing. INT8 retained c>N prefill remains blocked. | `prefill_native_packed`, `CompactPromptSlab`, `scripts/qwen35_batch_packed_prefill_correctness.py`; `tests/test_generation_batch_scheduler.py`. | INT8 c>N parity and retained end-to-end equality. |
-| Decode runtime | Safe/diagnostic paths remain non-claiming: serial bridge rows and experimental native rows are blocked/rejected unless generated-token equality and native execution metadata pass. Full c=2 512/128 equality is still open. | `step_batch_serial`, `step_batch_native`, `_sample_batch_from_hidden`, `batch_execution_metadata`; retained/hidden-bisect artifacts cited in C2. | C2.3 selected-MoE/linear-attention mismatch; C2.4 c=2 equality; C2.5 c=4/c=8 equality. |
+| Decode runtime | Safe/diagnostic paths remain non-claiming: serial bridge rows and experimental native rows are blocked/rejected unless generated-token equality and native execution metadata pass. Focused L4/L8 native-full controls are hidden-only red with tokens green; full c=2 512/128 equality is still open. | `step_batch_serial`, `step_batch_native`, `_sample_batch_from_hidden`, `batch_execution_metadata`; retained/hidden-bisect artifacts cited in C2. | C2.3 native full-attention/post-attention hidden drift; C2.4 c=2 equality; C2.5 c=4/c=8 equality. |
 | Sampler | `PerRowSamplingParams` and sampler blocks exist; native `batched_lm_head` dispatch is evidence-gated and falls back before C2 equality. | `hipengine/generation/batch_scheduler.py:PerRowSamplingParams`; `hipengine.dispatch.sampling`; sampler dispatch tests. | C3.6 native row-aware LM-head/sampler after C2 equality is green. |
 | Attention / KV primitives | BF16 batched paged KV append and batched full-attention context decode pass c=1/2/4/8 primitive correctness. Split-K long-context decode is labeled per-row fallback. | `scripts/qwen35_batch_correctness.py`; `/tmp/hipengine-multiloop-c{2,4,8}-correctness.json`; attention dispatch tests. | Row-aware split-K reducer; INT8 end-to-end gate. |
-| MoE / quant kernels | Grouped compact MoE scratch replaced selected-MoE c1 wrappers for `tokens>1`, but reduced hidden bisection still diverges near layer-limit 6. | `hipengine/runtime/qwen35_paro.py`; `/tmp/hipengine-hidden-bisect-L1-8-512-1-grouped.json`. | Token-row/grouped metadata root cause; c=2/4/8 equality; c-aware projection/MoE evidence. |
+| MoE / quant kernels | Grouped compact MoE scratch replaced selected-MoE c1 wrappers for `tokens>1`; the latest native-full selected-c1 MoE control still fails hidden-only at L8, ruling out grouped-compact MoE as the source of that larger drift. | `hipengine/runtime/qwen35_paro.py`; `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-native-fullattn-selected-c1-moe-atol4e-3-focus1269.json`. | c=2/4/8 equality; c-aware projection/MoE evidence after native full-attention/post-attention drift is resolved. |
 | KV pool | Chunked grow/shrink, append-only block ids, current admission capacity, prefix refcounts, and copy-on-write forks are implemented in host tests. | `hipengine/kvcache/pool.py:ChunkedKVPool`, `admit_with_shared_prefix`, `fork_copy_on_write`; `pytest -q tests/test_kvcache_policy.py -q`. | Device/runtime retained equality and perf, not the host allocator contract. |
 | Prefix / radix cache | `RadixCache` indexes block-aligned token prefixes; server exposes prefix-cache mode and `n>1` lowering uses distinct row seeds/request ids. | `hipengine/kvcache/radix.py:RadixCache`; `hipengine/server/api.py`; kvcache/server tests. | Broader retained coverage and future DMS/KVTC policy work; no flat prefix-LRU peer path. |
 | Observability | Completion artifacts and `/metrics` include request/pool counters; graph-bucket stats exist for scheduler observability. | `CompletedRequest.to_json_dict`, `KVPoolStats.to_json_dict`, `GraphBucketCache`, `_render_prometheus_metrics`; server/scheduler tests. | Accepted retained rows still need captured profiler summaries and benchmark rollup updates. |

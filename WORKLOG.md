@@ -46069,3 +46069,26 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (`262` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with top-level row-failure summary evidence, and no retained c>N performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY current status refresh for C2.3 controls
+
+Updated the current-answer bullets and readiness matrix to match the latest C2.3 evidence: focused L4/L8 controls separate token equality from hidden drift, native full-attention remains hidden-only red at L8 even at `hidden_atol=0.004`, and the selected-c1 MoE control preserves the failure so grouped-compact MoE is not the large native-full drift source.
+
+No new runtime claim was made; this is a doc-status correction based on existing artifacts:
+
+- `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-native-fullattn-atol4e-3-focus1269.json`
+- `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-native-fullattn-selected-c1-moe-atol4e-3-focus1269.json`
+
+Loop validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (`262` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no item was newly marked complete, completed items still cite concrete evidence, C2.3 remains open with corrected current-status wording, and no retained c>N performance/scaling claim was added.
