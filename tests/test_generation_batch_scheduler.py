@@ -6201,6 +6201,27 @@ def test_batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head(tmp_pat
         encoding="utf-8",
     )
     (artifact_dir / "qwen35-c8-primitive-only-eq.json").write_text(json.dumps({"schema": 1, "rows": 8, "passed": True}), encoding="utf-8")
+    serial_sampler_equality_payload = _sampler_equality_payload(
+        rows=8,
+        artifact_path="benchmarks/results/qwen35-c8-serial-sampler-eq.json",
+    )
+    serial_sampler_equality_payload["execution"] = {
+        "batch_execution": {
+            "decode_execution": {
+                "sampler_execution": {
+                    "rows": 8,
+                    "requested_mode": "serial_lm_head",
+                    "mode": "serial_lm_head",
+                    "native_row_aware_lm_head": False,
+                    "c2_equality_green": True,
+                    "equality_artifact": "benchmarks/results/qwen35-c8-serial-sampler-eq.json",
+                    "equality_rows": 8,
+                    "blockers": [],
+                }
+            }
+        }
+    }
+    (artifact_dir / "qwen35-c8-serial-sampler-eq.json").write_text(json.dumps(serial_sampler_equality_payload), encoding="utf-8")
     malformed_sequences_payload = _sampler_equality_payload(
         rows=8,
         artifact_path="benchmarks/results/qwen35-c8-malformed-sequences-eq.json",
@@ -6371,6 +6392,18 @@ def test_batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head(tmp_pat
     )
     assert primitive_only_equality_artifact.mode is BatchSamplerMode.SERIAL_LM_HEAD
     assert "batched LM-head equality artifact must include generated-token equality details" in primitive_only_equality_artifact.blockers
+
+    serial_sampler_equality_artifact = plan_batch_sampler_dispatch(
+        rows=8,
+        requested_mode="batched_lm_head",
+        c2_equality_green=True,
+        equality_artifact="benchmarks/results/qwen35-c8-serial-sampler-eq.json",
+        equality_rows=8,
+    )
+    assert serial_sampler_equality_artifact.mode is BatchSamplerMode.SERIAL_LM_HEAD
+    assert "batched LM-head equality artifact sampler_execution.requested_mode must be batched_lm_head" in serial_sampler_equality_artifact.blockers
+    assert "batched LM-head equality artifact sampler_execution.mode must be batched_lm_head" in serial_sampler_equality_artifact.blockers
+    assert "batched LM-head equality artifact sampler_execution.native_row_aware_lm_head must be true" in serial_sampler_equality_artifact.blockers
 
     malformed_sequences_equality_artifact = plan_batch_sampler_dispatch(
         rows=8,

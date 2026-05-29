@@ -113,6 +113,14 @@ def _generated_token_equality(payload: Mapping[str, Any]) -> Mapping[str, Any] |
     return equality if isinstance(equality, Mapping) else None
 
 
+def _sampler_execution(payload: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    execution = payload.get("execution")
+    batch_execution = execution.get("batch_execution") if isinstance(execution, Mapping) else None
+    decode_execution = batch_execution.get("decode_execution") if isinstance(batch_execution, Mapping) else None
+    sampler_execution = decode_execution.get("sampler_execution") if isinstance(decode_execution, Mapping) else None
+    return sampler_execution if isinstance(sampler_execution, Mapping) else None
+
+
 def _token_sequence_rows_are_nonempty_int_lists(value: list[Any]) -> bool:
     return all(
         isinstance(row, list)
@@ -170,6 +178,16 @@ def batch_sampler_equality_payload_blockers(
         blockers.append(f"{label} generated_token_equality.passed must be true")
     if equality.get("skipped") is not False:
         blockers.append(f"{label} generated_token_equality.skipped must be false")
+    sampler_execution = _sampler_execution(payload)
+    if sampler_execution is not None:
+        if sampler_execution.get("requested_mode") != BatchSamplerMode.BATCHED_LM_HEAD.value:
+            blockers.append(f"{label} sampler_execution.requested_mode must be batched_lm_head")
+        if sampler_execution.get("mode") != BatchSamplerMode.BATCHED_LM_HEAD.value:
+            blockers.append(f"{label} sampler_execution.mode must be batched_lm_head")
+        if sampler_execution.get("native_row_aware_lm_head") is not True:
+            blockers.append(f"{label} sampler_execution.native_row_aware_lm_head must be true")
+        if sampler_execution.get("blockers") != []:
+            blockers.append(f"{label} sampler_execution.blockers must be empty")
     batch_sequences = equality.get("batch_sequences")
     c1_sequences = equality.get("c1_sequences")
     if not isinstance(batch_sequences, list) or not isinstance(c1_sequences, list):
