@@ -70,6 +70,7 @@ from scripts.qwen35_batch_hidden_bisect import (
     _decode_full_context_kv_prefix_rollup,
     _decode_full_context_oracle_rollup,
     _decode_full_context_oracles_from_trace,
+    _decode_full_kv_current_source_rollup,
     _decode_full_kv_sample_rollup,
     _first_failing_layer_transition,
     _first_hidden_mismatch,
@@ -6398,6 +6399,61 @@ def test_hidden_bisect_kv_prefix_hash_comparison_embeds_token_samples() -> None:
         "c1_token_sample_u16": [6, 7, 8, 9],
         "token_sample_word_count": 4,
     }
+
+
+def test_hidden_bisect_current_source_rollup_promotes_failures() -> None:
+    layer_summaries = [
+        {
+            "layer_limit": 8,
+            "decode_full_kv_samples": {
+                "current_source_passed": False,
+                "current_source_failure_summary": {
+                    "failed_kinds": ["key"],
+                    "failed_kind_count": 1,
+                    "first_failure": None,
+                    "kinds": {
+                        "key": {
+                            "passed": False,
+                            "failure_rows": [0],
+                            "failure_row_count": 1,
+                            "failed_checks": ["batch_source_vs_c1_source"],
+                            "first_failure": {
+                                "decode_step": 0,
+                                "generated_index": 1,
+                                "layer_index": 3,
+                                "row": 0,
+                                "kind": "key",
+                                "check": "batch_source_vs_c1_source",
+                                "source_stage": "key_after_prepare",
+                                "sample_index": 4,
+                                "sample_label": "current",
+                                "sample_position": 512,
+                                "max_abs": 0.015625,
+                                "bit_mismatch": 122,
+                            },
+                        },
+                        "value": {
+                            "passed": True,
+                            "failure_rows": [],
+                            "failure_row_count": 0,
+                            "failed_checks": [],
+                            "first_failure": None,
+                        },
+                    },
+                },
+            },
+        }
+    ]
+
+    rollup = _decode_full_kv_current_source_rollup(layer_summaries)
+
+    assert rollup["failed_kinds"] == ["key"]
+    assert rollup["first_failure"]["layer_limit"] == 8
+    assert rollup["first_failure"]["source_stage"] == "key_after_prepare"
+    assert rollup["first_failure"]["bit_mismatch"] == 122
+    assert rollup["kinds"]["key"]["failed_checks"] == ["batch_source_vs_c1_source"]
+    assert rollup["kinds"]["value"]["passed"] is True
+    assert rollup["layer_limits"] == [{"layer_limit": 8, "passed": False, "failed_kinds": ["key"]}]
 
 
 def test_hidden_bisect_current_kv_source_checks_compare_cache_to_trace() -> None:

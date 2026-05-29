@@ -3731,6 +3731,76 @@ def _decode_full_kv_current_source_failure_summary(steps: Sequence[dict[str, Any
     }
 
 
+def _decode_full_kv_current_source_rollup(layer_summaries: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    kind_summaries: dict[str, Any] = {}
+    first_failure: dict[str, Any] | None = None
+    for kind in ("key", "value"):
+        rows: list[int] = []
+        seen_rows: set[int] = set()
+        failed_checks: list[str] = []
+        seen_checks: set[str] = set()
+        kind_first_failure: dict[str, Any] | None = None
+        for summary in layer_summaries:
+            layer_limit = int(summary.get("layer_limit", 0))
+            trace = summary.get("decode_full_kv_samples")
+            if not isinstance(trace, dict):
+                continue
+            source_summary = trace.get("current_source_failure_summary")
+            if not isinstance(source_summary, dict):
+                continue
+            kind_summary = source_summary.get("kinds", {}).get(kind)
+            if not isinstance(kind_summary, dict):
+                continue
+            failure = kind_summary.get("first_failure")
+            if isinstance(failure, dict):
+                failure_with_limit = {"layer_limit": layer_limit, **failure}
+                if kind_first_failure is None:
+                    kind_first_failure = failure_with_limit
+                if first_failure is None:
+                    first_failure = failure_with_limit
+            for raw_row in kind_summary.get("failure_rows", []):
+                row_index = int(raw_row)
+                if row_index >= 0 and row_index not in seen_rows:
+                    rows.append(row_index)
+                    seen_rows.add(row_index)
+            for raw_check in kind_summary.get("failed_checks", []):
+                check = str(raw_check)
+                if check not in seen_checks:
+                    failed_checks.append(check)
+                    seen_checks.add(check)
+        kind_summaries[kind] = {
+            "passed": not rows,
+            "failure_rows": rows,
+            "failure_row_count": len(rows),
+            "failed_checks": failed_checks,
+            "first_failure": kind_first_failure,
+        }
+    failed_kinds = [kind for kind in ("key", "value") if kind_summaries[kind]["failure_rows"]]
+    return {
+        "failed_kinds": failed_kinds,
+        "failed_kind_count": len(failed_kinds),
+        "first_failure": first_failure,
+        "kinds": kind_summaries,
+        "layer_limits": [
+            {
+                "layer_limit": int(summary.get("layer_limit", 0)),
+                "passed": bool(summary.get("decode_full_kv_samples", {}).get("current_source_passed", True))
+                if isinstance(summary.get("decode_full_kv_samples"), dict)
+                else True,
+                "failed_kinds": list(
+                    summary.get("decode_full_kv_samples", {})
+                    .get("current_source_failure_summary", {})
+                    .get("failed_kinds", [])
+                )
+                if isinstance(summary.get("decode_full_kv_samples"), dict)
+                else [],
+            }
+            for summary in layer_summaries
+            if isinstance(summary.get("decode_full_kv_samples"), dict)
+        ],
+    }
+
+
 def _decode_full_kv_sample_summary(
     batch: HiddenRun,
     c1: HiddenRun,
@@ -4340,6 +4410,10 @@ def _compact_repeat_summary(payload: dict[str, Any], *, repeat_index: int) -> di
             correctness if isinstance(correctness, dict) else {},
             "decode_full_kv_sample_failure_summary",
         ),
+        "decode_full_kv_current_source": _repeat_failure_brief(
+            correctness if isinstance(correctness, dict) else {},
+            "decode_full_kv_current_source_failure_summary",
+        ),
     }
 
 
@@ -4390,6 +4464,7 @@ def _repeat_rollup(repeat_summaries: Sequence[dict[str, Any]]) -> dict[str, Any]
         "prefill_full_kv_prefix": _repeat_category_rollup(repeat_summaries, "prefill_full_kv_prefix"),
         "decode_full_context_kv_prefix": _repeat_category_rollup(repeat_summaries, "decode_full_context_kv_prefix"),
         "decode_full_kv_sample": _repeat_category_rollup(repeat_summaries, "decode_full_kv_sample"),
+        "decode_full_kv_current_source": _repeat_category_rollup(repeat_summaries, "decode_full_kv_current_source"),
     }
 
 
@@ -4673,6 +4748,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "decode_full_context_oracle_failure_summary": _decode_full_context_oracle_rollup(layer_summaries),
             "decode_full_context_kv_prefix_failure_summary": _decode_full_context_kv_prefix_rollup(layer_summaries),
             "decode_full_kv_sample_failure_summary": _decode_full_kv_sample_rollup(layer_summaries),
+            "decode_full_kv_current_source_failure_summary": _decode_full_kv_current_source_rollup(layer_summaries),
             "first_hidden_mismatch": hidden_mismatch,
             "first_tolerance_hidden_mismatch": hidden_mismatch,
             "first_hidden_bit_drift": hidden_bit_drift,

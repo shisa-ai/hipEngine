@@ -1136,8 +1136,13 @@ roll-up/status view.
       shows both batch and c1 current-token cache writes match their local
       producer traces exactly (`batch_cache_vs_source` and `c1_cache_vs_source`
       bit-mismatch zero), while `batch_source_vs_c1_source` already differs at
-      layer 3 / step 0. The next target is replaying/attributing decode-time
-      producer drift before changing paged-KV writer code. Do not re-open
+      layer 3 / step 0. The promoted top-level rollup at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-current-source-rollup-atol4e-3-focus1269.json`
+      reports `correctness.decode_full_kv_current_source_failure_summary` with
+      failed kinds `key,value`, first failure `batch_source_vs_c1_source`, and
+      layer-limit status without opening the full layer dump. The next target is
+      replaying/attributing decode-time producer drift before changing paged-KV
+      writer code. Do not re-open
       context softmax math, row setup, native linear segment metadata,
       output trace/copy semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
