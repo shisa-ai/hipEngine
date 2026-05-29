@@ -2873,6 +2873,19 @@ def _summarize_layer_limit(
         "token_mismatches": token_mismatches,
         "steps": steps,
     }
+    hidden_failure_rows = _hidden_failure_rows(summary)
+    strict_hidden_bit_drift_rows = _hidden_bit_drift_rows(summary)
+    token_failure_rows = _token_failure_rows(summary)
+    summary.update(
+        {
+            "hidden_failure_rows": hidden_failure_rows,
+            "hidden_failure_row_count": len(hidden_failure_rows),
+            "strict_hidden_bit_drift_rows": strict_hidden_bit_drift_rows,
+            "strict_hidden_bit_drift_row_count": len(strict_hidden_bit_drift_rows),
+            "token_failure_rows": token_failure_rows,
+            "token_failure_row_count": len(token_failure_rows),
+        }
+    )
     if prefill is not None:
         summary["prefill"] = prefill
     if prefill_linear_states is not None:

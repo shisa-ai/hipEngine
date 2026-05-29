@@ -6887,6 +6887,11 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     assert summary["hidden_passed"] is True
     assert summary["token_passed"] is True
     assert summary["failure_modes"] == []
+    assert summary["hidden_failure_rows"] == []
+    assert summary["hidden_failure_row_count"] == 0
+    assert summary["strict_hidden_bit_drift_rows"] == []
+    assert summary["token_failure_rows"] == []
+    assert summary["token_failure_row_count"] == 0
     assert summary["prefill_hidden_passed"] is True
     assert summary["prefill_linear_input_passed"] is True
     assert summary["prefill_linear_state_passed"] is True
@@ -7001,6 +7006,10 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     assert hidden_fail_summary["hidden_passed"] is False
     assert hidden_fail_summary["token_passed"] is True
     assert hidden_fail_summary["failure_modes"] == ["hidden"]
+    assert hidden_fail_summary["hidden_failure_rows"] == [0]
+    assert hidden_fail_summary["hidden_failure_row_count"] == 1
+    assert hidden_fail_summary["strict_hidden_bit_drift_rows"] == [0]
+    assert hidden_fail_summary["token_failure_rows"] == []
 
     token_fail_summary = _summarize_layer_limit(
         replace(batch, generated_tokens=[[12], [21]]),
@@ -7012,6 +7021,9 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     assert token_fail_summary["hidden_passed"] is True
     assert token_fail_summary["token_passed"] is False
     assert token_fail_summary["failure_modes"] == ["token"]
+    assert token_fail_summary["hidden_failure_rows"] == []
+    assert token_fail_summary["token_failure_rows"] == [0]
+    assert token_fail_summary["token_failure_row_count"] == 1
 
     bad_decode_inputs = {0: hidden.copy()}
     bad_decode_inputs[0][0, 1] = 0x4200
@@ -7053,6 +7065,8 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     assert bad_summary["hidden_passed"] is True
     assert bad_summary["token_passed"] is True
     assert bad_summary["failure_modes"] == []
+    assert bad_summary["hidden_failure_rows"] == []
+    assert bad_summary["token_failure_rows"] == []
     assert bad_summary["decode_linear_inputs"]["first_mismatch"] == expected_input_mismatch
     assert bad_summary["decode_linear_inputs"]["worst_diff"] == {**expected_input_mismatch, "passed": False}
     expected_state_mismatch = {

@@ -46003,3 +46003,36 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (`262` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with selected-c1 MoE control evidence, and no retained c>N performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY hidden-bisect layer row-count fields
+
+Added per-layer row-count classification to hidden-bisect summaries: `hidden_failure_rows`/count, `strict_hidden_bit_drift_rows`/count, and `token_failure_rows`/count. This makes C2.3/C2.4 artifacts show whether a failure is a single-row tolerance crossing or broad c>N divergence without manual row scanning.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py
+pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_summary_embeds_batch_decode_execution_trace -q
+```
+
+Diagnostic refresh:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 4,8 --max-sequence-length 1024 --hidden-atol 0.004 --state-atol 0 --state-focus-atol 0.002 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-full-attn-path native_batch --batch-decode-moe-path selected_c1 --json /tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-native-fullattn-selected-c1-moe-atol4e-3-focus1269.json >/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-native-fullattn-selected-c1-moe-atol4e-3-focus1269.stdout
+```
+
+Result: refreshed selected-c1 MoE control remains `status=mismatch_found` / `failure_modes=["hidden"]`. Layer-row fields show L4 has no over-atol hidden rows (`hidden_failure_rows=[]`) but strict bit drift on both rows, while L8 has `hidden_failure_rows=[0,1]`, `hidden_failure_row_count=2`, strict drift on both rows, and `token_failure_rows=[]`.
+
+Loop validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (`262` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with row-count hidden-failure evidence, and no retained c>N performance/scaling claim was added.
