@@ -2020,8 +2020,15 @@ def test_batch_c_sweep_rejects_unsafe_output_dir_before_creating_artifacts(tmp_p
     with pytest.raises(ValueError, match="--output-dir must be a non-empty path"):
         run_sweep(typed_args)
     assert not output_dir.exists()
-    with pytest.raises(argparse.ArgumentTypeError, match="path must be non-empty"):
-        c_sweep.parse_cli_path("")
+
+    typed_args.output_dir = "   "
+    with pytest.raises(ValueError, match="--output-dir must be a non-empty path"):
+        run_sweep(typed_args)
+    assert not output_dir.exists()
+
+    for blank_path in ("", "   "):
+        with pytest.raises(argparse.ArgumentTypeError, match="path must be non-empty"):
+            c_sweep.parse_cli_path(blank_path)
 
     args = build_c_sweep_parser().parse_args(
         ["--dry-run", "--batch-sizes", "2", "--output-dir", str(parent_component_output)]
@@ -2064,10 +2071,11 @@ def test_batch_c_sweep_rejects_unsafe_compiler_version_file_before_creating_arti
         run_sweep(typed_args)
     assert not output_dir.exists()
 
-    typed_args.compiler_version_file = ""
-    with pytest.raises(ValueError, match="--compiler-version-file must be a non-empty path"):
-        run_sweep(typed_args)
-    assert not output_dir.exists()
+    for blank_path in ("", "   "):
+        typed_args.compiler_version_file = blank_path
+        with pytest.raises(ValueError, match="--compiler-version-file must be a non-empty path"):
+            run_sweep(typed_args)
+        assert not output_dir.exists()
 
     args = build_c_sweep_parser().parse_args(
         [
@@ -2124,10 +2132,11 @@ def test_batch_c_sweep_rejects_unsafe_summary_json_before_creating_artifacts(tmp
         run_sweep(typed_args)
     assert not output_dir.exists()
 
-    typed_args.summary_json = ""
-    with pytest.raises(ValueError, match="--summary-json must be a non-empty path"):
-        run_sweep(typed_args)
-    assert not output_dir.exists()
+    for blank_path in ("", "   "):
+        typed_args.summary_json = blank_path
+        with pytest.raises(ValueError, match="--summary-json must be a non-empty path"):
+            run_sweep(typed_args)
+        assert not output_dir.exists()
 
     args = build_c_sweep_parser().parse_args(
         ["--dry-run", "--batch-sizes", "2", "--output-dir", str(output_dir), "--summary-json", str(parent_component_summary)]

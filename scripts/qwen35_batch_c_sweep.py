@@ -134,7 +134,7 @@ def parse_batch_sizes(text: str) -> tuple[int, ...]:
 
 
 def parse_cli_path(text: str) -> Path:
-    if not text:
+    if not isinstance(text, str) or not text.strip():
         raise argparse.ArgumentTypeError("path must be non-empty")
     return Path(text)
 
@@ -2729,7 +2729,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
 def _validate_cli_path_option(flag: str, path: str | Path) -> None:
     if not isinstance(path, (str, Path)):
         raise ValueError(f"{flag} must be a typed path")
-    if isinstance(path, str) and not path:
+    if isinstance(path, str) and not path.strip():
         raise ValueError(f"{flag} must be a non-empty path")
     path = Path(path)
     if _path_has_parent_directory_component(path):
