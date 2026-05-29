@@ -2936,6 +2936,25 @@ class Qwen35ParoResidentSession:
             stream=stream,
         )
 
+    def _trace_decode_full_attention_query(
+        self,
+        *,
+        layer_id: int,
+        query: Tensor | None,
+        rows: int,
+        stream: int = 0,
+    ) -> None:
+        if query is None:
+            raise ValueError("decode full-attention query trace requires a query tensor")
+        self._trace_tensor_f32(
+            trace_attr="_decode_full_attention_trace",
+            layer_id=layer_id,
+            stage="query",
+            tensor=query,
+            rows=rows,
+            stream=stream,
+        )
+
     def _trace_decode_full_attention_context(
         self,
         *,
@@ -2984,6 +3003,12 @@ class Qwen35ParoResidentSession:
             layer_id=layer_id,
             stage="gate",
             hidden=attention_scratch.gate,
+            rows=rows,
+            stream=stream,
+        )
+        self._trace_decode_full_attention_query(
+            layer_id=layer_id,
+            query=getattr(attention_scratch, "query", None),
             rows=rows,
             stream=stream,
         )

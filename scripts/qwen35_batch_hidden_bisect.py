@@ -34,7 +34,7 @@ from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen
 from scripts.qwen35_batch_retained_bench import DEFAULT_FIXTURE, DEFAULT_MODEL, _compiler_version, _load_prompt_slices
 
 
-DECODE_FULL_ATTENTION_TRACE_STAGES = ("input", "attn_input", "gate", "attn_context", "gated_attn", "o_proj", "output")
+DECODE_FULL_ATTENTION_TRACE_STAGES = ("input", "attn_input", "gate", "query", "attn_context", "gated_attn", "o_proj", "output")
 
 
 @dataclass(frozen=True)

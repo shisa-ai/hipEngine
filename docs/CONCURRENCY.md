@@ -918,10 +918,14 @@ roll-up/status view.
       adds BF16 cache samples for `first`, `previous`, and `current` tokens; the
       failing layer's `decode_full_kv_samples` passes at zero tolerance
       (`bit_mismatch=0`, worst `max_abs=0.0`) while `attn_context` still fails.
+      The query refresh at
+      `/tmp/hipengine-hidden-bisect-L4-512-16-c2-query-focus1269.json` also shows
+      the FP32 `query` launch input is exact (`max_abs=0.0`) while
+      `attn_context` remains the first mismatching substage (`max_abs=2.1604321002960205`).
       The next native-full investigation should compare wider retained K/V cache
-      contents or query/context launch inputs, while treating sampled K/V tail,
-      live-count/block metadata, dense-vs-paged c1 context math, and standalone
-      batch append/context primitives as model-shape green.
+      contents or the context kernel launch path itself, while treating sampled
+      K/V tail, query, live-count/block metadata, dense-vs-paged c1 context math,
+      and standalone batch append/context primitives as model-shape green.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

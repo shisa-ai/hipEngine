@@ -45283,3 +45283,38 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (`258` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with concrete KV-tail diagnostic evidence, and no retained c>N performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY full-attention query trace
+
+Advanced C2.3 by adding the FP32 `query` launch input to the decode full-attention trace. This complements the existing `input`, `attn_input`, `gate`, `attn_context`, `gated_attn`, `o_proj`, `output`, and KV-tail traces, and checks whether the batch context kernel receives the same query as the independent c1 path.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py
+pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_summary_embeds_batch_decode_execution_trace tests/test_generation_batch_scheduler.py::test_hidden_bisect_helpers_find_first_hidden_mismatch -q
+```
+
+Diagnostic:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 4 --layer-limits 4 --max-sequence-length 1024 --hidden-atol 0 --state-atol 0 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-full-attn-path native_batch --json /tmp/hipengine-hidden-bisect-L4-512-16-c2-query-focus1269.json >/tmp/hipengine-hidden-bisect-L4-512-16-c2-query-focus1269.stdout
+```
+
+Result: `/tmp/hipengine-hidden-bisect-L4-512-16-c2-query-focus1269.json` is `status=mismatch_found`, `token_passed=true`. Stage pass map is `{input:true, attn_input:true, gate:true, query:true, attn_context:false, gated_attn:false, o_proj:false, output:false}`. At decode step 0/layer 3/row 0, `query` is exact (`max_abs=0.0`) and `attn_context` remains the first mismatch (`max_abs=2.1604321002960205`, all 4096 row-0 elements over zero tolerance).
+
+Interpretation: the native-full mismatch is not explained by Q/G projection, query normalization/rotary, sampled retained K/V tails, live-count/block metadata, or dense-vs-paged c1 primitive math. The remaining suspects are wider retained-cache contents or the batch context kernel launch/path as exercised by the runtime.
+
+Loop validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (`258` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with concrete query diagnostic evidence, and no retained c>N performance/scaling claim was added.
