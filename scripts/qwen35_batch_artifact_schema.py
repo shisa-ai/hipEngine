@@ -31,6 +31,7 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_REQUIRED_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES,
     RETAINED_ARTIFACT_REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES,
     RETAINED_ARTIFACT_REQUIRED_SCALING_BASELINES,
+    RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS,
     RETAINED_ARTIFACT_REQUIRED_SCALING_RATIOS,
     RETAINED_ARTIFACT_UNUSABLE_SCALING_BASELINE_STATUSES,
 )
@@ -153,21 +154,7 @@ _COMMAND_OUTPUT_FORMAT_RE = re.compile(r"(?:^|\s)--output-format(?:=|\s+)(\S+)(?
 _COMMAND_TRACE_DIR_RE = re.compile(r"(?:^|\s)-d(?:=|\s+)(\S+)(?=\s|$)")
 _CORRECTNESS_ROWS_RE = re.compile(r"(?:^|\s)--rows(?:=|\s+)(\d+)(?=\s|$)")
 _CORRECTNESS_SEED_RE = re.compile(r"(?:^|\s)--seed(?:=|\s+)(\d+)(?=\s|$)")
-_RETAINED_BENCH_UNIQUE_FLAGS = (
-    "--model",
-    "--fixture",
-    "--batch-size",
-    "--prompt-length",
-    "--decode-tokens",
-    "--max-layers",
-    "--json",
-    "--c1-baseline-json",
-    "--serial-bridge-json",
-    "--primitive-correctness-json",
-    "--profiler-json",
-    "--compiler-version-file",
-    "--require-cached-build",
-)
+_RETAINED_BENCH_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS
 _CORRECTNESS_REFERENCE_UNIQUE_FLAGS = ("--rows", "--seed", "--json")
 _CORRECTNESS_SCRIPT_ALLOWED_FLAGS = ("--rows", "--seed", "--json")
 _FULL_COMMIT_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", re.IGNORECASE)

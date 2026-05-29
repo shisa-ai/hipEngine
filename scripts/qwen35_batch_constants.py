@@ -116,6 +116,23 @@ RETAINED_ARTIFACT_REQUIRED_SCALING_RATIOS = (
     "per_request_vs_serial_bridge",
 )
 
+RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS = (
+    "--model",
+    "--fixture",
+    "--batch-size",
+    "--prompt-length",
+    "--decode-tokens",
+    "--warmup-decode-tokens",
+    "--max-layers",
+    "--json",
+    "--c1-baseline-json",
+    "--serial-bridge-json",
+    "--primitive-correctness-json",
+    "--profiler-json",
+    "--compiler-version-file",
+    "--require-cached-build",
+)
+
 RETAINED_ARTIFACT_UNUSABLE_SCALING_BASELINE_STATUSES = (
     "failed",
     "invalid_json",
@@ -179,6 +196,7 @@ __all__ = [
     "RETAINED_ARTIFACT_REQUIRED_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES",
     "RETAINED_ARTIFACT_REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES",
     "RETAINED_ARTIFACT_REQUIRED_SCALING_BASELINES",
+    "RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS",
     "RETAINED_ARTIFACT_REQUIRED_SCALING_RATIOS",
     "RETAINED_ARTIFACT_UNUSABLE_SCALING_BASELINE_STATUSES",
 ]

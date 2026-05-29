@@ -36,6 +36,7 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS,
     RETAINED_ARTIFACT_REQUIRED_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES,
     RETAINED_ARTIFACT_REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES,
+    RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS,
     RETAINED_ARTIFACT_UNUSABLE_SCALING_BASELINE_STATUSES,
 )
 
@@ -86,22 +87,7 @@ def _primitive_context_lens_matches(value: Any, rows: int) -> bool:
 
 
 _PROFILER_SYNTHESIZED_FIELDS = RETAINED_ARTIFACT_PROFILER_TRACE_SYNTHESIZED_FIELDS
-_RETAINED_BENCH_UNIQUE_FLAGS = (
-    "--model",
-    "--fixture",
-    "--batch-size",
-    "--prompt-length",
-    "--decode-tokens",
-    "--warmup-decode-tokens",
-    "--max-layers",
-    "--json",
-    "--c1-baseline-json",
-    "--serial-bridge-json",
-    "--primitive-correctness-json",
-    "--profiler-json",
-    "--compiler-version-file",
-    "--require-cached-build",
-)
+_RETAINED_BENCH_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS
 _PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS = ("--rows", "--seed")
 _SWEEP_COMMAND_KNOWN_FLAGS = tuple(dict.fromkeys(_RETAINED_BENCH_UNIQUE_FLAGS + _PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS))
 
