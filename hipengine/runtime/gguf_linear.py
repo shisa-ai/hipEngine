@@ -797,7 +797,7 @@ def _pack8_decode_dispatch(
         dispatch.abi == "raw"
         and rows == 1
         and out_features % 8 == 0
-        and dispatch.key.quant in {"gguf_q8_0", "gguf_q5_k", "gguf_q6_k"}
+        and dispatch.key.quant in {"gguf_q8_0", "gguf_q3_k", "gguf_q5_k", "gguf_q6_k"}
         and dispatch.key.variant in {"gemv_bf16_bf16_out", "gemv_bf16_f32_out"}
     ):
         return GGUFLinearDispatch(

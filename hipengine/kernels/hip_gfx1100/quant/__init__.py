@@ -2,6 +2,10 @@
 
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     build_gguf_k_gemv,
+    gguf_q3_k_gemv_bf16_bf16_out,
+    gguf_q3_k_gemv_bf16_f32_out,
+    gguf_q3_k_gemv_f32_f32_out,
+    gguf_q3_k_gemv_fp16_f32_out,
     gguf_q5_k_gemv_bf16_bf16_out,
     gguf_q5_k_gemv_bf16_f32_out,
     gguf_q5_k_gemv_f32_f32_out,
@@ -118,6 +122,10 @@ __all__ = [
     "gemv_awq_selected_pack8_transposed_bf16",
     "gemv_awq_selected_pack8_transposed_fp16",
     "gemv_paro_marlin_k_fma_fp16",
+    "gguf_q3_k_gemv_bf16_bf16_out",
+    "gguf_q3_k_gemv_bf16_f32_out",
+    "gguf_q3_k_gemv_f32_f32_out",
+    "gguf_q3_k_gemv_fp16_f32_out",
     "gguf_q5_k_gemv_bf16_bf16_out",
     "gguf_q5_k_gemv_bf16_f32_out",
     "gguf_q5_k_gemv_f32_f32_out",

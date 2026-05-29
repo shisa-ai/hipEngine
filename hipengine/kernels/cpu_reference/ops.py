@@ -76,6 +76,12 @@ def gguf_q8_0_gemv(x: ArrayLike, qweight: ArrayLike) -> np.ndarray:
     return gguf_quant_gemv(x, qweight, GGMLQuantizationType.Q8_0)
 
 
+def gguf_q3_k_gemv(x: ArrayLike, qweight: ArrayLike) -> np.ndarray:
+    """Reference GEMV over raw GGUF ``block_q3_K`` weight bytes."""
+
+    return gguf_quant_gemv(x, qweight, GGMLQuantizationType.Q3_K)
+
+
 def gguf_q4_k_gemv(x: ArrayLike, qweight: ArrayLike) -> np.ndarray:
     """Reference GEMV over raw GGUF ``block_q4_K`` weight bytes."""
 
@@ -1080,6 +1086,7 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
         "linear": linear,
         "qkv_proj": qkv_proj,
         "gguf_q8_0_gemv": gguf_q8_0_gemv,
+        "gguf_q3_k_gemv": gguf_q3_k_gemv,
         "gguf_q4_k_gemv": gguf_q4_k_gemv,
         "gguf_q5_k_gemv": gguf_q5_k_gemv,
         "gguf_q6_k_gemv": gguf_q6_k_gemv,
@@ -1113,6 +1120,11 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("cpu_reference", "linear", "gguf_q8_0", "gemv_f32_f32_out"),
         gguf_q8_0_gemv,
+        replace=replace,
+    )
+    register(
+        KernelKey("cpu_reference", "linear", "gguf_q3_k", "gemv_f32_f32_out"),
+        gguf_q3_k_gemv,
         replace=replace,
     )
     register(

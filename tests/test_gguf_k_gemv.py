@@ -3,9 +3,13 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from hipengine.kernels.cpu_reference import gguf_q5_k_gemv, gguf_q6_k_gemv, gguf_q8_0_gemv
+from hipengine.kernels.cpu_reference import gguf_q3_k_gemv, gguf_q5_k_gemv, gguf_q6_k_gemv, gguf_q8_0_gemv
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     build_gguf_k_gemv,
+    gguf_q3_k_gemv_bf16_bf16_out,
+    gguf_q3_k_gemv_bf16_f32_out,
+    gguf_q3_k_gemv_f32_f32_out,
+    gguf_q3_k_gemv_fp16_f32_out,
     gguf_q5_k_gemv_bf16_bf16_out,
     gguf_q5_k_gemv_bf16_f32_out,
     gguf_q5_k_gemv_f32_f32_out,
@@ -25,6 +29,7 @@ from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
 
 QK_K = 256
 Q8_0_BLOCK_BYTES = 34
+Q3_K_BLOCK_BYTES = 110
 Q5_K_BLOCK_BYTES = 176
 Q6_K_BLOCK_BYTES = 210
 
@@ -38,6 +43,20 @@ def make_q8_0_weight(out_features: int, in_features: int) -> np.ndarray:
         for block_idx in range(blocks_per_row):
             start = block_idx * Q8_0_BLOCK_BYTES
             data[out_idx, start : start + Q8_0_BLOCK_BYTES] = _make_q8_0_block(
+                out_idx, block_idx
+            )
+    return data
+
+
+def make_q3_k_weight(out_features: int, in_features: int) -> np.ndarray:
+    if in_features % QK_K:
+        raise ValueError("in_features must be a multiple of 256")
+    blocks_per_row = in_features // QK_K
+    data = np.empty((out_features, blocks_per_row * Q3_K_BLOCK_BYTES), dtype=np.uint8)
+    for out_idx in range(out_features):
+        for block_idx in range(blocks_per_row):
+            start = block_idx * Q3_K_BLOCK_BYTES
+            data[out_idx, start : start + Q3_K_BLOCK_BYTES] = _make_q3_k_block(
                 out_idx, block_idx
             )
     return data
@@ -77,6 +96,28 @@ def _make_q8_0_block(out_idx: int, block_idx: int) -> np.ndarray:
         np.int8
     )
     return np.concatenate([np.asarray([d], dtype=np.float16).view(np.uint8), q.view(np.uint8)])
+
+
+def _make_q3_k_block(out_idx: int, block_idx: int) -> np.ndarray:
+    d = np.float16(0.0126953125 * (1 + (out_idx % 5)))
+    scales_signed = ((np.arange(16, dtype=np.int16) * 5 + out_idx - block_idx) % 63 - 31).astype(
+        np.int8
+    )
+    q_signed = ((np.arange(QK_K, dtype=np.int16) + out_idx * 7 + block_idx * 11) % 8 - 4).astype(
+        np.int8
+    )
+    hmask = np.zeros(32, dtype=np.uint8)
+    qs = np.zeros(64, dtype=np.uint8)
+    for k, value in enumerate(q_signed):
+        lane = k & 31
+        group32 = k >> 5
+        ql = np.uint8(int(value) & 0x03)
+        if value >= 0:
+            hmask[lane] |= np.uint8(1 << group32)
+        qs_idx = (32 if k >= 128 else 0) + lane
+        qs[qs_idx] |= ql << np.uint8(2 * (group32 & 3))
+    scales = _pack_q3_k_scales((scales_signed.astype(np.int16) + 32).astype(np.uint8))
+    return np.concatenate([hmask, qs, scales, np.asarray([d], dtype=np.float16).view(np.uint8)])
 
 
 def _make_q5_k_block(out_idx: int, block_idx: int) -> np.ndarray:
@@ -138,6 +179,20 @@ def _make_q6_k_block(out_idx: int, block_idx: int) -> np.ndarray:
     )
 
 
+def _pack_q3_k_scales(values: np.ndarray) -> np.ndarray:
+    values = np.asarray(values, dtype=np.uint8)
+    out = np.zeros(12, dtype=np.uint8)
+    out[:8] = (values[:8] & np.uint8(0x0F)) | ((values[8:16] & np.uint8(0x0F)) << np.uint8(4))
+    for offset in range(4):
+        out[8 + offset] = (
+            ((values[offset] >> np.uint8(4)) & np.uint8(0x03))
+            | (((values[4 + offset] >> np.uint8(4)) & np.uint8(0x03)) << np.uint8(2))
+            | (((values[8 + offset] >> np.uint8(4)) & np.uint8(0x03)) << np.uint8(4))
+            | (((values[12 + offset] >> np.uint8(4)) & np.uint8(0x03)) << np.uint8(6))
+        )
+    return out
+
+
 def _pack_q4_k_scales(scales: np.ndarray, mins: np.ndarray) -> np.ndarray:
     scales = np.asarray(scales, dtype=np.uint8)
     mins = np.asarray(mins, dtype=np.uint8)
@@ -152,6 +207,7 @@ def _pack_q4_k_scales(scales: np.ndarray, mins: np.ndarray) -> np.ndarray:
     ("name", "qtype", "make_weight", "reference", "in_features"),
     [
         ("Q8_0", GGMLQuantizationType.Q8_0, make_q8_0_weight, gguf_q8_0_gemv, 64),
+        ("Q3_K", GGMLQuantizationType.Q3_K, make_q3_k_weight, gguf_q3_k_gemv, 512),
         ("Q5_K", GGMLQuantizationType.Q5_K, make_q5_k_weight, gguf_q5_k_gemv, 512),
         ("Q6_K", GGMLQuantizationType.Q6_K, make_q6_k_weight, gguf_q6_k_gemv, 512),
     ],
@@ -183,6 +239,13 @@ def test_gguf_k_gemv_registry_and_build_plan() -> None:
             gguf_q8_0_gemv_bf16_f32_out,
             gguf_q8_0_gemv_bf16_bf16_out,
             gguf_q8_0_gemv,
+        ),
+        "gguf_q3_k": (
+            gguf_q3_k_gemv_f32_f32_out,
+            gguf_q3_k_gemv_fp16_f32_out,
+            gguf_q3_k_gemv_bf16_f32_out,
+            gguf_q3_k_gemv_bf16_bf16_out,
+            gguf_q3_k_gemv,
         ),
         "gguf_q5_k": (
             gguf_q5_k_gemv_f32_f32_out,
@@ -228,6 +291,9 @@ def test_gguf_k_gemv_registry_and_build_plan() -> None:
 def test_gguf_k_wrapper_validates_kernel_contract() -> None:
     with pytest.raises(ValueError, match="divisible"):
         gguf_q8_0_gemv_f32_f32_out(1, 2, 3, rows=1, in_features=31, out_features=1)
+
+    with pytest.raises(ValueError, match="divisible"):
+        gguf_q3_k_gemv_f32_f32_out(1, 2, 3, rows=1, in_features=255, out_features=1)
 
     with pytest.raises(ValueError, match="divisible"):
         gguf_q5_k_gemv_f32_f32_out(1, 2, 3, rows=1, in_features=255, out_features=1)

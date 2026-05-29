@@ -1,4 +1,4 @@
-"""Raw-pointer wrappers for GGUF Q8_0/Q5_K/Q6_K GEMV kernels."""
+"""Raw-pointer wrappers for GGUF Q8_0/Q3_K/Q5_K/Q6_K GEMV kernels."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from hipengine.kernels.registry import KernelKey, register
 _SOURCE = Path(__file__).with_name("gguf_k_gemv.hip")
 _OUTPUT_NAME = "gguf_k_gemv.so"
 _ALLOWED_THREADS = {64, 128, 256}
-_QTYPE_BLOCK_SIZE = {"gguf_q8_0": 32, "gguf_q5_k": 256, "gguf_q6_k": 256}
+_QTYPE_BLOCK_SIZE = {"gguf_q8_0": 32, "gguf_q3_k": 256, "gguf_q5_k": 256, "gguf_q6_k": 256}
 
 
 def plan_gguf_k_gemv_build(
@@ -112,6 +112,25 @@ gguf_q8_0_prefill_bf16_f32_out = gguf_q8_0_gemv_bf16_f32_out
 gguf_q8_0_prefill_bf16_fp16_out = gguf_q8_0_gemv_bf16_fp16_out
 gguf_q8_0_prefill_bf16_bf16_out = gguf_q8_0_gemv_bf16_bf16_out
 
+gguf_q3_k_gemv_f32_f32_out = _make_wrapper("gguf_q3_k", _symbol("gguf_q3_k", "gemv_f32_f32_out"))
+gguf_q3_k_gemv_f32_fp16_out = _make_wrapper("gguf_q3_k", _symbol("gguf_q3_k", "gemv_f32_fp16_out"))
+gguf_q3_k_gemv_fp16_f32_out = _make_wrapper("gguf_q3_k", _symbol("gguf_q3_k", "gemv_fp16_f32_out"))
+gguf_q3_k_gemv_fp16_fp16_out = _make_wrapper("gguf_q3_k", _symbol("gguf_q3_k", "gemv_fp16_fp16_out"))
+gguf_q3_k_gemv_bf16_f32_out = _make_wrapper("gguf_q3_k", _symbol("gguf_q3_k", "gemv_bf16_f32_out"))
+gguf_q3_k_gemv_bf16_fp16_out = _make_wrapper("gguf_q3_k", _symbol("gguf_q3_k", "gemv_bf16_fp16_out"))
+gguf_q3_k_gemv_bf16_bf16_out = _make_wrapper("gguf_q3_k", _symbol("gguf_q3_k", "gemv_bf16_bf16_out"))
+gguf_q3_k_pack8_gemv_bf16_f32_out = _make_pack8_wrapper("gguf_q3_k", _symbol("gguf_q3_k", "pack8_gemv_bf16_f32_out"))
+gguf_q3_k_pack8_gemv_bf16_bf16_out = _make_pack8_wrapper("gguf_q3_k", _symbol("gguf_q3_k", "pack8_gemv_bf16_bf16_out"))
+gguf_q3_k_selected_gemv_bf16_bf16_out = _make_selected_wrapper("gguf_q3_k", _symbol("gguf_q3_k", "selected_gemv_bf16_bf16_out"))
+gguf_q3_k_selected_pack8_gemv_bf16_bf16_out = _make_selected_pack8_wrapper("gguf_q3_k", _symbol("gguf_q3_k", "selected_pack8_gemv_bf16_bf16_out"))
+gguf_q3_k_prefill_f32_f32_out = gguf_q3_k_gemv_f32_f32_out
+gguf_q3_k_prefill_f32_fp16_out = gguf_q3_k_gemv_f32_fp16_out
+gguf_q3_k_prefill_fp16_f32_out = gguf_q3_k_gemv_fp16_f32_out
+gguf_q3_k_prefill_fp16_fp16_out = gguf_q3_k_gemv_fp16_fp16_out
+gguf_q3_k_prefill_bf16_f32_out = gguf_q3_k_gemv_bf16_f32_out
+gguf_q3_k_prefill_bf16_fp16_out = gguf_q3_k_gemv_bf16_fp16_out
+gguf_q3_k_prefill_bf16_bf16_out = gguf_q3_k_gemv_bf16_bf16_out
+
 gguf_q5_k_gemv_f32_f32_out = _make_wrapper("gguf_q5_k", _symbol("gguf_q5_k", "gemv_f32_f32_out"))
 gguf_q5_k_gemv_f32_fp16_out = _make_wrapper("gguf_q5_k", _symbol("gguf_q5_k", "gemv_f32_fp16_out"))
 gguf_q5_k_gemv_fp16_f32_out = _make_wrapper("gguf_q5_k", _symbol("gguf_q5_k", "gemv_fp16_f32_out"))
@@ -152,7 +171,7 @@ gguf_q6_k_prefill_bf16_bf16_out = gguf_q6_k_gemv_bf16_bf16_out
 
 
 def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
-    for quant in ("gguf_q8_0", "gguf_q5_k", "gguf_q6_k"):
+    for quant in ("gguf_q8_0", "gguf_q3_k", "gguf_q5_k", "gguf_q6_k"):
         for variant, fn in _WRAPPERS[quant].items():
             register(KernelKey("hip_gfx1100", "linear", quant, variant), fn, replace=replace)
 
@@ -361,6 +380,26 @@ _WRAPPERS = {
         "prefill_bf16_fp16_out": gguf_q8_0_prefill_bf16_fp16_out,
         "prefill_bf16_bf16_out": gguf_q8_0_prefill_bf16_bf16_out,
     },
+    "gguf_q3_k": {
+        "gemv_f32_f32_out": gguf_q3_k_gemv_f32_f32_out,
+        "gemv_f32_fp16_out": gguf_q3_k_gemv_f32_fp16_out,
+        "gemv_fp16_f32_out": gguf_q3_k_gemv_fp16_f32_out,
+        "gemv_fp16_fp16_out": gguf_q3_k_gemv_fp16_fp16_out,
+        "gemv_bf16_f32_out": gguf_q3_k_gemv_bf16_f32_out,
+        "gemv_bf16_fp16_out": gguf_q3_k_gemv_bf16_fp16_out,
+        "gemv_bf16_bf16_out": gguf_q3_k_gemv_bf16_bf16_out,
+        "pack8_gemv_bf16_f32_out": gguf_q3_k_pack8_gemv_bf16_f32_out,
+        "pack8_gemv_bf16_bf16_out": gguf_q3_k_pack8_gemv_bf16_bf16_out,
+        "selected_gemv_bf16_bf16_out": gguf_q3_k_selected_gemv_bf16_bf16_out,
+        "selected_pack8_gemv_bf16_bf16_out": gguf_q3_k_selected_pack8_gemv_bf16_bf16_out,
+        "prefill_f32_f32_out": gguf_q3_k_prefill_f32_f32_out,
+        "prefill_f32_fp16_out": gguf_q3_k_prefill_f32_fp16_out,
+        "prefill_fp16_f32_out": gguf_q3_k_prefill_fp16_f32_out,
+        "prefill_fp16_fp16_out": gguf_q3_k_prefill_fp16_fp16_out,
+        "prefill_bf16_f32_out": gguf_q3_k_prefill_bf16_f32_out,
+        "prefill_bf16_fp16_out": gguf_q3_k_prefill_bf16_fp16_out,
+        "prefill_bf16_bf16_out": gguf_q3_k_prefill_bf16_bf16_out,
+    },
     "gguf_q5_k": {
         "gemv_f32_f32_out": gguf_q5_k_gemv_f32_f32_out,
         "gemv_f32_fp16_out": gguf_q5_k_gemv_f32_fp16_out,
@@ -408,6 +447,21 @@ register_gguf_k_gemv_kernels()
 
 __all__ = [
     "build_gguf_k_gemv",
+    "gguf_q3_k_gemv_f32_f32_out",
+    "gguf_q3_k_gemv_f32_fp16_out",
+    "gguf_q3_k_gemv_fp16_f32_out",
+    "gguf_q3_k_gemv_fp16_fp16_out",
+    "gguf_q3_k_gemv_bf16_f32_out",
+    "gguf_q3_k_gemv_bf16_fp16_out",
+    "gguf_q3_k_gemv_bf16_bf16_out",
+    "gguf_q3_k_selected_gemv_bf16_bf16_out",
+    "gguf_q3_k_prefill_f32_f32_out",
+    "gguf_q3_k_prefill_f32_fp16_out",
+    "gguf_q3_k_prefill_fp16_f32_out",
+    "gguf_q3_k_prefill_fp16_fp16_out",
+    "gguf_q3_k_prefill_bf16_f32_out",
+    "gguf_q3_k_prefill_bf16_fp16_out",
+    "gguf_q3_k_prefill_bf16_bf16_out",
     "gguf_q5_k_gemv_f32_f32_out",
     "gguf_q5_k_gemv_f32_fp16_out",
     "gguf_q5_k_gemv_fp16_f32_out",

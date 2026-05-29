@@ -1,4 +1,4 @@
-// GGUF Q8_0/Q5_K/Q6_K raw-byte GEMV bring-up kernels.
+// GGUF Q8_0/Q3_K/Q5_K/Q6_K raw-byte GEMV bring-up kernels.
 // These preserve GGML quant math and are separate from PARO/AWQ kernels.
 
 #include <hip/hip_runtime.h>
@@ -10,6 +10,7 @@ using half_t = _Float16;
 constexpr int QK_K = 256;
 constexpr int Q8_0_BLOCK = 32;
 constexpr int Q8_0_BLOCK_BYTES = 34;
+constexpr int Q3_K_BLOCK_BYTES = 110;
 constexpr int Q5_K_BLOCK_BYTES = 176;
 constexpr int Q6_K_BLOCK_BYTES = 210;
 
@@ -87,6 +88,34 @@ __device__ inline float q8_0_weight(const uint8_t* row, int k) {
   const float d = fp16_bytes_to_float(block);
   const int8_t q = reinterpret_cast<const int8_t*>(block + 2)[lane];
   return d * static_cast<float>(q);
+}
+
+__device__ inline int8_t q3_k_scale(const uint8_t* scales, int subblock16) {
+  const uint8_t low = (subblock16 < 8)
+      ? (scales[subblock16] & 0x0Fu)
+      : ((scales[subblock16 - 8] >> 4) & 0x0Fu);
+  const uint8_t high = (scales[8 + (subblock16 & 3)] >> (2 * (subblock16 >> 2))) & 0x03u;
+  return static_cast<int8_t>(static_cast<int>(low | (high << 4)) - 32);
+}
+
+__device__ inline float q3_k_weight(const uint8_t* row, int k) {
+  const int block_idx = k / QK_K;
+  const int within = k - block_idx * QK_K;
+  const int group32 = within >> 5;
+  const int subblock16 = within >> 4;
+  const int lane = within & 31;
+  const uint8_t* block = row + static_cast<int64_t>(block_idx) * Q3_K_BLOCK_BYTES;
+  const uint8_t* hmask = block;
+  const uint8_t* qs = block + 32;
+  const uint8_t* scales = block + 96;
+  const float d = fp16_bytes_to_float(block + 108);
+
+  const uint8_t packed = qs[(within >= 128 ? 32 : 0) + lane];
+  const uint8_t ql = (packed >> (2 * (group32 & 3))) & 0x03u;
+  const uint8_t sign_bit = (hmask[lane] >> group32) & 0x01u;
+  const int q = static_cast<int>(ql) - (sign_bit ? 0 : 4);
+  const int scale = static_cast<int>(q3_k_scale(scales, subblock16));
+  return d * static_cast<float>(scale * q);
 }
 
 __device__ inline float q5_k_weight(const uint8_t* row, int k) {
@@ -205,6 +234,9 @@ __device__ inline int gguf_k_row_bytes(int qtype, int in_features) {
   if (qtype == 8) {
     return (in_features / Q8_0_BLOCK) * Q8_0_BLOCK_BYTES;
   }
+  if (qtype == 3) {
+    return (in_features / QK_K) * Q3_K_BLOCK_BYTES;
+  }
   if (qtype == 5) {
     return (in_features / QK_K) * Q5_K_BLOCK_BYTES;
   }
@@ -227,6 +259,8 @@ __global__ void gguf_k_prefill_out_kernel(
   int row_bytes = 0;
   if constexpr (qtype == 8) {
     row_bytes = (in_features / Q8_0_BLOCK) * Q8_0_BLOCK_BYTES;
+  } else if constexpr (qtype == 3) {
+    row_bytes = (in_features / QK_K) * Q3_K_BLOCK_BYTES;
   } else if constexpr (qtype == 5) {
     row_bytes = (in_features / QK_K) * Q5_K_BLOCK_BYTES;
   } else {
@@ -243,6 +277,8 @@ __global__ void gguf_k_prefill_out_kernel(
     float wv;
     if constexpr (qtype == 8) {
       wv = q8_0_weight(weight_row, k);
+    } else if constexpr (qtype == 3) {
+      wv = q3_k_weight(weight_row, k);
     } else if constexpr (qtype == 5) {
       wv = q5_k_weight(weight_row, k);
     } else {
@@ -279,6 +315,8 @@ __global__ void gguf_k_selected_prefill_out_kernel(
   int row_bytes = 0;
   if constexpr (qtype == 8) {
     row_bytes = (in_features / Q8_0_BLOCK) * Q8_0_BLOCK_BYTES;
+  } else if constexpr (qtype == 3) {
+    row_bytes = (in_features / QK_K) * Q3_K_BLOCK_BYTES;
   } else if constexpr (qtype == 5) {
     row_bytes = (in_features / QK_K) * Q5_K_BLOCK_BYTES;
   } else {
@@ -296,6 +334,8 @@ __global__ void gguf_k_selected_prefill_out_kernel(
     float wv;
     if constexpr (qtype == 8) {
       wv = q8_0_weight(weight_row, k);
+    } else if constexpr (qtype == 3) {
+      wv = q3_k_weight(weight_row, k);
     } else if constexpr (qtype == 5) {
       wv = q5_k_weight(weight_row, k);
     } else {
@@ -349,6 +389,15 @@ __global__ void gguf_k_pack8_prefill_out_kernel(
       acc5 += xv * q8_0_weight(w5, k);
       acc6 += xv * q8_0_weight(w6, k);
       acc7 += xv * q8_0_weight(w7, k);
+    } else if constexpr (qtype == 3) {
+      acc0 += xv * q3_k_weight(w0, k);
+      acc1 += xv * q3_k_weight(w1, k);
+      acc2 += xv * q3_k_weight(w2, k);
+      acc3 += xv * q3_k_weight(w3, k);
+      acc4 += xv * q3_k_weight(w4, k);
+      acc5 += xv * q3_k_weight(w5, k);
+      acc6 += xv * q3_k_weight(w6, k);
+      acc7 += xv * q3_k_weight(w7, k);
     } else if constexpr (qtype == 5) {
       acc0 += xv * q5_k_weight(w0, k);
       acc1 += xv * q5_k_weight(w1, k);
@@ -434,6 +483,15 @@ __global__ void gguf_k_selected_pack8_prefill_out_kernel(
       acc5 += xv * q8_0_weight(w5, k);
       acc6 += xv * q8_0_weight(w6, k);
       acc7 += xv * q8_0_weight(w7, k);
+    } else if constexpr (qtype == 3) {
+      acc0 += xv * q3_k_weight(w0, k);
+      acc1 += xv * q3_k_weight(w1, k);
+      acc2 += xv * q3_k_weight(w2, k);
+      acc3 += xv * q3_k_weight(w3, k);
+      acc4 += xv * q3_k_weight(w4, k);
+      acc5 += xv * q3_k_weight(w5, k);
+      acc6 += xv * q3_k_weight(w6, k);
+      acc7 += xv * q3_k_weight(w7, k);
     } else if constexpr (qtype == 5) {
       acc0 += xv * q5_k_weight(w0, k);
       acc1 += xv * q5_k_weight(w1, k);
@@ -497,6 +555,9 @@ __global__ void gguf_k_dual_prefill_out_kernel(
     if constexpr (qtype == 8) {
       acc_a += xv * q8_0_weight(weight_a, k);
       acc_b += xv * q8_0_weight(weight_b, k);
+    } else if constexpr (qtype == 3) {
+      acc_a += xv * q3_k_weight(weight_a, k);
+      acc_b += xv * q3_k_weight(weight_b, k);
     } else if constexpr (qtype == 5) {
       acc_a += xv * q5_k_weight(weight_a, k);
       acc_b += xv * q5_k_weight(weight_b, k);
@@ -763,5 +824,6 @@ extern "C" int hipengine_##NAME##_selected_gemv_bf16_bf16_out( \
 }
 
 HIPENGINE_GGUF_K_EXPORTS(gguf_q8_0, 8)
+HIPENGINE_GGUF_K_EXPORTS(gguf_q3_k, 3)
 HIPENGINE_GGUF_K_EXPORTS(gguf_q5_k, 5)
 HIPENGINE_GGUF_K_EXPORTS(gguf_q6_k, 6)

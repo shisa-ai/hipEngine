@@ -395,18 +395,22 @@ reference code are absent.
 
 ### P6 — HIP Q3_K linear kernels on gfx1151
 
-- [ ] Add/register HIP Q3_K GEMV and selected-expert variants needed by Step
+- [x] Add/register HIP Q3_K GEMV and selected-expert variants needed by Step
   dense, attention, MoE expert, and shared-expert paths.
-- [ ] Build for `hip_gfx1151` with `HIPENGINE_HIP_ARCH=gfx1151`; reuse gfx1100
+- [x] Build for `hip_gfx1151` with `HIPENGINE_HIP_ARCH=gfx1151`; reuse gfx1100
   source only through peer backend registration/build metadata, not hard-coded
   imports in Step runtime code.
-- [ ] Add smoke tests comparing HIP Q3_K outputs to CPU reference for small
+- [x] Add smoke tests comparing HIP Q3_K outputs to CPU reference for small
   tensors, then real Step tensor slices.
-- [ ] Run a `rocprofv3 --kernel-trace` smoke once kernels exist and record the
+- [x] Run a `rocprofv3 --kernel-trace` smoke once kernels exist and record the
   expected kernel names/durations.
 
-**Acceptance:** HIP Q3_K slice correctness passes on Strix Halo and profiler
-shows the expected kernels, with no full-model claim yet.
+**Acceptance:** `HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q
+ tests/test_stepfun_q3k_hip.py` passes synthetic GEMV, selected-expert GEMV,
+and real Step tensor-slice checks vs CPU Q3_K. `rocprofv3 --kernel-trace`
+shows `gguf_k_prefill_out_kernel<unsigned short, float, 3>` with
+`DurationNs=13345`, `Scratch_Size=0`, `Grid_Size_X=1024`, and
+`Workgroup_Size_X=128` for the Q3_K smoke. No full-model or throughput claim.
 
 ### P7 — Step norms, RoPE, and attention-gate primitives
 

@@ -26942,3 +26942,25 @@ python3 scripts/check_lineage.py --kind kernel --diff stat
 ```
 
 Result: the command now runs. It reports four tracked kernel sources as drifted since baseline `22405a9`: `csrc/amd/qwen35_expert.hip` (+1003/-8), `csrc/amd/smoke.hip` (+35), `nanovllm/native/qwen35/paroquant_kernels.py` (+998/-178), and `nanovllm/native/qwen35/paroquant_fusedw4.py` (+398). These are Qwen/PARO lineage files rather than a Step GGUF Q3_K kernel source; inspect relevant drift before copying any code from them. No HIP kernel code was copied in this step.
+
+## 2026-05-29 — StepFun P6 HIP Q3_K GEMV bring-up on gfx1151
+
+Added first raw GGUF Q3_K HIP linear coverage for StepFun. Extended the existing `gguf_k_gemv` raw-byte family with Q3_K device dequant math (`block_q3_K` 110-byte superblocks), GEMV/prefill exports, pack8 aliases, and selected-expert exports. Added Python wrappers/registry keys for `gguf_q3_k`, CPU-reference `gguf_q3_k_gemv`, package exports, and runtime pack8 decode dispatch support without adding Step runtime backend/quant branches. The gfx1151 backend aliases these keys through the existing peer-backend registration path, and the same `.hip` source builds with `HIPENGINE_HIP_ARCH=gfx1151`.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_gguf_k_gemv.py tests/test_stepfun_q3k_hip.py
+HIPENGINE_HIP_ARCH=gfx1151 python3 -m pytest -q tests/test_stepfun_q3k_hip.py
+/opt/rocm/bin/hipcc --version > /tmp/hipengine-hipcc-version.txt
+HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 - <<'PY'
+from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import build_gguf_k_gemv
+artifact = build_gguf_k_gemv(load=False, compiler_version=open('/tmp/hipengine-hipcc-version.txt').read(), require_cached=False)
+print(artifact.output_path)
+PY
+PYTHONPATH=$PWD HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-stepfun-q3k-rocprof -- \
+  python3 /tmp/hipengine_stepfun_q3k_rocprof_smoke.py
+```
+
+Results: targeted pytest passed (`10 passed` combined; `4 passed` for the StepFun Q3_K HIP test alone). The StepFun test covers gfx1151 registration/dispatch, synthetic BF16→F32 Q3_K GEMV vs CPU reference, BF16→BF16 selected-expert Q3_K vs CPU reference, and real Step layer-0 `attn_q` Q3_K tensor-slice GEMV vs CPU reference. The cached rocprof smoke on gfx1151 produced `/tmp/hipengine-stepfun-q3k-rocprof/strixhalo/1975389_kernel_trace.csv`; the expected Q3_K kernel appears as `gguf_k_prefill_out_kernel<unsigned short, float, 3>` with `DurationNs=13345`, `Scratch_Size=0`, `LDS_Block_Size=512`, `VGPR_Count=16`, `Grid_Size_X=1024`, and `Workgroup_Size_X=128`. No full-model or throughput claim is made.
