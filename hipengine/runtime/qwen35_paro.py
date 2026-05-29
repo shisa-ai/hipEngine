@@ -2330,6 +2330,7 @@ class Qwen35ParoDecodeState:
         *,
         tokens: int = 1,
         group_size: int = 128,
+        producer_trace: Callable[[str, Tensor], None] | None = None,
         library=None,
         stream: int = 0,
     ) -> tuple[Tensor, Tensor, Tensor]:
@@ -2448,6 +2449,8 @@ class Qwen35ParoDecodeState:
                 library=awq_library,
                 runtime=self.runtime,
             )
+        if producer_trace is not None:
+            producer_trace("q_proj_key_after_project", scratch.q_proj_key)
         if not kv_fused:
             self.project_pack8_fp16(
                 scratch.v_rot,
@@ -2459,6 +2462,8 @@ class Qwen35ParoDecodeState:
                 library=library,
                 stream=stream,
             )
+        if producer_trace is not None:
+            producer_trace("value_after_project", scratch.value)
         return scratch.q_proj, scratch.key_bf16, scratch.value
 
     def prepare_full_attention_qkv_fp16(
@@ -2691,21 +2696,20 @@ class Qwen35ParoDecodeState:
             )
             if input_scratch_trace is not None:
                 input_scratch_trace("attn_input_after_rotate", row, row_scratch)
+            def producer_trace(stage: str, tensor: Tensor, *, _row: int = row) -> None:
+                if qkv_tensor_trace is not None:
+                    qkv_tensor_trace(stage, _row, tensor)
+
             self.project_full_attention_qkv_fp16(
                 row_scratch,
                 tokens=1,
                 group_size=group_size,
+                producer_trace=producer_trace if qkv_tensor_trace is not None else None,
                 library=library,
                 stream=stream,
             )
             if input_scratch_trace is not None:
                 input_scratch_trace("attn_input_after_project", row, row_scratch)
-            if qkv_tensor_trace is not None:
-                qkv_tensor_trace("q_proj_key_after_project", row, row_scratch.q_proj_key)
-
-            def producer_trace(stage: str, tensor: Tensor, *, _row: int = row) -> None:
-                if qkv_tensor_trace is not None:
-                    qkv_tensor_trace(stage, _row, tensor)
 
             self.prepare_full_attention_qkv_fp16(
                 row_scratch,
@@ -3455,6 +3459,7 @@ class Qwen35ParoDecodeState:
         block_size: int = 256,
         chunk_size: int = 256,
         num_splits: int = 1,
+        qkv_tensor_trace: Callable[[str, Tensor], None] | None = None,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -3485,6 +3490,7 @@ class Qwen35ParoDecodeState:
             attention_scratch,
             tokens=tokens,
             group_size=group_size,
+            producer_trace=qkv_tensor_trace,
             library=library,
             stream=stream,
         )
@@ -3495,6 +3501,7 @@ class Qwen35ParoDecodeState:
             position=position,
             max_positions=max_positions,
             tokens=tokens,
+            producer_trace=qkv_tensor_trace,
             library=library,
             stream=stream,
         )

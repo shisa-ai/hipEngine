@@ -66,6 +66,7 @@ from scripts.qwen35_batch_gguf_diagnostic import build_parser as build_gguf_diag
 from scripts.qwen35_batch_hidden_bisect import (
     HiddenRun,
     _decode_full_attention_stage_rollup,
+    _decode_full_attention_summary,
     _decode_full_context_oracle_rollup,
     _decode_full_context_oracles_from_trace,
     _decode_full_kv_sample_rollup,
@@ -6892,6 +6893,25 @@ def test_hidden_bisect_trace_array_to_f32_uses_fp16_for_uint16_traces() -> None:
     np.testing.assert_allclose(values, np.array([[1.0, 2.0, -2.0]], dtype=np.float32))
 
 
+def test_hidden_bisect_full_attention_focus_indices_skip_narrow_trace_stages() -> None:
+    wide = np.array([[0x3C00, 0x4000, 0x4200, 0x4400]], dtype=np.uint16)
+    narrow = np.array([[0x3C00, 0x4000]], dtype=np.uint16)
+    run = HiddenRun(
+        seed_tokens=[1],
+        generated_tokens=[[2]],
+        hidden_bits_by_step=[wide],
+        decode_full_attention_by_step=[{0: {"input": wide, "value_after_project": narrow}}],
+    )
+
+    summary = _decode_full_attention_summary(run, run, atol=0.0, focus_hidden_flat_indices=(3,))
+
+    assert summary is not None
+    input_comparison = summary["steps"][0]["layers"][0]["stages"]["input"]["rows"][0]["hidden_comparison"]
+    narrow_comparison = summary["steps"][0]["layers"][0]["stages"]["value_after_project"]["rows"][0]["hidden_comparison"]
+    assert input_comparison["selected_abs_diffs"][0]["flat_index"] == 3
+    assert "selected_abs_diffs" not in narrow_comparison
+
+
 def test_hidden_bisect_full_context_oracle_prefers_immediate_query_trace(monkeypatch: pytest.MonkeyPatch) -> None:
     def bf16_bits(values: np.ndarray) -> np.ndarray:
         return (np.asarray(values, dtype=np.float32).view(np.uint32) >> np.uint32(16)).astype(np.uint16)
@@ -6981,6 +7001,7 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
             "attn_input_after_rotate": hidden.copy(),
             "attn_input_after_project": hidden.copy(),
             "q_proj_key_after_project": hidden.copy(),
+            "value_after_project": hidden.copy(),
             "query_raw_after_split": query.copy(),
             "key_raw_after_cast": query.copy(),
             "gate_after_split": hidden.copy(),
@@ -7126,6 +7147,7 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     assert summary["decode_full_attention"]["stage_passed"]["attn_input_after_rotate"] is True
     assert summary["decode_full_attention"]["stage_passed"]["attn_input_after_project"] is True
     assert summary["decode_full_attention"]["stage_passed"]["q_proj_key_after_project"] is True
+    assert summary["decode_full_attention"]["stage_passed"]["value_after_project"] is True
     assert summary["decode_full_attention"]["stage_passed"]["query_raw_after_split"] is True
     assert summary["decode_full_attention"]["stage_passed"]["query_after_prepare"] is True
     assert summary["decode_full_attention"]["stage_passed"]["attn_input_after_prepare"] is True
@@ -7170,6 +7192,7 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["attn_input_pre_qkv"]["passed"] is True
     assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["attn_input_after_project"]["passed"] is True
     assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["q_proj_key_after_project"]["passed"] is True
+    assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["value_after_project"]["passed"] is True
     assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["query_raw_after_split"]["rows"][0]["comparison_kind"] == "fp32"
     assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["gate_after_split"]["rows"][0]["comparison_kind"] == "fp16_bits"
     assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["query_after_prepare"]["passed"] is True
@@ -7382,6 +7405,13 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         "first_failure": None,
     }
     assert top_level_full_attention_rollup["stages"]["query_raw_after_split"] == {
+        "passed": True,
+        "failure_rows": [],
+        "failure_row_count": 0,
+        "failure_comparison_kinds": [],
+        "first_failure": None,
+    }
+    assert top_level_full_attention_rollup["stages"]["value_after_project"] == {
         "passed": True,
         "failure_rows": [],
         "failure_row_count": 0,

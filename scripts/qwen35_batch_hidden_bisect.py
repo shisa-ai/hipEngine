@@ -40,6 +40,7 @@ DECODE_FULL_ATTENTION_TRACE_STAGES = (
     "attn_input_after_rotate",
     "attn_input_after_project",
     "q_proj_key_after_project",
+    "value_after_project",
     "query_raw_after_split",
     "key_raw_after_cast",
     "gate_after_split",
@@ -2345,11 +2346,18 @@ def _decode_full_attention_summary(
                 row_summaries: list[dict[str, Any]] = []
                 for row in range(int(stage_batch.shape[0])):
                     if stage_batch.dtype == np.uint16 and stage_c1.dtype == np.uint16:
+                        batch_row = stage_batch[row : row + 1]
+                        c1_row = stage_c1[row : row + 1]
+                        stage_focus_indices = [
+                            int(flat_index)
+                            for flat_index in focus_hidden_flat_indices
+                            if 0 <= int(flat_index) < int(batch_row.size)
+                        ]
                         comparison = hidden_comparison(
-                            stage_batch[row : row + 1],
-                            stage_c1[row : row + 1],
+                            batch_row,
+                            c1_row,
                             atol=atol,
-                            selected_flat_indices=focus_hidden_flat_indices,
+                            selected_flat_indices=stage_focus_indices,
                         )
                         comparison_kind = "fp16_bits"
                     else:

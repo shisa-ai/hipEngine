@@ -1092,22 +1092,21 @@ roll-up/status view.
       `attn_input_after_prepare` traces all pass at L4 and L8, so the input
       RMSNorm/rotate/project/prepare path is not overwriting `attn_input`; the
       existing post-layer `attn_input` trace is polluted after those stages and
-      should not drive the fix. Row-level QKV producer traces then showed
-      `q_proj_key_after_project`, `query_raw_after_split`, `key_raw_after_cast`,
-      `gate_after_split`, `query_after_prepare`, and `key_after_prepare` all pass
-      at L4 and L8. The immediate-query full-context oracle refresh now shows
-      both emitted contexts match their own NumPy oracles (`batch_context_vs_numpy`
-      and `c1_context_vs_numpy` pass); the remaining full-context oracle failure
-      is `batch_numpy_vs_c1_numpy` at L8 step 0 / row 0 / dim 2812
-      (`max_abs=0.00811624526977539`). The top-level full-KV sample rollup then
-      localizes that input drift to the native c=2 decode KV write: `query_after_prepare`
-      and `key_after_prepare` still pass, but layer-7 current-token KV samples at
-      position 512 fail for both key (`max_abs=0.03125`, `bit_mismatch=162`) and
-      value (`max_abs=0.0078125`, `bit_mismatch=136`), with earlier prompt/page
-      samples still green at step 0. Next target: inspect/fix the native c>1 full-KV
-      decode write path, not QKV preparation, context softmax math, row setup,
-      layer-4 state mapping, native linear segment metadata, output trace/copy
-      semantics, or grouped MoE output.
+      should not drive the fix. Row-level QKV producer tracing is now symmetric
+      for native c=2 and independent c=1 decode and includes `value_after_project`.
+      That refresh moved the actionable boundary earlier than the KV writer:
+      `q_proj_key_after_project` first differs at L4 step 0 / row 0
+      (`max_abs=0.0078125`), `query_raw_after_split` and `query_after_prepare`
+      also first differ at L4 step 0, and the full-context oracle now uses
+      `query_after_prepare` for both batch and c1 while still failing only
+      `batch_numpy_vs_c1_numpy` (`max_abs=0.007934749126434326` at L4 step 0 /
+      row 0 / dim 1673). Full-KV sample attribution likewise reports key/value
+      drift, but the first failure is now a pre-existing L4 `previous` prompt
+      sample at position 511, so the prior current-token-only KV-write diagnosis
+      was incomplete. Next target: audit the token-1 row projection/producer trace
+      parity and compact-prefill KV image before changing the paged-KV writer;
+      do not re-open context softmax math, row setup, native linear segment
+      metadata, output trace/copy semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

@@ -2981,6 +2981,7 @@ class Qwen35ParoResidentSession:
     ) -> None:
         if stage not in {
             "q_proj_key_after_project",
+            "value_after_project",
             "query_raw_after_split",
             "key_raw_after_cast",
             "gate_after_split",
@@ -4167,6 +4168,23 @@ class Qwen35ParoResidentSession:
                 key_cache, value_cache = self._slot_full_cache(layer_id, slot)
                 position_tensor, append_spans, decode_spans = self._slot_full_spans(layer_id, slot)
                 num_splits = num_splits_override or max(1, (position + 1 + self.decode_chunk_size - 1) // self.decode_chunk_size)
+                qkv_tensor_trace = None
+                if isinstance(getattr(self, "_decode_full_attention_trace", None), list):
+                    def qkv_tensor_trace(
+                        stage: str,
+                        tensor: Tensor,
+                        *,
+                        _layer_id: int = layer_id,
+                        _stream: int = stream,
+                    ) -> None:
+                        self._trace_decode_full_attention_tensor(
+                            layer_id=_layer_id,
+                            stage=stage,
+                            tensor=tensor,
+                            rows=1,
+                            stream=_stream,
+                        )
+
                 out = state.run_full_attention_moe_c1_layer_fp16(
                     hidden,
                     key_cache=key_cache,
@@ -4181,6 +4199,7 @@ class Qwen35ParoResidentSession:
                     moe_scratch=self.moe_scratch[layer_id],
                     chunk_size=self.decode_chunk_size,
                     num_splits=num_splits,
+                    qkv_tensor_trace=qkv_tensor_trace,
                     library=self.libraries,
                     stream=stream,
                 )
