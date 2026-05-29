@@ -2832,6 +2832,48 @@ class Qwen35ParoResidentSession:
             stream=stream,
         )
 
+    def _trace_tensor_bits(
+        self,
+        *,
+        trace_attr: str,
+        layer_id: int,
+        stage: str,
+        tensor: Tensor,
+        rows: int,
+        stream: int = 0,
+    ) -> None:
+        trace = getattr(self, trace_attr, None)
+        if not isinstance(trace, list):
+            return
+        rows = int(rows)
+        if rows <= 0:
+            return
+        if tensor.dtype.itemsize != 2:
+            raise ValueError(f"{stage} trace expects a 16-bit tensor, got {tensor.dtype}")
+        if not tensor.shape or int(tensor.shape[0]) < rows:
+            raise ValueError(f"{stage} trace tensor must have at least {rows} rows")
+        elements_per_row = 1
+        for dim in tensor.shape[1:]:
+            elements_per_row *= int(dim)
+        if elements_per_row <= 0:
+            raise ValueError(f"{stage} trace tensor has no row payload")
+        if hasattr(self.runtime, "stream_synchronize"):
+            self.runtime.stream_synchronize(stream)
+        bits = np.empty((rows, elements_per_row), dtype=np.uint16)
+        copy_device_to_host(
+            host_array_ptr(bits),
+            DeviceBuffer(tensor.ptr, bits.nbytes),
+            runtime=self.runtime,
+        )
+        trace.append(
+            {
+                "layer_index": int(layer_id),
+                "stage": stage,
+                "shape": [int(rows), *(int(dim) for dim in tensor.shape[1:])],
+                "bits": bits,
+            }
+        )
+
     def _trace_decode_full_attention(
         self,
         *,
@@ -2841,21 +2883,48 @@ class Qwen35ParoResidentSession:
         rows: int,
         stream: int = 0,
     ) -> None:
-        trace = getattr(self, "_decode_full_attention_trace", None)
-        if not isinstance(trace, list):
-            return
-        if stage not in {"input", "output"}:
-            raise ValueError("decode full-attention trace stage must be input or output")
-        before = len(trace)
-        self._trace_linear_input_bits(
+        if stage not in {"input", "attn_input", "gated_attn", "o_proj", "output"}:
+            raise ValueError("decode full-attention trace stage is not recognized")
+        self._trace_tensor_bits(
             trace_attr="_decode_full_attention_trace",
             layer_id=layer_id,
-            hidden=hidden,
+            stage=stage,
+            tensor=hidden,
             rows=rows,
             stream=stream,
         )
-        if len(trace) > before:
-            trace[-1]["stage"] = stage
+
+    def _trace_decode_full_attention_scratch(
+        self,
+        *,
+        layer_id: int,
+        attention_scratch: Qwen35ParoAttentionScratch,
+        rows: int,
+        stream: int = 0,
+    ) -> None:
+        if not isinstance(getattr(self, "_decode_full_attention_trace", None), list):
+            return
+        self._trace_decode_full_attention(
+            layer_id=layer_id,
+            stage="attn_input",
+            hidden=attention_scratch.attn_input,
+            rows=rows,
+            stream=stream,
+        )
+        self._trace_decode_full_attention(
+            layer_id=layer_id,
+            stage="gated_attn",
+            hidden=attention_scratch.gated_attn,
+            rows=rows,
+            stream=stream,
+        )
+        self._trace_decode_full_attention(
+            layer_id=layer_id,
+            stage="o_proj",
+            hidden=attention_scratch.o_proj,
+            rows=rows,
+            stream=stream,
+        )
 
     def _run_native_prefill_layers(self, *, tokens: int, stream: int = 0) -> Tensor:
         hidden = self._prefill_hidden_view_for_rows(tokens)
@@ -3591,6 +3660,12 @@ class Qwen35ParoResidentSession:
                             library=self.libraries,
                             stream=stream,
                         )
+                        self._trace_decode_full_attention_scratch(
+                            layer_id=layer_id,
+                            attention_scratch=attention_scratch,
+                            rows=rows,
+                            stream=stream,
+                        )
                         self._trace_decode_full_attention(
                             layer_id=layer_id,
                             stage="output",
@@ -3649,6 +3724,12 @@ class Qwen35ParoResidentSession:
                                 chunk_size=self.decode_chunk_size,
                                 num_splits=num_splits,
                                 library=self.libraries,
+                                stream=stream,
+                            )
+                            self._trace_decode_full_attention_scratch(
+                                layer_id=layer_id,
+                                attention_scratch=self.full_scratch[layer_id],
+                                rows=1,
                                 stream=stream,
                             )
                             self._trace_decode_full_attention(
@@ -3779,6 +3860,12 @@ class Qwen35ParoResidentSession:
                     chunk_size=self.decode_chunk_size,
                     num_splits=num_splits,
                     library=self.libraries,
+                    stream=stream,
+                )
+                self._trace_decode_full_attention_scratch(
+                    layer_id=layer_id,
+                    attention_scratch=self.full_scratch[layer_id],
+                    rows=1,
                     stream=stream,
                 )
                 self._trace_decode_full_attention(

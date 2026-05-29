@@ -34,6 +34,9 @@ from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen
 from scripts.qwen35_batch_retained_bench import DEFAULT_FIXTURE, DEFAULT_MODEL, _compiler_version, _load_prompt_slices
 
 
+DECODE_FULL_ATTENTION_TRACE_STAGES = ("input", "attn_input", "gated_attn", "o_proj", "output")
+
+
 @dataclass(frozen=True)
 class HiddenRun:
     seed_tokens: list[int]
@@ -670,8 +673,8 @@ def _decode_full_attention_layers_from_trace(
     for entry in trace:
         layer_id = int(entry["layer_index"])
         stage = str(entry.get("stage", ""))
-        if stage not in {"input", "output"}:
-            raise ValueError(f"decode full-attention trace for layer {layer_id} must have input/output stage")
+        if stage not in DECODE_FULL_ATTENTION_TRACE_STAGES:
+            raise ValueError(f"decode full-attention trace for layer {layer_id} has unrecognized stage {stage!r}")
         bits = np.asarray(entry["bits"], dtype=np.uint16)
         if bits.ndim != 2:
             raise ValueError(f"decode full-attention trace for layer {layer_id} must be rank-2")
@@ -1104,7 +1107,7 @@ def _decode_full_attention_summary(
             layer_batch = batch_layers[layer_id]
             layer_c1 = c1_layers[layer_id]
             stage_summaries: dict[str, Any] = {}
-            for stage in ("input", "output"):
+            for stage in DECODE_FULL_ATTENTION_TRACE_STAGES:
                 if stage not in layer_batch or stage not in layer_c1:
                     continue
                 stage_batch = layer_batch[stage]
@@ -1154,16 +1157,49 @@ def _decode_full_attention_summary(
             for step_summary in steps
             for layer in step_summary["layers"]
         )
-        for stage in ("input", "output")
+        for stage in DECODE_FULL_ATTENTION_TRACE_STAGES
     }
-    return {
+    first_mismatch: dict[str, Any] | None = None
+    for step_summary in steps:
+        for layer in step_summary["layers"]:
+            for stage in DECODE_FULL_ATTENTION_TRACE_STAGES:
+                stage_summary = layer["stages"].get(stage)
+                if stage_summary is None:
+                    continue
+                for row in stage_summary["rows"]:
+                    if row["passed"]:
+                        continue
+                    comparison = row["hidden_comparison"]
+                    first_mismatch = {
+                        "decode_step": int(step_summary["decode_step"]),
+                        "generated_index": int(step_summary["generated_index"]),
+                        "layer_index": int(layer["layer_index"]),
+                        "stage": stage,
+                        "row": int(row["row"]),
+                        "max_abs": float(comparison["max_abs"]),
+                        "max_abs_flat_index": int(comparison["max_abs_flat_index"]),
+                        "max_abs_index": comparison["max_abs_index"],
+                        "elements_over_atol": int(comparison["elements_over_atol"]),
+                    }
+                    break
+                if first_mismatch is not None:
+                    break
+            if first_mismatch is not None:
+                break
+        if first_mismatch is not None:
+            break
+    result = {
         "stage": "decode_full_attention",
         "hidden_atol": float(atol),
         "input_passed": bool(stage_passed["input"]),
         "output_passed": bool(stage_passed["output"]),
+        "stage_passed": {stage: bool(passed) for stage, passed in stage_passed.items()},
         "passed": all(step["passed"] for step in steps),
         "steps": steps,
     }
+    if first_mismatch is not None:
+        result["first_mismatch"] = first_mismatch
+    return result
 
 
 def _decode_linear_state_summary(

@@ -857,7 +857,19 @@ roll-up/status view.
       `scripts/qwen35_batch_hidden_bisect.py` and shows the first native-full
       mismatch at decode step 6 / generated index 7, layer 3 `output` (`row 0`,
       `max_abs=0.008148193359375`, tokens still green), before the layer-limit
-      hidden max reaches row 0 dim 1269 at `0.027587890625`.
+      hidden max reaches row 0 dim 1269 at `0.027587890625`. The substage
+      trace refresh at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-full-attn-substages-focus1269.json`
+      extends that schema with `attn_input`, `gated_attn`, and `o_proj` stage
+      gates plus a compact `first_mismatch`; its first substage failure is
+      earlier, at decode step 0 / generated index 1, layer 7 `attn_input`
+      (`row 0`, dim 1269, `max_abs=0.015625`). The matching layer-3-only
+      control at
+      `/tmp/hipengine-hidden-bisect-L4-512-16-c2-full-attn-substages-focus1269.json`
+      is green across all full-attention substages, so the next native-full
+      investigation should compare the second full-attention layer after the
+      intervening per-row linear layers, not only the first layer-3 attention
+      kernel in isolation.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

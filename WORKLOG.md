@@ -44945,3 +44945,34 @@ python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/
 Result: `/tmp/hipengine-hidden-bisect-L8-512-16-c2-full-attn-io-trace-focus1269.json` is `status=mismatch_found`, with `token_passed=true`, `hidden_passed=false`, `decode_full_attention_input_passed=false`, and `decode_full_attention_output_passed=false`. The first full-attention-stage mismatch is decode step 6 / generated index 7, layer 3 `output`, row 0 (`max_abs=0.008148193359375`, max flat dim 1504); the layer-limit hidden max at the same generated index remains row 0 dim 1269 (`max_abs=0.027587890625`). Later full-attention input mismatches are therefore downstream of the first native full-attention output mismatch.
 
 Interpretation: with c1-linear and per-row linear controls in place, native full-attention decode now has a precise first-output divergence point for the c=2/L8/16 reduced shape. The next C2.3 work should inspect row-aware native full-attention decode/KV math around layer 3 at generated index 7, using per-row full attention as the green control.
+
+## 2026-05-29 — CONCURRENCY full-attention substage trace
+
+Advanced C2.3 by extending the decode full-attention trace beyond layer input/output. The hidden-bisect harness now captures 16-bit `attn_input`, `gated_attn`, and `o_proj` scratch tensors for native batch and per-row/c1 full-attention decode paths, reports per-stage pass/fail in `decode_full_attention.stage_passed`, and emits a compact `decode_full_attention.first_mismatch` record.
+
+Code/test changes:
+
+- `Qwen35ParoResidentSession` adds generic 16-bit tensor trace copying and records full-attention scratch substages after native batch and c1/per-row full-attention layer calls.
+- `scripts/qwen35_batch_hidden_bisect.py` accepts the new substage names, summarizes them in fixed stage order, and records the first substage mismatch.
+- `test_hidden_bisect_summary_embeds_batch_decode_execution_trace` covers the new `gated_attn` stage and green `first_mismatch` omission.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py
+python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_summary_embeds_batch_decode_execution_trace -q
+```
+
+Diagnostics:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 4 --layer-limits 4 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-full-attn-path native_batch --json /tmp/hipengine-hidden-bisect-L4-512-16-c2-full-attn-substages-focus1269.json >/tmp/hipengine-hidden-bisect-L4-512-16-c2-full-attn-substages-focus1269.stdout
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-full-attn-path native_batch --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-full-attn-substages-focus1269.json >/tmp/hipengine-hidden-bisect-L8-512-16-c2-full-attn-substages-focus1269.stdout
+```
+
+Results:
+
+- `/tmp/hipengine-hidden-bisect-L4-512-16-c2-full-attn-substages-focus1269.json`: `status=eq_ok`; full-attention `stage_passed` is true for `input`, `attn_input`, `gated_attn`, `o_proj`, and `output`; no `first_mismatch`.
+- `/tmp/hipengine-hidden-bisect-L8-512-16-c2-full-attn-substages-focus1269.json`: `status=mismatch_found`, `token_passed=true`, first final hidden mismatch remains decode step 6 / generated index 7 row 0 dim 1269 (`max_abs=0.027587890625`), while `decode_full_attention.first_mismatch` is earlier at decode step 0 / generated index 1, layer 7 `attn_input`, row 0 dim 1269 (`max_abs=0.015625`, 6 elements over atol).
+
+Interpretation: the first full-attention layer (layer 3) is green in isolation at L4 for this reduced c=2 shape, but a subthreshold drift propagates through the intervening per-row linear layers and is amplified by the layer-7 full-attention input RMSNorm. The next native-full investigation should compare layer-7 inputs/normalization and the accumulated layer-3→7 path, not only the layer-3 attention context kernel.
