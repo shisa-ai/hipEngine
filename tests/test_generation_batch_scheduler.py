@@ -2599,6 +2599,10 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
     assert persisted_skipped["precondition"] == skipped["precondition"]
     assert persisted["retained_precondition_counts"] == summary["retained_precondition_counts"]
     assert persisted["skipped_preconditions"] == summary["skipped_preconditions"]
+    tampered_minimal_failed_precondition_keys = json.loads(json.dumps(persisted))
+    tampered_minimal_failed_precondition_keys["commands"][-1]["preconditions"][0]["primitive_seed"] = 1234
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\] minimal failed conditions must contain exactly generic failure keys"):
+        c_sweep.validate_sweep_summary(tampered_minimal_failed_precondition_keys)
     tampered_precondition_counts = json.loads(json.dumps(persisted))
     tampered_precondition_counts["retained_precondition_counts"] = {}
     with pytest.raises(ValueError, match="retained_precondition_counts must match commands.preconditions"):

@@ -1754,6 +1754,12 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         "duration_seconds",
         "output_tail",
     }
+    expected_minimal_failed_condition_keys = {
+        "kind",
+        "artifact_path",
+        "passed",
+        "reason",
+    }
     expected_passed_retained_postcondition_keys = {
         "kind",
         "artifact_path",
@@ -2230,6 +2236,16 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                             errors.append("commands[].preconditions[].reason must be a non-empty string when failed")
                             condition_schema_error = True
                             break
+                        if condition.get("passed") is False and isinstance(reason, str):
+                            has_minimal_failure_reason = (
+                                reason.startswith("retained native diagnostic is missing ")
+                                or reason.endswith(" artifact does not exist")
+                                or " artifact is invalid JSON: " in reason
+                            )
+                            if has_minimal_failure_reason and set(condition) != expected_minimal_failed_condition_keys:
+                                errors.append("commands[].preconditions[] minimal failed conditions must contain exactly generic failure keys")
+                                condition_schema_error = True
+                                break
                 if condition_schema_error:
                     break
             if condition_schema_error:
