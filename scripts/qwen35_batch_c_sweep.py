@@ -1586,6 +1586,21 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     if not isinstance(options, Mapping):
         errors.append("options must be an object")
     else:
+        expected_option_keys = {
+            "model",
+            "fixture",
+            "prompt_length",
+            "decode_tokens",
+            "warmup_decode_tokens",
+            "max_layers",
+            "seed",
+            "stop_on_failure",
+            "include_int8",
+            "require_cached_build",
+            "compiler_version_file",
+        }
+        if set(options) != expected_option_keys:
+            errors.append("options must contain exactly the c-sweep schema keys")
         for option in ("stop_on_failure", "include_int8", "require_cached_build"):
             if not isinstance(options.get(option), bool):
                 errors.append(f"options.{option} must be a bool")

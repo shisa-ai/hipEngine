@@ -1841,6 +1841,14 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     tampered_dry_run_type["dry_run"] = "true"
     with pytest.raises(ValueError, match="dry_run must be a bool"):
         c_sweep.validate_sweep_summary(tampered_dry_run_type)
+    tampered_extra_option = json.loads(json.dumps(persisted))
+    tampered_extra_option["options"]["unexpected"] = "field"
+    with pytest.raises(ValueError, match="options must contain exactly the c-sweep schema keys"):
+        c_sweep.validate_sweep_summary(tampered_extra_option)
+    tampered_missing_option = json.loads(json.dumps(persisted))
+    tampered_missing_option["options"].pop("compiler_version_file")
+    with pytest.raises(ValueError, match="options must contain exactly the c-sweep schema keys"):
+        c_sweep.validate_sweep_summary(tampered_missing_option)
     for option in ("model", "fixture"):
         tampered_blank_label = json.loads(json.dumps(persisted))
         tampered_blank_label["options"][option] = "   "
