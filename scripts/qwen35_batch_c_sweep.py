@@ -1698,8 +1698,22 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             errors.append("git.status_short must be a non-empty string list")
         elif git_dirty is not None and git_dirty is not bool(status_short):
             errors.append("git.dirty must match bool(git.status_short)")
+    expected_skipped_precondition_keys = {
+        "category",
+        "batch_size",
+        "artifact_path",
+        "kind",
+        "precondition_artifact_path",
+        "reason",
+    }
+    skipped_preconditions = summary.get("skipped_preconditions")
+    if isinstance(skipped_preconditions, list):
+        for skipped_precondition in skipped_preconditions:
+            if not isinstance(skipped_precondition, Mapping) or set(skipped_precondition) != expected_skipped_precondition_keys:
+                errors.append("skipped_preconditions[] must contain exactly skipped precondition rollup keys")
+                break
     expected_skipped_preconditions = _skipped_preconditions(entries)
-    if not _typed_json_like_matches(summary.get("skipped_preconditions"), expected_skipped_preconditions):
+    if not _typed_json_like_matches(skipped_preconditions, expected_skipped_preconditions):
         errors.append("skipped_preconditions must match commands.preconditions")
     expected_command_keys = {
         "category",

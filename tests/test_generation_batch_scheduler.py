@@ -2611,6 +2611,10 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
     tampered_skipped_preconditions["skipped_preconditions"] = []
     with pytest.raises(ValueError, match="skipped_preconditions must match commands.preconditions"):
         c_sweep.validate_sweep_summary(tampered_skipped_preconditions)
+    tampered_skipped_precondition_keys = json.loads(json.dumps(persisted))
+    tampered_skipped_precondition_keys["skipped_preconditions"][0]["extra"] = "field"
+    with pytest.raises(ValueError, match=r"skipped_preconditions\[\] must contain exactly skipped precondition rollup keys"):
+        c_sweep.validate_sweep_summary(tampered_skipped_precondition_keys)
     tampered_skipped_precondition_batch_type = json.loads(json.dumps(persisted))
     tampered_skipped_precondition_batch_type["skipped_preconditions"][0]["batch_size"] = 2.0
     with pytest.raises(ValueError, match="skipped_preconditions must match commands.preconditions"):
