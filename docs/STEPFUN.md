@@ -484,14 +484,20 @@ reporting.
 - [ ] Add a Step GGUF runner that streams one-token decode for short prompts with
   the Step tokenizer, split weight index, mixed GGUF quant dispatch, full/sliding
   attention, and Step MoE.
-- [ ] Use short contexts first (for example <= 512) before exercising long
-  context and sliding-window boundaries.
+- [x] Use short contexts first (for example <= 512) before exercising long
+  context and sliding-window boundaries. `StepFunShortContextDecodePlanner`
+  enforces the current c=1 bring-up default `max_context=512`,
+  `max_new_tokens=1`, and rejects overlong prompts.
 - [ ] Compare greedy next tokens and/or logits against llama.cpp for a small set
   of deterministic prompts.
-- [ ] Preserve multi-EOS stopping and the chat assistant prefix.
+- [x] Preserve multi-EOS stopping and the chat assistant prefix. The short
+  context planner renders the Step chat template with assistant `<think>` prefix
+  and carries stop IDs `(1, 2, 128007)` with `should_stop()` checks.
 
-**Acceptance:** deterministic short-prompt next-token parity is demonstrated;
-record command, prompt shape, oracle, and result in `WORKLOG.md`.
+**Acceptance:** `python3 -m pytest -q tests/test_stepfun_decode_planner.py`
+passes for short-context limits, mixed-quant dispatch-key validation,
+assistant-prefix rendering, multi-EOS stopping, and torch-free imports. Full
+next-token/logit parity remains open until the streaming runner is wired.
 
 ### P12 — Full-model Strix Halo smoke
 

@@ -27000,3 +27000,15 @@ Results: HIP still reports contradictory memory (`free=128844787712` / `119.996 
 ## 2026-05-29 — StepFun P12 fit-failure decision recorded
 
 Converted the P12 "if the model does not fit" branch into an explicit completed decision. The documented blocker is a pre-load fit failure: HIP/ROCm memory visibility is inconsistent and the highest coherent total (`hipMemGetInfo total=62.541 GiB`) is below the raw Step GGUF payload (`95.465 GiB`) before KV/runtime overhead, while `rocm-smi` exposes only 512 MiB VIS_VRAM. Full-model load remains unsafe to attempt in this state. Decision: keep working on slice/layer correctness until UMA/HIP visibility is fixed or offload/tiering exists.
+
+## 2026-05-29 — StepFun P11 short-context decode planner
+
+Added `hipengine/runtime/stepfun_gguf_runner.py` with a torch-free `StepFunShortContextDecodePlanner`. This is a prompt-side pre-run planner, not the full streaming model runner: it binds split GGUF metadata, Step tokenizer/chat rendering, c=1 short-context limits (`max_context=512`, `max_new_tokens=1` by default), mixed GGUF quant dispatch-key validation for `gguf_q3_k`/`gguf_q5_k`/`gguf_q8_0` on the selected backend, and multi-EOS stop handling. Added `tests/test_stepfun_decode_planner.py` covering assistant `<think>` prefix preservation, stop IDs `(1, 2, 128007)`, overlong prompt rejection, gfx1151 mixed-quant dispatch keys, and no torch import.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_decode_planner.py
+```
+
+Result: `3 passed`. This completes the safe short-context and stop/chat-prefix parts of P11. The actual streaming Step GGUF runner and llama.cpp next-token/logit parity remain open.
