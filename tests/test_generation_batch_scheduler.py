@@ -10595,6 +10595,11 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
             "selected_c1_forced",
             "execution.batch_execution.decode_execution.layer_executions[1].linear_attention_output_path must be native_batch or absent",
         ),
+        (
+            "linear_attention_output_path",
+            "batch_gemv",
+            "execution.batch_execution.decode_execution.layer_executions[1].linear_attention_output_path must be native_batch or absent",
+        ),
     ):
         linear_diagnostic = json.loads(json.dumps(valid))
         linear_diagnostic["decode_execution"]["moe_grouped_compact_layers"] = 2
@@ -12627,6 +12632,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         (
             "linear_attention_output_path",
             "selected_c1_forced",
+            "layer_executions[1].linear_attention_output_path must be native_batch or absent",
+        ),
+        (
+            "linear_attention_output_path",
+            "batch_gemv",
             "layer_executions[1].linear_attention_output_path must be native_batch or absent",
         ),
     ):
