@@ -16,8 +16,11 @@ from hipengine.runtime import PrefillConfig
 from hipengine.runtime.prefill import resolve_prefill_config_for_sequence
 from hipengine.runtime.qwen35_paro import (
     Qwen35ParoGroupedMoeScratch,
+    qwen35_grouped_moe_expert_lane_groups,
+    qwen35_grouped_moe_expert_starts,
     qwen35_grouped_moe_lane_rows,
     qwen35_grouped_moe_lane_to_sorted_row,
+    qwen35_grouped_moe_sorted_lanes_from_selected_experts,
     qwen35_grouped_moe_sorted_token_rows,
 )
 from hipengine.runtime import qwen35_paro_runner as runner_module
@@ -1440,6 +1443,25 @@ def test_qwen35_grouped_moe_lane_helpers_map_sorted_lanes_to_token_rows() -> Non
     for bad_sorted_lanes in ((1, 1, 2, 3, 4, 5), (0, 1, 2, 3, 4, 6), (0, 1, 2, 3, 4, True)):
         with pytest.raises(ValueError, match="sorted_lanes entries must be unique lane ints in range"):
             qwen35_grouped_moe_lane_to_sorted_row(bad_sorted_lanes, tokens=3, top_k=2)
+
+
+def test_qwen35_grouped_moe_selected_experts_build_expert_groups() -> None:
+    selected_experts = ((2, 0), (1, 2), (0, 1))
+
+    assert qwen35_grouped_moe_expert_lane_groups(selected_experts, num_experts=3) == ((1, 4), (2, 5), (0, 3))
+    assert qwen35_grouped_moe_expert_starts(selected_experts, num_experts=3) == (0, 2, 4, 6)
+    sorted_lanes = qwen35_grouped_moe_sorted_lanes_from_selected_experts(selected_experts, num_experts=3)
+
+    assert sorted_lanes == (1, 4, 2, 5, 0, 3)
+    assert qwen35_grouped_moe_sorted_token_rows(sorted_lanes, tokens=3, top_k=2) == (0, 2, 1, 2, 0, 1)
+    assert qwen35_grouped_moe_lane_to_sorted_row(sorted_lanes, tokens=3, top_k=2) == (4, 0, 2, 5, 1, 3)
+
+    with pytest.raises(ValueError, match="selected_experts rows must have a consistent top_k"):
+        qwen35_grouped_moe_expert_lane_groups(((0, 1), (2,)), num_experts=3)
+    with pytest.raises(ValueError, match="selected_experts entries must be expert ints in range"):
+        qwen35_grouped_moe_expert_lane_groups(((0, True),), num_experts=3)
+    with pytest.raises(ValueError, match="selected_experts entries must be expert ints in range"):
+        qwen35_grouped_moe_expert_lane_groups(((0, 3),), num_experts=3)
 
 
 def test_qwen35_resident_decode_batch_uses_grouped_moe_scratch_for_rows_gt1() -> None:

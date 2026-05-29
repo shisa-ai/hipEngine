@@ -43935,3 +43935,30 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
 ```
+
+## 2026-05-29 — CONCURRENCY grouped-MoE selected-expert grouping helper
+
+Advanced C2.3 without closing the selected-MoE lane-map item or adding a retained c>N performance claim. Extended the CPU-visible grouped-MoE lane metadata helpers to cover selected-expert → expert-group ordering and expert-start offsets, so tests can lock the compact grouped metadata expected before the GPU path is used for c>N decode.
+
+- Added `qwen35_grouped_moe_expert_lane_groups(...)`, `qwen35_grouped_moe_expert_starts(...)`, and `qwen35_grouped_moe_sorted_lanes_from_selected_experts(...)` in `hipengine/runtime/qwen35_paro.py`.
+- Added `test_qwen35_grouped_moe_selected_experts_build_expert_groups` with a c=3/top-k=2 fixture proving expert groups, starts, sorted lanes, sorted token rows, and lane-to-sorted-row inverse mapping; malformed selected-expert rows and invalid expert ids are rejected.
+- Updated `docs/CONCURRENCY.md` C2.3 progress text with the selected-expert expert-group CPU coverage while leaving the item open because generated-token equality and the hidden-state mismatch are not fixed.
+- No queue status changed and no generated-token equality or retained performance/scaling claim was added.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_qwen35_resident_batch_layout.py -k 'grouped_moe_lane_helpers or grouped_moe_selected_experts or decode_batch_uses_grouped_moe_scratch' -q
+# 3 passed
+python3 -m pytest -q tests/test_qwen35_resident_batch_layout.py -q
+# passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
+```

@@ -210,6 +210,65 @@ def qwen35_grouped_moe_lane_to_sorted_row(
     return tuple(lane_to_row)
 
 
+def _qwen35_grouped_moe_route_shape(selected_experts: Sequence[Sequence[int]]) -> tuple[int, int]:
+    tokens = len(selected_experts)
+    if tokens <= 0:
+        raise ValueError("selected_experts must contain at least one token row")
+    top_k = len(selected_experts[0])
+    if top_k <= 0:
+        raise ValueError("selected_experts rows must contain at least one expert")
+    if any(len(row) != top_k for row in selected_experts):
+        raise ValueError("selected_experts rows must have a consistent top_k")
+    return tokens, top_k
+
+
+def qwen35_grouped_moe_expert_lane_groups(
+    selected_experts: Sequence[Sequence[int]],
+    *,
+    num_experts: int,
+) -> tuple[tuple[int, ...], ...]:
+    """Group token-major routed lanes by expert for the compact MoE path."""
+
+    if not isinstance(num_experts, int) or isinstance(num_experts, bool) or num_experts <= 0:
+        raise ValueError("num_experts must be a positive int")
+    tokens, top_k = _qwen35_grouped_moe_route_shape(selected_experts)
+    groups: list[list[int]] = [[] for _ in range(num_experts)]
+    for token_row, row in enumerate(selected_experts):
+        for expert_rank, expert in enumerate(row):
+            if not isinstance(expert, int) or isinstance(expert, bool) or expert < 0 or expert >= num_experts:
+                raise ValueError("selected_experts entries must be expert ints in range")
+            groups[expert].append(token_row * top_k + expert_rank)
+    expected_total_lanes = tokens * top_k
+    if sum(len(group) for group in groups) != expected_total_lanes:
+        raise ValueError("selected_experts lane grouping did not cover all routed lanes")
+    return tuple(tuple(group) for group in groups)
+
+
+def qwen35_grouped_moe_expert_starts(
+    selected_experts: Sequence[Sequence[int]],
+    *,
+    num_experts: int,
+) -> tuple[int, ...]:
+    """Return compact grouped-MoE expert-start offsets for token-major lanes."""
+
+    groups = qwen35_grouped_moe_expert_lane_groups(selected_experts, num_experts=num_experts)
+    starts = [0]
+    for group in groups:
+        starts.append(starts[-1] + len(group))
+    return tuple(starts)
+
+
+def qwen35_grouped_moe_sorted_lanes_from_selected_experts(
+    selected_experts: Sequence[Sequence[int]],
+    *,
+    num_experts: int,
+) -> tuple[int, ...]:
+    """Return token-major lane ids in compact grouped-MoE expert order."""
+
+    groups = qwen35_grouped_moe_expert_lane_groups(selected_experts, num_experts=num_experts)
+    return tuple(lane for group in groups for lane in group)
+
+
 @dataclass(frozen=True)
 class Qwen35ParoAttentionScratch:
     attn_input: Tensor
