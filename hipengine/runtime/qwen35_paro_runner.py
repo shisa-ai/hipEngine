@@ -1728,6 +1728,7 @@ class Qwen35ParoResidentSession:
                 "linear_prefix_layers": native_prefill_plan.linear_prefix_layers,
                 "layer_limit": native_prefill_plan.layer_limit,
                 "linear_attention_prefill_path": getattr(self, "_last_packed_prefill_linear_path", "packed_segments"),
+                "full_attention_prefill_path": getattr(self, "_last_packed_prefill_full_attention_path", "packed_varlen"),
                 "blockers": list(getattr(self, "_last_packed_prefill_blockers", [])),
                 "decode_scratch_released_for_prefill": minimize_prefill_workspace_overlap,
             }
@@ -2930,10 +2931,17 @@ class Qwen35ParoResidentSession:
         rows = int(slab.rows)
         hidden = self._prefill_hidden_view_for_rows(rows)
         force_per_segment_linear = _env_flag("HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR")
+        force_per_segment_full_attention = _env_flag("HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_FULL_ATTN")
+        blockers: list[str] = []
+        if force_per_segment_linear:
+            blockers.append("linear-attention packed prefill forced to per-segment diagnostic path")
+        if force_per_segment_full_attention:
+            blockers.append("full-attention packed prefill forced to per-segment diagnostic path")
         self._last_packed_prefill_linear_path = "per_segment" if force_per_segment_linear else "packed_segments"
-        self._last_packed_prefill_blockers = (
-            ["linear-attention packed prefill forced to per-segment diagnostic path"] if force_per_segment_linear else []
+        self._last_packed_prefill_full_attention_path = (
+            "per_segment" if force_per_segment_full_attention else "packed_varlen"
         )
+        self._last_packed_prefill_blockers = blockers
         for layer_id, state in enumerate(self.states):
             layer_type = self.config.layer_types[layer_id]
             copied_layer_output = False
@@ -2987,29 +2995,137 @@ class Qwen35ParoResidentSession:
                         stream=stream,
                     )
             elif layer_type == "full_attention":
-                key_cache, value_cache = self._full_cache_all_slots(layer_id)
-                attention_scratch = self._ensure_full_prefill_scratch(tokens=rows)
-                moe_scratch = self._ensure_grouped_moe_prefill_scratch(layer_id, tokens=rows)
-                out = state.run_full_attention_moe_prefill_varlen_layer_fp16(
-                    hidden,
-                    key_cache=key_cache,
-                    value_cache=value_cache,
-                    append_spans=metadata.append_spans,
-                    prefill_spans=metadata.prefill_spans,
-                    cu_seqlens_q=metadata.cu_seqlens_q,
-                    cu_seqlens_k=metadata.cu_seqlens_k,
-                    segments=slab.request_count,
-                    cos_table=self.cos,
-                    sin_table=self.sin,
-                    positions=metadata.positions,
-                    max_positions=self.max_sequence_length,
-                    attention_scratch=attention_scratch,
-                    moe_scratch=moe_scratch,
-                    tokens=rows,
-                    block_size=self.block_size,
-                    library=self.libraries,
-                    stream=stream,
-                )
+                if force_per_segment_full_attention:
+                    block_count = int(slab.block_count)
+                    for segment_index in range(int(slab.request_count)):
+                        start = int(slab.cu_seqlens_q[segment_index])
+                        end = int(slab.cu_seqlens_q[segment_index + 1])
+                        segment_rows = end - start
+                        if segment_rows <= 0:
+                            continue
+                        slot = int(slab.physical_slot_ids[segment_index])
+                        local_block_table = np.asarray(slab.block_tables[start:end], dtype=np.int32)
+                        local_block_table = np.ascontiguousarray(local_block_table)
+                        block_table_offset = int(start) * block_count * DType.INT32.itemsize
+                        copy_host_to_device(
+                            DeviceBuffer(self.prefill_block_table_buf.ptr + block_table_offset, local_block_table.nbytes),
+                            host_array_ptr(local_block_table),
+                            local_block_table.nbytes,
+                            runtime=self.runtime,
+                        )
+                        hidden_chunk = self._prefill_row_matrix_view(hidden, start, segment_rows)
+                        block_table = Tensor.from_handle(
+                            self.prefill_block_table_buf.ptr + block_table_offset,
+                            (segment_rows, block_count),
+                            DType.INT32,
+                            self.device,
+                        )
+                        positions = self._prefill_rows_tensor(self.prefill_positions, segment_rows, start=start)
+                        context_counts = Tensor.from_handle(
+                            self.prefill_context_count_buf.ptr + int(start) * DType.INT64.itemsize,
+                            (segment_rows,),
+                            DType.INT64,
+                            self.device,
+                        )
+                        append_spans = KVLiveSpans.paged_uniform(
+                            block_table=block_table,
+                            live_counts=positions,
+                            max_live_count=segment_rows - 1,
+                            storage_dtype=DType.BF16,
+                            row_positions=positions,
+                            span_role="prefill",
+                        )
+                        prefill_spans = KVLiveSpans.paged_uniform(
+                            block_table=block_table,
+                            live_counts=context_counts,
+                            max_live_count=segment_rows,
+                            storage_dtype=DType.BF16,
+                            row_positions=positions,
+                            span_role="prefill",
+                        )
+                        key_cache, value_cache = self._slot_full_cache(layer_id, slot)
+                        use_aotriton_attention = self._prefill_use_aotriton_attention_resolved(segment_rows)
+                        if use_aotriton_attention:
+                            cu_seqlens_q, cu_seqlens_k = self._prefill_single_cu_seqlens_pair(segment_rows, segment_rows)
+                        else:
+                            cu_seqlens_q = cu_seqlens_k = None
+                        attention_scratch = self._ensure_full_prefill_scratch(
+                            tokens=segment_rows,
+                            aotriton_attention=use_aotriton_attention,
+                        )
+                        moe_scratch = self._ensure_moe_prefill_scratch(layer_id, tokens=segment_rows)
+                        if segment_rows == 1:
+                            out = state.run_full_attention_moe_c1_layer_fp16(
+                                hidden_chunk,
+                                key_cache=key_cache,
+                                value_cache=value_cache,
+                                append_spans=append_spans,
+                                decode_spans=prefill_spans,
+                                cos_table=self.cos,
+                                sin_table=self.sin,
+                                position=positions,
+                                max_positions=self.max_sequence_length,
+                                attention_scratch=attention_scratch,
+                                moe_scratch=moe_scratch,
+                                tokens=segment_rows,
+                                block_size=self.block_size,
+                                library=self.libraries,
+                                stream=stream,
+                            )
+                        else:
+                            out = state.run_full_attention_moe_prefill_layer_fp16(
+                                hidden_chunk,
+                                key_cache=key_cache,
+                                value_cache=value_cache,
+                                append_spans=append_spans,
+                                prefill_spans=prefill_spans,
+                                cos_table=self.cos,
+                                sin_table=self.sin,
+                                positions=positions,
+                                max_positions=self.max_sequence_length,
+                                attention_scratch=attention_scratch,
+                                moe_scratch=moe_scratch,
+                                cu_seqlens_q=cu_seqlens_q,
+                                cu_seqlens_k=cu_seqlens_k,
+                                aotriton_attention=use_aotriton_attention,
+                                aotriton_kv_rows=segment_rows,
+                                tokens=segment_rows,
+                                block_size=self.block_size,
+                                library=self.libraries,
+                                stream=stream,
+                            )
+                        self.runtime.memcpy_async(
+                            hidden_chunk.ptr,
+                            out.ptr,
+                            segment_rows * self.hidden_nbytes,
+                            HipMemcpyKind.DEVICE_TO_DEVICE,
+                            stream,
+                        )
+                    copied_layer_output = True
+                else:
+                    key_cache, value_cache = self._full_cache_all_slots(layer_id)
+                    attention_scratch = self._ensure_full_prefill_scratch(tokens=rows)
+                    moe_scratch = self._ensure_grouped_moe_prefill_scratch(layer_id, tokens=rows)
+                    out = state.run_full_attention_moe_prefill_varlen_layer_fp16(
+                        hidden,
+                        key_cache=key_cache,
+                        value_cache=value_cache,
+                        append_spans=metadata.append_spans,
+                        prefill_spans=metadata.prefill_spans,
+                        cu_seqlens_q=metadata.cu_seqlens_q,
+                        cu_seqlens_k=metadata.cu_seqlens_k,
+                        segments=slab.request_count,
+                        cos_table=self.cos,
+                        sin_table=self.sin,
+                        positions=metadata.positions,
+                        max_positions=self.max_sequence_length,
+                        attention_scratch=attention_scratch,
+                        moe_scratch=moe_scratch,
+                        tokens=rows,
+                        block_size=self.block_size,
+                        library=self.libraries,
+                        stream=stream,
+                    )
             else:
                 raise ValueError(f"unsupported layer type {layer_type!r} at layer {layer_id}")
             if not copied_layer_output:

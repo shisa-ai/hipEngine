@@ -688,6 +688,7 @@ def test_qwen35_resident_prefill_native_packed_wires_metadata_layers_and_commit(
     assert session.last_prefill_execution["path"] == "native_prefill_compact_cN"
     assert session.last_prefill_execution["slot_ids"] == [0, 1]
     assert session.last_prefill_execution["linear_attention_prefill_path"] == "packed_segments"
+    assert session.last_prefill_execution["full_attention_prefill_path"] == "packed_varlen"
     assert session.last_prefill_execution["blockers"] == []
 
 
@@ -785,6 +786,87 @@ def test_qwen35_resident_run_native_prefill_packed_layers_can_force_per_segment_
     assert copies == [
         (0x1000, 0x8100, 2 * session.hidden_nbytes, 9),
         (0x1000 + 2 * session.hidden_nbytes, 0x8200, session.hidden_nbytes, 9),
+    ]
+
+
+def test_qwen35_resident_run_native_prefill_packed_layers_can_force_per_segment_full_attention(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_FULL_ATTN", "1")
+    device = Device("hip", 0)
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.device = device
+    session.config = SimpleNamespace(hidden_size=4, layer_types=("full_attention",))
+    session.prefill_hidden = Tensor.from_handle(0x1000, (4, 4), DType.FP16, device)
+    session.hidden_nbytes = 4 * DType.FP16.itemsize
+    session.block_size = 256
+    session.max_sequence_length = 8
+    session.libraries = {}
+    session.cos = Tensor.from_handle(0x2000, (8, 2), DType.FP16, device)
+    session.sin = Tensor.from_handle(0x3000, (8, 2), DType.FP16, device)
+    session.prefill_positions = Tensor.from_handle(0x4000, (4,), DType.INT64, device)
+    session.prefill_block_table_buf = SimpleNamespace(ptr=0xA000, nbytes=4 * DType.INT32.itemsize)
+    session.prefill_context_count_buf = SimpleNamespace(ptr=0xB000, nbytes=4 * DType.INT64.itemsize)
+    copies: list[tuple[int, int, int, int]] = []
+    local_table_copies: list[tuple[int, int]] = []
+
+    def fake_copy_host_to_device(buffer, host_ptr, nbytes=None, *, runtime=None):
+        local_table_copies.append((int(buffer.ptr), int(buffer.nbytes if nbytes is None else nbytes)))
+
+    monkeypatch.setattr(runner_module, "copy_host_to_device", fake_copy_host_to_device)
+    session._slot_full_cache = lambda layer_id, slot: (
+        Tensor.from_handle(0x5000 + int(slot) * 0x100, (4, 256, 1, 2), DType.BF16, device),
+        Tensor.from_handle(0x6000 + int(slot) * 0x100, (4, 256, 1, 2), DType.BF16, device),
+    )
+    session._prefill_rows_tensor = lambda tensor, rows, start=0: Tensor.from_handle(0x7000 + int(start) * 8, (rows,), DType.INT64, device)
+    session._prefill_use_aotriton_attention_resolved = lambda tokens: False
+    session._ensure_full_prefill_scratch = lambda *, tokens, aotriton_attention=False: SimpleNamespace(
+        name="attention",
+        tokens=tokens,
+        aotriton_attention=aotriton_attention,
+    )
+    session._ensure_moe_prefill_scratch = lambda layer_id, *, tokens: SimpleNamespace(name="moe", layer_id=layer_id, tokens=tokens)
+
+    class FakeRuntime:
+        def memcpy_async(self, dst, src, nbytes, kind, stream):
+            copies.append((int(dst), int(src), int(nbytes), int(stream)))
+
+    class FakeState:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def run_full_attention_moe_prefill_layer_fp16(self, hidden, **kwargs):
+            self.calls.append((hidden, kwargs))
+            return Tensor.from_handle(0x9000 + 0x100 * len(self.calls), hidden.shape, DType.FP16, device)
+
+    state = FakeState()
+    session.runtime = FakeRuntime()
+    session.states = [state]
+    slab = SimpleNamespace(
+        rows=4,
+        request_count=2,
+        cu_seqlens_q=(0, 2, 4),
+        physical_slot_ids=(0, 2),
+        block_count=1,
+        block_tables=((0,), (0,), (0,), (0,)),
+    )
+    metadata = SimpleNamespace()
+
+    out = session._run_native_prefill_packed_layers(slab, metadata, stream=5)
+
+    assert out.ptr == 0x1000
+    assert session._last_packed_prefill_linear_path == "packed_segments"
+    assert session._last_packed_prefill_full_attention_path == "per_segment"
+    assert session._last_packed_prefill_blockers == ["full-attention packed prefill forced to per-segment diagnostic path"]
+    assert [call[0].ptr for call in state.calls] == [0x1000, 0x1000 + 2 * session.hidden_nbytes]
+    assert [call[1]["tokens"] for call in state.calls] == [2, 2]
+    assert [call[1]["key_cache"].ptr for call in state.calls] == [0x5000, 0x5000 + 2 * 0x100]
+    assert [call[1]["positions"].ptr for call in state.calls] == [0x7000, 0x7000 + 2 * 8]
+    assert [call[1]["append_spans"].base_offsets.shape for call in state.calls] == [(2, 1), (2, 1)]
+    assert [call[1]["append_spans"].base_offsets.ptr for call in state.calls] == [0xA000, 0xA000 + 2 * DType.INT32.itemsize]
+    assert [call[1]["prefill_spans"].live_counts.ptr for call in state.calls] == [0xB000, 0xB000 + 2 * DType.INT64.itemsize]
+    assert local_table_copies == [(0xA000, 2 * DType.INT32.itemsize), (0xA000 + 2 * DType.INT32.itemsize, 2 * DType.INT32.itemsize)]
+    assert copies == [
+        (0x1000, 0x9100, 2 * session.hidden_nbytes, 5),
+        (0x1000 + 2 * session.hidden_nbytes, 0x9200, 2 * session.hidden_nbytes, 5),
     ]
 
 

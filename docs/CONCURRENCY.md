@@ -765,9 +765,17 @@ roll-up/status view.
       `0.00305938720703125` at token 176 dim 1237). Layer-5/layer-6 inputs
       then grow (`0.00951385498046875` and `0.01171875` row-0 maxima), while
       final prefill hidden still passes and the L8 decode failure remains row 0
-      dim 1269 (`0.002197265625`, no token mismatch). Next fix target is the
-      compact full-attention/prefill hidden sequence that feeds layer 4+, not
-      linear-state writeback in isolation.
+      dim 1269 (`0.002197265625`, no token mismatch). A follow-up full-attn
+      prefill diagnostic at
+      `/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-perseg-fullprefill-all-per-row-inputs-focus1269.json`
+      forces `HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_FULL_ATTN=1`
+      with local block tables, per-slot caches, and c=1-style AOTriton prefill;
+      that run clears the L5-L8 hidden/token gate (`status=eq_ok`) and clears
+      `prefill_linear_input_passed` for every L5-L8 limit. L5 still reports
+      state diffs under the strict `1e-6` state probe, but L6-L8 state summaries
+      also pass. Next fix target is now the retained packed-varlen
+      full-attention prefill path specifically, not linear-state writeback or
+      grouped MoE in isolation.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

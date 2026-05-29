@@ -1051,6 +1051,12 @@ def build_parser() -> argparse.ArgumentParser:
         default="packed_segments",
         help="Diagnostic linear-attention packed-prefill path; per_segment forces per-request c=1-style linear prefill.",
     )
+    parser.add_argument(
+        "--batch-prefill-full-attn-path",
+        choices=("packed_varlen", "per_segment"),
+        default="packed_varlen",
+        help="Diagnostic full-attention packed-prefill path; per_segment forces per-request c=1-style full-attention prefill.",
+    )
     parser.add_argument("--compiler-version-file", type=Path, default=None)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--json", type=Path, default=None)
@@ -1091,6 +1097,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "focus_hidden_flat_indices": focus_hidden_flat_indices,
             "prefill_linear_state_atol": float(args.state_atol),
             "batch_prefill_linear_path": str(args.batch_prefill_linear_path),
+            "batch_prefill_full_attention_path": str(args.batch_prefill_full_attn_path),
             "batch_decode_moe_path": str(args.batch_decode_moe_path),
             "batch_decode_linear_path": str(args.batch_decode_linear_path),
             "batch_decode_full_attention_path": str(args.batch_decode_full_attn_path),
@@ -1136,6 +1143,9 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
     )
     os.environ["HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR"] = (
         "1" if args.batch_prefill_linear_path == "per_segment" else "0"
+    )
+    os.environ["HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_FULL_ATTN"] = (
+        "1" if args.batch_prefill_full_attn_path == "per_segment" else "0"
     )
     runner = Qwen35ParoNextTokenRunner(args.model)
     layer_types = tuple(str(layer_type) for layer_type in getattr(runner.config, "layer_types", ()))

@@ -44690,3 +44690,24 @@ python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/
 Result: `/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-all-per-row-inputs-focus1269.json` emitted `status=mismatch_found`, `performance_claim=false`, and `prefill_linear_input_passed=false` from L5 onward. At L5, layer-4 prefill input already differs after full-attention layer 3: row 0 `max_abs=0.0059814453125` at prompt token 10 dim 751, row 1 `max_abs=0.00305938720703125` at token 176 dim 1237. L6/layer-5 input grows to row-0 `0.00951385498046875`; L7/L8 layer-6 input reaches row-0 `0.01171875`. The final-token focus dim 1269 is still exact at layer-4/5 inputs, then nonzero at layer-6 input (row 0 `0.0009765625`, row 1 `0.001953125`). Final prefill hidden remains green under `hidden_atol=0.002`, and the all-per-row decode step still fails only at L8 row 0 dim 1269 (`abs_diff=0.002197265625`) with `first_token_mismatch=null`.
 
 Interpretation: the packed-prefill linear state mismatch is input-driven before the later linear layers; the first visible source is the compact full-attention/MoE prefill output that feeds layer 4, not linear-state writeback in isolation. The next implementation target should inspect full-attention packed prefill (including varlen attention vs c=1 attention and grouped MoE immediately after layer 3), then re-run the same trace to see whether layer-4 input and downstream state drift clear.
+
+## 2026-05-29 — CONCURRENCY per-segment full-attention prefill isolation
+
+Advanced C2.3 by adding a full-attention packed-prefill diagnostic path. The previous pre-linear-input trace showed layer-4 linear input already drifting after full-attention layer 3, so this iteration tests whether the packed-varlen full-attention prefill entry point is the source.
+
+Code/test changes:
+
+- Added `HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_FULL_ATTN`; when set, `_run_native_prefill_packed_layers()` runs each full-attention packed-prefill segment through the existing single-request full-attention prefill path.
+- The forced path uses the segment's local block table, the segment's physical slot cache, and the c=1-style AOTriton prefill path when the resolved prefill policy enables it (512-token prompts do).
+- `prefill_native_packed()` now records `full_attention_prefill_path`, and `scripts/qwen35_batch_hidden_bisect.py` exposes the path as `--batch-prefill-full-attn-path {packed_varlen,per_segment}`.
+- CPU coverage locks the default metadata field and the forced per-segment full-attention routing, local-table copy, per-slot cache selection, and output copies.
+
+Diagnostic command:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 1 --max-layers 8 --layer-limits 5-8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-prefill-full-attn-path per_segment --batch-decode-moe-path selected_c1 --batch-decode-linear-path per_row --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-perseg-fullprefill-all-per-row-inputs-focus1269.json >/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-perseg-fullprefill-all-per-row-inputs-focus1269.stdout
+```
+
+Result: `/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-perseg-fullprefill-all-per-row-inputs-focus1269.json` emitted `status=eq_ok`, `performance_claim=false`, `workload.batch_prefill_full_attention_path=per_segment`, and `batch_prefill_execution.full_attention_prefill_path=per_segment` with blocker `full-attention packed prefill forced to per-segment diagnostic path`. The previous layer-4 pre-linear-input drift disappears: `prefill_linear_input_passed=true` for L5-L8. Decode hidden/token equality also passes for every L5-L8 limit. The strict `state_atol=1e-6` state probe still reports L5 state diffs, but L6-L8 `prefill_linear_state_passed=true`.
+
+Interpretation: the remaining retained-path C2.3 blocker is isolated to packed-varlen full-attention prefill. Forcing per-segment c=1-style full-attention prefill clears the hidden/token gate and downstream linear inputs, so the next fix should compare `run_full_attention_moe_prefill_varlen_layer_fp16()` / `prefill_full_attention_varlen_gqa_gate_fp16()` against the single-segment AOTriton/c1 path around layer 3 rather than continuing to chase linear-state writeback or decode subpaths.
