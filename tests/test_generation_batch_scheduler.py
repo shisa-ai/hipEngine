@@ -6353,6 +6353,7 @@ def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:
     ) == {
         "failing_layer_limit": 2,
         "failing_last_layer_index": 1,
+        "failing_layer_execution": {"layer_index": 1, "layer_type": "linear_attention"},
         "failure_modes": ["hidden"],
         "hidden_passed": False,
         "token_passed": True,
@@ -6368,6 +6369,7 @@ def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:
         "previous_green_hidden_passed": True,
         "previous_green_token_passed": True,
         "adjacent_layer_limits": True,
+        "previous_green_layer_execution": None,
         "previous_green_last_layer_type": "linear_attention",
     }
 

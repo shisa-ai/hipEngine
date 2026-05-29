@@ -671,7 +671,12 @@ roll-up/status view.
       the transition as `failure_modes=["hidden"]`,
       `hidden_failure_rows=[0]`, and `token_failure_rows=[]`, keeping the
       current C2.3 target to a row-0 hidden-state divergence before the longer
-      decode token mismatch.
+      decode token mismatch. The execution-scoped refresh
+      `/tmp/hipengine-hidden-bisect-L5-L6-512-1-transition-exec.json` lifts the
+      failing and previous-green layer execution records into the transition;
+      both are `linear_attention` layers with `moe_decode_path=grouped_compact`
+      and `full_attention_decode_path=not_applicable`, isolating the first red
+      boundary to the layer-5 linear-attention/grouped-MoE decode output.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

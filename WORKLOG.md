@@ -44307,3 +44307,40 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
 ```
+
+## 2026-05-29 — CONCURRENCY hidden-transition layer execution pointers
+
+Advanced C2.3 without closing the selected-MoE lane-map item or adding a retained c>N performance claim. The hidden-bisection transition summary now lifts the failing and previous-green per-layer decode-execution records into the top-level transition, so the L5→L6 artifact directly names the execution path at the green→red boundary.
+
+Changes:
+
+- Added `_layer_execution_for_index(...)` in `scripts/qwen35_batch_hidden_bisect.py`.
+- `correctness.first_failing_layer_transition` now includes `failing_layer_execution` and `previous_green_layer_execution` when layer traces are present.
+- CPU tests cover the failing layer execution pointer and previous-green `None` path.
+- `docs/CONCURRENCY.md` C2.3 progress cites the execution-scoped transition artifact while leaving the item open.
+
+Diagnostic command:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 1 --max-layers 8 --layer-limits 5,6 --max-sequence-length 1024 --json /tmp/hipengine-hidden-bisect-L5-L6-512-1-transition-exec.json
+```
+
+Result: `/tmp/hipengine-hidden-bisect-L5-L6-512-1-transition-exec.json` emitted `status=mismatch_found`, `performance_claim=false`, and `correctness.first_failing_layer_transition.failing_layer_execution={layer_index:5, layer_type:linear_attention, rows:2, slots:[0,1], full_attention_decode_path:not_applicable, native_caware_decode:true, moe_decode_path:grouped_compact}`. `previous_green_layer_execution` similarly points to layer 4 with grouped-compact MoE. The embedded first hidden mismatch remains row 0 generated index 1, hidden dim 1269, `max_abs=0.00146484375`, `elements_over_atol=1`, with no token mismatch in this one-token diagnostic.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -k 'hidden_bisect' -q
+# 3 passed
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -q
+# passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
+```

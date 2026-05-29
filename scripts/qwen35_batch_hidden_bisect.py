@@ -217,6 +217,19 @@ def _token_failure_rows(summary: dict[str, Any]) -> list[int]:
     return rows
 
 
+def _layer_execution_for_index(summary: dict[str, Any], layer_index: int) -> dict[str, Any] | None:
+    for step in summary.get("steps", []):
+        decode_execution = step.get("batch_decode_execution")
+        if not isinstance(decode_execution, dict):
+            continue
+        for layer_execution in decode_execution.get("layer_executions", []):
+            if not isinstance(layer_execution, dict):
+                continue
+            if int(layer_execution.get("layer_index", -1)) == int(layer_index):
+                return layer_execution
+    return None
+
+
 def _first_failing_layer_transition(layer_summaries: Sequence[dict[str, Any]]) -> dict[str, Any] | None:
     previous_green: dict[str, Any] | None = None
     for summary in layer_summaries:
@@ -233,9 +246,12 @@ def _first_failing_layer_transition(layer_summaries: Sequence[dict[str, Any]]) -
             failure_modes.append("hidden")
         if not token_passed:
             failure_modes.append("token")
+        failing_last_layer_index = int(summary.get("last_layer_index", layer_limit - 1))
+        failing_layer_execution = _layer_execution_for_index(summary, failing_last_layer_index)
         transition: dict[str, Any] = {
             "failing_layer_limit": layer_limit,
-            "failing_last_layer_index": int(summary.get("last_layer_index", layer_limit - 1)),
+            "failing_last_layer_index": failing_last_layer_index,
+            "failing_layer_execution": failing_layer_execution,
             "failure_modes": failure_modes,
             "hidden_passed": hidden_passed,
             "token_passed": token_passed,
@@ -259,6 +275,8 @@ def _first_failing_layer_transition(layer_summaries: Sequence[dict[str, Any]]) -
                     "adjacent_layer_limits": bool(layer_limit - previous_limit == 1),
                 }
             )
+            previous_layer_execution = _layer_execution_for_index(previous_green, int(previous_green.get("last_layer_index", previous_limit - 1)))
+            transition["previous_green_layer_execution"] = previous_layer_execution
             if "last_layer_type" in previous_green:
                 transition["previous_green_last_layer_type"] = str(previous_green["last_layer_type"])
         return transition
