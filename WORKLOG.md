@@ -48455,3 +48455,23 @@ git diff -- docs/CONCURRENCY.md docs/BENCHMARK.md benchmarks/README.md benchmark
 ```
 
 Result: targeted INT8 diagnostic command-constant test PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and the change only centralizes the blocked INT8 future gate command path.
+
+## 2026-05-29 — CONCURRENCY GGUF diagnostic command constants
+
+Added shared `RETAINED_ARTIFACT_GGUF_DIAGNOSTIC_SCRIPT` and `RETAINED_ARTIFACT_GGUF_E2E_CORRECTNESS_SCRIPT` constants, then wired `scripts/qwen35_batch_gguf_diagnostic.py` to use them for the blocked native c>N command and independent c=1 commands. The GGUF diagnostic test now asserts the module consumes the shared constants and that emitted artifact commands target those exact script paths, keeping C3.5 blocked/future command provenance aligned with the queue evidence vocabulary.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_constants.py scripts/qwen35_batch_gguf_diagnostic.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_gguf_cN_diagnostic_template_records_blocked_c2_command -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/CONCURRENCY.md docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md WORKLOG.md && git diff --check
+```
+
+Result: targeted GGUF diagnostic command-constant test PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and the change only centralizes blocked GGUF future/independent-c1 command paths.

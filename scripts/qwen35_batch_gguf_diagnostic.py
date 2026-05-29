@@ -17,9 +17,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
+from scripts.qwen35_batch_constants import (
+    RETAINED_ARTIFACT_GGUF_DIAGNOSTIC_SCRIPT,
+    RETAINED_ARTIFACT_GGUF_E2E_CORRECTNESS_SCRIPT,
+)
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_FIXTURE = REPO_ROOT / "tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json"
 GGUF_QUANTS = ("gguf_q4_k_m", "gguf_q5_k_m", "gguf_q6_k", "gguf_q8_0")
+_GGUF_DIAGNOSTIC_SCRIPT = RETAINED_ARTIFACT_GGUF_DIAGNOSTIC_SCRIPT
+_GGUF_E2E_CORRECTNESS_SCRIPT = RETAINED_ARTIFACT_GGUF_E2E_CORRECTNESS_SCRIPT
 
 
 def _load_fixture(path: Path) -> dict[str, Any]:
@@ -34,7 +41,7 @@ def _load_fixture(path: Path) -> dict[str, Any]:
 def _canonical_command(args: argparse.Namespace) -> str:
     argv = [
         "python3",
-        "scripts/qwen35_batch_gguf_diagnostic.py",
+        _GGUF_DIAGNOSTIC_SCRIPT,
         "--fixture",
         str(args.fixture),
         "--rows",
@@ -54,7 +61,7 @@ def _canonical_command(args: argparse.Namespace) -> str:
 def _single_row_command(args: argparse.Namespace, *, model: str, row: int) -> str:
     argv = [
         "python3",
-        "scripts/qwen35_gguf_e2e_correctness.py",
+        _GGUF_E2E_CORRECTNESS_SCRIPT,
         "--fixture",
         str(args.fixture),
         "--model",

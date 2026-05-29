@@ -51,6 +51,7 @@ from hipengine.speculative import AcceptResult, DraftBatch, TargetAcceptSummary,
 from scripts import qwen35_batch_artifact_schema as artifact_schema
 from scripts import qwen35_batch_c_sweep as c_sweep
 from scripts import qwen35_batch_correctness as batch_correctness
+from scripts import qwen35_batch_gguf_diagnostic as gguf_diagnostic
 from scripts import qwen35_batch_int8_diagnostic as int8_diagnostic
 from scripts import qwen35_batch_retained_bench as retained_bench
 from scripts.qwen35_batch_artifact_schema import (
@@ -81,6 +82,8 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_EVIDENCE_FRAGMENTS,
     RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_TRACE_FIELD_FRAGMENTS,
     RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_TRACE_FIELD_NAMES,
+    RETAINED_ARTIFACT_GGUF_DIAGNOSTIC_SCRIPT,
+    RETAINED_ARTIFACT_GGUF_E2E_CORRECTNESS_SCRIPT,
     RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT,
     RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS,
     RETAINED_ARTIFACT_PROFILER_TRACE_DURATION_COLUMNS,
@@ -8587,10 +8590,15 @@ def test_gguf_cN_diagnostic_template_records_blocked_c2_command(tmp_path: Path) 
     assert payload["mode"] == "gguf_cN_equality_template"
     assert payload["rows"] == 2
     assert payload["quant"] == "gguf_q4_k_m"
-    assert "scripts/qwen35_batch_gguf_diagnostic.py" in payload["command"]
+    assert gguf_diagnostic._GGUF_DIAGNOSTIC_SCRIPT is RETAINED_ARTIFACT_GGUF_DIAGNOSTIC_SCRIPT
+    assert gguf_diagnostic._GGUF_E2E_CORRECTNESS_SCRIPT is RETAINED_ARTIFACT_GGUF_E2E_CORRECTNESS_SCRIPT
+    assert shlex.split(payload["command"])[1] == RETAINED_ARTIFACT_GGUF_DIAGNOSTIC_SCRIPT
     assert "--rows 2" in payload["command"]
     assert len(payload["independent_c1_commands"]) == 2
-    assert all("scripts/qwen35_gguf_e2e_correctness.py" in command for command in payload["independent_c1_commands"])
+    assert all(
+        shlex.split(command)[1] == RETAINED_ARTIFACT_GGUF_E2E_CORRECTNESS_SCRIPT
+        for command in payload["independent_c1_commands"]
+    )
     assert any("native GGUF c>N" in reason for reason in payload["blockers"])
 
 
