@@ -47468,3 +47468,22 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: targeted resident-layout suite PASS, verify count remains `12`, full guard PASS. Prompt-verifier self-check passes: no queue item was marked complete, selected-c1 projection/state replay remains an explicitly non-native diagnostic control, native generated-token equality remains open, and no performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY all-selected-c1 hidden-bisect dry-run guard
+
+Added CPU/schema coverage for the C2.3 all-selected-c1 hidden-bisect control. `tests/test_generation_batch_scheduler.py::test_hidden_bisect_dry_run_records_layer_commands` now covers the combined `--batch-decode-moe-path selected_c1` + selected-c1 linear projection/state/output CLI, verifies the workload records every selected-c1 diagnostic path, keeps `performance_claim=false`, and marks `native_caware_decode=false`. Updated the C2.3 progress note in `docs/CONCURRENCY.md` with the new hidden-bisect CLI/workload metadata coverage.
+
+Validation:
+
+```bash
+pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_dry_run_records_layer_commands -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: targeted hidden-bisect dry-run test PASS, verify count remains `12`, full guard PASS. Prompt-verifier self-check passes: no queue item was marked complete, the all-selected-c1 control is explicitly diagnostic/non-native and non-claiming, native generated-token equality remains open, and no performance/scaling claim was added.

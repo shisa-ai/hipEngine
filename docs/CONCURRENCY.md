@@ -647,8 +647,9 @@ roll-up/status view.
       token-major routed-lane → token-row, selected-expert → expert-group,
       sorted routing-weight, weighted selected-branch accumulation,
       lane-to-sorted-row helper semantics used by grouped MoE combine metadata,
-      selected-c1 projection/state replay inputs, and selected-c1/batch-GEMV
-      linear-output diagnostic metadata plus blockers,
+      selected-c1 projection/state replay inputs, selected-c1/batch-GEMV
+      linear-output diagnostic metadata plus blockers, and hidden-bisect
+      all-selected-c1 CLI/workload metadata,
       but
       `/tmp/hipengine-hidden-bisect-L1-8-512-1-grouped.json` still reports the
       first hidden mismatch at layer-limit 6 (row 0, generated index 1), and the

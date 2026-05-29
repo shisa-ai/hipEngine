@@ -6454,6 +6454,58 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert batch_gemv_output_payload["workload"]["batch_decode_linear_output_path"] == "batch_gemv"
     assert batch_gemv_output_payload["workload"]["native_caware_decode"] is False
 
+    all_selected_c1 = build_hidden_bisect_parser().parse_args(
+        [
+            "--dry-run",
+            "--batch-decode-moe-path",
+            "selected_c1",
+            "--batch-decode-linear-projection-path",
+            "selected_c1",
+            "--batch-decode-linear-state-path",
+            "selected_c1",
+            "--batch-decode-linear-output-path",
+            "selected_c1",
+            "--prompt-length",
+            "32",
+            "--batch-size",
+            "2",
+            "--decode-tokens",
+            "4",
+            "--max-layers",
+            "8",
+            "--layer-limits",
+            "8",
+        ]
+    )
+    all_selected_c1_payload = run_hidden_bisect(
+        all_selected_c1,
+        [
+            "--dry-run",
+            "--batch-decode-moe-path",
+            "selected_c1",
+            "--batch-decode-linear-projection-path",
+            "selected_c1",
+            "--batch-decode-linear-state-path",
+            "selected_c1",
+            "--batch-decode-linear-output-path",
+            "selected_c1",
+            "--layer-limits",
+            "8",
+        ],
+    )
+    assert all_selected_c1_payload["performance_claim"] is False
+    assert all_selected_c1_payload["workload"]["batch_decode_moe_path"] == "selected_c1"
+    assert all_selected_c1_payload["workload"]["batch_decode_linear_projection_path"] == "selected_c1"
+    assert all_selected_c1_payload["workload"]["batch_decode_linear_state_path"] == "selected_c1"
+    assert all_selected_c1_payload["workload"]["batch_decode_linear_output_path"] == "selected_c1"
+    assert all_selected_c1_payload["workload"]["native_caware_decode"] is False
+    assert len(all_selected_c1_payload["commands"]) == 1
+    command = all_selected_c1_payload["commands"][0]
+    assert "--batch-decode-moe-path selected_c1" in command
+    assert "--batch-decode-linear-projection-path selected_c1" in command
+    assert "--batch-decode-linear-state-path selected_c1" in command
+    assert "--batch-decode-linear-output-path selected_c1" in command
+
 
 def test_hidden_bisect_repeat_rollup_counts_prefix_failures() -> None:
     clean_prefix = {"failed_kinds": [], "failed_kind_count": 0, "first_failure": None}
