@@ -36,6 +36,7 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS,
     RETAINED_ARTIFACT_RETAINED_GATE_FLAGS,
     RETAINED_ARTIFACT_RETAINED_GATE_LABELS,
+    RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS,
     RETAINED_ARTIFACT_REQUIRED_SCALING_RATIOS,
     RETAINED_ARTIFACT_UNUSABLE_SCALING_BASELINE_STATUSES,
 )
@@ -165,6 +166,7 @@ _COMMAND_TRACE_DIR_RE = re.compile(r"(?:^|\s)-d(?:=|\s+)(\S+)(?=\s|$)")
 _CORRECTNESS_ROWS_RE = re.compile(r"(?:^|\s)--rows(?:=|\s+)(\d+)(?=\s|$)")
 _CORRECTNESS_SEED_RE = re.compile(r"(?:^|\s)--seed(?:=|\s+)(\d+)(?=\s|$)")
 _RETAINED_BENCH_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS
+_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS
 _CORRECTNESS_REFERENCE_UNIQUE_FLAGS = RETAINED_ARTIFACT_CORRECTNESS_REFERENCE_UNIQUE_FLAGS
 _CORRECTNESS_SCRIPT_ALLOWED_FLAGS = RETAINED_ARTIFACT_CORRECTNESS_SCRIPT_ALLOWED_FLAGS
 _FULL_COMMIT_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", re.IGNORECASE)
@@ -278,7 +280,7 @@ def _validate_command_unique_flags(command: str, flags: tuple[str, ...], *, fiel
 
 
 def _validate_retained_bench_unique_flags(command: str, *, field: str, errors: list[str]) -> None:
-    _validate_command_unique_flags(command, _RETAINED_BENCH_UNIQUE_FLAGS, field=field, errors=errors)
+    _validate_command_unique_flags(command, _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS, field=field, errors=errors)
 
 
 def _is_python_executable(token: str) -> bool:

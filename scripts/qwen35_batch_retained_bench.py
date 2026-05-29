@@ -51,6 +51,8 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_PROFILER_SYNTHESIZED_FIELDS,
     RETAINED_ARTIFACT_RETAINED_GATE_FLAGS,
     RETAINED_ARTIFACT_RETAINED_GATE_LABELS,
+    RETAINED_ARTIFACT_RETAINED_KV_POLICY_FLAGS,
+    RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS,
     RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SEED,
     RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS,
     RETAINED_ARTIFACT_REQUIRED_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES,
@@ -70,6 +72,8 @@ _PROFILER_TRACE_END_COLUMNS = RETAINED_ARTIFACT_PROFILER_TRACE_END_COLUMNS
 _PROFILER_TRACE_DURATION_COLUMNS = RETAINED_ARTIFACT_PROFILER_TRACE_DURATION_COLUMNS
 _RETAINED_GATE_FLAGS = RETAINED_ARTIFACT_RETAINED_GATE_FLAGS
 _RETAINED_GATE_LABELS = RETAINED_ARTIFACT_RETAINED_GATE_LABELS
+_RETAINED_KV_POLICY_FLAGS = RETAINED_ARTIFACT_RETAINED_KV_POLICY_FLAGS
+_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS
 _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS
 _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS = RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS
 _REQUIRED_PRIMITIVE_CORRECTNESS_SEED = RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SEED
@@ -1497,22 +1501,7 @@ def _profiler_command_provenance_blockers(
         blockers.append("profiler command must include rocprof -- separator")
     else:
         retained_command = _join_command_parts(profiled_segment)
-        for flag in (
-            "--model",
-            "--fixture",
-            "--batch-size",
-            "--prompt-length",
-            "--decode-tokens",
-            "--warmup-decode-tokens",
-            "--max-layers",
-            "--compiler-version-file",
-            "--require-cached-build",
-            "--kv-storage",
-            "--kv-scale-dtype",
-            "--kv-scale-granularity",
-            "--json",
-            *_RETAINED_GATE_FLAGS,
-        ):
+        for flag in _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS:
             if _command_flag_count(profiled_segment, flag) > 1:
                 blockers.append(f"profiler command {flag} must be unique after rocprof separator")
         if _command_has_flag(retained_command, "--skip-generated-equality"):
@@ -1571,9 +1560,9 @@ def _profiler_command_provenance_blockers(
                 blockers.append(f"profiler command {flag} must match retained reference artifact")
     if expected_kv_policy is not None:
         for key, flag, default_value in (
-            ("kv_storage", "--kv-storage", "auto"),
-            ("kv_scale_dtype", "--kv-scale-dtype", "fp16"),
-            ("kv_scale_granularity", "--kv-scale-granularity", "per_token_head"),
+            ("kv_storage", _RETAINED_KV_POLICY_FLAGS[0], "auto"),
+            ("kv_scale_dtype", _RETAINED_KV_POLICY_FLAGS[1], "fp16"),
+            ("kv_scale_granularity", _RETAINED_KV_POLICY_FLAGS[2], "per_token_head"),
         ):
             expected_value = expected_kv_policy.get(key)
             command_value = _command_arg_value(retained_command, flag)
