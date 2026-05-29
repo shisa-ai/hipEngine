@@ -2600,6 +2600,10 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
     tampered_skipped_duration["commands"][-1]["duration_seconds"] = 0.1
     with pytest.raises(ValueError, match=r"commands\[\]\.duration_seconds must be zero for skipped rows"):
         c_sweep.validate_sweep_summary(tampered_skipped_duration)
+    tampered_missing_skipped_returncode = json.loads(json.dumps(persisted))
+    tampered_missing_skipped_returncode["commands"][-1].pop("returncode")
+    with pytest.raises(ValueError, match=r"commands\[\] skipped rows must contain exactly skipped command keys"):
+        c_sweep.validate_sweep_summary(tampered_missing_skipped_returncode)
     tampered_skipped_postcondition = json.loads(json.dumps(persisted))
     tampered_skipped_postcondition["commands"][-1]["postconditions"] = [
         {"kind": "retained_profiler_synthesis", "passed": True}
