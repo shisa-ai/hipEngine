@@ -5506,6 +5506,23 @@ def test_batch_c_sweep_fails_retained_row_on_profiler_synthesis_mismatch(tmp_pat
             with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler_source_artifact_path must not be a symlink when source check failed"):
                 c_sweep.validate_sweep_summary(tampered_failed_postcondition_source_symlink)
             symlink_source.unlink()
+        symlink_parent_target = output_dir / "symlink-profiler-source-target"
+        symlink_parent_link = output_dir / "symlink-profiler-source-parent"
+        symlink_parent_target.mkdir(exist_ok=True)
+        (symlink_parent_target / "linked-profiler.json").write_text("{}\n")
+        try:
+            symlink_parent_link.symlink_to(symlink_parent_target, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            pass
+        else:
+            tampered_failed_postcondition_source_parent_symlink = json.loads(json.dumps(summary))
+            tampered_failed_postcondition_source_parent_symlink["commands"][-1]["postconditions"][0]["reason"] = source_mismatch_reason
+            tampered_failed_postcondition_source_parent_symlink["commands"][-1]["postconditions"][0]["profiler_source_artifact_path"] = str(symlink_parent_link / "linked-profiler.json")
+            tampered_failed_postcondition_source_parent_symlink["commands"][-1]["output_tail"] = source_mismatch_reason
+            tampered_failed_postcondition_source_parent_symlink["commands"][-1]["postcondition"] = tampered_failed_postcondition_source_parent_symlink["commands"][-1]["postconditions"][0]
+            with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler_source_artifact_path parent directories must not be symlinks when source check failed"):
+                c_sweep.validate_sweep_summary(tampered_failed_postcondition_source_parent_symlink)
+            symlink_parent_link.unlink()
     tampered_failed_postconditions = json.loads(json.dumps(summary))
     tampered_failed_postconditions["failed_postconditions"] = []
     with pytest.raises(ValueError, match="failed_postconditions must match commands.postconditions"):

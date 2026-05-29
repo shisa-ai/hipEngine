@@ -2925,6 +2925,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if source_check_path.is_symlink():
                         errors.append("commands[].postconditions[].profiler_source_artifact_path must not be a symlink when source check failed")
                         break
+                    if _path_has_symlink_parent(source_check_path):
+                        errors.append("commands[].postconditions[].profiler_source_artifact_path parent directories must not be symlinks when source check failed")
+                        break
                     output_dir_abs = (Path(output_dir_text) if Path(output_dir_text).is_absolute() else REPO_ROOT / output_dir_text).resolve()
                     source_abs = source_check_path.resolve()
                     if not source_abs.is_relative_to(output_dir_abs):
