@@ -26,13 +26,18 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_TRACE_FIELD_FRAGMENTS,
     RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_TRACE_FIELD_NAMES,
     RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT,
+    RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_SCRIPT,
     RETAINED_ARTIFACT_PROFILER_SYNTHESIZED_FIELDS,
+    RETAINED_ARTIFACT_ROCPROF_COMMAND_FLAGS,
+    RETAINED_ARTIFACT_ROCPROF_EXECUTABLE,
+    RETAINED_ARTIFACT_ROCPROF_OUTPUT_FORMAT,
     RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA,
     RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SEED,
     RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS,
     RETAINED_ARTIFACT_REQUIRED_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES,
     RETAINED_ARTIFACT_REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES,
     RETAINED_ARTIFACT_REQUIRED_SCALING_BASELINES,
+    RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT,
     RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS,
     RETAINED_ARTIFACT_RETAINED_GATE_FLAGS,
     RETAINED_ARTIFACT_RETAINED_GATE_LABELS,
@@ -165,12 +170,17 @@ _COMMAND_OUTPUT_FORMAT_RE = re.compile(r"(?:^|\s)--output-format(?:=|\s+)(\S+)(?
 _COMMAND_TRACE_DIR_RE = re.compile(r"(?:^|\s)-d(?:=|\s+)(\S+)(?=\s|$)")
 _CORRECTNESS_ROWS_RE = re.compile(r"(?:^|\s)--rows(?:=|\s+)(\d+)(?=\s|$)")
 _CORRECTNESS_SEED_RE = re.compile(r"(?:^|\s)--seed(?:=|\s+)(\d+)(?=\s|$)")
+_PRIMITIVE_CORRECTNESS_SCRIPT = RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_SCRIPT
+_RETAINED_BENCH_SCRIPT = RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT
 _RETAINED_BENCH_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS
 _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS
 _CORRECTNESS_REFERENCE_UNIQUE_FLAGS = RETAINED_ARTIFACT_CORRECTNESS_REFERENCE_UNIQUE_FLAGS
 _CORRECTNESS_SCRIPT_ALLOWED_FLAGS = RETAINED_ARTIFACT_CORRECTNESS_SCRIPT_ALLOWED_FLAGS
 _FULL_COMMIT_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", re.IGNORECASE)
 _ACCEPTED_HARDWARE_ARCH_RE = re.compile(r"gfx[0-9a-f]+", re.IGNORECASE)
+_ROCPROF_COMMAND_FLAGS = RETAINED_ARTIFACT_ROCPROF_COMMAND_FLAGS
+_ROCPROF_EXECUTABLE = RETAINED_ARTIFACT_ROCPROF_EXECUTABLE
+_ROCPROF_OUTPUT_FORMAT = RETAINED_ARTIFACT_ROCPROF_OUTPUT_FORMAT
 _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS
 _REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES = RETAINED_ARTIFACT_REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES
 _REQUIRED_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES = RETAINED_ARTIFACT_REQUIRED_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES
@@ -293,7 +303,7 @@ def _validate_retained_bench_command_target(command: str, *, field: str, errors:
     except ValueError:
         errors.append(f"commands.{field} must be shell-parseable for accepted artifacts")
         return
-    if len(argv) < 2 or not _is_python_executable(argv[0]) or argv[1] != "scripts/qwen35_batch_retained_bench.py":
+    if len(argv) < 2 or not _is_python_executable(argv[0]) or argv[1] != _RETAINED_BENCH_SCRIPT:
         errors.append(f"commands.{field} must start with python scripts/qwen35_batch_retained_bench.py for accepted artifacts")
 
 
@@ -1642,7 +1652,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         )
     benchmark_command = commands.get("benchmark")
     if isinstance(benchmark_command, str):
-        if "qwen35_batch_retained_bench.py" not in benchmark_command:
+        if _RETAINED_BENCH_SCRIPT not in benchmark_command:
             errors.append("commands.benchmark must reference scripts/qwen35_batch_retained_bench.py for accepted artifacts")
         else:
             _validate_retained_bench_command_target(benchmark_command, field="benchmark", errors=errors)
@@ -1662,12 +1672,12 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         correctness_command_lower = correctness_command.lower()
         if "generated-token equality" not in correctness_command_lower or "independent c=1" not in correctness_command_lower:
             errors.append("commands.correctness_reference must name generated-token equality vs independent c=1 for accepted artifacts")
-        if "qwen35_batch_correctness.py" not in correctness_command:
+        if _PRIMITIVE_CORRECTNESS_SCRIPT not in correctness_command:
             errors.append("commands.correctness_reference must reference scripts/qwen35_batch_correctness.py for accepted artifacts")
         else:
             correctness_script_argv = _embedded_python_script_argv(
                 correctness_command,
-                "scripts/qwen35_batch_correctness.py",
+                _PRIMITIVE_CORRECTNESS_SCRIPT,
                 field="correctness_reference",
                 errors=errors,
             )
@@ -1703,7 +1713,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     profiler_command_trace_dir: str | None = None
     profiler_profiled_benchmark_command: str | None = None
     if isinstance(profiler_command, str):
-        if "rocprofv3" not in profiler_command or "--kernel-trace" not in profiler_command:
+        if _ROCPROF_EXECUTABLE not in profiler_command or _ROCPROF_COMMAND_FLAGS[0] not in profiler_command:
             errors.append("commands.profiler must include rocprofv3 --kernel-trace for accepted artifacts")
         try:
             profiler_command_argv = shlex.split(profiler_command)
@@ -1712,7 +1722,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             errors.append("commands.profiler must be shell-parseable for accepted artifacts")
         rocprof_command_argv: list[str] = []
         profiled_command_argv: list[str] = []
-        if not profiler_command_argv or Path(profiler_command_argv[0]).name != "rocprofv3":
+        if not profiler_command_argv or Path(profiler_command_argv[0]).name != _ROCPROF_EXECUTABLE:
             errors.append("commands.profiler must start with rocprofv3 for accepted artifacts")
         elif "--" not in profiler_command_argv:
             errors.append("commands.profiler must include rocprof command separator for accepted artifacts")
@@ -1722,22 +1732,22 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             profiled_command_argv = profiler_command_argv[separator_index + 1 :]
             _validate_unique_flags(
                 rocprof_command_argv,
-                ("--kernel-trace", "--output-format", "-d"),
+                _ROCPROF_COMMAND_FLAGS,
                 field="commands.profiler rocprof options",
                 errors=errors,
             )
-            if "--kernel-trace" not in rocprof_command_argv:
+            if _ROCPROF_COMMAND_FLAGS[0] not in rocprof_command_argv:
                 errors.append("commands.profiler must include --kernel-trace before rocprof separator for accepted artifacts")
-            profiler_command_output_format = _argv_value(rocprof_command_argv, "--output-format")
-            if profiler_command_output_format != "csv":
+            profiler_command_output_format = _argv_value(rocprof_command_argv, _ROCPROF_COMMAND_FLAGS[1])
+            if profiler_command_output_format != _ROCPROF_OUTPUT_FORMAT:
                 errors.append("commands.profiler must include --output-format csv before rocprof separator for accepted artifacts")
-            profiler_command_trace_dir = _argv_value(rocprof_command_argv, "-d")
+            profiler_command_trace_dir = _argv_value(rocprof_command_argv, _ROCPROF_COMMAND_FLAGS[2])
             if profiler_command_trace_dir is None:
                 errors.append("commands.profiler must include -d <profiler.trace_dir> before rocprof separator for accepted artifacts")
         if (
             len(profiled_command_argv) < 2
             or not Path(profiled_command_argv[0]).name.startswith("python")
-            or profiled_command_argv[1] != "scripts/qwen35_batch_retained_bench.py"
+            or profiled_command_argv[1] != _RETAINED_BENCH_SCRIPT
         ):
             errors.append("commands.profiler must target scripts/qwen35_batch_retained_bench.py after rocprof separator for accepted artifacts")
         else:
@@ -1782,7 +1792,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     if profiler.get("status") != "captured":
         errors.append("profiler.status must be 'captured' for accepted artifacts")
     profiler_output_format = profiler.get("output_format")
-    if profiler_output_format != "csv":
+    if profiler_output_format != _ROCPROF_OUTPUT_FORMAT:
         errors.append("profiler.output_format must be 'csv' for accepted artifacts")
     elif profiler_command_output_format is not None and profiler_output_format != profiler_command_output_format:
         errors.append("profiler.output_format must match commands.profiler --output-format for accepted artifacts")

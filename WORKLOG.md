@@ -48395,3 +48395,23 @@ git diff -- docs/CONCURRENCY.md docs/BENCHMARK.md benchmarks/README.md benchmark
 ```
 
 Result: targeted c-sweep script-identifier tests PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and the change only centralizes c-sweep command provenance rules.
+
+## 2026-05-29 — CONCURRENCY accepted-artifact shared command constants
+
+Wired `scripts/qwen35_batch_artifact_schema.py` to the shared retained command constants for accepted-artifact validation. Accepted benchmark, correctness-reference, and profiler command gates now use `RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT`, `RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_SCRIPT`, `RETAINED_ARTIFACT_ROCPROF_EXECUTABLE`, `RETAINED_ARTIFACT_ROCPROF_COMMAND_FLAGS`, and `RETAINED_ARTIFACT_ROCPROF_OUTPUT_FORMAT` instead of local hardcoded command vocabulary. Tests assert artifact schema consumes the shared constants while the accepted-row gate still validates command/profiler invariants.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_artifact_schema.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/CONCURRENCY.md docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md WORKLOG.md && git diff --check
+```
+
+Result: targeted accepted-artifact command-constant test PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and the change only centralizes accepted-artifact command provenance rules.
