@@ -39,6 +39,8 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES,
     RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS,
     RETAINED_ARTIFACT_RETAINED_CONDITION_STATUS_LABELS,
+    RETAINED_ARTIFACT_RETAINED_GATE_FLAGS,
+    RETAINED_ARTIFACT_RETAINED_GATE_LABELS,
     RETAINED_ARTIFACT_RETAINED_POSTCONDITION_KINDS,
     RETAINED_ARTIFACT_RETAINED_PRECONDITION_KINDS,
     RETAINED_ARTIFACT_SWEEP_COMMAND_CATEGORIES,
@@ -98,6 +100,8 @@ _PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS = RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_UN
 _RETAINED_PRECONDITION_KINDS = RETAINED_ARTIFACT_RETAINED_PRECONDITION_KINDS
 _RETAINED_POSTCONDITION_KINDS = RETAINED_ARTIFACT_RETAINED_POSTCONDITION_KINDS
 _RETAINED_CONDITION_STATUS_LABELS = RETAINED_ARTIFACT_RETAINED_CONDITION_STATUS_LABELS
+_RETAINED_GATE_FLAGS = RETAINED_ARTIFACT_RETAINED_GATE_FLAGS
+_RETAINED_GATE_LABELS = RETAINED_ARTIFACT_RETAINED_GATE_LABELS
 _SWEEP_COMMAND_CATEGORIES = RETAINED_ARTIFACT_SWEEP_COMMAND_CATEGORIES
 _SWEEP_COMMAND_STATUS_LABELS = RETAINED_ARTIFACT_SWEEP_COMMAND_STATUS_LABELS
 (
@@ -231,13 +235,13 @@ def build_sweep_commands(args: argparse.Namespace) -> tuple[SweepCommand, ...]:
         )
         native_argv.extend(
             [
-                "--c1-baseline-json",
+                _RETAINED_GATE_FLAGS[0],
                 str(output_dir / "native-baseline-c1.json"),
-                "--serial-bridge-json",
+                _RETAINED_GATE_FLAGS[1],
                 str(serial_json),
-                "--primitive-correctness-json",
+                _RETAINED_GATE_FLAGS[2],
                 str(primitive_json),
-                "--profiler-json",
+                _RETAINED_GATE_FLAGS[3],
                 str(output_dir / f"profiler-c{c}.json"),
             ]
         )
@@ -360,7 +364,7 @@ def _command_arg_path(command: SweepCommand, flag: str, *, kind: str) -> tuple[P
 def _primitive_correctness_precondition(command: SweepCommand) -> dict[str, Any]:
     primitive_path, error = _command_arg_path(
         command,
-        "--primitive-correctness-json",
+        _RETAINED_GATE_FLAGS[2],
         kind=_RETAINED_PRECONDITION_KINDS[0],
     )
     if error is not None:
@@ -1059,7 +1063,7 @@ def _scaling_reference_precondition(
 def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
     profiler_path, error = _command_arg_path(
         command,
-        "--profiler-json",
+        _RETAINED_GATE_FLAGS[3],
         kind=_RETAINED_PRECONDITION_KINDS[3],
     )
     if error is not None:
@@ -1187,14 +1191,10 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
             command_output_path = _command_text_arg(profiler_command, "--json")
             if command_output_path != str(command.artifact_path):
                 reasons.append("profiler command --json path does not match retained artifact_path")
-            command_profiler_path = _command_text_arg(profiler_command, "--profiler-json")
+            command_profiler_path = _command_text_arg(profiler_command, _RETAINED_GATE_FLAGS[3])
             if command_profiler_path != str(profiler_path):
                 reasons.append("profiler command --profiler-json path does not match artifact_path")
-            for flag, label in (
-                ("--c1-baseline-json", "c1_baseline_json"),
-                ("--serial-bridge-json", "serial_bridge_json"),
-                ("--primitive-correctness-json", "primitive_correctness_json"),
-            ):
+            for flag, label in zip(_RETAINED_GATE_FLAGS[:3], _RETAINED_GATE_LABELS[:3]):
                 expected_reference_path = _command_arg_value(command, flag)
                 command_reference_path = _command_text_arg(profiler_command, flag)
                 if expected_reference_path is not None and command_reference_path != expected_reference_path:
@@ -1308,9 +1308,9 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                 "profiler_trace_kernel_names": list(profiler_trace_kernel_names),
                 "profiler_trace_synthesized_fields": list(profiler_trace_synthesized_fields),
                 "retained_artifact_path": str(command.artifact_path),
-                "c1_baseline_artifact_path": _command_arg_value(command, "--c1-baseline-json"),
-                "serial_bridge_artifact_path": _command_arg_value(command, "--serial-bridge-json"),
-                "primitive_correctness_artifact_path": _command_arg_value(command, "--primitive-correctness-json"),
+                "c1_baseline_artifact_path": _command_arg_value(command, _RETAINED_GATE_FLAGS[0]),
+                "serial_bridge_artifact_path": _command_arg_value(command, _RETAINED_GATE_FLAGS[1]),
+                "primitive_correctness_artifact_path": _command_arg_value(command, _RETAINED_GATE_FLAGS[2]),
                 "profiler_compiler_version_file": _command_text_arg(profiler_command, "--compiler-version-file"),
                 "profiler_require_cached_build": _command_text_has_flag(profiler_command, "--require-cached-build"),
                 "profiler_model": _command_text_arg(profiler_command, "--model"),
@@ -1361,13 +1361,13 @@ def _native_retained_preconditions(command: SweepCommand) -> tuple[dict[str, Any
         _primitive_correctness_precondition(command),
         _scaling_reference_precondition(
             command,
-            flag="--c1-baseline-json",
+            flag=_RETAINED_GATE_FLAGS[0],
             kind=_RETAINED_PRECONDITION_KINDS[1],
             expected_concurrency=1,
         ),
         _scaling_reference_precondition(
             command,
-            flag="--serial-bridge-json",
+            flag=_RETAINED_GATE_FLAGS[1],
             kind=_RETAINED_PRECONDITION_KINDS[2],
             expected_concurrency=command.batch_size,
         ),
@@ -2114,12 +2114,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 errors.append("commands[].category must match commands[].argv script")
                 break
             if entry.get("category") == _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY and entry.get("batch_size") != 1:
-                retained_gate_flags = (
-                    "--c1-baseline-json",
-                    "--serial-bridge-json",
-                    "--primitive-correctness-json",
-                    "--profiler-json",
-                )
+                retained_gate_flags = _RETAINED_GATE_FLAGS
                 if any(not isinstance(_argv_value(argv, flag), str) or not _argv_value(argv, flag) for flag in retained_gate_flags):
                     errors.append("commands[].argv must include retained native gate artifact flags")
                     break
@@ -2128,10 +2123,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     output_dir_path = Path(output_dir_text)
                     output_dir_abs = (output_dir_path if output_dir_path.is_absolute() else REPO_ROOT / output_dir_path).resolve()
                     retained_gate_names = {
-                        "--c1-baseline-json": "native-baseline-c1.json",
-                        "--serial-bridge-json": f"serial-bridge-c{entry.get('batch_size')}.json",
-                        "--primitive-correctness-json": f"primitive-c{entry.get('batch_size')}.json",
-                        "--profiler-json": f"profiler-c{entry.get('batch_size')}.json",
+                        _RETAINED_GATE_FLAGS[0]: "native-baseline-c1.json",
+                        _RETAINED_GATE_FLAGS[1]: f"serial-bridge-c{entry.get('batch_size')}.json",
+                        _RETAINED_GATE_FLAGS[2]: f"primitive-c{entry.get('batch_size')}.json",
+                        _RETAINED_GATE_FLAGS[3]: f"profiler-c{entry.get('batch_size')}.json",
                     }
                     retained_gate_path_error = False
                     for flag, expected_name in retained_gate_names.items():
@@ -2322,10 +2317,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     errors.append("commands[].preconditions must include retained native gate kinds")
                     break
                 expected_retained_precondition_paths = [
-                    _argv_value(argv, "--primitive-correctness-json"),
-                    _argv_value(argv, "--c1-baseline-json"),
-                    _argv_value(argv, "--serial-bridge-json"),
-                    _argv_value(argv, "--profiler-json"),
+                    _argv_value(argv, _RETAINED_GATE_FLAGS[2]),
+                    _argv_value(argv, _RETAINED_GATE_FLAGS[0]),
+                    _argv_value(argv, _RETAINED_GATE_FLAGS[1]),
+                    _argv_value(argv, _RETAINED_GATE_FLAGS[3]),
                 ]
                 if [condition.get("artifact_path") for condition in preconditions] != expected_retained_precondition_paths:
                     errors.append("commands[].preconditions[].artifact_path must match retained native gate argv")
@@ -2550,10 +2545,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         "--warmup-decode-tokens",
                         "--max-layers",
                         "--json",
-                        "--c1-baseline-json",
-                        "--serial-bridge-json",
-                        "--primitive-correctness-json",
-                        "--profiler-json",
+                        *_RETAINED_GATE_FLAGS,
                         "--compiler-version-file",
                     )
                     if _empty_inline_flag_values(profiled_command_argv, profiled_command_flags):
@@ -2568,7 +2560,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if _command_text_arg(profiler_command, "--json") != entry.get("artifact_path"):
                         errors.append("commands[].preconditions[].profiler command --json must match retained artifact")
                         break
-                    if _command_text_arg(profiler_command, "--profiler-json") != profiler_precondition.get("artifact_path"):
+                    if _command_text_arg(profiler_command, _RETAINED_GATE_FLAGS[3]) != profiler_precondition.get("artifact_path"):
                         errors.append("commands[].preconditions[].profiler command --profiler-json must match profiler precondition artifact")
                         break
                     profiler_source_artifact_path = profiler_precondition.get("profiler_source_artifact_path")
@@ -2581,7 +2573,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         break
                     if any(
                         _command_text_arg(profiler_command, flag) != _argv_value(argv, flag)
-                        for flag in ("--c1-baseline-json", "--serial-bridge-json", "--primitive-correctness-json")
+                        for flag in _RETAINED_GATE_FLAGS[:3]
                     ):
                         errors.append("commands[].preconditions[].profiler command gate paths must match retained command")
                         break
@@ -2589,9 +2581,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         errors.append("commands[].preconditions[].profiler retained_artifact_path must match retained artifact")
                         break
                     profiler_reference_paths = {
-                        "c1_baseline_artifact_path": _argv_value(argv, "--c1-baseline-json"),
-                        "serial_bridge_artifact_path": _argv_value(argv, "--serial-bridge-json"),
-                        "primitive_correctness_artifact_path": _argv_value(argv, "--primitive-correctness-json"),
+                        "c1_baseline_artifact_path": _argv_value(argv, _RETAINED_GATE_FLAGS[0]),
+                        "serial_bridge_artifact_path": _argv_value(argv, _RETAINED_GATE_FLAGS[1]),
+                        "primitive_correctness_artifact_path": _argv_value(argv, _RETAINED_GATE_FLAGS[2]),
                     }
                     if any(profiler_precondition.get(field) != expected_path for field, expected_path in profiler_reference_paths.items()):
                         errors.append("commands[].preconditions[].profiler gate artifact paths must match retained command")

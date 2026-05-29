@@ -141,6 +141,18 @@ RETAINED_ARTIFACT_SWEEP_COMMAND_STATUS_LABELS = (
     "skipped",
     "failed",
 )
+RETAINED_ARTIFACT_RETAINED_GATE_FLAGS = (
+    "--c1-baseline-json",
+    "--serial-bridge-json",
+    "--primitive-correctness-json",
+    "--profiler-json",
+)
+RETAINED_ARTIFACT_RETAINED_GATE_LABELS = (
+    "c1_baseline_json",
+    "serial_bridge_json",
+    "primitive_correctness_json",
+    "profiler_json",
+)
 RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS = ("--rows", "--seed")
 RETAINED_ARTIFACT_CORRECTNESS_REFERENCE_UNIQUE_FLAGS = ("--rows", "--seed", "--json")
 RETAINED_ARTIFACT_CORRECTNESS_SCRIPT_ALLOWED_FLAGS = RETAINED_ARTIFACT_CORRECTNESS_REFERENCE_UNIQUE_FLAGS
@@ -154,10 +166,7 @@ RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS = (
     "--warmup-decode-tokens",
     "--max-layers",
     "--json",
-    "--c1-baseline-json",
-    "--serial-bridge-json",
-    "--primitive-correctness-json",
-    "--profiler-json",
+    *RETAINED_ARTIFACT_RETAINED_GATE_FLAGS,
     "--compiler-version-file",
     "--require-cached-build",
 )
@@ -233,6 +242,8 @@ __all__ = [
     "RETAINED_ARTIFACT_RETAINED_CONDITION_STATUS_LABELS",
     "RETAINED_ARTIFACT_SWEEP_COMMAND_CATEGORIES",
     "RETAINED_ARTIFACT_SWEEP_COMMAND_STATUS_LABELS",
+    "RETAINED_ARTIFACT_RETAINED_GATE_FLAGS",
+    "RETAINED_ARTIFACT_RETAINED_GATE_LABELS",
     "RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS",
     "RETAINED_ARTIFACT_REQUIRED_SCALING_RATIOS",
     "RETAINED_ARTIFACT_UNUSABLE_SCALING_BASELINE_STATUSES",
