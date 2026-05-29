@@ -26741,3 +26741,13 @@ Validation:
 ```bash
 git diff --check
 ```
+
+## 2026-05-29 — Step 3.7 Flash Strix Halo GGUF punchlist
+
+Updated `docs/STEPFUN.md` to make text-only GGUF Q3_K_L on high-memory Strix Halo / gfx1151 the active bring-up target. Added a full multiloop-ready punchlist covering hardware/memory preflight, metadata parsing, split GGUF loading, Step model registration, DeepSeek-V3 tokenization, Q3_K CPU and HIP paths, Step norms/RoPE/head-wise attention gates, full/sliding GQA attention, dense/MoE layers, block replay, c=1 decode, full-model smoke, benchmark evidence gates, deferred NVFP4/vision/MTP tracks, and suggested multiloop lanes with verify commands. The doc now treats the 100GB+ UMA target as plausible but still requires exact HIP-visible memory evidence before any full-model or performance claim.
+
+Validation:
+
+```bash
+git diff --check
+```

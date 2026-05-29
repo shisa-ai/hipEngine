@@ -131,12 +131,12 @@ current `qwen35moe` GGUF layout:
   layers 3-44, attention tensors for every layer, shared-expert tensors for MoE
   layers, vision tensors, and the projector.
 
-Implication for hipEngine on RDNA3: NVFP4 is not the fastest first bring-up
-path. gfx1100 has no native NVIDIA FP4/FP8 tensor-core path, so a retained
-NVFP4 implementation would need a ModelOpt safetensors loader plus software
-FP4/FP8 dequant/GEMV or load-time dequantization. Load-time dequantization would
-balloon resident memory and is unlikely to fit a single W7900. Treat the NVFP4
-cache as authoritative config/weight-name reference until we deliberately add a
+Implication for hipEngine on AMD gfx1100/gfx1151: NVFP4 is not the fastest
+first bring-up path. Strix Halo/gfx1151 also has no NVIDIA FP4/FP8 tensor-core
+path, so a retained NVFP4 implementation would need a ModelOpt safetensors
+loader plus software FP4/FP8 dequant/GEMV or load-time dequantization. Load-time
+dequantization would balloon resident memory. Treat the NVFP4 cache as
+authoritative config/weight-name reference until we deliberately add a
 `modelopt_nvfp4` quant plugin.
 
 ## hipEngine gap analysis
@@ -161,7 +161,7 @@ Needed:
   advertised as unsupported capabilities until text generation is correct.
 - Preserve plugin axes: model code should select `layer='full_attention'` or
   `layer='sliding_attention'`; quant remains `gguf_q3_k_l` / `modelopt_nvfp4`;
-  backend remains `hip_gfx1100` / `cpu_reference`.
+  backend remains `hip_gfx1100` / `hip_gfx1151` / `cpu_reference`.
 
 ### 2. GGUF split loader and Step tensor map
 
@@ -257,53 +257,274 @@ Needed:
 - Dense layers 0-2 use the same attention block but dense `gate/up/down` MLP,
   not routed experts.
 
-### 7. Memory and serving constraints
+### 7. Strix Halo memory and serving target
 
-Both local formats exceed a single W7900's resident weight capacity:
+**Active target for this branch:** text-only Step 3.7 Flash GGUF Q3_K_L on a
+high-memory Strix Halo / gfx1151 machine. This makes the GGUF path the right
+first implementation track, but full-model load is still a measured precondition,
+not an assumption:
 
 - GGUF Q3_K_L language weights: 95.46 GiB before KV/runtime overhead.
-- HF NVFP4 repo size: 115.84 GiB before KV/runtime overhead.
+- HF NVFP4 repo size: 115.84 GiB before KV/runtime overhead; this is not the
+  first runtime target.
 - Public llama.cpp docs list about 7 GB runtime overhead and a minimum 120 GB
-  unified memory/VRAM for local GGUF deployment.
+  unified memory/VRAM for local GGUF deployment, with 128 GB recommended.
+- A Strix Halo configured with 100 GB+ visible UMA may be close enough for a
+  short text-only smoke, but the first retained full-model run must record exact
+  HIP-visible total/free memory, UMA configuration, context length, KV dtype,
+  prompt length, and generated-token count.
+- `backend='auto'` should resolve Strix Halo to `hip_gfx1151`; if it does not,
+  force `HIPENGINE_BACKEND=hip_gfx1151` only after recording `amdgpu-arch` /
+  `rocminfo` evidence and validating correctness.
+- hipEngine currently has many Qwen GGUF runner imports hard-coded to
+  `hip_gfx1100`; Step bring-up should register/resolve kernels for
+  `hip_gfx1151` as a peer backend instead of adding model/runtime backend
+  branches.
 
-For hipEngine performance work, this means one of the following must land before
-a real W7900 claim:
+A Strix Halo full-model smoke is acceptable only after parser/tokenizer/quant
+slice tests pass. A throughput claim additionally needs the benchmark artifact
+and rollup updates required by `docs/BENCHMARK.md`.
 
-- tensor/expert parallelism across enough GPUs;
-- tiered/offloaded weights with an explicit performance target; or
-- a smaller Step-compatible fixture/checkpoint for correctness-only bring-up.
+## Multiloop-ready GGUF punchlist
 
-Do not claim Step 3.7 throughput on W7900 until the exact hardware, format,
-workload shape, command, and correctness gate are recorded per `docs/BENCHMARK.md`.
+Use this as the canonical Step 3.7 Flash GGUF bring-up backlog. Each checkbox is
+intended to be a logical unit that can be implemented, validated, logged in
+`WORKLOG.md`, and committed before moving on. Keep the first implementation
+text-only; defer vision, MTP/speculative decode, and NVFP4 until base greedy
+decode is correct.
 
-## Proposed implementation order
+### P0 — Hardware, assets, and oracle preflight
 
-1. **Metadata-only tests (no GPU).** Add fixtures using the local GGUF header and
-   cached HF `config.json` / `hf_quant_config.json`. Verify parser outputs layer
-   counts, full/sliding pattern, heads, MoE parameters, tokens, and format facts.
-2. **Step model plugin + tokenizer.** Register `step35` / `step3p7` text plugin,
-   implement DeepSeek-V3 GGUF tokenization, and render the chat template for a
-   simple text-only prompt.
-3. **Split GGUF loader + tensor map.** Merge the three Step GGUF shards into one
-   logical index and validate all required text tensors for layers 0-44.
-4. **Q3_K correctness path.** Implement CPU dequant for Q3_K, then native Q3_K
-   GEMV/prefill or a documented replacement-layout route. Gate with slice-level
-   numeric tests.
-5. **Text decode c=1.** Wire dense layer, full-attention layer, sliding-attention
-   layer, router/top-k/shared-expert layer, final norm, and LM head. Validate
-   next-token logits against llama.cpp or HF Transformers on a tiny prompt.
-6. **Memory strategy.** Decide whether the first retained run is multi-GPU,
-   tiered/offloaded, or correctness-only. Only then benchmark.
-7. **NVFP4 track.** After GGUF text works, add ModelOpt safetensors inspection
-   and a `modelopt_nvfp4` quant plugin if RDNA3 software FP4 is still desired.
+- [ ] Confirm the target machine reports Strix Halo/gfx1151:
+  `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`,
+  `amdgpu-arch` or `/opt/rocm/bin/amdgpu-arch`, and
+  `rocminfo | grep -E 'Name:|gfx'`.
+- [ ] Record HIP-visible total/free memory after a clean boot and after loading
+  the GGUF shards. If full-model load fails, keep the failure as evidence and
+  fall back to slice/layer correctness until offload/tiering exists.
+- [ ] Record exact GGUF paths and byte sizes for all three shards; do not copy or
+  rewrite the 102.50 GB assets into the repo.
+- [ ] Establish a llama.cpp oracle command for tokenization and short greedy
+  next-token checks. If llama.cpp cannot run the full model on the same machine,
+  use it for metadata/tokenizer/slice or a smaller exported fixture.
+- [ ] For any kernel port/tuning, read `docs/KERNELS.md` and run
+  `python3 scripts/check_lineage.py --kind kernel --diff stat` before copying
+  code.
 
-## Open questions
+**Acceptance:** WORKLOG preflight entry with hardware, memory, paths, and oracle
+plan; no runtime correctness or performance claim yet.
 
-- Is the intended first run text-only, or do we need the multimodal projector and
-  vision encoder immediately?
+### P1 — Metadata-only parser fixtures
+
+- [ ] Add tests that read only GGUF headers/KV metadata from the three local
+  shards and cached HF `config.json` / `hf_quant_config.json`.
+- [ ] Verify `step35` architecture, split count 3, tensor count 754, vocab
+  128,896, 45 layers, context 262,144, dense layers 0-2, MoE layers 3-44,
+  288 experts, top-k 8, full/sliding attention pattern, head counts, RoPE modes,
+  and tokenizer pre `deepseek-v3`.
+- [ ] Ensure metadata tests do not mmap/read full tensor payloads.
+
+**Acceptance:** narrow pytest for Step metadata passes on a no-GPU host.
+
+### P2 — Split GGUF index and Step tensor map
+
+- [ ] Add a split-aware GGUF reader/index that merges shard tensor tables while
+  retaining each tensor's source path, offset, type, shape, and byte span.
+- [ ] Add a Step-specific loader/config module for `step35.*` metadata and tensor
+  naming; keep it separate from `qwen35_gguf.py`.
+- [ ] Validate all required text tensors for layers 0-44 and produce a clear
+  unsupported error for missing multimodal projector assets.
+- [ ] Add tests for split discovery, duplicate/missing tensor errors, and tensor
+  shape/type validation.
+
+**Acceptance:** loader can build a logical Step text weight index from the three
+GGUF shards without loading all weights into memory.
+
+### P3 — Model plugin and capability registration
+
+- [ ] Register a text-first `step35` / `step3p7` model plugin with aliases for
+  GGUF and HF metadata names.
+- [ ] Encode capabilities explicitly: text decode supported-in-progress; vision,
+  projector, MTP, and NVFP4 unsupported/deferred until their tracks land.
+- [ ] Keep dispatch on the existing axes `(backend, layer, quant, variant)`;
+  avoid engine/model branches such as `if backend == ...` or `if quant == ...`.
+- [ ] Add registry tests showing Step resolves to the plugin and unsupported
+  capability requests fail clearly.
+
+**Acceptance:** plugin/registry tests pass and `LLM(..., quant='gguf_q3_k_l')`
+can resolve Step metadata without importing torch.
+
+### P4 — DeepSeek-V3 GGUF tokenizer and chat template
+
+- [ ] Implement a torch-free tokenizer path for GGUF `tokenizer.ggml.model='gpt2'`
+  with `tokenizer.ggml.pre='deepseek-v3'`.
+- [ ] Render the Step chat template locally, including `<|im_start|>`,
+  `<|im_end|>`, optional `Reasoning: low|medium|high`, assistant
+  `<think>` prefix, and tool-call blocks.
+- [ ] Preserve BOS id 0 and EOS ids `[1, 2, 128007]` in generation stop logic.
+- [ ] Compare token IDs for representative prompts against llama.cpp or cached
+  HF tokenizer output.
+
+**Acceptance:** tokenizer/chat tests pass and runtime hot-path imports remain
+torch-free.
+
+### P5 — Q3_K CPU reference and mixed GGUF quant metadata
+
+- [ ] Implement CPU-reference Q3_K dequantization and add block-level fixtures.
+- [ ] Validate existing Q5_K/Q8_0/F32 handling against Step tensor metadata; Step
+  layers mix quant types within the same layer.
+- [ ] Add slice fixtures from real Step tensors for Q3_K, Q5_K, Q8_0, and F32
+  without checking large binary fixtures into git.
+- [ ] Expose per-tensor quant keys through the loader/quant plugin so mixed
+  dispatch does not require engine-wide quant branches.
+
+**Acceptance:** CPU dequant/slice tests pass against known-good llama.cpp or
+independent GGUF reference values.
+
+### P6 — HIP Q3_K linear kernels on gfx1151
+
+- [ ] Add/register HIP Q3_K GEMV and selected-expert variants needed by Step
+  dense, attention, MoE expert, and shared-expert paths.
+- [ ] Build for `hip_gfx1151` with `HIPENGINE_HIP_ARCH=gfx1151`; reuse gfx1100
+  source only through peer backend registration/build metadata, not hard-coded
+  imports in Step runtime code.
+- [ ] Add smoke tests comparing HIP Q3_K outputs to CPU reference for small
+  tensors, then real Step tensor slices.
+- [ ] Run a `rocprofv3 --kernel-trace` smoke once kernels exist and record the
+  expected kernel names/durations.
+
+**Acceptance:** HIP Q3_K slice correctness passes on Strix Halo and profiler
+shows the expected kernels, with no full-model claim yet.
+
+### P7 — Step norms, RoPE, and attention-gate primitives
+
+- [ ] Add RMSNorm variant with Step scale semantics `(weight + 1)` and epsilon
+  `1e-5`.
+- [ ] Add RoPE table/cache support for full-attention layers: theta 5e6,
+  llama3 scaling, partial factor 0.5.
+- [ ] Add RoPE support for sliding-attention layers: theta 1e4, no llama3
+  scaling, full factor 1.0.
+- [ ] Add head-wise attention gate primitive/fusion:
+  `attn_output[head] *= sigmoid(g_proj(x)[head])` before `o_proj`.
+- [ ] Keep unfused CPU/reference fallbacks for every fused primitive.
+
+**Acceptance:** primitive tests pass against CPU reference for representative
+full and sliding layers.
+
+### P8 — Full and sliding GQA attention
+
+- [ ] Implement full-attention decode/prefill for 64 query heads, 8 KV heads,
+  head dim 128, and partial-RoPE full layers.
+- [ ] Implement sliding-attention decode/prefill for 96 query heads, 8 KV heads,
+  head dim 128, and window 512.
+- [ ] Represent both policies through `KVLiveSpans`: full layers expose the live
+  prefix, sliding layers expose only the live window.
+- [ ] Validate one-token decode and short prefill against CPU attention fixtures.
+- [ ] Only after correctness, profile whether AOTriton or native kernels are the
+  right Strix Halo path.
+
+**Acceptance:** full/sliding attention tests pass for both layer types and KV
+window boundaries.
+
+### P9 — Dense MLP and Step MoE
+
+- [ ] Wire dense MLP for layers 0-2 with `ffn_gate/up/down.weight` names.
+- [ ] Implement router semantics for MoE layers 3-44: FP32 gate matmul, sigmoid,
+  add router bias for top-k selection, gather unbiased probabilities, normalize
+  selected weights, then multiply by routing scale 3.0.
+- [ ] Implement top-k 8 over 288 experts, expert gate/up/down projections,
+  shared expert gate/up/down path, and routed+shared sum.
+- [ ] Handle non-zero `swiglu_limits` / `swiglu_limits_shared` in the last layers.
+- [ ] Start with c=1 decode; batch/expert grouping optimization can follow after
+  correctness.
+
+**Acceptance:** router/top-k/shared-expert tests pass against CPU reference or a
+llama.cpp/HF activation fixture.
+
+### P10 — One-layer and block replay
+
+- [ ] Build a deterministic replay harness for a dense layer, a full-attention
+  MoE layer, and a sliding-attention MoE layer.
+- [ ] Capture or derive reference activations/logits from llama.cpp, HF
+  Transformers, or CPU-reference code without committing large blobs.
+- [ ] Gate each block on numerical tolerances appropriate for quantized GGUF
+  inference before integrating all 45 layers.
+
+**Acceptance:** representative dense/full/sliding block replays pass and failures
+identify the exact substage.
+
+### P11 — Text-only c=1 decode runner
+
+- [ ] Add a Step GGUF runner that streams one-token decode for short prompts with
+  the Step tokenizer, split weight index, mixed GGUF quant dispatch, full/sliding
+  attention, and Step MoE.
+- [ ] Use short contexts first (for example <= 512) before exercising long
+  context and sliding-window boundaries.
+- [ ] Compare greedy next tokens and/or logits against llama.cpp for a small set
+  of deterministic prompts.
+- [ ] Preserve multi-EOS stopping and the chat assistant prefix.
+
+**Acceptance:** deterministic short-prompt next-token parity is demonstrated;
+record command, prompt shape, oracle, and result in `WORKLOG.md`.
+
+### P12 — Full-model Strix Halo smoke
+
+- [ ] Load all three GGUF shards on the Strix Halo target with a small context
+  and `max_new_tokens` (for example 1-8).
+- [ ] Record HIP-visible memory before load, after load, after KV allocation, and
+  after generation; include UMA setting and backend (`hip_gfx1151`).
+- [ ] If the model does not fit, keep the failure artifact and decide between
+  offload/tiering, lower context/KV footprint, or slice-only correctness.
+- [ ] If it fits, run a tiny text-only prompt and confirm no vision/projector/MTP
+  path is required.
+
+**Acceptance:** full-model smoke produces token(s) or a documented fit failure.
+This is still not a throughput benchmark.
+
+### P13 — Benchmark and rollup only after correctness
+
+- [ ] Define the exact benchmark shape: model format, prompt length, generated
+  tokens, context/KV policy, hardware, ROCm version, backend, and command.
+- [ ] Run correctness gate first: KL <= 0.05 and top-1 agreement >= 90% vs the
+  configured CPU/llama.cpp oracle on fixture inputs.
+- [ ] Record benchmark artifact under `benchmarks/results/`, update
+  `benchmarks/README.md`, and add a dated `benchmarks/CHANGELOG.md` entry for
+  any retained performance result.
+
+**Acceptance:** evidence policy in `docs/BENCHMARK.md` is satisfied before any
+Step throughput claim appears in docs or chat.
+
+### Deferred tracks
+
+- [ ] NVFP4 ModelOpt safetensors loader and `modelopt_nvfp4` quant plugin.
+- [ ] Vision encoder and multimodal projector loading/inference.
+- [ ] MTP/EAGLE speculative decode and `num_nextn_predict_layers=3` support.
+- [ ] Multi-user/server batching and expert grouping optimizations.
+
+## Suggested multiloop lanes
+
+These are starting points if we launch pi-multiloop later. Do not start a loop
+until the setup guide has scanned the repo, asked clarifying questions, and the
+user has explicitly approved the run.
+
+| Lane | Goal | Verify command |
+| --- | --- | --- |
+| `step-metadata` | Header/config parser, split index metadata, tensor map validation | `python -m pytest -q tests/test_stepfun_gguf_metadata.py` |
+| `step-tokenizer` | DeepSeek-V3 GGUF tokenizer and chat rendering | `python -m pytest -q tests/test_stepfun_tokenizer.py` |
+| `step-q3k-cpu` | CPU Q3_K dequant and mixed-quant slice fixtures | `python -m pytest -q tests/test_stepfun_q3k_cpu.py` |
+| `step-q3k-hip` | gfx1151 Q3_K HIP GEMV slice correctness | `HIPENGINE_BACKEND=hip_gfx1151 python -m pytest -q tests/test_stepfun_q3k_hip.py` |
+| `step-attn` | Full/sliding GQA + KVLiveSpans + RoPE/gate primitives | `python -m pytest -q tests/test_stepfun_attention.py` |
+| `step-moe` | Dense MLP, router/top-k, experts, shared expert | `python -m pytest -q tests/test_stepfun_moe.py` |
+| `step-decode` | Text-only c=1 short-prompt next-token parity | `HIPENGINE_BACKEND=hip_gfx1151 python -m pytest -q tests/test_stepfun_decode.py` |
+| `step-smoke` | Full GGUF load/generate on Strix Halo | command TBD after P11; record memory and oracle in `WORKLOG.md` |
+
+## Remaining open questions
+
+- What exact Strix Halo UMA size and HIP-visible free memory do we have after a
+  clean boot?
 - Is there a smaller Step 3.7/3.5 fixture available for RED/GREEN tests, or
   should we derive slice fixtures from the large local GGUF files?
-- What hardware target should define the first performance milestone: single
-  W7900 with offload, multiple W7900s, or a high-memory unified-memory box?
-- Should MTP be part of initial parity, or deferred until base greedy decode is
-  correct?
+- Which llama.cpp command and commit should be the initial oracle for tokenizer,
+  next-token, and full-smoke comparison?
+- Are vision/projector and MTP definitely deferred until after base greedy decode
+  correctness, or do they need separate early proof-of-concept loops?
