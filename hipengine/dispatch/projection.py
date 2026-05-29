@@ -130,6 +130,9 @@ class ProjectionDispatchCandidate:
                 selection = ProjectionKernelSelection.from_json_dict(selection_payload)
             except ValueError as exc:
                 errors.append(str(exc))
+            else:
+                if selection.variant == "row_gemv":
+                    errors.append("selection.variant must name a c-aware projection kernel, not row_gemv")
         min_rows = payload.get("min_rows", 2)
         if not isinstance(min_rows, int) or isinstance(min_rows, bool) or min_rows <= 0:
             errors.append("min_rows must be a positive int")
@@ -362,6 +365,9 @@ def plan_projection_dispatch(
         if not candidate.applies_to(rows):
             continue
         applicable.append(candidate)
+        if candidate.name == "row_gemv" or candidate.selection == row_gemv or candidate.selection.variant == "row_gemv":
+            blockers.append(f"{candidate.name}: row_gemv is not a c-aware projection candidate")
+            continue
         evidence = candidate.evidence
         if evidence is None:
             blockers.append(f"{candidate.name}: missing benchmark evidence")

@@ -48495,3 +48495,23 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: targeted metrics test PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and the docs explicitly keep the graph-cache observability item open until real replay profiler evidence exists.
+
+## 2026-05-29 — CONCURRENCY projection dispatch rejects row-GEMV self-claims
+
+Advanced C3.4 c-aware projection dispatch evidence handling. `ProjectionDispatchCandidate.from_json_dict(...)` now rejects candidate metadata whose selection variant is `row_gemv`, and `plan_projection_dispatch(...)` treats direct row-GEMV/self-row-GEMV candidates as blockers instead of eligible c-aware projection evidence. This prevents a retained artifact from satisfying the c-aware projection gate by relabeling the baseline row-GEMV path as a winning c>N candidate. `docs/CONCURRENCY.md` C3.4 progress text now records the non-row-GEMV/self-claim guard while keeping the packet open until runtime call sites and retained artifacts provide real ratios.
+
+Validation:
+
+```bash
+python3 -m compileall -q hipengine/dispatch/projection.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_projection_dispatch_candidate_loads_schema_checked_artifact_blocks tests/test_generation_batch_scheduler.py::test_projection_dispatch_requires_accepted_cN_speedup_evidence -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: targeted projection dispatch tests PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and the C3.4 docs explicitly keep the packet open until real runtime wiring and retained ratio artifacts exist.

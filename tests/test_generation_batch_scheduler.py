@@ -5989,6 +5989,10 @@ def test_projection_dispatch_candidate_loads_schema_checked_artifact_blocks() ->
     assert not candidate.applies_to(16)
     with pytest.raises(ValueError, match="selection.quant must be a non-empty string"):
         ProjectionDispatchCandidate.from_json_dict({**payload, "selection": {"layer": "linear", "variant": "wmma_caware"}})
+    with pytest.raises(ValueError, match="selection.variant must name a c-aware projection kernel, not row_gemv"):
+        ProjectionDispatchCandidate.from_json_dict(
+            {**payload, "selection": {"layer": "linear", "quant": "w4_paro", "variant": "row_gemv"}}
+        )
     with pytest.raises(ValueError, match="max_rows must be >= min_rows"):
         ProjectionDispatchCandidate.from_json_dict({**payload, "min_rows": 8, "max_rows": 4})
     with pytest.raises(ValueError, match="aggregate_vs_row_gemv must be positive numeric"):
@@ -6125,12 +6129,23 @@ def test_projection_dispatch_requires_accepted_cN_speedup_evidence() -> None:
             per_request_vs_row_gemv=0.99,
         ),
     )
+    row_gemv_candidate = ProjectionDispatchCandidate(
+        "row_gemv",
+        row_gemv,
+        min_rows=2,
+        evidence=ProjectionDispatchEvidence(
+            "benchmarks/results/row-gemv-self-claim.json",
+            aggregate_vs_row_gemv=99.0,
+            per_request_vs_row_gemv=99.0,
+        ),
+    )
 
-    decision = plan_projection_dispatch(rows=4, row_gemv=row_gemv, candidates=[missing, rejected, too_slow])
+    decision = plan_projection_dispatch(rows=4, row_gemv=row_gemv, candidates=[row_gemv_candidate, missing, rejected, too_slow])
 
     assert decision.selection == row_gemv
     assert decision.path == "row_gemv_until_caware_benchmark"
     assert decision.throughput_claim_eligible is False
+    assert "row_gemv: row_gemv is not a c-aware projection candidate" in decision.blockers
     assert "mmq_missing: missing benchmark evidence" in decision.blockers
     assert "wmma_rejected: benchmark artifact was not accepted" in decision.blockers
     assert any("gemm_too_slow: per_request_vs_row_gemv" in blocker for blocker in decision.blockers)

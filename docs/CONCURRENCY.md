@@ -1332,8 +1332,8 @@ roll-up/status view.
       Acceptance: dispatch tests prove thresholds and benchmark artifacts show
       aggregate/per-request ratios. Progress: `hipengine.dispatch.projection`
       now exposes a tested c-aware projection policy: c=1 is pinned to row-GEMV,
-      c>N candidates require accepted benchmark evidence with aggregate and
-      per-request speedups over row-GEMV, missing/slow/rejected evidence falls
+      c>N candidates must name a non-row-GEMV projection kernel and require accepted benchmark evidence with aggregate and
+      per-request speedups over row-GEMV, missing/slow/rejected/self-row-GEMV evidence falls
       back to row-GEMV with explicit blockers, and
       `ProjectionDispatchEvidence.from_json_dict(...)`,
       `ProjectionDispatchCandidate.from_json_dict(...)`,
