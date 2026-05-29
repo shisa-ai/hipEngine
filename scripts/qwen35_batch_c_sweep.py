@@ -2730,6 +2730,14 @@ def _validate_run_options(args: argparse.Namespace) -> None:
         if not str(getattr(args, option)):
             flag = "--" + option.replace("_", "-")
             raise ValueError(f"{flag} must be a non-empty string")
+    batch_sizes = getattr(args, "batch_sizes", None)
+    if (
+        not isinstance(batch_sizes, (list, tuple))
+        or not batch_sizes
+        or any(not isinstance(value, int) or isinstance(value, bool) or value <= 0 for value in batch_sizes)
+        or len(set(batch_sizes)) != len(batch_sizes)
+    ):
+        raise ValueError("--batch-sizes must be a non-empty unique positive-int list")
     if not isinstance(args.seed, int) or isinstance(args.seed, bool) or args.seed != _REQUIRED_PRIMITIVE_CORRECTNESS_SEED:
         raise ValueError("--seed must be typed int 1234")
     for option, minimum in (

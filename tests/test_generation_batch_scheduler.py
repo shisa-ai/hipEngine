@@ -1950,6 +1950,23 @@ def test_batch_c_sweep_rejects_wrong_seed_before_creating_artifacts(tmp_path: Pa
     assert not output_dir.exists()
 
 
+def test_batch_c_sweep_rejects_invalid_batch_sizes_before_creating_artifacts(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        c_sweep.subprocess,
+        "run",
+        lambda *args, **kwargs: pytest.fail("invalid batch sizes should fail before launching subprocesses"),
+    )
+    for index, bad_batch_sizes in enumerate(((), (True,), (2.0,), (0,), (2, 2), ["2"])):
+        output_dir = tmp_path / f"artifacts-batch-{index}"
+        args = build_c_sweep_parser().parse_args(
+            ["--dry-run", "--batch-sizes", "2", "--output-dir", str(output_dir)]
+        )
+        args.batch_sizes = bad_batch_sizes
+        with pytest.raises(ValueError, match="--batch-sizes must be a non-empty unique positive-int list"):
+            run_sweep(args)
+        assert not output_dir.exists()
+
+
 def test_batch_c_sweep_rejects_unsafe_output_dir_before_creating_artifacts(tmp_path: Path, monkeypatch) -> None:
     parent_component_output = tmp_path / "output-parent" / ".." / "artifacts"
     symlink_output = tmp_path / "artifacts-link"
