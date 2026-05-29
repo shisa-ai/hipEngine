@@ -653,7 +653,7 @@ roll-up/status view.
       diagnostic per-layer linear decode/projection/state/selected-c1+batch-GEMV
       output, full-attention boundary, per-layer trace-source, batch/decode
       aggregate trace-summary paths via a shared deny-list, diagnostic
-      CLI/env/structured-metadata overrides via a shared fragment list,
+      CLI/env/structured-metadata overrides via a shared constants fragment list,
       hidden-bisect diagnostic evidence fragments, exact diagnostic hidden-trace
       correctness fields, decode-execution trace fields outside execution,
       future trace-key fragments in metadata/commands, and shared diagnostic

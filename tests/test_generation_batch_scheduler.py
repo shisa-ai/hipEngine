@@ -67,7 +67,10 @@ from scripts.qwen35_batch_artifact_schema import (
     validate_cn_diagnostic_rollup_evidence,
     validate_cn_diagnostic_validation_summary,
 )
-from scripts.qwen35_batch_constants import PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS
+from scripts.qwen35_batch_constants import (
+    PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS,
+    RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_COMMAND_FRAGMENTS,
+)
 from scripts.qwen35_batch_c_sweep import build_parser as build_c_sweep_parser, build_sweep_commands, run_sweep
 from scripts.qwen35_batch_gguf_diagnostic import build_parser as build_gguf_diagnostic_parser, run as run_gguf_diagnostic
 from scripts.qwen35_batch_hidden_bisect import (
@@ -13417,6 +13420,8 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     spoofed_environment_command["commands"]["environment"][0] = "echo rocminfo"
     with pytest.raises(ValueError, match="commands.environment must include exact command"):
         validate_cn_diagnostic_artifact_payload(spoofed_environment_command)
+
+    assert DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS is RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_COMMAND_FRAGMENTS
 
     diagnostic_environment_command = json.loads(json.dumps(accepted))
     diagnostic_environment_command["commands"]["environment"].extend(DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS)

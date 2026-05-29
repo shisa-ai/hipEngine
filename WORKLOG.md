@@ -47906,3 +47906,22 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: targeted profiler/schema tests PASS, verify count remains `12`, full guard PASS. Prompt-verifier self-check passes: no queue item was marked complete, the change only de-duplicates diagnostic profiler-kernel evidence rejection, native generated-token equality remains open, and no performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY shared diagnostic command deny-list
+
+De-duplicated accepted-artifact diagnostic CLI/env override fragments into `scripts/qwen35_batch_constants.py` as `RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_COMMAND_FRAGMENTS`. `scripts/qwen35_batch_artifact_schema.py` now aliases its public `DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS` to that shared tuple, and the accepted-row schema test asserts the alias identity before injecting all fragments into environment commands, retained command provenance, and structured metadata. This keeps future C2.3 fallback controls from drifting between constants and retained artifact validation.
+
+Validation:
+
+```bash
+pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: targeted schema test PASS, verify count remains `12`, full guard PASS. Prompt-verifier self-check passes: no queue item was marked complete, the change only de-duplicates diagnostic command-fragment rejection, native generated-token equality remains open, and no performance/scaling claim was added.

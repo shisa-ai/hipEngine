@@ -17,7 +17,10 @@ from hipengine.dispatch import (
     projection_dispatch_evidence_payload_blockers,
 )
 from hipengine.generation import GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS
-from scripts.qwen35_batch_constants import PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS
+from scripts.qwen35_batch_constants import (
+    PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS,
+    RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_COMMAND_FRAGMENTS,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -95,40 +98,7 @@ _REQUIRED_ACCEPTED_ENVIRONMENT_COMMANDS = (
     "git rev-parse HEAD",
     "git diff --quiet",
 )
-DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS = (
-    "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE",
-    "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR",
-    "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_PROJECTIONS",
-    "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_STATE",
-    "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT",
-    "HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE=0",
-    "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT",
-    "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN",
-    "HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR",
-    "HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_FULL_ATTN",
-    "--batch-decode-moe-path selected_c1",
-    "--batch-decode-moe-path=selected_c1",
-    "--batch-decode-linear-path per_row",
-    "--batch-decode-linear-path=per_row",
-    "--batch-decode-linear-projection-path selected_c1",
-    "--batch-decode-linear-projection-path=selected_c1",
-    "--batch-decode-linear-state-path selected_c1",
-    "--batch-decode-linear-state-path=selected_c1",
-    "--batch-decode-linear-output-path selected_c1",
-    "--batch-decode-linear-output-path=selected_c1",
-    "--batch-decode-linear-output-path batch_gemv",
-    "--batch-decode-linear-output-path=batch_gemv",
-    "--batch-decode-full-attn-path per_row",
-    "--batch-decode-full-attn-path=per_row",
-    "--batch-decode-attn-input-path per_row",
-    "--batch-decode-attn-input-path=per_row",
-    "--batch-decode-post-attn-path per_row",
-    "--batch-decode-post-attn-path=per_row",
-    "--batch-prefill-linear-path per_segment",
-    "--batch-prefill-linear-path=per_segment",
-    "--batch-prefill-full-attn-path per_segment",
-    "--batch-prefill-full-attn-path=per_segment",
-)
+DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS = RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_COMMAND_FRAGMENTS
 DISALLOWED_ACCEPTED_DIAGNOSTIC_EVIDENCE_FRAGMENTS = (
     "scripts/qwen35_batch_hidden_bisect.py",
     "qwen35_batch_hidden_bisect.py",
