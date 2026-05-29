@@ -2169,6 +2169,33 @@ def test_retained_bench_projection_dispatch_artifact_env_and_payload(tmp_path: P
     assert candidates == [candidate]
 
 
+def test_retained_bench_projection_dispatch_artifact_fails_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    artifact_dir = tmp_path / "benchmarks" / "results"
+    artifact_dir.mkdir(parents=True)
+    monkeypatch.chdir(tmp_path)
+
+    missing = SimpleNamespace(projection_dispatch_artifact=Path("benchmarks/results/missing.json"))
+    with pytest.raises(ValueError, match="invalid projection dispatch artifact"):
+        retained_bench._projection_dispatch_candidates_for_payload(missing)
+
+    no_candidates_path = artifact_dir / "no-candidates.json"
+    no_candidates_path.write_text(json.dumps({"status": "accepted"}), encoding="utf-8")
+    no_candidates = SimpleNamespace(projection_dispatch_artifact=Path("benchmarks/results/no-candidates.json"))
+    with pytest.raises(ValueError, match="must include projection_dispatch_candidates"):
+        retained_bench._projection_dispatch_candidates_for_payload(no_candidates)
+
+    malformed_candidate_path = artifact_dir / "malformed-candidate.json"
+    malformed_candidate_path.write_text(
+        json.dumps({"projection_dispatch_candidates": [{"name": "bad", "selection": {"variant": "row_gemv"}}]}),
+        encoding="utf-8",
+    )
+    malformed_candidate = SimpleNamespace(
+        projection_dispatch_artifact=Path("benchmarks/results/malformed-candidate.json")
+    )
+    with pytest.raises(ValueError, match="invalid projection_dispatch_candidates"):
+        retained_bench._projection_dispatch_candidates_for_payload(malformed_candidate)
+
+
 def test_batch_c_sweep_rejects_wrong_seed_before_creating_artifacts(tmp_path: Path, monkeypatch) -> None:
     output_dir = tmp_path / "artifacts"
     args = build_c_sweep_parser().parse_args(

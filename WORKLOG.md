@@ -48595,3 +48595,23 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: targeted retained projection dispatch plumbing tests PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and C3.4 remains open until retained benchmark ratios plus actual runtime c-aware kernel use are green.
+
+## 2026-05-29 — CONCURRENCY projection dispatch artifact fail-closed gate
+
+Advanced C3.4 retained projection-dispatch artifact safety. `scripts/qwen35_batch_retained_bench.py --projection-dispatch-artifact` now validates and loads the candidate artifact before running the expensive retained bench. Missing files, invalid JSON, non-object roots, missing `projection_dispatch_candidates`, or malformed candidates now raise `ValueError` instead of silently omitting candidate metadata and relying on a later promotion blocker. The runtime env path still gets set for valid artifacts, and retained payloads continue to copy schema-checked candidates. `docs/ENVS.md` and `docs/CONCURRENCY.md` now document the fail-closed behavior while keeping C3.4 open until retained ratios and actual c-aware runtime kernels are available.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_retained_bench.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_retained_bench_projection_dispatch_artifact_env_and_payload tests/test_generation_batch_scheduler.py::test_retained_bench_projection_dispatch_artifact_fails_closed -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: targeted fail-closed artifact tests PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and C3.4 remains open until retained benchmark ratios plus actual runtime c-aware kernel use are green.

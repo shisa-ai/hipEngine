@@ -2416,13 +2416,20 @@ def _projection_dispatch_candidates_for_payload(args: argparse.Namespace) -> lis
         path = Path.cwd() / path
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(payload, Mapping):
-            return None
+    except OSError as exc:
+        raise ValueError(f"invalid projection dispatch artifact {artifact}: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"invalid projection dispatch artifact {artifact}: must be valid JSON: {exc}") from exc
+    if not isinstance(payload, Mapping):
+        raise ValueError(f"invalid projection dispatch artifact {artifact}: root must be a JSON object")
+    try:
         candidates = projection_dispatch_candidates_from_artifact(payload)
-    except (OSError, ValueError, json.JSONDecodeError):
-        return None
+    except ValueError as exc:
+        raise ValueError(f"invalid projection dispatch artifact {artifact}: {exc}") from exc
     if not candidates:
-        return None
+        raise ValueError(
+            f"invalid projection dispatch artifact {artifact}: must include projection_dispatch_candidates"
+        )
     return [candidate.to_json_dict() for candidate in candidates]
 
 
@@ -2729,6 +2736,7 @@ def main(argv: list[str] | None = None) -> int:
     kv_policy = resolve_args_kv_policy(args, block_size=256)
     compiler_version = _compiler_version(args.compiler_version_file)
     _apply_runtime_env_args(args)
+    projection_dispatch_candidates = _projection_dispatch_candidates_for_payload(args)
     bench = _run_native_bench(
         runner,
         prompts,
@@ -2739,7 +2747,6 @@ def main(argv: list[str] | None = None) -> int:
         require_cached_build=args.require_cached_build,
         kv_policy=kv_policy,
     )
-    projection_dispatch_candidates = _projection_dispatch_candidates_for_payload(args)
     if projection_dispatch_candidates is not None:
         bench["projection_dispatch_candidates"] = projection_dispatch_candidates
 
