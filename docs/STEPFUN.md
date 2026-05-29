@@ -302,10 +302,11 @@ decode is correct.
 - [~] Record HIP-visible total/free memory after a clean boot and after loading
   the GGUF shards. If full-model load fails, keep the failure as evidence and
   fall back to slice/layer correctness until offload/tiering exists. 2026-05-29
-  re-check: `hipMemGetInfo` reports inconsistent values (`free=119.996 GiB`,
-  `total=62.541 GiB`) before and after split-header scan; `rocm-smi` reports
-  only `VIS_VRAM Total=512 MiB`, `Used=416.6 MiB`. This remains unresolved and
-  below the 95.465 GiB raw GGUF payload, so full-model load stays blocked.
+  update: the box is booted with `amdgpu gttsize=120000` and
+  `ttm pages_limit=31457280` (~120 GiB GTT), so prior `hipMemGetInfo`
+  inconsistencies and `rocm-smi VIS_VRAM Total=512 MiB` are not treated as hard
+  fit blockers. Validate with a real allocation/load attempt when the runner is
+  wired.
 - [x] Record exact GGUF paths and byte sizes for all three shards; do not copy or
   rewrite the 102.50 GB assets into the repo.
 - [x] Establish a llama.cpp oracle command for tokenization and short greedy
@@ -442,9 +443,9 @@ primitives.
   prefix, sliding layers expose only the live window.
 - [x] Validate one-token decode and short prefill against CPU attention fixtures.
 - [ ] Only after correctness, profile whether AOTriton or native kernels are the
-  right Strix Halo path. Blocked: CPU-reference attention correctness exists,
-  but there is not yet a native/AOTriton Step attention candidate or full
-  decode/logit gate to profile against.
+  right Strix Halo path. Implementation task: CPU-reference attention correctness
+  exists, but there is not yet a native/AOTriton Step attention candidate or
+  full decode/logit gate to profile against.
 
 **Acceptance:** `python3 -m pytest -q tests/test_stepfun_attention.py` passes for
 full/sliding CPU-reference attention, both layer head shapes, and KV live-window
@@ -485,16 +486,19 @@ reporting.
 
 - [ ] Add a Step GGUF runner that streams one-token decode for short prompts with
   the Step tokenizer, split weight index, mixed GGUF quant dispatch, full/sliding
-  attention, and Step MoE. Remaining blocker: resident Step layer/full-model
-  execution is not wired beyond the prompt planner and CPU replay harness.
+  attention, and Step MoE. Remaining implementation task: resident Step
+  layer/full-model execution is not wired beyond the prompt planner and CPU
+  replay harness.
 - [x] Use short contexts first (for example <= 512) before exercising long
   context and sliding-window boundaries. `StepFunShortContextDecodePlanner`
   enforces the current c=1 bring-up default `max_context=512`,
   `max_new_tokens=1`, and rejects overlong prompts.
 - [ ] Compare greedy next tokens and/or logits against llama.cpp for a small set
-  of deterministic prompts. Remaining blocker: requires the streaming Step GGUF
-  runner or a smaller exported activation/logit fixture; full-model hipEngine
-  load is blocked by current HIP/UMA memory visibility.
+  of deterministic prompts. Remaining implementation task: requires the
+  streaming Step GGUF runner or a smaller exported activation/logit fixture. The
+  current Strix boot config is intended to expose 120 GB GTT, so memory should
+  be validated by actual allocation/load evidence rather than treated as a hard
+  blocker from readouts alone.
 - [x] Preserve multi-EOS stopping and the chat assistant prefix. The short
   context planner renders the Step chat template with assistant `<think>` prefix
   and carries stop IDs `(1, 2, 128007)` with `should_stop()` checks.
@@ -506,20 +510,28 @@ next-token/logit parity remains open until the streaming runner is wired.
 
 ### P12 — Full-model Strix Halo smoke
 
+> Memory status update (2026-05-29): the machine is booted with
+> `/etc/modprobe.d/amdgpu_llm_optimized.conf` setting `amdgpu gttsize=120000`,
+> `ttm pages_limit=31457280` (~120 GiB), `ttm page_pool_size=2081024` (~8 GiB
+> preassigned), and `amdgpu vm_fragment_size=8`. Treat prior `rocm-smi
+> VIS_VRAM=512 MiB` and contradictory `hipMemGetInfo` values as insufficient
+> fit/fail proxies for full GTT. The next load path should attempt and measure
+> real allocations; do not block implementation solely on those readouts.
+
 - [ ] Load all three GGUF shards on the Strix Halo target with a small context
-  and `max_new_tokens` (for example 1-8). 2026-05-29: not attempted because
-  HIP-visible total memory is inconsistent and at most 62.541 GiB while raw
-  GGUF weights are 95.465 GiB before KV/runtime overhead.
+  and `max_new_tokens` (for example 1-8). 2026-05-29: not attempted yet because
+  full resident Step execution is not wired; the configured 120 GB GTT means the
+  prior HIP/ROCm memory readouts are not treated as a hard fit blocker.
 - [ ] Record HIP-visible memory before load, after load, after KV allocation, and
-  after generation; include UMA setting and backend (`hip_gfx1151`). Current
-  blocker evidence: `hipMemGetInfo free=119.996 GiB,total=62.541 GiB` and
-  `rocm-smi VIS_VRAM Total=512 MiB,Used=416.6 MiB` before/after header scan.
+  after generation; include UMA/GTT setting and backend (`hip_gfx1151`). Current
+  preflight evidence to reconcile: `hipMemGetInfo free=119.996 GiB,total=62.541
+  GiB`, `rocm-smi VIS_VRAM Total=512 MiB,Used=416.6 MiB`, and boot config
+  `amdgpu gttsize=120000`, `ttm pages_limit=31457280`.
 - [x] If the model does not fit, keep the failure artifact and decide between
-  offload/tiering, lower context/KV footprint, or slice-only correctness. The
-  current documented fit failure is HIP/ROCm memory visibility: coherent total
-  memory is at most 62.541 GiB for 95.465 GiB raw weights before KV/runtime
-  overhead. Decision: continue slice/layer correctness until UMA/HIP visibility
-  is fixed or offload/tiering exists.
+  offload/tiering, lower context/KV footprint, or slice-only correctness. No
+  current fit failure is claimed from VIS_VRAM/`hipMemGetInfo` alone; decision
+  policy is to continue implementation and only choose offload/tiering after a
+  real allocation/load attempt fails under the configured GTT setup.
 - [ ] If it fits, run a tiny text-only prompt and confirm no vision/projector/MTP
   path is required.
 
@@ -567,7 +579,7 @@ user has explicitly approved the run.
 
 | Risk | Why it matters | Mitigation / decision gate |
 | --- | --- | --- |
-| Strix Halo UMA may be too tight for full GGUF + KV + runtime overhead | GGUF weights are 95.46 GiB and public llama.cpp notes recommend 128 GB UMA | P0/P12 must record HIP-visible free memory and fit/fail evidence before full-model claims; keep slice correctness unblocked if full load fails |
+| Strix Halo GTT allocation may still fail despite the 120 GB boot config | GGUF weights are 95.46 GiB and public llama.cpp notes recommend 128 GB UMA; current `rocm-smi`/`hipMemGetInfo` readouts are not reliable fit proxies | P0/P12 must record real allocation/load fit/fail evidence before full-model claims; keep slice correctness unblocked if full load fails |
 | gfx1151 kernel coverage may lag gfx1100 | Existing hipEngine code and lineage are gfx1100-centered | Treat `hip_gfx1151` as a peer backend registration/build target; run minimal kernel smoke and `rocprofv3` before relying on copied gfx1100 kernels |
 | Q3_K is the dominant missing quant path | Step Q3_K_L heavily uses Q3_K and hipEngine's existing GGUF work is Q4_K/Q5_K/Q6_K/Q8_0 focused | Land CPU Q3_K first, then HIP Q3_K slice correctness; do not integrate decode through lossy ad-hoc dequant shortcuts |
 | Tokenizer/chat mismatch can invalidate every oracle comparison | Step GGUF uses DeepSeek-V3 GPT-2 BPE metadata, not Qwen3.5 tokenizer metadata | Make tokenizer parity a separate lane with llama.cpp/HF token-id fixtures before logits/decode work |
@@ -577,8 +589,8 @@ user has explicitly approved the run.
 
 ## Remaining open questions
 
-- What exact Strix Halo UMA size and HIP-visible free memory do we have after a
-  clean boot?
+- Does a real HIP allocation/full GGUF load use the configured 120 GB GTT
+  successfully despite misleading `rocm-smi`/`hipMemGetInfo` readouts?
 - Is there a smaller Step 3.7/3.5 fixture available for RED/GREEN tests, or
   should we derive slice fixtures from the large local GGUF files?
 - Which llama.cpp command and commit should be the initial oracle for tokenizer,

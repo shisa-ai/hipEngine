@@ -27022,3 +27022,9 @@ After P6 Q3_K HIP linear coverage and P11 prompt-side planning, the remaining P0
 - P11 streaming runner and llama.cpp next-token/logit parity: blocked on resident Step layer/full-model execution wiring. The current code has tokenizer/chat, split map, Q3_K/Q5_K/Q8_0 dispatch-key validation, CPU replay, and Q3_K HIP slice correctness, but not a 45-layer streaming runner.
 
 No additional performance or full-model correctness claim is made. Continue only after resolving UMA/HIP visibility, adding offload/tiering, or narrowing P11 to a small exported activation/logit fixture that does not require resident full-model execution.
+
+## 2026-05-29 — StepFun memory blocker reclassified
+
+User confirmed the Strix Halo boot config in `/etc/modprobe.d/amdgpu_llm_optimized.conf`: `amdgpu gttsize=120000`, `ttm pages_limit=31457280` (~120 GiB), `ttm page_pool_size=2081024` (~8 GiB preassigned), and `amdgpu vm_fragment_size=8`. This should make the 95.465 GiB raw StepFun Q3_K_L GGUF payload feasible in GTT with current ~5 GiB resident system use. Reclassified the earlier `rocm-smi VIS_VRAM=512 MiB` and contradictory `hipMemGetInfo free=119.996 GiB,total=62.541 GiB` observations as insufficient fit/fail proxies rather than hard blockers.
+
+Action: docs now say to continue implementation and validate memory via a real allocation/load attempt once the resident Step runner/load path is wired. Remaining P8/P11/P12 open items are implementation/validation tasks, not blockers caused by memory readouts alone.
