@@ -2109,6 +2109,37 @@ def _decode_linear_input_summary(
     return result
 
 
+def _decode_full_attention_stage_failure_summary(steps: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    stage_summaries: dict[str, Any] = {}
+    for stage in DECODE_FULL_ATTENTION_TRACE_STAGES:
+        rows: list[int] = []
+        seen_rows: set[int] = set()
+        for step_summary in steps:
+            for layer in step_summary.get("layers", []):
+                stage_summary = layer.get("stages", {}).get(stage)
+                if not isinstance(stage_summary, dict):
+                    continue
+                for row_summary in stage_summary.get("rows", []):
+                    if bool(row_summary.get("passed", False)):
+                        continue
+                    row_index = int(row_summary.get("row", -1))
+                    if row_index < 0 or row_index in seen_rows:
+                        continue
+                    rows.append(row_index)
+                    seen_rows.add(row_index)
+        stage_summaries[stage] = {
+            "passed": not rows,
+            "failure_rows": rows,
+            "failure_row_count": len(rows),
+        }
+    failed_stages = [stage for stage in DECODE_FULL_ATTENTION_TRACE_STAGES if stage_summaries[stage]["failure_rows"]]
+    return {
+        "failed_stages": failed_stages,
+        "failed_stage_count": len(failed_stages),
+        "stages": stage_summaries,
+    }
+
+
 def _decode_full_attention_summary(
     batch: HiddenRun,
     c1: HiddenRun,
@@ -2317,6 +2348,7 @@ def _decode_full_attention_summary(
         "input_passed": bool(stage_passed["input"]),
         "output_passed": bool(stage_passed["output"]),
         "stage_passed": {stage: bool(passed) for stage, passed in stage_passed.items()},
+        "stage_failure_summary": _decode_full_attention_stage_failure_summary(steps),
         "passed": all(step["passed"] for step in steps),
         "steps": steps,
     }

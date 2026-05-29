@@ -7015,6 +7015,14 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     assert summary["decode_full_attention"]["stage_passed"]["gated_attn"] is True
     assert summary["decode_full_attention"]["stage_passed"]["residual"] is True
     assert summary["decode_full_attention"]["stage_passed"]["mlp_input"] is True
+    stage_failures = summary["decode_full_attention"]["stage_failure_summary"]
+    assert stage_failures["failed_stages"] == []
+    assert stage_failures["failed_stage_count"] == 0
+    assert stage_failures["stages"]["mlp_input"] == {
+        "passed": True,
+        "failure_rows": [],
+        "failure_row_count": 0,
+    }
     assert "first_mismatch" not in summary["decode_full_attention"]
     assert summary["decode_full_attention"]["worst_diff"]["stage"] == "input"
     assert summary["decode_full_attention"]["worst_diff"]["max_abs"] == 0.0
@@ -7047,6 +7055,33 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     assert summary["decode_linear_states"]["worst_diff"]["max_abs"] == 0.0
     assert summary["decode_linear_states"]["steps"][0]["layers"][0]["states"]["recurrent"]["max_abs"] == 0.0
     assert summary["steps"][0]["batch_decode_execution"] == decode_execution
+
+    bad_decode_full_attention = {0: {stage: value.copy() for stage, value in decode_full_attention[0].items()}}
+    bad_decode_full_attention[0]["mlp_input"][0, 1] = 0x4200
+    bad_full_attention_summary = _summarize_layer_limit(
+        replace(batch, decode_full_attention_by_step=[bad_decode_full_attention]),
+        c1,
+        layer_limit=1,
+        atol=0.0,
+        layer_types=("full_attention",),
+    )
+    bad_stage_failures = bad_full_attention_summary["decode_full_attention"]["stage_failure_summary"]
+    assert bad_full_attention_summary["hidden_passed"] is True
+    assert bad_full_attention_summary["token_passed"] is True
+    assert bad_full_attention_summary["decode_full_attention"]["passed"] is False
+    assert bad_full_attention_summary["decode_full_attention"]["first_mismatch"]["stage"] == "mlp_input"
+    assert bad_stage_failures["failed_stages"] == ["mlp_input"]
+    assert bad_stage_failures["failed_stage_count"] == 1
+    assert bad_stage_failures["stages"]["mlp_input"] == {
+        "passed": False,
+        "failure_rows": [0],
+        "failure_row_count": 1,
+    }
+    assert bad_stage_failures["stages"]["output"] == {
+        "passed": True,
+        "failure_rows": [],
+        "failure_row_count": 0,
+    }
 
     hidden_fail_bits = hidden.copy()
     hidden_fail_bits[0, 1] = 0x4200

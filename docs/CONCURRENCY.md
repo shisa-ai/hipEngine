@@ -1042,8 +1042,12 @@ roll-up/status view.
       but strict bit drift on both rows, while L8 has `failure_modes=["hidden"]`,
       `hidden_failure_rows=[0,1]`, and `token_failure_rows=[]`; top-level
       `correctness.row_failure_summary` matches hidden rows `[0,1]`, strict rows
-      `[0,1]`, and token rows `[]`. The next C2.3 work should decide whether the
-      per-row fallback's ≤0.004
+      `[0,1]`, and token rows `[]`. The diagnostic schema now also emits
+      `decode_full_attention.stage_failure_summary` with per-stage failing rows
+      so native-full artifacts can tell `mlp_input`/post-attention failures from
+      final hidden/token failures; CPU coverage lives in
+      `test_hidden_bisect_summary_embeds_batch_decode_execution_trace`. The next
+      C2.3 work should decide whether the per-row fallback's ≤0.004
       FP16/state amplification is acceptable under the diagnostic gate while native
       full-attention/post-attention still needs a stricter path; do not re-open
       full-attention context, layer-4 state mapping, native linear segment metadata,
