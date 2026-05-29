@@ -4008,10 +4008,15 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_options_seed_type["options"]["seed"] = "1234"
     with pytest.raises(ValueError, match="options.seed must be an int"):
         c_sweep.validate_sweep_summary(tampered_options_seed_type)
-    tampered_output_dir = json.loads(json.dumps(persisted))
-    tampered_output_dir["output_dir"] = ""
-    with pytest.raises(ValueError, match="output_dir must be a non-empty string"):
-        c_sweep.validate_sweep_summary(tampered_output_dir)
+    for blank_output_dir in ("", "   "):
+        tampered_output_dir = json.loads(json.dumps(persisted))
+        tampered_output_dir["output_dir"] = blank_output_dir
+        with pytest.raises(ValueError, match="output_dir must be a non-empty string"):
+            c_sweep.validate_sweep_summary(tampered_output_dir)
+    tampered_options_compiler_blank = json.loads(json.dumps(persisted))
+    tampered_options_compiler_blank["options"]["compiler_version_file"] = "   "
+    with pytest.raises(ValueError, match="options.compiler_version_file must be a non-empty string or null"):
+        c_sweep.validate_sweep_summary(tampered_options_compiler_blank)
     tampered_output_dir_parent_component = json.loads(json.dumps(persisted))
     tampered_output_dir_parent_component["output_dir"] = str(tmp_path / "output-parent" / ".." / "artifacts")
     with pytest.raises(ValueError, match="output_dir must not contain parent-directory components"):

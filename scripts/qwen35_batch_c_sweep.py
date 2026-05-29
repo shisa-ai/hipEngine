@@ -1551,7 +1551,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         errors.append("batch_sizes must be a non-empty unique positive-int list")
         batch_sizes = []
     output_dir_text = summary.get("output_dir")
-    if not isinstance(output_dir_text, str) or not output_dir_text:
+    if not isinstance(output_dir_text, str) or not output_dir_text.strip():
         errors.append("output_dir must be a non-empty string")
     else:
         output_dir_path = Path(output_dir_text)
@@ -1602,14 +1602,17 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         if compiler_version_file is not None and not isinstance(compiler_version_file, str):
             errors.append("options.compiler_version_file must be a string or null")
         elif isinstance(compiler_version_file, str):
-            compiler_version_path = Path(compiler_version_file)
-            compiler_version_check_path = compiler_version_path if compiler_version_path.is_absolute() else REPO_ROOT / compiler_version_path
-            if _path_has_parent_directory_component(compiler_version_file):
-                errors.append("options.compiler_version_file must not contain parent-directory components")
-            elif compiler_version_check_path.is_symlink():
-                errors.append("options.compiler_version_file must not be a symlink")
-            elif _path_has_symlink_parent(compiler_version_check_path):
-                errors.append("options.compiler_version_file parent directories must not be symlinks")
+            if not compiler_version_file.strip():
+                errors.append("options.compiler_version_file must be a non-empty string or null")
+            else:
+                compiler_version_path = Path(compiler_version_file)
+                compiler_version_check_path = compiler_version_path if compiler_version_path.is_absolute() else REPO_ROOT / compiler_version_path
+                if _path_has_parent_directory_component(compiler_version_file):
+                    errors.append("options.compiler_version_file must not contain parent-directory components")
+                elif compiler_version_check_path.is_symlink():
+                    errors.append("options.compiler_version_file must not be a symlink")
+                elif _path_has_symlink_parent(compiler_version_check_path):
+                    errors.append("options.compiler_version_file parent directories must not be symlinks")
     commands = summary.get("commands")
     if not isinstance(commands, list):
         errors.append("commands must be a list")
