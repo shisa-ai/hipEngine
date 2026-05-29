@@ -259,6 +259,12 @@ def hidden_comparison(
     return result
 
 
+def _trace_array_to_f32(array: np.ndarray) -> np.ndarray:
+    if array.dtype == np.uint16:
+        return _bf16_bits_to_f32(array)
+    return np.asarray(array, dtype=np.float32)
+
+
 def _numeric_abs_diff_at_flat_index(batch: np.ndarray, c1: np.ndarray, flat_index: int) -> dict[str, Any]:
     if batch.shape != c1.shape:
         raise ValueError(f"numeric shapes differ: batch={batch.shape!r} c1={c1.shape!r}")
@@ -742,6 +748,34 @@ def _decode_full_attention_layer_focus_at(
                             "elements_over_atol": int(compact.get("elements_over_atol", 0)),
                         }
                     break
+            stage_deltas = layer.get("stage_deltas", {})
+            if isinstance(stage_deltas, dict):
+                focus["stage_delta_passed"] = {}
+                focus["stage_deltas"] = {}
+                first_bad_delta: dict[str, Any] | None = None
+                for delta_name, delta_summary in stage_deltas.items():
+                    if not isinstance(delta_summary, dict):
+                        continue
+                    for row in delta_summary.get("rows", []):
+                        if int(row.get("row", -1)) != row_index or not isinstance(row.get("delta_comparison"), dict):
+                            continue
+                        compact = _compact_comparison(row["delta_comparison"])
+                        compact["comparison_kind"] = str(row.get("comparison_kind", "unknown"))
+                        focus["stage_deltas"][str(delta_name)] = compact
+                        focus["stage_delta_passed"][str(delta_name)] = bool(compact["passed"])
+                        if first_bad_delta is None and not bool(compact["passed"]):
+                            first_bad_delta = {
+                                "stage_delta": str(delta_name),
+                                "max_abs": float(compact["max_abs"]),
+                                "max_abs_index": compact.get("max_abs_index", []),
+                                "elements_over_atol": int(compact.get("elements_over_atol", 0)),
+                            }
+                        break
+                if not focus["stage_deltas"]:
+                    focus.pop("stage_deltas")
+                    focus.pop("stage_delta_passed")
+                elif first_bad_delta is not None:
+                    focus["first_over_atol_stage_delta"] = first_bad_delta
             if first_bad_stage is not None:
                 focus["first_over_atol_stage"] = first_bad_stage
             return focus if focus["stages"] else None
@@ -2000,13 +2034,43 @@ def _decode_full_attention_summary(
                     "passed": all(row["passed"] for row in row_summaries),
                     "rows": row_summaries,
                 }
-            layers.append(
-                {
-                    "layer_index": int(layer_id),
-                    "passed": all(stage_summary["passed"] for stage_summary in stage_summaries.values()),
-                    "stages": stage_summaries,
+            stage_delta_summaries: dict[str, Any] = {}
+            if all(stage in layer_batch and stage in layer_c1 for stage in ("o_proj", "output")):
+                batch_output = _trace_array_to_f32(layer_batch["output"])
+                batch_o_proj = _trace_array_to_f32(layer_batch["o_proj"])
+                c1_output = _trace_array_to_f32(layer_c1["output"])
+                c1_o_proj = _trace_array_to_f32(layer_c1["o_proj"])
+                if batch_output.shape != batch_o_proj.shape or c1_output.shape != c1_o_proj.shape:
+                    raise ValueError(
+                        f"decode full-attention output/o_proj trace shape differs for step {step}, layer {layer_id}: "
+                        f"batch_output={batch_output.shape} batch_o_proj={batch_o_proj.shape} "
+                        f"c1_output={c1_output.shape} c1_o_proj={c1_o_proj.shape}"
+                    )
+                batch_delta = batch_output - batch_o_proj
+                c1_delta = c1_output - c1_o_proj
+                row_delta_summaries: list[dict[str, Any]] = []
+                for row in range(int(batch_delta.shape[0])):
+                    comparison = numeric_comparison(batch_delta[row : row + 1], c1_delta[row : row + 1], atol=atol)
+                    row_delta_summaries.append(
+                        {
+                            "row": int(row),
+                            "comparison_kind": "fp32_delta",
+                            "delta_comparison": comparison,
+                            "passed": bool(comparison["passed"]),
+                        }
+                    )
+                stage_delta_summaries["output_minus_o_proj"] = {
+                    "passed": all(row["passed"] for row in row_delta_summaries),
+                    "rows": row_delta_summaries,
                 }
-            )
+            layer_summary = {
+                "layer_index": int(layer_id),
+                "passed": all(stage_summary["passed"] for stage_summary in stage_summaries.values()),
+                "stages": stage_summaries,
+            }
+            if stage_delta_summaries:
+                layer_summary["stage_deltas"] = stage_delta_summaries
+            layers.append(layer_summary)
         steps.append(
             {
                 "decode_step": int(step),
