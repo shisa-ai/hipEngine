@@ -2730,6 +2730,10 @@ def _validate_run_options(args: argparse.Namespace) -> None:
         if not str(getattr(args, option)):
             flag = "--" + option.replace("_", "-")
             raise ValueError(f"{flag} must be a non-empty string")
+    for option in ("stop_on_failure", "include_int8", "require_cached_build"):
+        if not isinstance(getattr(args, option, None), bool):
+            flag = "--" + option.replace("_", "-")
+            raise ValueError(f"{flag} must be a typed bool")
     batch_sizes = getattr(args, "batch_sizes", None)
     if (
         not isinstance(batch_sizes, (list, tuple))

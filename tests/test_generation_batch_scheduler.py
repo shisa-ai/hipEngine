@@ -1967,6 +1967,24 @@ def test_batch_c_sweep_rejects_invalid_batch_sizes_before_creating_artifacts(tmp
         assert not output_dir.exists()
 
 
+def test_batch_c_sweep_rejects_invalid_option_bools_before_creating_artifacts(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        c_sweep.subprocess,
+        "run",
+        lambda *args, **kwargs: pytest.fail("invalid option bools should fail before launching subprocesses"),
+    )
+    for option, bad_value in (("stop_on_failure", "yes"), ("include_int8", 1), ("require_cached_build", "false")):
+        output_dir = tmp_path / f"artifacts-{option}"
+        args = build_c_sweep_parser().parse_args(
+            ["--dry-run", "--batch-sizes", "2", "--output-dir", str(output_dir)]
+        )
+        setattr(args, option, bad_value)
+        flag = "--" + option.replace("_", "-")
+        with pytest.raises(ValueError, match=rf"{flag} must be a typed bool"):
+            run_sweep(args)
+        assert not output_dir.exists()
+
+
 def test_batch_c_sweep_rejects_unsafe_output_dir_before_creating_artifacts(tmp_path: Path, monkeypatch) -> None:
     parent_component_output = tmp_path / "output-parent" / ".." / "artifacts"
     symlink_output = tmp_path / "artifacts-link"
