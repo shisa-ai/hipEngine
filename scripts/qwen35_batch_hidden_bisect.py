@@ -5253,6 +5253,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "batch_decode_post_attention_path": str(args.batch_decode_post_attn_path),
             "native_caware_decode": bool(
                 args.prompt_length + args.decode_tokens < 1024
+                and args.batch_decode_moe_path == "grouped_compact"
                 and args.batch_decode_linear_path == "batch_segments"
                 and args.batch_decode_full_attn_path == "native_batch"
                 and args.batch_decode_attn_input_path == "batch"

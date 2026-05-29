@@ -6329,6 +6329,30 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert per_row_attn_input_payload["workload"]["batch_decode_attention_input_path"] == "per_row"
     assert per_row_attn_input_payload["workload"]["native_caware_decode"] is False
 
+    selected_c1_moe = build_hidden_bisect_parser().parse_args(
+        [
+            "--dry-run",
+            "--batch-decode-moe-path",
+            "selected_c1",
+            "--prompt-length",
+            "32",
+            "--batch-size",
+            "2",
+            "--decode-tokens",
+            "4",
+            "--max-layers",
+            "8",
+            "--layer-limits",
+            "8",
+        ]
+    )
+    selected_c1_moe_payload = run_hidden_bisect(
+        selected_c1_moe,
+        ["--dry-run", "--batch-decode-moe-path", "selected_c1", "--layer-limits", "8"],
+    )
+    assert selected_c1_moe_payload["workload"]["batch_decode_moe_path"] == "selected_c1"
+    assert selected_c1_moe_payload["workload"]["native_caware_decode"] is False
+
 
 def test_hidden_bisect_repeat_rollup_counts_prefix_failures() -> None:
     clean_prefix = {"failed_kinds": [], "failed_kind_count": 0, "first_failure": None}

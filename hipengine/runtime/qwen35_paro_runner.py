@@ -3861,7 +3861,7 @@ class Qwen35ParoResidentSession:
                                     for row, slot in enumerate(slots)
                                 ],
                                 "full_attention_decode_path": "not_applicable",
-                                "native_caware_decode": True,
+                                "native_caware_decode": not force_selected_c1_moe,
                                 "moe_decode_path": layer_moe_path,
                             }
                         )
@@ -3998,7 +3998,7 @@ class Qwen35ParoResidentSession:
                             "max_context": int(max_context),
                             "full_attention_decode_path": "native_batch",
                             "native_caware_decode": not (
-                                force_per_row_full_attention_input or force_per_row_post_attention
+                                force_selected_c1_moe or force_per_row_full_attention_input or force_per_row_post_attention
                             ),
                             "moe_decode_path": layer_moe_path,
                             "attn_context_trace_source": "attention_scratch.query_raw",
@@ -4123,6 +4123,7 @@ class Qwen35ParoResidentSession:
                 "native_full_attention_layers": int(native_full_attention_layers),
                 "full_attention_decode_path": full_attention_decode_path,
                 "native_caware_decode": full_attention_decode_path not in {"per_row_splitk_fallback", "per_row_context_fallback"}
+                and not force_selected_c1_moe
                 and not force_per_row_linear
                 and not force_per_row_full_attention_input
                 and not force_per_row_post_attention,

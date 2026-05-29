@@ -1178,10 +1178,16 @@ roll-up/status view.
       forces `--batch-decode-linear-path per_row`; layer 0→1 is then exact
       (`bit_mismatch=0`) and the first exact-bit producer drift shifts to layer
       4→5 / row 0 (`bit_mismatch=1343`, hidden-atol pass), while the full probe
-      still fails hidden only. The next target is a minimal native
-      `batch_segments` vs per-row layer-0 replay/fix for the segmented
-      linear-attention producer; do not change paged-KV writer code yet. Do not
-      re-open
+      still fails hidden only. The selected-c1 MoE replay at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-selected-c1-moe-replay-nativeflag-atol4e-3-focus1269.json`
+      keeps `linear_attention_decode_path=native_batch_segments` but forces
+      `moe_decode_path=selected_c1_forced`; layer 0→1 still drifts
+      (`bit_mismatch=1079`), so the early drift is not a grouped-compact MoE
+      reducer artifact. Selected-c1 MoE diagnostics now mark
+      `native_caware_decode=false` in workload and layer execution metadata to
+      avoid overclaiming. The next target is a minimal native `batch_segments`
+      vs per-row layer-0 replay/fix for the segmented linear-attention producer;
+      do not change paged-KV writer code yet. Do not re-open
       context softmax math, row setup, native linear segment metadata,
       output trace/copy semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2

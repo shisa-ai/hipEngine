@@ -1656,7 +1656,7 @@ def test_qwen35_resident_run_layers_batch_decode_can_force_selected_c1_moe_probe
         "max_full_attention_context": 8,
         "native_full_attention_layers": 1,
         "full_attention_decode_path": "native_batch",
-        "native_caware_decode": True,
+        "native_caware_decode": False,
         "linear_attention_segment_metadata": {"cu_seqlens": [0, 1, 2], "state_indices": [0, 2]},
         "moe_decode_path": "selected_c1_forced",
         "moe_decode_rows": 2,
@@ -1670,7 +1670,7 @@ def test_qwen35_resident_run_layers_batch_decode_can_force_selected_c1_moe_probe
                 "slots": [0, 2],
                 "max_context": 8,
                 "full_attention_decode_path": "native_batch",
-                "native_caware_decode": True,
+                "native_caware_decode": False,
                 "moe_decode_path": "selected_c1_forced",
                 "attn_context_trace_source": "attention_scratch.query_raw",
             }
