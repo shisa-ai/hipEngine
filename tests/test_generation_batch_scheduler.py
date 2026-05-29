@@ -1986,6 +1986,7 @@ def test_batch_c_sweep_rejects_invalid_option_bools_before_creating_artifacts(tm
 
 
 def test_batch_c_sweep_rejects_unsafe_output_dir_before_creating_artifacts(tmp_path: Path, monkeypatch) -> None:
+    output_dir = tmp_path / "artifacts"
     parent_component_output = tmp_path / "output-parent" / ".." / "artifacts"
     symlink_output = tmp_path / "artifacts-link"
     monkeypatch.setattr(
@@ -1993,6 +1994,14 @@ def test_batch_c_sweep_rejects_unsafe_output_dir_before_creating_artifacts(tmp_p
         "run",
         lambda *args, **kwargs: pytest.fail("unsafe output-dir sweep should fail before launching subprocesses"),
     )
+
+    typed_args = build_c_sweep_parser().parse_args(
+        ["--dry-run", "--batch-sizes", "2", "--output-dir", str(output_dir)]
+    )
+    typed_args.output_dir = None
+    with pytest.raises(ValueError, match="--output-dir must be a typed path"):
+        run_sweep(typed_args)
+    assert not output_dir.exists()
 
     args = build_c_sweep_parser().parse_args(
         ["--dry-run", "--batch-sizes", "2", "--output-dir", str(parent_component_output)]
@@ -2026,6 +2035,14 @@ def test_batch_c_sweep_rejects_unsafe_compiler_version_file_before_creating_arti
         "run",
         lambda *args, **kwargs: pytest.fail("unsafe compiler-version sweep should fail before launching subprocesses"),
     )
+
+    typed_args = build_c_sweep_parser().parse_args(
+        ["--dry-run", "--batch-sizes", "2", "--output-dir", str(output_dir)]
+    )
+    typed_args.compiler_version_file = 123
+    with pytest.raises(ValueError, match="--compiler-version-file must be a typed path"):
+        run_sweep(typed_args)
+    assert not output_dir.exists()
 
     args = build_c_sweep_parser().parse_args(
         [
@@ -2073,6 +2090,14 @@ def test_batch_c_sweep_rejects_unsafe_summary_json_before_creating_artifacts(tmp
         "run",
         lambda *args, **kwargs: pytest.fail("unsafe summary-json sweep should fail before launching subprocesses"),
     )
+
+    typed_args = build_c_sweep_parser().parse_args(
+        ["--dry-run", "--batch-sizes", "2", "--output-dir", str(output_dir)]
+    )
+    typed_args.summary_json = True
+    with pytest.raises(ValueError, match="--summary-json must be a typed path"):
+        run_sweep(typed_args)
+    assert not output_dir.exists()
 
     args = build_c_sweep_parser().parse_args(
         ["--dry-run", "--batch-sizes", "2", "--output-dir", str(output_dir), "--summary-json", str(parent_component_summary)]

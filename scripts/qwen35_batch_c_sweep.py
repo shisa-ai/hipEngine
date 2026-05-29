@@ -2715,6 +2715,8 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
 
 
 def _validate_cli_path_option(flag: str, path: str | Path) -> None:
+    if not isinstance(path, (str, Path)):
+        raise ValueError(f"{flag} must be a typed path")
     path = Path(path)
     if _path_has_parent_directory_component(path):
         raise ValueError(f"{flag} must not contain parent-directory components")
