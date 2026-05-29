@@ -113,6 +113,7 @@ _RETAINED_BENCH_UNIQUE_FLAGS = (
     "--require-cached-build",
 )
 _PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS = ("--rows", "--seed")
+_SWEEP_COMMAND_KNOWN_FLAGS = tuple(dict.fromkeys(_RETAINED_BENCH_UNIQUE_FLAGS + _PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS))
 
 
 @dataclass(frozen=True, slots=True)
@@ -1689,6 +1690,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             argv = entry.get("argv")
             if not isinstance(argv, list) or not argv or not all(isinstance(item, str) and item.strip() for item in argv):
                 errors.append("commands[].argv must be a non-empty string list")
+                break
+            if _empty_inline_flag_values(argv, _SWEEP_COMMAND_KNOWN_FLAGS):
+                errors.append("commands[].argv flag values must be non-empty")
                 break
             if command_text != shlex.join(argv):
                 errors.append("commands[].command must match shlex.join(commands[].argv)")

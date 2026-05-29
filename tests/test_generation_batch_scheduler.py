@@ -4063,6 +4063,13 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         tampered_command_argv["commands"][-1]["argv"] = bad_argv
         with pytest.raises(ValueError, match=r"commands\[\]\.argv must be a non-empty string list"):
             c_sweep.validate_sweep_summary(tampered_command_argv)
+    tampered_command_empty_inline_value = json.loads(json.dumps(persisted))
+    retained_argv = tampered_command_empty_inline_value["commands"][-1]["argv"]
+    model_index = retained_argv.index("--model")
+    retained_argv[model_index : model_index + 2] = ["--model="]
+    tampered_command_empty_inline_value["commands"][-1]["command"] = shlex.join(retained_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv flag values must be non-empty"):
+        c_sweep.validate_sweep_summary(tampered_command_empty_inline_value)
     tampered_blank_command_text = json.loads(json.dumps(persisted))
     tampered_blank_command_text["commands"][-1]["command"] = "   "
     with pytest.raises(ValueError, match=r"commands\[\]\.command must be a non-empty string"):
