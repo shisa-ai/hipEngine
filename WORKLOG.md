@@ -46725,3 +46725,37 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (selected pytest suite plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no queue item was marked complete, artifacts have `performance_claim=false`, native c>N generated-token equality remains open, and no performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY hidden-bisect repeat rollup
+
+Added `--repeat-runs` to `scripts/qwen35_batch_hidden_bisect.py`. For `repeat_runs>1`, the script reruns the same probe and writes a compact repeat artifact with per-repeat status, hidden/token pass flags, and K/V prefix/sample failure briefs instead of duplicating full layer summaries. This turns intermittent compact-prefill K/V prompt-tail/current-token drift into an auditable reproducibility signal.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py -q
+```
+
+Result: PASS.
+
+Refreshed the L4 repeat rollup:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 4 --layer-limits 4 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-moe-path selected_c1 --batch-decode-post-attn-path per_row --batch-decode-attn-input-path per_row --repeat-runs 2 --json /tmp/hipengine-hidden-bisect-L4-512-16-c2-repeat-rollup-atol4e-3-focus1269.json
+```
+
+Result: `status=eq_ok`, `status_counts={"eq_ok":2}`, `all_passed=true`, no hidden/token failed repeats, and no prefill-prefix, decode-prefix, or sampled-KV failed repeats. This complements the earlier single-run prompt-tail failure artifact by showing at least two immediate repeats were green; next action remains deterministic compact-prefill K/V replay/slot-content auditing before modifying paged-KV writer code.
+
+Full validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (selected pytest suite plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no queue item was marked complete, repeat artifact has `performance_claim=false`, native c>N generated-token equality remains open, and no performance/scaling claim was added.

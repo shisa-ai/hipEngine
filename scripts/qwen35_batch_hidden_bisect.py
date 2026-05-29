@@ -3973,6 +3973,124 @@ def _summarize_layer_limit(
     return summary
 
 
+def _repeat_failure_brief(correctness: dict[str, Any], key: str) -> dict[str, Any]:
+    summary = correctness.get(key)
+    if not isinstance(summary, dict):
+        return {"failed_kinds": [], "failed_kind_count": 0, "first_failure": None}
+    return {
+        "failed_kinds": list(summary.get("failed_kinds", [])),
+        "failed_kind_count": int(summary.get("failed_kind_count", 0)),
+        "first_failure": summary.get("first_failure"),
+    }
+
+
+def _compact_repeat_summary(payload: dict[str, Any], *, repeat_index: int) -> dict[str, Any]:
+    correctness = payload.get("correctness", {})
+    return {
+        "repeat_index": int(repeat_index),
+        "status": str(payload.get("status", "unknown")),
+        "passed": bool(correctness.get("passed", False)) if isinstance(correctness, dict) else False,
+        "hidden_passed": bool(correctness.get("hidden_passed", False)) if isinstance(correctness, dict) else False,
+        "token_passed": bool(correctness.get("token_passed", False)) if isinstance(correctness, dict) else False,
+        "failure_modes": list(correctness.get("failure_modes", [])) if isinstance(correctness, dict) else [],
+        "first_hidden_mismatch": correctness.get("first_hidden_mismatch") if isinstance(correctness, dict) else None,
+        "first_token_mismatch": correctness.get("first_token_mismatch") if isinstance(correctness, dict) else None,
+        "prefill_full_kv_prefix": _repeat_failure_brief(
+            correctness if isinstance(correctness, dict) else {},
+            "prefill_full_kv_prefix_failure_summary",
+        ),
+        "decode_full_context_kv_prefix": _repeat_failure_brief(
+            correctness if isinstance(correctness, dict) else {},
+            "decode_full_context_kv_prefix_failure_summary",
+        ),
+        "decode_full_kv_sample": _repeat_failure_brief(
+            correctness if isinstance(correctness, dict) else {},
+            "decode_full_kv_sample_failure_summary",
+        ),
+    }
+
+
+def _repeat_category_rollup(repeat_summaries: Sequence[dict[str, Any]], key: str) -> dict[str, Any]:
+    failed_repeats: list[int] = []
+    first_failure: dict[str, Any] | None = None
+    failed_kinds: list[str] = []
+    seen_kinds: set[str] = set()
+    for summary in repeat_summaries:
+        category = summary.get(key, {})
+        if not isinstance(category, dict) or int(category.get("failed_kind_count", 0)) <= 0:
+            continue
+        repeat_index = int(summary.get("repeat_index", -1))
+        failed_repeats.append(repeat_index)
+        if first_failure is None and isinstance(category.get("first_failure"), dict):
+            first_failure = {"repeat_index": repeat_index, **category["first_failure"]}
+        for kind in category.get("failed_kinds", []):
+            kind_str = str(kind)
+            if kind_str not in seen_kinds:
+                failed_kinds.append(kind_str)
+                seen_kinds.add(kind_str)
+    return {
+        "failed_repeats": failed_repeats,
+        "failed_repeat_count": len(failed_repeats),
+        "failed_kinds": failed_kinds,
+        "first_failure": first_failure,
+    }
+
+
+def _repeat_rollup(repeat_summaries: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    status_counts: dict[str, int] = {}
+    hidden_failed_repeats: list[int] = []
+    token_failed_repeats: list[int] = []
+    for summary in repeat_summaries:
+        status = str(summary.get("status", "unknown"))
+        status_counts[status] = status_counts.get(status, 0) + 1
+        repeat_index = int(summary.get("repeat_index", -1))
+        if not bool(summary.get("hidden_passed", False)):
+            hidden_failed_repeats.append(repeat_index)
+        if not bool(summary.get("token_passed", False)):
+            token_failed_repeats.append(repeat_index)
+    return {
+        "repeat_runs": len(repeat_summaries),
+        "status_counts": status_counts,
+        "all_passed": all(bool(summary.get("passed", False)) for summary in repeat_summaries),
+        "hidden_failed_repeats": hidden_failed_repeats,
+        "token_failed_repeats": token_failed_repeats,
+        "prefill_full_kv_prefix": _repeat_category_rollup(repeat_summaries, "prefill_full_kv_prefix"),
+        "decode_full_context_kv_prefix": _repeat_category_rollup(repeat_summaries, "decode_full_context_kv_prefix"),
+        "decode_full_kv_sample": _repeat_category_rollup(repeat_summaries, "decode_full_kv_sample"),
+    }
+
+
+def _repeat_payload(args: argparse.Namespace, argv: Sequence[str] | None, repeat_payloads: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    if not repeat_payloads:
+        raise ValueError("repeat payloads must not be empty")
+    repeat_summaries = [
+        _compact_repeat_summary(payload, repeat_index=index) for index, payload in enumerate(repeat_payloads)
+    ]
+    rollup = _repeat_rollup(repeat_summaries)
+    first_payload = json.loads(json.dumps(repeat_payloads[0]))
+    first_payload["timestamp"] = datetime.now(timezone.utc).isoformat()
+    first_payload["mode"] = "qwen35_paro_native_hidden_bisect_repeat"
+    first_payload["command"] = _command(argv)
+    first_payload["status"] = "eq_ok" if bool(rollup["all_passed"]) else "mismatch_found"
+    first_payload["workload"]["repeat_runs"] = int(args.repeat_runs)
+    first_payload["correctness"] = {
+        "oracle": first_payload.get("correctness", {}).get(
+            "oracle",
+            "hidden tensors and generated-token IDs vs independent c=1 resident sessions",
+        ),
+        "hidden_atol": float(args.hidden_atol),
+        "prefill_linear_state_atol": float(args.state_atol),
+        "linear_state_atol": float(args.state_atol),
+        "passed": bool(rollup["all_passed"]),
+        "repeat_rollup": rollup,
+    }
+    if args.state_focus_atol is not None:
+        first_payload["correctness"]["linear_state_focus_atol"] = float(args.state_focus_atol)
+    first_payload["repeat_summaries"] = repeat_summaries
+    first_payload["layer_summaries"] = []
+    return first_payload
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", default=DEFAULT_MODEL)
@@ -4042,11 +4160,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--compiler-version-file", type=Path, default=None)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--json", type=Path, default=None)
+    parser.add_argument(
+        "--repeat-runs",
+        type=int,
+        default=1,
+        help="Run the same hidden-bisect probe N times and emit a compact repeat rollup instead of full per-run layer details.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Emit planned layer limits and commands without touching HIP")
     return parser
 
 
 def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str, Any]:
+    repeat_runs = int(getattr(args, "repeat_runs", 1))
+    if repeat_runs <= 0:
+        raise ValueError("repeat-runs must be positive")
     layer_limits = _parse_layer_limits(args.layer_limits, max_layers=args.max_layers)
     focus_hidden_flat_indices = _parse_focus_hidden_flat_indices(args.focus_hidden_flat_index)
     prompt_lengths: list[int] = []
@@ -4074,6 +4201,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "max_layers": int(args.max_layers),
             "layer_limits": layer_limits,
             "max_sequence_length": int(args.max_sequence_length),
+            "repeat_runs": repeat_runs,
             "kv_storage_dtype": "bf16",
             "native_compact_prefill": True,
             "focus_hidden_flat_indices": focus_hidden_flat_indices,
@@ -4117,6 +4245,19 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             _command([*sys.argv[1:], "--layer-limits", str(limit)] if argv is None else [*argv, "--layer-limits", str(limit)])
             for limit in layer_limits
         ]
+        if args.json is not None:
+            args.json.parent.mkdir(parents=True, exist_ok=True)
+            args.json.write_text(json.dumps(payload, indent=2) + "\n")
+        return payload
+
+    if repeat_runs > 1:
+        repeat_payloads: list[dict[str, Any]] = []
+        for _repeat_index in range(repeat_runs):
+            repeat_args = argparse.Namespace(**vars(args))
+            repeat_args.repeat_runs = 1
+            repeat_args.json = None
+            repeat_payloads.append(run(repeat_args, argv))
+        payload = _repeat_payload(args, argv, repeat_payloads)
         if args.json is not None:
             args.json.parent.mkdir(parents=True, exist_ok=True)
             args.json.write_text(json.dumps(payload, indent=2) + "\n")

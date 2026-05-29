@@ -78,6 +78,7 @@ from scripts.qwen35_batch_hidden_bisect import (
     _parse_focus_hidden_flat_indices,
     _parse_layer_limits,
     _prefill_full_kv_prefix_rollup,
+    _repeat_rollup,
     _row_failure_summary,
     _summarize_layer_limit,
     _trace_array_to_f32,
@@ -6255,6 +6256,7 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert payload["mode"] == "qwen35_paro_native_hidden_bisect"
     assert payload["performance_claim"] is False
     assert payload["workload"]["native_compact_prefill"] is True
+    assert payload["workload"]["repeat_runs"] == 1
     assert payload["workload"]["focus_hidden_flat_indices"] == []
     assert payload["workload"]["prefill_linear_state_atol"] == 1.0e-6
     assert payload["workload"]["linear_state_atol"] == 1.0e-6
@@ -6319,6 +6321,61 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     )
     assert per_row_attn_input_payload["workload"]["batch_decode_attention_input_path"] == "per_row"
     assert per_row_attn_input_payload["workload"]["native_caware_decode"] is False
+
+
+def test_hidden_bisect_repeat_rollup_counts_prefix_failures() -> None:
+    clean_prefix = {"failed_kinds": [], "failed_kind_count": 0, "first_failure": None}
+    repeat_summaries = [
+        {
+            "repeat_index": 0,
+            "status": "eq_ok",
+            "passed": True,
+            "hidden_passed": True,
+            "token_passed": True,
+            "prefill_full_kv_prefix": clean_prefix,
+            "decode_full_context_kv_prefix": clean_prefix,
+            "decode_full_kv_sample": clean_prefix,
+        },
+        {
+            "repeat_index": 1,
+            "status": "eq_ok",
+            "passed": True,
+            "hidden_passed": True,
+            "token_passed": True,
+            "prefill_full_kv_prefix": {
+                "failed_kinds": ["key", "value"],
+                "failed_kind_count": 2,
+                "first_failure": {
+                    "layer_index": 3,
+                    "row": 0,
+                    "kind": "key",
+                    "first_mismatch_position": 500,
+                    "mismatch_positions_first": [500, 501],
+                    "tail_mismatch_count": 8,
+                },
+            },
+            "decode_full_context_kv_prefix": clean_prefix,
+            "decode_full_kv_sample": clean_prefix,
+        },
+    ]
+
+    rollup = _repeat_rollup(repeat_summaries)
+
+    assert rollup["repeat_runs"] == 2
+    assert rollup["status_counts"] == {"eq_ok": 2}
+    assert rollup["all_passed"] is True
+    assert rollup["prefill_full_kv_prefix"]["failed_repeats"] == [1]
+    assert rollup["prefill_full_kv_prefix"]["failed_kinds"] == ["key", "value"]
+    assert rollup["prefill_full_kv_prefix"]["first_failure"] == {
+        "repeat_index": 1,
+        "layer_index": 3,
+        "row": 0,
+        "kind": "key",
+        "first_mismatch_position": 500,
+        "mismatch_positions_first": [500, 501],
+        "tail_mismatch_count": 8,
+    }
+    assert rollup["decode_full_context_kv_prefix"]["failed_repeats"] == []
 
 
 def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:

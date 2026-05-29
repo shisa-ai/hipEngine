@@ -1121,8 +1121,11 @@ roll-up/status view.
       that the decode prefix then inherited; the position-summary rerun
       `/tmp/hipengine-hidden-bisect-L4-512-16-c2-kv-position-summary-atol4e-3-focus1269.json`
       was green and records an empty tail window (`tail_start=496`,
-      `tail_mismatch_count=0`) for the same probe shape. The immediate target is
-      deterministic compact-prefill K/V replay and prompt-tail/current-token
+      `tail_mismatch_count=0`) for the same probe shape. The new hidden-bisect
+      `--repeat-runs` mode then recorded two green repeats at
+      `/tmp/hipengine-hidden-bisect-L4-512-16-c2-repeat-rollup-atol4e-3-focus1269.json`
+      (`status_counts={"eq_ok":2}`, no prefix/sample failed repeats), making the
+      next target deterministic compact-prefill K/V replay and prompt-tail/current-token
       slot-content auditing before changing paged-KV writer code. Do not re-open
       context softmax math, row setup, native linear segment metadata,
       output trace/copy semantics, or grouped MoE output yet.
