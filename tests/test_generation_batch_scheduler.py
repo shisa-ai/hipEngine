@@ -2194,6 +2194,35 @@ def test_retained_bench_projection_dispatch_artifact_fails_closed(tmp_path: Path
     with pytest.raises(ValueError, match="invalid projection dispatch artifact"):
         retained_bench._projection_dispatch_candidates_for_payload(missing)
 
+    directory_path = artifact_dir / "directory.json"
+    directory_path.mkdir()
+    directory = SimpleNamespace(projection_dispatch_artifact=Path("benchmarks/results/directory.json"))
+    with pytest.raises(ValueError, match="must point to a regular JSON artifact"):
+        retained_bench._projection_dispatch_candidates_for_payload(directory)
+
+    if hasattr(os, "symlink"):
+        symlink_target = artifact_dir / "symlink-target.json"
+        symlink_target.write_text(json.dumps({"projection_dispatch_candidates": []}), encoding="utf-8")
+        symlink_path = artifact_dir / "symlink.json"
+        parent_target = artifact_dir / "parent-target"
+        parent_target.mkdir()
+        (parent_target / "nested.json").write_text(json.dumps({"projection_dispatch_candidates": []}), encoding="utf-8")
+        parent_link = artifact_dir / "parent-link"
+        try:
+            symlink_path.symlink_to(symlink_target)
+            parent_link.symlink_to(parent_target, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            pass
+        else:
+            symlink = SimpleNamespace(projection_dispatch_artifact=Path("benchmarks/results/symlink.json"))
+            with pytest.raises(ValueError, match="must not be a symlink"):
+                retained_bench._projection_dispatch_candidates_for_payload(symlink)
+            parent_symlink = SimpleNamespace(
+                projection_dispatch_artifact=Path("benchmarks/results/parent-link/nested.json")
+            )
+            with pytest.raises(ValueError, match="parent directories must not be symlinks"):
+                retained_bench._projection_dispatch_candidates_for_payload(parent_symlink)
+
     no_candidates_path = artifact_dir / "no-candidates.json"
     no_candidates_path.write_text(json.dumps({"status": "accepted"}), encoding="utf-8")
     no_candidates = SimpleNamespace(projection_dispatch_artifact=Path("benchmarks/results/no-candidates.json"))

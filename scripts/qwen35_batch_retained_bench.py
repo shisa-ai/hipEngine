@@ -2414,6 +2414,26 @@ def _projection_dispatch_artifact_arg(args: argparse.Namespace) -> str | None:
     return artifact_text
 
 
+def _projection_dispatch_artifact_file_path(artifact: str) -> Path:
+    path = Path(artifact)
+    check_path = path if path.is_absolute() else Path.cwd() / path
+    root_path = Path.cwd() / "benchmarks" / "results"
+    parent = check_path.parent
+    while True:
+        if parent.is_symlink():
+            raise ValueError(
+                f"invalid projection dispatch artifact {artifact}: parent directories must not be symlinks"
+            )
+        if parent == root_path or parent == parent.parent:
+            break
+        parent = parent.parent
+    if check_path.is_symlink():
+        raise ValueError(f"invalid projection dispatch artifact {artifact}: must not be a symlink")
+    if not check_path.is_file():
+        raise ValueError(f"invalid projection dispatch artifact {artifact}: must point to a regular JSON artifact")
+    return check_path
+
+
 def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     os.environ["HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"] = "1"
     projection_dispatch_artifact = _projection_dispatch_artifact_arg(args)
@@ -2425,9 +2445,7 @@ def _projection_dispatch_candidates_for_payload(args: argparse.Namespace) -> lis
     artifact = _projection_dispatch_artifact_arg(args)
     if artifact is None:
         return None
-    path = Path(artifact)
-    if not path.is_absolute():
-        path = Path.cwd() / path
+    path = _projection_dispatch_artifact_file_path(artifact)
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except OSError as exc:
