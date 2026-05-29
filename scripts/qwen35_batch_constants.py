@@ -177,6 +177,7 @@ RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS = (
     "--max-layers",
     "--json",
     *RETAINED_ARTIFACT_RETAINED_GATE_FLAGS,
+    "--projection-dispatch-artifact",
     "--compiler-version-file",
     "--require-cached-build",
 )
@@ -198,6 +199,7 @@ RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_VALUE_FLAGS = (
     "--max-layers",
     "--json",
     *RETAINED_ARTIFACT_RETAINED_GATE_FLAGS,
+    "--projection-dispatch-artifact",
     "--compiler-version-file",
     *RETAINED_ARTIFACT_RETAINED_KV_POLICY_FLAGS,
 )

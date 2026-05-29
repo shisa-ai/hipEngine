@@ -334,6 +334,9 @@ def _batch_bench_argv(
         "--json",
         str(artifact_path),
     ]
+    projection_dispatch_artifact = getattr(args, "projection_dispatch_artifact", None)
+    if script == _RETAINED_BENCH_SCRIPT and projection_dispatch_artifact is not None:
+        argv.extend(["--projection-dispatch-artifact", str(projection_dispatch_artifact)])
     if args.compiler_version_file is not None:
         argv.extend(["--compiler-version-file", str(args.compiler_version_file)])
     if args.require_cached_build:
@@ -1648,6 +1651,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             "include_int8",
             "require_cached_build",
             "compiler_version_file",
+            "projection_dispatch_artifact",
         }
         if set(options) != expected_option_keys:
             errors.append("options must contain exactly the c-sweep schema keys")
@@ -1679,6 +1683,16 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 errors.append(f"options.{option} must be positive")
             else:
                 option_shape_values[option] = value
+        projection_dispatch_artifact = options.get("projection_dispatch_artifact")
+        if projection_dispatch_artifact is not None and not isinstance(projection_dispatch_artifact, str):
+            errors.append("options.projection_dispatch_artifact must be a string or null")
+        elif isinstance(projection_dispatch_artifact, str):
+            if not projection_dispatch_artifact.strip():
+                errors.append("options.projection_dispatch_artifact must be a non-empty string or null")
+            else:
+                projection_path = Path(projection_dispatch_artifact)
+                if projection_path.is_absolute() or len(projection_path.parts) < 3 or projection_path.parts[:2] != ("benchmarks", "results") or _path_has_parent_directory_component(projection_dispatch_artifact):
+                    errors.append("options.projection_dispatch_artifact must be a relative path under benchmarks/results")
         compiler_version_file = options.get("compiler_version_file")
         if compiler_version_file is not None and not isinstance(compiler_version_file, str):
             errors.append("options.compiler_version_file must be a string or null")
@@ -3308,6 +3322,9 @@ def _summary_options(args: argparse.Namespace) -> dict[str, Any]:
         "include_int8": bool(getattr(args, "include_int8", False)),
         "require_cached_build": bool(args.require_cached_build),
         "compiler_version_file": None if args.compiler_version_file is None else str(args.compiler_version_file),
+        "projection_dispatch_artifact": None
+        if getattr(args, "projection_dispatch_artifact", None) is None
+        else str(args.projection_dispatch_artifact),
     }
 
 
@@ -3516,6 +3533,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed", type=int, default=1234)
     parser.add_argument("--compiler-version-file", type=parse_cli_path)
     parser.add_argument("--require-cached-build", action="store_true")
+    parser.add_argument(
+        "--projection-dispatch-artifact",
+        type=parse_cli_path,
+        help="Optional benchmarks/results JSON with projection_dispatch_candidates passed to retained native commands",
+    )
     parser.add_argument("--include-int8", action="store_true", help="Plan blocked INT8 KV c>N diagnostics for c>1 rows")
     parser.add_argument("--output-dir", type=parse_cli_path, default=Path("/tmp/hipengine-batch-c-sweep"))
     parser.add_argument("--summary-json", type=parse_cli_path)

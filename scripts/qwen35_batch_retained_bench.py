@@ -32,6 +32,7 @@ from hipengine.core.memory import memory_stats
 from hipengine.dispatch import (
     ProjectionDispatchEvidence,
     batch_sampler_equality_payload_blockers,
+    projection_dispatch_candidates_from_artifact,
     projection_dispatch_evidence_payload_blockers,
 )
 from hipengine.generation import GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS, GeneratedToken, GraphBucketCache, ResidentBatchScheduler
@@ -80,6 +81,7 @@ _ROCPROF_COMMAND_FLAGS = RETAINED_ARTIFACT_ROCPROF_COMMAND_FLAGS
 _ROCPROF_EXECUTABLE = RETAINED_ARTIFACT_ROCPROF_EXECUTABLE
 _ROCPROF_OUTPUT_FORMAT = RETAINED_ARTIFACT_ROCPROF_OUTPUT_FORMAT
 _RETAINED_BENCH_SCRIPT = RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT
+_PROJECTION_DISPATCH_ARTIFACT_ENV = "HIPENGINE_QWEN35_PROJECTION_DISPATCH_ARTIFACT"
 _RETAINED_GATE_FLAGS = RETAINED_ARTIFACT_RETAINED_GATE_FLAGS
 _RETAINED_GATE_LABELS = RETAINED_ARTIFACT_RETAINED_GATE_LABELS
 _RETAINED_KV_POLICY_FLAGS = RETAINED_ARTIFACT_RETAINED_KV_POLICY_FLAGS
@@ -2395,6 +2397,35 @@ def _generated_sequences_from_bench(bench: dict[str, Any], request_ids: Sequence
     return rows
 
 
+def _apply_runtime_env_args(args: argparse.Namespace) -> None:
+    os.environ["HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"] = "1"
+    projection_dispatch_artifact = getattr(args, "projection_dispatch_artifact", None)
+    if projection_dispatch_artifact is not None:
+        os.environ[_PROJECTION_DISPATCH_ARTIFACT_ENV] = str(projection_dispatch_artifact)
+
+
+def _projection_dispatch_candidates_for_payload(args: argparse.Namespace) -> list[dict[str, Any]] | None:
+    artifact = getattr(args, "projection_dispatch_artifact", None)
+    if artifact is None:
+        raw_artifact = os.environ.get(_PROJECTION_DISPATCH_ARTIFACT_ENV)
+        if raw_artifact is None or not raw_artifact.strip():
+            return None
+        artifact = raw_artifact.strip()
+    path = Path(artifact)
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, Mapping):
+            return None
+        candidates = projection_dispatch_candidates_from_artifact(payload)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+    if not candidates:
+        return None
+    return [candidate.to_json_dict() for candidate in candidates]
+
+
 def _build_payload(
     args: argparse.Namespace,
     argv: Sequence[str] | None,
@@ -2676,6 +2707,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(_RETAINED_GATE_FLAGS[1], type=Path, help="scheduler serial-bridge artifact for retained scaling ratios")
     parser.add_argument(_RETAINED_GATE_FLAGS[2], type=Path, help="scripts/qwen35_batch_correctness.py JSON for this c>N row count")
     parser.add_argument(_RETAINED_GATE_FLAGS[3], type=Path, help="Captured rocprofv3 summary JSON to attach to retained evidence")
+    parser.add_argument(
+        "--projection-dispatch-artifact",
+        type=Path,
+        help="Optional benchmarks/results JSON carrying projection_dispatch_candidates for runtime c-aware projection metadata",
+    )
     parser.add_argument("--profiler-command", help="Exact rocprofv3 --kernel-trace command that produced --profiler-json")
     add_kv_policy_args(parser, help_prefix="Resident KV storage for retained native c>N benchmark")
     parser.add_argument("--json", type=Path, help="Optional path to write JSON output")
@@ -2692,7 +2728,7 @@ def main(argv: list[str] | None = None) -> int:
     runner = Qwen35ParoNextTokenRunner(Path(args.model))
     kv_policy = resolve_args_kv_policy(args, block_size=256)
     compiler_version = _compiler_version(args.compiler_version_file)
-    os.environ["HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"] = "1"
+    _apply_runtime_env_args(args)
     bench = _run_native_bench(
         runner,
         prompts,
@@ -2703,6 +2739,9 @@ def main(argv: list[str] | None = None) -> int:
         require_cached_build=args.require_cached_build,
         kv_policy=kv_policy,
     )
+    projection_dispatch_candidates = _projection_dispatch_candidates_for_payload(args)
+    if projection_dispatch_candidates is not None:
+        bench["projection_dispatch_candidates"] = projection_dispatch_candidates
 
     request_ids = list(range(args.batch_size))
     batch_sequences = _generated_sequences_from_bench(bench, request_ids)

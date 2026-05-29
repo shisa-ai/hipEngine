@@ -1942,6 +1942,8 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
             "1",
             "--max-layers",
             "3",
+            "--projection-dispatch-artifact",
+            "benchmarks/results/projection-candidates.json",
         ]
     )
 
@@ -1971,6 +1973,7 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
         "include_int8": False,
         "require_cached_build": False,
         "compiler_version_file": None,
+        "projection_dispatch_artifact": "benchmarks/results/projection-candidates.json",
     }
     assert summary_path.exists()
     persisted = json.loads(summary_path.read_text())
@@ -2121,7 +2124,11 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     assert all("git_dirty" in entry for entry in persisted["commands"])
     assert any("qwen35_batch_retained_bench.py" in entry["command"] for entry in persisted["commands"])
     assert any("qwen35_paro_bench.py" in entry["command"] for entry in persisted["commands"])
+    retained_c1 = next(item for item in planned if item.category == "native_diagnostic" and item.batch_size == 1)
+    assert "--projection-dispatch-artifact" not in retained_c1.argv
     retained_c2 = next(item for item in planned if item.category == "native_diagnostic" and item.batch_size == 2)
+    assert "--projection-dispatch-artifact" in retained_c2.argv
+    assert "benchmarks/results/projection-candidates.json" in retained_c2.argv
     assert "--c1-baseline-json" in retained_c2.argv
     assert str(tmp_path / "artifacts" / "native-baseline-c1.json") in retained_c2.argv
     assert "--serial-bridge-json" in retained_c2.argv
@@ -2130,6 +2137,36 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     assert str(tmp_path / "artifacts" / "primitive-c2.json") in retained_c2.argv
     assert "--profiler-json" in retained_c2.argv
     assert str(tmp_path / "artifacts" / "profiler-c2.json") in retained_c2.argv
+
+
+def test_retained_bench_projection_dispatch_artifact_env_and_payload(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    artifact_dir = tmp_path / "benchmarks" / "results"
+    artifact_dir.mkdir(parents=True)
+    candidate = {
+        "name": "wmma_caware",
+        "selection": {"layer": "linear", "quant": "w4_paro", "variant": "wmma_caware"},
+        "min_rows": 2,
+        "max_rows": 8,
+        "evidence": {
+            "artifact_path": "benchmarks/results/projection-wmma-c2.json",
+            "aggregate_vs_row_gemv": 1.25,
+            "per_request_vs_row_gemv": 1.05,
+            "accepted": True,
+        },
+    }
+    (artifact_dir / "projection-candidates.json").write_text(
+        json.dumps({"projection_dispatch_candidates": [candidate]}),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv(retained_bench._PROJECTION_DISPATCH_ARTIFACT_ENV, raising=False)
+    args = SimpleNamespace(projection_dispatch_artifact=Path("benchmarks/results/projection-candidates.json"))
+
+    retained_bench._apply_runtime_env_args(args)
+    candidates = retained_bench._projection_dispatch_candidates_for_payload(args)
+
+    assert os.environ[retained_bench._PROJECTION_DISPATCH_ARTIFACT_ENV] == "benchmarks/results/projection-candidates.json"
+    assert candidates == [candidate]
 
 
 def test_batch_c_sweep_rejects_wrong_seed_before_creating_artifacts(tmp_path: Path, monkeypatch) -> None:

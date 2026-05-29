@@ -48575,3 +48575,23 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: targeted runtime projection dispatch tests PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and C3.4 remains open until retained ratios plus actual runtime c-aware kernel use are green.
+
+## 2026-05-29 — CONCURRENCY retained projection dispatch artifact plumbing
+
+Advanced C3.4 retained projection-dispatch plumbing. `scripts/qwen35_batch_retained_bench.py` now accepts `--projection-dispatch-artifact`, sets `HIPENGINE_QWEN35_PROJECTION_DISPATCH_ARTIFACT` for the runtime, and copies schema-checked `projection_dispatch_candidates` from that artifact into the retained payload so `_projection_dispatch_blockers(...)` can verify the selected runtime candidate against the candidate list. `scripts/qwen35_batch_c_sweep.py` now carries the same flag through planned c>N retained native commands and records it in the c-sweep summary options, while c=1 native baselines remain untouched. `docs/ENVS.md` documents the retained-bench flag and `docs/CONCURRENCY.md` records the progress while keeping C3.4 open until retained ratios and actual c-aware runtime kernels are available.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_constants.py scripts/qwen35_batch_retained_bench.py scripts/qwen35_batch_c_sweep.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_batch_c_sweep_dry_run_records_commands_and_artifacts tests/test_generation_batch_scheduler.py::test_retained_bench_projection_dispatch_artifact_env_and_payload tests/test_generation_batch_scheduler.py::test_batch_c_sweep_profiler_precondition_synthesizes_trace_fields_from_csv tests/test_generation_batch_scheduler.py::test_qwen35_retained_projection_dispatch_blockers_require_caware_candidate -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: targeted retained projection dispatch plumbing tests PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and C3.4 remains open until retained benchmark ratios plus actual runtime c-aware kernel use are green.
