@@ -26813,3 +26813,17 @@ python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_
 ```
 
 Results: Step model plugin pytest passed (`3 passed`), guard passed (`32 passed` plus CPU fixture checks), and the StepFun punchlist metric dropped from 47 to 43 by completing P3.
+
+## 2026-05-29 — StepFun P4 tokenizer and chat template
+
+Implemented the StepFun DeepSeek-V3 GGUF tokenizer lane. Added `StepFunGGUFTokenizer` in `hipengine/tokenization/gguf.py`, building a torch-free byte-level BPE tokenizer from GGUF `tokenizer.ggml.tokens`/`merges`/`token_type` metadata with special-token handling, BOS id 0 insertion, Step EOS ids `(1, 2, 128007)`, local Jinja chat-template rendering from `tokenizer.chat_template`, and `encode_chat()` for rendered chat prompts. Added `tests/test_stepfun_tokenizer.py` to compare representative raw/special prompt token IDs against cached HF `tokenizer.json`, validate Reasoning/chat assistant-prefix rendering, check multi-EOS behavior, and assert no torch import.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_tokenizer.py
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+```
+
+Results: Step tokenizer pytest passed (`4 passed`), guard passed (`36 passed` plus CPU fixture checks), and the StepFun punchlist metric dropped from 43 to 39 by completing P4.

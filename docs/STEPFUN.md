@@ -359,17 +359,18 @@ torch.
 
 ### P4 — DeepSeek-V3 GGUF tokenizer and chat template
 
-- [ ] Implement a torch-free tokenizer path for GGUF `tokenizer.ggml.model='gpt2'`
+- [x] Implement a torch-free tokenizer path for GGUF `tokenizer.ggml.model='gpt2'`
   with `tokenizer.ggml.pre='deepseek-v3'`.
-- [ ] Render the Step chat template locally, including `<|im_start|>`,
+- [x] Render the Step chat template locally, including `<|im_start|>`,
   `<|im_end|>`, optional `Reasoning: low|medium|high`, assistant
   `<think>` prefix, and tool-call blocks.
-- [ ] Preserve BOS id 0 and EOS ids `[1, 2, 128007]` in generation stop logic.
-- [ ] Compare token IDs for representative prompts against llama.cpp or cached
+- [x] Preserve BOS id 0 and EOS ids `[1, 2, 128007]` in generation stop logic.
+- [x] Compare token IDs for representative prompts against llama.cpp or cached
   HF tokenizer output.
 
-**Acceptance:** tokenizer/chat tests pass and runtime hot-path imports remain
-torch-free.
+**Acceptance:** `python3 -m pytest -q tests/test_stepfun_tokenizer.py` passes;
+tokenizer/chat paths remain torch-free and match cached HF `tokenizer.json`
+representative token IDs.
 
 ### P5 — Q3_K CPU reference and mixed GGUF quant metadata
 

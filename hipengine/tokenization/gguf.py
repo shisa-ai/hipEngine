@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
-from typing import Mapping, Sequence
+from typing import Any, Mapping, Sequence
 
-from hipengine.loading.gguf import GGUFModelInfo
+from jinja2 import Environment
+
+from hipengine.loading.gguf import GGUFModelInfo, GGUFSplitModelInfo
 
 # GPT-2/Qwen byte-level pre-tokenizer approximation.  It intentionally avoids
 # optional dependencies while matching the ASCII fixture and common text paths.
@@ -159,8 +162,148 @@ def _merge_pair(word: tuple[str, ...], pair: tuple[str, str]) -> tuple[str, ...]
     return tuple(out)
 
 
+@dataclass
+class StepFunGGUFTokenizer:
+    """Torch-free StepFun DeepSeek-V3 byte-BPE tokenizer from GGUF metadata."""
+
+    tokens: Sequence[str]
+    merges: Sequence[str]
+    token_types: Sequence[int]
+    bos_token_id: int | None = None
+    eos_token_ids: tuple[int, ...] = ()
+    padding_token_id: int | None = None
+    add_bos_token: bool = True
+    chat_template: str | None = None
+    token_to_id: dict[str, int] = field(init=False)
+    _tokenizer: Any = field(init=False, repr=False)
+    _jinja: Environment = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if len(self.tokens) != len(self.token_types):
+            raise ValueError("token and token_type arrays must have the same length")
+        self.token_to_id = {token: idx for idx, token in enumerate(self.tokens)}
+        self._tokenizer = _build_tokenizers_bpe(self.tokens, self.merges, self.token_types)
+        self._jinja = Environment(autoescape=False, trim_blocks=True, lstrip_blocks=True)
+        self._jinja.filters["fromjson"] = json.loads
+
+    @classmethod
+    def from_gguf_info(cls, info: GGUFModelInfo | GGUFSplitModelInfo) -> "StepFunGGUFTokenizer":
+        metadata = info.metadata
+        model = metadata.get("tokenizer.ggml.model")
+        pre = metadata.get("tokenizer.ggml.pre")
+        if model != "gpt2" or pre != "deepseek-v3":
+            raise ValueError(
+                f"unsupported StepFun GGUF tokenizer model/pre pair: {model!r}/{pre!r}"
+            )
+        eos_ids = tuple(
+            dict.fromkeys((1, 2, int(metadata["tokenizer.ggml.eos_token_id"]))).keys()
+        )
+        return cls(
+            tokens=tuple(str(token) for token in metadata["tokenizer.ggml.tokens"]),
+            merges=tuple(str(merge) for merge in metadata["tokenizer.ggml.merges"]),
+            token_types=tuple(int(kind) for kind in metadata["tokenizer.ggml.token_type"]),
+            bos_token_id=_optional_int(metadata.get("tokenizer.ggml.bos_token_id")),
+            eos_token_ids=eos_ids,
+            padding_token_id=_optional_int(metadata.get("tokenizer.ggml.padding_token_id")),
+            add_bos_token=bool(metadata.get("tokenizer.ggml.add_bos_token", True)),
+            chat_template=_optional_str(metadata.get("tokenizer.chat_template")),
+        )
+
+    @property
+    def bos_token(self) -> str | None:
+        if self.bos_token_id is None:
+            return None
+        return self.tokens[self.bos_token_id]
+
+    def encode(self, text: str, *, add_bos: bool | None = None) -> list[int]:
+        ids = list(self._tokenizer.encode(str(text)).ids)
+        should_add_bos = self.add_bos_token if add_bos is None else bool(add_bos)
+        if should_add_bos and self.bos_token_id is not None:
+            if not ids or ids[0] != self.bos_token_id:
+                ids.insert(0, self.bos_token_id)
+        return ids
+
+    def decode(self, token_ids: Sequence[int], *, skip_special: bool = True) -> str:
+        ids = [int(token_id) for token_id in token_ids]
+        return str(self._tokenizer.decode(ids, skip_special_tokens=skip_special))
+
+    def is_eos(self, token_id: int) -> bool:
+        return int(token_id) in self.eos_token_ids
+
+    def render_chat(
+        self,
+        messages: Sequence[Mapping[str, Any]],
+        *,
+        add_generation_prompt: bool = True,
+        reasoning_effort: str | None = None,
+        tools: Sequence[Mapping[str, Any]] | None = None,
+    ) -> str:
+        if not self.chat_template:
+            raise ValueError("StepFun GGUF metadata does not include tokenizer.chat_template")
+        if not messages:
+            raise ValueError("messages must be non-empty")
+        template = self._jinja.from_string(self.chat_template)
+        context: dict[str, Any] = {
+            "messages": list(messages),
+            "add_generation_prompt": bool(add_generation_prompt),
+            "bos_token": self.bos_token or "",
+            "tools": None if tools is None else list(tools),
+        }
+        if reasoning_effort is not None:
+            context["reasoning_effort"] = str(reasoning_effort)
+        return str(template.render(**context))
+
+    def encode_chat(
+        self,
+        messages: Sequence[Mapping[str, Any]],
+        *,
+        add_generation_prompt: bool = True,
+        reasoning_effort: str | None = None,
+        tools: Sequence[Mapping[str, Any]] | None = None,
+    ) -> list[int]:
+        return self.encode(
+            self.render_chat(
+                messages,
+                add_generation_prompt=add_generation_prompt,
+                reasoning_effort=reasoning_effort,
+                tools=tools,
+            ),
+            add_bos=False,
+        )
+
+
+def _build_tokenizers_bpe(
+    tokens: Sequence[str], merges: Sequence[str], token_types: Sequence[int]
+) -> Any:
+    try:
+        from tokenizers import Tokenizer, decoders, models, pre_tokenizers
+    except Exception as exc:  # pragma: no cover - dependency is declared in pyproject
+        raise RuntimeError("tokenizers is required for StepFun GGUF tokenization") from exc
+
+    vocab = {str(token): idx for idx, token in enumerate(tokens)}
+    merge_pairs: list[tuple[str, str]] = []
+    for merge in merges:
+        left, sep, right = str(merge).partition(" ")
+        if sep and left and right:
+            merge_pairs.append((left, right))
+    tokenizer = Tokenizer(
+        models.BPE(vocab=vocab, merges=merge_pairs, unk_token=None, fuse_unk=False)
+    )
+    tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False, use_regex=True)
+    tokenizer.decoder = decoders.ByteLevel()
+    special_tokens = [
+        str(token) for token, kind in zip(tokens, token_types, strict=True) if int(kind) != 1
+    ]
+    tokenizer.add_special_tokens(special_tokens)
+    return tokenizer
+
+
 def _optional_int(value) -> int | None:
     return None if value is None else int(value)
 
 
-__all__ = ["Qwen35GGUFTokenizer", "bytes_to_unicode"]
+def _optional_str(value) -> str | None:
+    return None if value is None else str(value)
+
+
+__all__ = ["Qwen35GGUFTokenizer", "StepFunGGUFTokenizer", "bytes_to_unicode"]
