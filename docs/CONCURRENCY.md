@@ -1027,8 +1027,10 @@ roll-up/status view.
       the `atol=0.002` all-per-row control is hidden-only fail (`token_passed=true`,
       `first_token_mismatch=null`); the `atol=0.004` all-per-row control is
       token+hidden pass; and the `atol=0.004` native-full control is again
-      hidden-only fail (`token_passed=true`, `first_token_mismatch=null`). The next
-      C2.3 work should decide whether the per-row fallback's ≤0.004 FP16/state
+      hidden-only fail (`token_passed=true`, `first_token_mismatch=null`), now
+      also emitted as top-level `correctness.failure_modes=["hidden"]` in the
+      native-full artifact. The next C2.3 work should decide whether the per-row
+      fallback's ≤0.004 FP16/state
       amplification is acceptable under the diagnostic gate while native
       full-attention/post-attention still needs a stricter path; do not re-open
       full-attention context, layer-4 state mapping, native linear segment metadata,

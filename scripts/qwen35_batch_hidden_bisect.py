@@ -1850,6 +1850,15 @@ def _run_c1_hidden(
     )
 
 
+def _failure_modes(*, hidden_passed: bool, token_passed: bool) -> list[str]:
+    modes: list[str] = []
+    if not hidden_passed:
+        modes.append("hidden")
+    if not token_passed:
+        modes.append("token")
+    return modes
+
+
 def _token_mismatches(batch: HiddenRun, c1: HiddenRun) -> list[dict[str, Any]]:
     mismatches: list[dict[str, Any]] = []
     for row, (batch_seed, c1_seed) in enumerate(zip(batch.seed_tokens, c1.seed_tokens, strict=True)):
@@ -2835,6 +2844,8 @@ def _summarize_layer_limit(
             step_summary["batch_decode_execution"] = batch.decode_execution_by_step[step]
         steps.append(step_summary)
     token_mismatches = _token_mismatches(batch, c1)
+    hidden_passed = all(row["hidden_comparison"]["passed"] for step in steps for row in step["rows"])
+    token_passed = not token_mismatches
     summary = {
         "layer_limit": int(layer_limit),
         "hidden_atol": float(atol),
@@ -2854,8 +2865,9 @@ def _summarize_layer_limit(
         ),
         "decode_full_kv_sample_passed": True if decode_full_kv_samples is None else bool(decode_full_kv_samples["passed"]),
         "decode_linear_state_passed": True if decode_linear_states is None else bool(decode_linear_states["passed"]),
-        "hidden_passed": all(row["hidden_comparison"]["passed"] for step in steps for row in step["rows"]),
-        "token_passed": not token_mismatches,
+        "hidden_passed": hidden_passed,
+        "token_passed": token_passed,
+        "failure_modes": _failure_modes(hidden_passed=hidden_passed, token_passed=token_passed),
         "seed_tokens": {"batch": batch.seed_tokens, "c1": c1.seed_tokens},
         "generated_tokens": {"batch": batch.generated_tokens, "c1": c1.generated_tokens},
         "token_mismatches": token_mismatches,
@@ -3068,11 +3080,16 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
     hidden_mismatch = _first_hidden_mismatch(layer_summaries)
     hidden_bit_drift = _first_hidden_bit_drift(layer_summaries)
     token_mismatch = _first_token_mismatch(layer_summaries)
-    passed = hidden_mismatch is None and token_mismatch is None
+    hidden_passed = hidden_mismatch is None
+    token_passed = token_mismatch is None
+    passed = hidden_passed and token_passed
     payload["status"] = "eq_ok" if passed else "mismatch_found"
     payload["correctness"].update(
         {
             "passed": passed,
+            "hidden_passed": hidden_passed,
+            "token_passed": token_passed,
+            "failure_modes": _failure_modes(hidden_passed=hidden_passed, token_passed=token_passed),
             "first_hidden_mismatch": hidden_mismatch,
             "first_tolerance_hidden_mismatch": hidden_mismatch,
             "first_hidden_bit_drift": hidden_bit_drift,
