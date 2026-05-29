@@ -2398,6 +2398,88 @@ def _decode_full_attention_summary(
     return result
 
 
+DECODE_FULL_CONTEXT_ORACLE_COMPARISONS = (
+    "context_len_match",
+    "batch_context_vs_numpy",
+    "c1_context_vs_numpy",
+    "batch_numpy_vs_c1_numpy",
+)
+
+
+def _decode_full_context_oracle_failure_summary(steps: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    def _failure_record(
+        step_summary: dict[str, Any],
+        layer: dict[str, Any],
+        row_summary: dict[str, Any],
+        comparison_name: str,
+    ) -> dict[str, Any]:
+        record: dict[str, Any] = {
+            "decode_step": int(step_summary.get("decode_step", 0)),
+            "generated_index": int(step_summary.get("generated_index", int(step_summary.get("decode_step", 0)) + 1)),
+            "layer_index": int(layer.get("layer_index", -1)),
+            "row": int(row_summary.get("row", -1)),
+            "comparison": comparison_name,
+            "context_len": int(row_summary.get("context_len", 0)),
+            "context_len_match": bool(row_summary.get("context_len_match", False)),
+        }
+        comparison = row_summary.get(comparison_name)
+        if isinstance(comparison, dict):
+            max_abs_flat_index = comparison.get("max_abs_flat_index")
+            record.update(
+                {
+                    "max_abs": float(comparison.get("max_abs", 0.0)),
+                    "max_abs_flat_index": None if max_abs_flat_index is None else int(max_abs_flat_index),
+                    "max_abs_index": comparison.get("max_abs_index", []),
+                    "elements_over_atol": int(comparison.get("elements_over_atol", 0)),
+                }
+            )
+        return record
+
+    comparison_summaries: dict[str, Any] = {}
+    first_failure: dict[str, Any] | None = None
+    for comparison_name in DECODE_FULL_CONTEXT_ORACLE_COMPARISONS:
+        rows: list[int] = []
+        seen_rows: set[int] = set()
+        comparison_first_failure: dict[str, Any] | None = None
+        for step_summary in steps:
+            for layer in step_summary.get("layers", []):
+                for row_summary in layer.get("rows", []):
+                    if comparison_name == "context_len_match":
+                        failed = not bool(row_summary.get("context_len_match", False))
+                    else:
+                        comparison = row_summary.get(comparison_name)
+                        failed = isinstance(comparison, dict) and not bool(comparison.get("passed", False))
+                    if not failed:
+                        continue
+                    record = _failure_record(step_summary, layer, row_summary, comparison_name)
+                    if comparison_first_failure is None:
+                        comparison_first_failure = record
+                    if first_failure is None:
+                        first_failure = record
+                    row_index = int(row_summary.get("row", -1))
+                    if row_index < 0 or row_index in seen_rows:
+                        continue
+                    rows.append(row_index)
+                    seen_rows.add(row_index)
+        comparison_summaries[comparison_name] = {
+            "passed": not rows,
+            "failure_rows": rows,
+            "failure_row_count": len(rows),
+            "first_failure": comparison_first_failure,
+        }
+    failed_comparisons = [
+        comparison_name
+        for comparison_name in DECODE_FULL_CONTEXT_ORACLE_COMPARISONS
+        if comparison_summaries[comparison_name]["failure_rows"]
+    ]
+    return {
+        "failed_comparisons": failed_comparisons,
+        "failed_comparison_count": len(failed_comparisons),
+        "first_failure": first_failure,
+        "comparisons": comparison_summaries,
+    }
+
+
 def _decode_full_context_oracle_summary(
     batch: HiddenRun,
     c1: HiddenRun,
@@ -2508,6 +2590,7 @@ def _decode_full_context_oracle_summary(
         "oracle": "numpy_softmax_bf16_kv",
         "oracle_atol": float(oracle_atol),
         "passed": all(step_summary["passed"] for step_summary in steps),
+        "comparison_failure_summary": _decode_full_context_oracle_failure_summary(steps),
         "steps": steps,
     }
     if first_mismatch is not None:

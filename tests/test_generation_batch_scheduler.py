@@ -7068,8 +7068,57 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     assert summary["decode_full_context_oracle_passed"] is True
     assert summary["decode_full_context_oracle"]["stage"] == "decode_full_context_oracle"
     assert summary["decode_full_context_oracle"]["passed"] is True
+    context_failures = summary["decode_full_context_oracle"]["comparison_failure_summary"]
+    assert context_failures["failed_comparisons"] == []
+    assert context_failures["failed_comparison_count"] == 0
+    assert context_failures["first_failure"] is None
+    assert context_failures["comparisons"]["batch_context_vs_numpy"] == {
+        "passed": True,
+        "failure_rows": [],
+        "failure_row_count": 0,
+        "first_failure": None,
+    }
     assert summary["decode_full_context_oracle"]["steps"][0]["layers"][0]["rows"][0]["batch_context_vs_numpy"]["max_abs"] == 0.0
     assert summary["decode_full_context_oracle"]["steps"][0]["layers"][0]["rows"][0]["batch_numpy_vs_c1_numpy"]["max_abs"] == 0.0
+    bad_context_oracle = {
+        0: {
+            "context": attn_context.copy(),
+            "context_lens": np.array([3, 3], dtype=np.int64),
+        }
+    }
+    bad_context_oracle[0]["context"][0, 0] = 8.0
+    bad_context_summary = _summarize_layer_limit(
+        replace(batch, decode_full_context_oracles_by_step=[bad_context_oracle]),
+        c1,
+        layer_limit=1,
+        atol=0.0,
+        layer_types=("full_attention",),
+    )
+    bad_context_failures = bad_context_summary["decode_full_context_oracle"]["comparison_failure_summary"]
+    expected_context_failure = {
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 0,
+        "row": 0,
+        "comparison": "batch_context_vs_numpy",
+        "context_len": 3,
+        "context_len_match": True,
+        "max_abs": 7.0,
+        "max_abs_flat_index": 0,
+        "max_abs_index": [0, 0],
+        "elements_over_atol": 1,
+    }
+    assert bad_context_summary["decode_full_context_oracle"]["passed"] is False
+    assert bad_context_failures["failed_comparisons"] == ["batch_context_vs_numpy", "batch_numpy_vs_c1_numpy"]
+    assert bad_context_failures["failed_comparison_count"] == 2
+    assert bad_context_failures["first_failure"] == expected_context_failure
+    assert bad_context_failures["comparisons"]["batch_context_vs_numpy"] == {
+        "passed": False,
+        "failure_rows": [0],
+        "failure_row_count": 1,
+        "first_failure": expected_context_failure,
+    }
+    assert bad_context_failures["comparisons"]["c1_context_vs_numpy"]["passed"] is True
     assert summary["decode_full_kv_sample_passed"] is True
     assert summary["decode_full_kv_samples"]["stage"] == "decode_full_kv_samples"
     assert summary["decode_full_kv_samples"]["passed"] is True

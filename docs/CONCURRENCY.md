@@ -1044,8 +1044,10 @@ roll-up/status view.
       `correctness.row_failure_summary` matches hidden rows `[0,1]`, strict rows
       `[0,1]`, and token rows `[]`. The diagnostic schema now also emits
       `decode_full_attention.stage_failure_summary` with per-stage failing rows
-      and a compact `first_failure` record, so native-full artifacts can tell
-      `mlp_input`/post-attention failures from final hidden/token failures; CPU
+      and a compact `first_failure` record, and
+      `decode_full_context_oracle.comparison_failure_summary` with per-comparison
+      row/failure rollups, so native-full artifacts can tell attention-context,
+      `mlp_input`/post-attention, and final hidden/token failures apart; CPU
       coverage lives in `test_hidden_bisect_summary_embeds_batch_decode_execution_trace`.
       A new diagnostic switch,
       `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN=1` (or hidden-bisect
