@@ -47357,3 +47357,41 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (selected pytest suite plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no queue item was marked complete, the all-selected-c1 diagnostic artifact has `performance_claim=false` and `native_caware_decode=false`, native retained full generated-token equality remains open, and no performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY diagnostic env docs
+
+Documented the Qwen/PARO c>N decode diagnostic env vars in `docs/ENVS.md`, including selected-c1 MoE, per-row linear, selected-c1 projection/state/output, batch-GEMV output, full-attention native/per-row controls, and packed-prefill per-segment controls. Each row is classified as diagnostic/non-retained where applicable and points to the hidden-bisect CLI equivalent.
+
+Validation:
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+text=Path('docs/ENVS.md').read_text()
+required=[
+'HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE',
+'HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR',
+'HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_PROJECTIONS',
+'HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_STATE',
+'HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT',
+'HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE',
+'HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT',
+'HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN',
+'HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR',
+'HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_FULL_ATTN',
+]
+missing=[name for name in required if name not in text]
+if missing:
+    raise SystemExit(f'missing: {missing}')
+print('docs-env-diagnostic-vars-ok', len(required))
+PY
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: diagnostic env doc check PASS (`10` vars), verify count remains `12`, full guard PASS. Prompt-verifier self-check passes: no queue item was marked complete, the docs explicitly label these knobs non-retained diagnostics, and no performance/scaling claim was added.
