@@ -1918,6 +1918,14 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     tampered_dropped_commands["completed_command_count"] = 0
     with pytest.raises(ValueError, match="status_counts must match commands"):
         c_sweep.validate_sweep_summary(tampered_dropped_commands)
+    tampered_empty_commands = json.loads(json.dumps(persisted))
+    tampered_empty_commands["commands"] = []
+    tampered_empty_commands["command_count"] = 0
+    tampered_empty_commands["completed_command_count"] = 0
+    tampered_empty_commands["status_counts"] = {}
+    tampered_empty_commands["category_status_counts"] = {}
+    with pytest.raises(ValueError, match="commands must be a non-empty list"):
+        c_sweep.validate_sweep_summary(tampered_empty_commands)
     tampered_partial_dry_run = json.loads(json.dumps(persisted))
     tampered_partial_dry_run["commands"] = tampered_partial_dry_run["commands"][:3]
     tampered_partial_dry_run["completed_command_count"] = 3

@@ -1676,6 +1676,8 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         else:
             errors.append("commands entries must be objects")
             break
+    if not entries:
+        errors.append("commands must be a non-empty list")
     git = summary.get("git")
     git_dirty: bool | None = None
     if not isinstance(git, Mapping):
