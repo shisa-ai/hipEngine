@@ -38,6 +38,7 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_REQUIRED_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES,
     RETAINED_ARTIFACT_REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES,
     RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS,
+    RETAINED_ARTIFACT_RETAINED_POSTCONDITION_KINDS,
     RETAINED_ARTIFACT_RETAINED_PRECONDITION_KINDS,
     RETAINED_ARTIFACT_UNUSABLE_SCALING_BASELINE_STATUSES,
 )
@@ -92,6 +93,7 @@ _PROFILER_SYNTHESIZED_FIELDS = RETAINED_ARTIFACT_PROFILER_TRACE_SYNTHESIZED_FIEL
 _RETAINED_BENCH_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS
 _PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS = RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS
 _RETAINED_PRECONDITION_KINDS = RETAINED_ARTIFACT_RETAINED_PRECONDITION_KINDS
+_RETAINED_POSTCONDITION_KINDS = RETAINED_ARTIFACT_RETAINED_POSTCONDITION_KINDS
 _SWEEP_COMMAND_KNOWN_FLAGS = tuple(dict.fromkeys(_RETAINED_BENCH_UNIQUE_FLAGS + _PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS))
 
 
@@ -1382,7 +1384,7 @@ def _retained_profiler_synthesis_postcondition(
         return None
     expected_source_artifact_path = profiler_precondition.get("profiler_source_artifact_path")
     result: dict[str, Any] = {
-        "kind": "retained_profiler_synthesis",
+        "kind": _RETAINED_POSTCONDITION_KINDS[0],
         "artifact_path": str(command.artifact_path),
         "profiler_precondition_artifact_path": profiler_precondition.get("artifact_path"),
         "passed": False,
@@ -2284,7 +2286,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 break
             if isinstance(entry.get("postconditions"), list) and [
                 condition.get("kind") for condition in entry["postconditions"]
-            ] != ["retained_profiler_synthesis"]:
+            ] != list(_RETAINED_POSTCONDITION_KINDS):
                 errors.append("commands[].postconditions must include retained native postcondition kinds")
                 break
             if entry.get("category") == "native_diagnostic" and entry.get("batch_size") != 1 and status != "planned":
@@ -3147,7 +3149,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     if not _typed_count_mapping_matches(retained_precondition_counts, expected_precondition_counts):
         errors.append("retained_precondition_counts must match commands.preconditions")
     retained_postcondition_counts = summary.get("retained_postcondition_counts")
-    if not _count_top_labels_within(retained_postcondition_counts, {"retained_profiler_synthesis"}):
+    if not _count_top_labels_within(retained_postcondition_counts, set(_RETAINED_POSTCONDITION_KINDS)):
         errors.append("retained_postcondition_counts must contain only known retained postcondition labels")
     if not _count_leaf_labels_within(retained_postcondition_counts, {"passed", "failed"}):
         errors.append("retained_postcondition_counts must contain only passed/failed status labels")
