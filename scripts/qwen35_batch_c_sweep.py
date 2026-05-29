@@ -1541,6 +1541,27 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
 
 def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     errors: list[str] = []
+    expected_summary_keys = {
+        "schema",
+        "timestamp",
+        "dry_run",
+        "batch_sizes",
+        "output_dir",
+        "options",
+        "command_count",
+        "completed_command_count",
+        "git",
+        "commands",
+        "status_counts",
+        "category_status_counts",
+        "retained_precondition_counts",
+        "retained_postcondition_counts",
+        "skipped_preconditions",
+        "failed_postconditions",
+        "status",
+    }
+    if set(summary) != expected_summary_keys:
+        errors.append("summary must contain exactly the c-sweep schema keys")
     schema = summary.get("schema")
     if not isinstance(schema, int) or isinstance(schema, bool) or schema != 1:
         errors.append("schema must be typed int 1")

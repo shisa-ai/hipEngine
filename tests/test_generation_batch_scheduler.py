@@ -1829,6 +1829,14 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     assert persisted["retained_precondition_counts"] == {}
     assert persisted["skipped_preconditions"] == []
     c_sweep.validate_sweep_summary(persisted)
+    tampered_extra_summary_key = json.loads(json.dumps(persisted))
+    tampered_extra_summary_key["unexpected"] = "field"
+    with pytest.raises(ValueError, match="summary must contain exactly the c-sweep schema keys"):
+        c_sweep.validate_sweep_summary(tampered_extra_summary_key)
+    tampered_missing_summary_key = json.loads(json.dumps(persisted))
+    tampered_missing_summary_key.pop("failed_postconditions")
+    with pytest.raises(ValueError, match="summary must contain exactly the c-sweep schema keys"):
+        c_sweep.validate_sweep_summary(tampered_missing_summary_key)
     tampered_schema_bool = json.loads(json.dumps(persisted))
     tampered_schema_bool["schema"] = True
     with pytest.raises(ValueError, match="schema must be typed int 1"):
