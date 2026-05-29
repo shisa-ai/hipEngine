@@ -48415,3 +48415,23 @@ git diff -- docs/CONCURRENCY.md docs/BENCHMARK.md benchmarks/README.md benchmark
 ```
 
 Result: targeted accepted-artifact command-constant test PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and the change only centralizes accepted-artifact command provenance rules.
+
+## 2026-05-29 — CONCURRENCY retained primitive command constant
+
+Wired `scripts/qwen35_batch_retained_bench.py` primitive correctness command construction to the shared `RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_SCRIPT` constant. The retained profiler-reference test now asserts retained-bench consumes the shared primitive script constant and that `_primitive_correctness_command(...)` emits that exact script path, keeping retained-bench provenance aligned with c-sweep and accepted-artifact validation.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_retained_bench.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_retained_profiler_reference_loads_captured_summary -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/CONCURRENCY.md docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md WORKLOG.md && git diff --check
+```
+
+Result: targeted retained primitive-command test PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and the change only centralizes retained-bench primitive correctness command provenance.

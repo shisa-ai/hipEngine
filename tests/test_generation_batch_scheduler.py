@@ -9989,11 +9989,16 @@ def test_qwen35_retained_profiler_reference_loads_captured_summary(tmp_path: Pat
     assert retained_bench._ROCPROF_OUTPUT_FORMAT is RETAINED_ARTIFACT_ROCPROF_OUTPUT_FORMAT
     assert retained_bench._PROFILER_SYNTHESIZED_FIELDS is RETAINED_ARTIFACT_PROFILER_SYNTHESIZED_FIELDS
     assert retained_bench._RETAINED_BENCH_SCRIPT is RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT
+    assert retained_bench._PRIMITIVE_CORRECTNESS_SCRIPT is RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_SCRIPT
     assert retained_bench._RETAINED_GATE_FLAGS is RETAINED_ARTIFACT_RETAINED_GATE_FLAGS
     assert retained_bench._RETAINED_GATE_LABELS is RETAINED_ARTIFACT_RETAINED_GATE_LABELS
     assert retained_bench._RETAINED_KV_POLICY_FLAGS is RETAINED_ARTIFACT_RETAINED_KV_POLICY_FLAGS
     assert retained_bench._RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS is RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS
     assert retained_bench._RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS is RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS
+    primitive_command_tokens = shlex.split(
+        retained_bench._primitive_correctness_command(tmp_path / "primitive.json", rows=2, seed=1234)
+    )
+    assert primitive_command_tokens[1] == RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_SCRIPT
     assert loaded["status"] == "captured"
     assert loaded["output_format"] == "csv"
     assert loaded["trace_dir"] == str(trace_dir)
