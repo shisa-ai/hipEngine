@@ -3996,6 +3996,10 @@ class Qwen35ParoResidentSession:
                                     force_selected_c1_moe
                                     or force_selected_c1_linear_projections
                                     or force_selected_c1_linear_state
+                                    or (
+                                        linear_attention_output_path
+                                        in {"selected_c1_forced", "batch_gemv", "batch_gemv_from_f32"}
+                                    )
                                 ),
                                 "linear_attention_projection_path": (
                                     "selected_c1_forced" if force_selected_c1_linear_projections else "native_batch"

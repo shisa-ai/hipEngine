@@ -47430,3 +47430,22 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: docs wording check PASS (`concurrency-linear-parity-docs-ok 4`), verify count remains `12`, full guard PASS. Prompt-verifier self-check passes: completed items still have prior evidence, this change only keeps open items accurately framed, diagnostic artifacts remain non-retained, native generated-token equality remains open, and no scaling/performance claim was added.
+
+## 2026-05-29 — CONCURRENCY linear-output diagnostic metadata guard
+
+Added CPU regression coverage for the C2.3 linear-output diagnostic controls. `tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_linear_batch_decode_output_diagnostics_are_non_native` now checks both `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT=selected_c1` and `batch_gemv`: the runtime passes the expected selected-c1/batch-GEMV kwargs into the batch linear layer, keeps grouped-compact MoE active, emits the expected blocker, and marks both top-level and per-layer `native_caware_decode=false`. Fixed the per-layer metadata path in `hipengine/runtime/qwen35_paro_runner.py` so output-projection diagnostic paths cannot look native in traces. Updated the C2.3 progress note in `docs/CONCURRENCY.md` with this CPU coverage.
+
+Validation:
+
+```bash
+pytest -q tests/test_qwen35_resident_batch_layout.py -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: targeted resident-layout suite PASS, verify count remains `12`, full guard PASS. Prompt-verifier self-check passes: no queue item was marked complete, diagnostic output paths are explicitly non-native/non-retained, native generated-token equality remains open, and no performance/scaling claim was added.

@@ -645,8 +645,9 @@ roll-up/status view.
       decode traces so retained gates and diagnostics can reject stale
       selected-c1 MoE paths; CPU coverage now locks the
       token-major routed-lane → token-row, selected-expert → expert-group,
-      sorted routing-weight, weighted selected-branch accumulation, and
+      sorted routing-weight, weighted selected-branch accumulation,
       lane-to-sorted-row helper semantics used by grouped MoE combine metadata,
+      and selected-c1/batch-GEMV linear-output diagnostic metadata plus blockers,
       but
       `/tmp/hipengine-hidden-bisect-L1-8-512-1-grouped.json` still reports the
       first hidden mismatch at layer-limit 6 (row 0, generated index 1), and the

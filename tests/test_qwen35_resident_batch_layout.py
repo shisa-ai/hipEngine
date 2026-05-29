@@ -2307,6 +2307,125 @@ def test_qwen35_resident_linear_batch_decode_uses_state_indices_for_c2_slots() -
     assert runtime.copies == [(0x2000, 0x9000, 2 * session.hidden_nbytes, 5)]
 
 
+@pytest.mark.parametrize(
+    ("env_value", "expected_selected_c1", "expected_batch_gemv", "expected_path", "expected_blocker"),
+    [
+        (
+            "selected_c1",
+            True,
+            False,
+            "selected_c1_forced",
+            "linear-attention output projection forced to selected-c1 diagnostic path",
+        ),
+        (
+            "batch_gemv",
+            False,
+            True,
+            "batch_gemv",
+            "linear-attention output projection forced to batch GEMV diagnostic path",
+        ),
+    ],
+)
+def test_qwen35_resident_linear_batch_decode_output_diagnostics_are_non_native(
+    monkeypatch,
+    env_value: str,
+    expected_selected_c1: bool,
+    expected_batch_gemv: bool,
+    expected_path: str,
+    expected_blocker: str,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT", env_value)
+    device = Device("hip", 0)
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.device = device
+    session.max_batch_size = 3
+    session.hidden_nbytes = 8 * DType.FP16.itemsize
+    session.config = SimpleNamespace(hidden_size=8, layer_types=("linear_attention",), num_experts=4)
+    session.batch_hidden = Tensor.from_handle(0x1000, (3, 8), DType.FP16, device)
+    session.batch_next_hidden = Tensor.from_handle(0x2000, (3, 8), DType.FP16, device)
+    conv = Tensor.from_handle(0x3000, (8, 4), DType.FP32, device)
+    recurrent = Tensor.from_handle(0x4000, (2, 4, 4), DType.FP32, device)
+    session.linear_states = {
+        0: (
+            conv,
+            recurrent,
+            DeviceBuffer(0x3000, 3 * conv.numel * conv.dtype.itemsize),
+            DeviceBuffer(0x4000, 3 * recurrent.numel * recurrent.dtype.itemsize),
+            None,
+            None,
+        )
+    }
+    cu_seqlens = Tensor.from_handle(0xA000, (3,), DType.INT32, device)
+    state_indices = Tensor.from_handle(0xB000, (2,), DType.INT64, device)
+    session._batch_decode_segment_metadata = lambda *, rows, slots: (cu_seqlens, state_indices, ())
+    session._ensure_linear_decode_batch_scratch = lambda layer_id, rows: SimpleNamespace(
+        attn_input=Tensor.from_handle(0x5000, (rows, 8), DType.FP16, device)
+    )
+
+    moe_force_flags: list[bool] = []
+
+    def fake_moe_scratch(layer_id, rows, *, force_selected_c1_moe=False):
+        moe_force_flags.append(bool(force_selected_c1_moe))
+        return SimpleNamespace(residual=Tensor.from_handle(0x6000, (rows, 8), DType.FP16, device))
+
+    session._ensure_moe_decode_batch_scratch = fake_moe_scratch
+
+    class FakeRuntime:
+        def __init__(self) -> None:
+            self.copies: list[tuple[int, int, int, int]] = []
+
+        def memcpy_async(self, dst, src, nbytes, kind, stream):
+            self.copies.append((int(dst), int(src), int(nbytes), int(stream)))
+
+    class FakeState:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def run_linear_attention_moe_decode_batch_layer_fp16(self, hidden, **kwargs):
+            self.calls.append((hidden, kwargs))
+            return Tensor.from_handle(0x9000, (kwargs["tokens"], 8), DType.FP16, device)
+
+    runtime = FakeRuntime()
+    state = FakeState()
+    session.runtime = runtime
+    session.states = [state]
+    session.libraries = {}
+
+    out = session._run_layers_batch_decode(rows=2, positions=(4, 7), slots=(0, 2), stream=5)
+
+    assert out.ptr == 0x2000
+    assert len(state.calls) == 1
+    hidden, kwargs = state.calls[0]
+    assert hidden.ptr == 0x1000
+    assert kwargs["force_selected_c1_linear_out"] is expected_selected_c1
+    assert kwargs["force_batch_gemv_linear_out"] is expected_batch_gemv
+    assert kwargs["force_selected_c1_moe"] is False
+    assert kwargs["force_selected_c1_linear_projections"] is False
+    assert kwargs["force_selected_c1_linear_state"] is False
+    assert kwargs["selected_c1_linear_state_pairs"] is None
+    assert kwargs["conv_state"] is conv
+    assert kwargs["recurrent_state"] is recurrent
+    assert kwargs["cu_seqlens"] is cu_seqlens
+    assert kwargs["state_indices"] is state_indices
+    assert kwargs["segments"] == 2
+    assert kwargs["tokens"] == 2
+    assert moe_force_flags == [False]
+    assert runtime.copies == [(0x2000, 0x9000, 2 * session.hidden_nbytes, 5)]
+
+    execution = session.last_batch_decode_execution
+    assert execution["native_caware_decode"] is False
+    assert execution["moe_decode_path"] == "grouped_compact"
+    assert execution["moe_grouped_compact_layers"] == 1
+    assert execution["moe_selected_c1_fallback_layers"] == 0
+    assert execution["blockers"] == [expected_blocker]
+    layer = execution["layer_executions"][0]
+    assert layer["native_caware_decode"] is False
+    assert layer["linear_attention_projection_path"] == "native_batch"
+    assert layer["linear_attention_state_path"] == "native_segments"
+    assert layer["linear_attention_output_path"] == expected_path
+    assert layer["moe_decode_path"] == "grouped_compact"
+
+
 def test_qwen35_resident_linear_batch_decode_can_force_per_row_probe(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR", "1")
     device = Device("hip", 0)
