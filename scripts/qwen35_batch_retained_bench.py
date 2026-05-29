@@ -37,7 +37,10 @@ from hipengine.dispatch import (
 from hipengine.generation import GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS, GeneratedToken, GraphBucketCache, ResidentBatchScheduler
 from hipengine.kvcache import ResolvedKVPolicy
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
-from scripts.qwen35_batch_artifact_schema import validate_cn_diagnostic_artifact_payload
+from scripts.qwen35_batch_artifact_schema import (
+    DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS,
+    validate_cn_diagnostic_artifact_payload,
+)
 from scripts.qwen35_kv_policy_args import add_kv_policy_args, kv_policy_json, resolve_args_kv_policy
 
 DEFAULT_MODEL = "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16"
@@ -72,24 +75,6 @@ _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS = {
 }
 _REQUIRED_PRIMITIVE_CORRECTNESS_SEED = 1234
 _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT = 2e-5
-_DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS = (
-    "_decode_full_attention_trace",
-    "_decode_linear_input_trace",
-    "_decode_linear_output_trace",
-    "_decode_linear_stage_trace",
-    "decode_full_attention",
-    "decode_full_attention_trace",
-    "decode_full_context_oracle",
-    "decode_full_kv_samples",
-    "decode_linear_input_trace",
-    "decode_linear_inputs",
-    "decode_linear_output_trace",
-    "decode_linear_outputs",
-    "decode_linear_stage_trace",
-    "decode_linear_stages",
-)
-
-
 def _required_primitive_context_lens(rows: int) -> list[int]:
     max_context_len = _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS["max_context_len"]
     return [(idx % max_context_len) + 1 for idx in range(rows)]
@@ -1193,7 +1178,7 @@ def _batch_execution_blockers(
             blockers.append("execution.batch_execution.native_prefill_plan.blockers must be empty")
     if batch_execution.get("native_caware_decode") is not True:
         blockers.append("execution.batch_execution.native_caware_decode must be true")
-    for diagnostic_field in _DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS:
+    for diagnostic_field in DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS:
         if diagnostic_field in batch_execution:
             blockers.append(f"execution.batch_execution.{diagnostic_field} must be absent for native retained decode")
     decode_execution = batch_execution.get("decode_execution")
@@ -1244,7 +1229,7 @@ def _batch_execution_blockers(
             blockers.append("execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch")
         if decode_execution.get("native_caware_decode") is not True:
             blockers.append("execution.batch_execution.decode_execution.native_caware_decode must be true")
-        for diagnostic_field in _DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS:
+        for diagnostic_field in DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS:
             if diagnostic_field in decode_execution:
                 blockers.append(f"execution.batch_execution.decode_execution.{diagnostic_field} must be absent for native retained decode")
         blockers.extend(

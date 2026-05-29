@@ -52,6 +52,7 @@ from scripts import qwen35_batch_c_sweep as c_sweep
 from scripts import qwen35_batch_correctness as batch_correctness
 from scripts import qwen35_batch_retained_bench as retained_bench
 from scripts.qwen35_batch_artifact_schema import (
+    DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS,
     _load_benchmark_results_json_artifact,
     _summary_json_path_is_in_current_results,
     _validate_benchmark_results_artifact_path,
@@ -10657,34 +10658,29 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
         "execution.batch_execution.decode_execution.layer_executions[0].attn_context_trace_source must be absent for native retained decode"
         in full_attention_boundary_blockers
     )
-    aggregate_trace_diagnostic = json.loads(json.dumps(valid))
-    aggregate_trace_diagnostic["decode_execution"]["decode_full_attention"] = {"first_mismatch": {"stage": "attn_context"}}
-    aggregate_trace_diagnostic["decode_execution"]["_decode_linear_stage_trace"] = [{"layer_index": 0, "stage": "qkv"}]
-    aggregate_trace_blockers = retained_bench._batch_execution_blockers(
-        aggregate_trace_diagnostic,
-        expected_max_layers=40,
-        expected_concurrency=2,
-        expected_prompt_length=512,
-    )
-    assert (
-        "execution.batch_execution.decode_execution.decode_full_attention must be absent for native retained decode"
-        in aggregate_trace_blockers
-    )
-    assert (
-        "execution.batch_execution.decode_execution._decode_linear_stage_trace must be absent for native retained decode"
-        in aggregate_trace_blockers
-    )
-    batch_trace_diagnostic = json.loads(json.dumps(valid))
-    batch_trace_diagnostic["decode_full_attention"] = {"first_mismatch": {"stage": "attn_context"}}
-    batch_trace_diagnostic["_decode_linear_stage_trace"] = [{"layer_index": 0, "stage": "qkv"}]
-    batch_trace_blockers = retained_bench._batch_execution_blockers(
-        batch_trace_diagnostic,
-        expected_max_layers=40,
-        expected_concurrency=2,
-        expected_prompt_length=512,
-    )
-    assert "execution.batch_execution.decode_full_attention must be absent for native retained decode" in batch_trace_blockers
-    assert "execution.batch_execution._decode_linear_stage_trace must be absent for native retained decode" in batch_trace_blockers
+    assert retained_bench.DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS == DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS
+    for diagnostic_field in DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS:
+        aggregate_trace_diagnostic = json.loads(json.dumps(valid))
+        aggregate_trace_diagnostic["decode_execution"][diagnostic_field] = {"diagnostic": True}
+        aggregate_trace_blockers = retained_bench._batch_execution_blockers(
+            aggregate_trace_diagnostic,
+            expected_max_layers=40,
+            expected_concurrency=2,
+            expected_prompt_length=512,
+        )
+        assert (
+            f"execution.batch_execution.decode_execution.{diagnostic_field} must be absent for native retained decode"
+            in aggregate_trace_blockers
+        )
+        batch_trace_diagnostic = json.loads(json.dumps(valid))
+        batch_trace_diagnostic[diagnostic_field] = {"diagnostic": True}
+        batch_trace_blockers = retained_bench._batch_execution_blockers(
+            batch_trace_diagnostic,
+            expected_max_layers=40,
+            expected_concurrency=2,
+            expected_prompt_length=512,
+        )
+        assert f"execution.batch_execution.{diagnostic_field} must be absent for native retained decode" in batch_trace_blockers
     long_context_blockers = retained_bench._batch_execution_blockers(long_context, expected_max_layers=40, expected_concurrency=2, expected_prompt_length=512)
     assert (
         "execution.batch_execution.decode_execution.max_full_attention_context must be < 1024 until row-aware split-K native decode lands"
@@ -12660,25 +12656,25 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     assert "layer_executions[0].post_attention_decode_path must be absent for native retained decode" in boundary_error_message
     assert "layer_executions[0].attn_context_trace_source must be absent for native retained decode" in boundary_error_message
 
-    diagnostic_decode_trace = json.loads(json.dumps(accepted))
-    diagnostic_decode_trace_execution = diagnostic_decode_trace["execution"]["batch_execution"]["decode_execution"]
-    diagnostic_decode_trace_execution["decode_full_attention"] = {"first_mismatch": {"stage": "attn_context"}}
-    diagnostic_decode_trace_execution["_decode_linear_stage_trace"] = [{"layer_index": 0, "stage": "qkv"}]
-    with pytest.raises(ValueError) as diagnostic_decode_trace_error:
-        validate_cn_diagnostic_artifact_payload(diagnostic_decode_trace)
-    diagnostic_decode_trace_error_message = str(diagnostic_decode_trace_error.value)
-    assert "decode_execution.decode_full_attention must be absent for native retained decode" in diagnostic_decode_trace_error_message
-    assert "decode_execution._decode_linear_stage_trace must be absent for native retained decode" in diagnostic_decode_trace_error_message
+    for diagnostic_field in DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS:
+        diagnostic_decode_trace = json.loads(json.dumps(accepted))
+        diagnostic_decode_trace_execution = diagnostic_decode_trace["execution"]["batch_execution"]["decode_execution"]
+        diagnostic_decode_trace_execution[diagnostic_field] = {"diagnostic": True}
+        with pytest.raises(ValueError) as diagnostic_decode_trace_error:
+            validate_cn_diagnostic_artifact_payload(diagnostic_decode_trace)
+        assert (
+            f"decode_execution.{diagnostic_field} must be absent for native retained decode"
+            in str(diagnostic_decode_trace_error.value)
+        )
 
-    diagnostic_batch_trace = json.loads(json.dumps(accepted))
-    diagnostic_batch_trace_execution = diagnostic_batch_trace["execution"]["batch_execution"]
-    diagnostic_batch_trace_execution["decode_full_attention"] = {"first_mismatch": {"stage": "attn_context"}}
-    diagnostic_batch_trace_execution["_decode_linear_stage_trace"] = [{"layer_index": 0, "stage": "qkv"}]
-    with pytest.raises(ValueError) as diagnostic_batch_trace_error:
-        validate_cn_diagnostic_artifact_payload(diagnostic_batch_trace)
-    diagnostic_batch_trace_error_message = str(diagnostic_batch_trace_error.value)
-    assert "batch_execution.decode_full_attention must be absent for native retained decode" in diagnostic_batch_trace_error_message
-    assert "batch_execution._decode_linear_stage_trace must be absent for native retained decode" in diagnostic_batch_trace_error_message
+        diagnostic_batch_trace = json.loads(json.dumps(accepted))
+        diagnostic_batch_trace_execution = diagnostic_batch_trace["execution"]["batch_execution"]
+        diagnostic_batch_trace_execution[diagnostic_field] = {"diagnostic": True}
+        with pytest.raises(ValueError) as diagnostic_batch_trace_error:
+            validate_cn_diagnostic_artifact_payload(diagnostic_batch_trace)
+        assert f"batch_execution.{diagnostic_field} must be absent for native retained decode" in str(
+            diagnostic_batch_trace_error.value
+        )
 
     for field, diagnostic_value, expected_message in (
         (
