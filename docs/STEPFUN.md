@@ -503,10 +503,12 @@ record command, prompt shape, oracle, and result in `WORKLOG.md`.
   after generation; include UMA setting and backend (`hip_gfx1151`). Current
   blocker evidence: `hipMemGetInfo free=119.996 GiB,total=62.541 GiB` and
   `rocm-smi VIS_VRAM Total=512 MiB,Used=416.6 MiB` before/after header scan.
-- [ ] If the model does not fit, keep the failure artifact and decide between
+- [x] If the model does not fit, keep the failure artifact and decide between
   offload/tiering, lower context/KV footprint, or slice-only correctness. The
-  current decision is slice/layer correctness until UMA/HIP visibility is fixed
-  or offload/tiering exists.
+  current documented fit failure is HIP/ROCm memory visibility: coherent total
+  memory is at most 62.541 GiB for 95.465 GiB raw weights before KV/runtime
+  overhead. Decision: continue slice/layer correctness until UMA/HIP visibility
+  is fixed or offload/tiering exists.
 - [ ] If it fits, run a tiny text-only prompt and confirm no vision/projector/MTP
   path is required.
 

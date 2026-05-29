@@ -26996,3 +26996,7 @@ PY
 ```
 
 Results: HIP still reports contradictory memory (`free=128844787712` / `119.996 GiB`, `total=67152820224` / `62.541 GiB`) both before and after split-header scan. `rocm-smi` reports Radeon 8060S gfx1151 with `VIS_VRAM Total Memory=536870912` bytes and used `416604160` bytes. The three GGUF shards total `95.465 GiB` before KV/runtime overhead. Because the highest coherent HIP total is below the raw weights and `rocm-smi` exposes only 512 MiB VIS_VRAM, a full-model hipEngine load was not attempted; P12 remains blocked pending UMA/HIP visibility fix or offload/tiering. Continue with slice/layer correctness only.
+
+## 2026-05-29 — StepFun P12 fit-failure decision recorded
+
+Converted the P12 "if the model does not fit" branch into an explicit completed decision. The documented blocker is a pre-load fit failure: HIP/ROCm memory visibility is inconsistent and the highest coherent total (`hipMemGetInfo total=62.541 GiB`) is below the raw Step GGUF payload (`95.465 GiB`) before KV/runtime overhead, while `rocm-smi` exposes only 512 MiB VIS_VRAM. Full-model load remains unsafe to attempt in this state. Decision: keep working on slice/layer correctness until UMA/HIP visibility is fixed or offload/tiering exists.
