@@ -5462,6 +5462,11 @@ def test_batch_c_sweep_fails_retained_row_on_profiler_synthesis_mismatch(tmp_pat
     tampered_failed_retained_postcondition_keys["commands"][-1]["postcondition"]["primitive_seed"] = 1234
     with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\] failed retained profiler synthesis must contain only retained postcondition keys"):
         c_sweep.validate_sweep_summary(tampered_failed_retained_postcondition_keys)
+    tampered_failed_postcondition_partial_fields = json.loads(json.dumps(summary))
+    tampered_failed_postcondition_partial_fields["commands"][-1]["postconditions"][0].pop("profiler_precondition_synthesized_fields")
+    tampered_failed_postcondition_partial_fields["commands"][-1]["postcondition"] = tampered_failed_postcondition_partial_fields["commands"][-1]["postconditions"][0]
+    with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler synthesized fields must be paired when present"):
+        c_sweep.validate_sweep_summary(tampered_failed_postcondition_partial_fields)
     tampered_failed_postcondition_field_shape = json.loads(json.dumps(summary))
     tampered_failed_postcondition_field_shape["commands"][-1]["postconditions"][0]["profiler_synthesized_fields"] = [1]
     tampered_failed_postcondition_field_shape["commands"][-1]["postcondition"] = tampered_failed_postcondition_field_shape["commands"][-1]["postconditions"][0]

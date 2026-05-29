@@ -2890,10 +2890,12 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     break
                 profiler_fields = postcondition.get("profiler_synthesized_fields")
                 precondition_fields = postcondition.get("profiler_precondition_synthesized_fields")
-                has_synthesized_field_evidence = (
-                    "profiler_synthesized_fields" in postcondition
-                    or "profiler_precondition_synthesized_fields" in postcondition
-                )
+                has_profiler_field_evidence = "profiler_synthesized_fields" in postcondition
+                has_precondition_field_evidence = "profiler_precondition_synthesized_fields" in postcondition
+                has_synthesized_field_evidence = has_profiler_field_evidence or has_precondition_field_evidence
+                if postcondition.get("passed") is not True and has_profiler_field_evidence != has_precondition_field_evidence:
+                    errors.append("commands[].postconditions[].profiler synthesized fields must be paired when present")
+                    break
                 if postcondition.get("passed") is not True and has_synthesized_field_evidence and (
                     not isinstance(profiler_fields, list)
                     or not all(isinstance(field, str) for field in profiler_fields)
