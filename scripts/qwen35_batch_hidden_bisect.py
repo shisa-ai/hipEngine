@@ -14,6 +14,7 @@ import json
 import os
 import shlex
 import sys
+import zlib
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1396,6 +1397,26 @@ def _stack_decode_full_attention_rows(
     }
 
 
+def _bf16_token_crc32(bits: np.ndarray) -> np.ndarray:
+    bits_array = np.asarray(bits, dtype=np.uint16)
+    token_bits = np.ascontiguousarray(bits_array.reshape(int(bits_array.shape[0]), -1))
+    return np.asarray([zlib.crc32(row.tobytes()) for row in token_bits], dtype=np.uint64)
+
+
+def _pad_row_arrays(arrays: Sequence[np.ndarray], *, dtype: np.dtype | type) -> np.ndarray:
+    if not arrays:
+        return np.empty((0, 0), dtype=dtype)
+    row_count = len(arrays)
+    max_width = max(int(np.asarray(array).shape[1]) for array in arrays)
+    padded = np.zeros((row_count, max_width), dtype=dtype)
+    for row, array in enumerate(arrays):
+        row_array = np.asarray(array, dtype=dtype)
+        if row_array.ndim != 2 or int(row_array.shape[0]) != 1:
+            raise ValueError("padded row arrays must have shape [1, width]")
+        padded[row, : int(row_array.shape[1])] = row_array[0]
+    return padded
+
+
 def _numpy_full_attention_context_row(
     query: np.ndarray,
     key_bits: np.ndarray,
@@ -1495,6 +1516,9 @@ def _decode_full_context_oracles_from_trace(
             )
         query = query_flat.reshape(rows, num_q_heads, head_dim)
         context = np.empty((rows, num_q_heads, head_dim), dtype=np.float32)
+        max_context_len = int(np.max(context_lens))
+        key_prefix_hashes = np.zeros((rows, max_context_len), dtype=np.uint64)
+        value_prefix_hashes = np.zeros((rows, max_context_len), dtype=np.uint64)
         for row, (slot, live_count) in enumerate(zip(slots, context_lens, strict=True)):
             key_bits, value_bits = _copy_decode_full_kv_prefix_bits(
                 session,
@@ -1502,6 +1526,9 @@ def _decode_full_context_oracles_from_trace(
                 slot=int(slot),
                 live_count=int(live_count),
             )
+            live = int(live_count)
+            key_prefix_hashes[row, :live] = _bf16_token_crc32(key_bits)
+            value_prefix_hashes[row, :live] = _bf16_token_crc32(value_bits)
             context[row] = _numpy_full_attention_context_row(
                 query[row],
                 key_bits,
@@ -1511,6 +1538,8 @@ def _decode_full_context_oracles_from_trace(
         oracles[int(layer_id)] = {
             "context": context.reshape(rows, expected_width),
             "context_lens": context_lens.copy(),
+            "key_prefix_hashes": key_prefix_hashes,
+            "value_prefix_hashes": value_prefix_hashes,
             "query_source": query_source,
         }
     return oracles
@@ -1522,7 +1551,9 @@ def _merge_decode_full_context_oracle_rows(
 ) -> None:
     for layer_id, payload in captured.items():
         target_layer = target.setdefault(int(layer_id), {"context": [], "context_lens": [], "query_source": []})
-        for key in ("context", "context_lens"):
+        for key in ("context", "context_lens", "key_prefix_hashes", "value_prefix_hashes"):
+            if key not in payload:
+                continue
             array = np.asarray(payload[key])
             if int(array.shape[0]) != 1:
                 raise ValueError("c=1 decode full-context oracle traces must contain exactly one row")
@@ -1539,11 +1570,16 @@ def _stack_decode_full_context_oracle_rows(
         query_source = query_sources[0] if query_sources else "query"
         if any(source != query_source for source in query_sources):
             raise ValueError(f"decode full-context oracle query source differs across c=1 rows for layer {layer_id}")
-        stacked[int(layer_id)] = {
+        layer_payload: dict[str, np.ndarray | str] = {
             "context": np.concatenate(payload.get("context", []), axis=0),
             "context_lens": np.concatenate(payload.get("context_lens", []), axis=0),
             "query_source": query_source,
         }
+        if payload.get("key_prefix_hashes"):
+            layer_payload["key_prefix_hashes"] = _pad_row_arrays(payload.get("key_prefix_hashes", []), dtype=np.uint64)
+        if payload.get("value_prefix_hashes"):
+            layer_payload["value_prefix_hashes"] = _pad_row_arrays(payload.get("value_prefix_hashes", []), dtype=np.uint64)
+        stacked[int(layer_id)] = layer_payload  # type: ignore[assignment]
     return stacked
 
 
@@ -2608,6 +2644,154 @@ def _decode_full_context_oracle_rollup(layer_summaries: Sequence[dict[str, Any]]
     }
 
 
+def _kv_prefix_hash_comparison(batch_hashes: np.ndarray, c1_hashes: np.ndarray, *, context_len: int) -> dict[str, Any]:
+    live = int(context_len)
+    batch_row = np.asarray(batch_hashes, dtype=np.uint64).reshape(-1)
+    c1_row = np.asarray(c1_hashes, dtype=np.uint64).reshape(-1)
+    if live < 0 or live > int(batch_row.shape[0]) or live > int(c1_row.shape[0]):
+        raise ValueError("KV prefix hash comparison context_len exceeds hash row width")
+    mismatches = np.flatnonzero(batch_row[:live] != c1_row[:live])
+    first_mismatch: dict[str, Any] | None = None
+    if mismatches.size:
+        pos = int(mismatches[0])
+        first_mismatch = {
+            "position": pos,
+            "batch_hash": int(batch_row[pos]),
+            "c1_hash": int(c1_row[pos]),
+        }
+    return {
+        "passed": bool(mismatches.size == 0),
+        "context_len": live,
+        "mismatch_count": int(mismatches.size),
+        "first_mismatch": first_mismatch,
+    }
+
+
+def _decode_full_context_kv_prefix_failure_record(
+    step_summary: dict[str, Any],
+    layer: dict[str, Any],
+    row_summary: dict[str, Any],
+    kind: str,
+    *,
+    layer_limit: int | None = None,
+) -> dict[str, Any]:
+    comparison = row_summary.get(f"{kind}_prefix_hash_comparison", {})
+    first = comparison.get("first_mismatch") if isinstance(comparison, dict) else None
+    record: dict[str, Any] = {
+        "decode_step": int(step_summary.get("decode_step", 0)),
+        "generated_index": int(step_summary.get("generated_index", int(step_summary.get("decode_step", 0)) + 1)),
+        "layer_index": int(layer.get("layer_index", -1)),
+        "row": int(row_summary.get("row", -1)),
+        "kind": str(kind),
+        "context_len": int(row_summary.get("context_len", 0)),
+        "mismatch_count": int(comparison.get("mismatch_count", 0)) if isinstance(comparison, dict) else 0,
+        "first_mismatch_position": None if not isinstance(first, dict) else int(first.get("position", -1)),
+        "batch_hash": None if not isinstance(first, dict) else int(first.get("batch_hash", 0)),
+        "c1_hash": None if not isinstance(first, dict) else int(first.get("c1_hash", 0)),
+    }
+    if layer_limit is not None:
+        record = {"layer_limit": int(layer_limit), **record}
+    return record
+
+
+def _decode_full_context_kv_prefix_failure_summary(steps: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    kind_summaries: dict[str, Any] = {}
+    first_failure: dict[str, Any] | None = None
+    for kind in ("key", "value"):
+        rows: list[int] = []
+        seen_rows: set[int] = set()
+        kind_first_failure: dict[str, Any] | None = None
+        for step_summary in steps:
+            for layer in step_summary.get("layers", []):
+                for row_summary in layer.get("rows", []):
+                    comparison = row_summary.get(f"{kind}_prefix_hash_comparison")
+                    if not isinstance(comparison, dict) or bool(comparison.get("passed", True)):
+                        continue
+                    record = _decode_full_context_kv_prefix_failure_record(step_summary, layer, row_summary, kind)
+                    if kind_first_failure is None:
+                        kind_first_failure = record
+                    if first_failure is None:
+                        first_failure = record
+                    row_index = int(row_summary.get("row", -1))
+                    if row_index >= 0 and row_index not in seen_rows:
+                        rows.append(row_index)
+                        seen_rows.add(row_index)
+        kind_summaries[kind] = {
+            "passed": not rows,
+            "failure_rows": rows,
+            "failure_row_count": len(rows),
+            "first_failure": kind_first_failure,
+        }
+    failed_kinds = [kind for kind in ("key", "value") if kind_summaries[kind]["failure_rows"]]
+    return {
+        "failed_kinds": failed_kinds,
+        "failed_kind_count": len(failed_kinds),
+        "first_failure": first_failure,
+        "kinds": kind_summaries,
+    }
+
+
+def _decode_full_context_kv_prefix_rollup(layer_summaries: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    kind_summaries: dict[str, Any] = {}
+    first_failure: dict[str, Any] | None = None
+    for kind in ("key", "value"):
+        rows: list[int] = []
+        seen_rows: set[int] = set()
+        kind_first_failure: dict[str, Any] | None = None
+        for summary in layer_summaries:
+            layer_limit = int(summary.get("layer_limit", 0))
+            oracle = summary.get("decode_full_context_oracle")
+            if not isinstance(oracle, dict):
+                continue
+            prefix_summary = oracle.get("kv_prefix_failure_summary")
+            if not isinstance(prefix_summary, dict):
+                continue
+            kind_summary = prefix_summary.get("kinds", {}).get(kind)
+            if not isinstance(kind_summary, dict):
+                continue
+            failure = kind_summary.get("first_failure")
+            if isinstance(failure, dict):
+                failure_with_limit = {"layer_limit": layer_limit, **failure}
+                if kind_first_failure is None:
+                    kind_first_failure = failure_with_limit
+                if first_failure is None:
+                    first_failure = failure_with_limit
+            for raw_row in kind_summary.get("failure_rows", []):
+                row_index = int(raw_row)
+                if row_index in seen_rows:
+                    continue
+                rows.append(row_index)
+                seen_rows.add(row_index)
+        kind_summaries[kind] = {
+            "passed": not rows,
+            "failure_rows": rows,
+            "failure_row_count": len(rows),
+            "first_failure": kind_first_failure,
+        }
+    failed_kinds = [kind for kind in ("key", "value") if kind_summaries[kind]["failure_rows"]]
+    return {
+        "failed_kinds": failed_kinds,
+        "failed_kind_count": len(failed_kinds),
+        "first_failure": first_failure,
+        "kinds": kind_summaries,
+        "layer_limits": [
+            {
+                "layer_limit": int(summary.get("layer_limit", 0)),
+                "passed": bool(
+                    summary.get("decode_full_context_oracle", {})
+                    .get("kv_prefix_failure_summary", {})
+                    .get("failed_kind_count", 0)
+                    == 0
+                )
+                if isinstance(summary.get("decode_full_context_oracle"), dict)
+                else True,
+            }
+            for summary in layer_summaries
+            if isinstance(summary.get("decode_full_context_oracle"), dict)
+        ],
+    }
+
+
 def _decode_full_context_oracle_failure_summary(steps: Sequence[dict[str, Any]]) -> dict[str, Any]:
     def _failure_record(
         step_summary: dict[str, Any],
@@ -2719,6 +2903,26 @@ def _decode_full_context_oracle_summary(
             c1_lens = np.asarray(c1_payload["context_lens"], dtype=np.int64)
             batch_query_source = str(batch_payload.get("query_source", "query"))
             c1_query_source = str(c1_payload.get("query_source", "query"))
+            batch_key_hashes = (
+                np.asarray(batch_payload["key_prefix_hashes"], dtype=np.uint64)
+                if "key_prefix_hashes" in batch_payload and "key_prefix_hashes" in c1_payload
+                else None
+            )
+            c1_key_hashes = (
+                np.asarray(c1_payload["key_prefix_hashes"], dtype=np.uint64)
+                if batch_key_hashes is not None
+                else None
+            )
+            batch_value_hashes = (
+                np.asarray(batch_payload["value_prefix_hashes"], dtype=np.uint64)
+                if "value_prefix_hashes" in batch_payload and "value_prefix_hashes" in c1_payload
+                else None
+            )
+            c1_value_hashes = (
+                np.asarray(c1_payload["value_prefix_hashes"], dtype=np.uint64)
+                if batch_value_hashes is not None
+                else None
+            )
             if batch_context.shape != batch_oracle.shape or c1_context.shape != c1_oracle.shape:
                 raise ValueError(
                     f"decode full-context oracle shape differs for step {step}, layer {layer_id}: "
@@ -2730,6 +2934,14 @@ def _decode_full_context_oracle_summary(
                     f"decode full-context oracle c>N/c1 shape differs for step {step}, layer {layer_id}: "
                     f"batch={batch_oracle.shape}/{batch_lens.shape} c1={c1_oracle.shape}/{c1_lens.shape}"
                 )
+            for name, left, right in (
+                ("key", batch_key_hashes, c1_key_hashes),
+                ("value", batch_value_hashes, c1_value_hashes),
+            ):
+                if left is None or right is None:
+                    continue
+                if left.ndim != 2 or right.ndim != 2 or int(left.shape[0]) != int(batch_oracle.shape[0]) or int(right.shape[0]) != int(batch_oracle.shape[0]):
+                    raise ValueError(f"decode full-context {name} prefix hashes have incompatible shapes")
             row_summaries: list[dict[str, Any]] = []
             for row in range(int(batch_oracle.shape[0])):
                 comparisons = {
@@ -2749,14 +2961,29 @@ def _decode_full_context_oracle_summary(
                         atol=oracle_atol,
                     ),
                 }
+                prefix_comparisons: dict[str, Any] = {}
+                if batch_key_hashes is not None and c1_key_hashes is not None:
+                    prefix_comparisons["key_prefix_hash_comparison"] = _kv_prefix_hash_comparison(
+                        batch_key_hashes[row],
+                        c1_key_hashes[row],
+                        context_len=int(batch_lens[row]),
+                    )
+                if batch_value_hashes is not None and c1_value_hashes is not None:
+                    prefix_comparisons["value_prefix_hash_comparison"] = _kv_prefix_hash_comparison(
+                        batch_value_hashes[row],
+                        c1_value_hashes[row],
+                        context_len=int(batch_lens[row]),
+                    )
                 row_summary = {
                     "row": int(row),
                     "context_len": int(batch_lens[row]),
                     "context_len_match": bool(batch_lens[row] == c1_lens[row]),
                     "query_source": {"batch": batch_query_source, "c1": c1_query_source},
+                    "kv_prefix_passed": all(bool(comparison["passed"]) for comparison in prefix_comparisons.values()),
                     "passed": bool(batch_lens[row] == c1_lens[row])
                     and all(bool(comparison["passed"]) for comparison in comparisons.values()),
                     **comparisons,
+                    **prefix_comparisons,
                 }
                 row_summaries.append(row_summary)
                 for comparison_name, comparison in comparisons.items():
@@ -2791,12 +3018,15 @@ def _decode_full_context_oracle_summary(
                 "layers": layers,
             }
         )
+    kv_prefix_failure_summary = _decode_full_context_kv_prefix_failure_summary(steps)
     result = {
         "stage": "decode_full_context_oracle",
         "oracle": "numpy_softmax_bf16_kv",
         "oracle_atol": float(oracle_atol),
         "passed": all(step_summary["passed"] for step_summary in steps),
+        "kv_prefix_passed": bool(kv_prefix_failure_summary["failed_kind_count"] == 0),
         "comparison_failure_summary": _decode_full_context_oracle_failure_summary(steps),
+        "kv_prefix_failure_summary": kv_prefix_failure_summary,
         "steps": steps,
     }
     if first_mismatch is not None:
@@ -3676,6 +3906,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "row_failure_summary": _row_failure_summary(layer_summaries),
             "decode_full_attention_stage_failure_summary": _decode_full_attention_stage_rollup(layer_summaries),
             "decode_full_context_oracle_failure_summary": _decode_full_context_oracle_rollup(layer_summaries),
+            "decode_full_context_kv_prefix_failure_summary": _decode_full_context_kv_prefix_rollup(layer_summaries),
             "decode_full_kv_sample_failure_summary": _decode_full_kv_sample_rollup(layer_summaries),
             "first_hidden_mismatch": hidden_mismatch,
             "first_tolerance_hidden_mismatch": hidden_mismatch,

@@ -1101,12 +1101,20 @@ roll-up/status view.
       `attn_input_pre_qkv` (`max_abs=0.015625`, dim 1269), propagating through
       Q/K preparation (`q_proj_key_after_project` `max_abs=0.0078125`,
       `query_after_prepare` `max_abs=0.005970478057861328`, `key_after_prepare`
-      `max_abs=0.005676984786987305`). The full-context oracle still fails only
-      `batch_numpy_vs_c1_numpy`; L4's reduced oracle delta (`max_abs=0.0033351778984069824`)
-      with L4 sampled KV green means unsampled compact-prefill KV/image coverage
-      is still needed. Full-KV sample attribution now first fails at L8 current
-      position 512. Next target: add full-prefix/prompt-KV drift localization or
-      otherwise audit the compact-prefill KV image before changing paged-KV writer
+      `max_abs=0.005676984786987305`). The hidden-bisect context oracle now also
+      stores per-token CRC32 hashes for the full BF16 K/V prefix and emits
+      `correctness.decode_full_context_kv_prefix_failure_summary`, covered by
+      `test_hidden_bisect_summary_embeds_batch_decode_execution_trace`. The
+      refreshed full-prefix probe at
+      `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-kv-prefix-hash-native-full-core-atol4e-3-focus1269.json`
+      still fails only `batch_numpy_vs_c1_numpy` in the softmax-oracle comparison
+      (`batch_context_vs_numpy` and `c1_context_vs_numpy` pass), but now localizes
+      the K/V image drift directly: at L4 decode step 0 / layer 3 / row 0, key
+      and value prefix hashes first mismatch at token position 509 (`context_len=513`,
+      `mismatch_count=4`), and multipoint KV samples first fail at the previous
+      prompt token 511; at L8 the first prefix/sample failure is the current
+      token 512. Next target: audit compact-prefill KV image materialization and
+      prompt-tail/current-token slot contents before changing paged-KV writer
       code; do not re-open context softmax math, row setup, native linear segment
       metadata, output trace/copy semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
