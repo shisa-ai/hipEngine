@@ -46258,3 +46258,29 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: targeted test PASS; verify count remains `12`; full guard PASS (`263` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: completed queue items still cite concrete evidence, C2.3 remains open, the change only improves diagnostic schema, and no performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY native-full core control with oracle rollup
+
+Refreshed the core-isolation artifact after adding `correctness.decode_full_context_oracle_failure_summary`:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 4,8 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-moe-path selected_c1 --batch-decode-post-attn-path per_row --json /tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-native-full-core-perrow-linear-postattn-selected-c1-atol4e-3-focus1269.json
+```
+
+Result remains `status=mismatch_found`, `failure_modes=["hidden"]`, `token_passed=true`, first hidden mismatch at L8 decode step 6 / row 0 / dim 1269 (`max_abs=0.02734375`). The new top-level context-oracle rollup says only `batch_numpy_vs_c1_numpy` fails: first failure L8 decode step 0 / row 0 / context dim 2812 (`max_abs=0.00811624526977539`, 3403 elements over), worst at decode step 10 (`max_abs=0.4993577003479004`). `batch_context_vs_numpy` and `c1_context_vs_numpy` both pass, so the context kernel matches its own oracle on each path; the divergence is in the inputs/oracles feeding the layer-7 full-attention context, not the softmax/context math itself.
+
+Updated `docs/CONCURRENCY.md` C2.3 wording accordingly: next target is native-full layer-7 input/QKV or state feeding divergence; full-attention context math, layer-4 state mapping, native linear segment metadata, output trace/copy semantics, and grouped MoE output remain ruled out for now. No item was marked complete and no throughput claim was added.
+
+Validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (`263` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: completed queue items still cite concrete evidence, native c>N generated-token equality remains open, the refreshed diagnostic artifact is hidden-only and explicitly non-retained, and no performance/scaling claim was added.

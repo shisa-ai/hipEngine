@@ -1067,14 +1067,17 @@ roll-up/status view.
       `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-native-full-core-perrow-linear-postattn-selected-c1-atol4e-3-focus1269.json`,
       keeps native full-attention decode but forces per-row linear, selected-c1 MoE,
       and per-row post-attention; it still fails hidden-only at L8 decode step 6 / row 0
-      / dim 1269 (`max_abs=0.02734375`) while L4 stays green, so the native
-      full-attention core remains independently suspect. The next C2.3 work
-      should decide whether the per-row fallback's ≤0.004 FP16/state amplification
-      is acceptable under the diagnostic
-      gate while native full-attention/post-attention still needs a stricter path;
-      do not re-open
-      full-attention context, layer-4 state mapping, native linear segment metadata,
-      output trace/copy semantics, or grouped MoE output yet.
+      / dim 1269 (`max_abs=0.02734375`) while L4 stays green. The refreshed
+      top-level context-oracle rollup shows L8 only fails `batch_numpy_vs_c1_numpy`
+      (`first_failure`: decode step 0 / row 0 / context dim 2812,
+      `max_abs=0.00811624526977539`; worst at step 10, `max_abs=0.4993577003479004`),
+      while `batch_context_vs_numpy` and `c1_context_vs_numpy` pass. That means
+      the context kernel matches its own oracle; the next C2.3 target is the
+      native-full layer-7 input/QKV or state feeding divergence, not softmax math.
+      The per-row fallback's ≤0.004 FP16/state amplification is a diagnostic
+      tolerance question only; do not re-open full-attention context math,
+      layer-4 state mapping, native linear segment metadata, output trace/copy
+      semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions
