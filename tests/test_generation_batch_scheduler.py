@@ -13422,6 +13422,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE=0"):
         validate_cn_diagnostic_artifact_payload(diagnostic_full_attention_environment_command)
 
+    for command_field in ("benchmark", "correctness_reference", "profiler"):
+        diagnostic_command = json.loads(json.dumps(accepted))
+        diagnostic_command["commands"][command_field] += " HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR=1"
+        with pytest.raises(ValueError) as diagnostic_command_error:
+            validate_cn_diagnostic_artifact_payload(diagnostic_command)
+        assert (
+            f"commands.{command_field} must not include diagnostic override HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR"
+            in str(diagnostic_command_error.value)
+        )
+
     wrong_benchmark_command = json.loads(json.dumps(accepted))
     wrong_benchmark_command["commands"]["benchmark"] = "python3 scripts/qwen35_batch_serial_bench.py --batch-size 2"
     with pytest.raises(ValueError, match="commands.benchmark must reference scripts/qwen35_batch_retained_bench.py"):

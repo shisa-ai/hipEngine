@@ -94,7 +94,7 @@ _REQUIRED_ACCEPTED_ENVIRONMENT_COMMANDS = (
     "git rev-parse HEAD",
     "git diff --quiet",
 )
-_DISALLOWED_ACCEPTED_DIAGNOSTIC_ENVIRONMENT_FRAGMENTS = (
+_DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS = (
     "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE",
     "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR",
     "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_PROJECTIONS",
@@ -1596,8 +1596,13 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         errors.append("software.hipcc_version must include a hipcc/HIP/clang version marker for accepted artifacts")
     commands = _mapping_at(payload, "commands", errors)
     for field in _REQUIRED_ACCEPTED_COMMAND_FIELDS:
-        if not isinstance(commands.get(field), str) or not commands.get(field):
+        command_value = commands.get(field)
+        if not isinstance(command_value, str) or not command_value:
             errors.append(f"commands.{field} must be a non-empty string for accepted artifacts")
+        elif isinstance(command_value, str):
+            for fragment in _DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS:
+                if fragment in command_value:
+                    errors.append(f"commands.{field} must not include diagnostic override {fragment} for accepted artifacts")
     environment_commands = commands.get("environment")
     if not _is_nonempty_string_list(environment_commands):
         errors.append("commands.environment must be a non-empty string list for accepted artifacts")
@@ -1609,7 +1614,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         for command in _REQUIRED_ACCEPTED_ENVIRONMENT_COMMANDS:
             if command not in environment_commands:
                 errors.append(f"commands.environment must include exact command `{command}` for accepted artifacts")
-        for fragment in _DISALLOWED_ACCEPTED_DIAGNOSTIC_ENVIRONMENT_FRAGMENTS:
+        for fragment in _DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS:
             if fragment in joined_environment_commands:
                 errors.append(f"commands.environment must not include diagnostic override {fragment} for accepted artifacts")
     benchmark_command = commands.get("benchmark")
