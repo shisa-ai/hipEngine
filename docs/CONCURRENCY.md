@@ -815,10 +815,21 @@ roll-up/status view.
       hidden mismatch at step 2, while strict state drift starts at step 0. The
       matching all-per-row input trace
       `/tmp/hipengine-hidden-bisect-L8-512-16-all-per-row-decode-inputs-focus1269.json`
-      is green. The reduced prefill drift is fixed, all-per-row fallback and
-      grouped compact MoE are not the blocker at this shape, and the next C2.3
-      target is retained native linear/full-attention decode state/rounding
-      accumulation.
+      is green. Decode execution metadata now records
+      `linear_attention_segment_metadata` (`cu_seqlens` and `state_indices`),
+      and the latest row-1/segment probe
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c1-batch-segments-decode-metadata-focus1269.json`
+      still fails hidden equality with `rows=1`, `state_indices=[0]`, and
+      `decode_linear_input_passed=true` (first hidden mismatch: step 11 / dim
+      1543, `max_abs=0.010478973388671875`). A grouped-MoE + native-linear
+      c=2 probe at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-native-linear-grouped-decode-metadata-focus1269.json`
+      records `state_indices=[0,1]` and fails later at the old row-0 idx-13
+      token boundary. The reduced prefill drift is fixed, all-per-row fallback,
+      grouped compact MoE, and segment state-index mapping are not the blocker
+      at this shape; the next C2.3 target is the native linear segment decode
+      kernel path itself (segment length 1 vs the c=1 decode kernels), followed
+      by native full-attention decode state/rounding accumulation.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

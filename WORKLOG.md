@@ -44818,3 +44818,28 @@ Results:
 - All-per-row artifact `/tmp/hipengine-hidden-bisect-L8-512-16-all-per-row-decode-inputs-focus1269.json`: `status=eq_ok`, `decode_linear_input_passed=true`, `decode_linear_state_passed=true`, `hidden_passed=true`, `token_passed=true`.
 
 Interpretation: native linear decode drift is not caused by mismatched inputs at the first failing hidden step. The next fix should inspect the batch linear-attention state update/output path itself (segment metadata, state index mapping, or BF16/FP32 accumulation/order), then re-run the native-linear-only input/state probe.
+
+## 2026-05-29 — CONCURRENCY linear segment metadata probe
+
+Advanced C2.3 by recording linear-attention decode segment metadata in `last_batch_decode_execution`. Every batch-decode artifact now carries `linear_attention_segment_metadata` with the host `cu_seqlens` and `state_indices` used for native linear segment kernels. CPU layout tests lock the new metadata for native full-attn, forced selected-c1, split-K fallback, and forced per-row-linear metadata paths.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q hipengine/runtime/qwen35_paro_runner.py tests/test_qwen35_resident_batch_layout.py
+python3 -m pytest -q tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_run_layers_batch_decode_reports_native_batch_for_short_context tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_run_layers_batch_decode_can_force_selected_c1_moe_probe tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_run_layers_batch_decode_uses_per_row_splitk_fallback_for_long_context tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_linear_batch_decode_can_force_per_row_probe -q
+```
+
+Diagnostics:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-decode-moe-path grouped_compact --batch-decode-linear-path batch_segments --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L8-512-16-native-linear-grouped-decode-metadata-focus1269.json >/tmp/hipengine-hidden-bisect-L8-512-16-native-linear-grouped-decode-metadata-focus1269.stdout
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 1 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-decode-linear-path batch_segments --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L8-512-16-c1-batch-segments-decode-metadata-focus1269.json >/tmp/hipengine-hidden-bisect-L8-512-16-c1-batch-segments-decode-metadata-focus1269.stdout
+```
+
+Results:
+
+- `/tmp/hipengine-hidden-bisect-L8-512-16-native-linear-grouped-decode-metadata-focus1269.json`: c=2 native linear segments + grouped compact MoE + per-row full-attn fallback records `linear_attention_segment_metadata={"cu_seqlens":[0,1,2],"state_indices":[0,1]}`. It remains `status=mismatch_found`, `decode_linear_state_passed=false`, `decode_linear_input_passed=false` later, and first hidden/token divergence appears at decode step/generated index 12/13 (row 0 dim 1269, `max_abs=0.01513671875`; token idx 13). This shows the selected-c1 batch-MoE probe was not the only native-linear reproducer.
+- `/tmp/hipengine-hidden-bisect-L8-512-16-c1-batch-segments-decode-metadata-focus1269.json`: rows=1 batch-segment decode records `linear_attention_segment_metadata={"cu_seqlens":[0,1],"state_indices":[0]}` and still reports `status=mismatch_found` with `decode_linear_input_passed=true`, `decode_linear_state_passed=false`, `token_passed=true`, and first hidden mismatch at decode step 11 / generated index 12 on dim 1543 (`max_abs=0.010478973388671875`).
+
+Interpretation: the native linear segment path diverges from the c=1 decode path even with a single segment mapped to slot 0 and identical linear inputs, so state-index lane mapping is not the current C2.3 blocker. The next fix should compare the segment-length-1 prefill/segment kernels against the specialized c=1 linear decode kernels (state update/output rounding and accumulation order), then re-run the rows=1 segment probe before broad c=2 native-linear probes.

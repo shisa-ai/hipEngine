@@ -3410,6 +3410,10 @@ class Qwen35ParoResidentSession:
         hidden = Tensor.from_handle(self.batch_hidden.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
         next_hidden = Tensor.from_handle(self.batch_next_hidden.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
         cu_seqlens, state_indices, temp_buffers = self._batch_decode_segment_metadata(rows=rows, slots=slots)
+        linear_segment_metadata = {
+            "cu_seqlens": [int(value) for value in range(rows + 1)],
+            "state_indices": [int(slot) for slot in slots],
+        }
         full_attention_decode_path = "none"
         max_full_attention_context = 0
         native_full_attention_layers = 0
@@ -3651,6 +3655,7 @@ class Qwen35ParoResidentSession:
                 "native_full_attention_layers": int(native_full_attention_layers),
                 "full_attention_decode_path": full_attention_decode_path,
                 "native_caware_decode": full_attention_decode_path not in {"per_row_splitk_fallback", "per_row_context_fallback"} and not force_per_row_linear,
+                "linear_attention_segment_metadata": linear_segment_metadata,
                 "moe_decode_path": moe_decode_path,
                 "moe_decode_rows": int(rows),
                 "moe_grouped_compact_layers": int(moe_grouped_compact_layers),
