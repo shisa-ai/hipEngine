@@ -1059,8 +1059,14 @@ roll-up/status view.
       L4 final hidden/token stays green but full-attention substage drift is visible,
       and L8 first fails at decode step 2 / row 1 / dim 1073 (`max_abs=0.008148193359375`).
       Therefore the batch post-attention add/RMSNorm boundary is not the sole
-      native-full blocker. The next C2.3 work should decide whether the per-row
-      fallback's ≤0.004 FP16/state amplification is acceptable under the diagnostic
+      native-full blocker. A stricter core-isolation control,
+      `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-native-full-core-perrow-linear-postattn-selected-c1-atol4e-3-focus1269.json`,
+      keeps native full-attention decode but forces per-row linear, selected-c1 MoE,
+      and per-row post-attention; it still fails hidden-only at L8 decode step 6 / row 0
+      / dim 1269 (`max_abs=0.02734375`) while L4 stays green, so the native
+      full-attention core remains independently suspect. The next C2.3 work
+      should decide whether the per-row fallback's ≤0.004 FP16/state amplification
+      is acceptable under the diagnostic
       gate while native full-attention/post-attention still needs a stricter path;
       do not re-open
       full-attention context, layer-4 state mapping, native linear segment metadata,

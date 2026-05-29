@@ -46186,3 +46186,29 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: targeted tests PASS; verify count remains `12`; full guard PASS (`263` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: completed queue items still cite concrete evidence, native c>N generated-token equality remains open, the new diagnostic artifact is explicitly hidden-only/non-retained, and no performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY native-full core isolation control
+
+Ran a stricter C2.3 native-full isolation control that keeps `--batch-decode-full-attn-path native_batch` but forces the neighboring decode pieces to diagnostic c=1-style paths:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 4,8 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-moe-path selected_c1 --batch-decode-post-attn-path per_row --json /tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-native-full-core-perrow-linear-postattn-selected-c1-atol4e-3-focus1269.json
+```
+
+Result: `status=mismatch_found`, `performance_claim=false`, `correctness.failure_modes=["hidden"]`, `token_passed=true`, `first_token_mismatch=null`. L4 hidden/token and full-attention stage summaries are green under this control. L8 remains hidden-only red with first hidden mismatch at decode step 6 / generated index 7 / row 0 / dim 1269 (`max_abs=0.02734375`, hidden rows `[0,1]`, token rows `[]`). Decode metadata blockers explicitly list selected-c1 MoE, per-row linear-attention, and per-row post-attention diagnostic fallbacks, while full-attention decode remains `native_batch` with `native_full_attention_layers=2`.
+
+Conclusion: the native full-attention core remains independently suspect at this shape; the large L8 drift is not explained solely by native linear, grouped MoE, or batch post-attention add/RMSNorm. Updated `docs/CONCURRENCY.md` C2.3 progress. No item was marked complete and no throughput claim was added.
+
+Validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (`263` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: completed queue items still cite concrete evidence, native c>N generated-token equality remains open, the new diagnostic artifact is hidden-only and explicitly non-retained, and no performance/scaling claim was added.
