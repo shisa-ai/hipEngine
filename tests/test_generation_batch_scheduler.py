@@ -77,6 +77,7 @@ from scripts.qwen35_batch_hidden_bisect import (
     _numpy_full_attention_context_row,
     _parse_focus_hidden_flat_indices,
     _parse_layer_limits,
+    _prefill_full_kv_prefix_rollup,
     _row_failure_summary,
     _summarize_layer_limit,
     _trace_array_to_f32,
@@ -7031,6 +7032,13 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
             "value_prefix_hashes": prefix_hashes.copy(),
         }
     }
+    prefill_full_kv_prefix_hashes = {
+        0: {
+            "context_lens": np.array([3, 3], dtype=np.int64),
+            "key_prefix_hashes": prefix_hashes.copy(),
+            "value_prefix_hashes": prefix_hashes.copy(),
+        }
+    }
     kv_bits = np.array([[[[0x3F80]], [[0x4000]], [[0x4040]]], [[[0x4080]], [[0x40A0]], [[0x40C0]]]], dtype=np.uint16)
     decode_full_kv_samples = {
         0: {
@@ -7048,6 +7056,7 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         prefill_execution={"path": "native_prefill_compact_cN"},
         prefill_linear_states=linear_state,
         prefill_linear_inputs=linear_inputs,
+        prefill_full_kv_prefix_hashes=prefill_full_kv_prefix_hashes,
         decode_linear_inputs_by_step=[decode_linear_inputs],
         decode_full_attention_by_step=[decode_full_attention],
         decode_full_context_oracles_by_step=[decode_full_context_oracle],
@@ -7062,6 +7071,7 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         prefill_hidden_bits=hidden.copy(),
         prefill_linear_states=linear_state,
         prefill_linear_inputs=linear_inputs,
+        prefill_full_kv_prefix_hashes=prefill_full_kv_prefix_hashes,
         decode_linear_inputs_by_step=[decode_linear_inputs],
         decode_full_attention_by_step=[decode_full_attention],
         decode_full_context_oracles_by_step=[decode_full_context_oracle],
@@ -7115,6 +7125,16 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
             "c1_bits": 17408,
         }
     ]
+    assert summary["prefill_full_kv_prefix_passed"] is True
+    assert summary["prefill_full_kv_prefix_hashes"]["stage"] == "prefill_full_kv_prefix_hashes"
+    assert summary["prefill_full_kv_prefix_hashes"]["passed"] is True
+    assert summary["prefill_full_kv_prefix_hashes"]["failure_summary"]["failed_kinds"] == []
+    assert summary["prefill_full_kv_prefix_hashes"]["layers"][0]["rows"][0]["key_prefix_hash_comparison"] == {
+        "passed": True,
+        "context_len": 3,
+        "mismatch_count": 0,
+        "first_mismatch": None,
+    }
     conv_state = summary["prefill_linear_states"]["layers"][0]["states"]["conv"]
     assert conv_state["max_abs"] == 0.0
     assert conv_state["row_summaries"] == [
@@ -7245,6 +7265,44 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     }
     assert summary["decode_full_context_oracle"]["steps"][0]["layers"][0]["rows"][0]["batch_context_vs_numpy"]["max_abs"] == 0.0
     assert summary["decode_full_context_oracle"]["steps"][0]["layers"][0]["rows"][0]["batch_numpy_vs_c1_numpy"]["max_abs"] == 0.0
+    bad_prefill_prefix = {
+        0: {
+            "context_lens": np.array([3, 3], dtype=np.int64),
+            "key_prefix_hashes": prefix_hashes.copy(),
+            "value_prefix_hashes": prefix_hashes.copy(),
+        }
+    }
+    bad_prefill_prefix[0]["value_prefix_hashes"][1, 2] = 777
+    bad_prefill_summary = _summarize_layer_limit(
+        replace(batch, prefill_full_kv_prefix_hashes=bad_prefill_prefix),
+        c1,
+        layer_limit=1,
+        atol=0.0,
+        layer_types=("full_attention",),
+    )
+    expected_prefill_prefix_failure = {
+        "layer_index": 0,
+        "row": 1,
+        "kind": "value",
+        "context_len": 3,
+        "context_len_match": True,
+        "mismatch_count": 1,
+        "first_mismatch_position": 2,
+        "batch_hash": 777,
+        "c1_hash": 203,
+    }
+    bad_prefill_failures = bad_prefill_summary["prefill_full_kv_prefix_hashes"]["failure_summary"]
+    assert bad_prefill_summary["prefill_full_kv_prefix_passed"] is False
+    assert bad_prefill_failures["failed_kinds"] == ["value"]
+    assert bad_prefill_failures["first_failure"] == expected_prefill_prefix_failure
+    top_level_prefill_rollup = _prefill_full_kv_prefix_rollup([summary, bad_prefill_summary])
+    expected_top_level_prefill_failure = {"layer_limit": 1, **expected_prefill_prefix_failure}
+    assert top_level_prefill_rollup["failed_kinds"] == ["value"]
+    assert top_level_prefill_rollup["first_failure"] == expected_top_level_prefill_failure
+    assert top_level_prefill_rollup["layer_limits"] == [
+        {"layer_limit": 1, "passed": True},
+        {"layer_limit": 1, "passed": False},
+    ]
     bad_prefix_oracle = {
         0: {
             "context": attn_context.copy(),

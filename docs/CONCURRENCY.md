@@ -1104,19 +1104,21 @@ roll-up/status view.
       `max_abs=0.005676984786987305`). The hidden-bisect context oracle now also
       stores per-token CRC32 hashes for the full BF16 K/V prefix and emits
       `correctness.decode_full_context_kv_prefix_failure_summary`, covered by
-      `test_hidden_bisect_summary_embeds_batch_decode_execution_trace`. The
-      refreshed full-prefix probe at
-      `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-kv-prefix-hash-native-full-core-atol4e-3-focus1269.json`
-      still fails only `batch_numpy_vs_c1_numpy` in the softmax-oracle comparison
-      (`batch_context_vs_numpy` and `c1_context_vs_numpy` pass), but now localizes
-      the K/V image drift directly: at L4 decode step 0 / layer 3 / row 0, key
-      and value prefix hashes first mismatch at token position 509 (`context_len=513`,
-      `mismatch_count=4`), and multipoint KV samples first fail at the previous
-      prompt token 511; at L8 the first prefix/sample failure is the current
-      token 512. Next target: audit compact-prefill KV image materialization and
-      prompt-tail/current-token slot contents before changing paged-KV writer
-      code; do not re-open context softmax math, row setup, native linear segment
-      metadata, output trace/copy semantics, or grouped MoE output yet.
+      `test_hidden_bisect_summary_embeds_batch_decode_execution_trace`. It now
+      additionally snapshots post-prefill full-KV prefix hashes before any decode
+      write and emits `correctness.prefill_full_kv_prefix_failure_summary`, also
+      covered by that CPU test. The refreshed prefill-aware probe at
+      `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-prefill-kv-prefix-native-full-core-atol4e-3-focus1269.json`
+      is still hidden-only red, has green post-prefill K/V prefix hashes in that
+      run, and localizes the decode-time prefix/sample failure to L8 step 0 /
+      layer 7 / row 0 current token 512. An L4-only repeat
+      `/tmp/hipengine-hidden-bisect-L4-512-16-c2-prefill-kv-prefix-repeat-atol4e-3-focus1269.json`
+      caught a pre-decode prompt-tail hash failure at layer 3 / row 0 token 500
+      that the decode prefix then inherited; a second L4 repeat was green, so the
+      immediate target is to make the compact-prefill K/V hash probe deterministic
+      and audit prompt-tail/current-token slot contents before changing paged-KV
+      writer code. Do not re-open context softmax math, row setup, native linear
+      segment metadata, output trace/copy semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

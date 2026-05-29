@@ -70,6 +70,7 @@ class HiddenRun:
     prefill_execution: dict[str, Any] | None = None
     prefill_linear_states: dict[int, dict[str, np.ndarray]] = field(default_factory=dict)
     prefill_linear_inputs: dict[int, list[np.ndarray]] = field(default_factory=dict)
+    prefill_full_kv_prefix_hashes: dict[int, dict[str, np.ndarray]] = field(default_factory=dict)
     decode_linear_inputs_by_step: list[dict[int, np.ndarray]] = field(default_factory=list)
     decode_full_attention_by_step: list[dict[int, dict[str, np.ndarray]]] = field(default_factory=list)
     decode_full_context_oracles_by_step: list[dict[int, dict[str, np.ndarray]]] = field(default_factory=list)
@@ -1484,6 +1485,72 @@ def _copy_decode_full_kv_prefix_bits(
     return key_bits, value_bits
 
 
+def _copy_full_kv_prefix_hashes(
+    session: Qwen35ParoResidentSession,
+    *,
+    rows: int,
+    prompt_lengths: Sequence[int],
+    slots: Sequence[int],
+) -> dict[int, dict[str, np.ndarray]]:
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    if len(prompt_lengths) != rows or len(slots) != rows:
+        raise ValueError("prompt_lengths and slots must match rows")
+    context_lens = np.asarray([int(length) for length in prompt_lengths], dtype=np.int64)
+    if np.any(context_lens <= 0):
+        raise ValueError("prompt lengths must be positive")
+    max_context_len = int(np.max(context_lens))
+    hashes: dict[int, dict[str, np.ndarray]] = {}
+    layer_types = tuple(str(layer_type) for layer_type in getattr(session.config, "layer_types", ()))
+    for layer_id, layer_type in enumerate(layer_types[: len(session.states)]):
+        if layer_type != "full_attention":
+            continue
+        key_prefix_hashes = np.zeros((rows, max_context_len), dtype=np.uint64)
+        value_prefix_hashes = np.zeros((rows, max_context_len), dtype=np.uint64)
+        for row, (slot, live_count) in enumerate(zip(slots, context_lens, strict=True)):
+            live = int(live_count)
+            key_bits, value_bits = _copy_decode_full_kv_prefix_bits(
+                session,
+                layer_id=int(layer_id),
+                slot=int(slot),
+                live_count=live,
+            )
+            key_prefix_hashes[row, :live] = _bf16_token_crc32(key_bits)
+            value_prefix_hashes[row, :live] = _bf16_token_crc32(value_bits)
+        hashes[int(layer_id)] = {
+            "context_lens": context_lens.copy(),
+            "key_prefix_hashes": key_prefix_hashes,
+            "value_prefix_hashes": value_prefix_hashes,
+        }
+    return hashes
+
+
+def _merge_full_kv_prefix_hash_rows(
+    target: dict[int, dict[str, list[np.ndarray]]],
+    captured: dict[int, dict[str, np.ndarray]],
+) -> None:
+    for layer_id, payload in captured.items():
+        target_layer = target.setdefault(int(layer_id), {"context_lens": [], "key_prefix_hashes": [], "value_prefix_hashes": []})
+        for key in ("context_lens", "key_prefix_hashes", "value_prefix_hashes"):
+            array = np.asarray(payload[key])
+            if int(array.shape[0]) != 1:
+                raise ValueError("c=1 prefill full-KV prefix hashes must contain exactly one row")
+            target_layer.setdefault(key, []).append(array.copy())
+
+
+def _stack_full_kv_prefix_hash_rows(
+    rows_by_layer: dict[int, dict[str, list[np.ndarray]]]
+) -> dict[int, dict[str, np.ndarray]]:
+    stacked: dict[int, dict[str, np.ndarray]] = {}
+    for layer_id, payload in rows_by_layer.items():
+        stacked[int(layer_id)] = {
+            "context_lens": np.concatenate(payload.get("context_lens", []), axis=0),
+            "key_prefix_hashes": _pad_row_arrays(payload.get("key_prefix_hashes", []), dtype=np.uint64),
+            "value_prefix_hashes": _pad_row_arrays(payload.get("value_prefix_hashes", []), dtype=np.uint64),
+        }
+    return stacked
+
+
 def _decode_full_context_oracles_from_trace(
     session: Qwen35ParoResidentSession,
     traced_layers: dict[int, dict[str, np.ndarray]],
@@ -1739,9 +1806,16 @@ def _run_batch_hidden(
         session.runtime.device_synchronize()
         prefill_hidden_bits = _copy_hidden_bits(session, _batch_prefill_hidden_tensor(session, rows=rows), rows=rows)
         prefill_linear_states = _copy_prefill_linear_states(session, rows=rows)
+        prompt_lengths = [len(prompt) for prompt in prompts]
         prefill_linear_inputs = _prefill_linear_input_rows_from_trace(
             getattr(session, "_prefill_linear_input_trace", None),
-            prompt_lengths=[len(prompt) for prompt in prompts],
+            prompt_lengths=prompt_lengths,
+        )
+        prefill_full_kv_prefix_hashes = _copy_full_kv_prefix_hashes(
+            session,
+            rows=rows,
+            prompt_lengths=prompt_lengths,
+            slots=tuple(range(rows)),
         )
         prefill_execution = getattr(session, "last_prefill_execution", None)
         prefill_execution_copy = json.loads(json.dumps(prefill_execution)) if isinstance(prefill_execution, dict) else None
@@ -1811,6 +1885,7 @@ def _run_batch_hidden(
             prefill_execution=prefill_execution_copy,
             prefill_linear_states=prefill_linear_states,
             prefill_linear_inputs=prefill_linear_inputs,
+            prefill_full_kv_prefix_hashes=prefill_full_kv_prefix_hashes,
             decode_linear_inputs_by_step=decode_linear_inputs_by_step,
             decode_full_attention_by_step=decode_full_attention_by_step,
             decode_full_context_oracles_by_step=decode_full_context_oracles_by_step,
@@ -1836,6 +1911,7 @@ def _run_c1_hidden(
     prefill_hidden_bits = np.empty((rows, runner.config.hidden_size), dtype=np.uint16)
     prefill_linear_state_rows: dict[int, dict[str, list[np.ndarray]]] = {}
     prefill_linear_input_rows: dict[int, list[np.ndarray]] = {}
+    prefill_full_kv_prefix_hash_rows: dict[int, dict[str, list[np.ndarray]]] = {}
     decode_linear_input_rows_by_step: list[dict[int, list[np.ndarray]]] = [{} for _ in range(decode_tokens)]
     decode_full_attention_rows_by_step: list[dict[int, dict[str, list[np.ndarray]]]] = [{} for _ in range(decode_tokens)]
     decode_full_context_oracle_rows_by_step: list[dict[int, dict[str, list[np.ndarray]]]] = [
@@ -1874,6 +1950,10 @@ def _run_c1_hidden(
                     getattr(session, "_prefill_linear_input_trace", None),
                     prompt_lengths=[len(prompt)],
                 ),
+            )
+            _merge_full_kv_prefix_hash_rows(
+                prefill_full_kv_prefix_hash_rows,
+                _copy_full_kv_prefix_hashes(session, rows=1, prompt_lengths=[len(prompt)], slots=(0,)),
             )
             row_generated: list[int] = []
             for step in range(decode_tokens):
@@ -1926,6 +2006,7 @@ def _run_c1_hidden(
         prefill_hidden_bits=prefill_hidden_bits,
         prefill_linear_states=_stack_prefill_linear_state_rows(prefill_linear_state_rows),
         prefill_linear_inputs=prefill_linear_input_rows,
+        prefill_full_kv_prefix_hashes=_stack_full_kv_prefix_hash_rows(prefill_full_kv_prefix_hash_rows),
         decode_linear_inputs_by_step=[
             _stack_decode_linear_input_rows(rows_by_layer) for rows_by_layer in decode_linear_input_rows_by_step
         ],
@@ -2012,6 +2093,175 @@ def _prefill_summary(
     if batch.prefill_execution is not None:
         summary["batch_prefill_execution"] = batch.prefill_execution
     return summary
+
+
+def _prefill_full_kv_prefix_failure_record(
+    layer: dict[str, Any],
+    row_summary: dict[str, Any],
+    kind: str,
+    *,
+    layer_limit: int | None = None,
+) -> dict[str, Any]:
+    comparison = row_summary.get(f"{kind}_prefix_hash_comparison", {})
+    first = comparison.get("first_mismatch") if isinstance(comparison, dict) else None
+    record: dict[str, Any] = {
+        "layer_index": int(layer.get("layer_index", -1)),
+        "row": int(row_summary.get("row", -1)),
+        "kind": str(kind),
+        "context_len": int(row_summary.get("context_len", 0)),
+        "context_len_match": bool(row_summary.get("context_len_match", False)),
+        "mismatch_count": int(comparison.get("mismatch_count", 0)) if isinstance(comparison, dict) else 0,
+        "first_mismatch_position": None if not isinstance(first, dict) else int(first.get("position", -1)),
+        "batch_hash": None if not isinstance(first, dict) else int(first.get("batch_hash", 0)),
+        "c1_hash": None if not isinstance(first, dict) else int(first.get("c1_hash", 0)),
+    }
+    if layer_limit is not None:
+        record = {"layer_limit": int(layer_limit), **record}
+    return record
+
+
+def _prefill_full_kv_prefix_failure_summary(layers: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    kind_summaries: dict[str, Any] = {}
+    first_failure: dict[str, Any] | None = None
+    for kind in ("key", "value"):
+        rows: list[int] = []
+        seen_rows: set[int] = set()
+        kind_first_failure: dict[str, Any] | None = None
+        for layer in layers:
+            for row_summary in layer.get("rows", []):
+                comparison = row_summary.get(f"{kind}_prefix_hash_comparison")
+                if not isinstance(comparison, dict) or bool(comparison.get("passed", True)):
+                    continue
+                record = _prefill_full_kv_prefix_failure_record(layer, row_summary, kind)
+                if kind_first_failure is None:
+                    kind_first_failure = record
+                if first_failure is None:
+                    first_failure = record
+                row_index = int(row_summary.get("row", -1))
+                if row_index >= 0 and row_index not in seen_rows:
+                    rows.append(row_index)
+                    seen_rows.add(row_index)
+        kind_summaries[kind] = {
+            "passed": not rows,
+            "failure_rows": rows,
+            "failure_row_count": len(rows),
+            "first_failure": kind_first_failure,
+        }
+    failed_kinds = [kind for kind in ("key", "value") if kind_summaries[kind]["failure_rows"]]
+    return {
+        "failed_kinds": failed_kinds,
+        "failed_kind_count": len(failed_kinds),
+        "first_failure": first_failure,
+        "kinds": kind_summaries,
+    }
+
+
+def _prefill_full_kv_prefix_summary(batch: HiddenRun, c1: HiddenRun) -> dict[str, Any] | None:
+    if not batch.prefill_full_kv_prefix_hashes or not c1.prefill_full_kv_prefix_hashes:
+        return None
+    layers: list[dict[str, Any]] = []
+    for layer_id in sorted(set(batch.prefill_full_kv_prefix_hashes) & set(c1.prefill_full_kv_prefix_hashes)):
+        batch_payload = batch.prefill_full_kv_prefix_hashes[layer_id]
+        c1_payload = c1.prefill_full_kv_prefix_hashes[layer_id]
+        batch_lens = np.asarray(batch_payload["context_lens"], dtype=np.int64)
+        c1_lens = np.asarray(c1_payload["context_lens"], dtype=np.int64)
+        batch_key_hashes = np.asarray(batch_payload["key_prefix_hashes"], dtype=np.uint64)
+        c1_key_hashes = np.asarray(c1_payload["key_prefix_hashes"], dtype=np.uint64)
+        batch_value_hashes = np.asarray(batch_payload["value_prefix_hashes"], dtype=np.uint64)
+        c1_value_hashes = np.asarray(c1_payload["value_prefix_hashes"], dtype=np.uint64)
+        if batch_lens.shape != c1_lens.shape:
+            raise ValueError(f"prefill full-KV context-lens shape differs for layer {layer_id}")
+        for name, left, right in (
+            ("key", batch_key_hashes, c1_key_hashes),
+            ("value", batch_value_hashes, c1_value_hashes),
+        ):
+            if left.ndim != 2 or right.ndim != 2 or int(left.shape[0]) != int(batch_lens.shape[0]) or int(right.shape[0]) != int(batch_lens.shape[0]):
+                raise ValueError(f"prefill full-KV {name} prefix hashes have incompatible shapes")
+        row_summaries: list[dict[str, Any]] = []
+        for row in range(int(batch_lens.shape[0])):
+            key_comparison = _kv_prefix_hash_comparison(
+                batch_key_hashes[row],
+                c1_key_hashes[row],
+                context_len=int(batch_lens[row]),
+            )
+            value_comparison = _kv_prefix_hash_comparison(
+                batch_value_hashes[row],
+                c1_value_hashes[row],
+                context_len=int(batch_lens[row]),
+            )
+            row_summaries.append(
+                {
+                    "row": int(row),
+                    "context_len": int(batch_lens[row]),
+                    "context_len_match": bool(batch_lens[row] == c1_lens[row]),
+                    "passed": bool(batch_lens[row] == c1_lens[row])
+                    and bool(key_comparison["passed"])
+                    and bool(value_comparison["passed"]),
+                    "key_prefix_hash_comparison": key_comparison,
+                    "value_prefix_hash_comparison": value_comparison,
+                }
+            )
+        layers.append({"layer_index": int(layer_id), "passed": all(row["passed"] for row in row_summaries), "rows": row_summaries})
+    failure_summary = _prefill_full_kv_prefix_failure_summary(layers)
+    return {
+        "stage": "prefill_full_kv_prefix_hashes",
+        "passed": all(layer["passed"] for layer in layers),
+        "failure_summary": failure_summary,
+        "layers": layers,
+    }
+
+
+def _prefill_full_kv_prefix_rollup(layer_summaries: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    kind_summaries: dict[str, Any] = {}
+    first_failure: dict[str, Any] | None = None
+    for kind in ("key", "value"):
+        rows: list[int] = []
+        seen_rows: set[int] = set()
+        kind_first_failure: dict[str, Any] | None = None
+        for summary in layer_summaries:
+            layer_limit = int(summary.get("layer_limit", 0))
+            prefill = summary.get("prefill_full_kv_prefix_hashes")
+            if not isinstance(prefill, dict):
+                continue
+            kind_summary = prefill.get("failure_summary", {}).get("kinds", {}).get(kind)
+            if not isinstance(kind_summary, dict):
+                continue
+            failure = kind_summary.get("first_failure")
+            if isinstance(failure, dict):
+                failure_with_limit = {"layer_limit": layer_limit, **failure}
+                if kind_first_failure is None:
+                    kind_first_failure = failure_with_limit
+                if first_failure is None:
+                    first_failure = failure_with_limit
+            for raw_row in kind_summary.get("failure_rows", []):
+                row_index = int(raw_row)
+                if row_index in seen_rows:
+                    continue
+                rows.append(row_index)
+                seen_rows.add(row_index)
+        kind_summaries[kind] = {
+            "passed": not rows,
+            "failure_rows": rows,
+            "failure_row_count": len(rows),
+            "first_failure": kind_first_failure,
+        }
+    failed_kinds = [kind for kind in ("key", "value") if kind_summaries[kind]["failure_rows"]]
+    return {
+        "failed_kinds": failed_kinds,
+        "failed_kind_count": len(failed_kinds),
+        "first_failure": first_failure,
+        "kinds": kind_summaries,
+        "layer_limits": [
+            {
+                "layer_limit": int(summary.get("layer_limit", 0)),
+                "passed": bool(summary.get("prefill_full_kv_prefix_hashes", {}).get("passed", True))
+                if isinstance(summary.get("prefill_full_kv_prefix_hashes"), dict)
+                else True,
+            }
+            for summary in layer_summaries
+            if isinstance(summary.get("prefill_full_kv_prefix_hashes"), dict)
+        ],
+    }
 
 
 def _linear_state_layers_summary(
@@ -3587,6 +3837,7 @@ def _summarize_layer_limit(
         atol=atol,
         focus_hidden_flat_indices=focus_hidden_flat_indices,
     )
+    prefill_full_kv_prefix_hashes = _prefill_full_kv_prefix_summary(batch, c1)
     decode_linear_inputs = _decode_linear_input_summary(
         batch,
         c1,
@@ -3631,6 +3882,9 @@ def _summarize_layer_limit(
         "prefill_hidden_passed": True if prefill is None else bool(prefill["hidden_passed"]),
         "prefill_linear_input_passed": True if prefill_linear_inputs is None else bool(prefill_linear_inputs["passed"]),
         "prefill_linear_state_passed": True if prefill_linear_states is None else bool(prefill_linear_states["passed"]),
+        "prefill_full_kv_prefix_passed": (
+            True if prefill_full_kv_prefix_hashes is None else bool(prefill_full_kv_prefix_hashes["passed"])
+        ),
         "decode_linear_input_passed": True if decode_linear_inputs is None else bool(decode_linear_inputs["passed"]),
         "decode_full_attention_input_passed": (
             True if decode_full_attention is None else bool(decode_full_attention["input_passed"])
@@ -3670,6 +3924,8 @@ def _summarize_layer_limit(
         summary["prefill_linear_states"] = prefill_linear_states
     if prefill_linear_inputs is not None:
         summary["prefill_linear_inputs"] = prefill_linear_inputs
+    if prefill_full_kv_prefix_hashes is not None:
+        summary["prefill_full_kv_prefix_hashes"] = prefill_full_kv_prefix_hashes
     if decode_linear_inputs is not None:
         summary["decode_linear_inputs"] = decode_linear_inputs
     if decode_full_attention is not None:
@@ -3905,6 +4161,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "failure_modes": _failure_modes(hidden_passed=hidden_passed, token_passed=token_passed),
             "row_failure_summary": _row_failure_summary(layer_summaries),
             "decode_full_attention_stage_failure_summary": _decode_full_attention_stage_rollup(layer_summaries),
+            "prefill_full_kv_prefix_failure_summary": _prefill_full_kv_prefix_rollup(layer_summaries),
             "decode_full_context_oracle_failure_summary": _decode_full_context_oracle_rollup(layer_summaries),
             "decode_full_context_kv_prefix_failure_summary": _decode_full_context_kv_prefix_rollup(layer_summaries),
             "decode_full_kv_sample_failure_summary": _decode_full_kv_sample_rollup(layer_summaries),
