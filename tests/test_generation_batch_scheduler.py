@@ -4559,8 +4559,16 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         " -- python3 scripts/qwen35_batch_retained_bench.py",
         " python3 scripts/qwen35_batch_retained_bench.py",
     )
-    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_command must include rocprof command separator when passed"):
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_command must include exactly one rocprof command separator when passed"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_command_separator)
+    tampered_profiler_precondition_duplicate_separator = json.loads(json.dumps(persisted))
+    profiler_precondition = tampered_profiler_precondition_duplicate_separator["commands"][-1]["preconditions"][-1]
+    profiler_precondition["profiler_command"] = profiler_precondition["profiler_command"].replace(
+        " -- python3 scripts/qwen35_batch_retained_bench.py",
+        " -- -- python3 scripts/qwen35_batch_retained_bench.py",
+    )
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_command must include exactly one rocprof command separator when passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_duplicate_separator)
     tampered_profiler_precondition_profiled_command = json.loads(json.dumps(persisted))
     profiler_precondition = tampered_profiler_precondition_profiled_command["commands"][-1]["preconditions"][-1]
     profiler_precondition["profiler_command"] = profiler_precondition["profiler_command"].replace(

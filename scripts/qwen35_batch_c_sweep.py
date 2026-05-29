@@ -2198,8 +2198,8 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if not profiler_command_argv or Path(profiler_command_argv[0]).name != "rocprofv3":
                         errors.append("commands[].preconditions[].profiler_command must start with rocprofv3 when passed")
                         break
-                    if "--" not in profiler_command_argv:
-                        errors.append("commands[].preconditions[].profiler_command must include rocprof command separator when passed")
+                    if profiler_command_argv.count("--") != 1:
+                        errors.append("commands[].preconditions[].profiler_command must include exactly one rocprof command separator when passed")
                         break
                     separator_index = profiler_command_argv.index("--")
                     rocprof_command_argv = profiler_command_argv[:separator_index]
