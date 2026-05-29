@@ -69,6 +69,7 @@ from scripts.qwen35_batch_hidden_bisect import (
     _decode_full_kv_sample_positions,
     _parse_focus_hidden_flat_indices,
     _parse_layer_limits,
+    _row_failure_summary,
     _summarize_layer_limit,
     _trace_array_to_f32,
     build_parser as build_hidden_bisect_parser,
@@ -6307,6 +6308,59 @@ def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:
         },
         failed["top_abs_diffs"][0],
     ]
+    assert _row_failure_summary(
+        [
+            {
+                "layer_limit": 1,
+                "failure_modes": [],
+                "hidden_failure_rows": [],
+                "hidden_failure_row_count": 0,
+                "strict_hidden_bit_drift_rows": [0],
+                "strict_hidden_bit_drift_row_count": 1,
+                "token_failure_rows": [],
+                "token_failure_row_count": 0,
+            },
+            {
+                "layer_limit": 2,
+                "failure_modes": ["hidden", "token"],
+                "hidden_failure_rows": [1, 0],
+                "hidden_failure_row_count": 2,
+                "strict_hidden_bit_drift_rows": [0, 1],
+                "strict_hidden_bit_drift_row_count": 2,
+                "token_failure_rows": [1],
+                "token_failure_row_count": 1,
+            },
+        ]
+    ) == {
+        "hidden_failure_rows": [1, 0],
+        "hidden_failure_row_count": 2,
+        "strict_hidden_bit_drift_rows": [0, 1],
+        "strict_hidden_bit_drift_row_count": 2,
+        "token_failure_rows": [1],
+        "token_failure_row_count": 1,
+        "layer_limits": [
+            {
+                "layer_limit": 1,
+                "failure_modes": [],
+                "hidden_failure_rows": [],
+                "hidden_failure_row_count": 0,
+                "strict_hidden_bit_drift_rows": [0],
+                "strict_hidden_bit_drift_row_count": 1,
+                "token_failure_rows": [],
+                "token_failure_row_count": 0,
+            },
+            {
+                "layer_limit": 2,
+                "failure_modes": ["hidden", "token"],
+                "hidden_failure_rows": [1, 0],
+                "hidden_failure_row_count": 2,
+                "strict_hidden_bit_drift_rows": [0, 1],
+                "strict_hidden_bit_drift_row_count": 2,
+                "token_failure_rows": [1],
+                "token_failure_row_count": 1,
+            },
+        ],
+    }
     decode_execution = {
         "rows": 2,
         "full_attention_decode_path": "native_batch",

@@ -1034,10 +1034,12 @@ roll-up/status view.
       keeps native full-attention but bypasses grouped-compact MoE; it remains
       hidden-only red at L8 (`max_abs=0.02734375`, 346 elements over, tokens green),
       so grouped-compact MoE is not the source of the large native-full drift.
-      The row-count refresh of that same artifact adds per-layer failure rows:
-      L4 has `failure_modes=[]`, `hidden_failure_rows=[]` but strict bit drift on
-      both rows, while L8 has `failure_modes=["hidden"]`, `hidden_failure_rows=[0,1]`,
-      and `token_failure_rows=[]`. The next C2.3 work should decide whether the
+      The row-count refresh of that same artifact adds per-layer and top-level
+      row-failure summaries: L4 has `failure_modes=[]`, `hidden_failure_rows=[]`
+      but strict bit drift on both rows, while L8 has `failure_modes=["hidden"]`,
+      `hidden_failure_rows=[0,1]`, and `token_failure_rows=[]`; top-level
+      `correctness.row_failure_summary` matches hidden rows `[0,1]`, strict rows
+      `[0,1]`, and token rows `[]`. The next C2.3 work should decide whether the
       per-row fallback's ≤0.004
       FP16/state amplification is acceptable under the diagnostic gate while native
       full-attention/post-attention still needs a stricter path; do not re-open

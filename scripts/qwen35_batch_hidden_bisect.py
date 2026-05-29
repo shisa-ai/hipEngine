@@ -536,6 +536,46 @@ def _token_failure_rows(summary: dict[str, Any]) -> list[int]:
     return rows
 
 
+def _unique_rows_from_layer_summaries(layer_summaries: Sequence[dict[str, Any]], key: str) -> list[int]:
+    rows: list[int] = []
+    seen: set[int] = set()
+    for summary in layer_summaries:
+        for raw_row in summary.get(key, []):
+            row_index = int(raw_row)
+            if row_index in seen:
+                continue
+            rows.append(row_index)
+            seen.add(row_index)
+    return rows
+
+
+def _row_failure_summary(layer_summaries: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    hidden_failure_rows = _unique_rows_from_layer_summaries(layer_summaries, "hidden_failure_rows")
+    strict_hidden_bit_drift_rows = _unique_rows_from_layer_summaries(layer_summaries, "strict_hidden_bit_drift_rows")
+    token_failure_rows = _unique_rows_from_layer_summaries(layer_summaries, "token_failure_rows")
+    return {
+        "hidden_failure_rows": hidden_failure_rows,
+        "hidden_failure_row_count": len(hidden_failure_rows),
+        "strict_hidden_bit_drift_rows": strict_hidden_bit_drift_rows,
+        "strict_hidden_bit_drift_row_count": len(strict_hidden_bit_drift_rows),
+        "token_failure_rows": token_failure_rows,
+        "token_failure_row_count": len(token_failure_rows),
+        "layer_limits": [
+            {
+                "layer_limit": int(summary["layer_limit"]),
+                "failure_modes": list(summary.get("failure_modes", [])),
+                "hidden_failure_rows": [int(row) for row in summary.get("hidden_failure_rows", [])],
+                "hidden_failure_row_count": int(summary.get("hidden_failure_row_count", 0)),
+                "strict_hidden_bit_drift_rows": [int(row) for row in summary.get("strict_hidden_bit_drift_rows", [])],
+                "strict_hidden_bit_drift_row_count": int(summary.get("strict_hidden_bit_drift_row_count", 0)),
+                "token_failure_rows": [int(row) for row in summary.get("token_failure_rows", [])],
+                "token_failure_row_count": int(summary.get("token_failure_row_count", 0)),
+            }
+            for summary in layer_summaries
+        ],
+    }
+
+
 def _layer_execution_at_step(summary: dict[str, Any], *, decode_step: int, layer_index: int) -> dict[str, Any] | None:
     for step in summary.get("steps", []):
         if int(step.get("decode_step", -1)) != int(decode_step):
@@ -3103,6 +3143,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "hidden_passed": hidden_passed,
             "token_passed": token_passed,
             "failure_modes": _failure_modes(hidden_passed=hidden_passed, token_passed=token_passed),
+            "row_failure_summary": _row_failure_summary(layer_summaries),
             "first_hidden_mismatch": hidden_mismatch,
             "first_tolerance_hidden_mismatch": hidden_mismatch,
             "first_hidden_bit_drift": hidden_bit_drift,
