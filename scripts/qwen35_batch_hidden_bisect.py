@@ -14,7 +14,7 @@ import json
 import os
 import shlex
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
@@ -38,6 +38,7 @@ class HiddenRun:
     seed_tokens: list[int]
     generated_tokens: list[list[int]]
     hidden_bits_by_step: list[np.ndarray]
+    decode_execution_by_step: list[dict[str, Any] | None] = field(default_factory=list)
 
 
 def _command(argv: Sequence[str] | None) -> str:
@@ -178,6 +179,7 @@ def _run_batch_hidden(
         next_tokens = list(seed_tokens)
         generated_tokens = [[] for _ in prompts]
         hidden_bits_by_step: list[np.ndarray] = []
+        decode_execution_by_step: list[dict[str, Any] | None] = []
         for step in range(decode_tokens):
             positions = tuple(len(prompt) + step for prompt in prompts)
             session._set_batch_token_embeddings(next_tokens, stream=0)
@@ -188,6 +190,10 @@ def _run_batch_hidden(
                 slots=tuple(range(rows)),
                 stream=0,
             )
+            decode_execution = getattr(session, "last_batch_decode_execution", None)
+            decode_execution_by_step.append(
+                json.loads(json.dumps(decode_execution)) if isinstance(decode_execution, dict) else None
+            )
             session.runtime.device_synchronize()
             hidden_bits_by_step.append(_copy_hidden_bits(session, hidden, rows=rows))
             results = session._sample_batch_from_hidden(hidden, rows=rows)
@@ -196,7 +202,12 @@ def _run_batch_hidden(
                 token_id = int(result.token_id)
                 generated_tokens[row].append(token_id)
                 next_tokens.append(token_id)
-        return HiddenRun(seed_tokens=seed_tokens, generated_tokens=generated_tokens, hidden_bits_by_step=hidden_bits_by_step)
+        return HiddenRun(
+            seed_tokens=seed_tokens,
+            generated_tokens=generated_tokens,
+            hidden_bits_by_step=hidden_bits_by_step,
+            decode_execution_by_step=decode_execution_by_step,
+        )
 
 
 def _run_c1_hidden(
@@ -294,7 +305,10 @@ def _summarize_layer_limit(
                     ),
                 }
             )
-        steps.append({"decode_step": step, "generated_index": step + 1, "rows": rows})
+        step_summary: dict[str, Any] = {"decode_step": step, "generated_index": step + 1, "rows": rows}
+        if step < len(batch.decode_execution_by_step) and batch.decode_execution_by_step[step] is not None:
+            step_summary["batch_decode_execution"] = batch.decode_execution_by_step[step]
+        steps.append(step_summary)
     token_mismatches = _token_mismatches(batch, c1)
     return {
         "layer_limit": int(layer_limit),

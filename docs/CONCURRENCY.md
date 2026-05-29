@@ -643,6 +643,8 @@ roll-up/status view.
       old row-0 token idx-13 mismatch remains. New diagnostic metadata in
       `/tmp/hipengine-hidden-bisect-L6-512-1-layer-type.json` tags that reduced
       first mismatch to `last_layer_index=5`, `last_layer_type=linear_attention`,
+      and hidden-bisection summaries now embed per-step
+      `batch_decode_execution.layer_executions` traces for the native batch path,
       keeping C2.3 focused on the linear-attention+MoE layer rather than sampler
       or split-K paths.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2

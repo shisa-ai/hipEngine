@@ -63,8 +63,10 @@ from scripts.qwen35_batch_artifact_schema import (
 from scripts.qwen35_batch_c_sweep import build_parser as build_c_sweep_parser, build_sweep_commands, run_sweep
 from scripts.qwen35_batch_gguf_diagnostic import build_parser as build_gguf_diagnostic_parser, run as run_gguf_diagnostic
 from scripts.qwen35_batch_hidden_bisect import (
+    HiddenRun,
     _first_hidden_mismatch,
     _parse_layer_limits,
+    _summarize_layer_limit,
     build_parser as build_hidden_bisect_parser,
     hidden_comparison,
     run as run_hidden_bisect,
@@ -6278,6 +6280,42 @@ def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:
         "last_layer_index": 1,
         "last_layer_type": "linear_attention",
     }
+
+
+def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
+    hidden = np.array([[0x3C00, 0x4000], [0x4200, 0x4400]], dtype=np.uint16)
+    decode_execution = {
+        "rows": 2,
+        "slots": [0, 1],
+        "full_attention_decode_path": "native_batch",
+        "native_caware_decode": True,
+        "moe_decode_path": "grouped_compact",
+        "layer_executions": [
+            {
+                "layer_index": 0,
+                "layer_type": "full_attention",
+                "rows": 2,
+                "slots": [0, 1],
+                "max_context": 512,
+                "full_attention_decode_path": "native_batch",
+                "native_caware_decode": True,
+                "moe_decode_path": "grouped_compact",
+            }
+        ],
+    }
+    batch = HiddenRun(
+        seed_tokens=[10, 20],
+        generated_tokens=[[11], [21]],
+        hidden_bits_by_step=[hidden],
+        decode_execution_by_step=[decode_execution],
+    )
+    c1 = HiddenRun(seed_tokens=[10, 20], generated_tokens=[[11], [21]], hidden_bits_by_step=[hidden.copy()])
+
+    summary = _summarize_layer_limit(batch, c1, layer_limit=1, atol=0.0, layer_types=("full_attention",))
+
+    assert summary["hidden_passed"] is True
+    assert summary["token_passed"] is True
+    assert summary["steps"][0]["batch_decode_execution"] == decode_execution
 
 
 def test_gguf_cN_diagnostic_template_records_blocked_c2_command(tmp_path: Path) -> None:
