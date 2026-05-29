@@ -2902,6 +2902,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         or not profiler_precondition_source
                         or not isinstance(postcondition.get("profiler_source_artifact_path"), str)
                         or not postcondition.get("profiler_source_artifact_path")
+                        or _path_has_parent_directory_component(postcondition.get("profiler_source_artifact_path"))
                         or postcondition.get("profiler_source_artifact_path") == profiler_precondition_source
                     )
                 ):
