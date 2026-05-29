@@ -68,6 +68,7 @@ from scripts.qwen35_batch_hidden_bisect import (
     _decode_full_attention_stage_rollup,
     _decode_full_context_oracle_rollup,
     _decode_full_context_oracles_from_trace,
+    _decode_full_kv_sample_rollup,
     _first_failing_layer_transition,
     _first_hidden_mismatch,
     _decode_full_kv_sample_positions,
@@ -7261,8 +7262,41 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     assert summary["decode_full_kv_sample_passed"] is True
     assert summary["decode_full_kv_samples"]["stage"] == "decode_full_kv_samples"
     assert summary["decode_full_kv_samples"]["passed"] is True
-    assert summary["decode_full_kv_samples"]["steps"][0]["layers"][0]["rows"][0]["sample_positions"] == [0, 1, 2]
-    assert summary["decode_full_kv_samples"]["steps"][0]["layers"][0]["rows"][0]["key_comparison"]["max_abs"] == 0.0
+    kv_row = summary["decode_full_kv_samples"]["steps"][0]["layers"][0]["rows"][0]
+    assert kv_row["sample_positions"] == [0, 1, 2]
+    assert kv_row["key_comparison"]["max_abs"] == 0.0
+    assert [sample["sample_label"] for sample in kv_row["key_sample_comparisons"]] == ["first", "previous", "current"]
+    assert [sample["sample_position"] for sample in kv_row["key_sample_comparisons"]] == [0, 1, 2]
+    assert all(sample["comparison"]["passed"] for sample in kv_row["key_sample_comparisons"])
+    bad_kv_samples = {
+        0: {
+            "sample_labels": ("first", "previous", "current"),
+            "sample_positions": np.array([[0, 1, 2], [0, 1, 2]], dtype=np.int64),
+            "key_bits": kv_bits.copy(),
+            "value_bits": kv_bits.copy(),
+        }
+    }
+    bad_kv_samples[0]["key_bits"][0, 2, 0, 0] = 0x4100
+    bad_kv_summary = _summarize_layer_limit(
+        replace(batch, decode_full_kv_samples_by_step=[bad_kv_samples]),
+        c1,
+        layer_limit=1,
+        atol=0.0,
+        layer_types=("full_attention",),
+    )
+    bad_kv_trace = bad_kv_summary["decode_full_kv_samples"]
+    assert bad_kv_summary["decode_full_kv_sample_passed"] is False
+    assert bad_kv_trace["first_mismatch"]["kind"] == "key"
+    assert bad_kv_trace["first_mismatch"]["first_failed_sample"]["sample_label"] == "current"
+    assert bad_kv_trace["first_mismatch"]["first_failed_sample"]["sample_position"] == 2
+    bad_key_samples = bad_kv_trace["steps"][0]["layers"][0]["rows"][0]["key_sample_comparisons"]
+    assert [sample["comparison"]["passed"] for sample in bad_key_samples] == [True, True, False]
+    top_level_kv_rollup = _decode_full_kv_sample_rollup([summary, bad_kv_summary])
+    assert top_level_kv_rollup["failed_kinds"] == ["key"]
+    assert top_level_kv_rollup["first_failure"]["sample_label"] == "current"
+    assert top_level_kv_rollup["first_failure"]["sample_position"] == 2
+    assert top_level_kv_rollup["kinds"]["key"]["failed_sample_labels"] == ["current"]
+    assert top_level_kv_rollup["kinds"]["value"]["passed"] is True
     assert summary["decode_linear_states"]["stage"] == "decode_linear_states"
     assert summary["decode_linear_states"]["passed"] is True
     assert "first_mismatch" not in summary["decode_linear_states"]

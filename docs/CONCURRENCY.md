@@ -1095,17 +1095,19 @@ roll-up/status view.
       should not drive the fix. Row-level QKV producer traces then showed
       `q_proj_key_after_project`, `query_raw_after_split`, `key_raw_after_cast`,
       `gate_after_split`, `query_after_prepare`, and `key_after_prepare` all pass
-      at L4 and L8. The remaining actionable signal is therefore the context
-      output / late-scratch boundary: late `query` and `attn_context` traces fail
-      at L8 step 0 (`query` dim 2357, `max_abs=0.005970478057861328`;
-      `attn_context` dim 2812, `max_abs=0.008107900619506836`) while final hidden
-      first fails at L8 step 6. Next target: compute the full-context oracle from
-      immediate `query_after_prepare` instead of the late `query` trace, then
-      compare that to the true context output before changing kernels. The
-      per-row fallback's ≤0.004 FP16/state amplification is a diagnostic
-      tolerance question only; do not re-open layer-4 state mapping, native
-      linear segment metadata, output trace/copy semantics, or grouped MoE output
-      yet.
+      at L4 and L8. The immediate-query full-context oracle refresh now shows
+      both emitted contexts match their own NumPy oracles (`batch_context_vs_numpy`
+      and `c1_context_vs_numpy` pass); the remaining full-context oracle failure
+      is `batch_numpy_vs_c1_numpy` at L8 step 0 / row 0 / dim 2812
+      (`max_abs=0.00811624526977539`). The top-level full-KV sample rollup then
+      localizes that input drift to the native c=2 decode KV write: `query_after_prepare`
+      and `key_after_prepare` still pass, but layer-7 current-token KV samples at
+      position 512 fail for both key (`max_abs=0.03125`, `bit_mismatch=162`) and
+      value (`max_abs=0.0078125`, `bit_mismatch=136`), with earlier prompt/page
+      samples still green at step 0. Next target: inspect/fix the native c>1 full-KV
+      decode write path, not QKV preparation, context softmax math, row setup,
+      layer-4 state mapping, native linear segment metadata, output trace/copy
+      semantics, or grouped MoE output.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

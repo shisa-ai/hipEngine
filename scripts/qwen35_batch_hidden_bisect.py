@@ -2798,6 +2798,106 @@ def _decode_full_context_oracle_summary(
     return result
 
 
+def _decode_full_kv_sample_comparison_record(
+    step_summary: dict[str, Any],
+    layer: dict[str, Any],
+    row: dict[str, Any],
+    kind: str,
+    sample: dict[str, Any],
+    *,
+    layer_limit: int | None = None,
+) -> dict[str, Any]:
+    comparison = sample.get("comparison", {})
+    max_abs_flat_index = comparison.get("max_abs_flat_index") if isinstance(comparison, dict) else None
+    record: dict[str, Any] = {
+        "decode_step": int(step_summary.get("decode_step", 0)),
+        "generated_index": int(step_summary.get("generated_index", int(step_summary.get("decode_step", 0)) + 1)),
+        "layer_index": int(layer.get("layer_index", -1)),
+        "row": int(row.get("row", -1)),
+        "kind": str(kind),
+        "sample_index": int(sample.get("sample_index", -1)),
+        "sample_label": str(sample.get("sample_label", "")),
+        "sample_position": int(sample.get("sample_position", -1)),
+        "sample_position_match": bool(sample.get("sample_position_match", False)),
+        "max_abs": float(comparison.get("max_abs", 0.0)) if isinstance(comparison, dict) else 0.0,
+        "max_abs_flat_index": None if max_abs_flat_index is None else int(max_abs_flat_index),
+        "max_abs_index": comparison.get("max_abs_index", []) if isinstance(comparison, dict) else [],
+        "elements_over_atol": int(comparison.get("elements_over_atol", 0)) if isinstance(comparison, dict) else 0,
+        "bit_mismatch": int(comparison.get("bit_mismatch", 0)) if isinstance(comparison, dict) else 0,
+    }
+    if layer_limit is not None:
+        record = {"layer_limit": int(layer_limit), **record}
+    return record
+
+
+def _decode_full_kv_sample_rollup(layer_summaries: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    kind_summaries: dict[str, Any] = {}
+    first_failure: dict[str, Any] | None = None
+    for kind in ("key", "value"):
+        rows: list[int] = []
+        seen_rows: set[int] = set()
+        sample_labels: list[str] = []
+        seen_sample_labels: set[str] = set()
+        kind_first_failure: dict[str, Any] | None = None
+        for summary in layer_summaries:
+            layer_limit = int(summary.get("layer_limit", 0))
+            trace = summary.get("decode_full_kv_samples")
+            if not isinstance(trace, dict):
+                continue
+            for step_summary in trace.get("steps", []):
+                for layer in step_summary.get("layers", []):
+                    for row_summary in layer.get("rows", []):
+                        for sample in row_summary.get(f"{kind}_sample_comparisons", []):
+                            comparison = sample.get("comparison") if isinstance(sample, dict) else None
+                            if not isinstance(comparison, dict) or bool(comparison.get("passed", False)):
+                                continue
+                            record = _decode_full_kv_sample_comparison_record(
+                                step_summary,
+                                layer,
+                                row_summary,
+                                kind,
+                                sample,
+                                layer_limit=layer_limit,
+                            )
+                            if kind_first_failure is None:
+                                kind_first_failure = record
+                            if first_failure is None:
+                                first_failure = record
+                            row_index = int(row_summary.get("row", -1))
+                            if row_index >= 0 and row_index not in seen_rows:
+                                rows.append(row_index)
+                                seen_rows.add(row_index)
+                            sample_label = str(sample.get("sample_label", ""))
+                            if sample_label and sample_label not in seen_sample_labels:
+                                sample_labels.append(sample_label)
+                                seen_sample_labels.add(sample_label)
+        kind_summaries[kind] = {
+            "passed": not rows,
+            "failure_rows": rows,
+            "failure_row_count": len(rows),
+            "failed_sample_labels": sample_labels,
+            "first_failure": kind_first_failure,
+        }
+    failed_kinds = [kind for kind in ("key", "value") if kind_summaries[kind]["failure_rows"]]
+    return {
+        "failed_kinds": failed_kinds,
+        "failed_kind_count": len(failed_kinds),
+        "first_failure": first_failure,
+        "kinds": kind_summaries,
+        "layer_limits": [
+            {
+                "layer_limit": int(summary.get("layer_limit", 0)),
+                "passed": bool(summary.get("decode_full_kv_sample_passed", True)),
+                "first_mismatch": summary.get("decode_full_kv_samples", {}).get("first_mismatch")
+                if isinstance(summary.get("decode_full_kv_samples"), dict)
+                else None,
+            }
+            for summary in layer_summaries
+            if isinstance(summary.get("decode_full_kv_samples"), dict)
+        ],
+    }
+
+
 def _decode_full_kv_sample_summary(
     batch: HiddenRun,
     c1: HiddenRun,
@@ -2844,7 +2944,26 @@ def _decode_full_kv_sample_summary(
                             f"batch={batch_bits.shape} c1={c1_bits.shape}"
                         )
                     comparison = bf16_bits_comparison(batch_bits[row : row + 1], c1_bits[row : row + 1], atol=atol)
+                    sample_comparisons: list[dict[str, Any]] = []
+                    for sample_index, label in enumerate(labels):
+                        sample_comparison = bf16_bits_comparison(
+                            batch_bits[row : row + 1, sample_index : sample_index + 1],
+                            c1_bits[row : row + 1, sample_index : sample_index + 1],
+                            atol=atol,
+                        )
+                        sample_comparisons.append(
+                            {
+                                "sample_index": int(sample_index),
+                                "sample_label": str(label),
+                                "sample_position": int(batch_positions[row, sample_index]),
+                                "sample_position_match": bool(
+                                    batch_positions[row, sample_index] == c1_positions[row, sample_index]
+                                ),
+                                "comparison": sample_comparison,
+                            }
+                        )
                     row_summary[f"{kind}_comparison"] = comparison
+                    row_summary[f"{kind}_sample_comparisons"] = sample_comparisons
                     row_passed = row_passed and bool(comparison["passed"])
                 row_summary["passed"] = row_passed
                 row_summaries.append(row_summary)
@@ -2870,6 +2989,19 @@ def _decode_full_kv_sample_summary(
             for row in layer["rows"]:
                 for kind in ("key", "value"):
                     comparison = row[f"{kind}_comparison"]
+                    failed_samples = [
+                        sample
+                        for sample in row.get(f"{kind}_sample_comparisons", [])
+                        if not bool(sample.get("comparison", {}).get("passed", False))
+                    ]
+                    first_failed_sample = failed_samples[0] if failed_samples else None
+                    max_sample: dict[str, Any] | None = None
+                    max_abs_index = comparison.get("max_abs_index", [])
+                    if isinstance(max_abs_index, list) and len(max_abs_index) >= 2:
+                        sample_index = int(max_abs_index[1])
+                        samples = row.get(f"{kind}_sample_comparisons", [])
+                        if 0 <= sample_index < len(samples):
+                            max_sample = samples[sample_index]
                     if worst_diff is None or float(comparison["max_abs"]) > float(worst_diff["max_abs"]):
                         worst_diff = {
                             "decode_step": int(step_summary["decode_step"]),
@@ -2884,6 +3016,14 @@ def _decode_full_kv_sample_summary(
                             "elements_over_atol": int(comparison["elements_over_atol"]),
                             "bit_mismatch": int(comparison.get("bit_mismatch", 0)),
                         }
+                        if isinstance(max_sample, dict):
+                            worst_diff.update(
+                                {
+                                    "sample_index": int(max_sample.get("sample_index", -1)),
+                                    "sample_label": str(max_sample.get("sample_label", "")),
+                                    "sample_position": int(max_sample.get("sample_position", -1)),
+                                }
+                            )
                     if first_mismatch is None and not bool(comparison["passed"]):
                         first_mismatch = {
                             "decode_step": int(step_summary["decode_step"]),
@@ -2900,6 +3040,14 @@ def _decode_full_kv_sample_summary(
                             "elements_over_atol": int(comparison["elements_over_atol"]),
                             "bit_mismatch": int(comparison.get("bit_mismatch", 0)),
                         }
+                        if isinstance(first_failed_sample, dict):
+                            first_mismatch["first_failed_sample"] = _decode_full_kv_sample_comparison_record(
+                                step_summary,
+                                layer,
+                                row,
+                                kind,
+                                first_failed_sample,
+                            )
     result = {
         "stage": "decode_full_kv_samples",
         "bf16_atol": float(atol),
@@ -3520,6 +3668,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "row_failure_summary": _row_failure_summary(layer_summaries),
             "decode_full_attention_stage_failure_summary": _decode_full_attention_stage_rollup(layer_summaries),
             "decode_full_context_oracle_failure_summary": _decode_full_context_oracle_rollup(layer_summaries),
+            "decode_full_kv_sample_failure_summary": _decode_full_kv_sample_rollup(layer_summaries),
             "first_hidden_mismatch": hidden_mismatch,
             "first_tolerance_hidden_mismatch": hidden_mismatch,
             "first_hidden_bit_drift": hidden_bit_drift,

@@ -46508,3 +46508,42 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (`264` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no docs/benchmark claim files changed, no queue item was marked complete, the diagnostic artifact has `performance_claim=false`, native c>N generated-token equality remains open, and no performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY full-KV sample attribution
+
+Added component/sample-level attribution to the hidden-bisect full-KV sample diagnostics:
+
+- `decode_full_kv_samples` rows now include per-sample key/value comparisons (`first`, `page0_last`, `page1_first`, `previous`, `current`).
+- The per-layer `first_mismatch` records the first failed sample label/position.
+- The top-level correctness payload now includes `decode_full_kv_sample_failure_summary` with failed key/value rows, failed sample labels, and the first failure across layer limits.
+- `docs/CONCURRENCY.md` C2.3 notes were updated with the new attribution; the item remains open.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_summary_embeds_batch_decode_execution_trace -q
+```
+
+Result: PASS.
+
+Refreshed the C2.3 L4/L8 per-row-attn-input probe:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 4,8 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-moe-path selected_c1 --batch-decode-attn-input-path per_row --batch-decode-post-attn-path per_row --json /tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-native-full-core-perrow-attninput-linear-postattn-selected-c1-atol4e-3-focus1269.json
+```
+
+Result: still `status=mismatch_found`, `failure_modes=["hidden"]`, `token_passed=true`, `performance_claim=false`, `native_caware_decode=false`. The top-level KV sample rollup now reports `failed_kinds=["key", "value"]`, first failure at layer limit 8 / decode step 0 / layer 7 / row 0 / `current` sample position 512. At step 0, earlier samples (`first`, `page0_last`, `page1_first`, `previous`) pass for row 0; only current-token key/value samples fail (`key max_abs=0.03125`, `bit_mismatch=162`; `value max_abs=0.0078125`, `bit_mismatch=136`). `query_after_prepare` and `key_after_prepare` still pass, and full-context `batch_context_vs_numpy`/`c1_context_vs_numpy` pass, so the next target is the native c>1 full-KV decode write path.
+
+Full validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (`264` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no new queue item was marked complete, the diagnostic artifact has `performance_claim=false`, native c>N generated-token equality remains open, and no performance/scaling claim was added.
