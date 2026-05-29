@@ -841,8 +841,12 @@ roll-up/status view.
       while c1-linear + native full attention at
       `/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-per-row-full-native-after-singleton-focus1269.json`
       still fails at decode step 6 / generated index 7 (`row 0`, dim 1269,
-      `max_abs=0.027587890625`, tokens still green). The reduced prefill drift
-      is fixed, all-per-row fallback, grouped compact MoE, singleton row setup,
+      `max_abs=0.027587890625`, tokens still green). This is not only a
+      full-layer grouped-MoE artifact: the earlier selected-c1/full-only control
+      `/tmp/hipengine-hidden-bisect-L8-512-16-native-full-only-decode-states-focus1269.json`
+      also failed at step 6 / row 0 dim 1269 (`max_abs=0.02734375`) with
+      `token_passed=true`. The reduced prefill drift is fixed, all-per-row
+      fallback, grouped compact MoE, selected-c1 full-layer MoE, singleton row setup,
       and segment state-index mapping are not the blocker at this shape; the
       next C2.3 targets are c>1 native full-attention decode and c>1 native
       linear segment decode, with the per-row linear/full fallbacks serving only

@@ -44912,3 +44912,9 @@ Results:
 - `/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-per-row-full-native-after-singleton-focus1269.json`: `status=mismatch_found`, `token_passed=true`, `hidden_passed=false`, first hidden mismatch at decode step 6 / generated index 7 on row 0 dim 1269 (`max_abs=0.027587890625`). Linear-input mismatches begin at that same step downstream of native full attention (layer 4 row 0 dim 1504 `max_abs=0.008148193359375`; layer 5/6 row 0 dim 1269 grows to `0.0224609375`/`0.03076171875`).
 
 Interpretation: after avoiding rows=1 segment-length-1 linear kernels, the c=2 all-fallback control remains green and native full attention remains a standalone decode blocker. C2.3 still needs native c>1 full-attention decode and native c>1 linear segment decode to pass; per-row controls are useful correctness oracles but not retained c>N evidence.
+
+## 2026-05-29 — CONCURRENCY native full-attention MoE cross-check
+
+Advanced C2.3 documentation after checking the existing diagnostic matrix before adding another selector. The post-singleton c=2 native-full control (`/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-per-row-full-native-after-singleton-focus1269.json`) still used grouped compact MoE on full-attention layers and failed at decode step 6 / row 0 dim 1269 (`max_abs=0.027587890625`, tokens green). However the earlier selected-c1/full-only control already exists: `/tmp/hipengine-hidden-bisect-L8-512-16-native-full-only-decode-states-focus1269.json` forced selected-c1 MoE plus per-row linear attention and still failed at decode step 6 / row 0 dim 1269 (`max_abs=0.02734375`, tokens green).
+
+Interpretation: a new full-attention-MoE selector would be redundant. Native full-attention decode remains an independent blocker even when full-layer MoE is selected-c1; the next useful diagnostic/fix should inspect native full-attention KV append/decode math or trace full-attention inputs/outputs, not grouped MoE on those layers.
