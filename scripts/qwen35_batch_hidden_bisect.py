@@ -539,6 +539,54 @@ def _transition_trace_summaries(summary: dict[str, Any]) -> dict[str, Any]:
     return traces
 
 
+def _linear_state_focus_for_hidden_mismatch(
+    summary: dict[str, Any],
+    first_hidden_mismatch: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    if not isinstance(first_hidden_mismatch, dict):
+        return []
+    decode_step = int(first_hidden_mismatch.get("decode_step", -1))
+    row_index = int(first_hidden_mismatch.get("row", -1))
+    trace = summary.get("decode_linear_states")
+    if not isinstance(trace, dict):
+        return []
+    focus: list[dict[str, Any]] = []
+    for step in trace.get("steps", []):
+        if int(step.get("decode_step", -1)) != decode_step:
+            continue
+        for layer in step.get("layers", []):
+            layer_index = int(layer.get("layer_index", -1))
+            states = layer.get("states", {})
+            if not isinstance(states, dict):
+                continue
+            for state_name in ("conv", "recurrent"):
+                state_summary = states.get(state_name)
+                if not isinstance(state_summary, dict):
+                    continue
+                for row_summary in state_summary.get("row_summaries", []):
+                    if int(row_summary.get("row", -1)) != row_index:
+                        continue
+                    focus.append(
+                        {
+                            "decode_step": decode_step,
+                            "generated_index": int(step.get("generated_index", decode_step + 1)),
+                            "layer_index": layer_index,
+                            "state": state_name,
+                            "row": row_index,
+                            "passed": bool(row_summary.get("passed", False)),
+                            "max_abs": float(row_summary.get("max_abs", 0.0)),
+                            "max_abs_index": row_summary.get("max_abs_index", []),
+                            "batch_value_at_max_abs": float(row_summary.get("batch_value_at_max_abs", 0.0)),
+                            "c1_value_at_max_abs": float(row_summary.get("c1_value_at_max_abs", 0.0)),
+                            "signed_diff_at_max_abs": float(row_summary.get("signed_diff_at_max_abs", 0.0)),
+                            "elements_over_atol": int(row_summary.get("elements_over_atol", 0)),
+                            "top_abs_diffs": row_summary.get("top_abs_diffs", []),
+                        }
+                    )
+        break
+    return focus
+
+
 def _transition_hidden_focus(
     summary: dict[str, Any],
     previous_green: dict[str, Any] | None,
@@ -636,6 +684,10 @@ def _first_failing_layer_transition(layer_summaries: Sequence[dict[str, Any]]) -
             if previous_green_trace_summaries:
                 transition["previous_green_trace_summaries"] = previous_green_trace_summaries
         transition["first_hidden_mismatch_focus"] = _transition_hidden_focus(summary, previous_green, first_hidden_mismatch)
+        transition["first_hidden_mismatch_linear_state_focus"] = _linear_state_focus_for_hidden_mismatch(
+            summary,
+            first_hidden_mismatch,
+        )
         return transition
     return None
 

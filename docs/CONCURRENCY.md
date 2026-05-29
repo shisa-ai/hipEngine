@@ -949,9 +949,14 @@ roll-up/status view.
       while `first_tolerance_hidden_mismatch` and
       `first_failing_layer_transition.hidden_mismatch_kind=over_atol` point to
       L8 decode step 6 / row 0 dim 1269 (`max_abs=0.027587890625`). The transition
-      now includes `decode_full_context_oracle` in its trace summaries, so the next
-      C2.3 work should target the layer-4 linear-state propagation instead of the
-      already oracle-green reduced full-attention context path.
+      now includes `decode_full_context_oracle` in its trace summaries. The
+      linear-state focus refresh at
+      `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-linear-state-focus1269.json`
+      adds `first_hidden_mismatch_linear_state_focus`; at the first over-tolerance
+      hidden mismatch, layers 0-2 conv/recurrent state diffs are zero while layer 4
+      has row-0 `conv max_abs=0.390625` and `recurrent max_abs=0.021587848663330078`.
+      The next C2.3 work should target layer-4 linear-state propagation instead of
+      the already oracle-green reduced full-attention context path.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions
