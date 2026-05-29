@@ -44731,3 +44731,21 @@ python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/
 Result: after correcting the AOTriton max-seqlen arguments to use the per-segment max (512) instead of total packed rows (1024), `/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-packed-aotriton-all-per-row-inputs-focus1269.json` emitted `status=eq_ok`, `performance_claim=false`, and `batch_prefill_execution.full_attention_prefill_path=packed_varlen_aotriton` with no forced blockers. All L5-L8 summaries report `prefill_linear_input_passed=true`, `prefill_linear_state_passed=true`, `prefill_hidden_passed=true`, `hidden_passed=true`, and `token_passed=true`; `first_hidden_mismatch=null` and `first_token_mismatch=null`.
 
 Interpretation: the reduced C2.3 row-0 dim-1269 drift is fixed for the L5-L8 512/1 diagnostic under the retained packed path. The next validation target is the longer L8/16 hidden-bisect / full C2.4 generated-token equality gate, not more linear-state or per-segment full-attention isolation.
+
+## 2026-05-29 — CONCURRENCY L8/16 post-prefill-fix gate
+
+Advanced C2.3 validation after the packed-varlen AOTriton prefill fix by rerunning the original L8 512/16 hidden-bisect shape and an all-per-row decode variant.
+
+Commands:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --json /tmp/hipengine-hidden-bisect-L8-512-16-packed-aotriton-focus1269.json >/tmp/hipengine-hidden-bisect-L8-512-16-packed-aotriton-focus1269.stdout
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-decode-moe-path selected_c1 --batch-decode-linear-path per_row --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L8-512-16-packed-aotriton-all-per-row-focus1269.json >/tmp/hipengine-hidden-bisect-L8-512-16-packed-aotriton-all-per-row-focus1269.stdout
+```
+
+Results:
+
+- `/tmp/hipengine-hidden-bisect-L8-512-16-packed-aotriton-focus1269.json`: `status=mismatch_found`, `performance_claim=false`, `batch_prefill_execution.full_attention_prefill_path=packed_varlen_aotriton`, prefill gates green (`prefill_linear_input_passed=true`, `prefill_linear_state_passed=true`, `prefill_hidden_passed=true`), `token_passed=true`, but hidden fails at decode step 6 / generated index 7 on row 0 dim 1269 (`max_abs=0.02685546875`, `elements_over_atol=1046`) with native c-aware decode enabled.
+- `/tmp/hipengine-hidden-bisect-L8-512-16-packed-aotriton-all-per-row-focus1269.json`: `status=mismatch_found`, `performance_claim=false`, tokens still green, all decode subpaths forced through per-row/selected-c1 fallbacks, but hidden fails later at decode step 11 / generated index 12 on row 0 dim 1543 (`max_abs=0.010440826416015625`).
+
+Interpretation: the packed-prefill fix removed the old row-0 generated-token idx-13 mismatch at this L8/16 shape, but C2.3 is not closed because hidden equality still drifts over multiple decode steps even with all-per-row decode fallbacks. Next target should trace multi-step decode state/rounding accumulation (seed/prelude is green; divergence appears after repeated generated tokens), not the reduced layer-4 input drift.

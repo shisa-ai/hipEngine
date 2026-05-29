@@ -781,8 +781,19 @@ roll-up/status view.
       records `full_attention_prefill_path=packed_varlen_aotriton` with no
       forced blockers, `status=eq_ok`, and green `prefill_linear_input`,
       `prefill_linear_state`, hidden, and token gates for every L5-L8 limit.
-      Next validation target is the longer L8/16 and full C2.4/C2.5 generated-token
-      equality gates rather than the reduced layer-4 input drift.
+      The longer L8/16 refresh at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-packed-aotriton-focus1269.json`
+      confirms the old row-0 generated-token idx-13 mismatch is gone
+      (`token_passed=true`) but still finds a multi-step hidden drift at decode
+      step 6 / generated index 7 (`row 0`, dim 1269,
+      `max_abs=0.02685546875`) with native c-aware decode. An all-per-row
+      decode variant at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-packed-aotriton-all-per-row-focus1269.json`
+      also keeps tokens green but shifts the first hidden mismatch to decode
+      step 11 / generated index 12 (`row 0`, dim 1543,
+      `max_abs=0.010440826416015625`), so C2.3 is not closed yet: the reduced
+      prefill drift is fixed, but longer multi-step decode hidden equality now
+      needs a separate state/rounding accumulation fix before C2.4/C2.5 gates.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions
