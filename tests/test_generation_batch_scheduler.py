@@ -6353,8 +6353,13 @@ def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:
     ) == {
         "failing_layer_limit": 2,
         "failing_last_layer_index": 1,
+        "failure_modes": ["hidden"],
         "hidden_passed": False,
         "token_passed": True,
+        "hidden_failure_rows": [1],
+        "hidden_failure_row_count": 1,
+        "token_failure_rows": [],
+        "token_failure_row_count": 0,
         "first_hidden_mismatch": expected_first,
         "first_token_mismatch": None,
         "failing_last_layer_type": "linear_attention",

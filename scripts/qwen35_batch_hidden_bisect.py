@@ -191,6 +191,32 @@ def _first_token_mismatch(layer_summaries: Sequence[dict[str, Any]]) -> dict[str
     return None
 
 
+def _hidden_failure_rows(summary: dict[str, Any]) -> list[int]:
+    rows: list[int] = []
+    seen: set[int] = set()
+    for step in summary.get("steps", []):
+        for row in step.get("rows", []):
+            comparison = row.get("hidden_comparison", {})
+            if comparison.get("passed", False):
+                continue
+            row_index = int(row["row"])
+            if row_index not in seen:
+                rows.append(row_index)
+                seen.add(row_index)
+    return rows
+
+
+def _token_failure_rows(summary: dict[str, Any]) -> list[int]:
+    rows: list[int] = []
+    seen: set[int] = set()
+    for mismatch in summary.get("token_mismatches", []):
+        row_index = int(mismatch["row"])
+        if row_index not in seen:
+            rows.append(row_index)
+            seen.add(row_index)
+    return rows
+
+
 def _first_failing_layer_transition(layer_summaries: Sequence[dict[str, Any]]) -> dict[str, Any] | None:
     previous_green: dict[str, Any] | None = None
     for summary in layer_summaries:
@@ -200,11 +226,23 @@ def _first_failing_layer_transition(layer_summaries: Sequence[dict[str, Any]]) -
             previous_green = summary
             continue
         layer_limit = int(summary["layer_limit"])
+        hidden_rows = _hidden_failure_rows(summary)
+        token_rows = _token_failure_rows(summary)
+        failure_modes: list[str] = []
+        if not hidden_passed:
+            failure_modes.append("hidden")
+        if not token_passed:
+            failure_modes.append("token")
         transition: dict[str, Any] = {
             "failing_layer_limit": layer_limit,
             "failing_last_layer_index": int(summary.get("last_layer_index", layer_limit - 1)),
+            "failure_modes": failure_modes,
             "hidden_passed": hidden_passed,
             "token_passed": token_passed,
+            "hidden_failure_rows": hidden_rows,
+            "hidden_failure_row_count": len(hidden_rows),
+            "token_failure_rows": token_rows,
+            "token_failure_row_count": len(token_rows),
             "first_hidden_mismatch": _first_hidden_mismatch([summary]),
             "first_token_mismatch": _first_token_mismatch([summary]),
         }
