@@ -44166,3 +44166,40 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
 ```
+
+## 2026-05-29 — CONCURRENCY hidden-bisection top-diff list
+
+Advanced C2.3 without closing the selected-MoE lane-map item or adding a retained c>N performance claim. Hidden-bisection row comparisons now include a compact top-absolute-difference list plus an over-tolerance element count, making the reduced L6 mismatch artifact more actionable for the next grouped-MoE/selected-MoE substage trace.
+
+Changes:
+
+- Added `top_abs_diffs` (up to eight nonzero hidden-coordinate diffs, sorted by absolute error), exact bits, signed diff, and fp16-decoded batch/c1 values to `hidden_comparison(...)`.
+- Added `elements_over_atol` to every row comparison and propagated both fields into `correctness.first_hidden_mismatch`.
+- CPU tests cover empty top-diff lists for matching tensors, sorted diff examples for mismatching tensors, and top-level first-mismatch propagation.
+- `docs/CONCURRENCY.md` C2.3 progress now cites the top-diff diagnostic while leaving the item open.
+
+Diagnostic command:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 1 --max-layers 8 --layer-limits 6 --max-sequence-length 1024 --json /tmp/hipengine-hidden-bisect-L6-512-1-topdiff.json
+```
+
+Result: `/tmp/hipengine-hidden-bisect-L6-512-1-topdiff.json` emitted `status=mismatch_found`, `performance_claim=false`, no token mismatch, and first hidden mismatch at L6 row 0 generated index 1 with `max_abs=0.00146484375`, `elements_over_atol=1`, `bit_mismatch=1783`, and top diff `flat_index=1269` / hidden dim 1269 (`batch=0.8564453125`, `c1=0.85498046875`, signed diff `+0.00146484375`, bits `15066` vs `15063`). Row 1 also has dim 1269 as its top diff, but `elements_over_atol=0` and `max_abs=0.00048828125`, so the row-0 failure is concentrated in a single over-tolerance hidden element for this reduced diagnostic.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -k 'hidden_bisect' -q
+# 3 passed
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -q
+# passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
+```

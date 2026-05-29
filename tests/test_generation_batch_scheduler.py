@@ -6264,6 +6264,21 @@ def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:
     assert failed["batch_value_at_max_abs"] == 3.0
     assert failed["c1_value_at_max_abs"] == 2.0
     assert failed["signed_diff_at_max_abs"] == 1.0
+    assert passed["elements_over_atol"] == 0
+    assert passed["top_abs_diffs"] == []
+    assert failed["elements_over_atol"] == 1
+    assert failed["top_abs_diffs"] == [
+        {
+            "flat_index": 1,
+            "index": [0, 1],
+            "abs_diff": 1.0,
+            "signed_diff": 1.0,
+            "batch_value": 3.0,
+            "c1_value": 2.0,
+            "batch_bits": 0x4200,
+            "c1_bits": 0x4000,
+        }
+    ]
     decode_execution = {
         "rows": 2,
         "full_attention_decode_path": "native_batch",
@@ -6299,7 +6314,9 @@ def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:
         "batch_value_at_max_abs": 3.0,
         "c1_value_at_max_abs": 2.0,
         "signed_diff_at_max_abs": 1.0,
+        "elements_over_atol": 1,
         "bit_mismatch": 1,
+        "top_abs_diffs": failed["top_abs_diffs"],
         "last_layer_index": 1,
         "last_layer_type": "linear_attention",
         "batch_decode_execution": decode_execution,

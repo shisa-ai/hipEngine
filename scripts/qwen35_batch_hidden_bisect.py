@@ -74,8 +74,45 @@ def _parse_layer_limits(value: str | None, *, max_layers: int) -> list[int]:
     return deduped
 
 
+_MAX_HIDDEN_DIFF_EXAMPLES = 8
+
+
 def _fp16_bits_to_f32(bits: np.ndarray) -> np.ndarray:
     return np.asarray(bits, dtype=np.uint16).view(np.float16).astype(np.float32)
+
+
+def _top_abs_diff_examples(
+    batch_bits: np.ndarray,
+    c1_bits: np.ndarray,
+    batch_f32: np.ndarray,
+    c1_f32: np.ndarray,
+    signed_diff: np.ndarray,
+    diff: np.ndarray,
+    *,
+    limit: int = _MAX_HIDDEN_DIFF_EXAMPLES,
+) -> list[dict[str, Any]]:
+    if diff.size == 0 or limit <= 0:
+        return []
+    flat_diff = diff.reshape(-1)
+    nonzero_indices = [int(index) for index in np.flatnonzero(flat_diff > 0.0)]
+    selected = sorted(nonzero_indices, key=lambda index: (-float(flat_diff[index]), index))[:limit]
+    flat_batch_bits = np.asarray(batch_bits, dtype=np.uint16).reshape(-1)
+    flat_c1_bits = np.asarray(c1_bits, dtype=np.uint16).reshape(-1)
+    examples: list[dict[str, Any]] = []
+    for flat_index in selected:
+        examples.append(
+            {
+                "flat_index": flat_index,
+                "index": [int(index) for index in np.unravel_index(flat_index, diff.shape)],
+                "abs_diff": float(flat_diff[flat_index]),
+                "signed_diff": float(signed_diff.reshape(-1)[flat_index]),
+                "batch_value": float(batch_f32.reshape(-1)[flat_index]),
+                "c1_value": float(c1_f32.reshape(-1)[flat_index]),
+                "batch_bits": int(flat_batch_bits[flat_index]),
+                "c1_bits": int(flat_c1_bits[flat_index]),
+            }
+        )
+    return examples
 
 
 def hidden_comparison(batch_bits: np.ndarray, c1_bits: np.ndarray, *, atol: float) -> dict[str, Any]:
@@ -108,7 +145,9 @@ def hidden_comparison(batch_bits: np.ndarray, c1_bits: np.ndarray, *, atol: floa
         "c1_value_at_max_abs": c1_value,
         "signed_diff_at_max_abs": max_signed_diff,
         "mean_abs": float(diff.mean()) if diff.size else 0.0,
+        "elements_over_atol": int(np.count_nonzero(diff > float(atol))),
         "bit_mismatch": bit_mismatch,
+        "top_abs_diffs": _top_abs_diff_examples(batch_bits, c1_bits, batch_f32, c1_f32, signed_diff, diff),
         "passed": bool(max_abs <= float(atol)),
     }
 
@@ -130,7 +169,9 @@ def _first_hidden_mismatch(layer_summaries: Sequence[dict[str, Any]]) -> dict[st
                         "batch_value_at_max_abs": float(comparison.get("batch_value_at_max_abs", 0.0)),
                         "c1_value_at_max_abs": float(comparison.get("c1_value_at_max_abs", 0.0)),
                         "signed_diff_at_max_abs": float(comparison.get("signed_diff_at_max_abs", 0.0)),
+                        "elements_over_atol": int(comparison.get("elements_over_atol", 0)),
                         "bit_mismatch": int(comparison.get("bit_mismatch", 0)),
+                        "top_abs_diffs": comparison.get("top_abs_diffs", []),
                     }
                     if "last_layer_index" in summary:
                         result["last_layer_index"] = int(summary["last_layer_index"])

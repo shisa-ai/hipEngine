@@ -653,7 +653,11 @@ roll-up/status view.
       comparison schema and localizes the top row-0 difference to hidden dim
       1269 (`batch=0.8564453125`, `c1=0.85498046875`, signed diff
       `+0.00146484375`), giving the next lane-map fix a stable coordinate to
-      inspect across selected-MoE/grouped-MoE substage traces.
+      inspect across selected-MoE/grouped-MoE substage traces. The latest
+      top-diff artifact `/tmp/hipengine-hidden-bisect-L6-512-1-topdiff.json`
+      adds `elements_over_atol=1` and the top eight hidden-coordinate diffs to
+      each row comparison; row 0's only over-tolerance element is still dim 1269
+      while row 1 remains within tolerance despite bit-level drift.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions
