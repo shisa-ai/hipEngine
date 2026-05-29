@@ -2893,6 +2893,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 ):
                     errors.append("commands[].postconditions[].profiler_precondition_source_artifact_path must match profiler_summary precondition when present")
                     break
+                source_artifact_path = postcondition.get("profiler_source_artifact_path")
                 if (
                     isinstance(profiler_precondition, dict)
                     and postcondition.get("passed") is not True
@@ -2900,14 +2901,30 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     and (
                         not isinstance(profiler_precondition_source, str)
                         or not profiler_precondition_source
-                        or not isinstance(postcondition.get("profiler_source_artifact_path"), str)
-                        or not postcondition.get("profiler_source_artifact_path")
-                        or _path_has_parent_directory_component(postcondition.get("profiler_source_artifact_path"))
-                        or postcondition.get("profiler_source_artifact_path") == profiler_precondition_source
+                        or not isinstance(source_artifact_path, str)
+                        or not source_artifact_path
+                        or _path_has_parent_directory_component(source_artifact_path)
+                        or source_artifact_path == profiler_precondition_source
                     )
                 ):
                     errors.append("commands[].postconditions[].profiler_source_artifact_path must document source mismatch when source check failed")
                     break
+                output_dir_text = summary.get("output_dir")
+                if (
+                    isinstance(profiler_precondition, dict)
+                    and postcondition.get("passed") is not True
+                    and reason == source_mismatch_reason
+                    and isinstance(source_artifact_path, str)
+                    and source_artifact_path
+                    and not _path_has_parent_directory_component(source_artifact_path)
+                    and isinstance(output_dir_text, str)
+                    and output_dir_text
+                ):
+                    source_abs = (Path(source_artifact_path) if Path(source_artifact_path).is_absolute() else REPO_ROOT / source_artifact_path).resolve()
+                    output_dir_abs = (Path(output_dir_text) if Path(output_dir_text).is_absolute() else REPO_ROOT / output_dir_text).resolve()
+                    if not source_abs.is_relative_to(output_dir_abs):
+                        errors.append("commands[].postconditions[].profiler_source_artifact_path must be under output_dir when source check failed")
+                        break
                 if (
                     isinstance(profiler_precondition, dict)
                     and postcondition.get("passed") is not True
