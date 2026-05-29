@@ -1695,8 +1695,27 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     expected_skipped_preconditions = _skipped_preconditions(entries)
     if not _typed_json_like_matches(summary.get("skipped_preconditions"), expected_skipped_preconditions):
         errors.append("skipped_preconditions must match commands.preconditions")
+    expected_command_keys = {
+        "category",
+        "batch_size",
+        "command",
+        "argv",
+        "artifact_path",
+        "git_dirty",
+        "status",
+        "returncode",
+        "duration_seconds",
+        "output_tail",
+        "preconditions",
+        "precondition",
+        "postconditions",
+        "postcondition",
+    }
     if entries:
         for entry in entries:
+            if not set(entry).issubset(expected_command_keys):
+                errors.append("commands[] must contain only c-sweep schema keys")
+                break
             if not isinstance(entry.get("category"), str) or not entry.get("category").strip():
                 errors.append("commands[].category must be a non-empty string")
                 break
