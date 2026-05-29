@@ -44381,3 +44381,40 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
 ```
+
+## 2026-05-29 — CONCURRENCY hidden-transition row focus
+
+Advanced C2.3 again without closing the selected-MoE lane-map item or adding any retained c>N performance claim. The hidden-bisection transition focus now includes per-row summaries for the first failing hidden coordinate so the artifact shows whether the same dim is row-local or shared below tolerance.
+
+Changes:
+
+- Added `_top_abs_diff_in_comparison(...)` and `_row_focus_for_flat_index(...)` in `scripts/qwen35_batch_hidden_bisect.py`.
+- `correctness.first_failing_layer_transition.first_hidden_mismatch_focus` now includes `failing_rows_for_flat_index` and `previous_green_rows_for_flat_index` with per-row `passed`, `max_abs`, `max_abs_flat_index`, `elements_over_atol`, and same-coordinate top-diff fields.
+- CPU tests cover the per-row focus payload while keeping the C2.3 queue item open.
+- `docs/CONCURRENCY.md` cites the new row-focus artifact as diagnostic evidence only.
+
+Diagnostic command:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 1 --max-layers 8 --layer-limits 5,6 --max-sequence-length 1024 --json /tmp/hipengine-hidden-bisect-L5-L6-512-1-rowfocus.json
+```
+
+Result: `/tmp/hipengine-hidden-bisect-L5-L6-512-1-rowfocus.json` emitted `status=mismatch_found`, `performance_claim=false`, and `correctness.first_failing_layer_transition.first_hidden_mismatch_focus` for row 0 / flat index 1269. At L6, row 0 is the only hidden-failing row (`abs_diff=0.00146484375`, `elements_over_atol=1`) while row 1 also has dim 1269 as its top diff but remains within tolerance (`abs_diff=0.00048828125`, `elements_over_atol=0`). At L5, neither row has dim 1269 in its top-diff list. Tokens still match for the one-token reduced run (`first_token_mismatch=null`).
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -k 'hidden_bisect' -q
+# 3 passed
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -q
+# passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
+```

@@ -6298,7 +6298,10 @@ def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:
                         "decode_step": 3,
                         "generated_index": 4,
                         "batch_decode_execution": decode_execution,
-                        "rows": [{"row": 1, "hidden_comparison": failed}],
+                        "rows": [
+                            {"row": 0, "hidden_comparison": passed},
+                            {"row": 1, "hidden_comparison": failed},
+                        ],
                     }
                 ],
             },
@@ -6344,7 +6347,10 @@ def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:
                         "decode_step": 3,
                         "generated_index": 4,
                         "batch_decode_execution": decode_execution,
-                        "rows": [{"row": 1, "hidden_comparison": failed}],
+                        "rows": [
+                            {"row": 0, "hidden_comparison": passed},
+                            {"row": 1, "hidden_comparison": failed},
+                        ],
                     }
                 ],
                 "token_mismatches": [],
@@ -6377,9 +6383,46 @@ def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:
             "index": [0, 1],
             "failing_layer_limit": 2,
             "failing_top_diff": failed["top_abs_diffs"][0],
+            "failing_rows_for_flat_index": [
+                {
+                    "decode_step": 3,
+                    "generated_index": 4,
+                    "row": 0,
+                    "passed": True,
+                    "max_abs": passed["max_abs"],
+                    "max_abs_flat_index": passed["max_abs_flat_index"],
+                    "elements_over_atol": 0,
+                    "same_flat_index_in_top_abs_diffs": False,
+                    "same_flat_index_top_diff": None,
+                },
+                {
+                    "decode_step": 3,
+                    "generated_index": 4,
+                    "row": 1,
+                    "passed": False,
+                    "max_abs": failed["max_abs"],
+                    "max_abs_flat_index": failed["max_abs_flat_index"],
+                    "elements_over_atol": 1,
+                    "same_flat_index_in_top_abs_diffs": True,
+                    "same_flat_index_top_diff": failed["top_abs_diffs"][0],
+                },
+            ],
             "previous_green_layer_limit": 1,
             "previous_green_same_flat_index_in_top_abs_diffs": False,
             "previous_green_same_flat_index_top_diff": None,
+            "previous_green_rows_for_flat_index": [
+                {
+                    "decode_step": 0,
+                    "generated_index": 1,
+                    "row": 0,
+                    "passed": True,
+                    "max_abs": passed["max_abs"],
+                    "max_abs_flat_index": passed["max_abs_flat_index"],
+                    "elements_over_atol": 0,
+                    "same_flat_index_in_top_abs_diffs": False,
+                    "same_flat_index_top_diff": None,
+                }
+            ],
         },
     }
 

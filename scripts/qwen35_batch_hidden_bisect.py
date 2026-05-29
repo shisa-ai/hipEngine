@@ -230,16 +230,46 @@ def _layer_execution_for_index(summary: dict[str, Any], layer_index: int) -> dic
     return None
 
 
+def _top_abs_diff_in_comparison(comparison: dict[str, Any], *, flat_index: int) -> dict[str, Any] | None:
+    for diff in comparison.get("top_abs_diffs", []):
+        if isinstance(diff, dict) and int(diff.get("flat_index", -1)) == int(flat_index):
+            return diff
+    return None
+
+
 def _top_abs_diff_for_flat_index(summary: dict[str, Any], *, row_index: int, flat_index: int) -> dict[str, Any] | None:
     for step in summary.get("steps", []):
         for row in step.get("rows", []):
             if int(row.get("row", -1)) != int(row_index):
                 continue
             comparison = row.get("hidden_comparison", {})
-            for diff in comparison.get("top_abs_diffs", []):
-                if isinstance(diff, dict) and int(diff.get("flat_index", -1)) == int(flat_index):
-                    return diff
+            top_diff = _top_abs_diff_in_comparison(comparison, flat_index=flat_index)
+            if top_diff is not None:
+                return top_diff
     return None
+
+
+def _row_focus_for_flat_index(summary: dict[str, Any], *, flat_index: int) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for step in summary.get("steps", []):
+        for row in step.get("rows", []):
+            comparison = row.get("hidden_comparison", {})
+            row_index = int(row["row"])
+            top_diff = _top_abs_diff_in_comparison(comparison, flat_index=flat_index)
+            rows.append(
+                {
+                    "decode_step": step.get("decode_step"),
+                    "generated_index": step.get("generated_index"),
+                    "row": row_index,
+                    "passed": bool(comparison.get("passed", False)),
+                    "max_abs": comparison.get("max_abs"),
+                    "max_abs_flat_index": comparison.get("max_abs_flat_index"),
+                    "elements_over_atol": comparison.get("elements_over_atol"),
+                    "same_flat_index_in_top_abs_diffs": top_diff is not None,
+                    "same_flat_index_top_diff": top_diff,
+                }
+            )
+    return rows
 
 
 def _transition_hidden_focus(
@@ -259,12 +289,14 @@ def _transition_hidden_focus(
         "index": first_hidden_mismatch.get("max_abs_index", []),
         "failing_layer_limit": int(summary["layer_limit"]),
         "failing_top_diff": _top_abs_diff_for_flat_index(summary, row_index=row_index, flat_index=int(flat_index)),
+        "failing_rows_for_flat_index": _row_focus_for_flat_index(summary, flat_index=int(flat_index)),
     }
     if previous_green is not None:
         previous_diff = _top_abs_diff_for_flat_index(previous_green, row_index=row_index, flat_index=int(flat_index))
         focus["previous_green_layer_limit"] = int(previous_green["layer_limit"])
         focus["previous_green_same_flat_index_in_top_abs_diffs"] = previous_diff is not None
         focus["previous_green_same_flat_index_top_diff"] = previous_diff
+        focus["previous_green_rows_for_flat_index"] = _row_focus_for_flat_index(previous_green, flat_index=int(flat_index))
     return focus
 
 

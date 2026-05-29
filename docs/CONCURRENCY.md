@@ -680,7 +680,13 @@ roll-up/status view.
       focus refresh `/tmp/hipengine-hidden-bisect-L5-L6-512-1-focus.json` adds
       `first_hidden_mismatch_focus` for row 0 / dim 1269; that coordinate is
       the failing layer's top diff but is not present in the previous-green L5
-      row-0 top-diff list, narrowing the jump to the L6 layer output.
+      row-0 top-diff list, narrowing the jump to the L6 layer output. The
+      row-focus refresh `/tmp/hipengine-hidden-bisect-L5-L6-512-1-rowfocus.json`
+      adds per-row focus lists for that coordinate: at L6, row 0 is the only
+      hidden-failing row (`abs_diff=0.00146484375`, over tolerance) while row 1
+      shares dim 1269 as its top diff but remains within tolerance
+      (`abs_diff=0.00048828125`); at L5, neither row has dim 1269 in its
+      top-diff list.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions
