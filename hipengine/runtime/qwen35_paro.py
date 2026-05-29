@@ -2650,6 +2650,7 @@ class Qwen35ParoDecodeState:
         max_positions: int,
         tokens: int,
         group_size: int = 128,
+        input_scratch_trace: Callable[[str, int, Qwen35ParoAttentionScratch], None] | None = None,
         library=None,
         stream: int = 0,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
@@ -2678,6 +2679,8 @@ class Qwen35ParoDecodeState:
                 library=library,
                 stream=stream,
             )
+            if input_scratch_trace is not None:
+                input_scratch_trace("attn_input_after_rotate", row, row_scratch)
             self.project_full_attention_qkv_fp16(
                 row_scratch,
                 tokens=1,
@@ -2685,6 +2688,8 @@ class Qwen35ParoDecodeState:
                 library=library,
                 stream=stream,
             )
+            if input_scratch_trace is not None:
+                input_scratch_trace("attn_input_after_project", row, row_scratch)
             self.prepare_full_attention_qkv_fp16(
                 row_scratch,
                 cos_table=cos_table,
@@ -2695,6 +2700,8 @@ class Qwen35ParoDecodeState:
                 library=library,
                 stream=stream,
             )
+            if input_scratch_trace is not None:
+                input_scratch_trace("attn_input_after_prepare", row, row_scratch)
         return scratch.query, scratch.key, scratch.value, scratch.gate
 
     def append_full_attention_kv_fp16(
@@ -3563,6 +3570,7 @@ class Qwen35ParoDecodeState:
         force_per_row_input_rmsnorm: bool = False,
         force_per_row_post_attention: bool = False,
         post_input_rmsnorm_trace: Callable[[Qwen35ParoAttentionScratch], None] | None = None,
+        input_scratch_trace: Callable[[str, int, Qwen35ParoAttentionScratch], None] | None = None,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -3607,6 +3615,7 @@ class Qwen35ParoDecodeState:
             max_positions=max_positions,
             tokens=tokens,
             group_size=group_size,
+            input_scratch_trace=input_scratch_trace,
             library=library,
             stream=stream,
         )

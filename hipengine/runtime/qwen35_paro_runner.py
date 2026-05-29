@@ -2949,6 +2949,9 @@ class Qwen35ParoResidentSession:
         if stage not in {
             "input",
             "attn_input_pre_qkv",
+            "attn_input_after_rotate",
+            "attn_input_after_project",
+            "attn_input_after_prepare",
             "attn_input",
             "gate",
             "gated_attn",
@@ -3837,6 +3840,7 @@ class Qwen35ParoResidentSession:
                         else:
                             moe_scratch = self._ensure_moe_decode_batch_scratch(layer_id, rows)
                         post_input_rmsnorm_trace = None
+                        input_scratch_trace = None
                         if isinstance(getattr(self, "_decode_full_attention_trace", None), list):
                             def post_input_rmsnorm_trace(
                                 attention_scratch: Qwen35ParoAttentionScratch,
@@ -3850,6 +3854,22 @@ class Qwen35ParoResidentSession:
                                     stage="attn_input_pre_qkv",
                                     hidden=attention_scratch.attn_input,
                                     rows=_rows,
+                                    stream=_stream,
+                                )
+
+                            def input_scratch_trace(
+                                stage: str,
+                                row: int,
+                                attention_scratch: Qwen35ParoAttentionScratch,
+                                *,
+                                _layer_id: int = layer_id,
+                                _stream: int = stream,
+                            ) -> None:
+                                self._trace_decode_full_attention(
+                                    layer_id=_layer_id,
+                                    stage=stage,
+                                    hidden=attention_scratch.attn_input,
+                                    rows=1,
                                     stream=_stream,
                                 )
 
@@ -3870,6 +3890,7 @@ class Qwen35ParoResidentSession:
                             force_per_row_input_rmsnorm=force_per_row_full_attention_input,
                             force_per_row_post_attention=force_per_row_post_attention,
                             post_input_rmsnorm_trace=post_input_rmsnorm_trace,
+                            input_scratch_trace=input_scratch_trace,
                             library=self.libraries,
                             stream=stream,
                         )

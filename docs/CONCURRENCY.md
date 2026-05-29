@@ -1087,17 +1087,19 @@ roll-up/status view.
       remains hidden-only red: L8 still first fails final hidden at decode step 6
       / row 0 / dim 1269 (`max_abs=0.02734375`), and the post-layer `attn_input`
       trace still first fails at L8 decode step 0 / row 0 / dim 1269
-      (`max_abs=0.015625`). The new immediate `attn_input_pre_qkv` trace passes
-      at L4 and L8, so the input RMSNorm output itself is aligned; the drift
-      appears after pre-QKV scratch mutation/trace timing, with L8 `query` first
-      failing at step 0 / dim 2357 (`max_abs=0.005970478057861328`) and
-      `attn_context` still failing at dim 2812. Next target: audit
-      `prepare_full_attention_qkv_fp16_decode_rows` scratch aliasing and trace
-      whether `attn_input` is overwritten after rotate/project, not the input
-      RMSNorm kernel. The per-row fallback's ≤0.004 FP16/state amplification is
-      a diagnostic tolerance question only; do not re-open full-attention
-      context math, layer-4 state mapping, native linear segment metadata,
-      output trace/copy semantics, or grouped MoE output yet.
+      (`max_abs=0.015625`). The immediate `attn_input_pre_qkv` plus new
+      `attn_input_after_rotate`, `attn_input_after_project`, and
+      `attn_input_after_prepare` traces all pass at L4 and L8, so the input
+      RMSNorm/rotate/project/prepare path is not overwriting `attn_input`; the
+      existing post-layer `attn_input` trace is polluted after those stages and
+      should not drive the fix. The real next target is QKV output divergence:
+      L4 final hidden/token is green but `query` first fails at step 0 / dim 3121
+      (`max_abs=0.005925655364990234`) and `attn_context` at dim 1559, while L8
+      still fails final hidden at step 6. Add row-level `q_proj_key`/`query_raw`
+      producer traces before changing kernels. The per-row fallback's ≤0.004
+      FP16/state amplification is a diagnostic tolerance question only; do not
+      re-open full-attention context math, layer-4 state mapping, native linear
+      segment metadata, output trace/copy semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions
