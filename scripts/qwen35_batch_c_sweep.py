@@ -38,6 +38,7 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_REQUIRED_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES,
     RETAINED_ARTIFACT_REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES,
     RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS,
+    RETAINED_ARTIFACT_RETAINED_CONDITION_STATUS_LABELS,
     RETAINED_ARTIFACT_RETAINED_POSTCONDITION_KINDS,
     RETAINED_ARTIFACT_RETAINED_PRECONDITION_KINDS,
     RETAINED_ARTIFACT_UNUSABLE_SCALING_BASELINE_STATUSES,
@@ -94,6 +95,7 @@ _RETAINED_BENCH_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS
 _PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS = RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS
 _RETAINED_PRECONDITION_KINDS = RETAINED_ARTIFACT_RETAINED_PRECONDITION_KINDS
 _RETAINED_POSTCONDITION_KINDS = RETAINED_ARTIFACT_RETAINED_POSTCONDITION_KINDS
+_RETAINED_CONDITION_STATUS_LABELS = RETAINED_ARTIFACT_RETAINED_CONDITION_STATUS_LABELS
 _SWEEP_COMMAND_KNOWN_FLAGS = tuple(dict.fromkeys(_RETAINED_BENCH_UNIQUE_FLAGS + _PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS))
 
 
@@ -3141,7 +3143,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     retained_precondition_counts = summary.get("retained_precondition_counts")
     if not _count_top_labels_within(retained_precondition_counts, set(_RETAINED_PRECONDITION_KINDS)):
         errors.append("retained_precondition_counts must contain only known retained precondition labels")
-    if not _count_leaf_labels_within(retained_precondition_counts, {"passed", "failed"}):
+    if not _count_leaf_labels_within(retained_precondition_counts, set(_RETAINED_CONDITION_STATUS_LABELS)):
         errors.append("retained_precondition_counts must contain only passed/failed status labels")
     if not _count_leaf_values_are_nonnegative_ints(retained_precondition_counts):
         errors.append("retained_precondition_counts must contain only non-negative integer count values")
@@ -3151,7 +3153,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     retained_postcondition_counts = summary.get("retained_postcondition_counts")
     if not _count_top_labels_within(retained_postcondition_counts, set(_RETAINED_POSTCONDITION_KINDS)):
         errors.append("retained_postcondition_counts must contain only known retained postcondition labels")
-    if not _count_leaf_labels_within(retained_postcondition_counts, {"passed", "failed"}):
+    if not _count_leaf_labels_within(retained_postcondition_counts, set(_RETAINED_CONDITION_STATUS_LABELS)):
         errors.append("retained_postcondition_counts must contain only passed/failed status labels")
     if not _count_leaf_values_are_nonnegative_ints(retained_postcondition_counts):
         errors.append("retained_postcondition_counts must contain only non-negative integer count values")
@@ -3361,7 +3363,11 @@ def _retained_precondition_counts(entries: Sequence[dict[str, Any]]) -> dict[str
             if not isinstance(precondition, dict):
                 continue
             kind = str(precondition.get("kind") or "unknown")
-            status = "passed" if precondition.get("passed") is True else "failed"
+            status = (
+                _RETAINED_CONDITION_STATUS_LABELS[0]
+                if precondition.get("passed") is True
+                else _RETAINED_CONDITION_STATUS_LABELS[1]
+            )
             kind_counts = counts.setdefault(kind, {})
             kind_counts[status] = kind_counts.get(status, 0) + 1
     return counts
@@ -3377,7 +3383,11 @@ def _retained_postcondition_counts(entries: Sequence[dict[str, Any]]) -> dict[st
             if not isinstance(postcondition, dict):
                 continue
             kind = str(postcondition.get("kind") or "unknown")
-            status = "passed" if postcondition.get("passed") is True else "failed"
+            status = (
+                _RETAINED_CONDITION_STATUS_LABELS[0]
+                if postcondition.get("passed") is True
+                else _RETAINED_CONDITION_STATUS_LABELS[1]
+            )
             kind_counts = counts.setdefault(kind, {})
             kind_counts[status] = kind_counts.get(status, 0) + 1
     return counts
