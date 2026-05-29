@@ -48535,3 +48535,23 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: targeted sampler dispatch test PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and the C3.6 docs explicitly keep the packet open until native sampler equality and profiler evidence are green.
+
+## 2026-05-29 — CONCURRENCY sampler profiler rejects serial/per-row kernels
+
+Advanced C3.6 native LM-head/sampler profiler evidence handling. `_sampler_profiler_name_matches(...)` in both retained-bench and accepted-artifact schema now rejects sampler kernel names containing `serial`, `per_row`/`per-row`, or `fallback` before allowing them to satisfy native batch sampler/LM-head profiler evidence. This prevents profiler evidence such as `qwen35_batch_serial_lm_head` from satisfying the native `batched_lm_head` gate merely because it contains `batch` and is categorized as sampling. `docs/CONCURRENCY.md` C3.6 progress text now records that required profiler evidence must be native batch sampler/LM-head evidence, not serial/per-row/fallback.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_retained_bench.py scripts/qwen35_batch_artifact_schema.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_retained_sampler_execution_blockers_require_native_lm_head_evidence -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: targeted retained sampler profiler test PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and the C3.6 docs explicitly keep the packet open until native sampler equality and profiler evidence are green.

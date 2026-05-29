@@ -1872,6 +1872,8 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
 
 def _sampler_profiler_name_matches(kernel_name: str) -> bool:
     lowered = kernel_name.lower()
+    if any(fragment in lowered for fragment in ("serial", "per_row", "per-row", "fallback")):
+        return False
     return "batch" in lowered and _profiler_kernel_duration_category(kernel_name) == "sampling"
 
 

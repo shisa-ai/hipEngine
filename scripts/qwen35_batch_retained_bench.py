@@ -1955,6 +1955,8 @@ def _load_sampler_equality_artifact(value: str) -> tuple[Mapping[str, Any] | Non
 
 def _sampler_profiler_name_matches(kernel_name: str) -> bool:
     lowered = kernel_name.lower()
+    if any(fragment in lowered for fragment in ("serial", "per_row", "per-row", "fallback")):
+        return False
     return "batch" in lowered and _profiler_kernel_duration_category(kernel_name) == "sampling"
 
 

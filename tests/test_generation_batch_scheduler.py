@@ -11289,6 +11289,21 @@ def test_qwen35_retained_sampler_execution_blockers_require_native_lm_head_evide
             "kernel_durations_ns": {"qwen35_batch_lm_head": 12345},
         },
     ) == []
+    assert retained_bench._sampler_profiler_name_matches("qwen35_batch_lm_head") is True
+    assert artifact_schema._sampler_profiler_name_matches("qwen35_batch_lm_head") is True
+    assert retained_bench._sampler_profiler_name_matches("qwen35_batch_serial_lm_head") is False
+    assert artifact_schema._sampler_profiler_name_matches("qwen35_batch_serial_lm_head") is False
+    serial_sampler_profiler = retained_bench._sampler_execution_profiler_blockers(
+        valid,
+        {
+            "expected_kernel_names": ["qwen35_batch_serial_lm_head"],
+            "trace_kernel_names": ["qwen35_batch_serial_lm_head"],
+            "kernel_durations_ns": {"qwen35_batch_serial_lm_head": 12345},
+        },
+    )
+    assert "profiler.expected_kernel_names must include a native batch sampler/lm_head kernel" in serial_sampler_profiler
+    assert "profiler.trace_kernel_names must include a native batch sampler/lm_head kernel" in serial_sampler_profiler
+    assert "profiler.kernel_durations_ns must include a positive native batch sampler/lm_head duration" in serial_sampler_profiler
     missing_sampler_profiler = retained_bench._sampler_execution_profiler_blockers(
         valid,
         {
