@@ -202,6 +202,22 @@ _ALLOWED_PROFILER_SYNTHESIZED_FIELDS = (
     "output_format",
     "trace_dir",
 )
+_DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS = (
+    "_decode_full_attention_trace",
+    "_decode_linear_input_trace",
+    "_decode_linear_output_trace",
+    "_decode_linear_stage_trace",
+    "decode_full_attention",
+    "decode_full_attention_trace",
+    "decode_full_context_oracle",
+    "decode_full_kv_samples",
+    "decode_linear_input_trace",
+    "decode_linear_inputs",
+    "decode_linear_output_trace",
+    "decode_linear_outputs",
+    "decode_linear_stage_trace",
+    "decode_linear_stages",
+)
 
 
 def _mapping_at(payload: Mapping[str, Any], key: str, errors: list[str]) -> Mapping[str, Any]:
@@ -1069,6 +1085,11 @@ def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[
             errors.append("execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch for accepted artifacts")
         if decode_execution.get("native_caware_decode") is not True:
             errors.append("execution.batch_execution.decode_execution.native_caware_decode must be true for accepted artifacts")
+        for diagnostic_field in _DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS:
+            if diagnostic_field in decode_execution:
+                errors.append(
+                    f"execution.batch_execution.decode_execution.{diagnostic_field} must be absent for native retained decode for accepted artifacts"
+                )
         _validate_accepted_decode_layer_executions(decode_execution, workload, errors)
         if decode_execution.get("blockers") != []:
             errors.append("execution.batch_execution.decode_execution.blockers must be empty for accepted artifacts")

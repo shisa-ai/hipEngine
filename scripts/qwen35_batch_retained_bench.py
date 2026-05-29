@@ -72,6 +72,22 @@ _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS = {
 }
 _REQUIRED_PRIMITIVE_CORRECTNESS_SEED = 1234
 _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT = 2e-5
+_DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS = (
+    "_decode_full_attention_trace",
+    "_decode_linear_input_trace",
+    "_decode_linear_output_trace",
+    "_decode_linear_stage_trace",
+    "decode_full_attention",
+    "decode_full_attention_trace",
+    "decode_full_context_oracle",
+    "decode_full_kv_samples",
+    "decode_linear_input_trace",
+    "decode_linear_inputs",
+    "decode_linear_output_trace",
+    "decode_linear_outputs",
+    "decode_linear_stage_trace",
+    "decode_linear_stages",
+)
 
 
 def _required_primitive_context_lens(rows: int) -> list[int]:
@@ -1225,6 +1241,9 @@ def _batch_execution_blockers(
             blockers.append("execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch")
         if decode_execution.get("native_caware_decode") is not True:
             blockers.append("execution.batch_execution.decode_execution.native_caware_decode must be true")
+        for diagnostic_field in _DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS:
+            if diagnostic_field in decode_execution:
+                blockers.append(f"execution.batch_execution.decode_execution.{diagnostic_field} must be absent for native retained decode")
         blockers.extend(
             _decode_layer_execution_blockers(
                 decode_execution,
