@@ -83,6 +83,8 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_PROFILER_TRACE_END_COLUMNS,
     RETAINED_ARTIFACT_PROFILER_TRACE_KERNEL_NAME_COLUMNS,
     RETAINED_ARTIFACT_PROFILER_TRACE_START_COLUMNS,
+    RETAINED_ARTIFACT_PROFILER_TRACE_SYNTHESIZED_FIELDS,
+    RETAINED_ARTIFACT_PROFILER_SYNTHESIZED_FIELDS,
     RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA,
     RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SEED,
     RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS,
@@ -980,6 +982,7 @@ def test_batch_c_sweep_profiler_precondition_synthesizes_trace_fields_from_csv(t
     assert c_sweep._PROFILER_TRACE_START_COLUMNS is RETAINED_ARTIFACT_PROFILER_TRACE_START_COLUMNS
     assert c_sweep._PROFILER_TRACE_END_COLUMNS is RETAINED_ARTIFACT_PROFILER_TRACE_END_COLUMNS
     assert c_sweep._PROFILER_TRACE_DURATION_COLUMNS is RETAINED_ARTIFACT_PROFILER_TRACE_DURATION_COLUMNS
+    assert c_sweep._PROFILER_SYNTHESIZED_FIELDS is RETAINED_ARTIFACT_PROFILER_TRACE_SYNTHESIZED_FIELDS
     assert precondition["passed"] is True
     assert precondition["profiler_source_artifact_path"] == str(profiler_path)
     assert precondition["profiler_trace_kernel_names"] == ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"]
@@ -9866,6 +9869,7 @@ def test_qwen35_retained_profiler_reference_loads_captured_summary(tmp_path: Pat
     assert retained_bench._PROFILER_TRACE_START_COLUMNS is RETAINED_ARTIFACT_PROFILER_TRACE_START_COLUMNS
     assert retained_bench._PROFILER_TRACE_END_COLUMNS is RETAINED_ARTIFACT_PROFILER_TRACE_END_COLUMNS
     assert retained_bench._PROFILER_TRACE_DURATION_COLUMNS is RETAINED_ARTIFACT_PROFILER_TRACE_DURATION_COLUMNS
+    assert retained_bench._PROFILER_SYNTHESIZED_FIELDS is RETAINED_ARTIFACT_PROFILER_SYNTHESIZED_FIELDS
     assert loaded["status"] == "captured"
     assert loaded["output_format"] == "csv"
     assert loaded["trace_dir"] == str(trace_dir)
@@ -14309,6 +14313,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
 
     assert _REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES is RETAINED_ARTIFACT_REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES
     assert _REQUIRED_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES is RETAINED_ARTIFACT_REQUIRED_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES
+    assert artifact_schema._ALLOWED_PROFILER_SYNTHESIZED_FIELDS is RETAINED_ARTIFACT_PROFILER_SYNTHESIZED_FIELDS
 
     missing_duration_categories = json.loads(json.dumps(accepted))
     missing_duration_categories["profiler"].pop("kernel_duration_categories_ns")

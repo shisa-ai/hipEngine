@@ -48,6 +48,7 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_PROFILER_TRACE_END_COLUMNS,
     RETAINED_ARTIFACT_PROFILER_TRACE_KERNEL_NAME_COLUMNS,
     RETAINED_ARTIFACT_PROFILER_TRACE_START_COLUMNS,
+    RETAINED_ARTIFACT_PROFILER_SYNTHESIZED_FIELDS,
     RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SEED,
     RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS,
     RETAINED_ARTIFACT_REQUIRED_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES,
@@ -87,16 +88,7 @@ def _is_zero_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value == 0
 
 
-_PROFILER_SYNTHESIZED_FIELDS = (
-    "trace_kernel_names",
-    "kernel_durations_ns",
-    "total_kernel_duration_ns",
-    "kernel_duration_shares",
-    "kernel_duration_categories_ns",
-    "kernel_duration_category_shares",
-    "output_format",
-    "trace_dir",
-)
+_PROFILER_SYNTHESIZED_FIELDS = RETAINED_ARTIFACT_PROFILER_SYNTHESIZED_FIELDS
 
 
 def _load_prompt_slices(path: Path, *, prompt_length: int, batch_size: int) -> list[list[int]]:

@@ -48058,3 +48058,22 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: targeted profiler trace-column tests PASS, verify count remains `12`, full guard PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance claim was added, and the change only tightens profiler trace evidence plumbing.
+
+## 2026-05-29 — CONCURRENCY shared profiler synthesized-field allow-lists
+
+Moved retained profiler synthesized-field allow-lists into `scripts/qwen35_batch_constants.py` as `RETAINED_ARTIFACT_PROFILER_TRACE_SYNTHESIZED_FIELDS` and `RETAINED_ARTIFACT_PROFILER_SYNTHESIZED_FIELDS`. `scripts/qwen35_batch_c_sweep.py` now validates trace-derived precondition synthesized fields against the shared trace subset, while `scripts/qwen35_batch_retained_bench.py` and `scripts/qwen35_batch_artifact_schema.py` validate retained artifact `profiler.synthesized_fields` against the full shared allow-list (trace fields plus `output_format`/`trace_dir`). CPU tests assert the shared aliases before exercising c-sweep, retained-bench, and schema profiler evidence validation.
+
+Validation:
+
+```bash
+pytest -q tests/test_generation_batch_scheduler.py::test_batch_c_sweep_profiler_precondition_synthesizes_trace_fields_from_csv tests/test_generation_batch_scheduler.py::test_qwen35_retained_profiler_reference_loads_captured_summary tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: targeted profiler synthesized-field tests PASS, verify count remains `12`, full guard PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance claim was added, and the change only tightens profiler provenance evidence plumbing.

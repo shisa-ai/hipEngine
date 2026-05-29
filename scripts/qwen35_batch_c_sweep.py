@@ -30,6 +30,7 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_PROFILER_TRACE_END_COLUMNS,
     RETAINED_ARTIFACT_PROFILER_TRACE_KERNEL_NAME_COLUMNS,
     RETAINED_ARTIFACT_PROFILER_TRACE_START_COLUMNS,
+    RETAINED_ARTIFACT_PROFILER_TRACE_SYNTHESIZED_FIELDS,
     RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA,
     RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SEED,
     RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS,
@@ -84,14 +85,7 @@ def _primitive_context_lens_matches(value: Any, rows: int) -> bool:
     )
 
 
-_PROFILER_SYNTHESIZED_FIELDS = (
-    "trace_kernel_names",
-    "kernel_durations_ns",
-    "total_kernel_duration_ns",
-    "kernel_duration_shares",
-    "kernel_duration_categories_ns",
-    "kernel_duration_category_shares",
-)
+_PROFILER_SYNTHESIZED_FIELDS = RETAINED_ARTIFACT_PROFILER_TRACE_SYNTHESIZED_FIELDS
 _RETAINED_BENCH_UNIQUE_FLAGS = (
     "--model",
     "--fixture",
