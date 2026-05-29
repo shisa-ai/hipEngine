@@ -2893,6 +2893,11 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 has_profiler_field_evidence = "profiler_synthesized_fields" in postcondition
                 has_precondition_field_evidence = "profiler_precondition_synthesized_fields" in postcondition
                 has_synthesized_field_evidence = has_profiler_field_evidence or has_precondition_field_evidence
+                profiler_precondition_fields = (
+                    profiler_precondition.get("profiler_trace_synthesized_fields")
+                    if isinstance(profiler_precondition, dict)
+                    else None
+                )
                 if postcondition.get("passed") is not True and has_profiler_field_evidence != has_precondition_field_evidence:
                     errors.append("commands[].postconditions[].profiler synthesized fields must be paired when present")
                     break
@@ -2903,6 +2908,15 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     or not all(isinstance(field, str) for field in precondition_fields)
                 ):
                     errors.append("commands[].postconditions[].profiler synthesized fields must be string lists when present")
+                    break
+                if postcondition.get("passed") is not True and has_synthesized_field_evidence and (
+                    not isinstance(profiler_precondition_fields, list)
+                    or not all(isinstance(field, str) for field in profiler_precondition_fields)
+                ):
+                    errors.append("commands[].preconditions[].profiler_trace_synthesized_fields must be a string list when retained postcondition has field evidence")
+                    break
+                if postcondition.get("passed") is not True and has_synthesized_field_evidence and list(precondition_fields) != list(profiler_precondition_fields):
+                    errors.append("commands[].postconditions[].profiler_precondition_synthesized_fields must match profiler_summary precondition when present")
                     break
                 if postcondition.get("passed") is True and (
                     not isinstance(profiler_fields, list)
@@ -2915,11 +2929,6 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 if postcondition.get("passed") is True and list(profiler_fields) != list(precondition_fields):
                     errors.append("commands[].postconditions[].profiler synthesized fields must match when passed")
                     break
-                profiler_precondition_fields = (
-                    profiler_precondition.get("profiler_trace_synthesized_fields")
-                    if isinstance(profiler_precondition, dict)
-                    else None
-                )
                 if postcondition.get("passed") is True and (
                     not isinstance(profiler_precondition_fields, list)
                     or not all(isinstance(field, str) for field in profiler_precondition_fields)

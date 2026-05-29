@@ -5472,6 +5472,11 @@ def test_batch_c_sweep_fails_retained_row_on_profiler_synthesis_mismatch(tmp_pat
     tampered_failed_postcondition_field_shape["commands"][-1]["postcondition"] = tampered_failed_postcondition_field_shape["commands"][-1]["postconditions"][0]
     with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler synthesized fields must be string lists when present"):
         c_sweep.validate_sweep_summary(tampered_failed_postcondition_field_shape)
+    tampered_failed_postcondition_precondition_binding = json.loads(json.dumps(summary))
+    tampered_failed_postcondition_precondition_binding["commands"][-1]["postconditions"][0]["profiler_precondition_synthesized_fields"] = ["trace_kernel_names"]
+    tampered_failed_postcondition_precondition_binding["commands"][-1]["postcondition"] = tampered_failed_postcondition_precondition_binding["commands"][-1]["postconditions"][0]
+    with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler_precondition_synthesized_fields must match profiler_summary precondition when present"):
+        c_sweep.validate_sweep_summary(tampered_failed_postcondition_precondition_binding)
     tampered_failed_postcondition_keys = json.loads(json.dumps(summary))
     tampered_failed_postcondition_keys["failed_postconditions"][0]["extra"] = "field"
     with pytest.raises(ValueError, match=r"failed_postconditions\[\] must contain exactly failed postcondition rollup keys"):
