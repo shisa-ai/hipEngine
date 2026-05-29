@@ -53,6 +53,7 @@ from scripts import qwen35_batch_correctness as batch_correctness
 from scripts import qwen35_batch_retained_bench as retained_bench
 from scripts.qwen35_batch_artifact_schema import (
     DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS,
+    DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS,
     _load_benchmark_results_json_artifact,
     _summary_json_path_is_in_current_results,
     _validate_benchmark_results_artifact_path,
@@ -13409,47 +13410,35 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         validate_cn_diagnostic_artifact_payload(spoofed_environment_command)
 
     diagnostic_environment_command = json.loads(json.dumps(accepted))
-    diagnostic_environment_command["commands"]["environment"].append(
-        "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE=1"
-    )
-    with pytest.raises(ValueError, match="commands.environment must not include diagnostic override"):
+    diagnostic_environment_command["commands"]["environment"].extend(DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS)
+    with pytest.raises(ValueError) as diagnostic_environment_error:
         validate_cn_diagnostic_artifact_payload(diagnostic_environment_command)
+    diagnostic_environment_error_message = str(diagnostic_environment_error.value)
+    for diagnostic_fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS:
+        assert f"commands.environment must not include diagnostic override {diagnostic_fragment}" in diagnostic_environment_error_message
 
-    diagnostic_full_attention_environment_command = json.loads(json.dumps(accepted))
-    diagnostic_full_attention_environment_command["commands"]["environment"].append(
-        "HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE=0"
-    )
-    with pytest.raises(ValueError, match="HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE=0"):
-        validate_cn_diagnostic_artifact_payload(diagnostic_full_attention_environment_command)
-
+    diagnostic_fragment_command_suffix = " " + " ".join(DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS)
     for command_field in ("benchmark", "correctness_reference", "profiler"):
         diagnostic_command = json.loads(json.dumps(accepted))
-        diagnostic_command["commands"][command_field] += " HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR=1"
+        diagnostic_command["commands"][command_field] += diagnostic_fragment_command_suffix
         with pytest.raises(ValueError) as diagnostic_command_error:
             validate_cn_diagnostic_artifact_payload(diagnostic_command)
-        assert (
-            f"commands.{command_field} must not include diagnostic override HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR"
-            in str(diagnostic_command_error.value)
-        )
-
-        diagnostic_cli_command = json.loads(json.dumps(accepted))
-        diagnostic_cli_command["commands"][command_field] += " --batch-decode-full-attn-path per_row"
-        with pytest.raises(ValueError) as diagnostic_cli_command_error:
-            validate_cn_diagnostic_artifact_payload(diagnostic_cli_command)
-        assert (
-            f"commands.{command_field} must not include diagnostic override --batch-decode-full-attn-path per_row"
-            in str(diagnostic_cli_command_error.value)
-        )
+        diagnostic_command_error_message = str(diagnostic_command_error.value)
+        for diagnostic_fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS:
+            assert (
+                f"commands.{command_field} must not include diagnostic override {diagnostic_fragment}"
+                in diagnostic_command_error_message
+            )
 
     diagnostic_structured_metadata = json.loads(json.dumps(accepted))
     diagnostic_structured_metadata["diagnostic_environment"] = {
-        "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_STATE": "1"
+        diagnostic_fragment: "1" for diagnostic_fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS
     }
     with pytest.raises(ValueError) as diagnostic_structured_metadata_error:
         validate_cn_diagnostic_artifact_payload(diagnostic_structured_metadata)
-    assert "diagnostic_environment.HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_STATE" in str(
-        diagnostic_structured_metadata_error.value
-    )
+    diagnostic_structured_metadata_error_message = str(diagnostic_structured_metadata_error.value)
+    for diagnostic_fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS:
+        assert f"diagnostic_environment.{diagnostic_fragment}" in diagnostic_structured_metadata_error_message
 
     wrong_benchmark_command = json.loads(json.dumps(accepted))
     wrong_benchmark_command["commands"]["benchmark"] = "python3 scripts/qwen35_batch_serial_bench.py --batch-size 2"

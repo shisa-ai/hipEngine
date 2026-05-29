@@ -94,7 +94,7 @@ _REQUIRED_ACCEPTED_ENVIRONMENT_COMMANDS = (
     "git rev-parse HEAD",
     "git diff --quiet",
 )
-_DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS = (
+DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS = (
     "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE",
     "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR",
     "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_PROJECTIONS",
@@ -266,7 +266,7 @@ def _validate_no_disallowed_diagnostic_metadata(
         for key, child in value.items():
             key_label = str(key)
             child_path = f"{path}.{key_label}" if path else key_label
-            for fragment in _DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS:
+            for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS:
                 if fragment in key_label:
                     errors.append(f"{child_path} must not include diagnostic override {fragment} for accepted artifacts")
             _validate_no_disallowed_diagnostic_metadata(child, path=child_path, errors=errors)
@@ -274,7 +274,7 @@ def _validate_no_disallowed_diagnostic_metadata(
         for index, child in enumerate(value):
             _validate_no_disallowed_diagnostic_metadata(child, path=f"{path}[{index}]", errors=errors)
     elif isinstance(value, str):
-        for fragment in _DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS:
+        for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS:
             if fragment in value:
                 errors.append(f"{path} must not include diagnostic override {fragment} for accepted artifacts")
 
@@ -1649,7 +1649,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         if not isinstance(command_value, str) or not command_value:
             errors.append(f"commands.{field} must be a non-empty string for accepted artifacts")
         elif isinstance(command_value, str):
-            for fragment in _DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS:
+            for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS:
                 if fragment in command_value:
                     errors.append(f"commands.{field} must not include diagnostic override {fragment} for accepted artifacts")
     environment_commands = commands.get("environment")
@@ -1663,7 +1663,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         for command in _REQUIRED_ACCEPTED_ENVIRONMENT_COMMANDS:
             if command not in environment_commands:
                 errors.append(f"commands.environment must include exact command `{command}` for accepted artifacts")
-        for fragment in _DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS:
+        for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS:
             if fragment in joined_environment_commands:
                 errors.append(f"commands.environment must not include diagnostic override {fragment} for accepted artifacts")
     benchmark_command = commands.get("benchmark")
