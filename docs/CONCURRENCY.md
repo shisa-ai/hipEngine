@@ -1023,12 +1023,16 @@ roll-up/status view.
       `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-perrow-fullattn-atol4e-3-focus1269.json`,
       while native full-attention is still over tolerance at the same threshold in
       `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-native-fullattn-atol4e-3-focus1269.json`
-      (`max_abs=0.027587890625`, 345 elements over). The next C2.3 work should
-      decide whether the per-row fallback's ≤0.004 FP16/state amplification is
-      acceptable under the diagnostic gate while native full-attention/post-attention
-      still needs a stricter path; do not re-open full-attention context, layer-4
-      state mapping, native linear segment metadata, output trace/copy semantics,
-      or grouped MoE output yet.
+      (`max_abs=0.027587890625`, 345 elements over). Token/hidden classification:
+      the `atol=0.002` all-per-row control is hidden-only fail (`token_passed=true`,
+      `first_token_mismatch=null`); the `atol=0.004` all-per-row control is
+      token+hidden pass; and the `atol=0.004` native-full control is again
+      hidden-only fail (`token_passed=true`, `first_token_mismatch=null`). The next
+      C2.3 work should decide whether the per-row fallback's ≤0.004 FP16/state
+      amplification is acceptable under the diagnostic gate while native
+      full-attention/post-attention still needs a stricter path; do not re-open
+      full-attention context, layer-4 state mapping, native linear segment metadata,
+      output trace/copy semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

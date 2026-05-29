@@ -45907,3 +45907,40 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (`262` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with hidden-atol sensitivity evidence, and no retained c>N performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY token-vs-hidden C2.3 classification
+
+Added explicit token-vs-hidden classification for the C2.3 tolerance controls so generated-token equality is not conflated with hidden diagnostic drift.
+
+Artifact readback:
+
+```bash
+python3 - <<'PY'
+import json
+for p in [
+'/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-perrow-fullattn-atol2e-3-focus1269.json',
+'/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-perrow-fullattn-atol4e-3-focus1269.json',
+'/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-native-fullattn-atol4e-3-focus1269.json',
+]:
+    d=json.load(open(p)); c=d['correctness']
+    print(p, d['status'], c['passed'], c.get('first_token_mismatch'))
+    for s in d['layer_summaries']:
+        print(s['layer_limit'], s['hidden_passed'], s['token_passed'])
+PY
+```
+
+Result: `atol=0.002` all-per-row is hidden-only fail (`token_passed=true`, `first_token_mismatch=null`), `atol=0.004` all-per-row is token+hidden `eq_ok`, and `atol=0.004` native-full is hidden-only fail (`token_passed=true`, `first_token_mismatch=null`). This keeps C2.3 focused on hidden-diagnostic/post-attention drift and avoids misreporting generated-token equality as broken for these focused L4/L8 controls.
+
+Loop validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (`262` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with token-vs-hidden classification evidence, and no retained c>N performance/scaling claim was added.
