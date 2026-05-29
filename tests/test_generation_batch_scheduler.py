@@ -5586,6 +5586,16 @@ def test_batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head(tmp_pat
         json.dumps(malformed_sequences_payload),
         encoding="utf-8",
     )
+    empty_sequences_payload = _sampler_equality_payload(
+        rows=8,
+        artifact_path="benchmarks/results/qwen35-c8-empty-sequences-eq.json",
+        batch_sequences=[[] for _ in range(8)],
+        c1_sequences=[[] for _ in range(8)],
+    )
+    (artifact_dir / "qwen35-c8-empty-sequences-eq.json").write_text(
+        json.dumps(empty_sequences_payload),
+        encoding="utf-8",
+    )
     (artifact_dir / "qwen35-c8-wrong-artifact-path-eq.json").write_text(
         json.dumps(_sampler_equality_payload(rows=8, artifact_path="benchmarks/results/qwen35-c8-eq.json")),
         encoding="utf-8",
@@ -5745,8 +5755,19 @@ def test_batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head(tmp_pat
         equality_rows=8,
     )
     assert malformed_sequences_equality_artifact.mode is BatchSamplerMode.SERIAL_LM_HEAD
-    assert "batched LM-head equality artifact generated_token_equality batch_sequences rows must be integer lists" in malformed_sequences_equality_artifact.blockers
-    assert "batched LM-head equality artifact generated_token_equality c1_sequences rows must be integer lists" in malformed_sequences_equality_artifact.blockers
+    assert "batched LM-head equality artifact generated_token_equality batch_sequences rows must be non-empty integer lists" in malformed_sequences_equality_artifact.blockers
+    assert "batched LM-head equality artifact generated_token_equality c1_sequences rows must be non-empty integer lists" in malformed_sequences_equality_artifact.blockers
+
+    empty_sequences_equality_artifact = plan_batch_sampler_dispatch(
+        rows=8,
+        requested_mode="batched_lm_head",
+        c2_equality_green=True,
+        equality_artifact="benchmarks/results/qwen35-c8-empty-sequences-eq.json",
+        equality_rows=8,
+    )
+    assert empty_sequences_equality_artifact.mode is BatchSamplerMode.SERIAL_LM_HEAD
+    assert "batched LM-head equality artifact generated_token_equality batch_sequences rows must be non-empty integer lists" in empty_sequences_equality_artifact.blockers
+    assert "batched LM-head equality artifact generated_token_equality c1_sequences rows must be non-empty integer lists" in empty_sequences_equality_artifact.blockers
 
     wrong_artifact_path_equality_artifact = plan_batch_sampler_dispatch(
         rows=8,
