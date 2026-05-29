@@ -47982,3 +47982,22 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: targeted shared-status/schema tests PASS, verify count remains `12`, full guard PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance claim was added, and the change only tightens baseline-evidence promotion gates.
+
+## 2026-05-29 — CONCURRENCY shared scaling key gates
+
+Moved retained-artifact required scaling baseline and ratio key names into `scripts/qwen35_batch_constants.py` as `RETAINED_ARTIFACT_REQUIRED_SCALING_BASELINES` and `RETAINED_ARTIFACT_REQUIRED_SCALING_RATIOS`. `scripts/qwen35_batch_artifact_schema.py` aliases its accepted-row required scaling fields to those shared tuples, `scripts/qwen35_batch_retained_bench.py` uses the shared ratio keys for completeness, and CPU tests assert retained scaling output plus schema validation use the shared key sets. This advances P1/P5 evidence gating by preventing required baseline/ratio drift between retained artifact generation and acceptance validation.
+
+Validation:
+
+```bash
+pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_retained_scaling_comparison_uses_c1_and_serial_artifacts tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: targeted scaling/schema tests PASS, verify count remains `12`, full guard PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance claim was added, and the change only tightens required baseline/ratio evidence plumbing.

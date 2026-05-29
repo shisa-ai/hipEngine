@@ -41,7 +41,11 @@ from scripts.qwen35_batch_artifact_schema import (
     DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS,
     validate_cn_diagnostic_artifact_payload,
 )
-from scripts.qwen35_batch_constants import PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS
+from scripts.qwen35_batch_constants import (
+    PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS,
+    RETAINED_ARTIFACT_REQUIRED_SCALING_BASELINES,
+    RETAINED_ARTIFACT_REQUIRED_SCALING_RATIOS,
+)
 from scripts.qwen35_kv_policy_args import add_kv_policy_args, kv_policy_json, resolve_args_kv_policy
 
 DEFAULT_MODEL = "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16"
@@ -980,8 +984,8 @@ def _build_scaling_comparison(
         "aggregate_vs_serial_bridge": _safe_ratio(native_decode_tok_s_aggregate, serial.get("decode_tok_s_aggregate")),
         "per_request_vs_serial_bridge": _safe_ratio(native_decode_tok_s_per_request, serial.get("decode_tok_s_per_request")),
     }
-    complete = all(value is not None for value in ratios.values())
-    return {
+    complete = all(ratios.get(field) is not None for field in RETAINED_ARTIFACT_REQUIRED_SCALING_RATIOS)
+    scaling = {
         "complete": complete,
         "native": {
             "decode_tok_s_aggregate": native_decode_tok_s_aggregate,
@@ -991,6 +995,8 @@ def _build_scaling_comparison(
         "serial_bridge_baseline": serial,
         "ratios": ratios,
     }
+    assert all(field in scaling for field in RETAINED_ARTIFACT_REQUIRED_SCALING_BASELINES)
+    return scaling
 
 
 def _merged_mapping(base: Mapping[str, Any], override: Mapping[str, Any]) -> dict[str, Any]:

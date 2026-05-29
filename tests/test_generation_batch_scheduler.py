@@ -58,6 +58,8 @@ from scripts.qwen35_batch_artifact_schema import (
     DISALLOWED_ACCEPTED_DIAGNOSTIC_EVIDENCE_FRAGMENTS,
     DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_FRAGMENTS,
     DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_NAMES,
+    _REQUIRED_ACCEPTED_SCALING_BASELINES,
+    _REQUIRED_ACCEPTED_SCALING_RATIOS,
     _UNUSABLE_ACCEPTED_SCALING_BASELINE_STATUSES,
     _load_benchmark_results_json_artifact,
     _summary_json_path_is_in_current_results,
@@ -74,6 +76,8 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_EVIDENCE_FRAGMENTS,
     RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_TRACE_FIELD_FRAGMENTS,
     RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_TRACE_FIELD_NAMES,
+    RETAINED_ARTIFACT_REQUIRED_SCALING_BASELINES,
+    RETAINED_ARTIFACT_REQUIRED_SCALING_RATIOS,
     RETAINED_ARTIFACT_UNUSABLE_SCALING_BASELINE_STATUSES,
 )
 from scripts.qwen35_batch_c_sweep import build_parser as build_c_sweep_parser, build_sweep_commands, run_sweep
@@ -9473,6 +9477,8 @@ def test_qwen35_retained_scaling_comparison_uses_c1_and_serial_artifacts(tmp_pat
     )
 
     assert scaling["complete"] is True
+    assert tuple(scaling["ratios"].keys()) == RETAINED_ARTIFACT_REQUIRED_SCALING_RATIOS
+    assert all(baseline_name in scaling for baseline_name in RETAINED_ARTIFACT_REQUIRED_SCALING_BASELINES)
     assert scaling["c1_baseline"]["status"] == "loaded"
     assert scaling["c1_baseline"]["reason"] is None
     assert scaling["c1_baseline"]["reference_artifact_path"] == str(c1)
@@ -13254,12 +13260,9 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="scaling"):
         validate_cn_diagnostic_artifact_payload(missing_scaling)
 
-    for ratio_field in (
-        "aggregate_vs_c1",
-        "per_request_vs_c1",
-        "aggregate_vs_serial_bridge",
-        "per_request_vs_serial_bridge",
-    ):
+    assert _REQUIRED_ACCEPTED_SCALING_BASELINES is RETAINED_ARTIFACT_REQUIRED_SCALING_BASELINES
+    assert _REQUIRED_ACCEPTED_SCALING_RATIOS is RETAINED_ARTIFACT_REQUIRED_SCALING_RATIOS
+    for ratio_field in RETAINED_ARTIFACT_REQUIRED_SCALING_RATIOS:
         missing_ratio = json.loads(json.dumps(accepted))
         missing_ratio["scaling"]["ratios"].pop(ratio_field)
         with pytest.raises(ValueError, match=ratio_field):
