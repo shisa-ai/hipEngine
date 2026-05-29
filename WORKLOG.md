@@ -44749,3 +44749,28 @@ Results:
 - `/tmp/hipengine-hidden-bisect-L8-512-16-packed-aotriton-all-per-row-focus1269.json`: `status=mismatch_found`, `performance_claim=false`, tokens still green, all decode subpaths forced through per-row/selected-c1 fallbacks, but hidden fails later at decode step 11 / generated index 12 on row 0 dim 1543 (`max_abs=0.010440826416015625`).
 
 Interpretation: the packed-prefill fix removed the old row-0 generated-token idx-13 mismatch at this L8/16 shape, but C2.3 is not closed because hidden equality still drifts over multiple decode steps even with all-per-row decode fallbacks. Next target should trace multi-step decode state/rounding accumulation (seed/prelude is green; divergence appears after repeated generated tokens), not the reduced layer-4 input drift.
+
+## 2026-05-29 — CONCURRENCY decode linear-state trace
+
+Advanced C2.3 by adding per-decode-step linear conv/recurrent state comparisons to the hidden-bisect harness. The L8/16 post-prefill-fix artifacts showed multi-step hidden drift with tokens green, so this trace records whether per-slot linear states diverge before/around the hidden mismatch.
+
+Code/test changes:
+
+- `HiddenRun` now carries `decode_linear_states_by_step`.
+- Batch runs copy compact per-slot linear states after each decode step; independent c=1 runs aggregate the same per row/step and stack them for comparison.
+- Layer summaries now include `decode_linear_state_passed` and a `decode_linear_states` block with per-step/per-layer conv and recurrent numeric summaries plus row summaries.
+- CPU summary coverage locks the new decode-state block.
+
+Diagnostics:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --json /tmp/hipengine-hidden-bisect-L8-512-16-packed-aotriton-decode-states-focus1269.json >/tmp/hipengine-hidden-bisect-L8-512-16-packed-aotriton-decode-states-focus1269.stdout
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-decode-moe-path selected_c1 --batch-decode-linear-path per_row --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L8-512-16-packed-aotriton-all-per-row-decode-states-focus1269.json >/tmp/hipengine-hidden-bisect-L8-512-16-packed-aotriton-all-per-row-decode-states-focus1269.stdout
+```
+
+Results:
+
+- `/tmp/hipengine-hidden-bisect-L8-512-16-packed-aotriton-decode-states-focus1269.json`: `status=mismatch_found`, `performance_claim=false`, prefill gates remain green, `token_passed=true`, `decode_linear_state_passed=false`, and hidden fails at decode step 11 / generated index 12 on row 0 dim 1167 (`max_abs=0.0157470703125`). The strict state probe reports decode state drift from step 0 (conv BF16-scale max `0.0078125`, recurrent max around `0.0017` on some layers), so native batch decode has measurable state differences before the later hidden failure.
+- `/tmp/hipengine-hidden-bisect-L8-512-16-packed-aotriton-all-per-row-decode-states-focus1269.json`: `status=eq_ok`, `performance_claim=false`, `decode_linear_state_passed=true`, `hidden_passed=true`, and `token_passed=true` with selected-c1/per-row decode fallbacks.
+
+Interpretation: the retained multi-step failure is now isolated away from packed prefill and away from all-per-row fallback behavior. The next C2.3 target is native c-aware batch decode accumulation (batch linear/full attention and/or grouped compact MoE state/rounding), with decode state drift appearing before hidden divergence under the strict state oracle.

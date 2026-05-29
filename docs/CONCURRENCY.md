@@ -791,9 +791,18 @@ roll-up/status view.
       `/tmp/hipengine-hidden-bisect-L8-512-16-packed-aotriton-all-per-row-focus1269.json`
       also keeps tokens green but shifts the first hidden mismatch to decode
       step 11 / generated index 12 (`row 0`, dim 1543,
-      `max_abs=0.010440826416015625`), so C2.3 is not closed yet: the reduced
-      prefill drift is fixed, but longer multi-step decode hidden equality now
-      needs a separate state/rounding accumulation fix before C2.4/C2.5 gates.
+      `max_abs=0.010440826416015625`), so C2.3 is not closed yet. A decode-state
+      trace refresh at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-packed-aotriton-decode-states-focus1269.json`
+      adds per-step compact-vs-c1 conv/recurrent state summaries; retained
+      native c-aware decode still fails hidden equality at step 11 (`row 0`,
+      dim 1167, `max_abs=0.0157470703125`) and reports strict state drift from
+      step 0. The matching all-per-row trace
+      `/tmp/hipengine-hidden-bisect-L8-512-16-packed-aotriton-all-per-row-decode-states-focus1269.json`
+      is green (`status=eq_ok`, `decode_linear_state_passed=true`), so the
+      reduced prefill drift is fixed and the next C2.3 target is retained native
+      batch-decode state/rounding accumulation rather than all-per-row fallback
+      behavior.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

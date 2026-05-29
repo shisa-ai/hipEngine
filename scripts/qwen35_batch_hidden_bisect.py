@@ -43,6 +43,7 @@ class HiddenRun:
     prefill_execution: dict[str, Any] | None = None
     prefill_linear_states: dict[int, dict[str, np.ndarray]] = field(default_factory=dict)
     prefill_linear_inputs: dict[int, list[np.ndarray]] = field(default_factory=dict)
+    decode_linear_states_by_step: list[dict[int, dict[str, np.ndarray]]] = field(default_factory=list)
     decode_execution_by_step: list[dict[str, Any] | None] = field(default_factory=list)
 
 
@@ -701,6 +702,7 @@ def _run_batch_hidden(
         next_tokens = list(seed_tokens)
         generated_tokens = [[] for _ in prompts]
         hidden_bits_by_step: list[np.ndarray] = []
+        decode_linear_states_by_step: list[dict[int, dict[str, np.ndarray]]] = []
         decode_execution_by_step: list[dict[str, Any] | None] = []
         for step in range(decode_tokens):
             positions = tuple(len(prompt) + step for prompt in prompts)
@@ -718,6 +720,7 @@ def _run_batch_hidden(
             )
             session.runtime.device_synchronize()
             hidden_bits_by_step.append(_copy_hidden_bits(session, hidden, rows=rows))
+            decode_linear_states_by_step.append(_copy_prefill_linear_states(session, rows=rows))
             results = session._sample_batch_from_hidden(hidden, rows=rows)
             next_tokens = []
             for row, result in enumerate(results):
@@ -732,6 +735,7 @@ def _run_batch_hidden(
             prefill_execution=prefill_execution_copy,
             prefill_linear_states=prefill_linear_states,
             prefill_linear_inputs=prefill_linear_inputs,
+            decode_linear_states_by_step=decode_linear_states_by_step,
             decode_execution_by_step=decode_execution_by_step,
         )
 
@@ -752,6 +756,7 @@ def _run_c1_hidden(
     prefill_hidden_bits = np.empty((rows, runner.config.hidden_size), dtype=np.uint16)
     prefill_linear_state_rows: dict[int, dict[str, list[np.ndarray]]] = {}
     prefill_linear_input_rows: dict[int, list[np.ndarray]] = {}
+    decode_linear_state_rows_by_step: list[dict[int, dict[str, list[np.ndarray]]]] = [{} for _ in range(decode_tokens)]
     hidden_by_step = [np.empty((rows, runner.config.hidden_size), dtype=np.uint16) for _ in range(decode_tokens)]
     with Qwen35ParoResidentSession(
         runner,
@@ -790,6 +795,10 @@ def _run_c1_hidden(
                 hidden = session._run_layers(position=position, stream=0)
                 session.runtime.device_synchronize()
                 hidden_by_step[step][row : row + 1] = _copy_hidden_bits(session, hidden, rows=1)
+                _merge_prefill_linear_state_row(
+                    decode_linear_state_rows_by_step[step],
+                    _copy_prefill_linear_states(session, rows=1),
+                )
                 step_result = session._sample_from_hidden(hidden)
                 next_token = int(step_result.token_id)
                 row_generated.append(next_token)
@@ -802,6 +811,9 @@ def _run_c1_hidden(
         prefill_hidden_bits=prefill_hidden_bits,
         prefill_linear_states=_stack_prefill_linear_state_rows(prefill_linear_state_rows),
         prefill_linear_inputs=prefill_linear_input_rows,
+        decode_linear_states_by_step=[
+            _stack_prefill_linear_state_rows(rows_by_layer) for rows_by_layer in decode_linear_state_rows_by_step
+        ],
     )
 
 
@@ -865,18 +877,16 @@ def _prefill_summary(
     return summary
 
 
-def _prefill_linear_state_summary(
-    batch: HiddenRun,
-    c1: HiddenRun,
+def _linear_state_layers_summary(
+    batch_states: dict[int, dict[str, np.ndarray]],
+    c1_states: dict[int, dict[str, np.ndarray]],
     *,
     atol: float,
-) -> dict[str, Any] | None:
-    if not batch.prefill_linear_states or not c1.prefill_linear_states:
-        return None
+) -> list[dict[str, Any]]:
     layers: list[dict[str, Any]] = []
-    for layer_id in sorted(set(batch.prefill_linear_states) & set(c1.prefill_linear_states)):
-        layer_batch = batch.prefill_linear_states[layer_id]
-        layer_c1 = c1.prefill_linear_states[layer_id]
+    for layer_id in sorted(set(batch_states) & set(c1_states)):
+        layer_batch = batch_states[layer_id]
+        layer_c1 = c1_states[layer_id]
         state_summaries: dict[str, Any] = {}
         for state_name in ("conv", "recurrent"):
             if state_name not in layer_batch or state_name not in layer_c1:
@@ -891,11 +901,52 @@ def _prefill_linear_state_summary(
                 "states": state_summaries,
             }
         )
+    return layers
+
+
+def _prefill_linear_state_summary(
+    batch: HiddenRun,
+    c1: HiddenRun,
+    *,
+    atol: float,
+) -> dict[str, Any] | None:
+    if not batch.prefill_linear_states or not c1.prefill_linear_states:
+        return None
+    layers = _linear_state_layers_summary(batch.prefill_linear_states, c1.prefill_linear_states, atol=atol)
     return {
         "stage": "prefill_linear_states",
         "state_atol": float(atol),
         "passed": all(layer["passed"] for layer in layers),
         "layers": layers,
+    }
+
+
+def _decode_linear_state_summary(
+    batch: HiddenRun,
+    c1: HiddenRun,
+    *,
+    atol: float,
+) -> dict[str, Any] | None:
+    if not batch.decode_linear_states_by_step or not c1.decode_linear_states_by_step:
+        return None
+    steps: list[dict[str, Any]] = []
+    for step, (batch_states, c1_states) in enumerate(
+        zip(batch.decode_linear_states_by_step, c1.decode_linear_states_by_step, strict=True)
+    ):
+        layers = _linear_state_layers_summary(batch_states, c1_states, atol=atol)
+        steps.append(
+            {
+                "decode_step": int(step),
+                "generated_index": int(step + 1),
+                "passed": all(layer["passed"] for layer in layers),
+                "layers": layers,
+            }
+        )
+    return {
+        "stage": "decode_linear_states",
+        "state_atol": float(atol),
+        "passed": all(step["passed"] for step in steps),
+        "steps": steps,
     }
 
 
@@ -967,6 +1018,7 @@ def _summarize_layer_limit(
         atol=atol,
         focus_hidden_flat_indices=focus_hidden_flat_indices,
     )
+    decode_linear_states = _decode_linear_state_summary(batch, c1, atol=state_atol)
     steps: list[dict[str, Any]] = []
     for step, (batch_bits, c1_bits) in enumerate(zip(batch.hidden_bits_by_step, c1.hidden_bits_by_step, strict=True)):
         rows: list[dict[str, Any]] = []
@@ -993,6 +1045,7 @@ def _summarize_layer_limit(
         "prefill_hidden_passed": True if prefill is None else bool(prefill["hidden_passed"]),
         "prefill_linear_input_passed": True if prefill_linear_inputs is None else bool(prefill_linear_inputs["passed"]),
         "prefill_linear_state_passed": True if prefill_linear_states is None else bool(prefill_linear_states["passed"]),
+        "decode_linear_state_passed": True if decode_linear_states is None else bool(decode_linear_states["passed"]),
         "hidden_passed": all(row["hidden_comparison"]["passed"] for step in steps for row in step["rows"]),
         "token_passed": not token_mismatches,
         "seed_tokens": {"batch": batch.seed_tokens, "c1": c1.seed_tokens},
@@ -1006,6 +1059,8 @@ def _summarize_layer_limit(
         summary["prefill_linear_states"] = prefill_linear_states
     if prefill_linear_inputs is not None:
         summary["prefill_linear_inputs"] = prefill_linear_inputs
+    if decode_linear_states is not None:
+        summary["decode_linear_states"] = decode_linear_states
     return summary
 
 

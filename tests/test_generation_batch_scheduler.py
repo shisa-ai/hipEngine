@@ -6491,6 +6491,7 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         prefill_execution={"path": "native_prefill_compact_cN"},
         prefill_linear_states=linear_state,
         prefill_linear_inputs=linear_inputs,
+        decode_linear_states_by_step=[linear_state],
         decode_execution_by_step=[decode_execution],
     )
     c1 = HiddenRun(
@@ -6500,6 +6501,7 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         prefill_hidden_bits=hidden.copy(),
         prefill_linear_states=linear_state,
         prefill_linear_inputs=linear_inputs,
+        decode_linear_states_by_step=[linear_state],
     )
 
     summary = _summarize_layer_limit(
@@ -6515,6 +6517,7 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     assert summary["prefill_hidden_passed"] is True
     assert summary["prefill_linear_input_passed"] is True
     assert summary["prefill_linear_state_passed"] is True
+    assert summary["decode_linear_state_passed"] is True
     assert summary["token_passed"] is True
     assert summary["prefill"]["stage"] == "prefill_final_hidden"
     assert summary["prefill"]["hidden_passed"] is True
@@ -6563,6 +6566,9 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
             "top_abs_diffs": [],
         },
     ]
+    assert summary["decode_linear_states"]["stage"] == "decode_linear_states"
+    assert summary["decode_linear_states"]["passed"] is True
+    assert summary["decode_linear_states"]["steps"][0]["layers"][0]["states"]["recurrent"]["max_abs"] == 0.0
     assert summary["steps"][0]["batch_decode_execution"] == decode_execution
 
 
