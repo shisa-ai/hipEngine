@@ -699,7 +699,15 @@ roll-up/status view.
       `native_caware_decode=false`, and the same L6 row-0 dim-1269 hidden
       failure (`max_abs=0.00146484375`, no token mismatch), so the reduced
       failure is also not cleared by replacing the batch linear-attention
-      segment path with per-row c=1 linear layers.
+      segment path with per-row c=1 linear layers. The per-row full-attention
+      probe at `/tmp/hipengine-hidden-bisect-L5-L6-512-1-per-row-full-attn.json`
+      forces `HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE=0` through
+      `--batch-decode-full-attn-path per_row`; it records
+      `full_attention_decode_path=per_row_context_fallback`,
+      `native_full_attention_layers=0`, and again preserves the L6 row-0
+      dim-1269 hidden failure (`max_abs=0.00146484375`, no token mismatch), so
+      the reduced failure is not cleared by replacing the native batch
+      full-attention layer either.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

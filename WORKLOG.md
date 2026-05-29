@@ -44495,3 +44495,41 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
 ```
+
+## 2026-05-29 — CONCURRENCY per-row full-attention decode probe
+
+Advanced C2.3 with a third isolation probe. The selected-c1 MoE and per-row-linear probes did not clear the L6 row-0 hidden mismatch, so the hidden-bisection harness now exposes a switch to force short-context full-attention decode through the existing per-row fallback. This is diagnostic-only and explicitly not a retained c>N performance path.
+
+Changes:
+
+- Added `--batch-decode-full-attn-path {native_batch,per_row}` to `scripts/qwen35_batch_hidden_bisect.py`.
+- The hidden-bisect workload now records `batch_decode_full_attention_path`; `native_caware_decode` and `full_attention_decode_path` reflect forced per-row full-attention diagnostics.
+- The script sets `HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE=0` for `--batch-decode-full-attn-path per_row`, otherwise resets it to `1` for reproducible default probes.
+- CPU dry-run tests cover the new default workload field.
+- `docs/CONCURRENCY.md` C2.3 progress cites the new per-row full-attention artifact and keeps the item open.
+
+Diagnostic command:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 1 --max-layers 8 --layer-limits 5,6 --max-sequence-length 1024 --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L5-L6-512-1-per-row-full-attn.json
+```
+
+Result: `/tmp/hipengine-hidden-bisect-L5-L6-512-1-per-row-full-attn.json` emitted `status=mismatch_found`, `performance_claim=false`, `workload.batch_decode_full_attention_path=per_row`, `workload.native_caware_decode=false`, and `batch_decode_execution.full_attention_decode_path=per_row_context_fallback` with `native_full_attention_layers=0`, `moe_decode_path=mixed_grouped_compact_with_per_row_full_attention_fallback`, and blocker `full-attention decode used a per-row fallback`. The L6 row-0 hidden mismatch persists at dim 1269 (`max_abs=0.00146484375`, `batch=0.8564453125`, `c1=0.85498046875`, `elements_over_atol=1`) while tokens still match in the one-token reduced run (`first_token_mismatch=null`). This rules out the native batch full-attention layer as the only cause; combined with the selected-c1 MoE and per-row-linear probes, the remaining likely issue is pre-decode/pre-L6 state carried across batch rows or a residual/norm interaction not isolated by path substitution.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_hidden_bisect.py && python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_dry_run_records_layer_commands -q
+# 1 passed
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -q
+# passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
+```
