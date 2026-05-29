@@ -17,13 +17,16 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from scripts.qwen35_batch_artifact_schema import validate_cn_diagnostic_artifact_payload
+from scripts.qwen35_batch_constants import RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT
 from scripts.qwen35_batch_retained_bench import DEFAULT_FIXTURE, DEFAULT_MODEL
+
+_RETAINED_BENCH_SCRIPT = RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT
 
 
 def _future_gate_command(args: argparse.Namespace) -> str:
     argv = [
         "python3",
-        "scripts/qwen35_batch_retained_bench.py",
+        _RETAINED_BENCH_SCRIPT,
         "--model",
         str(args.model),
         "--fixture",

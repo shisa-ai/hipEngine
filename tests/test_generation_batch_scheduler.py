@@ -51,6 +51,7 @@ from hipengine.speculative import AcceptResult, DraftBatch, TargetAcceptSummary,
 from scripts import qwen35_batch_artifact_schema as artifact_schema
 from scripts import qwen35_batch_c_sweep as c_sweep
 from scripts import qwen35_batch_correctness as batch_correctness
+from scripts import qwen35_batch_int8_diagnostic as int8_diagnostic
 from scripts import qwen35_batch_retained_bench as retained_bench
 from scripts.qwen35_batch_artifact_schema import (
     DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS,
@@ -8619,6 +8620,9 @@ def test_int8_cN_diagnostic_template_records_blocked_c2_gate(tmp_path: Path) -> 
     assert payload["workload"]["native_compact_prefill"] is False
     assert payload["workload"]["native_caware_decode"] is False
     assert payload["execution"]["batch_execution"]["throughput_claim_eligible"] is False
+    assert int8_diagnostic._RETAINED_BENCH_SCRIPT is RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT
+    future_gate_tokens = shlex.split(payload["commands"]["future_generated_token_gate"])
+    assert future_gate_tokens[1] == RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT
     assert "--kv-storage int8_per_token_head" in payload["commands"]["future_generated_token_gate"]
     assert any("compact c>N native prefill" in reason for reason in payload["blockers"])
     validate_cn_diagnostic_artifact_payload(payload)
