@@ -2932,7 +2932,7 @@ class Qwen35ParoResidentSession:
         rows: int,
         stream: int = 0,
     ) -> None:
-        if stage not in {"input", "attn_input", "gate", "gated_attn", "o_proj", "output"}:
+        if stage not in {"input", "attn_input", "gate", "gated_attn", "o_proj", "residual", "mlp_input", "output"}:
             raise ValueError("decode full-attention trace stage is not recognized")
         self._trace_tensor_bits(
             trace_attr="_decode_full_attention_trace",
@@ -3036,6 +3036,31 @@ class Qwen35ParoResidentSession:
             layer_id=layer_id,
             stage="o_proj",
             hidden=attention_scratch.o_proj,
+            rows=rows,
+            stream=stream,
+        )
+
+    def _trace_decode_full_attention_moe_scratch(
+        self,
+        *,
+        layer_id: int,
+        moe_scratch: Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | Qwen35ParoDenseMlpScratch,
+        rows: int,
+        stream: int = 0,
+    ) -> None:
+        if not isinstance(getattr(self, "_decode_full_attention_trace", None), list):
+            return
+        self._trace_decode_full_attention(
+            layer_id=layer_id,
+            stage="residual",
+            hidden=moe_scratch.residual,
+            rows=rows,
+            stream=stream,
+        )
+        self._trace_decode_full_attention(
+            layer_id=layer_id,
+            stage="mlp_input",
+            hidden=moe_scratch.normed,
             rows=rows,
             stream=stream,
         )
@@ -3807,6 +3832,12 @@ class Qwen35ParoResidentSession:
                             context=getattr(attention_scratch, "query_raw", None),
                             stream=stream,
                         )
+                        self._trace_decode_full_attention_moe_scratch(
+                            layer_id=layer_id,
+                            moe_scratch=moe_scratch,
+                            rows=rows,
+                            stream=stream,
+                        )
                         self._trace_decode_full_attention(
                             layer_id=layer_id,
                             stage="output",
@@ -3875,6 +3906,12 @@ class Qwen35ParoResidentSession:
                                 attention_scratch=self.full_scratch[layer_id],
                                 rows=1,
                                 context=getattr(self.full_scratch[layer_id], "attn_out", None),
+                                stream=stream,
+                            )
+                            self._trace_decode_full_attention_moe_scratch(
+                                layer_id=layer_id,
+                                moe_scratch=self.moe_scratch[layer_id],
+                                rows=1,
                                 stream=stream,
                             )
                             self._trace_decode_full_attention(
@@ -4012,6 +4049,12 @@ class Qwen35ParoResidentSession:
                     attention_scratch=self.full_scratch[layer_id],
                     rows=1,
                     context=getattr(self.full_scratch[layer_id], "attn_out", None),
+                    stream=stream,
+                )
+                self._trace_decode_full_attention_moe_scratch(
+                    layer_id=layer_id,
+                    moe_scratch=self.moe_scratch[layer_id],
+                    rows=1,
                     stream=stream,
                 )
                 self._trace_decode_full_attention(

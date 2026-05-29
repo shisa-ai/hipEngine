@@ -6818,6 +6818,8 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
             "attn_context": attn_context.copy(),
             "gated_attn": hidden.copy(),
             "o_proj": hidden.copy(),
+            "residual": hidden.copy(),
+            "mlp_input": hidden.copy(),
             "output": hidden.copy(),
         }
     }
@@ -6942,11 +6944,15 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     assert summary["decode_full_attention"]["stage_passed"]["query"] is True
     assert summary["decode_full_attention"]["stage_passed"]["attn_context"] is True
     assert summary["decode_full_attention"]["stage_passed"]["gated_attn"] is True
+    assert summary["decode_full_attention"]["stage_passed"]["residual"] is True
+    assert summary["decode_full_attention"]["stage_passed"]["mlp_input"] is True
     assert "first_mismatch" not in summary["decode_full_attention"]
     assert summary["decode_full_attention"]["worst_diff"]["stage"] == "input"
     assert summary["decode_full_attention"]["worst_diff"]["max_abs"] == 0.0
     assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["query"]["rows"][0]["comparison_kind"] == "fp32"
     assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["attn_context"]["rows"][0]["comparison_kind"] == "fp32"
+    assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["residual"]["passed"] is True
+    assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["mlp_input"]["passed"] is True
     assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["output"]["passed"] is True
     output_delta = summary["decode_full_attention"]["steps"][0]["layers"][0]["stage_deltas"]["output_minus_o_proj"]
     assert output_delta["passed"] is True

@@ -999,10 +999,14 @@ roll-up/status view.
       `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-output-minus-oproj-fp16-focus1269.json`
       fixes the trace-value conversion and records `output_minus_o_proj` as the first
       bad delta too (`max_abs=0.0081787109375`, dim 1504), while `o_proj` itself
-      remains green (`max_abs=6.103515625e-05`). The next C2.3 work should isolate
-      layer-3 post-attention add/RMSNorm or grouped MoE residual contribution after
-      `o_proj`, not re-open full-attention context, layer-4 state mapping, native
-      linear segment metadata, or output trace/copy semantics.
+      remains green (`max_abs=6.103515625e-05`). The post-attention component refresh
+      at `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-post-attn-components-focus1269.json`
+      traces `residual` and `mlp_input`: layer-3 `residual` is green
+      (`max_abs=0.000244140625`, no elements over tolerance), but `mlp_input` is
+      the first bad stage (`max_abs=0.00390625`, dim 100). The next C2.3 work
+      should isolate the batched post-attention RMSNorm path after `o_proj`; do
+      not re-open full-attention context, layer-4 state mapping, native linear
+      segment metadata, output trace/copy semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions
