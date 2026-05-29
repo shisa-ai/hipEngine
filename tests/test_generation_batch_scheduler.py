@@ -5453,6 +5453,16 @@ def test_batch_c_sweep_fails_retained_row_on_profiler_synthesis_mismatch(tmp_pat
     assert native["postcondition"] == native["postconditions"][0]
     assert native["output_tail"] == "retained artifact profiler.synthesized_fields does not match profiler precondition synthesized fields"
     c_sweep.validate_sweep_summary(summary)
+    tampered_failed_postcondition_precondition_source = json.loads(json.dumps(summary))
+    tampered_failed_postcondition_precondition_source["commands"][-1]["postconditions"][0]["profiler_precondition_source_artifact_path"] = str(output_dir / "stale-profiler.json")
+    tampered_failed_postcondition_precondition_source["commands"][-1]["postcondition"] = tampered_failed_postcondition_precondition_source["commands"][-1]["postconditions"][0]
+    with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler_precondition_source_artifact_path must match profiler_summary precondition when present"):
+        c_sweep.validate_sweep_summary(tampered_failed_postcondition_precondition_source)
+    tampered_failed_postcondition_source = json.loads(json.dumps(summary))
+    tampered_failed_postcondition_source["commands"][-1]["postconditions"][0]["profiler_source_artifact_path"] = str(output_dir / "stale-profiler.json")
+    tampered_failed_postcondition_source["commands"][-1]["postcondition"] = tampered_failed_postcondition_source["commands"][-1]["postconditions"][0]
+    with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler_source_artifact_path must match profiler_summary precondition when not the failed source check"):
+        c_sweep.validate_sweep_summary(tampered_failed_postcondition_source)
     tampered_failed_postconditions = json.loads(json.dumps(summary))
     tampered_failed_postconditions["failed_postconditions"] = []
     with pytest.raises(ValueError, match="failed_postconditions must match commands.postconditions"):

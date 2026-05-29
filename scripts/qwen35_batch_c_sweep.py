@@ -2863,8 +2863,12 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 ):
                     errors.append("commands[].postconditions[].profiler_precondition_artifact_path must match profiler_summary precondition")
                     break
+                profiler_precondition_source = (
+                    profiler_precondition.get("profiler_source_artifact_path")
+                    if isinstance(profiler_precondition, dict)
+                    else None
+                )
                 if isinstance(profiler_precondition, dict) and postcondition.get("passed") is True:
-                    profiler_precondition_source = profiler_precondition.get("profiler_source_artifact_path")
                     if (
                         not isinstance(profiler_precondition_source, str)
                         or not profiler_precondition_source
@@ -2876,6 +2880,27 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         errors.append("commands[].postconditions[].profiler_source_artifact_path must match profiler_summary precondition")
                         break
                 reason = postcondition.get("reason")
+                if (
+                    isinstance(profiler_precondition, dict)
+                    and postcondition.get("passed") is not True
+                    and "profiler_precondition_source_artifact_path" in postcondition
+                    and (
+                        not isinstance(profiler_precondition_source, str)
+                        or not profiler_precondition_source
+                        or postcondition.get("profiler_precondition_source_artifact_path") != profiler_precondition_source
+                    )
+                ):
+                    errors.append("commands[].postconditions[].profiler_precondition_source_artifact_path must match profiler_summary precondition when present")
+                    break
+                if (
+                    isinstance(profiler_precondition, dict)
+                    and postcondition.get("passed") is not True
+                    and reason != "retained artifact profiler.source_artifact_path does not match profiler precondition source path"
+                    and "profiler_source_artifact_path" in postcondition
+                    and postcondition.get("profiler_source_artifact_path") != profiler_precondition_source
+                ):
+                    errors.append("commands[].postconditions[].profiler_source_artifact_path must match profiler_summary precondition when not the failed source check")
+                    break
                 if postcondition.get("passed") is True and reason is not None:
                     errors.append("commands[].postconditions[].reason must be null when passed")
                     break
