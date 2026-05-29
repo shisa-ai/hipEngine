@@ -4293,10 +4293,15 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_git_dirty["commands"][-1]["git_dirty"] = True
     with pytest.raises(ValueError, match=r"commands\[\]\.git_dirty must match git.dirty"):
         c_sweep.validate_sweep_summary(tampered_git_dirty)
-    tampered_git_status = json.loads(json.dumps(persisted))
-    tampered_git_status["git"]["status_short"] = [1]
-    with pytest.raises(ValueError, match="git.status_short must be a string list"):
-        c_sweep.validate_sweep_summary(tampered_git_status)
+    tampered_git_commit = json.loads(json.dumps(persisted))
+    tampered_git_commit["git"]["commit"] = "   "
+    with pytest.raises(ValueError, match="git.commit must be a non-empty string"):
+        c_sweep.validate_sweep_summary(tampered_git_commit)
+    for bad_status_short in ([1], ["   "]):
+        tampered_git_status = json.loads(json.dumps(persisted))
+        tampered_git_status["git"]["status_short"] = bad_status_short
+        with pytest.raises(ValueError, match="git.status_short must be a non-empty string list"):
+            c_sweep.validate_sweep_summary(tampered_git_status)
     tampered_git_dirty_status = json.loads(json.dumps(persisted))
     tampered_git_dirty_status["git"]["status_short"] = ["?? uv.lock"]
     with pytest.raises(ValueError, match=r"git\.dirty must match bool\(git\.status_short\)"):

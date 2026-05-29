@@ -1629,15 +1629,15 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     if not isinstance(git, Mapping):
         errors.append("git must be an object")
     else:
-        if not isinstance(git.get("commit"), str) or not git.get("commit"):
+        if not isinstance(git.get("commit"), str) or not git.get("commit").strip():
             errors.append("git.commit must be a non-empty string")
         if not isinstance(git.get("dirty"), bool):
             errors.append("git.dirty must be a bool")
         else:
             git_dirty = bool(git["dirty"])
         status_short = git.get("status_short")
-        if not isinstance(status_short, list) or not all(isinstance(item, str) for item in status_short):
-            errors.append("git.status_short must be a string list")
+        if not isinstance(status_short, list) or not all(isinstance(item, str) and item.strip() for item in status_short):
+            errors.append("git.status_short must be a non-empty string list")
         elif git_dirty is not None and git_dirty is not bool(status_short):
             errors.append("git.dirty must match bool(git.status_short)")
     expected_skipped_preconditions = _skipped_preconditions(entries)
