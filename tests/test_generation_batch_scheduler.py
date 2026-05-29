@@ -70,6 +70,7 @@ from scripts.qwen35_batch_artifact_schema import (
 from scripts.qwen35_batch_constants import (
     PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS,
     RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_COMMAND_FRAGMENTS,
+    RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_EVIDENCE_FRAGMENTS,
 )
 from scripts.qwen35_batch_c_sweep import build_parser as build_c_sweep_parser, build_sweep_commands, run_sweep
 from scripts.qwen35_batch_gguf_diagnostic import build_parser as build_gguf_diagnostic_parser, run as run_gguf_diagnostic
@@ -13453,6 +13454,8 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     diagnostic_structured_metadata_error_message = str(diagnostic_structured_metadata_error.value)
     for diagnostic_fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS:
         assert f"diagnostic_environment.{diagnostic_fragment}" in diagnostic_structured_metadata_error_message
+
+    assert DISALLOWED_ACCEPTED_DIAGNOSTIC_EVIDENCE_FRAGMENTS is RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_EVIDENCE_FRAGMENTS
 
     diagnostic_evidence_environment_command = json.loads(json.dumps(accepted))
     diagnostic_evidence_environment_command["commands"]["environment"].extend(
