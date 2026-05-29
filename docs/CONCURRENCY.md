@@ -661,7 +661,12 @@ roll-up/status view.
       L5/L6 run at `/tmp/hipengine-hidden-bisect-L5-L6-512-1-topdiff.json`
       confirms L5 hidden/token equality still passes (`max_abs≤0.00048828125`,
       `elements_over_atol=0` for both rows) and L6 is the first failing layer,
-      with the same row-0 dim-1269 single over-tolerance element.
+      with the same row-0 dim-1269 single over-tolerance element. The refreshed
+      transition artifact `/tmp/hipengine-hidden-bisect-L5-L6-512-1-transition.json`
+      now records this as `correctness.first_failing_layer_transition` with
+      `previous_green_layer_limit=5`, `failing_layer_limit=6`,
+      `adjacent_layer_limits=true`, and the embedded first-hidden-mismatch plus
+      native decode trace.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

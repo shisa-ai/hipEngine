@@ -191,6 +191,42 @@ def _first_token_mismatch(layer_summaries: Sequence[dict[str, Any]]) -> dict[str
     return None
 
 
+def _first_failing_layer_transition(layer_summaries: Sequence[dict[str, Any]]) -> dict[str, Any] | None:
+    previous_green: dict[str, Any] | None = None
+    for summary in layer_summaries:
+        hidden_passed = bool(summary.get("hidden_passed", False))
+        token_passed = bool(summary.get("token_passed", False))
+        if hidden_passed and token_passed:
+            previous_green = summary
+            continue
+        layer_limit = int(summary["layer_limit"])
+        transition: dict[str, Any] = {
+            "failing_layer_limit": layer_limit,
+            "failing_last_layer_index": int(summary.get("last_layer_index", layer_limit - 1)),
+            "hidden_passed": hidden_passed,
+            "token_passed": token_passed,
+            "first_hidden_mismatch": _first_hidden_mismatch([summary]),
+            "first_token_mismatch": _first_token_mismatch([summary]),
+        }
+        if "last_layer_type" in summary:
+            transition["failing_last_layer_type"] = str(summary["last_layer_type"])
+        if previous_green is not None:
+            previous_limit = int(previous_green["layer_limit"])
+            transition.update(
+                {
+                    "previous_green_layer_limit": previous_limit,
+                    "previous_green_last_layer_index": int(previous_green.get("last_layer_index", previous_limit - 1)),
+                    "previous_green_hidden_passed": bool(previous_green.get("hidden_passed", False)),
+                    "previous_green_token_passed": bool(previous_green.get("token_passed", False)),
+                    "adjacent_layer_limits": bool(layer_limit - previous_limit == 1),
+                }
+            )
+            if "last_layer_type" in previous_green:
+                transition["previous_green_last_layer_type"] = str(previous_green["last_layer_type"])
+        return transition
+    return None
+
+
 def _copy_hidden_bits(session: Qwen35ParoResidentSession, hidden, *, rows: int) -> np.ndarray:
     bits = np.empty((rows, session.config.hidden_size), dtype=np.uint16)
     copy_device_to_host(
@@ -496,6 +532,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "passed": passed,
             "first_hidden_mismatch": hidden_mismatch,
             "first_token_mismatch": token_mismatch,
+            "first_failing_layer_transition": _first_failing_layer_transition(layer_summaries),
         }
     )
     payload["layer_summaries"] = layer_summaries

@@ -64,6 +64,7 @@ from scripts.qwen35_batch_c_sweep import build_parser as build_c_sweep_parser, b
 from scripts.qwen35_batch_gguf_diagnostic import build_parser as build_gguf_diagnostic_parser, run as run_gguf_diagnostic
 from scripts.qwen35_batch_hidden_bisect import (
     HiddenRun,
+    _first_failing_layer_transition,
     _first_hidden_mismatch,
     _parse_layer_limits,
     _summarize_layer_limit,
@@ -6303,7 +6304,7 @@ def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:
             },
         ]
     )
-    assert first == {
+    expected_first = {
         "layer_limit": 2,
         "decode_step": 3,
         "generated_index": 4,
@@ -6320,6 +6321,49 @@ def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:
         "last_layer_index": 1,
         "last_layer_type": "linear_attention",
         "batch_decode_execution": decode_execution,
+    }
+    assert first == expected_first
+    assert _first_failing_layer_transition(
+        [
+            {
+                "layer_limit": 1,
+                "last_layer_index": 0,
+                "last_layer_type": "linear_attention",
+                "hidden_passed": True,
+                "token_passed": True,
+                "steps": [{"decode_step": 0, "generated_index": 1, "rows": [{"row": 0, "hidden_comparison": passed}]}],
+            },
+            {
+                "layer_limit": 2,
+                "last_layer_index": 1,
+                "last_layer_type": "linear_attention",
+                "hidden_passed": False,
+                "token_passed": True,
+                "steps": [
+                    {
+                        "decode_step": 3,
+                        "generated_index": 4,
+                        "batch_decode_execution": decode_execution,
+                        "rows": [{"row": 1, "hidden_comparison": failed}],
+                    }
+                ],
+                "token_mismatches": [],
+            },
+        ]
+    ) == {
+        "failing_layer_limit": 2,
+        "failing_last_layer_index": 1,
+        "hidden_passed": False,
+        "token_passed": True,
+        "first_hidden_mismatch": expected_first,
+        "first_token_mismatch": None,
+        "failing_last_layer_type": "linear_attention",
+        "previous_green_layer_limit": 1,
+        "previous_green_last_layer_index": 0,
+        "previous_green_hidden_passed": True,
+        "previous_green_token_passed": True,
+        "adjacent_layer_limits": True,
+        "previous_green_last_layer_type": "linear_attention",
     }
 
 
