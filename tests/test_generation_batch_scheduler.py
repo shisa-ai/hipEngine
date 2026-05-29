@@ -73,6 +73,8 @@ from scripts.qwen35_batch_hidden_bisect import (
     _decode_full_context_oracles_from_trace,
     _decode_full_kv_current_source_rollup,
     _decode_full_kv_sample_rollup,
+    _decode_linear_handoff_rollup,
+    _decode_linear_handoff_summary,
     _decode_linear_input_bit_drift_rollup,
     _first_failing_layer_transition,
     _first_hidden_mismatch,
@@ -6636,6 +6638,61 @@ def test_hidden_bisect_current_source_rollup_promotes_failures() -> None:
         "first_bit_drift": linear_bit_rollup["first_bit_drift"],
     }
     assert linear_bit_rollup["layer_limits"] == [{"layer_limit": 8, "drift_layers": [3]}]
+
+
+def test_hidden_bisect_linear_handoff_summary_distinguishes_copy_from_producer_drift() -> None:
+    def fp16_bits(values: list[list[float]]) -> np.ndarray:
+        return np.asarray(values, dtype=np.float16).view(np.uint16)
+
+    batch_output = fp16_bits([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+    c1_output = fp16_bits([[1.0, 2.001953125, 3.0], [4.0, 5.0, 6.0]])
+    batch = HiddenRun(
+        seed_tokens=[],
+        generated_tokens=[],
+        hidden_bits_by_step=[],
+        decode_linear_inputs_by_step=[{1: batch_output.copy()}],
+        decode_linear_outputs_by_step=[{0: batch_output.copy()}],
+    )
+    c1 = HiddenRun(
+        seed_tokens=[],
+        generated_tokens=[],
+        hidden_bits_by_step=[],
+        decode_linear_inputs_by_step=[{1: c1_output.copy()}],
+        decode_linear_outputs_by_step=[{0: c1_output.copy()}],
+    )
+
+    summary = _decode_linear_handoff_summary(batch, c1, atol=0.004)
+
+    assert summary is not None
+    assert summary["copy_passed"] is True
+    assert summary["producer_batch_vs_c1_passed"] is True
+    assert "first_copy_mismatch" not in summary
+    assert summary["first_producer_bit_drift"] == {
+        "decode_step": 0,
+        "generated_index": 1,
+        "producer_layer_index": 0,
+        "target_layer_index": 1,
+        "row": 0,
+        "comparison_kind": "producer_batch_vs_c1",
+        "passed_under_atol": True,
+        "bit_mismatch": 1,
+        "max_abs": 0.001953125,
+        "max_abs_flat_index": 1,
+        "max_abs_index": [0, 1],
+        "elements_over_atol": 0,
+    }
+    handoff = summary["steps"][0]["handoffs"][0]
+    assert handoff["copy_passed"] is True
+    assert handoff["rows"][0]["batch_output_to_target_input"]["bit_mismatch"] == 0
+    assert handoff["rows"][0]["c1_output_to_target_input"]["bit_mismatch"] == 0
+    assert handoff["rows"][0]["producer_batch_vs_c1"]["bit_mismatch"] == 1
+    assert handoff["rows"][0]["target_input_batch_vs_c1"]["bit_mismatch"] == 1
+
+    rollup = _decode_linear_handoff_rollup([{"layer_limit": 8, "decode_linear_handoffs": summary}])
+    assert rollup["copy_passed"] is True
+    assert rollup["first_copy_mismatch"] is None
+    assert rollup["first_producer_bit_drift"]["layer_limit"] == 8
+    assert rollup["first_producer_bit_drift"]["bit_mismatch"] == 1
 
 
 def test_hidden_bisect_current_kv_source_checks_compare_cache_to_trace() -> None:

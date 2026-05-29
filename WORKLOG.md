@@ -47067,3 +47067,37 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (selected pytest suite plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no queue item was marked complete, the handoff-summary artifact has `performance_claim=false`, native full generated-token equality remains open, and no performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY linear-attention handoff copy check
+
+Added decode-time linear-output tracing and `decode_linear_handoff_summary` to distinguish output→input copy drift from producer-compute drift. The diagnostic compares, per decode step/layer/row, batch producer output vs next linear layer input, c1 producer output vs next input, and producer/target batch-vs-c1 deltas.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_linear_handoff_summary_distinguishes_copy_from_producer_drift tests/test_generation_batch_scheduler.py::test_hidden_bisect_current_source_rollup_promotes_failures -q
+```
+
+Result: PASS.
+
+Refreshed L8 handoff-copy probe:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-handoff-copy-check-atol4e-3-focus1269.json > /tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-handoff-copy-check-atol4e-3-focus1269.stdout
+```
+
+Result: `status=mismatch_found`, `failure_modes=["hidden"]`, `performance_claim=false`. `correctness.decode_linear_handoff_summary` reports `copy_passed=true`, `producer_batch_vs_c1_passed=true`, `target_input_batch_vs_c1_passed=true`, and `first_copy_mismatch=null`. The first exact-bit producer drift is layer_limit 8 / decode step 0 / producer layer 0 -> target layer 1 / row 0, `bit_mismatch=1092`, hidden-atol pass (`max_abs=0.0001220703125`, flat index 859). This matches `decode_linear_input_bit_drift_summary.first_handoff`, so the layer-0 native linear-attention output already differs from c1 before the next-layer input copy; output->target-input copy itself is exact for both batch and c1.
+
+Full validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (selected pytest suite plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no queue item was marked complete, the handoff-copy artifact has `performance_claim=false`, native full generated-token equality remains open, and no performance/scaling claim was added.

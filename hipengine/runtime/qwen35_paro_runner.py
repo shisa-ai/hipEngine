@@ -2853,6 +2853,15 @@ class Qwen35ParoResidentSession:
             stream=stream,
         )
 
+    def _trace_decode_linear_output(self, *, layer_id: int, hidden: Tensor, rows: int, stream: int = 0) -> None:
+        self._trace_linear_input_bits(
+            trace_attr="_decode_linear_output_trace",
+            layer_id=layer_id,
+            hidden=hidden,
+            rows=rows,
+            stream=stream,
+        )
+
     def _trace_tensor_bits(
         self,
         *,
@@ -3789,6 +3798,7 @@ class Qwen35ParoResidentSession:
                                 stream,
                             )
                         copied_layer_output = True
+                        self._trace_decode_linear_output(layer_id=layer_id, hidden=next_hidden, rows=rows, stream=stream)
                         if not dense_mlp and not use_single_row_c1_linear:
                             moe_selected_c1_fallback_layers += 1
                         layer_executions.append(
@@ -3831,6 +3841,7 @@ class Qwen35ParoResidentSession:
                             library=self.libraries,
                             stream=stream,
                         )
+                        self._trace_decode_linear_output(layer_id=layer_id, hidden=out, rows=rows, stream=stream)
                         layer_moe_path = "dense_mlp" if dense_mlp else ("selected_c1" if rows == 1 else ("selected_c1_forced" if force_selected_c1_moe else "grouped_compact"))
                         if not dense_mlp and rows > 1:
                             if force_selected_c1_moe:
@@ -4157,6 +4168,7 @@ class Qwen35ParoResidentSession:
                     library=self.libraries,
                     stream=stream,
                 )
+                self._trace_decode_linear_output(layer_id=layer_id, hidden=out, rows=1, stream=stream)
             elif layer_type == "full_attention":
                 self._trace_decode_full_attention(
                     layer_id=layer_id,

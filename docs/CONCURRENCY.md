@@ -1166,9 +1166,16 @@ roll-up/status view.
       layer 1 consumes producer layer 0, whose execution is
       `layer_type=linear_attention` / `linear_attention_decode_path=native_batch_segments`
       with `cu_seqlens=[0,1,2]` and `state_indices=[0,1]`; there is no
-      full-attention producer trace for that layer type. The next target is
-      replaying or fixing decode-time linear-attention handoff/input drift before
-      changing paged-KV writer code. Do not re-open
+      full-attention producer trace for that layer type. The output-to-input
+      handoff-copy check at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-handoff-copy-check-atol4e-3-focus1269.json`
+      adds `correctness.decode_linear_handoff_summary` and shows the same layer
+      0→1 / row 0 exact-bit drift (`bit_mismatch=1092`) is already present in
+      the layer-0 native linear-attention producer output, while both batch and
+      c1 output→target-input copies are exact (`copy_passed=true`,
+      `first_copy_mismatch=null`). The next target is fixing/replaying
+      decode-time native linear-attention producer drift before changing
+      paged-KV writer code. Do not re-open
       context softmax math, row setup, native linear segment metadata,
       output trace/copy semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
