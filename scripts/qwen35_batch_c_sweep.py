@@ -489,6 +489,10 @@ def _duplicate_flags(argv: Sequence[str], flags: Sequence[str]) -> list[str]:
     return [flag for flag in flags if sum(1 for token in argv if _flag_token_matches(token, flag)) > 1]
 
 
+def _empty_inline_flag_values(argv: Sequence[str], flags: Sequence[str]) -> list[str]:
+    return [flag for flag in flags if f"{flag}=" in argv]
+
+
 def _command_arg_value(command: SweepCommand, flag: str) -> str | None:
     return _argv_value(list(command.argv), flag)
 
@@ -2208,6 +2212,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if _duplicate_flags(rocprof_command_argv, rocprof_command_flags):
                         errors.append("commands[].preconditions[].profiler_command rocprof options must be unique")
                         break
+                    if _empty_inline_flag_values(rocprof_command_argv, rocprof_command_flags):
+                        errors.append("commands[].preconditions[].profiler_command rocprof option values must be non-empty")
+                        break
                     if "--kernel-trace" not in rocprof_command_argv:
                         errors.append("commands[].preconditions[].profiler_command must include --kernel-trace flag before rocprof separator when passed")
                         break
@@ -2223,6 +2230,24 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         break
                     if _duplicate_flags(profiled_command_argv, _RETAINED_BENCH_UNIQUE_FLAGS):
                         errors.append("commands[].preconditions[].profiler profiled command flags must be unique")
+                        break
+                    profiled_command_flags = (
+                        "--model",
+                        "--fixture",
+                        "--batch-size",
+                        "--prompt-length",
+                        "--decode-tokens",
+                        "--warmup-decode-tokens",
+                        "--max-layers",
+                        "--json",
+                        "--c1-baseline-json",
+                        "--serial-bridge-json",
+                        "--primitive-correctness-json",
+                        "--profiler-json",
+                        "--compiler-version-file",
+                    )
+                    if _empty_inline_flag_values(profiled_command_argv, profiled_command_flags):
+                        errors.append("commands[].preconditions[].profiler profiled command flag values must be non-empty")
                         break
                     if _command_text_arg(profiler_command, "--model") != _argv_value(argv, "--model") or profiler_precondition.get("profiler_model") != _argv_value(argv, "--model"):
                         errors.append("commands[].preconditions[].profiler model must match retained command")
@@ -2267,21 +2292,6 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if profiler_precondition.get("profiler_require_cached_build") != ("--require-cached-build" in argv):
                         errors.append("commands[].preconditions[].profiler_require_cached_build must match retained command")
                         break
-                    profiled_command_flags = (
-                        "--model",
-                        "--fixture",
-                        "--batch-size",
-                        "--prompt-length",
-                        "--decode-tokens",
-                        "--warmup-decode-tokens",
-                        "--max-layers",
-                        "--json",
-                        "--c1-baseline-json",
-                        "--serial-bridge-json",
-                        "--primitive-correctness-json",
-                        "--profiler-json",
-                        "--compiler-version-file",
-                    )
                     if any(_argv_value(profiled_command_argv, flag) != _argv_value(argv, flag) for flag in profiled_command_flags) or (
                         "--require-cached-build" in profiled_command_argv
                     ) != ("--require-cached-build" in argv):

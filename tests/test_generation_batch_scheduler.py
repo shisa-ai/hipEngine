@@ -4606,6 +4606,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     )
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_command retained bench flags must appear after rocprof separator when passed"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_retained_flag_before_separator)
+    tampered_profiler_precondition_empty_profiled_value = json.loads(json.dumps(persisted))
+    profiler_precondition = tampered_profiler_precondition_empty_profiled_value["commands"][-1]["preconditions"][-1]
+    profiler_argv = shlex.split(profiler_precondition["profiler_command"])
+    model_index = profiler_argv.index("--model")
+    profiler_argv[model_index : model_index + 2] = ["--model="]
+    profiler_precondition["profiler_command"] = shlex.join(profiler_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler profiled command flag values must be non-empty"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_empty_profiled_value)
     tampered_profiler_precondition_model = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_model["commands"][-1]["preconditions"][-1]["profiler_model"] = "/tmp/other-model"
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler model must match retained command"):
@@ -4674,6 +4682,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     profiler_precondition["profiler_command"] = profiler_precondition["profiler_command"].replace(" --output-format csv -d", " --output-format csv --output-format json -d")
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_command rocprof options must be unique"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_duplicate_output_command)
+    tampered_profiler_precondition_empty_rocprof_value = json.loads(json.dumps(persisted))
+    profiler_precondition = tampered_profiler_precondition_empty_rocprof_value["commands"][-1]["preconditions"][-1]
+    profiler_argv = shlex.split(profiler_precondition["profiler_command"])
+    output_format_index = profiler_argv.index("--output-format")
+    profiler_argv[output_format_index : output_format_index + 2] = ["--output-format="]
+    profiler_precondition["profiler_command"] = shlex.join(profiler_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_command rocprof option values must be non-empty"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_empty_rocprof_value)
     tampered_profiler_precondition_output_after_separator = json.loads(json.dumps(persisted))
     profiler_precondition = tampered_profiler_precondition_output_after_separator["commands"][-1]["preconditions"][-1]
     profiler_precondition["profiler_command"] = profiler_precondition["profiler_command"].replace(" --output-format csv", "")
