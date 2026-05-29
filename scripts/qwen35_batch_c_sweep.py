@@ -30,6 +30,7 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_PROFILER_TRACE_END_COLUMNS,
     RETAINED_ARTIFACT_PROFILER_TRACE_KERNEL_NAME_COLUMNS,
     RETAINED_ARTIFACT_PROFILER_TRACE_START_COLUMNS,
+    RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_SCRIPT,
     RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS,
     RETAINED_ARTIFACT_PROFILER_TRACE_SYNTHESIZED_FIELDS,
     RETAINED_ARTIFACT_ROCPROF_COMMAND_FLAGS,
@@ -39,10 +40,13 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SEED,
     RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS,
     RETAINED_ARTIFACT_REQUIRED_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES,
+    RETAINED_ARTIFACT_SERIAL_BRIDGE_SCRIPT,
     RETAINED_ARTIFACT_REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES,
     RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS,
     RETAINED_ARTIFACT_RETAINED_CONDITION_STATUS_LABELS,
     RETAINED_ARTIFACT_RETAINED_GATE_FLAGS,
+    RETAINED_ARTIFACT_INT8_DIAGNOSTIC_SCRIPT,
+    RETAINED_ARTIFACT_LEGACY_NATIVE_BENCH_SCRIPT,
     RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT,
     RETAINED_ARTIFACT_RETAINED_GATE_LABELS,
     RETAINED_ARTIFACT_RETAINED_POSTCONDITION_KINDS,
@@ -74,6 +78,7 @@ _PROFILER_TRACE_DURATION_COLUMNS = RETAINED_ARTIFACT_PROFILER_TRACE_DURATION_COL
 _ROCPROF_COMMAND_FLAGS = RETAINED_ARTIFACT_ROCPROF_COMMAND_FLAGS
 _ROCPROF_EXECUTABLE = RETAINED_ARTIFACT_ROCPROF_EXECUTABLE
 _ROCPROF_OUTPUT_FORMAT = RETAINED_ARTIFACT_ROCPROF_OUTPUT_FORMAT
+_PRIMITIVE_CORRECTNESS_SCRIPT = RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_SCRIPT
 _REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA = RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA
 _REQUIRED_PRIMITIVE_CORRECTNESS_SEED = RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SEED
 _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS = RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS
@@ -105,6 +110,9 @@ def _primitive_context_lens_matches(value: Any, rows: int) -> bool:
 
 
 _PROFILER_SYNTHESIZED_FIELDS = RETAINED_ARTIFACT_PROFILER_TRACE_SYNTHESIZED_FIELDS
+_SERIAL_BRIDGE_SCRIPT = RETAINED_ARTIFACT_SERIAL_BRIDGE_SCRIPT
+_LEGACY_NATIVE_BENCH_SCRIPT = RETAINED_ARTIFACT_LEGACY_NATIVE_BENCH_SCRIPT
+_INT8_DIAGNOSTIC_SCRIPT = RETAINED_ARTIFACT_INT8_DIAGNOSTIC_SCRIPT
 _RETAINED_BENCH_SCRIPT = RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT
 _RETAINED_BENCH_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS
 _RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS = RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS
@@ -180,7 +188,7 @@ def build_sweep_commands(args: argparse.Namespace) -> tuple[SweepCommand, ...]:
                 artifact_path=primitive_json,
                 argv=(
                     sys.executable,
-                    "scripts/qwen35_batch_correctness.py",
+                    _PRIMITIVE_CORRECTNESS_SCRIPT,
                     "--rows",
                     str(c),
                     "--seed",
@@ -199,7 +207,7 @@ def build_sweep_commands(args: argparse.Namespace) -> tuple[SweepCommand, ...]:
                 artifact_path=serial_json,
                 argv=tuple(
                     _batch_bench_argv(
-                        "scripts/qwen35_batch_serial_bench.py",
+                        _SERIAL_BRIDGE_SCRIPT,
                         args,
                         batch_size=c,
                         artifact_path=serial_json,
@@ -212,7 +220,7 @@ def build_sweep_commands(args: argparse.Namespace) -> tuple[SweepCommand, ...]:
             native_json = output_dir / "native-baseline-c1.json"
             native_argv = [
                 sys.executable,
-                "scripts/qwen35_paro_bench.py",
+                _LEGACY_NATIVE_BENCH_SCRIPT,
                 "--model",
                 str(args.model),
                 "--prompt-length",
@@ -276,7 +284,7 @@ def build_sweep_commands(args: argparse.Namespace) -> tuple[SweepCommand, ...]:
                     artifact_path=int8_json,
                     argv=(
                         sys.executable,
-                        "scripts/qwen35_batch_int8_diagnostic.py",
+                        _INT8_DIAGNOSTIC_SCRIPT,
                         "--model",
                         str(args.model),
                         "--fixture",
@@ -2121,10 +2129,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     errors.append("commands[].argv --seed must match options.seed")
                     break
             expected_scripts_by_category = {
-                _PRIMITIVE_COMMAND_CATEGORY: {"scripts/qwen35_batch_correctness.py"},
-                _SERIAL_BRIDGE_COMMAND_CATEGORY: {"scripts/qwen35_batch_serial_bench.py"},
-                _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY: {"scripts/qwen35_paro_bench.py", _RETAINED_BENCH_SCRIPT},
-                _INT8_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY: {"scripts/qwen35_batch_int8_diagnostic.py"},
+                _PRIMITIVE_COMMAND_CATEGORY: {_PRIMITIVE_CORRECTNESS_SCRIPT},
+                _SERIAL_BRIDGE_COMMAND_CATEGORY: {_SERIAL_BRIDGE_SCRIPT},
+                _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY: {_LEGACY_NATIVE_BENCH_SCRIPT, _RETAINED_BENCH_SCRIPT},
+                _INT8_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY: {_INT8_DIAGNOSTIC_SCRIPT},
             }
             expected_scripts = expected_scripts_by_category.get(entry.get("category"))
             if expected_scripts is not None and (len(argv) < 2 or argv[1] not in expected_scripts):
