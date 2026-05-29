@@ -46965,3 +46965,37 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (selected pytest suite plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no queue item was marked complete, the bit-drift rollup artifact has `performance_claim=false`, native full generated-token equality remains open, and no performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY decode-linear input bit-drift rollup
+
+Added `correctness.decode_linear_input_bit_drift_summary` to hidden-bisect. It records exact-bit drift in decode linear-input handoff traces by layer, including drift layers, per-layer rows, total bit mismatch, first bit drift, and layer-limit drift layers. This makes the full-attention `input` exact-bit drift traceable to upstream linear handoff drift without inspecting nested traces.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_current_source_rollup_promotes_failures tests/test_generation_batch_scheduler.py::test_hidden_bisect_current_kv_source_checks_compare_cache_to_trace tests/test_generation_batch_scheduler.py::test_hidden_bisect_repeat_rollup_counts_prefix_failures -q
+```
+
+Result: PASS.
+
+Refreshed L8 probe with decode-linear input bit-drift rollup:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-input-bit-drift-rollup-atol4e-3-focus1269.json
+```
+
+Result: `status=mismatch_found`, `failure_modes=["hidden", "token"]`, `performance_claim=false`. Top-level `decode_linear_input_bit_drift_summary` reports drift layers `[0,1,2,4,5,6]`; first exact-bit handoff drift is layer_limit 8 / step 0 / layer 1 / row 0, hidden-atol pass, `bit_mismatch=1092`, `max_abs=0.0001220703125`, flat index 859. Top-level `decode_full_attention_bit_drift_summary` in the same artifact reports first full-attention `input` exact-bit drift at layer 3 / row 0 (`bit_mismatch=1531`, hidden-atol pass), confirming the remaining current-source/full-attention drift is already present in upstream decode linear-input handoff traces before the paged-KV writer.
+
+Full validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (selected pytest suite plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no queue item was marked complete, the linear-input bit-drift artifact has `performance_claim=false`, native full generated-token equality remains open, and no performance/scaling claim was added.

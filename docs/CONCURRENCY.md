@@ -1154,8 +1154,13 @@ roll-up/status view.
       emits `correctness.decode_full_attention_bit_drift_summary`; in that run
       the first exact-bit drift is again layer 3 / row 0 full-attention `input`
       (`bit_mismatch=1574`, hidden-atol pass), while the first hidden-atol stage
-      failure remains `attn_input_pre_qkv`. The next target is replaying or
-      fixing decode-time producer/input drift before changing paged-KV writer
+      failure remains `attn_input_pre_qkv`. The linear-input rollup at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-input-bit-drift-rollup-atol4e-3-focus1269.json`
+      emits `correctness.decode_linear_input_bit_drift_summary` and shows the
+      earliest exact-bit handoff drift at decode step 0 / layer 1 / row 0
+      (`bit_mismatch=1092`, hidden-atol pass), before layer 3 full-attention
+      input consumes the drift. The next target is replaying or fixing
+      decode-time linear-handoff/input drift before changing paged-KV writer
       code. Do not re-open
       context softmax math, row setup, native linear segment metadata,
       output trace/copy semantics, or grouped MoE output yet.

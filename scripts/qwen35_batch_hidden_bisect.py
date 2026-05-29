@@ -2520,6 +2520,104 @@ def _decode_linear_input_summary(
     return result
 
 
+def _decode_linear_input_bit_drift_record(
+    step_summary: dict[str, Any],
+    layer: dict[str, Any],
+    row_summary: dict[str, Any],
+    *,
+    layer_limit: int | None = None,
+) -> dict[str, Any]:
+    comparison = row_summary.get("hidden_comparison", {})
+    max_abs_flat_index = comparison.get("max_abs_flat_index") if isinstance(comparison, dict) else None
+    record = {
+        "decode_step": int(step_summary.get("decode_step", 0)),
+        "generated_index": int(step_summary.get("generated_index", int(step_summary.get("decode_step", 0)) + 1)),
+        "layer_index": int(layer.get("layer_index", -1)),
+        "row": int(row_summary.get("row", -1)),
+        "passed_under_atol": bool(row_summary.get("passed", False)),
+        "bit_mismatch": int(comparison.get("bit_mismatch", 0)) if isinstance(comparison, dict) else 0,
+        "max_abs": float(comparison.get("max_abs", 0.0)) if isinstance(comparison, dict) else 0.0,
+        "max_abs_flat_index": None if max_abs_flat_index is None else int(max_abs_flat_index),
+        "max_abs_index": comparison.get("max_abs_index", []) if isinstance(comparison, dict) else [],
+        "elements_over_atol": int(comparison.get("elements_over_atol", 0)) if isinstance(comparison, dict) else 0,
+    }
+    if layer_limit is not None:
+        return {"layer_limit": int(layer_limit), **record}
+    return record
+
+
+def _decode_linear_input_bit_drift_rollup(layer_summaries: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    layer_rollups: dict[int, dict[str, Any]] = {}
+    first_bit_drift: dict[str, Any] | None = None
+    for summary in layer_summaries:
+        layer_limit = int(summary.get("layer_limit", 0))
+        trace = summary.get("decode_linear_inputs")
+        if not isinstance(trace, dict):
+            continue
+        for step_summary in trace.get("steps", []):
+            for layer in step_summary.get("layers", []):
+                layer_index = int(layer.get("layer_index", -1))
+                rollup = layer_rollups.setdefault(
+                    layer_index,
+                    {
+                        "passed": True,
+                        "bit_drift_rows": [],
+                        "bit_drift_row_count": 0,
+                        "total_bit_mismatch": 0,
+                        "first_bit_drift": None,
+                    },
+                )
+                seen_rows = set(rollup.get("bit_drift_rows", []))
+                for row_summary in layer.get("rows", []):
+                    comparison = row_summary.get("hidden_comparison", {})
+                    bit_mismatch = int(comparison.get("bit_mismatch", 0)) if isinstance(comparison, dict) else 0
+                    if bit_mismatch <= 0:
+                        continue
+                    record = _decode_linear_input_bit_drift_record(
+                        step_summary,
+                        layer,
+                        row_summary,
+                        layer_limit=layer_limit,
+                    )
+                    rollup["passed"] = False
+                    rollup["total_bit_mismatch"] = int(rollup["total_bit_mismatch"]) + bit_mismatch
+                    if rollup["first_bit_drift"] is None:
+                        rollup["first_bit_drift"] = record
+                    if first_bit_drift is None:
+                        first_bit_drift = record
+                    row_index = int(row_summary.get("row", -1))
+                    if row_index >= 0 and row_index not in seen_rows:
+                        rollup["bit_drift_rows"].append(row_index)
+                        seen_rows.add(row_index)
+                        rollup["bit_drift_row_count"] = len(rollup["bit_drift_rows"])
+    drift_layers = sorted(layer_index for layer_index, rollup in layer_rollups.items() if not bool(rollup["passed"]))
+    return {
+        "drift_layers": drift_layers,
+        "drift_layer_count": len(drift_layers),
+        "first_bit_drift": first_bit_drift,
+        "layers": {str(layer_index): layer_rollups[layer_index] for layer_index in sorted(layer_rollups)},
+        "layer_limits": [
+            {
+                "layer_limit": int(summary.get("layer_limit", 0)),
+                "drift_layers": sorted(
+                    {
+                        int(layer.get("layer_index", -1))
+                        for step_summary in summary.get("decode_linear_inputs", {}).get("steps", [])
+                        for layer in step_summary.get("layers", [])
+                        if any(
+                            int(row.get("hidden_comparison", {}).get("bit_mismatch", 0)) > 0
+                            for row in layer.get("rows", [])
+                        )
+                    }
+                )
+                if isinstance(summary.get("decode_linear_inputs"), dict)
+                else [],
+            }
+            for summary in layer_summaries
+        ],
+    }
+
+
 def _decode_full_attention_failure_record(
     step_summary: dict[str, Any],
     layer: dict[str, Any],
@@ -4952,6 +5050,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "token_passed": token_passed,
             "failure_modes": _failure_modes(hidden_passed=hidden_passed, token_passed=token_passed),
             "row_failure_summary": _row_failure_summary(layer_summaries),
+            "decode_linear_input_bit_drift_summary": _decode_linear_input_bit_drift_rollup(layer_summaries),
             "decode_full_attention_stage_failure_summary": _decode_full_attention_stage_rollup(layer_summaries),
             "decode_full_attention_bit_drift_summary": _decode_full_attention_bit_drift_rollup(layer_summaries),
             "prefill_full_kv_prefix_failure_summary": _prefill_full_kv_prefix_rollup(layer_summaries),

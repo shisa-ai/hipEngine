@@ -73,6 +73,7 @@ from scripts.qwen35_batch_hidden_bisect import (
     _decode_full_context_oracles_from_trace,
     _decode_full_kv_current_source_rollup,
     _decode_full_kv_sample_rollup,
+    _decode_linear_input_bit_drift_rollup,
     _first_failing_layer_transition,
     _first_hidden_mismatch,
     _current_kv_source_checks,
@@ -6424,9 +6425,34 @@ def test_hidden_bisect_current_source_rollup_promotes_failures() -> None:
             },
         )
 
+    linear_input_row = {
+        "row": 0,
+        "passed": True,
+        "hidden_comparison": {
+            "max_abs": 0.000244140625,
+            "max_abs_flat_index": 1269,
+            "max_abs_index": [0, 1269],
+            "elements_over_atol": 0,
+            "bit_mismatch": 7,
+        },
+    }
+
     layer_summaries = [
         {
             "layer_limit": 8,
+            "decode_linear_inputs": {
+                "steps": [
+                    {
+                        "decode_step": 0,
+                        "layers": [
+                            {
+                                "layer_index": 3,
+                                "rows": [linear_input_row],
+                            }
+                        ],
+                    }
+                ]
+            },
             "decode_full_attention": {
                 "steps": [
                     {
@@ -6557,6 +6583,30 @@ def test_hidden_bisect_current_source_rollup_promotes_failures() -> None:
             ],
         }
     ]
+
+    linear_bit_rollup = _decode_linear_input_bit_drift_rollup(layer_summaries)
+    assert linear_bit_rollup["drift_layers"] == [3]
+    assert linear_bit_rollup["first_bit_drift"] == {
+        "layer_limit": 8,
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 3,
+        "row": 0,
+        "passed_under_atol": True,
+        "bit_mismatch": 7,
+        "max_abs": 0.000244140625,
+        "max_abs_flat_index": 1269,
+        "max_abs_index": [0, 1269],
+        "elements_over_atol": 0,
+    }
+    assert linear_bit_rollup["layers"]["3"] == {
+        "passed": False,
+        "bit_drift_rows": [0],
+        "bit_drift_row_count": 1,
+        "total_bit_mismatch": 7,
+        "first_bit_drift": linear_bit_rollup["first_bit_drift"],
+    }
+    assert linear_bit_rollup["layer_limits"] == [{"layer_limit": 8, "drift_layers": [3]}]
 
 
 def test_hidden_bisect_current_kv_source_checks_compare_cache_to_trace() -> None:
