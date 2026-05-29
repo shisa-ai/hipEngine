@@ -316,15 +316,16 @@ plan; no runtime correctness or performance claim yet.
 
 ### P1 — Metadata-only parser fixtures
 
-- [ ] Add tests that read only GGUF headers/KV metadata from the three local
+- [x] Add tests that read only GGUF headers/KV metadata from the three local
   shards and cached HF `config.json` / `hf_quant_config.json`.
-- [ ] Verify `step35` architecture, split count 3, tensor count 754, vocab
+- [x] Verify `step35` architecture, split count 3, tensor count 754, vocab
   128,896, 45 layers, context 262,144, dense layers 0-2, MoE layers 3-44,
   288 experts, top-k 8, full/sliding attention pattern, head counts, RoPE modes,
   and tokenizer pre `deepseek-v3`.
-- [ ] Ensure metadata tests do not mmap/read full tensor payloads.
+- [x] Ensure metadata tests do not mmap/read full tensor payloads.
 
-**Acceptance:** narrow pytest for Step metadata passes on a no-GPU host.
+**Acceptance:** `python3 -m pytest -q tests/test_stepfun_metadata.py` passes on
+this no-GPU metadata path; tests skip cleanly if external Step assets are absent.
 
 ### P2 — Split GGUF index and Step tensor map
 

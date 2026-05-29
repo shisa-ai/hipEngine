@@ -26771,3 +26771,17 @@ Validation:
 ```bash
 git diff --check
 ```
+
+## 2026-05-29 — StepFun P1 metadata fixtures
+
+Implemented `tests/test_stepfun_metadata.py` for the Step 3.7 Flash GGUF/HF metadata lane. The tests scan the three local GGUF Q3_K_L shards under `/data/models/gguf/` with `scan_gguf`, verify split bookkeeping and Step text architecture metadata (`step35`, 45 layers, 262k context, 128,896 vocab, dense layers 0-2, MoE layers 3-44, 288 experts/top-8, full/sliding attention pattern, RoPE bases, and DeepSeek-V3 tokenizer metadata), validate representative dense/MoE tensor header shapes and quant types, cross-check cached HF `config.json` / `hf_quant_config.json` / `model.safetensors.index.json`, and assert metadata scans do not invoke `numpy.memmap` tensor payload reads. The tests skip cleanly when external Step assets are absent.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_metadata.py
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+```
+
+Results: Step metadata pytest passed (`4 passed`), guard passed (`24 passed` plus CPU fixture checks), and the StepFun punchlist metric dropped from 54 to 51 by completing P1.
