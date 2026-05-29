@@ -3019,6 +3019,8 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     status_counts = summary.get("status_counts")
     if not _count_leaf_labels_within(status_counts, {"planned", "passed", "skipped", "failed"}):
         errors.append("status_counts must contain only known command status labels")
+    if not _count_leaf_values_are_nonnegative_ints(status_counts):
+        errors.append("status_counts must contain only non-negative integer count values")
     expected_status_counts = _status_counts(entries)
     if not _typed_count_mapping_matches(status_counts, expected_status_counts):
         errors.append("status_counts must match commands")
@@ -3027,6 +3029,8 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         errors.append("category_status_counts must contain only known command category labels")
     if not _count_leaf_labels_within(category_status_counts, {"planned", "passed", "skipped", "failed"}):
         errors.append("category_status_counts must contain only known command status labels")
+    if not _count_leaf_values_are_nonnegative_ints(category_status_counts):
+        errors.append("category_status_counts must contain only non-negative integer count values")
     expected_category_status_counts = _category_status_counts(entries)
     if not _typed_count_mapping_matches(category_status_counts, expected_category_status_counts):
         errors.append("category_status_counts must match commands")
@@ -3038,6 +3042,8 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         errors.append("retained_precondition_counts must contain only known retained precondition labels")
     if not _count_leaf_labels_within(retained_precondition_counts, {"passed", "failed"}):
         errors.append("retained_precondition_counts must contain only passed/failed status labels")
+    if not _count_leaf_values_are_nonnegative_ints(retained_precondition_counts):
+        errors.append("retained_precondition_counts must contain only non-negative integer count values")
     expected_precondition_counts = _retained_precondition_counts(entries)
     if not _typed_count_mapping_matches(retained_precondition_counts, expected_precondition_counts):
         errors.append("retained_precondition_counts must match commands.preconditions")
@@ -3046,6 +3052,8 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         errors.append("retained_postcondition_counts must contain only known retained postcondition labels")
     if not _count_leaf_labels_within(retained_postcondition_counts, {"passed", "failed"}):
         errors.append("retained_postcondition_counts must contain only passed/failed status labels")
+    if not _count_leaf_values_are_nonnegative_ints(retained_postcondition_counts):
+        errors.append("retained_postcondition_counts must contain only non-negative integer count values")
     expected_postcondition_counts = _retained_postcondition_counts(entries)
     if not _typed_count_mapping_matches(retained_postcondition_counts, expected_postcondition_counts):
         errors.append("retained_postcondition_counts must match commands.postconditions")
@@ -3212,6 +3220,16 @@ def _count_leaf_labels_within(actual: Any, allowed: set[str]) -> bool:
     if all(isinstance(value, Mapping) for value in actual.values()):
         return all(_count_leaf_labels_within(value, allowed) for value in actual.values())
     return all(isinstance(key, str) and key in allowed for key in actual)
+
+
+def _count_leaf_values_are_nonnegative_ints(actual: Any) -> bool:
+    if not isinstance(actual, Mapping):
+        return True
+    if not actual:
+        return True
+    if all(isinstance(value, Mapping) for value in actual.values()):
+        return all(_count_leaf_values_are_nonnegative_ints(value) for value in actual.values())
+    return all(isinstance(value, int) and not isinstance(value, bool) and value >= 0 for value in actual.values())
 
 
 def _status_counts(entries: Sequence[dict[str, Any]]) -> dict[str, int]:

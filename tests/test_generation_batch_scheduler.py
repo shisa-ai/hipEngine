@@ -1906,14 +1906,14 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     tampered_status_count_bool["completed_command_count"] = 1
     tampered_status_count_bool["status_counts"] = {"planned": True}
     tampered_status_count_bool["category_status_counts"] = {"primitive": {"planned": 1}}
-    with pytest.raises(ValueError, match="status_counts must match commands"):
+    with pytest.raises(ValueError, match="status_counts must contain only non-negative integer count values"):
         c_sweep.validate_sweep_summary(tampered_status_count_bool)
     tampered_category_status_count_bool = json.loads(json.dumps(persisted))
     tampered_category_status_count_bool["commands"] = tampered_category_status_count_bool["commands"][:1]
     tampered_category_status_count_bool["completed_command_count"] = 1
     tampered_category_status_count_bool["status_counts"] = {"planned": 1}
     tampered_category_status_count_bool["category_status_counts"] = {"primitive": {"planned": True}}
-    with pytest.raises(ValueError, match="category_status_counts must match commands"):
+    with pytest.raises(ValueError, match="category_status_counts must contain only non-negative integer count values"):
         c_sweep.validate_sweep_summary(tampered_category_status_count_bool)
     tampered_dropped_commands = json.loads(json.dumps(persisted))
     tampered_dropped_commands["commands"] = []
@@ -4458,6 +4458,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_status_count_label["status_counts"]["blocked"] = 1
     with pytest.raises(ValueError, match="status_counts must contain only known command status labels"):
         c_sweep.validate_sweep_summary(tampered_status_count_label)
+    tampered_status_count_negative = json.loads(json.dumps(persisted))
+    tampered_status_count_negative["status_counts"]["passed"] = -1
+    with pytest.raises(ValueError, match="status_counts must contain only non-negative integer count values"):
+        c_sweep.validate_sweep_summary(tampered_status_count_negative)
     invalid_summary_path = tmp_path / "invalid-summary.json"
     invalid_summary_path.write_text(json.dumps(tampered_status_counts))
     assert c_sweep.main(["--validate-summary-json", str(invalid_summary_path)]) == 1
@@ -4483,7 +4487,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         c_sweep.validate_sweep_summary(tampered_precondition_count_label)
     tampered_precondition_count_bool = json.loads(json.dumps(persisted))
     tampered_precondition_count_bool["retained_precondition_counts"]["primitive_correctness"]["passed"] = True
-    with pytest.raises(ValueError, match="retained_precondition_counts must match commands.preconditions"):
+    with pytest.raises(ValueError, match="retained_precondition_counts must contain only non-negative integer count values"):
         c_sweep.validate_sweep_summary(tampered_precondition_count_bool)
     tampered_status = json.loads(json.dumps(persisted))
     tampered_status["status"] = "blocked"
@@ -4510,7 +4514,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         c_sweep.validate_sweep_summary(tampered_postcondition_count_label)
     tampered_postcondition_count_bool = json.loads(json.dumps(persisted))
     tampered_postcondition_count_bool["retained_postcondition_counts"]["retained_profiler_synthesis"]["passed"] = True
-    with pytest.raises(ValueError, match="retained_postcondition_counts must match commands.postconditions"):
+    with pytest.raises(ValueError, match="retained_postcondition_counts must contain only non-negative integer count values"):
         c_sweep.validate_sweep_summary(tampered_postcondition_count_bool)
     tampered_precondition_schema = json.loads(json.dumps(persisted))
     tampered_precondition_schema["commands"][-1]["preconditions"][0]["passed"] = "yes"
