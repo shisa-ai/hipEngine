@@ -1439,7 +1439,6 @@ def test_qwen35_resident_run_layers_batch_decode_reports_native_batch_for_short_
                 "full_attention_decode_path": "native_batch",
                 "native_caware_decode": True,
                 "moe_decode_path": "grouped_compact",
-                "attn_context_trace_source": "attention_scratch.query_raw",
             }
         ],
         "blockers": [],
@@ -1748,7 +1747,6 @@ def test_qwen35_resident_run_layers_batch_decode_can_force_selected_c1_moe_probe
                 "full_attention_decode_path": "native_batch",
                 "native_caware_decode": False,
                 "moe_decode_path": "selected_c1_forced",
-                "attn_context_trace_source": "attention_scratch.query_raw",
             }
         ],
         "blockers": ["MoE decode forced to selected-c1 diagnostic path"],

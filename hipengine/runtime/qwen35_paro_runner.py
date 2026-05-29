@@ -4147,8 +4147,9 @@ class Qwen35ParoResidentSession:
                                 force_selected_c1_moe or force_per_row_full_attention_input or force_per_row_post_attention
                             ),
                             "moe_decode_path": layer_moe_path,
-                            "attn_context_trace_source": "attention_scratch.query_raw",
                         }
+                        if isinstance(getattr(self, "_decode_full_attention_trace", None), list):
+                            layer_execution["attn_context_trace_source"] = "attention_scratch.query_raw"
                         if force_per_row_full_attention_input:
                             layer_execution["full_attention_input_decode_path"] = "per_row_rmsnorm_fallback"
                         if force_per_row_post_attention:

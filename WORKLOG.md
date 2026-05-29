@@ -47602,3 +47602,22 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: targeted retained/schema tests PASS, verify count remains `12`, full guard PASS. Prompt-verifier self-check passes: no queue item was marked complete, the change only prevents diagnostic per-layer linear decode-path metadata from being promoted as retained native c>N, native generated-token equality remains open, and no performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY retained full-attention trace-source rejection
+
+Tightened retained c>N metadata so diagnostic full-attention trace-source labels do not appear in normal native decode metadata and cannot be promoted in accepted artifacts. `hipengine/runtime/qwen35_paro_runner.py` now emits `attn_context_trace_source` only when `_decode_full_attention_trace` is active for diagnostics; default resident decode metadata no longer carries it. `scripts/qwen35_batch_artifact_schema.py` and `scripts/qwen35_batch_retained_bench.py` reject accepted/retained rows when a `full_attention` per-layer record includes `attn_context_trace_source`, and `tests/test_generation_batch_scheduler.py` covers forged accepted/retained rows with the field present while top-level native flags remain true.
+
+Validation:
+
+```bash
+pytest -q tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_run_layers_batch_decode_reports_native_batch_for_short_context tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_run_layers_batch_decode_can_force_selected_c1_moe_probe tests/test_generation_batch_scheduler.py::test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_paths tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: targeted runtime/schema tests PASS, verify count remains `12`, full guard PASS. Prompt-verifier self-check passes: no queue item was marked complete, trace-source metadata remains diagnostic-only and cannot be promoted as retained native c>N evidence, native generated-token equality remains open, and no performance/scaling claim was added.
