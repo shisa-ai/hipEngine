@@ -46284,3 +46284,37 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (`263` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: completed queue items still cite concrete evidence, native c>N generated-token equality remains open, the refreshed diagnostic artifact is hidden-only and explicitly non-retained, and no performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY full-attention stage rollup diagnostic
+
+Added a top-level `correctness.decode_full_attention_stage_failure_summary` rollup to `scripts/qwen35_batch_hidden_bisect.py`. It aggregates failed full-attention trace stages across layer-limit summaries, preserves per-stage failing rows and `failure_comparison_kinds`, records the first failure with `layer_limit`, and includes per-layer-limit failed-stage lists. Unit coverage was added in `tests/test_generation_batch_scheduler.py` with the existing synthetic full-attention trace fixture.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py -q
+```
+
+Result: PASS.
+
+Refreshed the C2.3 native-full core-isolation artifact:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 4,8 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-moe-path selected_c1 --batch-decode-post-attn-path per_row --json /tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-native-full-core-perrow-linear-postattn-selected-c1-atol4e-3-focus1269.json
+```
+
+Result remains `status=mismatch_found`, `failure_modes=["hidden"]`, `token_passed=true`. New full-attention rollup: L4 passed, L8 failed all full-attention stages; global first failure is `attn_input` at decode step 0 / row 0 / dim 1269 (`comparison_kind=fp16_bits`, `max_abs=0.015625`, 4 elements over). Raw `input` first fails only at decode step 6 / row 0 / dim 1269 (`max_abs=0.02734375`), while `attn_context` first fails as fp32 at decode step 0 / dim 2812 (`max_abs=0.008107900619506836`). The context-oracle rollup is unchanged: only `batch_numpy_vs_c1_numpy` fails; `batch_context_vs_numpy` and `c1_context_vs_numpy` pass. Updated `docs/CONCURRENCY.md` C2.3 to target layer-7 attention-input RMSNorm/QKV preparation or state feeding, not raw hidden input copy or softmax context math. No queue item was marked complete and no throughput claim was added.
+
+Full validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (`263` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: completed queue items still cite concrete evidence, C2.3 remains open, the new diagnostic summary is correctness-only, no queue item was marked complete, and no retained performance/scaling claim was added.

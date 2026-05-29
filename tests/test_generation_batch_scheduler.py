@@ -64,6 +64,7 @@ from scripts.qwen35_batch_c_sweep import build_parser as build_c_sweep_parser, b
 from scripts.qwen35_batch_gguf_diagnostic import build_parser as build_gguf_diagnostic_parser, run as run_gguf_diagnostic
 from scripts.qwen35_batch_hidden_bisect import (
     HiddenRun,
+    _decode_full_attention_stage_rollup,
     _decode_full_context_oracle_rollup,
     _first_failing_layer_transition,
     _first_hidden_mismatch,
@@ -7195,6 +7196,31 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         "failure_row_count": 0,
         "first_failure": None,
     }
+    top_level_full_attention_rollup = _decode_full_attention_stage_rollup([summary, bad_full_attention_summary])
+    expected_top_level_full_attention_failure = {"layer_limit": 1, **expected_full_attention_stage_failure}
+    assert top_level_full_attention_rollup["failed_stages"] == ["mlp_input"]
+    assert top_level_full_attention_rollup["failed_stage_count"] == 1
+    assert top_level_full_attention_rollup["input_passed"] is True
+    assert top_level_full_attention_rollup["output_passed"] is True
+    assert top_level_full_attention_rollup["first_failure"] == expected_top_level_full_attention_failure
+    assert top_level_full_attention_rollup["stages"]["mlp_input"] == {
+        "passed": False,
+        "failure_rows": [0],
+        "failure_row_count": 1,
+        "failure_comparison_kinds": ["fp16_bits"],
+        "first_failure": expected_top_level_full_attention_failure,
+    }
+    assert top_level_full_attention_rollup["stages"]["attn_context"] == {
+        "passed": True,
+        "failure_rows": [],
+        "failure_row_count": 0,
+        "failure_comparison_kinds": [],
+        "first_failure": None,
+    }
+    assert top_level_full_attention_rollup["layer_limits"] == [
+        {"layer_limit": 1, "passed": True, "failed_stages": []},
+        {"layer_limit": 1, "passed": False, "failed_stages": ["mlp_input"]},
+    ]
 
     hidden_fail_bits = hidden.copy()
     hidden_fail_bits[0, 1] = 0x4200

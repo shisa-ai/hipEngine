@@ -1071,11 +1071,16 @@ roll-up/status view.
       top-level context-oracle rollup shows L8 only fails `batch_numpy_vs_c1_numpy`
       (`first_failure`: decode step 0 / row 0 / context dim 2812,
       `max_abs=0.00811624526977539`; worst at step 10, `max_abs=0.4993577003479004`),
-      while `batch_context_vs_numpy` and `c1_context_vs_numpy` pass. That means
+      while `batch_context_vs_numpy` and `c1_context_vs_numpy` pass. The added
+      top-level full-attention stage rollup now shows L8 first fails at `attn_input`
+      (decode step 0 / row 0 / dim 1269, `max_abs=0.015625`); raw stage `input`
+      first fails only later at decode step 6, and `attn_context` first fails as
+      fp32 at step 0 / dim 2812 (`max_abs=0.008107900619506836`). That means
       the context kernel matches its own oracle; the next C2.3 target is the
-      native-full layer-7 input/QKV or state feeding divergence, not softmax math.
-      The per-row fallback's ≤0.004 FP16/state amplification is a diagnostic
-      tolerance question only; do not re-open full-attention context math,
+      layer-7 attention-input RMSNorm/QKV preparation or state feeding, not raw
+      hidden input copy or softmax context math. The per-row fallback's ≤0.004
+      FP16/state amplification is a diagnostic tolerance question only; do not
+      re-open full-attention context math,
       layer-4 state mapping, native linear segment metadata, output trace/copy
       semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
