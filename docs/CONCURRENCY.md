@@ -1159,13 +1159,16 @@ roll-up/status view.
       emits `correctness.decode_linear_input_bit_drift_summary` and shows the
       earliest exact-bit handoff drift at decode step 0 / layer 1 / row 0
       (`bit_mismatch=1092`, hidden-atol pass), before layer 3 full-attention
-      input consumes the drift. The producer-context rerun at
-      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-input-producer-context-atol4e-3-focus1269.json`
-      attaches that first handoff drift to previous layer 0, whose execution is
-      `layer_type=linear_attention` / `linear_attention_decode_path=native_batch_segments`;
-      there is no full-attention producer trace for that layer type. The next
-      target is replaying or fixing decode-time linear-attention handoff/input
-      drift before changing paged-KV writer code. Do not re-open
+      input consumes the drift. The handoff-summary rerun at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-input-handoff-summary-atol4e-3-focus1269.json`
+      is hidden/token green but exposes the same exact-bit handoff drift in
+      `correctness.decode_linear_input_bit_drift_summary.first_handoff`: target
+      layer 1 consumes producer layer 0, whose execution is
+      `layer_type=linear_attention` / `linear_attention_decode_path=native_batch_segments`
+      with `cu_seqlens=[0,1,2]` and `state_indices=[0,1]`; there is no
+      full-attention producer trace for that layer type. The next target is
+      replaying or fixing decode-time linear-attention handoff/input drift before
+      changing paged-KV writer code. Do not re-open
       context softmax math, row setup, native linear segment metadata,
       output trace/copy semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2

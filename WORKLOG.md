@@ -47033,3 +47033,37 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (selected pytest suite plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no queue item was marked complete, the producer-context artifact has `performance_claim=false`, native full generated-token equality remains open, and no performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY compact linear-input handoff summary
+
+Promoted the first decode-linear input exact-bit drift producer context into `decode_linear_input_bit_drift_summary.first_handoff`. The compact summary carries the target/producer layer boundary, bit mismatch, hidden-atol status, producer layer type/path, linear-attention segment metadata, and row/state mapping without opening `first_bit_drift.producer_context`.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_current_source_rollup_promotes_failures tests/test_generation_batch_scheduler.py::test_hidden_bisect_current_kv_source_checks_compare_cache_to_trace tests/test_generation_batch_scheduler.py::test_hidden_bisect_repeat_rollup_counts_prefix_failures -q
+```
+
+Result: PASS.
+
+Refreshed L8 probe with compact handoff summary:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-input-handoff-summary-atol4e-3-focus1269.json
+```
+
+Result: `status=eq_ok`, `failure_modes=[]`, `performance_claim=false` for the short L8 hidden/token gate, while exact-bit diagnostic rollup still reports handoff drift. `first_handoff`: layer_limit 8 / step 0 / row 0, target layer 1, producer layer 0, `bit_mismatch=1092`, hidden-atol pass (`max_abs=0.0001220703125`, flat index 859). Producer is `linear_attention` with `linear_attention_decode_path=native_batch_segments`, `full_attention_decode_path=not_applicable`, `native_caware_decode=true`, `cu_seqlens=[0,1,2]`, `state_indices=[0,1]`, and row/state map row0->slot0/state0, row1->slot1/state1. No full-attention producer trace exists for that layer type.
+
+Full validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (selected pytest suite plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no queue item was marked complete, the handoff-summary artifact has `performance_claim=false`, native full generated-token equality remains open, and no performance/scaling claim was added.

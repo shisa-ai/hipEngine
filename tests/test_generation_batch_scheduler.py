@@ -6611,6 +6611,23 @@ def test_hidden_bisect_current_source_rollup_promotes_failures() -> None:
     assert producer_context["target_layer_index"] == 3
     assert producer_context["producer_full_attention"]["layer_index"] == 2
     assert list(producer_context["producer_full_attention"]["stages"]) == ["output"]
+    assert linear_bit_rollup["first_handoff"] == {
+        "layer_limit": 8,
+        "decode_step": 0,
+        "generated_index": 1,
+        "row": 0,
+        "target_layer_index": 3,
+        "producer_layer_index": 2,
+        "producer_available": True,
+        "producer_kind": "decode_full_attention",
+        "producer_reason": None,
+        "bit_mismatch": 7,
+        "passed_under_atol": True,
+        "max_abs": 0.000244140625,
+        "max_abs_flat_index": 1269,
+        "max_abs_index": [0, 1269],
+        "elements_over_atol": 0,
+    }
     assert linear_bit_rollup["layers"]["3"] == {
         "passed": False,
         "bit_drift_rows": [0],

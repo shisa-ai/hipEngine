@@ -2586,6 +2586,45 @@ def _decode_linear_input_producer_context(summary: dict[str, Any], record: dict[
     return context
 
 
+def _decode_linear_input_first_handoff_summary(first_bit_drift: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(first_bit_drift, dict):
+        return None
+    producer_context = first_bit_drift.get("producer_context")
+    if not isinstance(producer_context, dict):
+        return None
+    producer_execution = producer_context.get("producer_layer_execution")
+    handoff = {
+        "layer_limit": first_bit_drift.get("layer_limit"),
+        "decode_step": int(first_bit_drift.get("decode_step", -1)),
+        "generated_index": int(first_bit_drift.get("generated_index", int(first_bit_drift.get("decode_step", -1)) + 1)),
+        "row": int(first_bit_drift.get("row", -1)),
+        "target_layer_index": int(producer_context.get("target_layer_index", first_bit_drift.get("layer_index", -1))),
+        "producer_layer_index": int(producer_context.get("producer_layer_index", -1)),
+        "producer_available": bool(producer_context.get("available", False)),
+        "producer_kind": producer_context.get("producer_kind"),
+        "producer_reason": producer_context.get("reason"),
+        "bit_mismatch": int(first_bit_drift.get("bit_mismatch", 0)),
+        "passed_under_atol": bool(first_bit_drift.get("passed_under_atol", False)),
+        "max_abs": float(first_bit_drift.get("max_abs", 0.0)),
+        "max_abs_flat_index": first_bit_drift.get("max_abs_flat_index"),
+        "max_abs_index": first_bit_drift.get("max_abs_index", []),
+        "elements_over_atol": int(first_bit_drift.get("elements_over_atol", 0)),
+    }
+    if isinstance(producer_execution, dict):
+        for key in (
+            "layer_type",
+            "linear_attention_decode_path",
+            "full_attention_decode_path",
+            "moe_decode_path",
+            "native_caware_decode",
+            "linear_attention_segment_metadata",
+            "linear_attention_row_state_map",
+        ):
+            if key in producer_execution:
+                handoff[f"producer_{key}"] = producer_execution[key]
+    return handoff
+
+
 def _decode_linear_input_bit_drift_rollup(layer_summaries: Sequence[dict[str, Any]]) -> dict[str, Any]:
     layer_rollups: dict[int, dict[str, Any]] = {}
     first_bit_drift: dict[str, Any] | None = None
@@ -2636,6 +2675,7 @@ def _decode_linear_input_bit_drift_rollup(layer_summaries: Sequence[dict[str, An
         "drift_layers": drift_layers,
         "drift_layer_count": len(drift_layers),
         "first_bit_drift": first_bit_drift,
+        "first_handoff": _decode_linear_input_first_handoff_summary(first_bit_drift),
         "layers": {str(layer_index): layer_rollups[layer_index] for layer_index in sorted(layer_rollups)},
         "layer_limits": [
             {
