@@ -2003,6 +2003,13 @@ def test_batch_c_sweep_rejects_unsafe_output_dir_before_creating_artifacts(tmp_p
         run_sweep(typed_args)
     assert not output_dir.exists()
 
+    typed_args.output_dir = ""
+    with pytest.raises(ValueError, match="--output-dir must be a non-empty path"):
+        run_sweep(typed_args)
+    assert not output_dir.exists()
+    with pytest.raises(argparse.ArgumentTypeError, match="path must be non-empty"):
+        c_sweep.parse_cli_path("")
+
     args = build_c_sweep_parser().parse_args(
         ["--dry-run", "--batch-sizes", "2", "--output-dir", str(parent_component_output)]
     )
@@ -2041,6 +2048,11 @@ def test_batch_c_sweep_rejects_unsafe_compiler_version_file_before_creating_arti
     )
     typed_args.compiler_version_file = 123
     with pytest.raises(ValueError, match="--compiler-version-file must be a typed path"):
+        run_sweep(typed_args)
+    assert not output_dir.exists()
+
+    typed_args.compiler_version_file = ""
+    with pytest.raises(ValueError, match="--compiler-version-file must be a non-empty path"):
         run_sweep(typed_args)
     assert not output_dir.exists()
 
@@ -2096,6 +2108,11 @@ def test_batch_c_sweep_rejects_unsafe_summary_json_before_creating_artifacts(tmp
     )
     typed_args.summary_json = True
     with pytest.raises(ValueError, match="--summary-json must be a typed path"):
+        run_sweep(typed_args)
+    assert not output_dir.exists()
+
+    typed_args.summary_json = ""
+    with pytest.raises(ValueError, match="--summary-json must be a non-empty path"):
         run_sweep(typed_args)
     assert not output_dir.exists()
 

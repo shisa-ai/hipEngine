@@ -127,6 +127,12 @@ def parse_batch_sizes(text: str) -> tuple[int, ...]:
     return values
 
 
+def parse_cli_path(text: str) -> Path:
+    if not text:
+        raise argparse.ArgumentTypeError("path must be non-empty")
+    return Path(text)
+
+
 def build_sweep_commands(args: argparse.Namespace) -> tuple[SweepCommand, ...]:
     output_dir = Path(args.output_dir)
     commands: list[SweepCommand] = []
@@ -2717,6 +2723,8 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
 def _validate_cli_path_option(flag: str, path: str | Path) -> None:
     if not isinstance(path, (str, Path)):
         raise ValueError(f"{flag} must be a typed path")
+    if isinstance(path, str) and not path:
+        raise ValueError(f"{flag} must be a non-empty path")
     path = Path(path)
     if _path_has_parent_directory_component(path):
         raise ValueError(f"{flag} must not contain parent-directory components")
@@ -2952,12 +2960,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--warmup-decode-tokens", type=int, default=8)
     parser.add_argument("--max-layers", type=int, default=40)
     parser.add_argument("--seed", type=int, default=1234)
-    parser.add_argument("--compiler-version-file", type=Path)
+    parser.add_argument("--compiler-version-file", type=parse_cli_path)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--include-int8", action="store_true", help="Plan blocked INT8 KV c>N diagnostics for c>1 rows")
-    parser.add_argument("--output-dir", type=Path, default=Path("/tmp/hipengine-batch-c-sweep"))
-    parser.add_argument("--summary-json", type=Path)
-    parser.add_argument("--validate-summary-json", type=Path, help="Validate an existing c-sweep summary JSON and exit")
+    parser.add_argument("--output-dir", type=parse_cli_path, default=Path("/tmp/hipengine-batch-c-sweep"))
+    parser.add_argument("--summary-json", type=parse_cli_path)
+    parser.add_argument("--validate-summary-json", type=parse_cli_path, help="Validate an existing c-sweep summary JSON and exit")
     parser.add_argument("--dry-run", action="store_true", help="Write the command summary without executing commands")
     parser.add_argument("--stop-on-failure", action=argparse.BooleanOptionalAction, default=True)
     return parser
