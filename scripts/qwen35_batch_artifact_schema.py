@@ -289,6 +289,9 @@ def _disallowed_accepted_diagnostic_trace_field_reasons(label: str) -> list[str]
     for field_name in DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_NAMES:
         if field_name in label:
             reasons.append(field_name)
+    for field_name in DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS:
+        if field_name in label:
+            reasons.append(field_name)
     for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_FRAGMENTS:
         if fragment in label:
             reasons.append(fragment)

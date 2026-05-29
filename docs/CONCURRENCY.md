@@ -655,7 +655,8 @@ roll-up/status view.
       aggregate trace-summary paths via a shared deny-list, diagnostic
       CLI/env/structured-metadata overrides via a shared fragment list,
       hidden-bisect diagnostic evidence fragments, exact diagnostic hidden-trace
-      correctness fields, and future trace-key fragments in metadata/commands,
+      correctness fields, decode-execution trace fields outside execution, and
+      future trace-key fragments in metadata/commands,
       but
       `/tmp/hipengine-hidden-bisect-L1-8-512-1-grouped.json` still reports the
       first hidden mismatch at layer-limit 6 (row 0, generated index 1), and the

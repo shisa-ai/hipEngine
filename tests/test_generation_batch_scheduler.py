@@ -13487,6 +13487,19 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     for trace_field in DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_NAMES:
         assert f"correctness.{trace_field} must not include diagnostic trace field {trace_field}" in diagnostic_trace_metadata_error_message
 
+    diagnostic_execution_trace_metadata = json.loads(json.dumps(accepted))
+    diagnostic_execution_trace_metadata["correctness"].update(
+        {trace_field: {"diagnostic": True} for trace_field in DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS}
+    )
+    with pytest.raises(ValueError) as diagnostic_execution_trace_metadata_error:
+        validate_cn_diagnostic_artifact_payload(diagnostic_execution_trace_metadata)
+    diagnostic_execution_trace_metadata_error_message = str(diagnostic_execution_trace_metadata_error.value)
+    for trace_field in DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS:
+        assert (
+            f"correctness.{trace_field} must not include diagnostic trace field {trace_field}"
+            in diagnostic_execution_trace_metadata_error_message
+        )
+
     future_diagnostic_trace_metadata = json.loads(json.dumps(accepted))
     future_diagnostic_trace_metadata["correctness"].update(
         {f"future_{fragment}_rollup": {"diagnostic": True} for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_FRAGMENTS}
