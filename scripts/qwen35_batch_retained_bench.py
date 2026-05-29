@@ -49,6 +49,8 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_PROFILER_TRACE_KERNEL_NAME_COLUMNS,
     RETAINED_ARTIFACT_PROFILER_TRACE_START_COLUMNS,
     RETAINED_ARTIFACT_PROFILER_SYNTHESIZED_FIELDS,
+    RETAINED_ARTIFACT_ROCPROF_COMMAND_FLAGS,
+    RETAINED_ARTIFACT_ROCPROF_OUTPUT_FORMAT,
     RETAINED_ARTIFACT_RETAINED_GATE_FLAGS,
     RETAINED_ARTIFACT_RETAINED_GATE_LABELS,
     RETAINED_ARTIFACT_RETAINED_KV_POLICY_FLAGS,
@@ -71,6 +73,8 @@ _PROFILER_TRACE_KERNEL_NAME_COLUMNS = RETAINED_ARTIFACT_PROFILER_TRACE_KERNEL_NA
 _PROFILER_TRACE_START_COLUMNS = RETAINED_ARTIFACT_PROFILER_TRACE_START_COLUMNS
 _PROFILER_TRACE_END_COLUMNS = RETAINED_ARTIFACT_PROFILER_TRACE_END_COLUMNS
 _PROFILER_TRACE_DURATION_COLUMNS = RETAINED_ARTIFACT_PROFILER_TRACE_DURATION_COLUMNS
+_ROCPROF_COMMAND_FLAGS = RETAINED_ARTIFACT_ROCPROF_COMMAND_FLAGS
+_ROCPROF_OUTPUT_FORMAT = RETAINED_ARTIFACT_ROCPROF_OUTPUT_FORMAT
 _RETAINED_GATE_FLAGS = RETAINED_ARTIFACT_RETAINED_GATE_FLAGS
 _RETAINED_GATE_LABELS = RETAINED_ARTIFACT_RETAINED_GATE_LABELS
 _RETAINED_KV_POLICY_FLAGS = RETAINED_ARTIFACT_RETAINED_KV_POLICY_FLAGS
@@ -937,12 +941,12 @@ def _profiler_reference(path: Path | None) -> dict[str, Any]:
     profiler_command = _profiler_command_label(profiler, payload)
     if profiler_command is not None:
         if "output_format" not in result:
-            output_format = _command_arg_value(profiler_command, "--output-format")
+            output_format = _command_arg_value(profiler_command, _ROCPROF_COMMAND_FLAGS[1])
             if output_format is not None:
                 result["output_format"] = output_format
                 synthesized_fields.add("output_format")
         if "trace_dir" not in result:
-            trace_dir = _command_arg_value(profiler_command, "-d")
+            trace_dir = _command_arg_value(profiler_command, _ROCPROF_COMMAND_FLAGS[2])
             if trace_dir is not None:
                 result["trace_dir"] = trace_dir
                 synthesized_fields.add("trace_dir")
@@ -959,7 +963,10 @@ def _profiled_command(args: argparse.Namespace, argv: Sequence[str] | None) -> s
         return explicit
     if getattr(args, "profiler_json", None) is None:
         return None
-    return f"rocprofv3 --kernel-trace --output-format csv -d <profile-dir> -- {_command(argv)}"
+    return (
+        f"rocprofv3 {_ROCPROF_COMMAND_FLAGS[0]} {_ROCPROF_COMMAND_FLAGS[1]} {_ROCPROF_OUTPUT_FORMAT} "
+        f"{_ROCPROF_COMMAND_FLAGS[2]} <profile-dir> -- {_command(argv)}"
+    )
 
 
 def _build_scaling_comparison(
@@ -1490,10 +1497,10 @@ def _profiler_command_provenance_blockers(
         blockers.append("profiler command must start with rocprofv3")
     if not any(Path(part).name == "rocprofv3" for part in rocprof_prefix):
         blockers.append("profiler command must include rocprofv3")
-    for flag in ("--kernel-trace", "--output-format", "-d"):
+    for flag in _ROCPROF_COMMAND_FLAGS:
         if _command_flag_count(rocprof_prefix, flag) > 1:
             blockers.append(f"profiler command {flag} must be unique before rocprof separator")
-    if "--kernel-trace" not in rocprof_prefix:
+    if _ROCPROF_COMMAND_FLAGS[0] not in rocprof_prefix:
         blockers.append("profiler command must include --kernel-trace")
     if "scripts/qwen35_batch_retained_bench.py" not in command:
         blockers.append("profiler command must target scripts/qwen35_batch_retained_bench.py")
@@ -1515,9 +1522,9 @@ def _profiler_command_provenance_blockers(
             or profiled_segment[1] != "scripts/qwen35_batch_retained_bench.py"
         ):
             blockers.append("profiler command must launch retained bench after rocprof separator")
-    if _command_arg_value(rocprof_prefix_command, "--output-format") != "csv":
+    if _command_arg_value(rocprof_prefix_command, _ROCPROF_COMMAND_FLAGS[1]) != _ROCPROF_OUTPUT_FORMAT:
         blockers.append("profiler command must include --output-format csv")
-    if trace_dir is not None and _command_arg_value(rocprof_prefix_command, "-d") != trace_dir:
+    if trace_dir is not None and _command_arg_value(rocprof_prefix_command, _ROCPROF_COMMAND_FLAGS[2]) != trace_dir:
         blockers.append("profiler command -d must match profiler.trace_dir")
     profiler_json_flag = _RETAINED_GATE_FLAGS[3]
     if profiler_artifact_path is not None and _command_arg_value(retained_command, profiler_json_flag) != profiler_artifact_path:
@@ -1598,7 +1605,7 @@ def _profiler_provenance_blockers(
         blockers.append("profiler.source_artifact_path must be a non-empty string")
     elif retained_profiler_artifact_path is not None and profiler_source_artifact_path != retained_profiler_artifact_path:
         blockers.append("profiler.source_artifact_path must match profiler.artifact_path")
-    if profiler.get("output_format") != "csv":
+    if profiler.get("output_format") != _ROCPROF_OUTPUT_FORMAT:
         blockers.append("profiler.output_format must be csv")
     trace_dir = profiler.get("trace_dir")
     if not isinstance(trace_dir, str) or not trace_dir:

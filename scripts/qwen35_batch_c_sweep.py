@@ -32,6 +32,8 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_PROFILER_TRACE_START_COLUMNS,
     RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS,
     RETAINED_ARTIFACT_PROFILER_TRACE_SYNTHESIZED_FIELDS,
+    RETAINED_ARTIFACT_ROCPROF_COMMAND_FLAGS,
+    RETAINED_ARTIFACT_ROCPROF_OUTPUT_FORMAT,
     RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA,
     RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SEED,
     RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS,
@@ -67,6 +69,8 @@ _PROFILER_TRACE_KERNEL_NAME_COLUMNS = RETAINED_ARTIFACT_PROFILER_TRACE_KERNEL_NA
 _PROFILER_TRACE_START_COLUMNS = RETAINED_ARTIFACT_PROFILER_TRACE_START_COLUMNS
 _PROFILER_TRACE_END_COLUMNS = RETAINED_ARTIFACT_PROFILER_TRACE_END_COLUMNS
 _PROFILER_TRACE_DURATION_COLUMNS = RETAINED_ARTIFACT_PROFILER_TRACE_DURATION_COLUMNS
+_ROCPROF_COMMAND_FLAGS = RETAINED_ARTIFACT_ROCPROF_COMMAND_FLAGS
+_ROCPROF_OUTPUT_FORMAT = RETAINED_ARTIFACT_ROCPROF_OUTPUT_FORMAT
 _REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA = RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA
 _REQUIRED_PRIMITIVE_CORRECTNESS_SEED = RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SEED
 _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS = RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS
@@ -1174,12 +1178,12 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
         if profiler_command is None:
             reasons.append("profiler command is missing")
         else:
-            if "rocprofv3" not in profiler_command or "--kernel-trace" not in profiler_command:
+            if "rocprofv3" not in profiler_command or _ROCPROF_COMMAND_FLAGS[0] not in profiler_command:
                 reasons.append("profiler command does not include rocprofv3 --kernel-trace")
-            command_output_format = _command_text_arg(profiler_command, "--output-format")
-            if command_output_format != "csv":
-                reasons.append(f"profiler command output-format={command_output_format!r} does not match 'csv'")
-            command_trace_dir = _command_text_arg(profiler_command, "-d")
+            command_output_format = _command_text_arg(profiler_command, _ROCPROF_COMMAND_FLAGS[1])
+            if command_output_format != _ROCPROF_OUTPUT_FORMAT:
+                reasons.append(f"profiler command output-format={command_output_format!r} does not match {_ROCPROF_OUTPUT_FORMAT!r}")
+            command_trace_dir = _command_text_arg(profiler_command, _ROCPROF_COMMAND_FLAGS[2])
             if command_trace_dir is None:
                 reasons.append("profiler command is missing -d <trace_dir>")
             elif profiler_trace_dir is not None and command_trace_dir != profiler_trace_dir:
@@ -1252,8 +1256,8 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
         raw_output_format = profiler.get("output_format")
         if isinstance(raw_output_format, str):
             profiler_output_format = raw_output_format
-        if profiler_output_format != "csv":
-            reasons.append(f"profiler.output_format={profiler_output_format!r} does not match 'csv'")
+        if profiler_output_format != _ROCPROF_OUTPUT_FORMAT:
+            reasons.append(f"profiler.output_format={profiler_output_format!r} does not match {_ROCPROF_OUTPUT_FORMAT!r}")
         if profiler_trace_dir is None:
             reasons.append("profiler.trace_dir is missing")
         if profiler.get("expected_kernels_present") is not True:
@@ -2504,7 +2508,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if (
                         not isinstance(profiler_command, str)
                         or "rocprofv3" not in profiler_command
-                        or "--kernel-trace" not in profiler_command
+                        or _ROCPROF_COMMAND_FLAGS[0] not in profiler_command
                         or "scripts/qwen35_batch_retained_bench.py" not in profiler_command
                     ):
                         errors.append("commands[].preconditions[].profiler_command must include rocprofv3 kernel trace retained bench when passed")
@@ -2522,17 +2526,17 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     separator_index = profiler_command_argv.index("--")
                     rocprof_command_argv = profiler_command_argv[:separator_index]
                     profiled_command_argv = profiler_command_argv[separator_index + 1 :]
-                    rocprof_command_flags = ("--kernel-trace", "--output-format", "-d")
+                    rocprof_command_flags = _ROCPROF_COMMAND_FLAGS
                     if _duplicate_flags(rocprof_command_argv, rocprof_command_flags):
                         errors.append("commands[].preconditions[].profiler_command rocprof options must be unique")
                         break
                     if _empty_inline_flag_values(rocprof_command_argv, rocprof_command_flags):
                         errors.append("commands[].preconditions[].profiler_command rocprof option values must be non-empty")
                         break
-                    if "--kernel-trace" not in rocprof_command_argv:
+                    if _ROCPROF_COMMAND_FLAGS[0] not in rocprof_command_argv:
                         errors.append("commands[].preconditions[].profiler_command must include --kernel-trace flag before rocprof separator when passed")
                         break
-                    if _argv_value(rocprof_command_argv, "--output-format") != "csv":
+                    if _argv_value(rocprof_command_argv, _ROCPROF_COMMAND_FLAGS[1]) != _ROCPROF_OUTPUT_FORMAT:
                         errors.append("commands[].preconditions[].profiler_command must include --output-format csv before rocprof separator when passed")
                         break
                     if (
@@ -2618,14 +2622,14 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if profiler_precondition.get("profiler_status") != "captured":
                         errors.append("commands[].preconditions[].profiler_status must be captured when passed")
                         break
-                    if profiler_precondition.get("profiler_output_format") != "csv":
+                    if profiler_precondition.get("profiler_output_format") != _ROCPROF_OUTPUT_FORMAT:
                         errors.append("commands[].preconditions[].profiler_output_format must be csv when passed")
                         break
                     profiler_trace_dir = profiler_precondition.get("profiler_trace_dir")
                     if not isinstance(profiler_trace_dir, str) or not profiler_trace_dir:
                         errors.append("commands[].preconditions[].profiler_trace_dir must be a non-empty string when passed")
                         break
-                    if _argv_value(rocprof_command_argv, "-d") != profiler_trace_dir:
+                    if _argv_value(rocprof_command_argv, _ROCPROF_COMMAND_FLAGS[2]) != profiler_trace_dir:
                         errors.append("commands[].preconditions[].profiler_trace_dir must match profiler command -d")
                         break
                     profiler_trace_dir_path = Path(profiler_trace_dir)
