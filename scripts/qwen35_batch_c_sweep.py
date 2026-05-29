@@ -1540,6 +1540,8 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
+    if not isinstance(summary, Mapping):
+        raise ValueError("invalid c-sweep summary: summary must be an object")
     errors: list[str] = []
     expected_summary_keys = {
         "schema",

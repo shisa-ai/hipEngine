@@ -1829,6 +1829,8 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     assert persisted["retained_precondition_counts"] == {}
     assert persisted["skipped_preconditions"] == []
     c_sweep.validate_sweep_summary(persisted)
+    with pytest.raises(ValueError, match="summary must be an object"):
+        c_sweep.validate_sweep_summary([])  # type: ignore[arg-type]
     tampered_extra_summary_key = json.loads(json.dumps(persisted))
     tampered_extra_summary_key["unexpected"] = "field"
     with pytest.raises(ValueError, match="summary must contain exactly the c-sweep schema keys"):
