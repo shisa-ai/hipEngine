@@ -3160,14 +3160,20 @@ class Qwen35ParoResidentSession:
             self.full_scratch[layer_id] = scratch
         return scratch
 
-    def _ensure_moe_decode_batch_scratch(self, layer_id: int, rows: int) -> Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | Qwen35ParoDenseMlpScratch:
+    def _ensure_moe_decode_batch_scratch(
+        self,
+        layer_id: int,
+        rows: int,
+        *,
+        force_selected_c1_moe: bool = False,
+    ) -> Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | Qwen35ParoDenseMlpScratch:
         scratch = self.moe_scratch[layer_id]
         if int(getattr(self.config, "num_experts", 1) or 0) <= 0:
             if not isinstance(scratch, Qwen35ParoDenseMlpScratch) or scratch.residual.shape[0] < rows:
                 scratch = self.states[layer_id].reserve_dense_mlp_scratch(tokens=rows, activation_dtype=DType.FP16)
                 self.moe_scratch[layer_id] = scratch
             return scratch
-        if rows > 1:
+        if rows > 1 and not force_selected_c1_moe:
             if not isinstance(scratch, Qwen35ParoGroupedMoeScratch) or scratch.residual.shape[0] < rows:
                 scratch = self.states[layer_id].reserve_moe_grouped_prefill_scratch(tokens=rows, activation_dtype=DType.FP16)
                 self.moe_scratch[layer_id] = scratch
@@ -3196,7 +3202,8 @@ class Qwen35ParoResidentSession:
         max_full_attention_context = 0
         native_full_attention_layers = 0
         dense_mlp = int(getattr(self.config, "num_experts", 1) or 0) <= 0
-        moe_decode_path = "dense_mlp" if dense_mlp else ("selected_c1" if rows == 1 else "grouped_compact")
+        force_selected_c1_moe = (not dense_mlp) and rows > 1 and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE")
+        moe_decode_path = "dense_mlp" if dense_mlp else ("selected_c1" if rows == 1 else ("selected_c1_forced" if force_selected_c1_moe else "grouped_compact"))
         moe_grouped_compact_layers = 0
         moe_selected_c1_fallback_layers = 0
         layer_executions: list[dict[str, Any]] = []
@@ -3206,7 +3213,10 @@ class Qwen35ParoResidentSession:
                 if layer_type == "linear_attention":
                     conv_state, recurrent_state, _conv_buf, _recurrent_buf, _conv_zero, _recurrent_zero = self.linear_states[layer_id]
                     linear_scratch = self._ensure_linear_decode_batch_scratch(layer_id, rows)
-                    moe_scratch = self._ensure_moe_decode_batch_scratch(layer_id, rows)
+                    if force_selected_c1_moe:
+                        moe_scratch = self._ensure_moe_decode_batch_scratch(layer_id, rows, force_selected_c1_moe=True)
+                    else:
+                        moe_scratch = self._ensure_moe_decode_batch_scratch(layer_id, rows)
                     out = state.run_linear_attention_moe_decode_batch_layer_fp16(
                         hidden,
                         conv_state=conv_state,
@@ -3217,12 +3227,16 @@ class Qwen35ParoResidentSession:
                         linear_scratch=linear_scratch,
                         moe_scratch=moe_scratch,
                         tokens=rows,
+                        force_selected_c1_moe=force_selected_c1_moe,
                         library=self.libraries,
                         stream=stream,
                     )
-                    layer_moe_path = "dense_mlp" if dense_mlp else ("grouped_compact" if rows > 1 else "selected_c1")
+                    layer_moe_path = "dense_mlp" if dense_mlp else ("selected_c1" if rows == 1 else ("selected_c1_forced" if force_selected_c1_moe else "grouped_compact"))
                     if not dense_mlp and rows > 1:
-                        moe_grouped_compact_layers += 1
+                        if force_selected_c1_moe:
+                            moe_selected_c1_fallback_layers += 1
+                        else:
+                            moe_grouped_compact_layers += 1
                     layer_executions.append(
                         {
                             "layer_index": int(layer_id),
@@ -3249,7 +3263,10 @@ class Qwen35ParoResidentSession:
                             slots=slots,
                         )
                         attention_scratch = self._ensure_full_decode_batch_scratch(layer_id, rows)
-                        moe_scratch = self._ensure_moe_decode_batch_scratch(layer_id, rows)
+                        if force_selected_c1_moe:
+                            moe_scratch = self._ensure_moe_decode_batch_scratch(layer_id, rows, force_selected_c1_moe=True)
+                        else:
+                            moe_scratch = self._ensure_moe_decode_batch_scratch(layer_id, rows)
                         out = state.run_full_attention_moe_decode_batch_layer_fp16(
                             hidden,
                             key_cache=key_cache,
@@ -3263,12 +3280,16 @@ class Qwen35ParoResidentSession:
                             attention_scratch=attention_scratch,
                             moe_scratch=moe_scratch,
                             tokens=rows,
+                            force_selected_c1_moe=force_selected_c1_moe,
                             library=self.libraries,
                             stream=stream,
                         )
-                        layer_moe_path = "dense_mlp" if dense_mlp else ("grouped_compact" if rows > 1 else "selected_c1")
+                        layer_moe_path = "dense_mlp" if dense_mlp else ("selected_c1" if rows == 1 else ("selected_c1_forced" if force_selected_c1_moe else "grouped_compact"))
                         if not dense_mlp and rows > 1:
-                            moe_grouped_compact_layers += 1
+                            if force_selected_c1_moe:
+                                moe_selected_c1_fallback_layers += 1
+                            else:
+                                moe_grouped_compact_layers += 1
                         layer_executions.append(
                             {
                                 "layer_index": int(layer_id),
@@ -3343,6 +3364,8 @@ class Qwen35ParoResidentSession:
                     self.runtime.memcpy_async(next_hidden.ptr, out.ptr, rows * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
                 hidden, next_hidden = next_hidden, hidden
             decode_blockers: list[str] = []
+            if force_selected_c1_moe:
+                decode_blockers.append("MoE decode forced to selected-c1 diagnostic path")
             if full_attention_decode_path in {"per_row_splitk_fallback", "per_row_context_fallback"}:
                 decode_blockers.append("full-attention decode used a per-row fallback")
                 if not dense_mlp and rows > 1:

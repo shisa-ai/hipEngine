@@ -686,7 +686,14 @@ roll-up/status view.
       hidden-failing row (`abs_diff=0.00146484375`, over tolerance) while row 1
       shares dim 1269 as its top diff but remains within tolerance
       (`abs_diff=0.00048828125`); at L5, neither row has dim 1269 in its
-      top-diff list.
+      top-diff list. A selected-c1 MoE probe at
+      `/tmp/hipengine-hidden-bisect-L5-L6-512-1-selected-c1-moe.json` forces
+      `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE=1` and records
+      `moe_decode_path=selected_c1_forced`/`moe_grouped_compact_layers=0`; the
+      L6 row-0 hidden mismatch persists at dim 1269 (`max_abs=0.001953125`, no
+      token mismatch), so the reduced failure is not cleared by bypassing the
+      grouped-compact WMMA MoE path and should next distinguish batch linear
+      attention vs multi-row selected-MoE arithmetic.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

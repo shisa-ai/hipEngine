@@ -3553,6 +3553,7 @@ class Qwen35ParoDecodeState:
         tokens: int,
         group_size: int = 128,
         block_size: int = 256,
+        force_selected_c1_moe: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -3570,7 +3571,7 @@ class Qwen35ParoDecodeState:
         if dense_mlp:
             if not isinstance(moe_scratch, Qwen35ParoDenseMlpScratch):
                 moe_scratch = self.reserve_dense_mlp_scratch(tokens=tokens, activation_dtype=DType.FP16)
-        elif tokens > 1:
+        elif tokens > 1 and not force_selected_c1_moe:
             if not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
                 moe_scratch = self.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
         elif not isinstance(moe_scratch, Qwen35ParoMoeScratch):
@@ -3640,7 +3641,7 @@ class Qwen35ParoDecodeState:
                 library=library,
                 stream=stream,
             )
-        if tokens > 1:
+        if tokens > 1 and not force_selected_c1_moe:
             return self.run_moe_grouped_compact_fp16(
                 mlp_input,
                 residual,
@@ -4976,6 +4977,7 @@ class Qwen35ParoDecodeState:
         moe_scratch: Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | Qwen35ParoDenseMlpScratch | None = None,
         tokens: int,
         group_size: int = 128,
+        force_selected_c1_moe: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -4988,7 +4990,7 @@ class Qwen35ParoDecodeState:
         if dense_mlp:
             if not isinstance(moe_scratch, Qwen35ParoDenseMlpScratch):
                 moe_scratch = self.reserve_dense_mlp_scratch(tokens=tokens, activation_dtype=DType.FP16)
-        elif tokens > 1:
+        elif tokens > 1 and not force_selected_c1_moe:
             if not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
                 moe_scratch = self.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
         elif not isinstance(moe_scratch, Qwen35ParoMoeScratch):
@@ -5025,7 +5027,7 @@ class Qwen35ParoDecodeState:
                 library=library,
                 stream=stream,
             )
-        if tokens > 1:
+        if tokens > 1 and not force_selected_c1_moe:
             return self.run_moe_grouped_compact_fp16(
                 mlp_input,
                 residual,

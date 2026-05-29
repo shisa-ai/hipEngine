@@ -566,6 +566,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--layer-limits", default=None, help="Comma/range list such as '1,4,8' or '1-8'; default all")
     parser.add_argument("--max-sequence-length", type=int, default=1024)
     parser.add_argument("--hidden-atol", type=float, default=1.0e-3)
+    parser.add_argument(
+        "--batch-decode-moe-path",
+        choices=("grouped_compact", "selected_c1"),
+        default="grouped_compact",
+        help="Diagnostic MoE path for native c>N batch decode; selected_c1 forces the non-retained selected-c1 probe.",
+    )
     parser.add_argument("--compiler-version-file", type=Path, default=None)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--json", type=Path, default=None)
@@ -602,6 +608,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "max_sequence_length": int(args.max_sequence_length),
             "kv_storage_dtype": "bf16",
             "native_compact_prefill": True,
+            "batch_decode_moe_path": str(args.batch_decode_moe_path),
             "native_caware_decode": bool(args.prompt_length + args.decode_tokens < 1024),
             "full_attention_decode_path": "batch_context" if args.prompt_length + args.decode_tokens < 1024 else "per_row_splitk_fallback",
         },
@@ -624,6 +631,9 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
         return payload
 
     os.environ.setdefault("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE", "1")
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] = (
+        "1" if args.batch_decode_moe_path == "selected_c1" else "0"
+    )
     runner = Qwen35ParoNextTokenRunner(args.model)
     layer_types = tuple(str(layer_type) for layer_type in getattr(runner.config, "layer_types", ()))
     compiler_version = _compiler_version(args.compiler_version_file)
