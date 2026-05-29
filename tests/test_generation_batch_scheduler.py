@@ -54,6 +54,7 @@ from scripts import qwen35_batch_retained_bench as retained_bench
 from scripts.qwen35_batch_artifact_schema import (
     DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS,
     DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS,
+    DISALLOWED_ACCEPTED_DIAGNOSTIC_EVIDENCE_FRAGMENTS,
     _load_benchmark_results_json_artifact,
     _summary_json_path_is_in_current_results,
     _validate_benchmark_results_artifact_path,
@@ -13439,6 +13440,40 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     diagnostic_structured_metadata_error_message = str(diagnostic_structured_metadata_error.value)
     for diagnostic_fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS:
         assert f"diagnostic_environment.{diagnostic_fragment}" in diagnostic_structured_metadata_error_message
+
+    diagnostic_evidence_environment_command = json.loads(json.dumps(accepted))
+    diagnostic_evidence_environment_command["commands"]["environment"].extend(
+        DISALLOWED_ACCEPTED_DIAGNOSTIC_EVIDENCE_FRAGMENTS
+    )
+    with pytest.raises(ValueError) as diagnostic_evidence_environment_error:
+        validate_cn_diagnostic_artifact_payload(diagnostic_evidence_environment_command)
+    diagnostic_evidence_environment_error_message = str(diagnostic_evidence_environment_error.value)
+    for diagnostic_fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_EVIDENCE_FRAGMENTS:
+        assert f"commands.environment must not include diagnostic evidence {diagnostic_fragment}" in diagnostic_evidence_environment_error_message
+
+    diagnostic_evidence_command_suffix = " " + " ".join(DISALLOWED_ACCEPTED_DIAGNOSTIC_EVIDENCE_FRAGMENTS)
+    for command_field in ("benchmark", "correctness_reference", "profiler"):
+        diagnostic_evidence_command = json.loads(json.dumps(accepted))
+        diagnostic_evidence_command["commands"][command_field] += diagnostic_evidence_command_suffix
+        with pytest.raises(ValueError) as diagnostic_evidence_command_error:
+            validate_cn_diagnostic_artifact_payload(diagnostic_evidence_command)
+        diagnostic_evidence_command_error_message = str(diagnostic_evidence_command_error.value)
+        for diagnostic_fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_EVIDENCE_FRAGMENTS:
+            assert (
+                f"commands.{command_field} must not include diagnostic evidence {diagnostic_fragment}"
+                in diagnostic_evidence_command_error_message
+            )
+
+    diagnostic_evidence_structured_metadata = json.loads(json.dumps(accepted))
+    diagnostic_evidence_structured_metadata["diagnostic_evidence_paths"] = list(
+        DISALLOWED_ACCEPTED_DIAGNOSTIC_EVIDENCE_FRAGMENTS
+    )
+    with pytest.raises(ValueError) as diagnostic_evidence_structured_metadata_error:
+        validate_cn_diagnostic_artifact_payload(diagnostic_evidence_structured_metadata)
+    diagnostic_evidence_structured_metadata_error_message = str(diagnostic_evidence_structured_metadata_error.value)
+    for diagnostic_fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_EVIDENCE_FRAGMENTS:
+        assert "diagnostic_evidence_paths" in diagnostic_evidence_structured_metadata_error_message
+        assert f"must not include diagnostic evidence {diagnostic_fragment}" in diagnostic_evidence_structured_metadata_error_message
 
     wrong_benchmark_command = json.loads(json.dumps(accepted))
     wrong_benchmark_command["commands"]["benchmark"] = "python3 scripts/qwen35_batch_serial_bench.py --batch-size 2"

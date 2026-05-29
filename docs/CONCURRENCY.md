@@ -652,8 +652,9 @@ roll-up/status view.
       all-selected-c1 CLI/workload metadata, and retained-schema rejection for
       diagnostic per-layer linear decode/projection/state/selected-c1+batch-GEMV
       output, full-attention boundary, per-layer trace-source, batch/decode
-      aggregate trace-summary paths via a shared deny-list, and diagnostic
-      CLI/env/structured-metadata overrides via a shared fragment list,
+      aggregate trace-summary paths via a shared deny-list, diagnostic
+      CLI/env/structured-metadata overrides via a shared fragment list, and
+      hidden-bisect diagnostic evidence fragments,
       but
       `/tmp/hipengine-hidden-bisect-L1-8-512-1-grouped.json` still reports the
       first hidden mismatch at layer-limit 6 (row 0, generated index 1), and the

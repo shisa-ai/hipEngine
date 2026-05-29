@@ -128,6 +128,12 @@ DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS = (
     "--batch-prefill-full-attn-path per_segment",
     "--batch-prefill-full-attn-path=per_segment",
 )
+DISALLOWED_ACCEPTED_DIAGNOSTIC_EVIDENCE_FRAGMENTS = (
+    "scripts/qwen35_batch_hidden_bisect.py",
+    "qwen35_batch_hidden_bisect.py",
+    "hidden-bisect",
+    "hidden_bisect",
+)
 _REQUIRED_ACCEPTED_SCALING_BASELINES = (
     "c1_baseline",
     "serial_bridge_baseline",
@@ -269,6 +275,9 @@ def _validate_no_disallowed_diagnostic_metadata(
             for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS:
                 if fragment in key_label:
                     errors.append(f"{child_path} must not include diagnostic override {fragment} for accepted artifacts")
+            for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_EVIDENCE_FRAGMENTS:
+                if fragment in key_label:
+                    errors.append(f"{child_path} must not include diagnostic evidence {fragment} for accepted artifacts")
             _validate_no_disallowed_diagnostic_metadata(child, path=child_path, errors=errors)
     elif isinstance(value, list):
         for index, child in enumerate(value):
@@ -277,6 +286,9 @@ def _validate_no_disallowed_diagnostic_metadata(
         for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS:
             if fragment in value:
                 errors.append(f"{path} must not include diagnostic override {fragment} for accepted artifacts")
+        for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_EVIDENCE_FRAGMENTS:
+            if fragment in value:
+                errors.append(f"{path} must not include diagnostic evidence {fragment} for accepted artifacts")
 
 
 
@@ -1652,6 +1664,9 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS:
                 if fragment in command_value:
                     errors.append(f"commands.{field} must not include diagnostic override {fragment} for accepted artifacts")
+            for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_EVIDENCE_FRAGMENTS:
+                if fragment in command_value:
+                    errors.append(f"commands.{field} must not include diagnostic evidence {fragment} for accepted artifacts")
     environment_commands = commands.get("environment")
     if not _is_nonempty_string_list(environment_commands):
         errors.append("commands.environment must be a non-empty string list for accepted artifacts")
@@ -1666,6 +1681,9 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS:
             if fragment in joined_environment_commands:
                 errors.append(f"commands.environment must not include diagnostic override {fragment} for accepted artifacts")
+        for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_EVIDENCE_FRAGMENTS:
+            if fragment in joined_environment_commands:
+                errors.append(f"commands.environment must not include diagnostic evidence {fragment} for accepted artifacts")
     benchmark_command = commands.get("benchmark")
     if isinstance(benchmark_command, str):
         if "qwen35_batch_retained_bench.py" not in benchmark_command:
@@ -3196,6 +3214,8 @@ def main(argv: list[str] | None = None) -> int:
 
 
 __all__ = [
+    "DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS",
+    "DISALLOWED_ACCEPTED_DIAGNOSTIC_EVIDENCE_FRAGMENTS",
     "main",
     "validate_cn_diagnostic_artifact_payload",
     "validate_cn_diagnostic_rollup_evidence",
