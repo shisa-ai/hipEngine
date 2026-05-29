@@ -295,16 +295,16 @@ decode is correct.
 
 ### P0 — Hardware, assets, and oracle preflight
 
-- [ ] Confirm the target machine reports Strix Halo/gfx1151:
+- [x] Confirm the target machine reports Strix Halo/gfx1151:
   `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`,
   `amdgpu-arch` or `/opt/rocm/bin/amdgpu-arch`, and
   `rocminfo | grep -E 'Name:|gfx'`.
-- [ ] Record HIP-visible total/free memory after a clean boot and after loading
+- [~] Record HIP-visible total/free memory after a clean boot and after loading
   the GGUF shards. If full-model load fails, keep the failure as evidence and
   fall back to slice/layer correctness until offload/tiering exists.
-- [ ] Record exact GGUF paths and byte sizes for all three shards; do not copy or
+- [x] Record exact GGUF paths and byte sizes for all three shards; do not copy or
   rewrite the 102.50 GB assets into the repo.
-- [ ] Establish a llama.cpp oracle command for tokenization and short greedy
+- [x] Establish a llama.cpp oracle command for tokenization and short greedy
   next-token checks. If llama.cpp cannot run the full model on the same machine,
   use it for metadata/tokenizer/slice or a smaller exported fixture.
 - [ ] For any kernel port/tuning, read `docs/KERNELS.md` and run
@@ -312,7 +312,10 @@ decode is correct.
   code.
 
 **Acceptance:** WORKLOG preflight entry with hardware, memory, paths, and oracle
-plan; no runtime correctness or performance claim yet.
+plan; no runtime correctness or performance claim yet. 2026-05-29 preflight
+confirmed gfx1151 and recorded shard/oracle details, but full GGUF load memory
+is still open because HIP/ROCm visible memory needs reconciliation before a
+95.46 GiB weight load attempt.
 
 ### P1 — Metadata-only parser fixtures
 

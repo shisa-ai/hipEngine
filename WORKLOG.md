@@ -26841,3 +26841,22 @@ python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_
 ```
 
 Results: targeted Q3_K/Step CPU tests passed (`9 passed`), guard passed (`39 passed` plus CPU fixture checks), and the StepFun punchlist metric dropped from 39 to 35 by completing P5.
+
+## 2026-05-29 — StepFun P0 Strix Halo preflight
+
+Ran the StepFun hardware/assets/oracle preflight on the current target. HIP runtime loads successfully and `amdgpu-arch` reports `gfx1151`. `rocminfo` identifies `AMD RYZEN AI MAX+ 395 w/ Radeon 8060S` / `Radeon 8060S Graphics` / `gfx1151`, so this is the intended Strix Halo class target. `rocm-smi --showmeminfo vram --showproductname` reports only 536,870,912 bytes VRAM total and 411,639,808 bytes used, while `hipMemGetInfo` returns `free=128,844,787,712` and `total=67,152,820,224` bytes; this discrepancy needs reconciliation before a 95.46 GiB GGUF weight-load attempt. Recorded local Step GGUF shard paths and byte sizes: shard 1 46,544,161,344 bytes, shard 2 46,401,560,832 bytes, shard 3 9,558,706,368 bytes. Established a llama.cpp tokenizer oracle command:
+
+```bash
+/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1151-unroll600/bin/llama-tokenize -m /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --ids --log-disable -p 'hello world'
+```
+
+Result: `[0, 33310, 2058]`, matching the StepFun GGUF tokenizer tests. Full llama.cpp next-token/full-model oracle remains deferred until the HIP-visible memory picture is clear; use tokenizer/HF/gguf-py slice oracles meanwhile. No runtime correctness or performance claim is made.
+
+Validation:
+
+```bash
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+```
+
+Results: guard passed (`39 passed` plus CPU fixture checks). The punchlist metric dropped from 35 to 32 by completing the Strix Halo identity, shard-size, and tokenizer-oracle portions of P0; full load memory remains partial/open.
