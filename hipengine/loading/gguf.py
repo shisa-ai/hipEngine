@@ -6,7 +6,8 @@ import struct
 from dataclasses import dataclass
 from math import prod
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from types import MappingProxyType
+from typing import Any, Iterable, Mapping, Sequence
 
 from hipengine.loading.hf_cache import resolve_model_path
 from hipengine.quant.gguf import (
@@ -113,6 +114,120 @@ class GGUFModelInfo:
         return tuple(tensor.name for tensor in self.tensors if tensor.name.startswith(prefix))
 
 
+@dataclass(frozen=True)
+class GGUFSplitTensorInfo:
+    """Tensor metadata plus the source GGUF split that owns the payload."""
+
+    source_path: Path
+    split_no: int
+    tensor: GGUFTensorInfo
+
+    @property
+    def name(self) -> str:
+        return self.tensor.name
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        return self.tensor.shape
+
+    @property
+    def ggml_shape(self) -> tuple[int, ...]:
+        return self.tensor.ggml_shape
+
+    @property
+    def ggml_type(self) -> int:
+        return self.tensor.ggml_type
+
+    @property
+    def ggml_type_name(self) -> str:
+        return self.tensor.ggml_type_name
+
+    @property
+    def n_elements(self) -> int:
+        return self.tensor.n_elements
+
+    @property
+    def nbytes(self) -> int:
+        return self.tensor.nbytes
+
+    @property
+    def offset(self) -> int:
+        return self.tensor.offset
+
+    @property
+    def data_offset(self) -> int:
+        return self.tensor.data_offset
+
+    @property
+    def byte_shape(self) -> tuple[int, ...]:
+        return self.tensor.byte_shape
+
+
+@dataclass(frozen=True)
+class GGUFSplitModelInfo:
+    """Logical GGUF model assembled from multiple split shards."""
+
+    shards: tuple[GGUFModelInfo, ...]
+    metadata: Mapping[str, Any]
+    tensors: tuple[GGUFSplitTensorInfo, ...]
+
+    @property
+    def paths(self) -> tuple[Path, ...]:
+        return tuple(shard.path for shard in self.shards)
+
+    @property
+    def tensor_count(self) -> int:
+        return len(self.tensors)
+
+    @property
+    def total_tensor_nbytes(self) -> int:
+        return sum(tensor.nbytes for tensor in self.tensors)
+
+    @property
+    def split_count(self) -> int:
+        value = self.metadata.get("split.count")
+        return int(value) if value is not None else len(self.shards)
+
+    @property
+    def architecture(self) -> str | None:
+        value = self.metadata.get("general.architecture")
+        return str(value) if value is not None else None
+
+    @property
+    def file_type(self) -> int | None:
+        value = self.metadata.get("general.file_type")
+        return int(value) if value is not None else None
+
+    @property
+    def file_type_name(self) -> str | None:
+        return llama_file_type_name(self.file_type)
+
+    def tensor(self, name: str) -> GGUFSplitTensorInfo:
+        for tensor in self.tensors:
+            if tensor.name == name:
+                return tensor
+        raise MissingGGUFTensorError(f"missing GGUF tensor: {name}")
+
+    def require(self, names: Iterable[str]) -> tuple[GGUFSplitTensorInfo, ...]:
+        found: list[GGUFSplitTensorInfo] = []
+        missing: list[str] = []
+        by_name = {tensor.name: tensor for tensor in self.tensors}
+        for name in names:
+            tensor = by_name.get(name)
+            if tensor is None:
+                missing.append(name)
+            else:
+                found.append(tensor)
+        if missing:
+            preview = ", ".join(missing[:8])
+            more = "" if len(missing) <= 8 else f" (+{len(missing) - 8} more)"
+            raise MissingGGUFTensorError(f"missing required GGUF tensors: {preview}{more}")
+        return tuple(found)
+
+    def names_with_prefix(self, prefix: str) -> tuple[str, ...]:
+        return tuple(tensor.name for tensor in self.tensors if tensor.name.startswith(prefix))
+
+
 class GGUFReader:
     """Header scanner plus lazy NumPy memmap access to GGUF tensor payloads."""
 
@@ -162,6 +277,68 @@ def discover_gguf_files(model_path: str | Path) -> tuple[Path, ...]:
     if not files:
         raise FileNotFoundError(f"no .gguf files found under {path}")
     return files
+
+
+def scan_gguf_splits(paths: Sequence[str | Path]) -> GGUFSplitModelInfo:
+    """Merge GGUF split shard tensor tables without reading tensor payloads.
+
+    The returned tensor entries retain the source shard path and split number so
+    materializers can mmap each payload from its original file later.  The first
+    split (``split.no == 0``) is treated as the authoritative metadata shard;
+    llama.cpp split GGUFs often keep full model/tokenizer metadata only there.
+    """
+
+    if not paths:
+        raise FileNotFoundError("no GGUF split paths provided")
+    shards = tuple(sorted((scan_gguf(path) for path in paths), key=_split_no_for_model))
+    split_numbers = tuple(_split_no_for_model(shard) for shard in shards)
+    split_count = int(shards[0].metadata.get("split.count", len(shards)))
+    if split_count != len(shards):
+        raise GGUFFormatError(
+            f"expected {split_count} GGUF split shards from metadata, got {len(shards)}"
+        )
+    expected_numbers = tuple(range(split_count))
+    if split_numbers != expected_numbers:
+        raise GGUFFormatError(
+            f"GGUF split numbers must be contiguous {expected_numbers}, got {split_numbers}"
+        )
+    tensor_total_values = {
+        int(shard.metadata.get("split.tensors.count", sum(item.tensor_count for item in shards)))
+        for shard in shards
+    }
+    if len(tensor_total_values) != 1:
+        raise GGUFFormatError(f"inconsistent split.tensors.count values: {tensor_total_values}")
+
+    merged: list[GGUFSplitTensorInfo] = []
+    by_name: dict[str, GGUFSplitTensorInfo] = {}
+    for shard, split_no in zip(shards, split_numbers, strict=True):
+        for tensor in shard.tensors:
+            wrapped = GGUFSplitTensorInfo(shard.path, split_no, tensor)
+            if tensor.name in by_name:
+                previous = by_name[tensor.name]
+                raise GGUFFormatError(
+                    f"duplicate GGUF tensor {tensor.name!r} in split {split_no} "
+                    f"({shard.path}); first seen in split {previous.split_no} "
+                    f"({previous.source_path})"
+                )
+            by_name[tensor.name] = wrapped
+            merged.append(wrapped)
+
+    tensor_total = tensor_total_values.pop()
+    if tensor_total != len(merged):
+        raise GGUFFormatError(
+            f"split.tensors.count={tensor_total} but merged tensor table has {len(merged)} entries"
+        )
+
+    return GGUFSplitModelInfo(
+        shards=shards,
+        metadata=MappingProxyType(dict(shards[0].metadata)),
+        tensors=tuple(merged),
+    )
+
+
+def _split_no_for_model(info: GGUFModelInfo) -> int:
+    return int(info.metadata.get("split.no", 0))
 
 
 def scan_gguf(path: str | Path) -> GGUFModelInfo:
@@ -320,9 +497,12 @@ __all__ = [
     "GGUFFormatError",
     "GGUFModelInfo",
     "GGUFReader",
+    "GGUFSplitModelInfo",
+    "GGUFSplitTensorInfo",
     "GGUFTensorInfo",
     "MissingGGUFTensorError",
     "discover_gguf_files",
     "load_gguf_index",
     "scan_gguf",
+    "scan_gguf_splits",
 ]

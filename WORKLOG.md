@@ -26785,3 +26785,17 @@ python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_
 ```
 
 Results: Step metadata pytest passed (`4 passed`), guard passed (`24 passed` plus CPU fixture checks), and the StepFun punchlist metric dropped from 54 to 51 by completing P1.
+
+## 2026-05-29 — StepFun P2 split GGUF loader and tensor map
+
+Implemented the StepFun split GGUF metadata/index lane. Added generic `scan_gguf_splits()` / `GGUFSplitModelInfo` / `GGUFSplitTensorInfo` support that merges shard tensor tables while preserving each tensor's source path, split number, shape, type, byte span, and payload offset. Added `hipengine/loading/stepfun_gguf.py` for Step `step35.*` config parsing, required text tensor naming, dense-vs-MoE layer maps, full/sliding attention metadata, shape/type validation for all 754 local text tensors, and a clear `StepFunUnsupportedFeatureError` when multimodal projector/vision assets are requested from text-only GGUF shards. Added `tests/test_stepfun_gguf_loader.py` for split discovery/merge, source retention, required tensor map validation, missing/type error reporting, missing projector error text, and duplicate tensor rejection.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_gguf_loader.py
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+```
+
+Results: Step split loader pytest passed (`5 passed`), guard passed (`29 passed` plus CPU fixture checks), and the StepFun punchlist metric dropped from 51 to 47 by completing P2.

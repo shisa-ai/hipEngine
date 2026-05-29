@@ -329,17 +329,18 @@ this no-GPU metadata path; tests skip cleanly if external Step assets are absent
 
 ### P2 — Split GGUF index and Step tensor map
 
-- [ ] Add a split-aware GGUF reader/index that merges shard tensor tables while
+- [x] Add a split-aware GGUF reader/index that merges shard tensor tables while
   retaining each tensor's source path, offset, type, shape, and byte span.
-- [ ] Add a Step-specific loader/config module for `step35.*` metadata and tensor
+- [x] Add a Step-specific loader/config module for `step35.*` metadata and tensor
   naming; keep it separate from `qwen35_gguf.py`.
-- [ ] Validate all required text tensors for layers 0-44 and produce a clear
+- [x] Validate all required text tensors for layers 0-44 and produce a clear
   unsupported error for missing multimodal projector assets.
-- [ ] Add tests for split discovery, duplicate/missing tensor errors, and tensor
+- [x] Add tests for split discovery, duplicate/missing tensor errors, and tensor
   shape/type validation.
 
-**Acceptance:** loader can build a logical Step text weight index from the three
-GGUF shards without loading all weights into memory.
+**Acceptance:** `python3 -m pytest -q tests/test_stepfun_gguf_loader.py` builds a
+logical Step text weight index from the three GGUF shards without loading all
+weights into memory; tests skip cleanly if external Step assets are absent.
 
 ### P3 — Model plugin and capability registration
 
