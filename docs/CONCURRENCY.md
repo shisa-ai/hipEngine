@@ -676,7 +676,11 @@ roll-up/status view.
       failing and previous-green layer execution records into the transition;
       both are `linear_attention` layers with `moe_decode_path=grouped_compact`
       and `full_attention_decode_path=not_applicable`, isolating the first red
-      boundary to the layer-5 linear-attention/grouped-MoE decode output.
+      boundary to the layer-5 linear-attention/grouped-MoE decode output. The
+      focus refresh `/tmp/hipengine-hidden-bisect-L5-L6-512-1-focus.json` adds
+      `first_hidden_mismatch_focus` for row 0 / dim 1269; that coordinate is
+      the failing layer's top diff but is not present in the previous-green L5
+      row-0 top-diff list, narrowing the jump to the L6 layer output.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

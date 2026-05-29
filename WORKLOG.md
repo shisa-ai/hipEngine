@@ -44344,3 +44344,40 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
 ```
+
+## 2026-05-29 — CONCURRENCY hidden-transition mismatch focus
+
+Advanced C2.3 without closing the selected-MoE lane-map item or adding a retained c>N performance claim. The hidden-bisection transition summary now records a compact `first_hidden_mismatch_focus` block keyed by the failing row and hidden coordinate, plus whether the same coordinate was already prominent in the previous green layer.
+
+Changes:
+
+- Added `_top_abs_diff_for_flat_index(...)` and `_transition_hidden_focus(...)` in `scripts/qwen35_batch_hidden_bisect.py`.
+- `correctness.first_failing_layer_transition.first_hidden_mismatch_focus` now includes the failing row, flat/index coordinate, failing top diff, previous green layer limit, and whether that same flat index appeared in the previous green layer's row top-diff list.
+- CPU tests cover the hidden-focus block for a hidden-only transition.
+- `docs/CONCURRENCY.md` C2.3 progress cites the focus artifact while leaving the item open.
+
+Diagnostic command:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 1 --max-layers 8 --layer-limits 5,6 --max-sequence-length 1024 --json /tmp/hipengine-hidden-bisect-L5-L6-512-1-focus.json
+```
+
+Result: `/tmp/hipengine-hidden-bisect-L5-L6-512-1-focus.json` emitted `status=mismatch_found`, `performance_claim=false`, and `correctness.first_failing_layer_transition.first_hidden_mismatch_focus={row:0, flat_index:1269, index:[0,1269], failing_layer_limit:6, previous_green_layer_limit:5, previous_green_same_flat_index_in_top_abs_diffs:false}`. The failing top diff remains `abs_diff=0.00146484375`, `batch=0.8564453125`, `c1=0.85498046875`; the previous green layer's row-0 top-diff list did not include that coordinate, while L5 still hidden/token passed and L6 remains hidden-only red.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -k 'hidden_bisect' -q
+# 3 passed
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -q
+# passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
+```

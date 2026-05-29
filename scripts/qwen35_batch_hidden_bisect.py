@@ -230,6 +230,44 @@ def _layer_execution_for_index(summary: dict[str, Any], layer_index: int) -> dic
     return None
 
 
+def _top_abs_diff_for_flat_index(summary: dict[str, Any], *, row_index: int, flat_index: int) -> dict[str, Any] | None:
+    for step in summary.get("steps", []):
+        for row in step.get("rows", []):
+            if int(row.get("row", -1)) != int(row_index):
+                continue
+            comparison = row.get("hidden_comparison", {})
+            for diff in comparison.get("top_abs_diffs", []):
+                if isinstance(diff, dict) and int(diff.get("flat_index", -1)) == int(flat_index):
+                    return diff
+    return None
+
+
+def _transition_hidden_focus(
+    summary: dict[str, Any],
+    previous_green: dict[str, Any] | None,
+    first_hidden_mismatch: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not isinstance(first_hidden_mismatch, dict):
+        return None
+    flat_index = first_hidden_mismatch.get("max_abs_flat_index")
+    if not isinstance(flat_index, int) or isinstance(flat_index, bool):
+        return None
+    row_index = int(first_hidden_mismatch["row"])
+    focus: dict[str, Any] = {
+        "row": row_index,
+        "flat_index": int(flat_index),
+        "index": first_hidden_mismatch.get("max_abs_index", []),
+        "failing_layer_limit": int(summary["layer_limit"]),
+        "failing_top_diff": _top_abs_diff_for_flat_index(summary, row_index=row_index, flat_index=int(flat_index)),
+    }
+    if previous_green is not None:
+        previous_diff = _top_abs_diff_for_flat_index(previous_green, row_index=row_index, flat_index=int(flat_index))
+        focus["previous_green_layer_limit"] = int(previous_green["layer_limit"])
+        focus["previous_green_same_flat_index_in_top_abs_diffs"] = previous_diff is not None
+        focus["previous_green_same_flat_index_top_diff"] = previous_diff
+    return focus
+
+
 def _first_failing_layer_transition(layer_summaries: Sequence[dict[str, Any]]) -> dict[str, Any] | None:
     previous_green: dict[str, Any] | None = None
     for summary in layer_summaries:
@@ -248,6 +286,7 @@ def _first_failing_layer_transition(layer_summaries: Sequence[dict[str, Any]]) -
             failure_modes.append("token")
         failing_last_layer_index = int(summary.get("last_layer_index", layer_limit - 1))
         failing_layer_execution = _layer_execution_for_index(summary, failing_last_layer_index)
+        first_hidden_mismatch = _first_hidden_mismatch([summary])
         transition: dict[str, Any] = {
             "failing_layer_limit": layer_limit,
             "failing_last_layer_index": failing_last_layer_index,
@@ -259,7 +298,7 @@ def _first_failing_layer_transition(layer_summaries: Sequence[dict[str, Any]]) -
             "hidden_failure_row_count": len(hidden_rows),
             "token_failure_rows": token_rows,
             "token_failure_row_count": len(token_rows),
-            "first_hidden_mismatch": _first_hidden_mismatch([summary]),
+            "first_hidden_mismatch": first_hidden_mismatch,
             "first_token_mismatch": _first_token_mismatch([summary]),
         }
         if "last_layer_type" in summary:
@@ -279,6 +318,7 @@ def _first_failing_layer_transition(layer_summaries: Sequence[dict[str, Any]]) -
             transition["previous_green_layer_execution"] = previous_layer_execution
             if "last_layer_type" in previous_green:
                 transition["previous_green_last_layer_type"] = str(previous_green["last_layer_type"])
+        transition["first_hidden_mismatch_focus"] = _transition_hidden_focus(summary, previous_green, first_hidden_mismatch)
         return transition
     return None
 

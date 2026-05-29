@@ -6371,6 +6371,16 @@ def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:
         "adjacent_layer_limits": True,
         "previous_green_layer_execution": None,
         "previous_green_last_layer_type": "linear_attention",
+        "first_hidden_mismatch_focus": {
+            "row": 1,
+            "flat_index": 1,
+            "index": [0, 1],
+            "failing_layer_limit": 2,
+            "failing_top_diff": failed["top_abs_diffs"][0],
+            "previous_green_layer_limit": 1,
+            "previous_green_same_flat_index_in_top_abs_diffs": False,
+            "previous_green_same_flat_index_top_diff": None,
+        },
     }
 
 
