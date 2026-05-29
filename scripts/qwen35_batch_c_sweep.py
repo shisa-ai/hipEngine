@@ -3016,20 +3016,32 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if entry.get("status") in {"failed", "skipped"}:
                 errors.append("commands[] failed/skipped row must be final when stop_on_failure is true")
                 break
+    status_counts = summary.get("status_counts")
+    if not _count_leaf_labels_within(status_counts, {"planned", "passed", "skipped", "failed"}):
+        errors.append("status_counts must contain only known command status labels")
     expected_status_counts = _status_counts(entries)
-    if not _typed_count_mapping_matches(summary.get("status_counts"), expected_status_counts):
+    if not _typed_count_mapping_matches(status_counts, expected_status_counts):
         errors.append("status_counts must match commands")
+    category_status_counts = summary.get("category_status_counts")
+    if not _count_leaf_labels_within(category_status_counts, {"planned", "passed", "skipped", "failed"}):
+        errors.append("category_status_counts must contain only known command status labels")
     expected_category_status_counts = _category_status_counts(entries)
-    if not _typed_count_mapping_matches(summary.get("category_status_counts"), expected_category_status_counts):
+    if not _typed_count_mapping_matches(category_status_counts, expected_category_status_counts):
         errors.append("category_status_counts must match commands")
     expected_status = _summary_status(entries)
     if summary.get("status") != expected_status:
         errors.append("status must match commands")
+    retained_precondition_counts = summary.get("retained_precondition_counts")
+    if not _count_leaf_labels_within(retained_precondition_counts, {"passed", "failed"}):
+        errors.append("retained_precondition_counts must contain only passed/failed status labels")
     expected_precondition_counts = _retained_precondition_counts(entries)
-    if not _typed_count_mapping_matches(summary.get("retained_precondition_counts"), expected_precondition_counts):
+    if not _typed_count_mapping_matches(retained_precondition_counts, expected_precondition_counts):
         errors.append("retained_precondition_counts must match commands.preconditions")
+    retained_postcondition_counts = summary.get("retained_postcondition_counts")
+    if not _count_leaf_labels_within(retained_postcondition_counts, {"passed", "failed"}):
+        errors.append("retained_postcondition_counts must contain only passed/failed status labels")
     expected_postcondition_counts = _retained_postcondition_counts(entries)
-    if not _typed_count_mapping_matches(summary.get("retained_postcondition_counts"), expected_postcondition_counts):
+    if not _typed_count_mapping_matches(retained_postcondition_counts, expected_postcondition_counts):
         errors.append("retained_postcondition_counts must match commands.postconditions")
     expected_failed_postconditions = _failed_postconditions(entries)
     if not _typed_json_like_matches(summary_failed_postconditions, expected_failed_postconditions):
@@ -3178,6 +3190,16 @@ def _typed_count_mapping_matches(actual: Any, expected: Mapping[str, Any]) -> bo
         if not isinstance(actual_value, int) or isinstance(actual_value, bool) or actual_value != expected_value:
             return False
     return True
+
+
+def _count_leaf_labels_within(actual: Any, allowed: set[str]) -> bool:
+    if not isinstance(actual, Mapping):
+        return True
+    if not actual:
+        return True
+    if all(isinstance(value, Mapping) for value in actual.values()):
+        return all(_count_leaf_labels_within(value, allowed) for value in actual.values())
+    return all(isinstance(key, str) and key in allowed for key in actual)
 
 
 def _status_counts(entries: Sequence[dict[str, Any]]) -> dict[str, int]:
