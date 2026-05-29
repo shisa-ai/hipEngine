@@ -47395,3 +47395,38 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: diagnostic env doc check PASS (`10` vars), verify count remains `12`, full guard PASS. Prompt-verifier self-check passes: no queue item was marked complete, the docs explicitly label these knobs non-retained diagnostics, and no performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY C2.3 blocker wording refresh
+
+Updated `docs/CONCURRENCY.md` to make the current C2.3 blocker match the latest hidden-bisect evidence: selected-c1 projection/state/output replay is the only green L8 c=2 linear control, and forcing selected-c1 MoE regresses that control, so the next fix is native linear-attention segmented conv/GDN/recurrent state plus native batched output projection parity rather than the older selected-MoE lane-map framing. No queue item was marked complete and no retained c>N performance/correctness claim was added.
+
+Validation:
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+text = Path('docs/CONCURRENCY.md').read_text()
+required = [
+    'C2.3 native linear-attention parity',
+    'selected-c1 projection/state/output controls isolate segmented',
+    'selected-c1 MoE regresses, so grouped-compact MoE is not the',
+    'C2.3 native linear-attention state/output parity',
+]
+for needle in required:
+    if needle not in text:
+        raise SystemExit(f'missing expected wording: {needle}')
+for stale in ['lane-map fix', 'selected-MoE c>N divergence', 'native full-attention/post-attention hidden drift', 'larger native-full drift']:
+    if stale in text:
+        raise SystemExit(f'stale wording remains: {stale}')
+print('concurrency-linear-parity-docs-ok', len(required))
+PY
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: docs wording check PASS (`concurrency-linear-parity-docs-ok 4`), verify count remains `12`, full guard PASS. Prompt-verifier self-check passes: completed items still have prior evidence, this change only keeps open items accurately framed, diagnostic artifacts remain non-retained, native generated-token equality remains open, and no scaling/performance claim was added.
