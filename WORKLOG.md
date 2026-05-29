@@ -47331,3 +47331,29 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (selected pytest suite plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no queue item was marked complete, the batch-GEMV output diagnostic artifact has `performance_claim=false` and `native_caware_decode=false`, native retained full generated-token equality remains open, and no performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY all-selected-c1 linear control
+
+Ran a fully selected-c1 decode-linear control using the existing diagnostic switches to check whether grouped-compact MoE explains the remaining exact-bit output drift in the non-retained green projection+state+output control.
+
+Command:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --batch-decode-moe-path selected_c1 --batch-decode-linear-projection-path selected_c1 --batch-decode-linear-state-path selected_c1 --batch-decode-linear-output-path selected_c1 --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-all-selected-c1-atol4e-3-focus1269.json > /tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-all-selected-c1-atol4e-3-focus1269.stdout
+```
+
+Result: `status=mismatch_found`, `failure_modes=["hidden"]`, `token_passed=true`, `performance_claim=false`, workload `native_caware_decode=false`. Decode blockers correctly include selected-c1 MoE plus selected-c1 projection/state/output diagnostics. Contrary to the grouped-compact selected-c1 projection+state+output control, all-selected-c1 MoE regresses to hidden-red: first hidden mismatch is decode step 6 / row 0 / flat index 1269 (`max_abs=0.02685546875`). First layer-0 exact output drift is smaller than grouped-compact (`bit_mismatch=284`, `max_abs=3.0517578125e-05`) but does not make the probe green. Conclusion: grouped-compact MoE is not the residual blocker and should remain the preferred MoE path while fixing linear-attention state/output native parity.
+
+Full validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (selected pytest suite plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no queue item was marked complete, the all-selected-c1 diagnostic artifact has `performance_claim=false` and `native_caware_decode=false`, native retained full generated-token equality remains open, and no performance/scaling claim was added.

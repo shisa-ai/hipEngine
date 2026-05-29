@@ -1217,10 +1217,15 @@ roll-up/status view.
       bypasses the row>1 AWQ prefill output kernel and reduces layer-0
       `out_proj` drift to one bit (`bit_mismatch=1`, `max_abs=2.384185791015625e-07`),
       but still eventually goes hidden red, so token-1 output projection is still
-      required for the non-retained green diagnostic. The next target is retained
-      parity for both native segmented conv/GDN/recurrent state and native
-      batched output projection; do not change paged-KV writer code yet. Do not
-      re-open
+      required for the non-retained green diagnostic. The all-selected-c1 control
+      at `/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-all-selected-c1-atol4e-3-focus1269.json`
+      forces selected-c1 MoE in addition to selected-c1 projection/state/output
+      and regresses to hidden red (`status=mismatch_found`, first hidden mismatch
+      step 6 / dim 1269), so grouped-compact MoE is not the residual blocker and
+      should remain the preferred MoE path while fixing linear-attention parity.
+      The next target is retained parity for both native segmented conv/GDN/
+      recurrent state and native batched output projection; do not change
+      paged-KV writer code yet. Do not re-open
       context softmax math, row setup, native linear segment metadata,
       output trace/copy semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
