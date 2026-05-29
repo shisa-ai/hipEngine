@@ -648,7 +648,12 @@ roll-up/status view.
       `correctness.first_hidden_mismatch`; that trace shows native batch
       full-attention at layer 3 and grouped-compact MoE on all six decoded
       layers, keeping C2.3 focused on the linear-attention+MoE layer rather than
-      sampler, selected-c1 fallback, or split-K paths.
+      sampler, selected-c1 fallback, or split-K paths. The follow-up artifact
+      `/tmp/hipengine-hidden-bisect-L6-512-1-maxdim.json` uses the richer hidden
+      comparison schema and localizes the top row-0 difference to hidden dim
+      1269 (`batch=0.8564453125`, `c1=0.85498046875`, signed diff
+      `+0.00146484375`), giving the next lane-map fix a stable coordinate to
+      inspect across selected-MoE/grouped-MoE substage traces.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

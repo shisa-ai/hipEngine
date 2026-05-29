@@ -81,12 +81,32 @@ def _fp16_bits_to_f32(bits: np.ndarray) -> np.ndarray:
 def hidden_comparison(batch_bits: np.ndarray, c1_bits: np.ndarray, *, atol: float) -> dict[str, Any]:
     if batch_bits.shape != c1_bits.shape:
         raise ValueError(f"hidden shapes differ: batch={batch_bits.shape!r} c1={c1_bits.shape!r}")
-    diff = np.abs(_fp16_bits_to_f32(batch_bits) - _fp16_bits_to_f32(c1_bits))
+    batch_f32 = _fp16_bits_to_f32(batch_bits)
+    c1_f32 = _fp16_bits_to_f32(c1_bits)
+    signed_diff = batch_f32 - c1_f32
+    diff = np.abs(signed_diff)
     bit_mismatch = int(np.count_nonzero(np.asarray(batch_bits, dtype=np.uint16) != np.asarray(c1_bits, dtype=np.uint16)))
     max_abs = float(diff.max(initial=0.0))
+    if diff.size:
+        max_abs_flat_index = int(np.argmax(diff))
+        max_abs_index = [int(index) for index in np.unravel_index(max_abs_flat_index, diff.shape)]
+        batch_value = float(batch_f32.flat[max_abs_flat_index])
+        c1_value = float(c1_f32.flat[max_abs_flat_index])
+        max_signed_diff = float(signed_diff.flat[max_abs_flat_index])
+    else:
+        max_abs_flat_index = None
+        max_abs_index = []
+        batch_value = 0.0
+        c1_value = 0.0
+        max_signed_diff = 0.0
     return {
         "shape": list(batch_bits.shape),
         "max_abs": max_abs,
+        "max_abs_flat_index": max_abs_flat_index,
+        "max_abs_index": max_abs_index,
+        "batch_value_at_max_abs": batch_value,
+        "c1_value_at_max_abs": c1_value,
+        "signed_diff_at_max_abs": max_signed_diff,
         "mean_abs": float(diff.mean()) if diff.size else 0.0,
         "bit_mismatch": bit_mismatch,
         "passed": bool(max_abs <= float(atol)),
@@ -105,6 +125,11 @@ def _first_hidden_mismatch(layer_summaries: Sequence[dict[str, Any]]) -> dict[st
                         "generated_index": int(step["generated_index"]),
                         "row": int(row["row"]),
                         "max_abs": float(comparison.get("max_abs", 0.0)),
+                        "max_abs_flat_index": comparison.get("max_abs_flat_index"),
+                        "max_abs_index": comparison.get("max_abs_index", []),
+                        "batch_value_at_max_abs": float(comparison.get("batch_value_at_max_abs", 0.0)),
+                        "c1_value_at_max_abs": float(comparison.get("c1_value_at_max_abs", 0.0)),
+                        "signed_diff_at_max_abs": float(comparison.get("signed_diff_at_max_abs", 0.0)),
                         "bit_mismatch": int(comparison.get("bit_mismatch", 0)),
                     }
                     if "last_layer_index" in summary:
