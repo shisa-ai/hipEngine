@@ -1192,9 +1192,16 @@ roll-up/status view.
       `qkv` projection (`bit_mismatch=622`, `max_abs=0.0078125`, flat index
       2274) while layer-0 `attn_input` is still exact; downstream `z`,
       `conv_out`, `recurrent_out`, `out_proj`, residual/MLP/output then drift.
-      The next target is a minimal native `batch_segments` vs token-1 projection
-      replay/fix for the layer-0 linear-attention QKV/Z projection; do not
-      change paged-KV writer code yet. Do not re-open
+      The selected-c1 projection replay at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-selected-c1-projection-atol4e-3-focus1269.json`
+      forces token-1 QKV/Z/A/B projections before native segmented state
+      updates and marks `native_caware_decode=false`; it eliminates layer-0
+      QKV/Z drift, shifting the first layer-0 stage mismatch to
+      `recurrent_out` (`bit_mismatch=4096`, `max_abs=2.7936763763427734`), so
+      the remaining native red is in segmented conv/GDN/recurrent state update
+      rather than projection, copy, or MoE. The next target is a minimal native
+      `batch_segments` vs token-1 conv/GDN/recurrent-state replay/fix for
+      layer-0; do not change paged-KV writer code yet. Do not re-open
       context softmax math, row setup, native linear segment metadata,
       output trace/copy semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2

@@ -7,7 +7,7 @@ import os
 from typing import Callable, Sequence
 
 from hipengine.core.dtype import DType
-from hipengine.core.hip import HipRuntime, get_hip_runtime
+from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.rocblas import rocblas_gemm_ex_rowmajor_nt_fp16_compute_f32
 from hipengine.core.tensor import Tensor
 from hipengine.dispatch import (
@@ -2599,6 +2599,119 @@ class Qwen35ParoDecodeState:
             tensor.device,
         )
 
+    def _decode_row_linear_attention_projection_scratch(
+        self,
+        hidden: Tensor,
+        scratch: Qwen35ParoLinearAttentionScratch,
+        row: int,
+    ) -> Qwen35ParoLinearAttentionScratch:
+        """Return row-local token-1 projection scratch for c>N linear decode.
+
+        The token-1 linear-attention projection kernels write packed [qkv,z] and
+        [a,b] rows, while the native segmented conv/GDN path consumes planar
+        batch buffers.  Use a one-row temporary projection scratch and copy the
+        resulting qkv/z/a/b rows into the batch-shaped scratch before native
+        segmented state updates.
+        """
+
+        cfg = self.config
+        lowp = scratch.attn_input.dtype
+        qkv_width = _linear_qkv_width(cfg)
+        z_width = _linear_value_width(cfg)
+        qkv_z = self.workspace.reserve_tensor("linear_attn.decode_row.qkv_z", (1, qkv_width + z_width), lowp)
+        qkv = Tensor.from_handle(qkv_z.ptr, (1, qkv_width), lowp, qkv_z.device)
+        z = Tensor.from_handle(qkv_z.ptr + qkv_width * lowp.itemsize, (1, z_width), lowp, qkv_z.device)
+        ab = self.workspace.reserve_tensor("linear_attn.decode_row.ab", (1, 2 * cfg.linear_num_value_heads), lowp)
+        a = Tensor.from_handle(ab.ptr, (1, cfg.linear_num_value_heads), lowp, ab.device)
+        b = Tensor.from_handle(
+            ab.ptr + cfg.linear_num_value_heads * lowp.itemsize,
+            (1, cfg.linear_num_value_heads),
+            lowp,
+            ab.device,
+        )
+        return Qwen35ParoLinearAttentionScratch(
+            attn_input=self._row_tensor_view(hidden, row),
+            qkv_rot=self.workspace.reserve_tensor("linear_attn.decode_row.qkv_rot", (1, cfg.hidden_size), lowp),
+            z_rot=self.workspace.reserve_tensor("linear_attn.decode_row.z_rot", (1, cfg.hidden_size), lowp),
+            rotate_fuse_barrier=self.workspace.reserve_tensor("linear_attn.decode_row.rotate_fuse_barrier", (2,), DType.INT32),
+            qkv_z=qkv_z,
+            qkv=qkv,
+            z=z,
+            qkv_f32=self._row_tensor_view(scratch.qkv_f32, row),
+            ab=ab,
+            a=a,
+            b=b,
+            conv_out=self._row_tensor_view(scratch.conv_out, row),
+            prefill_query=self._row_tensor_view(scratch.prefill_query, row),
+            prefill_key=self._row_tensor_view(scratch.prefill_key, row),
+            prefill_value=self._row_tensor_view(scratch.prefill_value, row),
+            prefill_beta=self._row_tensor_view(scratch.prefill_beta, row),
+            prefill_decay=self._row_tensor_view(scratch.prefill_decay, row),
+            recurrent_out=self._row_tensor_view(scratch.recurrent_out, row),
+            recurrent_bf16=self._row_tensor_view(scratch.recurrent_bf16, row),
+            out_rot=self._row_tensor_view(scratch.out_rot, row),
+            out_proj=self._row_tensor_view(scratch.out_proj, row),
+        )
+
+    def project_linear_attention_decode_rows_fp16(
+        self,
+        hidden: Tensor,
+        scratch: Qwen35ParoLinearAttentionScratch,
+        *,
+        tokens: int,
+        group_size: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        """Replay linear-attention decode projections with the token-1 path.
+
+        This is a diagnostic bridge for c>N decode: projections use c1 kernels
+        row by row, then the native segmented conv/GDN kernels consume the
+        reconstructed batch-shaped qkv/z/a/b buffers.
+        """
+
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        runtime = self.runtime or get_hip_runtime()
+        for row in range(tokens):
+            row_scratch = self._decode_row_linear_attention_projection_scratch(hidden, scratch, row)
+            self.rotate_linear_attention_inputs_fp16(
+                row_scratch.attn_input,
+                row_scratch,
+                tokens=1,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+            self.project_linear_attention_qkv_z_fp16(
+                row_scratch,
+                tokens=1,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+            self.project_linear_attention_ab_fp16(
+                row_scratch.attn_input,
+                row_scratch,
+                tokens=1,
+                library=library,
+                stream=stream,
+            )
+            for dst, src in (
+                (self._row_tensor_view(scratch.qkv, row), row_scratch.qkv),
+                (self._row_tensor_view(scratch.z, row), row_scratch.z),
+                (self._row_tensor_view(scratch.a, row), row_scratch.a),
+                (self._row_tensor_view(scratch.b, row), row_scratch.b),
+            ):
+                runtime.memcpy_async(
+                    dst.ptr,
+                    src.ptr,
+                    src.numel * src.dtype.itemsize,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+        return scratch.qkv, scratch.z, scratch.a, scratch.b
+
     def _decode_row_full_attention_scratch(
         self,
         scratch: Qwen35ParoAttentionScratch,
@@ -4822,13 +4935,24 @@ class Qwen35ParoDecodeState:
         scratch: Qwen35ParoLinearAttentionScratch | None = None,
         tokens: int,
         group_size: int = 128,
+        force_selected_c1_projections: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
         scratch = scratch or self.reserve_linear_attention_scratch(tokens=tokens, activation_dtype=DType.FP16)
-        self.rotate_linear_attention_inputs_fp16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
-        self.project_linear_attention_qkv_z_fp16(scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
-        self.project_linear_attention_ab_fp16(hidden, scratch, tokens=tokens, library=library, stream=stream)
+        if force_selected_c1_projections:
+            self.project_linear_attention_decode_rows_fp16(
+                hidden,
+                scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        else:
+            self.rotate_linear_attention_inputs_fp16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
+            self.project_linear_attention_qkv_z_fp16(scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
+            self.project_linear_attention_ab_fp16(hidden, scratch, tokens=tokens, library=library, stream=stream)
         return self.run_linear_attention_prefill_conv_gdn_segments_fp16(
             scratch,
             conv_state=conv_state,
@@ -4853,6 +4977,7 @@ class Qwen35ParoDecodeState:
         scratch: Qwen35ParoLinearAttentionScratch | None = None,
         tokens: int,
         group_size: int = 128,
+        force_selected_c1_projections: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -4867,6 +4992,7 @@ class Qwen35ParoDecodeState:
             scratch=scratch,
             tokens=tokens,
             group_size=group_size,
+            force_selected_c1_projections=force_selected_c1_projections,
             library=library,
             stream=stream,
         )
@@ -5165,6 +5291,7 @@ class Qwen35ParoDecodeState:
         tokens: int,
         group_size: int = 128,
         force_selected_c1_moe: bool = False,
+        force_selected_c1_linear_projections: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -5193,6 +5320,7 @@ class Qwen35ParoDecodeState:
             scratch=linear_scratch,
             tokens=tokens,
             group_size=group_size,
+            force_selected_c1_projections=force_selected_c1_linear_projections,
             library=library,
             stream=stream,
         )

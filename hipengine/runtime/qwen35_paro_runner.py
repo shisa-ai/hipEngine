@@ -3819,6 +3819,9 @@ class Qwen35ParoResidentSession:
         native_full_attention_layers = 0
         dense_mlp = int(getattr(self.config, "num_experts", 1) or 0) <= 0
         force_selected_c1_moe = (not dense_mlp) and rows > 1 and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE")
+        force_selected_c1_linear_projections = rows > 1 and _env_flag(
+            "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_PROJECTIONS"
+        )
         force_per_row_linear = _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR")
         force_per_row_full_attention_input = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"
@@ -3920,6 +3923,7 @@ class Qwen35ParoResidentSession:
                             moe_scratch=moe_scratch,
                             tokens=rows,
                             force_selected_c1_moe=force_selected_c1_moe,
+                            force_selected_c1_linear_projections=force_selected_c1_linear_projections,
                             library=self.libraries,
                             stream=stream,
                         )
@@ -3951,7 +3955,10 @@ class Qwen35ParoResidentSession:
                                     for row, slot in enumerate(slots)
                                 ],
                                 "full_attention_decode_path": "not_applicable",
-                                "native_caware_decode": not force_selected_c1_moe,
+                                "native_caware_decode": not (force_selected_c1_moe or force_selected_c1_linear_projections),
+                                "linear_attention_projection_path": (
+                                    "selected_c1_forced" if force_selected_c1_linear_projections else "native_batch"
+                                ),
                                 "moe_decode_path": layer_moe_path,
                             }
                         )
@@ -4185,6 +4192,8 @@ class Qwen35ParoResidentSession:
             decode_blockers: list[str] = []
             if force_selected_c1_moe:
                 decode_blockers.append("MoE decode forced to selected-c1 diagnostic path")
+            if force_selected_c1_linear_projections:
+                decode_blockers.append("linear-attention projections forced to selected-c1 diagnostic path")
             if force_per_row_linear:
                 decode_blockers.append("linear-attention decode forced to per-row diagnostic path")
                 if not dense_mlp and rows > 1:
@@ -4214,6 +4223,7 @@ class Qwen35ParoResidentSession:
                 "full_attention_decode_path": full_attention_decode_path,
                 "native_caware_decode": full_attention_decode_path not in {"per_row_splitk_fallback", "per_row_context_fallback"}
                 and not force_selected_c1_moe
+                and not force_selected_c1_linear_projections
                 and not force_per_row_linear
                 and not force_per_row_full_attention_input
                 and not force_per_row_post_attention,

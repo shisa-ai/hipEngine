@@ -47195,3 +47195,37 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (selected pytest suite plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no queue item was marked complete, the linear-stage trace artifact has `performance_claim=false`, native full generated-token equality remains open, and no performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY selected-c1 linear projection replay
+
+Added a diagnostic decode-linear projection path guarded by `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_PROJECTIONS` / `--batch-decode-linear-projection-path selected_c1`. The path runs token-1 QKV/Z/A/B projections row-by-row, copies planar QKV/Z/A/B rows back into the batch scratch, then continues through native segmented conv/GDN/recurrent updates and grouped-compact MoE. Runner and hidden-bisect metadata mark this path as `native_caware_decode=false` and record `linear_attention_projection_path=selected_c1_forced` to avoid retained-claim leakage.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_dry_run_records_layer_commands -q
+```
+
+Result: PASS.
+
+Refreshed L8 selected-c1 projection replay:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --batch-decode-linear-projection-path selected_c1 --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-selected-c1-projection-atol4e-3-focus1269.json > /tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-selected-c1-projection-atol4e-3-focus1269.stdout
+```
+
+Result: `status=mismatch_found`, `failure_modes=["hidden"]`, `performance_claim=false`, workload `native_caware_decode=false`, and decode blocker `linear-attention projections forced to selected-c1 diagnostic path`. The replay eliminates the prior layer-0 QKV/Z projection drift: first layer-0 stage mismatch shifts to `recurrent_out` with `bit_mismatch=4096`, `max_abs=2.7936763763427734`, flat index 3119. Later layers still show `attn_input`/`qkv` drift as downstream consequences once layer-0 output is no longer exact. This confirms the remaining native red is in segmented conv/GDN/recurrent state update, not projection layout, output copy, or MoE reduction.
+
+Full validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (selected pytest suite plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no queue item was marked complete, the selected-c1 projection replay artifact has `performance_claim=false` and `native_caware_decode=false`, native full generated-token equality remains open, and no performance/scaling claim was added.
