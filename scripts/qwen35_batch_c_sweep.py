@@ -2730,17 +2730,19 @@ def _validate_run_options(args: argparse.Namespace) -> None:
         if not str(getattr(args, option)):
             flag = "--" + option.replace("_", "-")
             raise ValueError(f"{flag} must be a non-empty string")
-    if int(args.seed) != _REQUIRED_PRIMITIVE_CORRECTNESS_SEED:
-        raise ValueError("--seed must match required primitive correctness seed")
+    if not isinstance(args.seed, int) or isinstance(args.seed, bool) or args.seed != _REQUIRED_PRIMITIVE_CORRECTNESS_SEED:
+        raise ValueError("--seed must be typed int 1234")
     for option, minimum in (
         ("prompt_length", 1),
         ("decode_tokens", 1),
         ("warmup_decode_tokens", 0),
         ("max_layers", 1),
     ):
-        value = int(getattr(args, option))
+        value = getattr(args, option)
+        flag = "--" + option.replace("_", "-")
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise ValueError(f"{flag} must be a typed integer")
         if value < minimum:
-            flag = "--" + option.replace("_", "-")
             qualifier = "non-negative" if minimum == 0 else "positive"
             raise ValueError(f"{flag} must be {qualifier}")
     _validate_cli_path_option("--output-dir", args.output_dir)

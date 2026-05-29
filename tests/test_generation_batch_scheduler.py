@@ -1935,8 +1935,17 @@ def test_batch_c_sweep_rejects_wrong_seed_before_creating_artifacts(tmp_path: Pa
         lambda *args, **kwargs: pytest.fail("wrong-seed sweep should fail before launching subprocesses"),
     )
 
-    with pytest.raises(ValueError, match="--seed must match required primitive correctness seed"):
+    with pytest.raises(ValueError, match="--seed must be typed int 1234"):
         run_sweep(args)
+
+    assert not output_dir.exists()
+
+    typed_args = build_c_sweep_parser().parse_args(
+        ["--dry-run", "--batch-sizes", "2", "--output-dir", str(output_dir)]
+    )
+    typed_args.seed = 1234.0
+    with pytest.raises(ValueError, match="--seed must be typed int 1234"):
+        run_sweep(typed_args)
 
     assert not output_dir.exists()
 
@@ -2103,7 +2112,7 @@ def test_batch_c_sweep_main_reports_invalid_run_preflight(tmp_path: Path, monkey
 
     captured = capsys.readouterr()
     assert rc == 1
-    assert "invalid c-sweep run: --seed must match required primitive correctness seed" in captured.err
+    assert "invalid c-sweep run: --seed must be typed int 1234" in captured.err
     assert not output_dir.exists()
 
 
@@ -2126,6 +2135,14 @@ def test_batch_c_sweep_rejects_invalid_shape_before_creating_artifacts(tmp_path:
         with pytest.raises(ValueError, match=expected):
             run_sweep(args)
         assert not output_dir.exists()
+
+    typed_args = build_c_sweep_parser().parse_args(
+        ["--dry-run", "--batch-sizes", "2", "--prompt-length", "16", "--output-dir", str(tmp_path / "typed-shape")]
+    )
+    typed_args.prompt_length = 16.0
+    with pytest.raises(ValueError, match="--prompt-length must be a typed integer"):
+        run_sweep(typed_args)
+    assert not (tmp_path / "typed-shape").exists()
 
 
 def test_batch_c_sweep_rejects_empty_model_fixture_before_creating_artifacts(tmp_path: Path, monkeypatch) -> None:

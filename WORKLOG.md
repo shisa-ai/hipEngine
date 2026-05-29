@@ -42171,3 +42171,30 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
 ```
+
+## 2026-05-29 — CONCURRENCY c-sweep typed pre-run shape options
+
+Hardened c-sweep pre-run validation without closing a queue item or adding a retained c>N performance claim:
+
+- Updated `scripts/qwen35_batch_c_sweep.py` so `--seed` must be typed int `1234`, and workload-shape args (`--prompt-length`, `--decode-tokens`, `--warmup-decode-tokens`, `--max-layers`) must be typed integers before artifact creation.
+- Extended `tests/test_generation_batch_scheduler.py` coverage with direct-Namespace `seed=1234.0` and `prompt_length=16.0` tamper cases plus updated CLI preflight error assertions.
+- Updated `docs/CONCURRENCY.md` P1 progress text to call out typed deterministic-seed/workload-shape pre-run evidence.
+- No queue status changed and no retained c>N performance/scaling claim was added.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -k 'batch_c_sweep_rejects_wrong_seed_before_creating_artifacts or batch_c_sweep_main_reports_invalid_run_preflight or batch_c_sweep_rejects_invalid_shape_before_creating_artifacts' -q
+# 3 passed
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -q
+# passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
+```
