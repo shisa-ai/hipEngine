@@ -2422,6 +2422,10 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
     tampered_skipped_output_tail["commands"][-1]["output_tail"] = "different failure reason"
     with pytest.raises(ValueError, match=r"commands\[\]\.output_tail must match skipped precondition reason"):
         c_sweep.validate_sweep_summary(tampered_skipped_output_tail)
+    tampered_singular_precondition_type = json.loads(json.dumps(persisted))
+    tampered_singular_precondition_type["commands"][-1]["precondition"]["passed"] = 0
+    with pytest.raises(ValueError, match=r"commands\[\]\.precondition must match the first failed precondition"):
+        c_sweep.validate_sweep_summary(tampered_singular_precondition_type)
     tampered_skipped_failed_precondition = json.loads(json.dumps(persisted))
     for precondition in tampered_skipped_failed_precondition["commands"][-1]["preconditions"]:
         precondition["passed"] = True
@@ -5083,6 +5087,10 @@ def test_batch_c_sweep_fails_retained_row_on_profiler_synthesis_mismatch(tmp_pat
     tampered_failed_postcondition_batch_type["failed_postconditions"][0]["batch_size"] = 2.0
     with pytest.raises(ValueError, match="failed_postconditions must match commands.postconditions"):
         c_sweep.validate_sweep_summary(tampered_failed_postcondition_batch_type)
+    tampered_singular_postcondition_type = json.loads(json.dumps(summary))
+    tampered_singular_postcondition_type["commands"][-1]["postcondition"]["passed"] = 0
+    with pytest.raises(ValueError, match=r"commands\[\]\.postcondition must match the first failed postcondition"):
+        c_sweep.validate_sweep_summary(tampered_singular_postcondition_type)
     tampered_singular_postcondition = json.loads(json.dumps(summary))
     tampered_singular_postcondition["commands"][-1].pop("postcondition")
     with pytest.raises(ValueError, match=r"commands\[\]\.postcondition must match"):

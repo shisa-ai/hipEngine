@@ -2621,7 +2621,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 if not failed_preconditions:
                     errors.append("commands[].precondition must identify a failed precondition for skipped rows")
                     break
-                if entry.get("precondition") != failed_preconditions[0]:
+                if not _typed_json_like_matches(entry.get("precondition"), failed_preconditions[0]):
                     errors.append("commands[].precondition must match the first failed precondition")
                     break
                 if entry.get("output_tail") != failed_preconditions[0].get("reason"):
@@ -2681,7 +2681,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 for precondition in preconditions
                 if isinstance(precondition, dict) and precondition.get("passed") is not True
             ]
-            if failed_preconditions and entry.get("precondition") != failed_preconditions[0]:
+            if failed_preconditions and not _typed_json_like_matches(entry.get("precondition"), failed_preconditions[0]):
                 errors.append("commands[].precondition must match the first failed precondition")
                 break
             if not failed_preconditions and "precondition" in entry:
@@ -2701,7 +2701,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             for postcondition in postconditions
             if isinstance(postcondition, dict) and postcondition.get("passed") is not True
         ]
-        if failed_postconditions and entry.get("postcondition") != failed_postconditions[0]:
+        if failed_postconditions and not _typed_json_like_matches(entry.get("postcondition"), failed_postconditions[0]):
             errors.append("commands[].postcondition must match the first failed postcondition")
             break
         if failed_postconditions and entry.get("output_tail") != str(failed_postconditions[0].get("reason")):
