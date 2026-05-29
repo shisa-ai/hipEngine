@@ -707,7 +707,17 @@ roll-up/status view.
       `native_full_attention_layers=0`, and again preserves the L6 row-0
       dim-1269 hidden failure (`max_abs=0.00146484375`, no token mismatch), so
       the reduced failure is not cleared by replacing the native batch
-      full-attention layer either.
+      full-attention layer either. Two tolerance probes then bracket the scale
+      of the drift without changing the retained correctness gate:
+      `/tmp/hipengine-hidden-bisect-L5-L6-512-1-atol2e-3.json` passes L5/L6 at
+      `hidden_atol=0.002` (`status=eq_ok`, no token mismatch, L6 row-0 dim
+      1269 still the top diff at `0.00146484375`), while
+      `/tmp/hipengine-hidden-bisect-L1-8-512-1-atol2e-3.json` first fails at
+      layer-limit 8 on the same row/dim after the next full-attention layer
+      (`max_abs=0.002197265625`, previous-green layer-limit 7 has
+      `max_abs=0.001953125`, no token mismatch). That means the strict 1e-3 L6
+      report is a small BF16-scale drift, but it monotonically grows enough by
+      L8 to remain a real hidden-state blocker before full 40-layer equality.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

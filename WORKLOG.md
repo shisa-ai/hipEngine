@@ -44533,3 +44533,21 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
 ```
+
+## 2026-05-29 — CONCURRENCY hidden-atol tolerance bracket
+
+Advanced C2.3 with a tolerance-bracketing diagnostic rather than changing the retained correctness gate. The L6 row-0 dim-1269 failure had survived selected-c1 MoE, per-row linear-attention, and per-row full-attention substitution, so I re-ran the hidden-bisection harness at `hidden_atol=0.002` to determine whether the first red L6 point is a strict `1e-3` diagnostic artifact or an immediately larger hidden-state divergence.
+
+Commands:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 1 --max-layers 8 --layer-limits 5,6 --max-sequence-length 1024 --hidden-atol 0.002 --json /tmp/hipengine-hidden-bisect-L5-L6-512-1-atol2e-3.json
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 1 --max-layers 8 --layer-limits 1-8 --max-sequence-length 1024 --hidden-atol 0.002 --json /tmp/hipengine-hidden-bisect-L1-8-512-1-atol2e-3.json
+```
+
+Results:
+
+- `/tmp/hipengine-hidden-bisect-L5-L6-512-1-atol2e-3.json`: `status=eq_ok`, `correctness.passed=true`, `hidden_atol=0.002`, `first_hidden_mismatch=null`, `first_token_mismatch=null`. L6 row 0 still has dim 1269 as the top diff, but `max_abs=0.00146484375` and `elements_over_atol=0` under the wider tolerance.
+- `/tmp/hipengine-hidden-bisect-L1-8-512-1-atol2e-3.json`: `status=mismatch_found`, `correctness.passed=false`, `hidden_atol=0.002`, with first hidden mismatch at layer-limit 8 / last layer 7 (`full_attention`), row 0, dim 1269, `max_abs=0.002197265625`, `batch=0.44140625`, `c1=0.439208984375`, `elements_over_atol=1`, `first_token_mismatch=null`. The adjacent previous-green layer-limit 7 has the same row/dim as its top diff at `max_abs=0.001953125`, still within `0.002`.
+
+Interpretation: the strict `1e-3` L6 artifact is BF16-scale rather than a large row-mixing failure, but the same row/dim drift grows through L7 and crosses `2e-3` at L8. C2.3 remains open; next useful fixes should inspect accumulated state/residual normalization around dim 1269 across the L6→L8 transition instead of continuing one-off path substitution.
