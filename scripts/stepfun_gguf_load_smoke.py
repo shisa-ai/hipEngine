@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+"""StepFun split-GGUF resident load smoke for Strix Halo/GTT validation."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import resource
+import sys
+import time
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from hipengine.core.hip import HipError, get_hip_runtime
+from hipengine.core.memory import memory_stats, reset_memory_stats
+from hipengine.loading.gguf import scan_gguf_splits
+from hipengine.loading.stepfun_gguf import build_stepfun_gguf_tensor_map
+from hipengine.loading.stepfun_gguf_materialize import (
+    materialize_stepfun_gguf_weights,
+    plan_stepfun_gguf_materialization,
+)
+
+DEFAULT_MODEL_DIR = Path("/data/models/gguf")
+DEFAULT_PATTERN = "Step-3.7-flash-Q3_K_L-*.gguf"
+BOOT_CONFIG = Path("/etc/modprobe.d/amdgpu_llm_optimized.conf")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--model-dir", type=Path, default=DEFAULT_MODEL_DIR)
+    parser.add_argument("--pattern", default=DEFAULT_PATTERN)
+    parser.add_argument(
+        "--selected-slot",
+        action="append",
+        default=None,
+        help="Optional StepFun slot path to load; repeat for selected-slot smoke. Omit to load all weights.",
+    )
+    parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output")
+    args = parser.parse_args(argv)
+
+    paths = tuple(sorted(args.model_dir.glob(args.pattern)))
+    if not paths:
+        raise FileNotFoundError(f"no GGUF shards matching {args.model_dir / args.pattern}")
+
+    runtime = get_hip_runtime()
+    started = time.perf_counter()
+    snapshots: list[dict[str, object]] = []
+
+    def snap(label: str) -> dict[str, object]:
+        free_bytes, total_bytes = runtime.mem_get_info()
+        stats = memory_stats()
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+        row = {
+            "label": label,
+            "hip_free_bytes": int(free_bytes),
+            "hip_total_bytes": int(total_bytes),
+            "hip_free_gib": free_bytes / 2**30,
+            "hip_total_gib": total_bytes / 2**30,
+            "hipengine_memory_stats": stats,
+            "max_rss_kib": int(usage.ru_maxrss),
+            "elapsed_s": time.perf_counter() - started,
+        }
+        snapshots.append(row)
+        print(f"[{label}] hip_free={row['hip_free_gib']:.3f} GiB hip_total={row['hip_total_gib']:.3f} GiB", file=sys.stderr, flush=True)
+        return row
+
+    reset_memory_stats()
+    snap("before_scan")
+    info = scan_gguf_splits(paths)
+    model_map = build_stepfun_gguf_tensor_map(info)
+    plan = plan_stepfun_gguf_materialization(model_map)
+    snap("after_plan")
+
+    selected_slots = None if args.selected_slot is None else tuple(args.selected_slot)
+    weights = None
+    status = "unknown"
+    error: dict[str, object] | None = None
+    try:
+        print(
+            f"[load_start] tensors={len(plan.specs)} bytes={plan.total_nbytes} selected={selected_slots}",
+            file=sys.stderr,
+            flush=True,
+        )
+        weights = materialize_stepfun_gguf_weights(
+            info,
+            selected_slots=selected_slots,
+            runtime=runtime,
+        )
+        snap("after_load")
+        status = "loaded"
+    except HipError as exc:
+        status = "hip_error"
+        error = {"type": type(exc).__name__, "message": str(exc), "code": exc.code}
+        snap("after_error")
+    except Exception as exc:  # pragma: no cover - diagnostic path
+        status = "error"
+        error = {"type": type(exc).__name__, "message": str(exc)}
+        snap("after_error")
+    finally:
+        if weights is not None:
+            weights.free(runtime=runtime)
+            runtime.device_synchronize()
+            snap("after_free")
+
+    result = {
+        "status": status,
+        "error": error,
+        "model_dir": str(args.model_dir),
+        "pattern": args.pattern,
+        "paths": [str(path) for path in paths],
+        "split_count": info.split_count,
+        "tensor_count": len(info.tensors),
+        "plan_tensor_count": len(plan.specs),
+        "plan_total_nbytes": plan.total_nbytes,
+        "plan_total_gib": plan.total_nbytes / 2**30,
+        "quant_counts": dict(plan.quant_counts),
+        "selected_slots": selected_slots,
+        "loaded_weight_count": 0 if weights is None else len(weights.weights),
+        "loaded_nbytes": 0 if weights is None else weights.allocated_nbytes,
+        "boot_config_path": str(BOOT_CONFIG),
+        "boot_config_text": BOOT_CONFIG.read_text() if BOOT_CONFIG.exists() else None,
+        "snapshots": snapshots,
+    }
+    print(json.dumps(result, indent=2 if args.pretty else None, sort_keys=True))
+    return 0 if status == "loaded" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

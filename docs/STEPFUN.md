@@ -299,14 +299,15 @@ decode is correct.
   `python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"`,
   `amdgpu-arch` or `/opt/rocm/bin/amdgpu-arch`, and
   `rocminfo | grep -E 'Name:|gfx'`.
-- [~] Record HIP-visible total/free memory after a clean boot and after loading
+- [x] Record HIP-visible total/free memory after a clean boot and after loading
   the GGUF shards. If full-model load fails, keep the failure as evidence and
   fall back to slice/layer correctness until offload/tiering exists. 2026-05-29
-  update: the box is booted with `amdgpu gttsize=120000` and
-  `ttm pages_limit=31457280` (~120 GiB GTT), so prior `hipMemGetInfo`
-  inconsistencies and `rocm-smi VIS_VRAM Total=512 MiB` are not treated as hard
-  fit blockers. Validate with a real allocation/load attempt when the runner is
-  wired.
+  update: with `amdgpu gttsize=120000` and `ttm pages_limit=31457280`,
+  `python3 scripts/stepfun_gguf_load_smoke.py --pretty` successfully loaded all
+  754 resident weight tensors (`102,499,149,312` bytes / `95.4598 GiB`) in 754
+  HIP allocations. `hipMemGetInfo` remains internally inconsistent
+  (`total=62.5409 GiB`) but usable free memory dropped from `119.9961 GiB` to
+  `23.9061 GiB` after load and returned to `119.8573 GiB` after free.
 - [x] Record exact GGUF paths and byte sizes for all three shards; do not copy or
   rewrite the 102.50 GB assets into the repo.
 - [x] Establish a llama.cpp oracle command for tokenization and short greedy
@@ -521,16 +522,16 @@ next-token/logit parity remains open until the streaming runner is wired.
 > real allocations; do not block implementation solely on those readouts.
 
 - [ ] Load all three GGUF shards on the Strix Halo target with a small context
-  and `max_new_tokens` (for example 1-8). 2026-05-29: full generation not
-  attempted yet because resident Step execution is not wired. The resident
-  materialization layer can plan all 754 split-shard tensors and selected-slot
-  HIP loads now pass; full-model allocation/load evidence remains to be captured
-  under the configured 120 GB GTT setup.
+  and `max_new_tokens` (for example 1-8). 2026-05-29: resident weight load now
+  succeeds for all 754 tensors / `95.4598 GiB` under the configured 120 GB GTT;
+  full generation is still open because resident Step execution, KV allocation,
+  and logits are not wired yet.
 - [ ] Record HIP-visible memory before load, after load, after KV allocation, and
-  after generation; include UMA/GTT setting and backend (`hip_gfx1151`). Current
-  preflight evidence to reconcile: `hipMemGetInfo free=119.996 GiB,total=62.541
-  GiB`, `rocm-smi VIS_VRAM Total=512 MiB,Used=416.6 MiB`, and boot config
-  `amdgpu gttsize=120000`, `ttm pages_limit=31457280`.
+  after generation; include UMA/GTT setting and backend (`hip_gfx1151`). Weight
+  load evidence from `scripts/stepfun_gguf_load_smoke.py`: before scan/free
+  `119.9961 GiB`, after resident weight load `23.9061 GiB`, after free
+  `119.8573 GiB`; hipEngine allocation stats peaked at `102,499,149,312` bytes
+  across 754 allocations. KV and generation snapshots remain open.
 - [x] If the model does not fit, keep the failure artifact and decide between
   offload/tiering, lower context/KV footprint, or slice-only correctness. No
   current fit failure is claimed from VIS_VRAM/`hipMemGetInfo` alone; decision

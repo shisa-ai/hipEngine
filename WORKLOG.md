@@ -27042,3 +27042,22 @@ python3 -m pytest -q tests/test_stepfun_materialize.py
 ```
 
 Result: `4 passed`. This is an implementation step toward P11/P12 resident execution; it does not claim full-model generation or throughput. Full 95.46 GiB allocation/load still needs to be attempted once the execution path is ready or through a dedicated load smoke.
+
+## 2026-05-29 — StepFun full resident weight load smoke
+
+Ran the new StepFun GGUF load smoke on Strix Halo with the configured 120 GB GTT setup:
+
+```bash
+PYTHONUNBUFFERED=1 python3 scripts/stepfun_gguf_load_smoke.py --pretty | tee /tmp/stepfun-full-load-smoke.json
+```
+
+Result: status `loaded`. The smoke scanned all three `/data/models/gguf/Step-3.7-flash-Q3_K_L-*.gguf` shards, planned 754 tensors / `102,499,149,312` bytes (`95.4598 GiB`), materialized all 754 resident weights to HIP, then freed them. Quant counts were `gguf_q3_k=309`, `gguf_q5_k=177`, `gguf_q8_0=2`, `f32=266`.
+
+Memory evidence from the JSON artifact:
+
+- `before_scan`: `hip_free=119.9961 GiB`, `hip_total=62.5409 GiB`, hipEngine current allocations `0`.
+- `after_plan`: `hip_free=119.9961 GiB`, `hip_total=62.5409 GiB`, hipEngine current allocations `0`.
+- `after_load`: `hip_free=23.9061 GiB`, `hip_total=62.5409 GiB`, hipEngine current allocations `102,499,149,312` bytes, active allocations `754`, elapsed `50.89s`.
+- `after_free`: `hip_free=119.8573 GiB`, `hip_total=62.5409 GiB`, hipEngine current allocations `0`, total freed `102,499,149,312` bytes, elapsed `53.43s`.
+
+Conclusion: full resident StepFun Q3_K_L weight allocation/load is feasible under this boot config despite misleading `hipMemGetInfo total` and `rocm-smi VIS_VRAM` readouts. P0 memory/load preflight is now complete. This is not a generation or throughput claim; P12 still needs KV allocation/generation snapshots after the Step execution loop is wired.
