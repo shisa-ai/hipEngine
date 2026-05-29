@@ -21,6 +21,11 @@ from hipengine.runtime.qwen35_paro import (
     Qwen35ParoLinearAttentionScratch,
     Qwen35ParoMoeScratch,
 )
+from hipengine.runtime.stepfun_gguf_runner import (
+    StepFunDecodePlan,
+    StepFunResidentSession,
+    StepFunShortContextDecodePlanner,
+)
 from hipengine.runtime.qwen35_paro_runner import (
     Qwen35ParoAutoregressiveStepResult,
     Qwen35ParoDecodeGraph,
@@ -52,6 +57,9 @@ __all__ = [
     "Qwen35ParoNextTokenRunner",
     "Qwen35ParoResidentSession",
     "RuntimeWorkspace",
+    "StepFunDecodePlan",
+    "StepFunResidentSession",
+    "StepFunShortContextDecodePlanner",
     "launch_gguf_linear",
     "resolve_gguf_linear_dispatch",
     "WorkspaceAllocation",

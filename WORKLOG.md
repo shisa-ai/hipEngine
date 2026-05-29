@@ -27061,3 +27061,17 @@ Memory evidence from the JSON artifact:
 - `after_free`: `hip_free=119.8573 GiB`, `hip_total=62.5409 GiB`, hipEngine current allocations `0`, total freed `102,499,149,312` bytes, elapsed `53.43s`.
 
 Conclusion: full resident StepFun Q3_K_L weight allocation/load is feasible under this boot config despite misleading `hipMemGetInfo total` and `rocm-smi VIS_VRAM` readouts. P0 memory/load preflight is now complete. This is not a generation or throughput claim; P12 still needs KV allocation/generation snapshots after the Step execution loop is wired.
+
+## 2026-05-29 — StepFun resident embedding execution
+
+Extended `hipengine/runtime/stepfun_gguf_runner.py` with `StepFunResidentSession`. The session owns materialized split-GGUF weights, registers the selected backend plugin, frees resident weights, and currently exposes the first executable resident operation: Q8_0 token embedding lookup from `token_embd.weight` into BF16 bit rows via the existing GGUF embedding dispatch. This is the start of the P11 execution path; layer execution, KV allocation, logits, and greedy decode remain open.
+
+Added CPU-reference `gguf_q8_0_embedding` and `tests/test_stepfun_resident_session.py`. The real-weight test loads resident `root.token_embedding` only, embeds token IDs `[0, 1, 128007]` on HIP/gfx1151, and compares exact BF16 bits against CPU dequantized Q8_0 rows from the GGUF shard.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_resident_session.py
+```
+
+Result: `3 passed`. No torch import was introduced and no full-generation/performance claim is made.

@@ -103,6 +103,22 @@ def gguf_q6_k_gemv(x: ArrayLike, qweight: ArrayLike) -> np.ndarray:
 def gguf_q6_k_embedding(token_ids: ArrayLike, qweight: ArrayLike) -> np.ndarray:
     """Reference embedding lookup over raw GGUF ``block_q6_K`` rows."""
 
+    return gguf_quant_embedding(token_ids, qweight, GGMLQuantizationType.Q6_K)
+
+
+def gguf_q8_0_embedding(token_ids: ArrayLike, qweight: ArrayLike) -> np.ndarray:
+    """Reference embedding lookup over raw GGUF ``block_q8_0`` rows."""
+
+    return gguf_quant_embedding(token_ids, qweight, GGMLQuantizationType.Q8_0)
+
+
+def gguf_quant_embedding(
+    token_ids: ArrayLike,
+    qweight: ArrayLike,
+    qtype: GGMLQuantizationType,
+) -> np.ndarray:
+    """Reference embedding lookup over raw GGUF quantized rows."""
+
     token_arr = np.asarray(token_ids, dtype=np.int64)
     if token_arr.ndim != 1:
         raise ValueError("token_ids must have shape [rows]")
@@ -111,7 +127,7 @@ def gguf_q6_k_embedding(token_ids: ArrayLike, qweight: ArrayLike) -> np.ndarray:
         raise ValueError("qweight must have GGUF byte shape [vocab_size, bytes_per_row]")
     if np.any(token_arr < 0) or np.any(token_arr >= qweight_arr.shape[0]):
         raise ValueError("token_ids contain out-of-range token IDs")
-    return dequantize_gguf_data(qweight_arr[token_arr], GGMLQuantizationType.Q6_K).astype(np.float32)
+    return dequantize_gguf_data(qweight_arr[token_arr], qtype).astype(np.float32)
 
 
 def gguf_q4_k_pack8_gemv(
@@ -1145,6 +1161,11 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("cpu_reference", "embedding", "gguf_q6_k", "lookup_f32_out"),
         gguf_q6_k_embedding,
+        replace=replace,
+    )
+    register(
+        KernelKey("cpu_reference", "embedding", "gguf_q8_0", "lookup_f32_out"),
+        gguf_q8_0_embedding,
         replace=replace,
     )
     register(

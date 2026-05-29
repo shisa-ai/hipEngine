@@ -7,9 +7,16 @@ from importlib import import_module
 from pathlib import Path
 from typing import Mapping, Sequence
 
+from hipengine.core.hip import HipRuntime, get_hip_runtime
+from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.kernels.registry import KernelKey, resolve
 from hipengine.loading.gguf import GGUFSplitModelInfo, scan_gguf_splits
 from hipengine.loading.stepfun_gguf import StepFunGGUFModelMap, build_stepfun_gguf_tensor_map
+from hipengine.loading.stepfun_gguf_materialize import (
+    StepFunGGUFResidentWeights,
+    materialize_stepfun_gguf_weights,
+)
+from hipengine.runtime.gguf_embedding import launch_gguf_embedding
 from hipengine.tokenization import StepFunGGUFTokenizer
 
 DEFAULT_STEPFUN_SHORT_CONTEXT = 512
@@ -106,13 +113,7 @@ class StepFunShortContextDecodePlanner:
     def resolve_quant_dispatch_keys(self) -> Mapping[str, KernelKey]:
         """Return representative mixed-GGUF linear dispatch keys for this model."""
 
-        # Import-time backend plugins populate aliases/registrations. Resolve by
-        # backend module name instead of branching on a concrete backend key.
-        backend_module = import_module(f"hipengine.kernels.{self.backend}")
-        registrar_name = f"register_{self.backend.removeprefix('hip_')}_kernels"
-        registrar = getattr(backend_module, registrar_name, None)
-        if callable(registrar):
-            registrar()
+        _register_backend_plugin(self.backend)
         required = {
             "gguf_q3_k": KernelKey(self.backend, "linear", "gguf_q3_k", "gemv_bf16_bf16_out"),
             "gguf_q5_k": KernelKey(self.backend, "linear", "gguf_q5_k", "gemv_bf16_bf16_out"),
@@ -144,9 +145,123 @@ class StepFunShortContextDecodePlanner:
             )
 
 
+@dataclass
+class StepFunResidentSession:
+    """Owned resident StepFun state for incremental GGUF decode bring-up.
+
+    The session is intentionally still below the full streaming runner: it owns
+    materialized split-GGUF weights and exposes prompt embedding execution as the
+    first real resident operation. Layer execution, KV allocation, and logits are
+    wired in later P11 iterations.
+    """
+
+    info: GGUFSplitModelInfo
+    model_map: StepFunGGUFModelMap
+    tokenizer: StepFunGGUFTokenizer
+    weights: StepFunGGUFResidentWeights
+    backend: str = "hip_gfx1151"
+    _closed: bool = False
+
+    @classmethod
+    def from_gguf_paths(
+        cls,
+        paths: Sequence[str | Path],
+        *,
+        backend: str = "hip_gfx1151",
+        selected_slots: Sequence[str] | None = None,
+        runtime: HipRuntime | None = None,
+    ) -> "StepFunResidentSession":
+        info = scan_gguf_splits(tuple(Path(path) for path in paths))
+        model_map = build_stepfun_gguf_tensor_map(info)
+        tokenizer = StepFunGGUFTokenizer.from_gguf_info(info)
+        weights = materialize_stepfun_gguf_weights(
+            info,
+            selected_slots=selected_slots,
+            runtime=runtime,
+        )
+        return cls(
+            info=info,
+            model_map=model_map,
+            tokenizer=tokenizer,
+            weights=weights,
+            backend=backend,
+        )
+
+    def free(self, *, runtime: HipRuntime | None = None) -> None:
+        if self._closed:
+            return
+        self.weights.free(runtime=runtime)
+        self._closed = True
+
+    def __enter__(self) -> "StepFunResidentSession":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.free()
+
+    def embed_token_ids_bf16(
+        self,
+        token_ids: Sequence[int],
+        *,
+        runtime: HipRuntime | None = None,
+        stream: int = 0,
+    ):
+        """Launch resident Q8_0 token embedding and return BF16 bit rows."""
+
+        import numpy as np
+
+        if self._closed:
+            raise RuntimeError("StepFun resident session is closed")
+        if "token_embedding" not in self.weights.root_weights:
+            raise RuntimeError("token_embedding weight is not resident in this session")
+        runtime = runtime or get_hip_runtime()
+        _register_backend_plugin(self.backend)
+        ids = np.ascontiguousarray(token_ids, dtype=np.int64).reshape(-1)
+        if ids.size == 0:
+            raise ValueError("token_ids must not be empty")
+        vocab_size = int(self.model_map.config.vocab_size)
+        if np.any(ids < 0) or np.any(ids >= vocab_size):
+            raise ValueError("token_ids contain out-of-range StepFun token IDs")
+        rows = int(ids.shape[0])
+        hidden_size = int(self.model_map.config.hidden_size)
+        out = np.empty((rows, hidden_size), dtype=np.uint16)
+        token_buf = malloc(ids.nbytes, runtime=runtime)
+        out_buf = malloc(out.nbytes, runtime=runtime)
+        try:
+            copy_host_to_device(token_buf, host_array_ptr(ids), runtime=runtime)
+            launch_gguf_embedding(
+                self.weights.root("token_embedding"),
+                token_buf.ptr,
+                out_buf.ptr,
+                rows=rows,
+                hidden_size=hidden_size,
+                vocab_size=vocab_size,
+                backend=self.backend,
+                stream=stream,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            copy_device_to_host(host_array_ptr(out), out_buf, runtime=runtime)
+        finally:
+            free(out_buf, runtime=runtime)
+            free(token_buf, runtime=runtime)
+        return out
+
+
+def _register_backend_plugin(backend: str) -> None:
+    # Import-time backend plugins populate aliases/registrations. Resolve by
+    # backend module name instead of branching on a concrete backend key.
+    backend_module = import_module(f"hipengine.kernels.{backend}")
+    registrar_name = f"register_{backend.removeprefix('hip_')}_kernels"
+    registrar = getattr(backend_module, registrar_name, None)
+    if callable(registrar):
+        registrar()
+
+
 __all__ = [
     "DEFAULT_STEPFUN_MAX_NEW_TOKENS",
     "DEFAULT_STEPFUN_SHORT_CONTEXT",
     "StepFunDecodePlan",
+    "StepFunResidentSession",
     "StepFunShortContextDecodePlanner",
 ]
