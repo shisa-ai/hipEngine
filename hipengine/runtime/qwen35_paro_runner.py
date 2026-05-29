@@ -3515,18 +3515,34 @@ class Qwen35ParoResidentSession:
         )
         position_tensor = Tensor.from_handle(self.position_buf.ptr, (rows,), DType.INT64, self.device)
         context_tensor = Tensor.from_handle(self.context_buf.ptr, (rows,), DType.INT64, self.device)
+        append_live_counts = [int(position) for position in positions]
+        decode_live_counts = [int(position) + 1 for position in positions]
         append_spans = KVLiveSpans.paged_uniform(
             block_table=block_table,
             live_counts=position_tensor,
-            max_live_count=max(positions),
+            max_live_count=max(append_live_counts),
             storage_dtype=self.kv_storage_dtype,
         )
         decode_spans = KVLiveSpans.paged_uniform(
             block_table=block_table,
             live_counts=context_tensor,
-            max_live_count=max(position + 1 for position in positions),
+            max_live_count=max(decode_live_counts),
             storage_dtype=self.kv_storage_dtype,
         )
+        self._last_batch_full_spans_metadata = {
+            "layer_index": int(layer_id),
+            "rows": int(rows),
+            "slots": [int(slot) for slot in slots],
+            "positions": append_live_counts,
+            "append_live_counts": append_live_counts,
+            "decode_live_counts": decode_live_counts,
+            "append_max_live_count": int(append_spans.max_live_count),
+            "decode_max_live_count": int(decode_spans.max_live_count),
+            "block_size": int(getattr(self, "block_size", 256)),
+            "block_table_len_per_row": int(self.blocks),
+            "block_table_rows": block_rows.astype(np.int32, copy=False).tolist(),
+            "storage_dtype": DType.parse(self.kv_storage_dtype).value,
+        }
         return position_tensor, append_spans, decode_spans
 
     def _ensure_linear_decode_batch_scratch(self, layer_id: int, rows: int) -> Qwen35ParoLinearAttentionScratch:
@@ -3762,18 +3778,21 @@ class Qwen35ParoResidentSession:
                                 moe_selected_c1_fallback_layers += 1
                             else:
                                 moe_grouped_compact_layers += 1
-                        layer_executions.append(
-                            {
-                                "layer_index": int(layer_id),
-                                "layer_type": "full_attention",
-                                "rows": int(rows),
-                                "slots": [int(slot) for slot in slots],
-                                "max_context": int(max_context),
-                                "full_attention_decode_path": "native_batch",
-                                "native_caware_decode": True,
-                                "moe_decode_path": layer_moe_path,
-                            }
-                        )
+                        layer_execution = {
+                            "layer_index": int(layer_id),
+                            "layer_type": "full_attention",
+                            "rows": int(rows),
+                            "slots": [int(slot) for slot in slots],
+                            "max_context": int(max_context),
+                            "full_attention_decode_path": "native_batch",
+                            "native_caware_decode": True,
+                            "moe_decode_path": layer_moe_path,
+                            "attn_context_trace_source": "attention_scratch.query_raw",
+                        }
+                        full_spans_metadata = getattr(self, "_last_batch_full_spans_metadata", None)
+                        if isinstance(full_spans_metadata, dict):
+                            layer_execution["full_attention_segment_metadata"] = full_spans_metadata
+                        layer_executions.append(layer_execution)
                         self.runtime.memcpy_async(next_hidden.ptr, out.ptr, rows * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
                     else:
                         if full_attention_decode_path == "none":

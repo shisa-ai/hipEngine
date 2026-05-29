@@ -1325,6 +1325,20 @@ def test_qwen35_resident_batch_full_spans_maps_sparse_slots(monkeypatch) -> None
     assert decode_spans.base_offsets.ptr == 0x1000
     assert append_spans.max_live_count == 6
     assert decode_spans.max_live_count == 7
+    assert session._last_batch_full_spans_metadata == {
+        "layer_index": 0,
+        "rows": 2,
+        "slots": [0, 2],
+        "positions": [5, 6],
+        "append_live_counts": [5, 6],
+        "decode_live_counts": [6, 7],
+        "append_max_live_count": 6,
+        "decode_max_live_count": 7,
+        "block_size": 256,
+        "block_table_len_per_row": 3,
+        "block_table_rows": [[0, 1, 2], [3, 4, 5]],
+        "storage_dtype": "bf16",
+    }
 
 
 def test_qwen35_resident_run_layers_batch_decode_reports_native_batch_for_short_context() -> None:
@@ -1407,6 +1421,7 @@ def test_qwen35_resident_run_layers_batch_decode_reports_native_batch_for_short_
                 "full_attention_decode_path": "native_batch",
                 "native_caware_decode": True,
                 "moe_decode_path": "grouped_compact",
+                "attn_context_trace_source": "attention_scratch.query_raw",
             }
         ],
         "blockers": [],
@@ -1501,6 +1516,7 @@ def test_qwen35_resident_run_layers_batch_decode_can_force_selected_c1_moe_probe
                 "full_attention_decode_path": "native_batch",
                 "native_caware_decode": True,
                 "moe_decode_path": "selected_c1_forced",
+                "attn_context_trace_source": "attention_scratch.query_raw",
             }
         ],
         "blockers": ["MoE decode forced to selected-c1 diagnostic path"],

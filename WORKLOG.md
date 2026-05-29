@@ -45159,3 +45159,46 @@ python3 scripts/qwen35_batch_correctness.py --rows 2 --max-context-len 513 --con
 ```
 
 Result: verify count remains `12`; full guard PASS (`257` selected pytest tests plus primitive c=2/c=8 correctness); model-shape primitive control PASS. Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with concrete artifact evidence, and no retained c>N performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY full-attention runtime metadata trace
+
+Advanced C2.3 by adding compact full-attention segment metadata to native batch decode execution records. `_batch_full_spans()` now records row slots, append/decode live counts, block-table rows, max-live counts, block size, and storage dtype; native full-attention layer execution also records `attn_context_trace_source=attention_scratch.query_raw`. This metadata is embedded automatically in hidden-bisect transition artifacts through `batch_decode_execution.layer_executions[]`.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q hipengine/runtime/qwen35_paro_runner.py tests/test_qwen35_resident_batch_layout.py
+pytest -q tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_batch_full_spans_maps_sparse_slots tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_run_layers_batch_decode_reports_native_batch_for_short_context tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_run_layers_batch_decode_can_force_selected_c1_moe_probe -q
+```
+
+Diagnostic refresh:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 4 --layer-limits 3-4 --max-sequence-length 1024 --hidden-atol 0 --state-atol 0 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-full-attn-path native_batch --json /tmp/hipengine-hidden-bisect-L3-L4-512-16-c2-metadata-transition-focus1269.json >/tmp/hipengine-hidden-bisect-L3-L4-512-16-c2-metadata-transition-focus1269.stdout
+```
+
+Result: `/tmp/hipengine-hidden-bisect-L3-L4-512-16-c2-metadata-transition-focus1269.json` remains `status=mismatch_found`, `token_passed=true`. The failing full-attention layer execution now records `positions=[512,512]`, `append_live_counts=[512,512]`, `decode_live_counts=[513,513]`, `append_max_live_count=512`, `decode_max_live_count=513`, `block_table_len_per_row=4`, `block_table_rows=[[0,1,2,3],[0,1,2,3]]`, and `attn_context_trace_source=attention_scratch.query_raw`. Stage status is unchanged: input/attn_input/gate pass, first mismatch is `attn_context` row 0 with `max_abs=2.1604321002960205`.
+
+Additional model-shape primitive check aligned to the runtime metadata:
+
+```bash
+python3 scripts/qwen35_batch_correctness.py --rows 2 --max-context-len 513 --context-lens 513,513 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 --json /tmp/hipengine-multiloop-c2-modelshape-primitive-correctness-513x2.json
+```
+
+Result: `/tmp/hipengine-multiloop-c2-modelshape-primitive-correctness-513x2.json` is `passed=true` with append key/value mismatches zero, `attn_batch_vs_c1_max_abs=0.0`, and `attn_batch_vs_numpy_max_abs=3.166496753692627e-08`.
+
+Interpretation: the runtime metadata for the failing layer is now visible and matches a standalone green primitive shape. Next work should compare retained K/V cache contents before and after the decode append, not re-debug the batch context kernel shape or live-count/block metadata.
+
+Loop validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (`257` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with concrete diagnostic/primitive artifacts, and no retained c>N performance/scaling claim was added.

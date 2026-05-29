@@ -898,16 +898,22 @@ roll-up/status view.
       shows `input`, `attn_input`, and `gate` are exact, while `attn_context`
       is the first mismatching substage at layer 3 (`max_abs=2.1604321002960205`,
       all 4096 row-0 context elements over zero tolerance). The final layer
-      output drift is still row 0 dim 1269 (`max_abs=0.00048828125`). A
-      model-shape primitive control,
-      `/tmp/hipengine-multiloop-c2-modelshape-primitive-correctness.json`, now
-      covers `rows=2`, `max_context_len=513`, `context_lens=513,512`, 16 Q heads,
-      2 KV heads, and `head_dim=256`; it passes with append mismatches zero,
+      output drift is still row 0 dim 1269 (`max_abs=0.00048828125`). The
+      metadata refresh at
+      `/tmp/hipengine-hidden-bisect-L3-L4-512-16-c2-metadata-transition-focus1269.json`
+      records the failing runtime layer with `positions=[512,512]`,
+      `decode_live_counts=[513,513]`, `block_table_rows=[[0,1,2,3],[0,1,2,3]]`,
+      and `attn_context_trace_source=attention_scratch.query_raw`. Matching
+      model-shape primitive controls now cover the 16-Q/2-KV/head-dim-256 path:
+      `/tmp/hipengine-multiloop-c2-modelshape-primitive-correctness.json`
+      (`context_lens=513,512`) and
+      `/tmp/hipengine-multiloop-c2-modelshape-primitive-correctness-513x2.json`
+      (`context_lens=513,513`) both pass with append mismatches zero,
       `attn_batch_vs_c1_max_abs=0.0`, and NumPy max abs
       `3.166496753692627e-08`. The next native-full investigation should
-      compare the runtime layer's retained K/V contents and live-count/block
-      metadata before/after the decode append, while treating the standalone
-      batch append/context primitives as model-shape green.
+      compare the runtime layer's retained K/V contents before/after the decode
+      append, while treating live-count/block metadata and standalone batch
+      append/context primitives as model-shape green.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions
