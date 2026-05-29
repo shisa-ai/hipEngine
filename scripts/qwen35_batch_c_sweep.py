@@ -1645,7 +1645,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         errors.append("skipped_preconditions must match commands.preconditions")
     if entries:
         for entry in entries:
-            if not isinstance(entry.get("category"), str) or not entry.get("category"):
+            if not isinstance(entry.get("category"), str) or not entry.get("category").strip():
                 errors.append("commands[].category must be a non-empty string")
                 break
             if not isinstance(entry.get("batch_size"), int) or isinstance(entry.get("batch_size"), bool) or entry.get("batch_size") <= 0:
@@ -1654,7 +1654,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if batch_sizes and entry.get("batch_size") not in batch_sizes:
                 errors.append("commands[].batch_size must be listed in batch_sizes")
                 break
-            if not isinstance(entry.get("artifact_path"), str) or not entry.get("artifact_path"):
+            if not isinstance(entry.get("artifact_path"), str) or not entry.get("artifact_path").strip():
                 errors.append("commands[].artifact_path must be a non-empty string")
                 break
             if _path_has_parent_directory_component(entry["artifact_path"]):

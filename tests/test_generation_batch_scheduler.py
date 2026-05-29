@@ -4050,6 +4050,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_serial_cached_build_command_mismatch["commands"][-1]["command"] = shlex.join(native_argv)
     with pytest.raises(ValueError, match=r"commands\[\]\.argv require-cached-build must match options.require_cached_build"):
         c_sweep.validate_sweep_summary(tampered_serial_cached_build_command_mismatch)
+    tampered_blank_category = json.loads(json.dumps(persisted))
+    tampered_blank_category["commands"][-1]["category"] = "   "
+    with pytest.raises(ValueError, match=r"commands\[\]\.category must be a non-empty string"):
+        c_sweep.validate_sweep_summary(tampered_blank_category)
+    tampered_blank_artifact_path = json.loads(json.dumps(persisted))
+    tampered_blank_artifact_path["commands"][-1]["artifact_path"] = "   "
+    with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must be a non-empty string"):
+        c_sweep.validate_sweep_summary(tampered_blank_artifact_path)
     for bad_argv in ([], ["   "]):
         tampered_command_argv = json.loads(json.dumps(persisted))
         tampered_command_argv["commands"][-1]["argv"] = bad_argv
