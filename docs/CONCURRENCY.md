@@ -1029,9 +1029,13 @@ roll-up/status view.
       token+hidden pass; and the `atol=0.004` native-full control is again
       hidden-only fail (`token_passed=true`, `first_token_mismatch=null`), now
       also emitted as top-level `correctness.failure_modes=["hidden"]` in the
-      native-full artifact. The next C2.3 work should decide whether the per-row
-      fallback's ≤0.004 FP16/state
-      amplification is acceptable under the diagnostic gate while native
+      native-full artifact. The selected-c1 MoE control at
+      `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-native-fullattn-selected-c1-moe-atol4e-3-focus1269.json`
+      keeps native full-attention but bypasses grouped-compact MoE; it remains
+      hidden-only red at L8 (`max_abs=0.02734375`, 346 elements over, tokens green),
+      so grouped-compact MoE is not the source of the large native-full drift.
+      The next C2.3 work should decide whether the per-row fallback's ≤0.004
+      FP16/state amplification is acceptable under the diagnostic gate while native
       full-attention/post-attention still needs a stricter path; do not re-open
       full-attention context, layer-4 state mapping, native linear segment metadata,
       output trace/copy semantics, or grouped MoE output yet.
