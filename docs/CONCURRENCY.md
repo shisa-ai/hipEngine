@@ -807,10 +807,18 @@ roll-up/status view.
       index 3 (`row 1`, dim 1073, `max_abs=0.00799560546875`) with strict
       decode-state drift from step 0, and native full-attention decode alone
       fails at step 6 / generated index 7 (`row 0`, dim 1269,
-      `max_abs=0.02734375`). The reduced prefill drift is fixed, all-per-row
-      fallback and grouped compact MoE are not the blocker at this shape, and
-      the next C2.3 target is retained native linear/full-attention decode
-      state/rounding accumulation.
+      `max_abs=0.02734375`). A native-linear input-trace refresh at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-native-linear-only-decode-inputs-focus1269.json`
+      shows `decode_linear_input_passed=false` only later (first input mismatch:
+      step 12 / generated index 13, layer 6, row 0 dim 585,
+      `max_abs=0.00811767578125`); inputs are still green through the first
+      hidden mismatch at step 2, while strict state drift starts at step 0. The
+      matching all-per-row input trace
+      `/tmp/hipengine-hidden-bisect-L8-512-16-all-per-row-decode-inputs-focus1269.json`
+      is green. The reduced prefill drift is fixed, all-per-row fallback and
+      grouped compact MoE are not the blocker at this shape, and the next C2.3
+      target is retained native linear/full-attention decode state/rounding
+      accumulation.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

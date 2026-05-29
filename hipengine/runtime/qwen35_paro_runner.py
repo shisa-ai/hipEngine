@@ -2789,8 +2789,16 @@ class Qwen35ParoResidentSession:
         self.prefill_moe_scratch = scratch
         return scratch
 
-    def _trace_prefill_linear_input(self, *, layer_id: int, hidden: Tensor, rows: int, stream: int = 0) -> None:
-        trace = getattr(self, "_prefill_linear_input_trace", None)
+    def _trace_linear_input_bits(
+        self,
+        *,
+        trace_attr: str,
+        layer_id: int,
+        hidden: Tensor,
+        rows: int,
+        stream: int = 0,
+    ) -> None:
+        trace = getattr(self, trace_attr, None)
         if not isinstance(trace, list):
             return
         rows = int(rows)
@@ -2805,6 +2813,24 @@ class Qwen35ParoResidentSession:
             runtime=self.runtime,
         )
         trace.append({"layer_index": int(layer_id), "bits": bits})
+
+    def _trace_prefill_linear_input(self, *, layer_id: int, hidden: Tensor, rows: int, stream: int = 0) -> None:
+        self._trace_linear_input_bits(
+            trace_attr="_prefill_linear_input_trace",
+            layer_id=layer_id,
+            hidden=hidden,
+            rows=rows,
+            stream=stream,
+        )
+
+    def _trace_decode_linear_input(self, *, layer_id: int, hidden: Tensor, rows: int, stream: int = 0) -> None:
+        self._trace_linear_input_bits(
+            trace_attr="_decode_linear_input_trace",
+            layer_id=layer_id,
+            hidden=hidden,
+            rows=rows,
+            stream=stream,
+        )
 
     def _run_native_prefill_layers(self, *, tokens: int, stream: int = 0) -> Tensor:
         hidden = self._prefill_hidden_view_for_rows(tokens)
@@ -3399,6 +3425,7 @@ class Qwen35ParoResidentSession:
                 layer_type = self.config.layer_types[layer_id]
                 copied_layer_output = False
                 if layer_type == "linear_attention":
+                    self._trace_decode_linear_input(layer_id=layer_id, hidden=hidden, rows=rows, stream=stream)
                     if force_per_row_linear:
                         row_moe_path = "dense_mlp" if dense_mlp else "selected_c1_per_row_linear_fallback"
                         for row, slot in enumerate(slots):
@@ -3654,6 +3681,7 @@ class Qwen35ParoResidentSession:
         for layer_id, state in enumerate(self.states):
             layer_type = self.config.layer_types[layer_id]
             if layer_type == "linear_attention":
+                self._trace_decode_linear_input(layer_id=layer_id, hidden=hidden, rows=1, stream=stream)
                 conv_state, recurrent_state = self._slot_linear_state(layer_id, slot)
                 out = state.run_linear_attention_moe_c1_layer_fp16(
                     hidden,

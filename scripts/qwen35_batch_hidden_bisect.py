@@ -43,6 +43,7 @@ class HiddenRun:
     prefill_execution: dict[str, Any] | None = None
     prefill_linear_states: dict[int, dict[str, np.ndarray]] = field(default_factory=dict)
     prefill_linear_inputs: dict[int, list[np.ndarray]] = field(default_factory=dict)
+    decode_linear_inputs_by_step: list[dict[int, np.ndarray]] = field(default_factory=list)
     decode_linear_states_by_step: list[dict[int, dict[str, np.ndarray]]] = field(default_factory=list)
     decode_execution_by_step: list[dict[str, Any] | None] = field(default_factory=list)
 
@@ -646,6 +647,33 @@ def _merge_prefill_linear_input_rows(
         target.setdefault(int(layer_id), []).append(rows[0].copy())
 
 
+def _decode_linear_input_layers_from_trace(trace: Sequence[dict[str, Any]] | None) -> dict[int, np.ndarray]:
+    layers: dict[int, np.ndarray] = {}
+    if not trace:
+        return layers
+    for entry in trace:
+        layer_id = int(entry["layer_index"])
+        bits = np.asarray(entry["bits"], dtype=np.uint16)
+        if bits.ndim != 2:
+            raise ValueError(f"decode linear input trace for layer {layer_id} must be rank-2")
+        layers[layer_id] = bits.copy()
+    return layers
+
+
+def _merge_decode_linear_input_row(
+    target: dict[int, list[np.ndarray]],
+    captured: dict[int, np.ndarray],
+) -> None:
+    for layer_id, bits in captured.items():
+        if int(bits.shape[0]) != 1:
+            raise ValueError("c=1 decode input traces must contain exactly one row")
+        target.setdefault(int(layer_id), []).append(bits.copy())
+
+
+def _stack_decode_linear_input_rows(rows_by_layer: dict[int, list[np.ndarray]]) -> dict[int, np.ndarray]:
+    return {int(layer_id): np.concatenate(rows, axis=0) for layer_id, rows in rows_by_layer.items()}
+
+
 def _merge_prefill_linear_state_row(
     target: dict[int, dict[str, list[np.ndarray]]],
     captured: dict[int, dict[str, np.ndarray]],
@@ -702,10 +730,12 @@ def _run_batch_hidden(
         next_tokens = list(seed_tokens)
         generated_tokens = [[] for _ in prompts]
         hidden_bits_by_step: list[np.ndarray] = []
+        decode_linear_inputs_by_step: list[dict[int, np.ndarray]] = []
         decode_linear_states_by_step: list[dict[int, dict[str, np.ndarray]]] = []
         decode_execution_by_step: list[dict[str, Any] | None] = []
         for step in range(decode_tokens):
             positions = tuple(len(prompt) + step for prompt in prompts)
+            session._decode_linear_input_trace = []
             session._set_batch_token_embeddings(next_tokens, stream=0)
             session._set_batch_positions(positions, stream=0)
             hidden = session._run_layers_batch_decode(
@@ -720,6 +750,9 @@ def _run_batch_hidden(
             )
             session.runtime.device_synchronize()
             hidden_bits_by_step.append(_copy_hidden_bits(session, hidden, rows=rows))
+            decode_linear_inputs_by_step.append(
+                _decode_linear_input_layers_from_trace(getattr(session, "_decode_linear_input_trace", None))
+            )
             decode_linear_states_by_step.append(_copy_prefill_linear_states(session, rows=rows))
             results = session._sample_batch_from_hidden(hidden, rows=rows)
             next_tokens = []
@@ -735,6 +768,7 @@ def _run_batch_hidden(
             prefill_execution=prefill_execution_copy,
             prefill_linear_states=prefill_linear_states,
             prefill_linear_inputs=prefill_linear_inputs,
+            decode_linear_inputs_by_step=decode_linear_inputs_by_step,
             decode_linear_states_by_step=decode_linear_states_by_step,
             decode_execution_by_step=decode_execution_by_step,
         )
@@ -756,6 +790,7 @@ def _run_c1_hidden(
     prefill_hidden_bits = np.empty((rows, runner.config.hidden_size), dtype=np.uint16)
     prefill_linear_state_rows: dict[int, dict[str, list[np.ndarray]]] = {}
     prefill_linear_input_rows: dict[int, list[np.ndarray]] = {}
+    decode_linear_input_rows_by_step: list[dict[int, list[np.ndarray]]] = [{} for _ in range(decode_tokens)]
     decode_linear_state_rows_by_step: list[dict[int, dict[str, list[np.ndarray]]]] = [{} for _ in range(decode_tokens)]
     hidden_by_step = [np.empty((rows, runner.config.hidden_size), dtype=np.uint16) for _ in range(decode_tokens)]
     with Qwen35ParoResidentSession(
@@ -790,11 +825,16 @@ def _run_c1_hidden(
             row_generated: list[int] = []
             for step in range(decode_tokens):
                 position = len(prompt) + step
+                session._decode_linear_input_trace = []
                 session._set_token_embedding(next_token, stream=0)
                 session._set_position(position, stream=0)
                 hidden = session._run_layers(position=position, stream=0)
                 session.runtime.device_synchronize()
                 hidden_by_step[step][row : row + 1] = _copy_hidden_bits(session, hidden, rows=1)
+                _merge_decode_linear_input_row(
+                    decode_linear_input_rows_by_step[step],
+                    _decode_linear_input_layers_from_trace(getattr(session, "_decode_linear_input_trace", None)),
+                )
                 _merge_prefill_linear_state_row(
                     decode_linear_state_rows_by_step[step],
                     _copy_prefill_linear_states(session, rows=1),
@@ -811,6 +851,9 @@ def _run_c1_hidden(
         prefill_hidden_bits=prefill_hidden_bits,
         prefill_linear_states=_stack_prefill_linear_state_rows(prefill_linear_state_rows),
         prefill_linear_inputs=prefill_linear_input_rows,
+        decode_linear_inputs_by_step=[
+            _stack_decode_linear_input_rows(rows_by_layer) for rows_by_layer in decode_linear_input_rows_by_step
+        ],
         decode_linear_states_by_step=[
             _stack_prefill_linear_state_rows(rows_by_layer) for rows_by_layer in decode_linear_state_rows_by_step
         ],
@@ -921,6 +964,66 @@ def _prefill_linear_state_summary(
     }
 
 
+def _decode_linear_input_summary(
+    batch: HiddenRun,
+    c1: HiddenRun,
+    *,
+    atol: float,
+    focus_hidden_flat_indices: Sequence[int] = (),
+) -> dict[str, Any] | None:
+    if not batch.decode_linear_inputs_by_step or not c1.decode_linear_inputs_by_step:
+        return None
+    steps: list[dict[str, Any]] = []
+    for step, (batch_layers, c1_layers) in enumerate(
+        zip(batch.decode_linear_inputs_by_step, c1.decode_linear_inputs_by_step, strict=True)
+    ):
+        layers: list[dict[str, Any]] = []
+        for layer_id in sorted(set(batch_layers) & set(c1_layers)):
+            layer_batch = batch_layers[layer_id]
+            layer_c1 = c1_layers[layer_id]
+            if layer_batch.shape != layer_c1.shape:
+                raise ValueError(
+                    f"decode linear input trace shape differs for step {step}, layer {layer_id}: "
+                    f"batch={layer_batch.shape} c1={layer_c1.shape}"
+                )
+            row_summaries: list[dict[str, Any]] = []
+            for row in range(int(layer_batch.shape[0])):
+                comparison = hidden_comparison(
+                    layer_batch[row : row + 1],
+                    layer_c1[row : row + 1],
+                    atol=atol,
+                    selected_flat_indices=focus_hidden_flat_indices,
+                )
+                row_summaries.append(
+                    {
+                        "row": int(row),
+                        "hidden_comparison": comparison,
+                        "passed": bool(comparison["passed"]),
+                    }
+                )
+            layers.append(
+                {
+                    "layer_index": int(layer_id),
+                    "passed": all(row["passed"] for row in row_summaries),
+                    "rows": row_summaries,
+                }
+            )
+        steps.append(
+            {
+                "decode_step": int(step),
+                "generated_index": int(step + 1),
+                "passed": all(layer["passed"] for layer in layers),
+                "layers": layers,
+            }
+        )
+    return {
+        "stage": "decode_linear_inputs",
+        "hidden_atol": float(atol),
+        "passed": all(step["passed"] for step in steps),
+        "steps": steps,
+    }
+
+
 def _decode_linear_state_summary(
     batch: HiddenRun,
     c1: HiddenRun,
@@ -1018,6 +1121,12 @@ def _summarize_layer_limit(
         atol=atol,
         focus_hidden_flat_indices=focus_hidden_flat_indices,
     )
+    decode_linear_inputs = _decode_linear_input_summary(
+        batch,
+        c1,
+        atol=atol,
+        focus_hidden_flat_indices=focus_hidden_flat_indices,
+    )
     decode_linear_states = _decode_linear_state_summary(batch, c1, atol=state_atol)
     steps: list[dict[str, Any]] = []
     for step, (batch_bits, c1_bits) in enumerate(zip(batch.hidden_bits_by_step, c1.hidden_bits_by_step, strict=True)):
@@ -1045,6 +1154,7 @@ def _summarize_layer_limit(
         "prefill_hidden_passed": True if prefill is None else bool(prefill["hidden_passed"]),
         "prefill_linear_input_passed": True if prefill_linear_inputs is None else bool(prefill_linear_inputs["passed"]),
         "prefill_linear_state_passed": True if prefill_linear_states is None else bool(prefill_linear_states["passed"]),
+        "decode_linear_input_passed": True if decode_linear_inputs is None else bool(decode_linear_inputs["passed"]),
         "decode_linear_state_passed": True if decode_linear_states is None else bool(decode_linear_states["passed"]),
         "hidden_passed": all(row["hidden_comparison"]["passed"] for step in steps for row in step["rows"]),
         "token_passed": not token_mismatches,
@@ -1059,6 +1169,8 @@ def _summarize_layer_limit(
         summary["prefill_linear_states"] = prefill_linear_states
     if prefill_linear_inputs is not None:
         summary["prefill_linear_inputs"] = prefill_linear_inputs
+    if decode_linear_inputs is not None:
+        summary["decode_linear_inputs"] = decode_linear_inputs
     if decode_linear_states is not None:
         summary["decode_linear_states"] = decode_linear_states
     return summary

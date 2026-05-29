@@ -44794,3 +44794,27 @@ Results:
 - Native grouped compact MoE only (per-row linear and full attention): `/tmp/hipengine-hidden-bisect-L8-512-16-native-moe-only-decode-states-focus1269.json` => `status=eq_ok`, `token_passed=true`, `decode_linear_state_passed=true`, `hidden_passed=true`.
 
 Interpretation: grouped compact MoE is not the C2.3 blocker at this shape. The retained c=2/L8/16 multi-step failure splits across native linear-attention decode and native full-attention decode accumulation/rounding. Fix attempts should prioritize the earliest failing native linear path, then re-run the native full-only probe.
+
+## 2026-05-29 — CONCURRENCY decode linear-input trace
+
+Advanced C2.3 by adding decode linear-input tracing to the hidden-bisect harness, parallel to the existing prefill input trace. The runner now records per-layer linear-attention decode inputs when `_decode_linear_input_trace` is a list; hidden-bisect aggregates batch and independent c=1 rows per decode step and reports `decode_linear_input_passed` plus a `decode_linear_inputs` step/layer/row summary.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_summary_embeds_batch_decode_execution_trace -q
+```
+
+Diagnostics:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-decode-moe-path selected_c1 --batch-decode-linear-path batch_segments --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L8-512-16-native-linear-only-decode-inputs-focus1269.json >/tmp/hipengine-hidden-bisect-L8-512-16-native-linear-only-decode-inputs-focus1269.stdout
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-decode-moe-path selected_c1 --batch-decode-linear-path per_row --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L8-512-16-all-per-row-decode-inputs-focus1269.json >/tmp/hipengine-hidden-bisect-L8-512-16-all-per-row-decode-inputs-focus1269.stdout
+```
+
+Results:
+
+- Native linear-only artifact `/tmp/hipengine-hidden-bisect-L8-512-16-native-linear-only-decode-inputs-focus1269.json`: `status=mismatch_found`, `decode_linear_state_passed=false`, `hidden_passed=false`, first hidden mismatch remains decode step 2 / generated index 3 on row 1 dim 1073 (`max_abs=0.00799560546875`). `decode_linear_input_passed=false` only later, with first input mismatch at decode step 12 / generated index 13, layer 6, row 0 dim 585 (`max_abs=0.00811767578125`); strict state drift still starts at step 0. This means the earliest native-linear failure receives c=1-identical inputs and diverges in state/update accumulation before inputs diverge downstream.
+- All-per-row artifact `/tmp/hipengine-hidden-bisect-L8-512-16-all-per-row-decode-inputs-focus1269.json`: `status=eq_ok`, `decode_linear_input_passed=true`, `decode_linear_state_passed=true`, `hidden_passed=true`, `token_passed=true`.
+
+Interpretation: native linear decode drift is not caused by mismatched inputs at the first failing hidden step. The next fix should inspect the batch linear-attention state update/output path itself (segment metadata, state index mapping, or BF16/FP32 accumulation/order), then re-run the native-linear-only input/state probe.
