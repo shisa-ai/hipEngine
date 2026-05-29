@@ -13500,6 +13500,31 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             in future_diagnostic_trace_metadata_error_message
         )
 
+    diagnostic_trace_command_terms = tuple(DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_NAMES) + tuple(
+        f"future_{fragment}_rollup" for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_FRAGMENTS
+    )
+    diagnostic_trace_environment_command = json.loads(json.dumps(accepted))
+    diagnostic_trace_environment_command["commands"]["environment"].extend(diagnostic_trace_command_terms)
+    with pytest.raises(ValueError) as diagnostic_trace_environment_command_error:
+        validate_cn_diagnostic_artifact_payload(diagnostic_trace_environment_command)
+    diagnostic_trace_environment_error_message = str(diagnostic_trace_environment_command_error.value)
+    for trace_field in DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_NAMES:
+        assert f"commands.environment must not include diagnostic trace field {trace_field}" in diagnostic_trace_environment_error_message
+    for trace_fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_FRAGMENTS:
+        assert f"commands.environment must not include diagnostic trace field {trace_fragment}" in diagnostic_trace_environment_error_message
+
+    diagnostic_trace_command_suffix = " " + " ".join(diagnostic_trace_command_terms)
+    for command_field in ("benchmark", "correctness_reference", "profiler"):
+        diagnostic_trace_command = json.loads(json.dumps(accepted))
+        diagnostic_trace_command["commands"][command_field] += diagnostic_trace_command_suffix
+        with pytest.raises(ValueError) as diagnostic_trace_command_error:
+            validate_cn_diagnostic_artifact_payload(diagnostic_trace_command)
+        diagnostic_trace_command_error_message = str(diagnostic_trace_command_error.value)
+        for trace_field in DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_NAMES:
+            assert f"commands.{command_field} must not include diagnostic trace field {trace_field}" in diagnostic_trace_command_error_message
+        for trace_fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_FRAGMENTS:
+            assert f"commands.{command_field} must not include diagnostic trace field {trace_fragment}" in diagnostic_trace_command_error_message
+
     wrong_benchmark_command = json.loads(json.dumps(accepted))
     wrong_benchmark_command["commands"]["benchmark"] = "python3 scripts/qwen35_batch_serial_bench.py --batch-size 2"
     with pytest.raises(ValueError, match="commands.benchmark must reference scripts/qwen35_batch_retained_bench.py"):

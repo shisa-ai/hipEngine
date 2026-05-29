@@ -284,13 +284,26 @@ DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS = (
 )
 
 
-def _disallowed_accepted_diagnostic_trace_field_reason(key_label: str) -> str | None:
-    if key_label in DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_NAMES:
-        return key_label
+def _disallowed_accepted_diagnostic_trace_field_reasons(label: str) -> list[str]:
+    reasons: list[str] = []
+    for field_name in DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_NAMES:
+        if field_name in label:
+            reasons.append(field_name)
     for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_FRAGMENTS:
-        if fragment in key_label:
-            return fragment
-    return None
+        if fragment in label:
+            reasons.append(fragment)
+    return reasons
+
+
+def _append_disallowed_accepted_diagnostic_text_errors(value: str, *, path: str, errors: list[str]) -> None:
+    for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS:
+        if fragment in value:
+            errors.append(f"{path} must not include diagnostic override {fragment} for accepted artifacts")
+    for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_EVIDENCE_FRAGMENTS:
+        if fragment in value:
+            errors.append(f"{path} must not include diagnostic evidence {fragment} for accepted artifacts")
+    for trace_field_reason in _disallowed_accepted_diagnostic_trace_field_reasons(value):
+        errors.append(f"{path} must not include diagnostic trace field {trace_field_reason} for accepted artifacts")
 
 
 def _validate_no_disallowed_diagnostic_metadata(
@@ -311,20 +324,14 @@ def _validate_no_disallowed_diagnostic_metadata(
             for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_EVIDENCE_FRAGMENTS:
                 if fragment in key_label:
                     errors.append(f"{child_path} must not include diagnostic evidence {fragment} for accepted artifacts")
-            trace_field_reason = _disallowed_accepted_diagnostic_trace_field_reason(key_label)
-            if trace_field_reason is not None:
+            for trace_field_reason in _disallowed_accepted_diagnostic_trace_field_reasons(key_label):
                 errors.append(f"{child_path} must not include diagnostic trace field {trace_field_reason} for accepted artifacts")
             _validate_no_disallowed_diagnostic_metadata(child, path=child_path, errors=errors)
     elif isinstance(value, list):
         for index, child in enumerate(value):
             _validate_no_disallowed_diagnostic_metadata(child, path=f"{path}[{index}]", errors=errors)
     elif isinstance(value, str):
-        for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS:
-            if fragment in value:
-                errors.append(f"{path} must not include diagnostic override {fragment} for accepted artifacts")
-        for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_EVIDENCE_FRAGMENTS:
-            if fragment in value:
-                errors.append(f"{path} must not include diagnostic evidence {fragment} for accepted artifacts")
+        _append_disallowed_accepted_diagnostic_text_errors(value, path=path, errors=errors)
 
 
 
@@ -1697,12 +1704,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         if not isinstance(command_value, str) or not command_value:
             errors.append(f"commands.{field} must be a non-empty string for accepted artifacts")
         elif isinstance(command_value, str):
-            for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS:
-                if fragment in command_value:
-                    errors.append(f"commands.{field} must not include diagnostic override {fragment} for accepted artifacts")
-            for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_EVIDENCE_FRAGMENTS:
-                if fragment in command_value:
-                    errors.append(f"commands.{field} must not include diagnostic evidence {fragment} for accepted artifacts")
+            _append_disallowed_accepted_diagnostic_text_errors(command_value, path=f"commands.{field}", errors=errors)
     environment_commands = commands.get("environment")
     if not _is_nonempty_string_list(environment_commands):
         errors.append("commands.environment must be a non-empty string list for accepted artifacts")
@@ -1714,12 +1716,11 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         for command in _REQUIRED_ACCEPTED_ENVIRONMENT_COMMANDS:
             if command not in environment_commands:
                 errors.append(f"commands.environment must include exact command `{command}` for accepted artifacts")
-        for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS:
-            if fragment in joined_environment_commands:
-                errors.append(f"commands.environment must not include diagnostic override {fragment} for accepted artifacts")
-        for fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_EVIDENCE_FRAGMENTS:
-            if fragment in joined_environment_commands:
-                errors.append(f"commands.environment must not include diagnostic evidence {fragment} for accepted artifacts")
+        _append_disallowed_accepted_diagnostic_text_errors(
+            joined_environment_commands,
+            path="commands.environment",
+            errors=errors,
+        )
     benchmark_command = commands.get("benchmark")
     if isinstance(benchmark_command, str):
         if "qwen35_batch_retained_bench.py" not in benchmark_command:
