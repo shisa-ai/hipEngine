@@ -34,6 +34,8 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES,
     RETAINED_ARTIFACT_REQUIRED_SCALING_BASELINES,
     RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS,
+    RETAINED_ARTIFACT_RETAINED_GATE_FLAGS,
+    RETAINED_ARTIFACT_RETAINED_GATE_LABELS,
     RETAINED_ARTIFACT_REQUIRED_SCALING_RATIOS,
     RETAINED_ARTIFACT_UNUSABLE_SCALING_BASELINE_STATUSES,
 )
@@ -143,14 +145,20 @@ _COMMAND_MODEL_RE = re.compile(r"(?:^|\s)--model(?:=|\s+)(\S+)(?=\s|$)")
 _COMMAND_FIXTURE_RE = re.compile(r"(?:^|\s)--fixture(?:=|\s+)(\S+)(?=\s|$)")
 _COMMAND_PROMPT_LENGTH_RE = re.compile(r"(?:^|\s)--prompt-length(?:=|\s+)(\d+)(?=\s|$)")
 _COMMAND_JSON_RE = re.compile(r"(?:^|\s)--json(?:=|\s+)(\S+)(?=\s|$)")
-_COMMAND_PROFILER_JSON_RE = re.compile(r"(?:^|\s)--profiler-json(?:=|\s+)(\S+)(?=\s|$)")
 _ROLLUP_LAST_UPDATED_RE = re.compile(r"(?im)^\s*Last updated\s*:?\s*(\d{4}-\d{2}-\d{2})\b")
 _ROLLUP_DATED_CHANGELOG_RE = re.compile(r"(?m)^\s*(?:[-*]\s*)?(?:##\s*)?(\d{4}-\d{2}-\d{2})\b")
 _ROLLUP_PERCENT_DELTA_RE = re.compile(r"[+-]?\d+(?:\.\d+)?\s*%")
 _ROLLUP_OLD_NEW_RE = re.compile(r"[+-]?\d+(?:\.\d+)?(?:\s*[A-Za-z/_]+)?\s*(?:→|->)\s*[+-]?\d+(?:\.\d+)?")
-_COMMAND_C1_BASELINE_JSON_RE = re.compile(r"(?:^|\s)--c1-baseline-json(?:=|\s+)(\S+)(?=\s|$)")
-_COMMAND_SERIAL_BRIDGE_JSON_RE = re.compile(r"(?:^|\s)--serial-bridge-json(?:=|\s+)(\S+)(?=\s|$)")
-_COMMAND_PRIMITIVE_CORRECTNESS_JSON_RE = re.compile(r"(?:^|\s)--primitive-correctness-json(?:=|\s+)(\S+)(?=\s|$)")
+_RETAINED_GATE_FLAGS = RETAINED_ARTIFACT_RETAINED_GATE_FLAGS
+_RETAINED_GATE_LABELS = RETAINED_ARTIFACT_RETAINED_GATE_LABELS
+_COMMAND_RETAINED_GATE_PATH_RES = tuple(
+    re.compile(rf"(?:^|\s){re.escape(flag)}(?:=|\s+)(\S+)(?=\s|$)")
+    for flag in _RETAINED_GATE_FLAGS
+)
+_COMMAND_C1_BASELINE_JSON_RE = _COMMAND_RETAINED_GATE_PATH_RES[0]
+_COMMAND_SERIAL_BRIDGE_JSON_RE = _COMMAND_RETAINED_GATE_PATH_RES[1]
+_COMMAND_PRIMITIVE_CORRECTNESS_JSON_RE = _COMMAND_RETAINED_GATE_PATH_RES[2]
+_COMMAND_PROFILER_JSON_RE = _COMMAND_RETAINED_GATE_PATH_RES[3]
 _COMMAND_COMPILER_VERSION_FILE_RE = re.compile(r"(?:^|\s)--compiler-version-file(?:=|\s+)(\S+)(?=\s|$)")
 _COMMAND_OUTPUT_FORMAT_RE = re.compile(r"(?:^|\s)--output-format(?:=|\s+)(\S+)(?=\s|$)")
 _COMMAND_TRACE_DIR_RE = re.compile(r"(?:^|\s)-d(?:=|\s+)(\S+)(?=\s|$)")
@@ -443,43 +451,46 @@ def _reference_artifact_paths(payload: Mapping[str, Any]) -> tuple[Any, Any, Any
 
 def _validate_retained_benchmark_reference_paths(command: str, *, field: str, payload: Mapping[str, Any], errors: list[str]) -> None:
     primitive_artifact_path, c1_artifact_path, serial_artifact_path = _reference_artifact_paths(payload)
-    _validate_command_flag_matches_artifact_path(
-        command,
-        field=field,
-        flag="--c1-baseline-json",
-        pattern=_COMMAND_C1_BASELINE_JSON_RE,
-        artifact_field="scaling.c1_baseline.artifact_path",
-        artifact_path=c1_artifact_path,
-        errors=errors,
-    )
-    _validate_command_flag_matches_artifact_path(
-        command,
-        field=field,
-        flag="--serial-bridge-json",
-        pattern=_COMMAND_SERIAL_BRIDGE_JSON_RE,
-        artifact_field="scaling.serial_bridge_baseline.artifact_path",
-        artifact_path=serial_artifact_path,
-        errors=errors,
-    )
-    _validate_command_flag_matches_artifact_path(
-        command,
-        field=field,
-        flag="--primitive-correctness-json",
-        pattern=_COMMAND_PRIMITIVE_CORRECTNESS_JSON_RE,
-        artifact_field="correctness.primitive_batch_correctness.artifact_path",
-        artifact_path=primitive_artifact_path,
-        errors=errors,
-    )
+    for flag, pattern, artifact_field, artifact_path in (
+        (
+            _RETAINED_GATE_FLAGS[0],
+            _COMMAND_C1_BASELINE_JSON_RE,
+            "scaling.c1_baseline.artifact_path",
+            c1_artifact_path,
+        ),
+        (
+            _RETAINED_GATE_FLAGS[1],
+            _COMMAND_SERIAL_BRIDGE_JSON_RE,
+            "scaling.serial_bridge_baseline.artifact_path",
+            serial_artifact_path,
+        ),
+        (
+            _RETAINED_GATE_FLAGS[2],
+            _COMMAND_PRIMITIVE_CORRECTNESS_JSON_RE,
+            "correctness.primitive_batch_correctness.artifact_path",
+            primitive_artifact_path,
+        ),
+    ):
+        _validate_command_flag_matches_artifact_path(
+            command,
+            field=field,
+            flag=flag,
+            pattern=pattern,
+            artifact_field=artifact_field,
+            artifact_path=artifact_path,
+            errors=errors,
+        )
 
 
 def _validate_profiler_command_artifact_reference(command: str, profiler_artifact_path: str, errors: list[str]) -> None:
     profiler_json_match = _COMMAND_PROFILER_JSON_RE.search(command)
+    profiler_json_flag = _RETAINED_GATE_FLAGS[3]
     if profiler_json_match is None:
-        errors.append("commands.profiler must include --profiler-json <profiler.artifact_path> for accepted artifacts")
+        errors.append(f"commands.profiler must include {profiler_json_flag} <profiler.artifact_path> for accepted artifacts")
         return
     command_profiler_path = profiler_json_match.group(1).strip("'\"")
     if command_profiler_path != profiler_artifact_path:
-        errors.append("commands.profiler --profiler-json path must match profiler.artifact_path for accepted artifacts")
+        errors.append(f"commands.profiler {profiler_json_flag} path must match profiler.artifact_path for accepted artifacts")
 
 
 def _has_disallowed_profiler_kernel_fragment(name: str) -> bool:
