@@ -995,13 +995,14 @@ roll-up/status view.
       stages `input`, `attn_input`, `gate`, `query`, `attn_context`, `gated_attn`,
       and `o_proj` are green, while final `output` is over tolerance
       (`max_abs=0.0081787109375`, dim 1504) under `native_batch` full-attention
-      plus `grouped_compact` MoE. The output-delta refresh at
-      `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-output-minus-oproj-focus1269.json`
-      adds `output_minus_o_proj`; that delta is green (`max_abs=6.67572021484375e-06`),
-      so the next C2.3 work should validate layer-3 full-attention output trace/copy
-      semantics and the relation between `o_proj`, residual/MoE contribution, and
-      final `out`, not re-open full-attention context, layer-4 state mapping, or
-      native linear segment metadata.
+      plus `grouped_compact` MoE. The FP16 output-delta refresh at
+      `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-output-minus-oproj-fp16-focus1269.json`
+      fixes the trace-value conversion and records `output_minus_o_proj` as the first
+      bad delta too (`max_abs=0.0081787109375`, dim 1504), while `o_proj` itself
+      remains green (`max_abs=6.103515625e-05`). The next C2.3 work should isolate
+      layer-3 post-attention add/RMSNorm or grouped MoE residual contribution after
+      `o_proj`, not re-open full-attention context, layer-4 state mapping, native
+      linear segment metadata, or output trace/copy semantics.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

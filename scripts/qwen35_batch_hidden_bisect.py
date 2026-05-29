@@ -261,7 +261,7 @@ def hidden_comparison(
 
 def _trace_array_to_f32(array: np.ndarray) -> np.ndarray:
     if array.dtype == np.uint16:
-        return _bf16_bits_to_f32(array)
+        return _fp16_bits_to_f32(array)
     return np.asarray(array, dtype=np.float32)
 
 

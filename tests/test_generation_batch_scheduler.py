@@ -70,6 +70,7 @@ from scripts.qwen35_batch_hidden_bisect import (
     _parse_focus_hidden_flat_indices,
     _parse_layer_limits,
     _summarize_layer_limit,
+    _trace_array_to_f32,
     build_parser as build_hidden_bisect_parser,
     hidden_comparison,
     run as run_hidden_bisect,
@@ -6763,6 +6764,14 @@ def test_hidden_bisect_transition_records_focus_state_history() -> None:
 def test_hidden_bisect_full_kv_sample_positions_cover_page_boundaries() -> None:
     assert _decode_full_kv_sample_positions(512, block_size=256) == (0, 255, 256, 511, 512)
     assert _decode_full_kv_sample_positions(2, block_size=256) == (0, 2, 2, 1, 2)
+
+
+def test_hidden_bisect_trace_array_to_f32_uses_fp16_for_uint16_traces() -> None:
+    bits = np.array([[0x3C00, 0x4000, 0xC000]], dtype=np.uint16)
+
+    values = _trace_array_to_f32(bits)
+
+    np.testing.assert_allclose(values, np.array([[1.0, 2.0, -2.0]], dtype=np.float32))
 
 
 def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:

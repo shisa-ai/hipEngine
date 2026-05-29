@@ -45754,3 +45754,36 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (`261` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with concrete full-attention output-minus-o_proj evidence, and no retained c>N performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY full-attention delta FP16 conversion fix
+
+Corrected the full-attention `output_minus_o_proj` diagnostic to decode `uint16` trace payloads as FP16 bits, matching `hidden_comparison`. The previous output-delta refresh interpreted trace bits as BF16 and understated the post-`o_proj` delta.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py
+pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_trace_array_to_f32_uses_fp16_for_uint16_traces tests/test_generation_batch_scheduler.py::test_hidden_bisect_summary_embeds_batch_decode_execution_trace tests/test_generation_batch_scheduler.py::test_hidden_bisect_transition_records_focus_state_history -q
+```
+
+Diagnostic:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 4,8 --max-sequence-length 1024 --hidden-atol 0.001 --state-atol 0 --state-focus-atol 0.002 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-full-attn-path native_batch --json /tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-output-minus-oproj-fp16-focus1269.json >/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-output-minus-oproj-fp16-focus1269.stdout
+```
+
+Result: `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-output-minus-oproj-fp16-focus1269.json` is `status=mismatch_found`. At step 6 / layer 3, `o_proj` remains green (`max_abs=6.103515625e-05`, dim 100), but final `output` and `output_minus_o_proj` are both over tolerance with the same top diff (`max_abs=0.0081787109375`, dim 1504, `elements_over_atol=1336`). This re-points C2.3 to layer-3 post-attention add/RMSNorm or grouped MoE residual contribution after `o_proj`; full-attention context, layer-4 state mapping, native linear segment metadata, and output trace/copy semantics remain lower-priority.
+
+Loop validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (`262` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with corrected FP16 output-minus-o_proj evidence, and no retained c>N performance/scaling claim was added.
