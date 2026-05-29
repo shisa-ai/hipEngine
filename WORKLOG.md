@@ -44774,3 +44774,23 @@ Results:
 - `/tmp/hipengine-hidden-bisect-L8-512-16-packed-aotriton-all-per-row-decode-states-focus1269.json`: `status=eq_ok`, `performance_claim=false`, `decode_linear_state_passed=true`, `hidden_passed=true`, and `token_passed=true` with selected-c1/per-row decode fallbacks.
 
 Interpretation: the retained multi-step failure is now isolated away from packed prefill and away from all-per-row fallback behavior. The next C2.3 target is native c-aware batch decode accumulation (batch linear/full attention and/or grouped compact MoE state/rounding), with decode state drift appearing before hidden divergence under the strict state oracle.
+
+## 2026-05-29 — CONCURRENCY decode subpath isolation
+
+Advanced C2.3 with a one-native-subpath sweep using the new decode-state oracle. Shape: Qwen3.5 PARO BF16, c=2, prompt 512, decode 16, L8, `hidden_atol=0.002`, `state_atol=1e-6`, fixture `/tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json`, no performance claim.
+
+Commands/artifacts:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-decode-moe-path selected_c1 --batch-decode-linear-path batch_segments --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L8-512-16-native-linear-only-decode-states-focus1269.json >/tmp/hipengine-hidden-bisect-L8-512-16-native-linear-only-decode-states-focus1269.stdout
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-decode-moe-path selected_c1 --batch-decode-linear-path per_row --batch-decode-full-attn-path native_batch --json /tmp/hipengine-hidden-bisect-L8-512-16-native-full-only-decode-states-focus1269.json >/tmp/hipengine-hidden-bisect-L8-512-16-native-full-only-decode-states-focus1269.stdout
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-decode-moe-path grouped_compact --batch-decode-linear-path per_row --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L8-512-16-native-moe-only-decode-states-focus1269.json >/tmp/hipengine-hidden-bisect-L8-512-16-native-moe-only-decode-states-focus1269.stdout
+```
+
+Results:
+
+- Native linear-attention decode only (`selected_c1` MoE, per-row full attention): `/tmp/hipengine-hidden-bisect-L8-512-16-native-linear-only-decode-states-focus1269.json` => `status=mismatch_found`, `token_passed=true`, `decode_linear_state_passed=false`, `hidden_passed=false`; first hidden mismatch at decode step 2 / generated index 3 on row 1 dim 1073 (`max_abs=0.00799560546875`), with strict decode-state drift from step 0.
+- Native full-attention decode only (`selected_c1` MoE, per-row linear attention): `/tmp/hipengine-hidden-bisect-L8-512-16-native-full-only-decode-states-focus1269.json` => `status=mismatch_found`, `token_passed=true`, `decode_linear_state_passed=false`, `hidden_passed=false`; first hidden mismatch at decode step 6 / generated index 7 on row 0 dim 1269 (`max_abs=0.02734375`). State drift is observed because later per-row linear layers consume the native full-attention outputs.
+- Native grouped compact MoE only (per-row linear and full attention): `/tmp/hipengine-hidden-bisect-L8-512-16-native-moe-only-decode-states-focus1269.json` => `status=eq_ok`, `token_passed=true`, `decode_linear_state_passed=true`, `hidden_passed=true`.
+
+Interpretation: grouped compact MoE is not the C2.3 blocker at this shape. The retained c=2/L8/16 multi-step failure splits across native linear-attention decode and native full-attention decode accumulation/rounding. Fix attempts should prioritize the earliest failing native linear path, then re-run the native full-only probe.

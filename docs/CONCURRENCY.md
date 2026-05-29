@@ -799,10 +799,18 @@ roll-up/status view.
       dim 1167, `max_abs=0.0157470703125`) and reports strict state drift from
       step 0. The matching all-per-row trace
       `/tmp/hipengine-hidden-bisect-L8-512-16-packed-aotriton-all-per-row-decode-states-focus1269.json`
-      is green (`status=eq_ok`, `decode_linear_state_passed=true`), so the
-      reduced prefill drift is fixed and the next C2.3 target is retained native
-      batch-decode state/rounding accumulation rather than all-per-row fallback
-      behavior.
+      is green (`status=eq_ok`, `decode_linear_state_passed=true`). A one-native-
+      subpath sweep then narrows the retained target further: native grouped MoE
+      alone stays green at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-native-moe-only-decode-states-focus1269.json`,
+      while native linear-attention decode alone fails at step 2 / generated
+      index 3 (`row 1`, dim 1073, `max_abs=0.00799560546875`) with strict
+      decode-state drift from step 0, and native full-attention decode alone
+      fails at step 6 / generated index 7 (`row 0`, dim 1269,
+      `max_abs=0.02734375`). The reduced prefill drift is fixed, all-per-row
+      fallback and grouped compact MoE are not the blocker at this shape, and
+      the next C2.3 target is retained native linear/full-attention decode
+      state/rounding accumulation.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions
