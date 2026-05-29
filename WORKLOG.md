@@ -26827,3 +26827,17 @@ python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_
 ```
 
 Results: Step tokenizer pytest passed (`4 passed`), guard passed (`36 passed` plus CPU fixture checks), and the StepFun punchlist metric dropped from 43 to 39 by completing P4.
+
+## 2026-05-29 — StepFun P5 Q3_K CPU dequant and mixed slices
+
+Implemented the CPU-reference Q3_K lane. Added Q3_K dequant support to `hipengine/quant/gguf.py` using the llama.cpp/gguf-py block layout (`hmask`, low 2-bit quants, packed 6-bit scales, FP16 superblock scale), marked Q3_K dequantization supported, and added block-level layout coverage in `tests/test_gguf_quant_layout.py`. Added per-tensor `quant_key` exposure on GGUF tensor metadata for mixed dispatch. Added `tests/test_stepfun_q3k_cpu.py` to dequantize real local Step tensor slices for Q3_K, Q5_K, Q8_0, and F32 and compare against the local llama.cpp `gguf-py` reference without checking any large binary fixtures into git.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_gguf_quant_layout.py tests/test_stepfun_q3k_cpu.py
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+```
+
+Results: targeted Q3_K/Step CPU tests passed (`9 passed`), guard passed (`39 passed` plus CPU fixture checks), and the StepFun punchlist metric dropped from 39 to 35 by completing P5.

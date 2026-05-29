@@ -374,16 +374,18 @@ representative token IDs.
 
 ### P5 — Q3_K CPU reference and mixed GGUF quant metadata
 
-- [ ] Implement CPU-reference Q3_K dequantization and add block-level fixtures.
-- [ ] Validate existing Q5_K/Q8_0/F32 handling against Step tensor metadata; Step
+- [x] Implement CPU-reference Q3_K dequantization and add block-level fixtures.
+- [x] Validate existing Q5_K/Q8_0/F32 handling against Step tensor metadata; Step
   layers mix quant types within the same layer.
-- [ ] Add slice fixtures from real Step tensors for Q3_K, Q5_K, Q8_0, and F32
+- [x] Add slice fixtures from real Step tensors for Q3_K, Q5_K, Q8_0, and F32
   without checking large binary fixtures into git.
-- [ ] Expose per-tensor quant keys through the loader/quant plugin so mixed
+- [x] Expose per-tensor quant keys through the loader/quant plugin so mixed
   dispatch does not require engine-wide quant branches.
 
-**Acceptance:** CPU dequant/slice tests pass against known-good llama.cpp or
-independent GGUF reference values.
+**Acceptance:** `python3 -m pytest -q tests/test_gguf_quant_layout.py
+ tests/test_stepfun_q3k_cpu.py` passes against llama.cpp `gguf-py` reference
+values for local Step tensor slices; tests skip cleanly when external assets or
+reference code are absent.
 
 ### P6 — HIP Q3_K linear kernels on gfx1151
 

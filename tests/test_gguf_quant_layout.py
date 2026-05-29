@@ -19,11 +19,27 @@ def _f16_bytes(value: float) -> np.ndarray:
     return np.asarray([value], dtype=np.float16).view(np.uint8)
 
 
+def _pack_q3_k_scales(values: np.ndarray) -> np.ndarray:
+    values = np.asarray(values, dtype=np.uint8)
+    out = np.zeros(12, dtype=np.uint8)
+    out[:8] = (values[:8] & np.uint8(0x0F)) | ((values[8:16] & np.uint8(0x0F)) << 4)
+    for offset in range(4):
+        out[8 + offset] = (
+            ((values[offset] >> 4) & np.uint8(0x03))
+            | (((values[4 + offset] >> 4) & np.uint8(0x03)) << 2)
+            | (((values[8 + offset] >> 4) & np.uint8(0x03)) << 4)
+            | (((values[12 + offset] >> 4) & np.uint8(0x03)) << 6)
+        )
+    return out
+
+
 def test_gguf_quant_layout_sizes_match_ggml_block_contracts() -> None:
     assert quant_layout(GGMLQuantizationType.BF16).type_size == 2
     assert quant_layout(GGMLQuantizationType.Q8_0).block_size == 32
     assert quant_layout(GGMLQuantizationType.Q8_0).type_size == 34
     assert quant_layout(GGMLQuantizationType.Q4_1).type_size == 20
+    assert quant_layout(GGMLQuantizationType.Q3_K).block_size == 256
+    assert quant_layout(GGMLQuantizationType.Q3_K).type_size == 110
     assert quant_layout(GGMLQuantizationType.Q4_K).block_size == 256
     assert quant_layout(GGMLQuantizationType.Q4_K).type_size == 144
     assert quant_layout(GGMLQuantizationType.Q5_K).type_size == 176
@@ -65,6 +81,24 @@ def test_q4_1_dequantizes_one_block() -> None:
     np.testing.assert_allclose(out[0], expected)
 
 
+def test_q3_k_dequantizes_one_superblock_scale_group() -> None:
+    hmask = np.zeros(32, dtype=np.uint8)
+    hmask[:16] = 1
+    qs = np.zeros(64, dtype=np.uint8)
+    qs[:16] = np.arange(16, dtype=np.uint8) & np.uint8(0x03)
+    scale_values = np.full(16, 32, dtype=np.uint8)
+    scale_values[0] = 33
+    scales = _pack_q3_k_scales(scale_values)
+    block = np.concatenate([hmask, qs, scales, _f16_bytes(2.0)]).reshape(1, 110)
+
+    out = dequantize_gguf_data(block, GGMLQuantizationType.Q3_K)
+
+    assert out.shape == (1, 256)
+    expected = (np.arange(16, dtype=np.uint8) & np.uint8(0x03)).astype(np.float32) * 2.0
+    np.testing.assert_allclose(out[0, :16], expected)
+    np.testing.assert_allclose(out[0, 16:], 0.0)
+
+
 def test_q4_k_dequantizes_one_superblock_scale_group() -> None:
     scales = np.zeros(12, dtype=np.uint8)
     scales[0] = 1  # first 32-value group uses scale 1, min 0
@@ -87,6 +121,7 @@ def test_target_local_model_tensor_types_have_fallback_dequant_support() -> None
         GGMLQuantizationType.BF16,
         GGMLQuantizationType.Q8_0,
         GGMLQuantizationType.Q4_1,
+        GGMLQuantizationType.Q3_K,
         GGMLQuantizationType.Q4_K,
         GGMLQuantizationType.Q5_K,
         GGMLQuantizationType.Q6_K,

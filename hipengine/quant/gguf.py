@@ -183,6 +183,7 @@ GGUF_QUANT_LAYOUTS: dict[GGMLQuantizationType, GGUFQuantLayout] = {
         256,
         2 + QK_K // 4 + QK_K // 8 + 12,
         "uint8_blocks",
+        dequant_supported=True,
     ),
     GGMLQuantizationType.Q4_K: _layout(
         GGMLQuantizationType.Q4_K,
@@ -536,6 +537,39 @@ def _q4_k_scale_min(scales: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return unpack_q4_k_scale_min(scales)
 
 
+def _dequant_q3_k_blocks(blocks: np.ndarray) -> np.ndarray:
+    n_blocks = blocks.shape[0]
+    hmask, rest = _split(blocks, [QK_K // 8])
+    qs, rest = _split(rest, [QK_K // 4])
+    scales, d = _split(rest, [12])
+    d = d.view(np.float16).astype(np.float32)
+
+    lscales, hscales = _split(scales, [8])
+    lscales = lscales.reshape((n_blocks, 1, 8)) >> np.array(
+        [0, 4], dtype=np.uint8
+    ).reshape((1, 2, 1))
+    lscales = lscales.reshape((n_blocks, 16))
+    hscales = hscales.reshape((n_blocks, 1, 4)) >> np.array(
+        [0, 2, 4, 6], dtype=np.uint8
+    ).reshape((1, 4, 1))
+    hscales = hscales.reshape((n_blocks, 16))
+    scales = (lscales & np.uint8(0x0F)) | ((hscales & np.uint8(0x03)) << np.uint8(4))
+    scales = (scales.astype(np.int8) - np.int8(32)).astype(np.float32)
+    dl = (d * scales).reshape((n_blocks, 16, 1))
+
+    ql = qs.reshape((n_blocks, -1, 1, 32)) >> np.array(
+        [0, 2, 4, 6], dtype=np.uint8
+    ).reshape((1, 1, 4, 1))
+    qh = hmask.reshape(n_blocks, -1, 1, 32) >> np.arange(8, dtype=np.uint8).reshape(
+        (1, 1, 8, 1)
+    )
+    ql = ql.reshape((n_blocks, 16, QK_K // 16)) & np.uint8(0x03)
+    qh = qh.reshape((n_blocks, 16, QK_K // 16)) & np.uint8(0x01)
+    qh = qh ^ np.uint8(0x01)
+    q = (ql.astype(np.int8) - (qh << np.uint8(2)).astype(np.int8)).astype(np.float32)
+    return (dl * q).reshape((n_blocks, QK_K))
+
+
 def _dequant_q4_k_blocks(blocks: np.ndarray) -> np.ndarray:
     n_blocks = blocks.shape[0]
     d, rest = _split(blocks, [2])
@@ -647,6 +681,7 @@ _DEQUANT_BLOCKS: dict[GGMLQuantizationType, Callable[[np.ndarray], np.ndarray]] 
     GGMLQuantizationType.Q5_0: _dequant_q5_0_blocks,
     GGMLQuantizationType.Q5_1: _dequant_q5_1_blocks,
     GGMLQuantizationType.Q8_0: _dequant_q8_0_blocks,
+    GGMLQuantizationType.Q3_K: _dequant_q3_k_blocks,
     GGMLQuantizationType.Q4_K: _dequant_q4_k_blocks,
     GGMLQuantizationType.Q5_K: _dequant_q5_k_blocks,
     GGMLQuantizationType.Q6_K: _dequant_q6_k_blocks,

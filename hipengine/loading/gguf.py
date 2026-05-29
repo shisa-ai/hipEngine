@@ -54,6 +54,10 @@ class GGUFTensorInfo:
     data_offset: int
     byte_shape: tuple[int, ...]
 
+    @property
+    def quant_key(self) -> str:
+        return _gguf_quant_key(self.ggml_type_name)
+
 
 @dataclass(frozen=True)
 class GGUFModelInfo:
@@ -161,6 +165,10 @@ class GGUFSplitTensorInfo:
     @property
     def byte_shape(self) -> tuple[int, ...]:
         return self.tensor.byte_shape
+
+    @property
+    def quant_key(self) -> str:
+        return _gguf_quant_key(self.ggml_type_name)
 
 
 @dataclass(frozen=True)
@@ -339,6 +347,10 @@ def scan_gguf_splits(paths: Sequence[str | Path]) -> GGUFSplitModelInfo:
 
 def _split_no_for_model(info: GGUFModelInfo) -> int:
     return int(info.metadata.get("split.no", 0))
+
+
+def _gguf_quant_key(ggml_type_name: str) -> str:
+    return f"gguf_{ggml_type_name.lower()}"
 
 
 def scan_gguf(path: str | Path) -> GGUFModelInfo:
