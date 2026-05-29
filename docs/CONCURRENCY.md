@@ -1199,9 +1199,16 @@ roll-up/status view.
       QKV/Z drift, shifting the first layer-0 stage mismatch to
       `recurrent_out` (`bit_mismatch=4096`, `max_abs=2.7936763763427734`), so
       the remaining native red is in segmented conv/GDN/recurrent state update
-      rather than projection, copy, or MoE. The next target is a minimal native
-      `batch_segments` vs token-1 conv/GDN/recurrent-state replay/fix for
-      layer-0; do not change paged-KV writer code yet. Do not re-open
+      rather than projection, copy, or MoE. The selected-c1 projection+state
+      replay at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-selected-c1-proj-state-atol4e-3-focus1269.json`
+      forces token-1 QKV/Z/A/B, conv/GDN/recurrent, and output projection while
+      keeping grouped-compact MoE; it is hidden/token green (`status=eq_ok`,
+      `correctness.passed=true`) but non-retained (`native_caware_decode=false`)
+      and leaves only tiny exact-bit layer-0 output drift (`bit_mismatch=541`,
+      `max_abs=3.0517578125e-05`). The next target is a minimal native
+      segmented conv/GDN/recurrent-state fix or a retained native kernel parity
+      proof; do not change paged-KV writer code yet. Do not re-open
       context softmax math, row setup, native linear segment metadata,
       output trace/copy semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2

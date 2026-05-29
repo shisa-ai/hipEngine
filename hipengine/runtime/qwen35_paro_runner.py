@@ -3822,6 +3822,9 @@ class Qwen35ParoResidentSession:
         force_selected_c1_linear_projections = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_PROJECTIONS"
         )
+        force_selected_c1_linear_state = rows > 1 and _env_flag(
+            "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_STATE"
+        )
         force_per_row_linear = _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR")
         force_per_row_full_attention_input = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"
@@ -3912,6 +3915,11 @@ class Qwen35ParoResidentSession:
                             moe_scratch = self._ensure_moe_decode_batch_scratch(layer_id, rows, force_selected_c1_moe=True)
                         else:
                             moe_scratch = self._ensure_moe_decode_batch_scratch(layer_id, rows)
+                        selected_c1_linear_state_pairs = (
+                            tuple(self._slot_linear_state(layer_id, slot) for slot in slots)
+                            if force_selected_c1_linear_state
+                            else None
+                        )
                         out = state.run_linear_attention_moe_decode_batch_layer_fp16(
                             hidden,
                             conv_state=conv_state,
@@ -3924,6 +3932,8 @@ class Qwen35ParoResidentSession:
                             tokens=rows,
                             force_selected_c1_moe=force_selected_c1_moe,
                             force_selected_c1_linear_projections=force_selected_c1_linear_projections,
+                            force_selected_c1_linear_state=force_selected_c1_linear_state,
+                            selected_c1_linear_state_pairs=selected_c1_linear_state_pairs,
                             library=self.libraries,
                             stream=stream,
                         )
@@ -3955,9 +3965,16 @@ class Qwen35ParoResidentSession:
                                     for row, slot in enumerate(slots)
                                 ],
                                 "full_attention_decode_path": "not_applicable",
-                                "native_caware_decode": not (force_selected_c1_moe or force_selected_c1_linear_projections),
+                                "native_caware_decode": not (
+                                    force_selected_c1_moe
+                                    or force_selected_c1_linear_projections
+                                    or force_selected_c1_linear_state
+                                ),
                                 "linear_attention_projection_path": (
                                     "selected_c1_forced" if force_selected_c1_linear_projections else "native_batch"
+                                ),
+                                "linear_attention_state_path": (
+                                    "selected_c1_forced" if force_selected_c1_linear_state else "native_segments"
                                 ),
                                 "moe_decode_path": layer_moe_path,
                             }
@@ -4194,6 +4211,8 @@ class Qwen35ParoResidentSession:
                 decode_blockers.append("MoE decode forced to selected-c1 diagnostic path")
             if force_selected_c1_linear_projections:
                 decode_blockers.append("linear-attention projections forced to selected-c1 diagnostic path")
+            if force_selected_c1_linear_state:
+                decode_blockers.append("linear-attention state/out projection forced to selected-c1 diagnostic path")
             if force_per_row_linear:
                 decode_blockers.append("linear-attention decode forced to per-row diagnostic path")
                 if not dense_mlp and rows > 1:
@@ -4224,6 +4243,7 @@ class Qwen35ParoResidentSession:
                 "native_caware_decode": full_attention_decode_path not in {"per_row_splitk_fallback", "per_row_context_fallback"}
                 and not force_selected_c1_moe
                 and not force_selected_c1_linear_projections
+                and not force_selected_c1_linear_state
                 and not force_per_row_linear
                 and not force_per_row_full_attention_input
                 and not force_per_row_post_attention,

@@ -3078,6 +3078,7 @@ def _decode_linear_input_first_handoff_summary(first_bit_drift: dict[str, Any] |
             "layer_type",
             "linear_attention_decode_path",
             "linear_attention_projection_path",
+            "linear_attention_state_path",
             "full_attention_decode_path",
             "moe_decode_path",
             "native_caware_decode",
@@ -5411,6 +5412,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Diagnostic linear-attention projection path for c>N batch decode; selected_c1 forces token-1 QKV/Z/A/B projections then native segmented state updates.",
     )
     parser.add_argument(
+        "--batch-decode-linear-state-path",
+        choices=("batch_segments", "selected_c1"),
+        default="batch_segments",
+        help="Diagnostic linear-attention conv/GDN/state/output path for c>N batch decode; selected_c1 forces token-1 state and out projection kernels per row.",
+    )
+    parser.add_argument(
         "--batch-decode-full-attn-path",
         choices=("native_batch", "per_row"),
         default="native_batch",
@@ -5495,6 +5502,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "batch_decode_moe_path": str(args.batch_decode_moe_path),
             "batch_decode_linear_path": str(args.batch_decode_linear_path),
             "batch_decode_linear_projection_path": str(args.batch_decode_linear_projection_path),
+            "batch_decode_linear_state_path": str(args.batch_decode_linear_state_path),
             "batch_decode_full_attention_path": str(args.batch_decode_full_attn_path),
             "batch_decode_attention_input_path": str(args.batch_decode_attn_input_path),
             "batch_decode_post_attention_path": str(args.batch_decode_post_attn_path),
@@ -5503,6 +5511,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
                 and args.batch_decode_moe_path == "grouped_compact"
                 and args.batch_decode_linear_path == "batch_segments"
                 and args.batch_decode_linear_projection_path == "batch"
+                and args.batch_decode_linear_state_path == "batch_segments"
                 and args.batch_decode_full_attn_path == "native_batch"
                 and args.batch_decode_attn_input_path == "batch"
                 and args.batch_decode_post_attn_path == "batch"
@@ -5558,6 +5567,9 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_PROJECTIONS"] = (
         "1" if args.batch_decode_linear_projection_path == "selected_c1" else "0"
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_STATE"] = (
+        "1" if args.batch_decode_linear_state_path == "selected_c1" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] = (
         "0" if args.batch_decode_full_attn_path == "per_row" else "1"
