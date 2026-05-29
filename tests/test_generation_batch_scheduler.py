@@ -6522,6 +6522,15 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
             "output": hidden.copy(),
         }
     }
+    kv_bits = np.array([[[[0x3F80]], [[0x4000]], [[0x4040]]], [[[0x4080]], [[0x40A0]], [[0x40C0]]]], dtype=np.uint16)
+    decode_full_kv_samples = {
+        0: {
+            "sample_labels": ("first", "previous", "current"),
+            "sample_positions": np.array([[0, 1, 2], [0, 1, 2]], dtype=np.int64),
+            "key_bits": kv_bits.copy(),
+            "value_bits": kv_bits.copy(),
+        }
+    }
     batch = HiddenRun(
         seed_tokens=[10, 20],
         generated_tokens=[[11], [21]],
@@ -6532,6 +6541,7 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         prefill_linear_inputs=linear_inputs,
         decode_linear_inputs_by_step=[decode_linear_inputs],
         decode_full_attention_by_step=[decode_full_attention],
+        decode_full_kv_samples_by_step=[decode_full_kv_samples],
         decode_linear_states_by_step=[linear_state],
         decode_execution_by_step=[decode_execution],
     )
@@ -6544,6 +6554,7 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         prefill_linear_inputs=linear_inputs,
         decode_linear_inputs_by_step=[decode_linear_inputs],
         decode_full_attention_by_step=[decode_full_attention],
+        decode_full_kv_samples_by_step=[decode_full_kv_samples],
         decode_linear_states_by_step=[linear_state],
     )
 
@@ -6626,6 +6637,11 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     assert summary["decode_full_attention"]["worst_diff"]["max_abs"] == 0.0
     assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["attn_context"]["rows"][0]["comparison_kind"] == "fp32"
     assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["output"]["passed"] is True
+    assert summary["decode_full_kv_sample_passed"] is True
+    assert summary["decode_full_kv_samples"]["stage"] == "decode_full_kv_samples"
+    assert summary["decode_full_kv_samples"]["passed"] is True
+    assert summary["decode_full_kv_samples"]["steps"][0]["layers"][0]["rows"][0]["sample_positions"] == [0, 1, 2]
+    assert summary["decode_full_kv_samples"]["steps"][0]["layers"][0]["rows"][0]["key_comparison"]["max_abs"] == 0.0
     assert summary["decode_linear_states"]["stage"] == "decode_linear_states"
     assert summary["decode_linear_states"]["passed"] is True
     assert "first_mismatch" not in summary["decode_linear_states"]

@@ -48,6 +48,7 @@ class HiddenRun:
     prefill_linear_inputs: dict[int, list[np.ndarray]] = field(default_factory=dict)
     decode_linear_inputs_by_step: list[dict[int, np.ndarray]] = field(default_factory=list)
     decode_full_attention_by_step: list[dict[int, dict[str, np.ndarray]]] = field(default_factory=list)
+    decode_full_kv_samples_by_step: list[dict[int, dict[str, np.ndarray | tuple[str, ...]]]] = field(default_factory=list)
     decode_linear_states_by_step: list[dict[int, dict[str, np.ndarray]]] = field(default_factory=list)
     decode_execution_by_step: list[dict[str, Any] | None] = field(default_factory=list)
 
@@ -110,6 +111,10 @@ _MAX_HIDDEN_DIFF_EXAMPLES = 8
 
 def _fp16_bits_to_f32(bits: np.ndarray) -> np.ndarray:
     return np.asarray(bits, dtype=np.uint16).view(np.float16).astype(np.float32)
+
+
+def _bf16_bits_to_f32(bits: np.ndarray) -> np.ndarray:
+    return (np.asarray(bits, dtype=np.uint32) << np.uint32(16)).view(np.float32)
 
 
 def _hidden_diff_example_at_flat_index(
@@ -281,6 +286,12 @@ def _numeric_top_abs_diff_examples(
             }
         )
     return examples
+
+
+def bf16_bits_comparison(batch_bits: np.ndarray, c1_bits: np.ndarray, *, atol: float) -> dict[str, Any]:
+    comparison = numeric_comparison(_bf16_bits_to_f32(batch_bits), _bf16_bits_to_f32(c1_bits), atol=atol)
+    comparison["bit_mismatch"] = int(np.count_nonzero(np.asarray(batch_bits, dtype=np.uint16) != np.asarray(c1_bits, dtype=np.uint16)))
+    return comparison
 
 
 def numeric_comparison(batch: np.ndarray, c1: np.ndarray, *, atol: float) -> dict[str, Any]:
@@ -464,7 +475,7 @@ def _row_focus_for_flat_index(summary: dict[str, Any], *, flat_index: int) -> li
 
 def _transition_trace_summaries(summary: dict[str, Any]) -> dict[str, Any]:
     traces: dict[str, Any] = {}
-    for key in ("decode_full_attention", "decode_linear_inputs", "decode_linear_states"):
+    for key in ("decode_full_attention", "decode_full_kv_samples", "decode_linear_inputs", "decode_linear_states"):
         trace = summary.get(key)
         if not isinstance(trace, dict):
             continue
@@ -738,6 +749,94 @@ def _stack_decode_full_attention_rows(
     }
 
 
+def _decode_full_kv_sample_positions(position: int) -> tuple[int, int, int]:
+    pos = int(position)
+    return (0, max(0, pos - 1), pos)
+
+
+def _copy_decode_full_kv_samples(
+    session: Qwen35ParoResidentSession,
+    *,
+    rows: int,
+    positions: Sequence[int],
+    slots: Sequence[int],
+) -> dict[int, dict[str, np.ndarray | tuple[str, ...]]]:
+    samples: dict[int, dict[str, np.ndarray | tuple[str, ...]]] = {}
+    layer_types = tuple(str(layer_type) for layer_type in getattr(session.config, "layer_types", ()))
+    if len(positions) != rows or len(slots) != rows:
+        raise ValueError("positions and slots must match rows")
+    for layer_id, layer_type in enumerate(layer_types[: len(session.states)]):
+        if layer_type != "full_attention":
+            continue
+        key_rows: list[np.ndarray] = []
+        value_rows: list[np.ndarray] = []
+        sample_position_rows: list[np.ndarray] = []
+        for slot, position in zip(slots, positions, strict=True):
+            key_cache, value_cache = session._slot_full_cache(layer_id, int(slot))
+            if key_cache.dtype != DType.BF16 or value_cache.dtype != DType.BF16:
+                continue
+            if len(key_cache.shape) != 4 or len(value_cache.shape) != 4:
+                raise ValueError(f"full-attention KV cache for layer {layer_id} must be rank-4")
+            _blocks, block_size, num_kv_heads, head_dim = (int(dim) for dim in key_cache.shape)
+            sample_positions = np.asarray(_decode_full_kv_sample_positions(int(position)), dtype=np.int64)
+            sample_position_rows.append(sample_positions)
+            key_samples = np.empty((len(sample_positions), num_kv_heads, head_dim), dtype=np.uint16)
+            value_samples = np.empty_like(key_samples)
+            token_width_bytes = num_kv_heads * head_dim * DType.BF16.itemsize
+            for sample_idx, token_position in enumerate(sample_positions):
+                token = int(token_position)
+                block = token // block_size
+                block_offset = token - block * block_size
+                token_offset_bytes = (block * block_size + block_offset) * token_width_bytes
+                copy_device_to_host(
+                    host_array_ptr(key_samples[sample_idx]),
+                    DeviceBuffer(key_cache.ptr + token_offset_bytes, token_width_bytes),
+                    runtime=session.runtime,
+                )
+                copy_device_to_host(
+                    host_array_ptr(value_samples[sample_idx]),
+                    DeviceBuffer(value_cache.ptr + token_offset_bytes, token_width_bytes),
+                    runtime=session.runtime,
+                )
+            key_rows.append(key_samples)
+            value_rows.append(value_samples)
+        if key_rows:
+            samples[int(layer_id)] = {
+                "sample_labels": ("first", "previous", "current"),
+                "sample_positions": np.stack(sample_position_rows, axis=0),
+                "key_bits": np.stack(key_rows, axis=0),
+                "value_bits": np.stack(value_rows, axis=0),
+            }
+    return samples
+
+
+def _merge_decode_full_kv_sample_rows(
+    target: dict[int, dict[str, list[np.ndarray] | tuple[str, ...]]],
+    captured: dict[int, dict[str, np.ndarray | tuple[str, ...]]],
+) -> None:
+    for layer_id, sample in captured.items():
+        target_layer = target.setdefault(int(layer_id), {"sample_labels": ("first", "previous", "current")})
+        for key in ("sample_positions", "key_bits", "value_bits"):
+            array = np.asarray(sample[key])
+            if int(array.shape[0]) != 1:
+                raise ValueError("c=1 decode full-KV samples must contain exactly one row")
+            target_layer.setdefault(key, []).append(array.copy())  # type: ignore[union-attr]
+
+
+def _stack_decode_full_kv_sample_rows(
+    rows_by_layer: dict[int, dict[str, list[np.ndarray] | tuple[str, ...]]]
+) -> dict[int, dict[str, np.ndarray | tuple[str, ...]]]:
+    stacked: dict[int, dict[str, np.ndarray | tuple[str, ...]]] = {}
+    for layer_id, sample in rows_by_layer.items():
+        stacked[int(layer_id)] = {
+            "sample_labels": tuple(sample.get("sample_labels", ("first", "previous", "current"))),
+            "sample_positions": np.concatenate(sample.get("sample_positions", []), axis=0),
+            "key_bits": np.concatenate(sample.get("key_bits", []), axis=0),
+            "value_bits": np.concatenate(sample.get("value_bits", []), axis=0),
+        }
+    return stacked
+
+
 def _merge_decode_linear_input_row(
     target: dict[int, list[np.ndarray]],
     captured: dict[int, np.ndarray],
@@ -810,6 +909,7 @@ def _run_batch_hidden(
         hidden_bits_by_step: list[np.ndarray] = []
         decode_linear_inputs_by_step: list[dict[int, np.ndarray]] = []
         decode_full_attention_by_step: list[dict[int, dict[str, np.ndarray]]] = []
+        decode_full_kv_samples_by_step: list[dict[int, dict[str, np.ndarray | tuple[str, ...]]]] = []
         decode_linear_states_by_step: list[dict[int, dict[str, np.ndarray]]] = []
         decode_execution_by_step: list[dict[str, Any] | None] = []
         for step in range(decode_tokens):
@@ -836,6 +936,14 @@ def _run_batch_hidden(
             decode_full_attention_by_step.append(
                 _decode_full_attention_layers_from_trace(getattr(session, "_decode_full_attention_trace", None))
             )
+            decode_full_kv_samples_by_step.append(
+                _copy_decode_full_kv_samples(
+                    session,
+                    rows=rows,
+                    positions=positions,
+                    slots=tuple(range(rows)),
+                )
+            )
             decode_linear_states_by_step.append(_copy_prefill_linear_states(session, rows=rows))
             results = session._sample_batch_from_hidden(hidden, rows=rows)
             next_tokens = []
@@ -853,6 +961,7 @@ def _run_batch_hidden(
             prefill_linear_inputs=prefill_linear_inputs,
             decode_linear_inputs_by_step=decode_linear_inputs_by_step,
             decode_full_attention_by_step=decode_full_attention_by_step,
+            decode_full_kv_samples_by_step=decode_full_kv_samples_by_step,
             decode_linear_states_by_step=decode_linear_states_by_step,
             decode_execution_by_step=decode_execution_by_step,
         )
@@ -876,6 +985,9 @@ def _run_c1_hidden(
     prefill_linear_input_rows: dict[int, list[np.ndarray]] = {}
     decode_linear_input_rows_by_step: list[dict[int, list[np.ndarray]]] = [{} for _ in range(decode_tokens)]
     decode_full_attention_rows_by_step: list[dict[int, dict[str, list[np.ndarray]]]] = [{} for _ in range(decode_tokens)]
+    decode_full_kv_sample_rows_by_step: list[dict[int, dict[str, list[np.ndarray] | tuple[str, ...]]]] = [
+        {} for _ in range(decode_tokens)
+    ]
     decode_linear_state_rows_by_step: list[dict[int, dict[str, list[np.ndarray]]]] = [{} for _ in range(decode_tokens)]
     hidden_by_step = [np.empty((rows, runner.config.hidden_size), dtype=np.uint16) for _ in range(decode_tokens)]
     with Qwen35ParoResidentSession(
@@ -925,6 +1037,10 @@ def _run_c1_hidden(
                     decode_full_attention_rows_by_step[step],
                     _decode_full_attention_layers_from_trace(getattr(session, "_decode_full_attention_trace", None)),
                 )
+                _merge_decode_full_kv_sample_rows(
+                    decode_full_kv_sample_rows_by_step[step],
+                    _copy_decode_full_kv_samples(session, rows=1, positions=(position,), slots=(0,)),
+                )
                 _merge_prefill_linear_state_row(
                     decode_linear_state_rows_by_step[step],
                     _copy_prefill_linear_states(session, rows=1),
@@ -946,6 +1062,9 @@ def _run_c1_hidden(
         ],
         decode_full_attention_by_step=[
             _stack_decode_full_attention_rows(rows_by_layer) for rows_by_layer in decode_full_attention_rows_by_step
+        ],
+        decode_full_kv_samples_by_step=[
+            _stack_decode_full_kv_sample_rows(rows_by_layer) for rows_by_layer in decode_full_kv_sample_rows_by_step
         ],
         decode_linear_states_by_step=[
             _stack_prefill_linear_state_rows(rows_by_layer) for rows_by_layer in decode_linear_state_rows_by_step
@@ -1316,6 +1435,121 @@ def _decode_full_attention_summary(
     return result
 
 
+def _decode_full_kv_sample_summary(
+    batch: HiddenRun,
+    c1: HiddenRun,
+    *,
+    atol: float,
+) -> dict[str, Any] | None:
+    if not batch.decode_full_kv_samples_by_step or not c1.decode_full_kv_samples_by_step:
+        return None
+    if not any(step_layers for step_layers in batch.decode_full_kv_samples_by_step) or not any(
+        step_layers for step_layers in c1.decode_full_kv_samples_by_step
+    ):
+        return None
+    steps: list[dict[str, Any]] = []
+    for step, (batch_layers, c1_layers) in enumerate(
+        zip(batch.decode_full_kv_samples_by_step, c1.decode_full_kv_samples_by_step, strict=True)
+    ):
+        layers: list[dict[str, Any]] = []
+        for layer_id in sorted(set(batch_layers) & set(c1_layers)):
+            batch_sample = batch_layers[layer_id]
+            c1_sample = c1_layers[layer_id]
+            labels = tuple(str(label) for label in batch_sample.get("sample_labels", ("first", "previous", "current")))
+            batch_positions = np.asarray(batch_sample["sample_positions"], dtype=np.int64)
+            c1_positions = np.asarray(c1_sample["sample_positions"], dtype=np.int64)
+            if batch_positions.shape != c1_positions.shape:
+                raise ValueError(
+                    f"decode full-KV sample positions differ for step {step}, layer {layer_id}: "
+                    f"batch={batch_positions.shape} c1={c1_positions.shape}"
+                )
+            row_summaries: list[dict[str, Any]] = []
+            for row in range(int(batch_positions.shape[0])):
+                row_summary: dict[str, Any] = {
+                    "row": int(row),
+                    "sample_labels": list(labels),
+                    "sample_positions": [int(value) for value in batch_positions[row].tolist()],
+                    "sample_positions_match": bool(np.array_equal(batch_positions[row], c1_positions[row])),
+                }
+                row_passed = bool(row_summary["sample_positions_match"])
+                for kind, key in (("key", "key_bits"), ("value", "value_bits")):
+                    batch_bits = np.asarray(batch_sample[key], dtype=np.uint16)
+                    c1_bits = np.asarray(c1_sample[key], dtype=np.uint16)
+                    if batch_bits.shape != c1_bits.shape:
+                        raise ValueError(
+                            f"decode full-KV {kind} sample shape differs for step {step}, layer {layer_id}: "
+                            f"batch={batch_bits.shape} c1={c1_bits.shape}"
+                        )
+                    comparison = bf16_bits_comparison(batch_bits[row : row + 1], c1_bits[row : row + 1], atol=atol)
+                    row_summary[f"{kind}_comparison"] = comparison
+                    row_passed = row_passed and bool(comparison["passed"])
+                row_summary["passed"] = row_passed
+                row_summaries.append(row_summary)
+            layers.append(
+                {
+                    "layer_index": int(layer_id),
+                    "passed": all(row["passed"] for row in row_summaries),
+                    "rows": row_summaries,
+                }
+            )
+        steps.append(
+            {
+                "decode_step": int(step),
+                "generated_index": int(step + 1),
+                "passed": all(layer["passed"] for layer in layers),
+                "layers": layers,
+            }
+        )
+    first_mismatch: dict[str, Any] | None = None
+    worst_diff: dict[str, Any] | None = None
+    for step_summary in steps:
+        for layer in step_summary["layers"]:
+            for row in layer["rows"]:
+                for kind in ("key", "value"):
+                    comparison = row[f"{kind}_comparison"]
+                    if worst_diff is None or float(comparison["max_abs"]) > float(worst_diff["max_abs"]):
+                        worst_diff = {
+                            "decode_step": int(step_summary["decode_step"]),
+                            "generated_index": int(step_summary["generated_index"]),
+                            "layer_index": int(layer["layer_index"]),
+                            "row": int(row["row"]),
+                            "kind": kind,
+                            "passed": bool(comparison["passed"]),
+                            "max_abs": float(comparison["max_abs"]),
+                            "max_abs_flat_index": comparison.get("max_abs_flat_index"),
+                            "max_abs_index": comparison.get("max_abs_index", []),
+                            "elements_over_atol": int(comparison["elements_over_atol"]),
+                            "bit_mismatch": int(comparison.get("bit_mismatch", 0)),
+                        }
+                    if first_mismatch is None and not bool(comparison["passed"]):
+                        first_mismatch = {
+                            "decode_step": int(step_summary["decode_step"]),
+                            "generated_index": int(step_summary["generated_index"]),
+                            "layer_index": int(layer["layer_index"]),
+                            "row": int(row["row"]),
+                            "kind": kind,
+                            "sample_labels": row["sample_labels"],
+                            "sample_positions": row["sample_positions"],
+                            "sample_positions_match": bool(row["sample_positions_match"]),
+                            "max_abs": float(comparison["max_abs"]),
+                            "max_abs_flat_index": comparison.get("max_abs_flat_index"),
+                            "max_abs_index": comparison.get("max_abs_index", []),
+                            "elements_over_atol": int(comparison["elements_over_atol"]),
+                            "bit_mismatch": int(comparison.get("bit_mismatch", 0)),
+                        }
+    result = {
+        "stage": "decode_full_kv_samples",
+        "bf16_atol": float(atol),
+        "passed": all(step["passed"] for step in steps),
+        "steps": steps,
+    }
+    if first_mismatch is not None:
+        result["first_mismatch"] = first_mismatch
+    if worst_diff is not None:
+        result["worst_diff"] = worst_diff
+    return result
+
+
 def _decode_linear_state_summary(
     batch: HiddenRun,
     c1: HiddenRun,
@@ -1478,6 +1712,7 @@ def _summarize_layer_limit(
         atol=atol,
         focus_hidden_flat_indices=focus_hidden_flat_indices,
     )
+    decode_full_kv_samples = _decode_full_kv_sample_summary(batch, c1, atol=0.0)
     decode_linear_states = _decode_linear_state_summary(batch, c1, atol=state_atol)
     steps: list[dict[str, Any]] = []
     for step, (batch_bits, c1_bits) in enumerate(zip(batch.hidden_bits_by_step, c1.hidden_bits_by_step, strict=True)):
@@ -1512,6 +1747,7 @@ def _summarize_layer_limit(
         "decode_full_attention_output_passed": (
             True if decode_full_attention is None else bool(decode_full_attention["output_passed"])
         ),
+        "decode_full_kv_sample_passed": True if decode_full_kv_samples is None else bool(decode_full_kv_samples["passed"]),
         "decode_linear_state_passed": True if decode_linear_states is None else bool(decode_linear_states["passed"]),
         "hidden_passed": all(row["hidden_comparison"]["passed"] for step in steps for row in step["rows"]),
         "token_passed": not token_mismatches,
@@ -1530,6 +1766,8 @@ def _summarize_layer_limit(
         summary["decode_linear_inputs"] = decode_linear_inputs
     if decode_full_attention is not None:
         summary["decode_full_attention"] = decode_full_attention
+    if decode_full_kv_samples is not None:
+        summary["decode_full_kv_samples"] = decode_full_kv_samples
     if decode_linear_states is not None:
         summary["decode_linear_states"] = decode_linear_states
     return summary

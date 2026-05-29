@@ -913,8 +913,13 @@ roll-up/status view.
       `attn_batch_vs_c1_max_abs=0.0`, and NumPy max abs
       `1.4901161193847656e-08`; the dense short-context c1 comparison is also
       tolerance-green (`attn_batch_vs_dense_c1_max_abs=1.862645149230957e-08`).
-      The next native-full investigation should compare the runtime layer's
-      retained K/V contents before/after the decode append, while treating
+      The KV-tail trace refresh at
+      `/tmp/hipengine-hidden-bisect-L3-L4-512-16-c2-kv-tail-transition-focus1269.json`
+      adds BF16 cache samples for `first`, `previous`, and `current` tokens; the
+      failing layer's `decode_full_kv_samples` passes at zero tolerance
+      (`bit_mismatch=0`, worst `max_abs=0.0`) while `attn_context` still fails.
+      The next native-full investigation should compare wider retained K/V cache
+      contents or query/context launch inputs, while treating sampled K/V tail,
       live-count/block metadata, dense-vs-paged c1 context math, and standalone
       batch append/context primitives as model-shape green.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
