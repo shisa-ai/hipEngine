@@ -2213,6 +2213,12 @@ def test_batch_c_sweep_rejects_unsafe_summary_json_before_creating_artifacts(tmp
 
 
 def test_batch_c_sweep_validate_summary_rejects_unsafe_input_path(tmp_path: Path, capsys) -> None:
+    non_object_summary = tmp_path / "summary-list.json"
+    non_object_summary.write_text("[]\n")
+    assert c_sweep.main(["--validate-summary-json", str(non_object_summary)]) == 1
+    captured = capsys.readouterr()
+    assert "summary must be an object" in captured.err
+
     parent_component_summary = tmp_path / "summary-parent" / ".." / "summary.json"
     assert c_sweep.main(["--validate-summary-json", str(parent_component_summary)]) == 1
     captured = capsys.readouterr()

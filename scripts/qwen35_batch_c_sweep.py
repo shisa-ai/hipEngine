@@ -3115,8 +3115,6 @@ def main(argv: list[str] | None = None) -> int:
         try:
             _validate_cli_path_option("--validate-summary-json", args.validate_summary_json)
             summary = json.loads(Path(args.validate_summary_json).read_text())
-            if not isinstance(summary, Mapping):
-                raise ValueError("summary root must be an object")
             validate_sweep_summary(summary)
         except Exception as exc:
             print(f"invalid c-sweep summary: {exc}", file=sys.stderr)
