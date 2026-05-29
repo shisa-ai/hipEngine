@@ -44630,3 +44630,22 @@ python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/
 Result: `/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-all-per-row-state-focus1269.json` emitted `status=mismatch_found`, `performance_claim=false`, and `prefill_linear_state_atol=1e-6`. Final prefill hidden still passes at every L5-L8 limit, but `prefill_linear_state_passed=false` for each limit. The layer-limit 6 state summary (the first strict-1e-3 decode-hidden failure limit) includes layer-5 linear-state mismatches: conv `max_abs=0.0078125` at index `[0, 3888, 1]` and recurrent `max_abs=0.0072229355573654175` at index `[0, 30, 72, 10]`. The all-per-row decode step still fails at L8 row 0 dim 1269 (`abs_diff=0.002197265625`) with no one-token token mismatch.
 
 Interpretation: the remaining C2.3 blocker is now anchored to packed-prefill linear-state materialization or slot-state selection. The decode output can diverge even when final prefill hidden is within tolerance and all decode subpaths run through per-row fallbacks, because those fallbacks consume prefill-produced per-slot conv/recurrent state that is not c=1-equivalent.
+
+## 2026-05-29 — CONCURRENCY row-scoped prefill state localization
+
+Advanced C2.3 by adding row summaries to the prefill linear-state comparison output. The previous artifact showed packed-prefill conv/recurrent state differed before decode, but the full-state max indices were cumbersome; this refresh makes the per-slot row contribution explicit.
+
+Code/test changes:
+
+- `scripts/qwen35_batch_hidden_bisect.py` now adds `row_summaries` under each `prefill_linear_states.layers[].states.{conv,recurrent}` comparison. Each row summary records pass/fail, max abs diff, index, values, signed diff, over-tolerance count, and the top three diffs.
+- CPU tests lock row-summary output for the hidden-bisect summary helper.
+
+Diagnostic command:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 1 --max-layers 8 --layer-limits 5-8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-decode-moe-path selected_c1 --batch-decode-linear-path per_row --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-all-per-row-state-rows-focus1269.json >/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-all-per-row-state-rows-focus1269.stdout
+```
+
+Result: `/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-all-per-row-state-rows-focus1269.json` emitted `status=mismatch_found`, `performance_claim=false`, and `prefill_linear_state_passed=false` for each L5-L8 limit. At L6/layer 5, conv state is large for both rows (`row0 max_abs=0.0078125`, `row1 max_abs=0.0078125`), while recurrent state is larger on row 0 (`row0 max_abs=0.0072229355573654175` at `[30,72,10]`; `row1 max_abs=0.0025315284729003906` at `[30,92,10]`). The decode failure remains L8 row 0 dim 1269 (`abs_diff=0.002197265625`) with no one-token token mismatch.
+
+Interpretation: the packed-prefill state mismatch is not a single-row-only conv issue, but the recurrent state has a stronger row-0 component aligned with the later row-0 hidden drift. The next implementation target should inspect packed linear prefill's state write indexing/order for recurrent state rows, with conv state still a related broad mismatch.

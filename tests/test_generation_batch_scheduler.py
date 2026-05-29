@@ -6503,7 +6503,32 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     assert summary["prefill"]["batch_prefill_execution"] == {"path": "native_prefill_compact_cN"}
     assert summary["prefill_linear_states"]["stage"] == "prefill_linear_states"
     assert summary["prefill_linear_states"]["passed"] is True
-    assert summary["prefill_linear_states"]["layers"][0]["states"]["conv"]["max_abs"] == 0.0
+    conv_state = summary["prefill_linear_states"]["layers"][0]["states"]["conv"]
+    assert conv_state["max_abs"] == 0.0
+    assert conv_state["row_summaries"] == [
+        {
+            "row": 0,
+            "passed": True,
+            "max_abs": 0.0,
+            "max_abs_index": [0, 0],
+            "batch_value_at_max_abs": 1.0,
+            "c1_value_at_max_abs": 1.0,
+            "signed_diff_at_max_abs": 0.0,
+            "elements_over_atol": 0,
+            "top_abs_diffs": [],
+        },
+        {
+            "row": 1,
+            "passed": True,
+            "max_abs": 0.0,
+            "max_abs_index": [0, 0],
+            "batch_value_at_max_abs": 3.0,
+            "c1_value_at_max_abs": 3.0,
+            "signed_diff_at_max_abs": 0.0,
+            "elements_over_atol": 0,
+            "top_abs_diffs": [],
+        },
+    ]
     assert summary["steps"][0]["batch_decode_execution"] == decode_execution
 
 

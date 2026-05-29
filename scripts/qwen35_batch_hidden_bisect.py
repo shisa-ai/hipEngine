@@ -311,6 +311,30 @@ def numeric_comparison(batch: np.ndarray, c1: np.ndarray, *, atol: float) -> dic
     }
 
 
+def _numeric_row_summaries(batch: np.ndarray, c1: np.ndarray, *, atol: float) -> list[dict[str, Any]]:
+    if batch.shape != c1.shape:
+        raise ValueError(f"numeric shapes differ: batch={batch.shape!r} c1={c1.shape!r}")
+    if batch.ndim == 0:
+        return []
+    rows: list[dict[str, Any]] = []
+    for row in range(int(batch.shape[0])):
+        comparison = numeric_comparison(batch[row], c1[row], atol=atol)
+        rows.append(
+            {
+                "row": int(row),
+                "passed": bool(comparison["passed"]),
+                "max_abs": float(comparison["max_abs"]),
+                "max_abs_index": comparison["max_abs_index"],
+                "batch_value_at_max_abs": float(comparison["batch_value_at_max_abs"]),
+                "c1_value_at_max_abs": float(comparison["c1_value_at_max_abs"]),
+                "signed_diff_at_max_abs": float(comparison["signed_diff_at_max_abs"]),
+                "elements_over_atol": int(comparison["elements_over_atol"]),
+                "top_abs_diffs": comparison["top_abs_diffs"][:3],
+            }
+        )
+    return rows
+
+
 def _first_hidden_mismatch(layer_summaries: Sequence[dict[str, Any]]) -> dict[str, Any] | None:
     for summary in layer_summaries:
         for step in summary.get("steps", []):
@@ -802,7 +826,9 @@ def _prefill_linear_state_summary(
         for state_name in ("conv", "recurrent"):
             if state_name not in layer_batch or state_name not in layer_c1:
                 continue
-            state_summaries[state_name] = numeric_comparison(layer_batch[state_name], layer_c1[state_name], atol=atol)
+            state_summary = numeric_comparison(layer_batch[state_name], layer_c1[state_name], atol=atol)
+            state_summary["row_summaries"] = _numeric_row_summaries(layer_batch[state_name], layer_c1[state_name], atol=atol)
+            state_summaries[state_name] = state_summary
         layers.append(
             {
                 "layer_index": int(layer_id),

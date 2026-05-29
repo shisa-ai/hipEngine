@@ -742,9 +742,14 @@ roll-up/status view.
       before decode; final hidden remains green, but `prefill_linear_state_passed=false`
       for every L5-L8 limit at `state_atol=1e-6` (for example L6 layer-5
       recurrent state `max_abs=0.0072229355573654175`, conv state
-      `max_abs=0.0078125`). This keeps the live fix target on packed-prefill
-      linear-state materialization / slot-state selection, not final prefill
-      hidden or any single native batch decode subpath.
+      `max_abs=0.0078125`). The row-scoped refresh
+      `/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-all-per-row-state-rows-focus1269.json`
+      adds per-row state maxima: at L6/layer 5, row 0 is the larger recurrent
+      offender (`0.0072229355573654175` vs row 1 `0.0025315284729003906`),
+      while conv is large for both rows (`0.0078125`). This keeps the live fix
+      target on packed-prefill linear-state materialization / slot-state
+      selection, especially row-0 recurrent state, not final prefill hidden or
+      any single native batch decode subpath.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions
