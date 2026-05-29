@@ -46759,3 +46759,37 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (selected pytest suite plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no queue item was marked complete, repeat artifact has `performance_claim=false`, native c>N generated-token equality remains open, and no performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY K/V prefix token samples
+
+Added compact BF16 token-word samples to `scripts/qwen35_batch_hidden_bisect.py` K/V prefix diagnostics. The prefill and decode full-context prefix hash captures now retain the first eight `uint16` BF16 words per token in memory, and hash failure records include the first mismatching token's batch/c1 samples. This keeps artifacts compact while distinguishing pointer/slot reuse from value-generation drift at prompt-tail/current-token mismatches.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_kv_prefix_hash_comparison_embeds_token_samples tests/test_generation_batch_scheduler.py::test_hidden_bisect_summary_embeds_batch_decode_execution_trace -q
+```
+
+Result: PASS.
+
+Refreshed native L8 hidden-bisect with token samples:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-kv-token-samples-atol4e-3-focus1269.json
+```
+
+Result: `status=mismatch_found`, `failure_modes=["hidden"]`, no performance claim. Post-prefill K/V prefix hashes are green. Decode full-context K/V prefix rollup fails at layer_limit 8 / decode step 0 / layer 3 / row 0 / current token 512; first key hash mismatch has `batch_hash=494777143`, `c1_hash=1811308257`, and token samples differ in one of the first eight BF16 words (`batch_token_sample_u16=[48849,49138,16166,49033,16207,16394,49196,16414]`, `c1_token_sample_u16=[48849,49138,16167,49033,16207,16394,49196,16414]`). Decode sampled-KV also fails at current token 512 for key/value. Next action remains deterministic compact-prefill K/V replay / slot-content auditing before modifying paged-KV writer code.
+
+Full validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (selected pytest suite plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no queue item was marked complete, token-sample artifact has `performance_claim=false`, native c>N generated-token equality remains open, and no performance/scaling claim was added.

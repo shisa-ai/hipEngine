@@ -61,6 +61,7 @@ DECODE_FULL_ATTENTION_TRACE_STAGES = (
 DECODE_FULL_CONTEXT_ORACLE_ATOL = 3.0e-5
 KV_PREFIX_MISMATCH_POSITION_LIMIT = 8
 KV_PREFIX_TAIL_WINDOW = 16
+KV_PREFIX_TOKEN_SAMPLE_WORDS = 8
 
 
 @dataclass(frozen=True)
@@ -1406,6 +1407,32 @@ def _bf16_token_crc32(bits: np.ndarray) -> np.ndarray:
     return np.asarray([zlib.crc32(row.tobytes()) for row in token_bits], dtype=np.uint64)
 
 
+def _bf16_token_word_samples(bits: np.ndarray, *, sample_words: int = KV_PREFIX_TOKEN_SAMPLE_WORDS) -> np.ndarray:
+    bits_array = np.asarray(bits, dtype=np.uint16)
+    token_bits = np.ascontiguousarray(bits_array.reshape(int(bits_array.shape[0]), -1))
+    width = max(int(sample_words), 0)
+    samples = np.zeros((int(token_bits.shape[0]), width), dtype=np.uint16)
+    if width:
+        copied = min(width, int(token_bits.shape[1]))
+        samples[:, :copied] = token_bits[:, :copied]
+    return samples
+
+
+def _pad_token_sample_row_arrays(arrays: Sequence[np.ndarray]) -> np.ndarray:
+    if not arrays:
+        return np.empty((0, 0, KV_PREFIX_TOKEN_SAMPLE_WORDS), dtype=np.uint16)
+    row_count = len(arrays)
+    max_width = max(int(np.asarray(array).shape[1]) for array in arrays)
+    sample_words = max(int(np.asarray(array).shape[2]) for array in arrays)
+    padded = np.zeros((row_count, max_width, sample_words), dtype=np.uint16)
+    for row, array in enumerate(arrays):
+        row_array = np.asarray(array, dtype=np.uint16)
+        if row_array.ndim != 3 or int(row_array.shape[0]) != 1:
+            raise ValueError("padded token sample row arrays must have shape [1, width, sample_words]")
+        padded[row, : int(row_array.shape[1]), : int(row_array.shape[2])] = row_array[0]
+    return padded
+
+
 def _pad_row_arrays(arrays: Sequence[np.ndarray], *, dtype: np.dtype | type) -> np.ndarray:
     if not arrays:
         return np.empty((0, 0), dtype=dtype)
@@ -1509,6 +1536,8 @@ def _copy_full_kv_prefix_hashes(
             continue
         key_prefix_hashes = np.zeros((rows, max_context_len), dtype=np.uint64)
         value_prefix_hashes = np.zeros((rows, max_context_len), dtype=np.uint64)
+        key_prefix_token_samples = np.zeros((rows, max_context_len, KV_PREFIX_TOKEN_SAMPLE_WORDS), dtype=np.uint16)
+        value_prefix_token_samples = np.zeros((rows, max_context_len, KV_PREFIX_TOKEN_SAMPLE_WORDS), dtype=np.uint16)
         for row, (slot, live_count) in enumerate(zip(slots, context_lens, strict=True)):
             live = int(live_count)
             key_bits, value_bits = _copy_decode_full_kv_prefix_bits(
@@ -1519,10 +1548,14 @@ def _copy_full_kv_prefix_hashes(
             )
             key_prefix_hashes[row, :live] = _bf16_token_crc32(key_bits)
             value_prefix_hashes[row, :live] = _bf16_token_crc32(value_bits)
+            key_prefix_token_samples[row, :live] = _bf16_token_word_samples(key_bits)
+            value_prefix_token_samples[row, :live] = _bf16_token_word_samples(value_bits)
         hashes[int(layer_id)] = {
             "context_lens": context_lens.copy(),
             "key_prefix_hashes": key_prefix_hashes,
             "value_prefix_hashes": value_prefix_hashes,
+            "key_prefix_token_samples": key_prefix_token_samples,
+            "value_prefix_token_samples": value_prefix_token_samples,
         }
     return hashes
 
@@ -1533,7 +1566,15 @@ def _merge_full_kv_prefix_hash_rows(
 ) -> None:
     for layer_id, payload in captured.items():
         target_layer = target.setdefault(int(layer_id), {"context_lens": [], "key_prefix_hashes": [], "value_prefix_hashes": []})
-        for key in ("context_lens", "key_prefix_hashes", "value_prefix_hashes"):
+        for key in (
+            "context_lens",
+            "key_prefix_hashes",
+            "value_prefix_hashes",
+            "key_prefix_token_samples",
+            "value_prefix_token_samples",
+        ):
+            if key not in payload:
+                continue
             array = np.asarray(payload[key])
             if int(array.shape[0]) != 1:
                 raise ValueError("c=1 prefill full-KV prefix hashes must contain exactly one row")
@@ -1545,11 +1586,16 @@ def _stack_full_kv_prefix_hash_rows(
 ) -> dict[int, dict[str, np.ndarray]]:
     stacked: dict[int, dict[str, np.ndarray]] = {}
     for layer_id, payload in rows_by_layer.items():
-        stacked[int(layer_id)] = {
+        layer_payload = {
             "context_lens": np.concatenate(payload.get("context_lens", []), axis=0),
             "key_prefix_hashes": _pad_row_arrays(payload.get("key_prefix_hashes", []), dtype=np.uint64),
             "value_prefix_hashes": _pad_row_arrays(payload.get("value_prefix_hashes", []), dtype=np.uint64),
         }
+        if payload.get("key_prefix_token_samples"):
+            layer_payload["key_prefix_token_samples"] = _pad_token_sample_row_arrays(payload.get("key_prefix_token_samples", []))
+        if payload.get("value_prefix_token_samples"):
+            layer_payload["value_prefix_token_samples"] = _pad_token_sample_row_arrays(payload.get("value_prefix_token_samples", []))
+        stacked[int(layer_id)] = layer_payload
     return stacked
 
 
@@ -1588,6 +1634,8 @@ def _decode_full_context_oracles_from_trace(
         max_context_len = int(np.max(context_lens))
         key_prefix_hashes = np.zeros((rows, max_context_len), dtype=np.uint64)
         value_prefix_hashes = np.zeros((rows, max_context_len), dtype=np.uint64)
+        key_prefix_token_samples = np.zeros((rows, max_context_len, KV_PREFIX_TOKEN_SAMPLE_WORDS), dtype=np.uint16)
+        value_prefix_token_samples = np.zeros((rows, max_context_len, KV_PREFIX_TOKEN_SAMPLE_WORDS), dtype=np.uint16)
         for row, (slot, live_count) in enumerate(zip(slots, context_lens, strict=True)):
             key_bits, value_bits = _copy_decode_full_kv_prefix_bits(
                 session,
@@ -1598,6 +1646,8 @@ def _decode_full_context_oracles_from_trace(
             live = int(live_count)
             key_prefix_hashes[row, :live] = _bf16_token_crc32(key_bits)
             value_prefix_hashes[row, :live] = _bf16_token_crc32(value_bits)
+            key_prefix_token_samples[row, :live] = _bf16_token_word_samples(key_bits)
+            value_prefix_token_samples[row, :live] = _bf16_token_word_samples(value_bits)
             context[row] = _numpy_full_attention_context_row(
                 query[row],
                 key_bits,
@@ -1609,6 +1659,8 @@ def _decode_full_context_oracles_from_trace(
             "context_lens": context_lens.copy(),
             "key_prefix_hashes": key_prefix_hashes,
             "value_prefix_hashes": value_prefix_hashes,
+            "key_prefix_token_samples": key_prefix_token_samples,
+            "value_prefix_token_samples": value_prefix_token_samples,
             "query_source": query_source,
         }
     return oracles
@@ -1620,7 +1672,14 @@ def _merge_decode_full_context_oracle_rows(
 ) -> None:
     for layer_id, payload in captured.items():
         target_layer = target.setdefault(int(layer_id), {"context": [], "context_lens": [], "query_source": []})
-        for key in ("context", "context_lens", "key_prefix_hashes", "value_prefix_hashes"):
+        for key in (
+            "context",
+            "context_lens",
+            "key_prefix_hashes",
+            "value_prefix_hashes",
+            "key_prefix_token_samples",
+            "value_prefix_token_samples",
+        ):
             if key not in payload:
                 continue
             array = np.asarray(payload[key])
@@ -1648,6 +1707,10 @@ def _stack_decode_full_context_oracle_rows(
             layer_payload["key_prefix_hashes"] = _pad_row_arrays(payload.get("key_prefix_hashes", []), dtype=np.uint64)
         if payload.get("value_prefix_hashes"):
             layer_payload["value_prefix_hashes"] = _pad_row_arrays(payload.get("value_prefix_hashes", []), dtype=np.uint64)
+        if payload.get("key_prefix_token_samples"):
+            layer_payload["key_prefix_token_samples"] = _pad_token_sample_row_arrays(payload.get("key_prefix_token_samples", []))
+        if payload.get("value_prefix_token_samples"):
+            layer_payload["value_prefix_token_samples"] = _pad_token_sample_row_arrays(payload.get("value_prefix_token_samples", []))
         stacked[int(layer_id)] = layer_payload  # type: ignore[assignment]
     return stacked
 
@@ -2122,6 +2185,10 @@ def _prefill_full_kv_prefix_failure_record(
         "batch_hash": None if not isinstance(first, dict) else int(first.get("batch_hash", 0)),
         "c1_hash": None if not isinstance(first, dict) else int(first.get("c1_hash", 0)),
     }
+    if isinstance(first, dict) and "batch_token_sample_u16" in first and "c1_token_sample_u16" in first:
+        record["batch_token_sample_u16"] = [int(value) for value in first.get("batch_token_sample_u16", [])]
+        record["c1_token_sample_u16"] = [int(value) for value in first.get("c1_token_sample_u16", [])]
+        record["token_sample_word_count"] = int(first.get("token_sample_word_count", 0))
     if layer_limit is not None:
         record = {"layer_limit": int(layer_limit), **record}
     return record
@@ -2176,6 +2243,18 @@ def _prefill_full_kv_prefix_summary(batch: HiddenRun, c1: HiddenRun) -> dict[str
         c1_key_hashes = np.asarray(c1_payload["key_prefix_hashes"], dtype=np.uint64)
         batch_value_hashes = np.asarray(batch_payload["value_prefix_hashes"], dtype=np.uint64)
         c1_value_hashes = np.asarray(c1_payload["value_prefix_hashes"], dtype=np.uint64)
+        batch_key_samples = (
+            np.asarray(batch_payload["key_prefix_token_samples"], dtype=np.uint16)
+            if "key_prefix_token_samples" in batch_payload and "key_prefix_token_samples" in c1_payload
+            else None
+        )
+        c1_key_samples = np.asarray(c1_payload["key_prefix_token_samples"], dtype=np.uint16) if batch_key_samples is not None else None
+        batch_value_samples = (
+            np.asarray(batch_payload["value_prefix_token_samples"], dtype=np.uint16)
+            if "value_prefix_token_samples" in batch_payload and "value_prefix_token_samples" in c1_payload
+            else None
+        )
+        c1_value_samples = np.asarray(c1_payload["value_prefix_token_samples"], dtype=np.uint16) if batch_value_samples is not None else None
         if batch_lens.shape != c1_lens.shape:
             raise ValueError(f"prefill full-KV context-lens shape differs for layer {layer_id}")
         for name, left, right in (
@@ -2184,17 +2263,29 @@ def _prefill_full_kv_prefix_summary(batch: HiddenRun, c1: HiddenRun) -> dict[str
         ):
             if left.ndim != 2 or right.ndim != 2 or int(left.shape[0]) != int(batch_lens.shape[0]) or int(right.shape[0]) != int(batch_lens.shape[0]):
                 raise ValueError(f"prefill full-KV {name} prefix hashes have incompatible shapes")
+        for name, left, right in (
+            ("key", batch_key_samples, c1_key_samples),
+            ("value", batch_value_samples, c1_value_samples),
+        ):
+            if left is None or right is None:
+                continue
+            if left.ndim != 3 or right.ndim != 3 or int(left.shape[0]) != int(batch_lens.shape[0]) or int(right.shape[0]) != int(batch_lens.shape[0]):
+                raise ValueError(f"prefill full-KV {name} token samples have incompatible shapes")
         row_summaries: list[dict[str, Any]] = []
         for row in range(int(batch_lens.shape[0])):
             key_comparison = _kv_prefix_hash_comparison(
                 batch_key_hashes[row],
                 c1_key_hashes[row],
                 context_len=int(batch_lens[row]),
+                batch_token_samples=None if batch_key_samples is None else batch_key_samples[row],
+                c1_token_samples=None if c1_key_samples is None else c1_key_samples[row],
             )
             value_comparison = _kv_prefix_hash_comparison(
                 batch_value_hashes[row],
                 c1_value_hashes[row],
                 context_len=int(batch_lens[row]),
+                batch_token_samples=None if batch_value_samples is None else batch_value_samples[row],
+                c1_token_samples=None if c1_value_samples is None else c1_value_samples[row],
             )
             row_summaries.append(
                 {
@@ -2921,12 +3012,30 @@ def _kv_prefix_mismatch_position_summary(mismatches: np.ndarray, *, context_len:
     }
 
 
-def _kv_prefix_hash_comparison(batch_hashes: np.ndarray, c1_hashes: np.ndarray, *, context_len: int) -> dict[str, Any]:
+def _kv_prefix_hash_comparison(
+    batch_hashes: np.ndarray,
+    c1_hashes: np.ndarray,
+    *,
+    context_len: int,
+    batch_token_samples: np.ndarray | None = None,
+    c1_token_samples: np.ndarray | None = None,
+) -> dict[str, Any]:
     live = int(context_len)
     batch_row = np.asarray(batch_hashes, dtype=np.uint64).reshape(-1)
     c1_row = np.asarray(c1_hashes, dtype=np.uint64).reshape(-1)
     if live < 0 or live > int(batch_row.shape[0]) or live > int(c1_row.shape[0]):
         raise ValueError("KV prefix hash comparison context_len exceeds hash row width")
+    batch_samples = np.asarray(batch_token_samples, dtype=np.uint16) if batch_token_samples is not None else None
+    c1_samples = np.asarray(c1_token_samples, dtype=np.uint16) if c1_token_samples is not None else None
+    if batch_samples is not None or c1_samples is not None:
+        if batch_samples is None or c1_samples is None:
+            raise ValueError("KV prefix token samples must be supplied for both batch and c1")
+        if batch_samples.ndim != 2 or c1_samples.ndim != 2:
+            raise ValueError("KV prefix token samples must have shape [tokens, sample_words]")
+        if int(batch_samples.shape[1]) != int(c1_samples.shape[1]):
+            raise ValueError("KV prefix token samples must use the same sample word count")
+        if live > int(batch_samples.shape[0]) or live > int(c1_samples.shape[0]):
+            raise ValueError("KV prefix token sample context_len exceeds sample row width")
     mismatches = np.flatnonzero(batch_row[:live] != c1_row[:live])
     position_summary = _kv_prefix_mismatch_position_summary(mismatches, context_len=live)
     first_mismatch: dict[str, Any] | None = None
@@ -2937,6 +3046,10 @@ def _kv_prefix_hash_comparison(batch_hashes: np.ndarray, c1_hashes: np.ndarray, 
             "batch_hash": int(batch_row[pos]),
             "c1_hash": int(c1_row[pos]),
         }
+        if batch_samples is not None and c1_samples is not None:
+            first_mismatch["batch_token_sample_u16"] = [int(value) for value in batch_samples[pos].reshape(-1)]
+            first_mismatch["c1_token_sample_u16"] = [int(value) for value in c1_samples[pos].reshape(-1)]
+            first_mismatch["token_sample_word_count"] = int(batch_samples.shape[1])
     return {
         "passed": bool(mismatches.size == 0),
         "context_len": live,
@@ -2973,6 +3086,10 @@ def _decode_full_context_kv_prefix_failure_record(
         "batch_hash": None if not isinstance(first, dict) else int(first.get("batch_hash", 0)),
         "c1_hash": None if not isinstance(first, dict) else int(first.get("c1_hash", 0)),
     }
+    if isinstance(first, dict) and "batch_token_sample_u16" in first and "c1_token_sample_u16" in first:
+        record["batch_token_sample_u16"] = [int(value) for value in first.get("batch_token_sample_u16", [])]
+        record["c1_token_sample_u16"] = [int(value) for value in first.get("c1_token_sample_u16", [])]
+        record["token_sample_word_count"] = int(first.get("token_sample_word_count", 0))
     if layer_limit is not None:
         record = {"layer_limit": int(layer_limit), **record}
     return record
@@ -3207,6 +3324,26 @@ def _decode_full_context_oracle_summary(
                 if batch_value_hashes is not None
                 else None
             )
+            batch_key_samples = (
+                np.asarray(batch_payload["key_prefix_token_samples"], dtype=np.uint16)
+                if "key_prefix_token_samples" in batch_payload and "key_prefix_token_samples" in c1_payload
+                else None
+            )
+            c1_key_samples = (
+                np.asarray(c1_payload["key_prefix_token_samples"], dtype=np.uint16)
+                if batch_key_samples is not None
+                else None
+            )
+            batch_value_samples = (
+                np.asarray(batch_payload["value_prefix_token_samples"], dtype=np.uint16)
+                if "value_prefix_token_samples" in batch_payload and "value_prefix_token_samples" in c1_payload
+                else None
+            )
+            c1_value_samples = (
+                np.asarray(c1_payload["value_prefix_token_samples"], dtype=np.uint16)
+                if batch_value_samples is not None
+                else None
+            )
             if batch_context.shape != batch_oracle.shape or c1_context.shape != c1_oracle.shape:
                 raise ValueError(
                     f"decode full-context oracle shape differs for step {step}, layer {layer_id}: "
@@ -3226,6 +3363,14 @@ def _decode_full_context_oracle_summary(
                     continue
                 if left.ndim != 2 or right.ndim != 2 or int(left.shape[0]) != int(batch_oracle.shape[0]) or int(right.shape[0]) != int(batch_oracle.shape[0]):
                     raise ValueError(f"decode full-context {name} prefix hashes have incompatible shapes")
+            for name, left, right in (
+                ("key", batch_key_samples, c1_key_samples),
+                ("value", batch_value_samples, c1_value_samples),
+            ):
+                if left is None or right is None:
+                    continue
+                if left.ndim != 3 or right.ndim != 3 or int(left.shape[0]) != int(batch_oracle.shape[0]) or int(right.shape[0]) != int(batch_oracle.shape[0]):
+                    raise ValueError(f"decode full-context {name} token samples have incompatible shapes")
             row_summaries: list[dict[str, Any]] = []
             for row in range(int(batch_oracle.shape[0])):
                 comparisons = {
@@ -3251,12 +3396,16 @@ def _decode_full_context_oracle_summary(
                         batch_key_hashes[row],
                         c1_key_hashes[row],
                         context_len=int(batch_lens[row]),
+                        batch_token_samples=None if batch_key_samples is None else batch_key_samples[row],
+                        c1_token_samples=None if c1_key_samples is None else c1_key_samples[row],
                     )
                 if batch_value_hashes is not None and c1_value_hashes is not None:
                     prefix_comparisons["value_prefix_hash_comparison"] = _kv_prefix_hash_comparison(
                         batch_value_hashes[row],
                         c1_value_hashes[row],
                         context_len=int(batch_lens[row]),
+                        batch_token_samples=None if batch_value_samples is None else batch_value_samples[row],
+                        c1_token_samples=None if c1_value_samples is None else c1_value_samples[row],
                     )
                 row_summary = {
                     "row": int(row),

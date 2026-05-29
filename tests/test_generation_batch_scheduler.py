@@ -74,6 +74,7 @@ from scripts.qwen35_batch_hidden_bisect import (
     _first_failing_layer_transition,
     _first_hidden_mismatch,
     _decode_full_kv_sample_positions,
+    _kv_prefix_hash_comparison,
     _numpy_full_attention_context_row,
     _parse_focus_hidden_flat_indices,
     _parse_layer_limits,
@@ -6376,6 +6377,26 @@ def test_hidden_bisect_repeat_rollup_counts_prefix_failures() -> None:
         "tail_mismatch_count": 8,
     }
     assert rollup["decode_full_context_kv_prefix"]["failed_repeats"] == []
+
+
+def test_hidden_bisect_kv_prefix_hash_comparison_embeds_token_samples() -> None:
+    comparison = _kv_prefix_hash_comparison(
+        np.array([101, 999, 103], dtype=np.uint64),
+        np.array([101, 102, 103], dtype=np.uint64),
+        context_len=3,
+        batch_token_samples=np.array([[1, 2, 3, 4], [9, 8, 7, 6], [5, 5, 5, 5]], dtype=np.uint16),
+        c1_token_samples=np.array([[1, 2, 3, 4], [6, 7, 8, 9], [5, 5, 5, 5]], dtype=np.uint16),
+    )
+
+    assert comparison["passed"] is False
+    assert comparison["first_mismatch"] == {
+        "position": 1,
+        "batch_hash": 999,
+        "c1_hash": 102,
+        "batch_token_sample_u16": [9, 8, 7, 6],
+        "c1_token_sample_u16": [6, 7, 8, 9],
+        "token_sample_word_count": 4,
+    }
 
 
 def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:

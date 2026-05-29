@@ -1124,9 +1124,15 @@ roll-up/status view.
       `tail_mismatch_count=0`) for the same probe shape. The new hidden-bisect
       `--repeat-runs` mode then recorded two green repeats at
       `/tmp/hipengine-hidden-bisect-L4-512-16-c2-repeat-rollup-atol4e-3-focus1269.json`
-      (`status_counts={"eq_ok":2}`, no prefix/sample failed repeats), making the
-      next target deterministic compact-prefill K/V replay and prompt-tail/current-token
-      slot-content auditing before changing paged-KV writer code. Do not re-open
+      (`status_counts={"eq_ok":2}`, no prefix/sample failed repeats). Prefix
+      hash failures now embed the first mismatching token's first eight BF16
+      words; the L8 native-full rerun at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-kv-token-samples-atol4e-3-focus1269.json`
+      is hidden-only red and shows current-token position 512 at layer 3 / row 0
+      with a one-word key-token sample delta (`16166` vs `16167`) while
+      post-prefill prefix hashes remain green. The next target is deterministic
+      compact-prefill K/V replay and prompt-tail/current-token slot-content
+      auditing before changing paged-KV writer code. Do not re-open
       context softmax math, row setup, native linear segment metadata,
       output trace/copy semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
