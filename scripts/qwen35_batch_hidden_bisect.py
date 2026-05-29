@@ -41,6 +41,7 @@ class HiddenRun:
     hidden_bits_by_step: list[np.ndarray]
     prefill_hidden_bits: np.ndarray | None = None
     prefill_execution: dict[str, Any] | None = None
+    prefill_linear_states: dict[int, dict[str, np.ndarray]] = field(default_factory=dict)
     decode_execution_by_step: list[dict[str, Any] | None] = field(default_factory=list)
 
 
@@ -242,6 +243,72 @@ def hidden_comparison(
             flat_indices=selected_flat_indices,
         )
     return result
+
+
+def _numeric_top_abs_diff_examples(
+    batch: np.ndarray,
+    c1: np.ndarray,
+    signed_diff: np.ndarray,
+    diff: np.ndarray,
+    *,
+    limit: int = _MAX_HIDDEN_DIFF_EXAMPLES,
+) -> list[dict[str, Any]]:
+    if diff.size == 0 or limit <= 0:
+        return []
+    flat_diff = diff.reshape(-1)
+    nonzero_indices = [int(index) for index in np.flatnonzero(flat_diff > 0.0)]
+    selected = sorted(nonzero_indices, key=lambda index: (-float(flat_diff[index]), index))[:limit]
+    batch_flat = batch.reshape(-1)
+    c1_flat = c1.reshape(-1)
+    signed_flat = signed_diff.reshape(-1)
+    examples: list[dict[str, Any]] = []
+    for flat_index in selected:
+        examples.append(
+            {
+                "flat_index": int(flat_index),
+                "index": [int(index) for index in np.unravel_index(flat_index, diff.shape)],
+                "abs_diff": float(flat_diff[flat_index]),
+                "signed_diff": float(signed_flat[flat_index]),
+                "batch_value": float(batch_flat[flat_index]),
+                "c1_value": float(c1_flat[flat_index]),
+            }
+        )
+    return examples
+
+
+def numeric_comparison(batch: np.ndarray, c1: np.ndarray, *, atol: float) -> dict[str, Any]:
+    if batch.shape != c1.shape:
+        raise ValueError(f"numeric shapes differ: batch={batch.shape!r} c1={c1.shape!r}")
+    batch_f32 = np.asarray(batch, dtype=np.float32)
+    c1_f32 = np.asarray(c1, dtype=np.float32)
+    signed_diff = batch_f32 - c1_f32
+    diff = np.abs(signed_diff)
+    max_abs = float(diff.max(initial=0.0))
+    if diff.size:
+        max_abs_flat_index = int(np.argmax(diff))
+        max_abs_index = [int(index) for index in np.unravel_index(max_abs_flat_index, diff.shape)]
+        batch_value = float(batch_f32.flat[max_abs_flat_index])
+        c1_value = float(c1_f32.flat[max_abs_flat_index])
+        max_signed_diff = float(signed_diff.flat[max_abs_flat_index])
+    else:
+        max_abs_flat_index = None
+        max_abs_index = []
+        batch_value = 0.0
+        c1_value = 0.0
+        max_signed_diff = 0.0
+    return {
+        "shape": list(batch.shape),
+        "max_abs": max_abs,
+        "max_abs_flat_index": max_abs_flat_index,
+        "max_abs_index": max_abs_index,
+        "batch_value_at_max_abs": batch_value,
+        "c1_value_at_max_abs": c1_value,
+        "signed_diff_at_max_abs": max_signed_diff,
+        "mean_abs": float(diff.mean()) if diff.size else 0.0,
+        "elements_over_atol": int(np.count_nonzero(diff > float(atol))),
+        "top_abs_diffs": _numeric_top_abs_diff_examples(batch_f32, c1_f32, signed_diff, diff),
+        "passed": bool(max_abs <= float(atol)),
+    }
 
 
 def _first_hidden_mismatch(layer_summaries: Sequence[dict[str, Any]]) -> dict[str, Any] | None:
@@ -484,6 +551,59 @@ def _batch_prefill_hidden_tensor(session: Qwen35ParoResidentSession, *, rows: in
     return Tensor.from_handle(session.batch_hidden.ptr, (rows, session.config.hidden_size), DType.FP16, session.device)
 
 
+def _copy_tensor_f32(session: Qwen35ParoResidentSession, tensor: Tensor) -> np.ndarray:
+    if tensor.dtype != DType.FP32:
+        raise ValueError(f"expected FP32 tensor, got {tensor.dtype}")
+    array = np.empty(tuple(int(dim) for dim in tensor.shape), dtype=np.float32)
+    copy_device_to_host(
+        host_array_ptr(array),
+        DeviceBuffer(tensor.ptr, array.nbytes),
+        runtime=session.runtime,
+    )
+    return array
+
+
+def _copy_prefill_linear_states(session: Qwen35ParoResidentSession, *, rows: int) -> dict[int, dict[str, np.ndarray]]:
+    states: dict[int, dict[str, np.ndarray]] = {}
+    layer_types = tuple(str(layer_type) for layer_type in getattr(session.config, "layer_types", ()))
+    for layer_id, layer_type in enumerate(layer_types[: len(session.states)]):
+        if layer_type != "linear_attention":
+            continue
+        conv_rows: list[np.ndarray] = []
+        recurrent_rows: list[np.ndarray] = []
+        for slot in range(rows):
+            conv_state, recurrent_state = session._slot_linear_state(layer_id, slot)
+            conv_rows.append(_copy_tensor_f32(session, conv_state))
+            recurrent_rows.append(_copy_tensor_f32(session, recurrent_state))
+        states[int(layer_id)] = {
+            "conv": np.stack(conv_rows, axis=0),
+            "recurrent": np.stack(recurrent_rows, axis=0),
+        }
+    return states
+
+
+def _merge_prefill_linear_state_row(
+    target: dict[int, dict[str, list[np.ndarray]]],
+    captured: dict[int, dict[str, np.ndarray]],
+) -> None:
+    for layer_id, layer_states in captured.items():
+        target_layer = target.setdefault(layer_id, {"conv": [], "recurrent": []})
+        target_layer["conv"].append(layer_states["conv"][0].copy())
+        target_layer["recurrent"].append(layer_states["recurrent"][0].copy())
+
+
+def _stack_prefill_linear_state_rows(
+    rows_by_layer: dict[int, dict[str, list[np.ndarray]]]
+) -> dict[int, dict[str, np.ndarray]]:
+    return {
+        int(layer_id): {
+            "conv": np.stack(layer_states["conv"], axis=0),
+            "recurrent": np.stack(layer_states["recurrent"], axis=0),
+        }
+        for layer_id, layer_states in rows_by_layer.items()
+    }
+
+
 def _run_batch_hidden(
     runner: Qwen35ParoNextTokenRunner,
     prompts: list[list[int]],
@@ -507,6 +627,7 @@ def _run_batch_hidden(
         seed_tokens = _prefill_batch(session, prompts, decode_tokens=decode_tokens)
         session.runtime.device_synchronize()
         prefill_hidden_bits = _copy_hidden_bits(session, _batch_prefill_hidden_tensor(session, rows=rows), rows=rows)
+        prefill_linear_states = _copy_prefill_linear_states(session, rows=rows)
         prefill_execution = getattr(session, "last_prefill_execution", None)
         prefill_execution_copy = json.loads(json.dumps(prefill_execution)) if isinstance(prefill_execution, dict) else None
         next_tokens = list(seed_tokens)
@@ -541,6 +662,7 @@ def _run_batch_hidden(
             hidden_bits_by_step=hidden_bits_by_step,
             prefill_hidden_bits=prefill_hidden_bits,
             prefill_execution=prefill_execution_copy,
+            prefill_linear_states=prefill_linear_states,
             decode_execution_by_step=decode_execution_by_step,
         )
 
@@ -559,6 +681,7 @@ def _run_c1_hidden(
     seed_tokens: list[int] = []
     generated_tokens: list[list[int]] = []
     prefill_hidden_bits = np.empty((rows, runner.config.hidden_size), dtype=np.uint16)
+    prefill_linear_state_rows: dict[int, dict[str, list[np.ndarray]]] = {}
     hidden_by_step = [np.empty((rows, runner.config.hidden_size), dtype=np.uint16) for _ in range(decode_tokens)]
     with Qwen35ParoResidentSession(
         runner,
@@ -577,6 +700,10 @@ def _run_c1_hidden(
             seed_tokens.append(next_token)
             session.runtime.device_synchronize()
             prefill_hidden_bits[row : row + 1] = _copy_hidden_bits(session, session.hidden, rows=1)
+            _merge_prefill_linear_state_row(
+                prefill_linear_state_rows,
+                _copy_prefill_linear_states(session, rows=1),
+            )
             row_generated: list[int] = []
             for step in range(decode_tokens):
                 position = len(prompt) + step
@@ -595,6 +722,7 @@ def _run_c1_hidden(
         generated_tokens=generated_tokens,
         hidden_bits_by_step=hidden_by_step,
         prefill_hidden_bits=prefill_hidden_bits,
+        prefill_linear_states=_stack_prefill_linear_state_rows(prefill_linear_state_rows),
     )
 
 
@@ -658,16 +786,50 @@ def _prefill_summary(
     return summary
 
 
+def _prefill_linear_state_summary(
+    batch: HiddenRun,
+    c1: HiddenRun,
+    *,
+    atol: float,
+) -> dict[str, Any] | None:
+    if not batch.prefill_linear_states or not c1.prefill_linear_states:
+        return None
+    layers: list[dict[str, Any]] = []
+    for layer_id in sorted(set(batch.prefill_linear_states) & set(c1.prefill_linear_states)):
+        layer_batch = batch.prefill_linear_states[layer_id]
+        layer_c1 = c1.prefill_linear_states[layer_id]
+        state_summaries: dict[str, Any] = {}
+        for state_name in ("conv", "recurrent"):
+            if state_name not in layer_batch or state_name not in layer_c1:
+                continue
+            state_summaries[state_name] = numeric_comparison(layer_batch[state_name], layer_c1[state_name], atol=atol)
+        layers.append(
+            {
+                "layer_index": int(layer_id),
+                "passed": all(summary["passed"] for summary in state_summaries.values()),
+                "states": state_summaries,
+            }
+        )
+    return {
+        "stage": "prefill_linear_states",
+        "state_atol": float(atol),
+        "passed": all(layer["passed"] for layer in layers),
+        "layers": layers,
+    }
+
+
 def _summarize_layer_limit(
     batch: HiddenRun,
     c1: HiddenRun,
     *,
     layer_limit: int,
     atol: float,
+    state_atol: float = 1.0e-6,
     layer_types: Sequence[str] | None = None,
     focus_hidden_flat_indices: Sequence[int] = (),
 ) -> dict[str, Any]:
     prefill = _prefill_summary(batch, c1, atol=atol, focus_hidden_flat_indices=focus_hidden_flat_indices)
+    prefill_linear_states = _prefill_linear_state_summary(batch, c1, atol=state_atol)
     steps: list[dict[str, Any]] = []
     for step, (batch_bits, c1_bits) in enumerate(zip(batch.hidden_bits_by_step, c1.hidden_bits_by_step, strict=True)):
         rows: list[dict[str, Any]] = []
@@ -692,6 +854,7 @@ def _summarize_layer_limit(
         "layer_limit": int(layer_limit),
         **_layer_limit_metadata(layer_limit, layer_types),
         "prefill_hidden_passed": True if prefill is None else bool(prefill["hidden_passed"]),
+        "prefill_linear_state_passed": True if prefill_linear_states is None else bool(prefill_linear_states["passed"]),
         "hidden_passed": all(row["hidden_comparison"]["passed"] for step in steps for row in step["rows"]),
         "token_passed": not token_mismatches,
         "seed_tokens": {"batch": batch.seed_tokens, "c1": c1.seed_tokens},
@@ -701,6 +864,8 @@ def _summarize_layer_limit(
     }
     if prefill is not None:
         summary["prefill"] = prefill
+    if prefill_linear_states is not None:
+        summary["prefill_linear_states"] = prefill_linear_states
     return summary
 
 
@@ -715,6 +880,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--layer-limits", default=None, help="Comma/range list such as '1,4,8' or '1-8'; default all")
     parser.add_argument("--max-sequence-length", type=int, default=1024)
     parser.add_argument("--hidden-atol", type=float, default=1.0e-3)
+    parser.add_argument("--state-atol", type=float, default=1.0e-6, help="Absolute tolerance for prefill linear-state comparisons.")
     parser.add_argument(
         "--focus-hidden-flat-index",
         action="append",
@@ -777,6 +943,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "kv_storage_dtype": "bf16",
             "native_compact_prefill": True,
             "focus_hidden_flat_indices": focus_hidden_flat_indices,
+            "prefill_linear_state_atol": float(args.state_atol),
             "batch_decode_moe_path": str(args.batch_decode_moe_path),
             "batch_decode_linear_path": str(args.batch_decode_linear_path),
             "batch_decode_full_attention_path": str(args.batch_decode_full_attn_path),
@@ -794,6 +961,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
         "correctness": {
             "oracle": "hidden tensors and generated-token IDs vs independent c=1 resident sessions",
             "hidden_atol": float(args.hidden_atol),
+            "prefill_linear_state_atol": float(args.state_atol),
             "passed": False,
         },
         "layer_summaries": [],
@@ -848,6 +1016,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
                 c1,
                 layer_limit=layer_limit,
                 atol=args.hidden_atol,
+                state_atol=args.state_atol,
                 layer_types=layer_types,
                 focus_hidden_flat_indices=focus_hidden_flat_indices,
             )

@@ -735,10 +735,16 @@ roll-up/status view.
       adds final-prefill hidden comparisons for the same run; compact prefill
       vs independent c=1 final hidden passes at every L5-L8 limit under
       `hidden_atol=0.002` (L8 row-0 dim 1269 is only `0.0009765625`), while
-      the first decode step still reaches `0.002197265625`. This keeps the live
-      fix target on row-0-specific decode-time slot state/KV state selection or
-      scratch alias lifetime, not final prefill hidden or any single native
-      batch decode subpath.
+      the first decode step still reaches `0.002197265625`. The linear-state
+      refresh
+      `/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-all-per-row-state-focus1269.json`
+      compares compact-prefill slot linear states with independent c=1 states
+      before decode; final hidden remains green, but `prefill_linear_state_passed=false`
+      for every L5-L8 limit at `state_atol=1e-6` (for example L6 layer-5
+      recurrent state `max_abs=0.0072229355573654175`, conv state
+      `max_abs=0.0078125`). This keeps the live fix target on packed-prefill
+      linear-state materialization / slot-state selection, not final prefill
+      hidden or any single native batch decode subpath.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

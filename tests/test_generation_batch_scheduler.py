@@ -6244,6 +6244,7 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert payload["performance_claim"] is False
     assert payload["workload"]["native_compact_prefill"] is True
     assert payload["workload"]["focus_hidden_flat_indices"] == []
+    assert payload["workload"]["prefill_linear_state_atol"] == 1.0e-6
     assert payload["workload"]["batch_decode_moe_path"] == "grouped_compact"
     assert payload["workload"]["batch_decode_linear_path"] == "batch_segments"
     assert payload["workload"]["batch_decode_full_attention_path"] == "native_batch"
@@ -6468,12 +6469,19 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
             }
         ],
     }
+    linear_state = {
+        0: {
+            "conv": np.array([[[1.0, 2.0]], [[3.0, 4.0]]], dtype=np.float32),
+            "recurrent": np.array([[[[5.0]]], [[[6.0]]]], dtype=np.float32),
+        }
+    }
     batch = HiddenRun(
         seed_tokens=[10, 20],
         generated_tokens=[[11], [21]],
         hidden_bits_by_step=[hidden],
         prefill_hidden_bits=hidden.copy(),
         prefill_execution={"path": "native_prefill_compact_cN"},
+        prefill_linear_states=linear_state,
         decode_execution_by_step=[decode_execution],
     )
     c1 = HiddenRun(
@@ -6481,16 +6489,21 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         generated_tokens=[[11], [21]],
         hidden_bits_by_step=[hidden.copy()],
         prefill_hidden_bits=hidden.copy(),
+        prefill_linear_states=linear_state,
     )
 
     summary = _summarize_layer_limit(batch, c1, layer_limit=1, atol=0.0, layer_types=("full_attention",))
 
     assert summary["hidden_passed"] is True
     assert summary["prefill_hidden_passed"] is True
+    assert summary["prefill_linear_state_passed"] is True
     assert summary["token_passed"] is True
     assert summary["prefill"]["stage"] == "prefill_final_hidden"
     assert summary["prefill"]["hidden_passed"] is True
     assert summary["prefill"]["batch_prefill_execution"] == {"path": "native_prefill_compact_cN"}
+    assert summary["prefill_linear_states"]["stage"] == "prefill_linear_states"
+    assert summary["prefill_linear_states"]["passed"] is True
+    assert summary["prefill_linear_states"]["layers"][0]["states"]["conv"]["max_abs"] == 0.0
     assert summary["steps"][0]["batch_decode_execution"] == decode_execution
 
 
