@@ -1742,6 +1742,18 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         "preconditions",
         "precondition",
     }
+    expected_simple_executed_command_keys = {
+        "category",
+        "batch_size",
+        "command",
+        "argv",
+        "artifact_path",
+        "git_dirty",
+        "status",
+        "returncode",
+        "duration_seconds",
+        "output_tail",
+    }
     if entries:
         for entry in entries:
             if not set(entry).issubset(expected_command_keys):
@@ -2766,6 +2778,11 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 if set(entry) != expected_skipped_command_keys:
                     errors.append("commands[] skipped rows must contain exactly skipped command keys")
                     break
+            if status in {"passed", "failed"} and not any(
+                field in entry for field in ("preconditions", "precondition", "postconditions", "postcondition")
+            ) and set(entry) != expected_simple_executed_command_keys:
+                errors.append("commands[] simple executed rows must contain exactly executed command keys")
+                break
             if git_dirty is not None and entry.get("git_dirty") is not git_dirty:
                 errors.append("commands[].git_dirty must match git.dirty")
                 break

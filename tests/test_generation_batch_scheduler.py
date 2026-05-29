@@ -2508,6 +2508,10 @@ def test_batch_c_sweep_no_stop_counts_failed_and_skipped_rows(tmp_path: Path, mo
     tampered_partial_no_stop["skipped_preconditions"] = []
     with pytest.raises(ValueError, match="non-stop summaries must include all planned commands"):
         c_sweep.validate_sweep_summary(tampered_partial_no_stop)
+    tampered_simple_passed_keys = json.loads(json.dumps(summary))
+    tampered_simple_passed_keys["commands"][1].pop("git_dirty")
+    with pytest.raises(ValueError, match=r"commands\[\] simple executed rows must contain exactly executed command keys"):
+        c_sweep.validate_sweep_summary(tampered_simple_passed_keys)
     assert len(calls) == 2
     assert calls[0][1] == "scripts/qwen35_batch_correctness.py"
     assert calls[1][1] == "scripts/qwen35_batch_serial_bench.py"
