@@ -488,11 +488,12 @@ reporting.
 - [ ] Add a Step GGUF runner that streams one-token decode for short prompts with
   the Step tokenizer, split weight index, mixed GGUF quant dispatch, full/sliding
   attention, and Step MoE. 2026-05-29 progress: split-shard resident
-  materialization now plans all 754 tensors / 95.46 GiB, selected-slot HIP
-  loading/freeing is tested, `StepFunResidentSession` can launch real Q8_0
-  token embedding from resident `token_embd.weight` into BF16, and resident
-  Q3_K/Q5_K layer-0 linear projections match CPU references. Remaining
-  implementation task is composing those primitives into the layer/full-model
+  materialization now plans all 754 tensors / 95.46 GiB across all three shards,
+  verifies Q3_K/Q5_K/Q8_0/F32 layout coverage, tests selected-slot HIP
+  loading/freeing across first/last shard tensors, `StepFunResidentSession` can
+  launch real Q8_0 token embedding from resident `token_embd.weight` into BF16,
+  and resident Q3_K/Q5_K layer-0 linear projections match CPU references.
+  Remaining implementation task is composing those primitives into the layer/full-model
   execution loop beyond embedding, the prompt planner, and CPU replay harness.
 - [x] Use short contexts first (for example <= 512) before exercising long
   context and sliding-window boundaries. `StepFunShortContextDecodePlanner`
@@ -547,9 +548,10 @@ the streaming layer loop is wired.
 
 **Acceptance:** full-model smoke produces token(s) or a documented fit failure.
 Current materialization coverage is validated by
-`python3 -m pytest -q tests/test_stepfun_materialize.py` for all-tensor planning,
-split-shard payload access, selected-slot HIP loading/freeing, and torch-free
-imports. This is still not a throughput benchmark.
+`python3 -m pytest -q tests/test_stepfun_materialize.py` for all-tensor
+quant/layout planning (`Q3_K`, `Q5_K`, `Q8_0`, `F32`), split-shard payload
+access on first/last shard tensors, selected-slot HIP loading/freeing with
+memory stats, and torch-free imports. This is still not a throughput benchmark.
 
 ### P13 — Benchmark and rollup only after correctness
 

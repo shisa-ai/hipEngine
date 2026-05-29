@@ -27101,3 +27101,16 @@ python3 -m pytest -q tests/test_stepfun_materialize.py
 ```
 
 Result: `4 passed`.
+
+## 2026-05-29 — StepFun materialization evidence recorded
+
+Recorded the hardened materialization test coverage in `docs/STEPFUN.md` for task #18. The docs now call out that `tests/test_stepfun_materialize.py` validates all-tensor quant/layout planning for `Q3_K`, `Q5_K`, `Q8_0`, and `F32`, split-shard payload access on first/last shard tensors, selected-slot HIP loading/freeing with memory stats, and torch-free imports. This is documentation/loop evidence only; it does not change the remaining P11/P12 requirement for streaming decode, KV/generation snapshots, or llama.cpp next-token/logit parity.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_materialize.py
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Result: materialization targeted tests `4 passed`; full StepFun loop guard `68 passed` plus CPU reference fixtures.
