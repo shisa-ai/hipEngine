@@ -531,8 +531,16 @@ def _transition_trace_summaries(summary: dict[str, Any]) -> dict[str, Any]:
             compact["output_passed"] = bool(trace["output_passed"])
         if isinstance(trace.get("stage_passed"), dict):
             compact["stage_passed"] = trace["stage_passed"]
+        if "state_atol" in trace:
+            compact["state_atol"] = float(trace["state_atol"])
+        if "state_focus_atol" in trace:
+            compact["state_focus_atol"] = float(trace["state_focus_atol"])
+        if "passed_under_focus_atol" in trace:
+            compact["passed_under_focus_atol"] = bool(trace["passed_under_focus_atol"])
         if isinstance(trace.get("first_mismatch"), dict):
             compact["first_mismatch"] = trace["first_mismatch"]
+        if isinstance(trace.get("first_mismatch_over_focus_atol"), dict):
+            compact["first_mismatch_over_focus_atol"] = trace["first_mismatch_over_focus_atol"]
         if isinstance(trace.get("worst_diff"), dict):
             compact["worst_diff"] = trace["worst_diff"]
         traces[key] = compact
@@ -555,10 +563,43 @@ def _compact_comparison(comparison: dict[str, Any]) -> dict[str, Any]:
     return compact
 
 
-def _linear_state_mismatch_from_trace(trace: dict[str, Any]) -> dict[str, Any] | None:
-    first = trace.get("first_mismatch")
+def _linear_state_mismatch_record(
+    step: dict[str, Any],
+    layer: dict[str, Any],
+    state_name: str,
+    row_summary: dict[str, Any],
+    *,
+    focus_atol: float | None = None,
+) -> dict[str, Any]:
+    record: dict[str, Any] = {
+        "decode_step": int(step.get("decode_step", 0)),
+        "generated_index": int(step.get("generated_index", int(step.get("decode_step", 0)) + 1)),
+        "layer_index": int(layer.get("layer_index", -1)),
+        "state": state_name,
+        "row": int(row_summary.get("row", -1)),
+        "max_abs": float(row_summary.get("max_abs", 0.0)),
+        "max_abs_index": row_summary.get("max_abs_index", []),
+        "elements_over_atol": int(row_summary.get("elements_over_atol", 0)),
+    }
+    if focus_atol is not None:
+        record["state_focus_atol"] = float(focus_atol)
+        record["passed_under_focus_atol"] = bool(float(row_summary.get("max_abs", 0.0)) <= float(focus_atol))
+    return record
+
+
+def _linear_state_mismatch_from_trace(
+    trace: dict[str, Any],
+    *,
+    first_key: str = "first_mismatch",
+    focus_atol: float | None = None,
+) -> dict[str, Any] | None:
+    first = trace.get(first_key)
     if isinstance(first, dict):
-        return dict(first)
+        result = dict(first)
+        if focus_atol is not None and "state_focus_atol" not in result:
+            result["state_focus_atol"] = float(focus_atol)
+            result["passed_under_focus_atol"] = bool(float(result.get("max_abs", 0.0)) <= float(focus_atol))
+        return result
     for step in trace.get("steps", []):
         for layer in step.get("layers", []):
             states = layer.get("states", {})
@@ -569,18 +610,19 @@ def _linear_state_mismatch_from_trace(trace: dict[str, Any]) -> dict[str, Any] |
                 if not isinstance(state_summary, dict):
                     continue
                 for row_summary in state_summary.get("row_summaries", []):
-                    if bool(row_summary.get("passed", False)):
+                    if focus_atol is None:
+                        failed = not bool(row_summary.get("passed", False))
+                    else:
+                        failed = float(row_summary.get("max_abs", 0.0)) > float(focus_atol)
+                    if not failed:
                         continue
-                    return {
-                        "decode_step": int(step.get("decode_step", 0)),
-                        "generated_index": int(step.get("generated_index", int(step.get("decode_step", 0)) + 1)),
-                        "layer_index": int(layer.get("layer_index", -1)),
-                        "state": state_name,
-                        "row": int(row_summary.get("row", -1)),
-                        "max_abs": float(row_summary.get("max_abs", 0.0)),
-                        "max_abs_index": row_summary.get("max_abs_index", []),
-                        "elements_over_atol": int(row_summary.get("elements_over_atol", 0)),
-                    }
+                    return _linear_state_mismatch_record(
+                        step,
+                        layer,
+                        state_name,
+                        row_summary,
+                        focus_atol=focus_atol,
+                    )
     return None
 
 
@@ -616,11 +658,21 @@ def _decode_linear_input_comparison_at(
     return None
 
 
-def _first_linear_state_mismatch_focus(summary: dict[str, Any]) -> dict[str, Any] | None:
+def _first_linear_state_mismatch_focus(
+    summary: dict[str, Any],
+    *,
+    first_key: str = "first_mismatch",
+    focus_atol_key: str | None = None,
+) -> dict[str, Any] | None:
     trace = summary.get("decode_linear_states")
     if not isinstance(trace, dict):
         return None
-    first = _linear_state_mismatch_from_trace(trace)
+    focus_atol = None
+    if focus_atol_key is not None:
+        if focus_atol_key not in trace:
+            return None
+        focus_atol = float(trace[focus_atol_key])
+    first = _linear_state_mismatch_from_trace(trace, first_key=first_key, focus_atol=focus_atol)
     if first is None:
         return None
     decode_step = int(first.get("decode_step", -1))
@@ -787,6 +839,13 @@ def _first_failing_layer_transition(layer_summaries: Sequence[dict[str, Any]]) -
                 transition["previous_green_trace_summaries"] = previous_green_trace_summaries
         transition["first_hidden_mismatch_focus"] = _transition_hidden_focus(summary, previous_green, first_hidden_mismatch)
         transition["first_linear_state_mismatch_focus"] = _first_linear_state_mismatch_focus(summary)
+        first_focus_state = _first_linear_state_mismatch_focus(
+            summary,
+            first_key="first_mismatch_over_focus_atol",
+            focus_atol_key="state_focus_atol",
+        )
+        if first_focus_state is not None:
+            transition["first_linear_state_mismatch_over_focus_atol"] = first_focus_state
         transition["first_hidden_mismatch_linear_state_focus"] = _linear_state_focus_for_hidden_mismatch(
             summary,
             first_hidden_mismatch,
@@ -2068,6 +2127,7 @@ def _decode_linear_state_summary(
     c1: HiddenRun,
     *,
     atol: float,
+    focus_atol: float | None = None,
 ) -> dict[str, Any] | None:
     if not batch.decode_linear_states_by_step or not c1.decode_linear_states_by_step:
         return None
@@ -2111,6 +2171,36 @@ def _decode_linear_state_summary(
                 break
         if first_mismatch is not None:
             break
+    first_focus_mismatch: dict[str, Any] | None = None
+    if focus_atol is not None:
+        for step_summary in steps:
+            for layer in step_summary["layers"]:
+                for state_name in ("conv", "recurrent"):
+                    state_summary = layer["states"].get(state_name)
+                    if state_summary is None:
+                        continue
+                    for row in state_summary.get("row_summaries", []):
+                        if float(row["max_abs"]) <= float(focus_atol):
+                            continue
+                        first_focus_mismatch = {
+                            "decode_step": int(step_summary["decode_step"]),
+                            "generated_index": int(step_summary["generated_index"]),
+                            "layer_index": int(layer["layer_index"]),
+                            "state": state_name,
+                            "row": int(row["row"]),
+                            "max_abs": float(row["max_abs"]),
+                            "max_abs_index": row["max_abs_index"],
+                            "elements_over_atol": int(row["elements_over_atol"]),
+                            "state_focus_atol": float(focus_atol),
+                            "passed_under_focus_atol": False,
+                        }
+                        break
+                    if first_focus_mismatch is not None:
+                        break
+                if first_focus_mismatch is not None:
+                    break
+            if first_focus_mismatch is not None:
+                break
     worst_diff: dict[str, Any] | None = None
     for step_summary in steps:
         for layer in step_summary["layers"]:
@@ -2138,8 +2228,13 @@ def _decode_linear_state_summary(
         "passed": all(step["passed"] for step in steps),
         "steps": steps,
     }
+    if focus_atol is not None:
+        result["state_focus_atol"] = float(focus_atol)
+        result["passed_under_focus_atol"] = first_focus_mismatch is None
     if first_mismatch is not None:
         result["first_mismatch"] = first_mismatch
+    if first_focus_mismatch is not None:
+        result["first_mismatch_over_focus_atol"] = first_focus_mismatch
     if worst_diff is not None:
         result["worst_diff"] = worst_diff
     return result
@@ -2202,6 +2297,7 @@ def _summarize_layer_limit(
     layer_limit: int,
     atol: float,
     state_atol: float = 1.0e-6,
+    state_focus_atol: float | None = None,
     layer_types: Sequence[str] | None = None,
     focus_hidden_flat_indices: Sequence[int] = (),
 ) -> dict[str, Any]:
@@ -2227,7 +2323,7 @@ def _summarize_layer_limit(
     )
     decode_full_context_oracle = _decode_full_context_oracle_summary(batch, c1)
     decode_full_kv_samples = _decode_full_kv_sample_summary(batch, c1, atol=0.0)
-    decode_linear_states = _decode_linear_state_summary(batch, c1, atol=state_atol)
+    decode_linear_states = _decode_linear_state_summary(batch, c1, atol=state_atol, focus_atol=state_focus_atol)
     steps: list[dict[str, Any]] = []
     for step, (batch_bits, c1_bits) in enumerate(zip(batch.hidden_bits_by_step, c1.hidden_bits_by_step, strict=True)):
         rows: list[dict[str, Any]] = []
@@ -2304,7 +2400,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--layer-limits", default=None, help="Comma/range list such as '1,4,8' or '1-8'; default all")
     parser.add_argument("--max-sequence-length", type=int, default=1024)
     parser.add_argument("--hidden-atol", type=float, default=1.0e-3)
-    parser.add_argument("--state-atol", type=float, default=1.0e-6, help="Absolute tolerance for prefill linear-state comparisons.")
+    parser.add_argument("--state-atol", type=float, default=1.0e-6, help="Absolute tolerance for linear-state comparisons.")
+    parser.add_argument(
+        "--state-focus-atol",
+        type=float,
+        default=None,
+        help="Optional secondary absolute tolerance for reporting the first decode linear-state mismatch above a diagnostic focus threshold.",
+    )
     parser.add_argument(
         "--focus-hidden-flat-index",
         action="append",
@@ -2380,6 +2482,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "native_compact_prefill": True,
             "focus_hidden_flat_indices": focus_hidden_flat_indices,
             "prefill_linear_state_atol": float(args.state_atol),
+            "linear_state_atol": float(args.state_atol),
             "batch_prefill_linear_path": str(args.batch_prefill_linear_path),
             "batch_prefill_full_attention_path": str(args.batch_prefill_full_attn_path),
             "batch_decode_moe_path": str(args.batch_decode_moe_path),
@@ -2400,11 +2503,15 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "oracle": "hidden tensors and generated-token IDs vs independent c=1 resident sessions",
             "hidden_atol": float(args.hidden_atol),
             "prefill_linear_state_atol": float(args.state_atol),
+            "linear_state_atol": float(args.state_atol),
             "passed": False,
         },
         "layer_summaries": [],
         "blockers": [],
     }
+    if args.state_focus_atol is not None:
+        payload["workload"]["linear_state_focus_atol"] = float(args.state_focus_atol)
+        payload["correctness"]["linear_state_focus_atol"] = float(args.state_focus_atol)
     if args.dry_run:
         payload["commands"] = [
             _command([*sys.argv[1:], "--layer-limits", str(limit)] if argv is None else [*argv, "--layer-limits", str(limit)])
@@ -2461,6 +2568,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
                 layer_limit=layer_limit,
                 atol=args.hidden_atol,
                 state_atol=args.state_atol,
+                state_focus_atol=args.state_focus_atol,
                 layer_types=layer_types,
                 focus_hidden_flat_indices=focus_hidden_flat_indices,
             )

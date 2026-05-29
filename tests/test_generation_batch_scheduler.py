@@ -6246,6 +6246,8 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert payload["workload"]["native_compact_prefill"] is True
     assert payload["workload"]["focus_hidden_flat_indices"] == []
     assert payload["workload"]["prefill_linear_state_atol"] == 1.0e-6
+    assert payload["workload"]["linear_state_atol"] == 1.0e-6
+    assert "linear_state_focus_atol" not in payload["workload"]
     assert payload["workload"]["batch_prefill_linear_path"] == "packed_segments"
     assert payload["workload"]["batch_prefill_full_attention_path"] == "packed_varlen"
     assert payload["workload"]["batch_decode_moe_path"] == "grouped_compact"
@@ -6799,6 +6801,36 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     }
     assert bad_summary["decode_linear_states"]["first_mismatch"] == expected_state_mismatch
     assert bad_summary["decode_linear_states"]["worst_diff"] == {**expected_state_mismatch, "passed": False}
+
+    bad_focus_summary = _summarize_layer_limit(
+        bad_batch,
+        c1,
+        layer_limit=1,
+        atol=0.0,
+        state_atol=0.0,
+        state_focus_atol=3.5,
+        layer_types=("full_attention",),
+    )
+    expected_focus_state_mismatch = {
+        **expected_state_mismatch,
+        "state_focus_atol": 3.5,
+        "passed_under_focus_atol": False,
+    }
+    assert bad_focus_summary["decode_linear_states"]["state_focus_atol"] == 3.5
+    assert bad_focus_summary["decode_linear_states"]["passed_under_focus_atol"] is False
+    assert bad_focus_summary["decode_linear_states"]["first_mismatch_over_focus_atol"] == expected_focus_state_mismatch
+
+    bad_focus_pass_summary = _summarize_layer_limit(
+        bad_batch,
+        c1,
+        layer_limit=1,
+        atol=0.0,
+        state_atol=0.0,
+        state_focus_atol=4.5,
+        layer_types=("full_attention",),
+    )
+    assert bad_focus_pass_summary["decode_linear_states"]["passed_under_focus_atol"] is True
+    assert "first_mismatch_over_focus_atol" not in bad_focus_pass_summary["decode_linear_states"]
 
 
 def test_gguf_cN_diagnostic_template_records_blocked_c2_command(tmp_path: Path) -> None:
