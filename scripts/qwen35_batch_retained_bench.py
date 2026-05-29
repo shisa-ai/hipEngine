@@ -43,6 +43,8 @@ from scripts.qwen35_batch_artifact_schema import (
 )
 from scripts.qwen35_batch_constants import (
     PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS,
+    RETAINED_ARTIFACT_REQUIRED_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES,
+    RETAINED_ARTIFACT_REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES,
     RETAINED_ARTIFACT_REQUIRED_SCALING_BASELINES,
     RETAINED_ARTIFACT_REQUIRED_SCALING_RATIOS,
 )
@@ -50,22 +52,8 @@ from scripts.qwen35_kv_policy_args import add_kv_policy_args, kv_policy_json, re
 
 DEFAULT_MODEL = "/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16"
 DEFAULT_FIXTURE = "fixtures/qwen35_paro/parent_512_32_seed1234.json"
-_PROFILER_KERNEL_DURATION_CATEGORIES = (
-    "attention",
-    "moe",
-    "projection",
-    "sampling",
-    "graph_replay",
-    "other",
-)
-_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES = (
-    "load",
-    "prefill",
-    "warmup_decode",
-    "decode",
-    "validation",
-    "other",
-)
+_PROFILER_KERNEL_DURATION_CATEGORIES = RETAINED_ARTIFACT_REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES
+_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES = RETAINED_ARTIFACT_REQUIRED_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES
 _PROFILER_TRACE_KERNEL_NAME_COLUMNS = ("Kernel_Name", "KernelName", "Name")
 _PROFILER_TRACE_START_COLUMNS = ("Start_Timestamp", "StartTimestamp", "StartNs", "Start")
 _PROFILER_TRACE_END_COLUMNS = ("End_Timestamp", "EndTimestamp", "EndNs", "End")

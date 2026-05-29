@@ -60,6 +60,8 @@ from scripts.qwen35_batch_artifact_schema import (
     DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_NAMES,
     _REQUIRED_ACCEPTED_SCALING_BASELINES,
     _REQUIRED_ACCEPTED_SCALING_RATIOS,
+    _REQUIRED_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES,
+    _REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES,
     _UNUSABLE_ACCEPTED_SCALING_BASELINE_STATUSES,
     _load_benchmark_results_json_artifact,
     _summary_json_path_is_in_current_results,
@@ -76,6 +78,8 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_EVIDENCE_FRAGMENTS,
     RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_TRACE_FIELD_FRAGMENTS,
     RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_TRACE_FIELD_NAMES,
+    RETAINED_ARTIFACT_REQUIRED_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES,
+    RETAINED_ARTIFACT_REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES,
     RETAINED_ARTIFACT_REQUIRED_SCALING_BASELINES,
     RETAINED_ARTIFACT_REQUIRED_SCALING_RATIOS,
     RETAINED_ARTIFACT_UNUSABLE_SCALING_BASELINE_STATUSES,
@@ -962,6 +966,8 @@ def test_batch_c_sweep_profiler_precondition_synthesizes_trace_fields_from_csv(t
 
     precondition = c_sweep._profiler_summary_precondition(native)
 
+    assert c_sweep._PROFILER_KERNEL_DURATION_CATEGORIES is RETAINED_ARTIFACT_REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES
+    assert c_sweep._PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES is RETAINED_ARTIFACT_REQUIRED_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES
     assert precondition["passed"] is True
     assert precondition["profiler_source_artifact_path"] == str(profiler_path)
     assert precondition["profiler_trace_kernel_names"] == ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"]
@@ -9827,6 +9833,8 @@ def test_qwen35_retained_profiler_reference_loads_captured_summary(tmp_path: Pat
         ],
     )
 
+    assert retained_bench._PROFILER_KERNEL_DURATION_CATEGORIES is RETAINED_ARTIFACT_REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES
+    assert retained_bench._PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES is RETAINED_ARTIFACT_REQUIRED_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES
     assert loaded["status"] == "captured"
     assert loaded["output_format"] == "csv"
     assert loaded["trace_dir"] == str(trace_dir)
@@ -14267,6 +14275,9 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     mismatched_profiler_share["profiler"]["kernel_duration_shares"]["qwen35_batch_decode"] = 0.25
     with pytest.raises(ValueError, match="qwen35_batch_decode must match profiler.kernel_durations_ns/kernel total"):
         validate_cn_diagnostic_artifact_payload(mismatched_profiler_share)
+
+    assert _REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES is RETAINED_ARTIFACT_REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES
+    assert _REQUIRED_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES is RETAINED_ARTIFACT_REQUIRED_PROFILER_CPU_SIDE_BOTTLENECK_CATEGORIES
 
     missing_duration_categories = json.loads(json.dumps(accepted))
     missing_duration_categories["profiler"].pop("kernel_duration_categories_ns")
