@@ -1078,11 +1078,23 @@ roll-up/status view.
       fp32 at step 0 / dim 2812 (`max_abs=0.008107900619506836`). That means
       the context kernel matches its own oracle; the next C2.3 target is the
       layer-7 attention-input RMSNorm/QKV preparation or state feeding, not raw
-      hidden input copy or softmax context math. The per-row fallback's ≤0.004
-      FP16/state amplification is a diagnostic tolerance question only; do not
-      re-open full-attention context math,
-      layer-4 state mapping, native linear segment metadata, output trace/copy
-      semantics, or grouped MoE output yet.
+      hidden input copy or softmax context math. A diagnostic
+      `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT=1` control
+      (hidden-bisect `--batch-decode-attn-input-path per_row`) now forces just
+      the full-attention input RMSNorm through token-1 row kernels. The refreshed
+      probe,
+      `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-native-full-core-perrow-attninput-linear-postattn-selected-c1-atol4e-3-focus1269.json`,
+      remains hidden-only red: L8 still first fails final hidden at decode step 6
+      / row 0 / dim 1269 (`max_abs=0.02734375`), and the post-layer `attn_input`
+      trace still first fails at L8 decode step 0 / row 0 / dim 1269
+      (`max_abs=0.015625`). L4 final hidden/token remains green but the stage
+      rollup now reports trace-only `query`/`attn_context` drift, so the next
+      target is an immediate post-RMSNorm/pre-QKV trace or scratch-alias audit,
+      not treating the input RMSNorm kernel alone as fixed. The per-row
+      fallback's ≤0.004 FP16/state amplification is a diagnostic tolerance
+      question only; do not re-open full-attention context math, layer-4 state
+      mapping, native linear segment metadata, output trace/copy semantics, or
+      grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

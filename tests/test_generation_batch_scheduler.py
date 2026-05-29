@@ -6257,6 +6257,7 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert payload["workload"]["batch_decode_moe_path"] == "grouped_compact"
     assert payload["workload"]["batch_decode_linear_path"] == "batch_segments"
     assert payload["workload"]["batch_decode_full_attention_path"] == "native_batch"
+    assert payload["workload"]["batch_decode_attention_input_path"] == "batch"
     assert payload["workload"]["batch_decode_post_attention_path"] == "batch"
     assert payload["workload"]["native_caware_decode"] is True
     assert payload["workload"]["layer_limits"] == [1, 4, 8]
@@ -6287,6 +6288,30 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     )
     assert per_row_payload["workload"]["batch_decode_post_attention_path"] == "per_row"
     assert per_row_payload["workload"]["native_caware_decode"] is False
+
+    per_row_attn_input = build_hidden_bisect_parser().parse_args(
+        [
+            "--dry-run",
+            "--batch-decode-attn-input-path",
+            "per_row",
+            "--prompt-length",
+            "32",
+            "--batch-size",
+            "2",
+            "--decode-tokens",
+            "4",
+            "--max-layers",
+            "8",
+            "--layer-limits",
+            "8",
+        ]
+    )
+    per_row_attn_input_payload = run_hidden_bisect(
+        per_row_attn_input,
+        ["--dry-run", "--batch-decode-attn-input-path", "per_row", "--layer-limits", "8"],
+    )
+    assert per_row_attn_input_payload["workload"]["batch_decode_attention_input_path"] == "per_row"
+    assert per_row_attn_input_payload["workload"]["native_caware_decode"] is False
 
 
 def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:

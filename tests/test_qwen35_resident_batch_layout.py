@@ -1520,6 +1520,75 @@ def test_qwen35_resident_run_layers_batch_decode_can_force_per_row_post_attentio
     assert "post-attention add/rmsnorm forced to per-row diagnostic path" in metadata.blockers
 
 
+def test_qwen35_resident_run_layers_batch_decode_can_force_per_row_full_attention_input_probe(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT", "1")
+    device = Device("hip", 0)
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.device = device
+    session.layer_limit = 1
+    session.config = SimpleNamespace(hidden_size=8, layer_types=("full_attention",))
+    session.batch_hidden = Tensor.from_handle(0x1000, (2, 8), DType.FP16, device)
+    session.batch_next_hidden = Tensor.from_handle(0x2000, (2, 8), DType.FP16, device)
+    session.hidden_nbytes = 8 * DType.FP16.itemsize
+    session.decode_chunk_size = 512
+    session.max_sequence_length = 1024
+    session.cos = Tensor.from_handle(0xA000, (1,), DType.BF16, device)
+    session.sin = Tensor.from_handle(0xB000, (1,), DType.BF16, device)
+    session.libraries = {}
+    session._batch_decode_segment_metadata = lambda *, rows, slots: (
+        Tensor.from_handle(0x3000, (rows + 1,), DType.INT32, device),
+        Tensor.from_handle(0x4000, (rows,), DType.INT64, device),
+        (),
+    )
+    session._full_cache_all_slots = lambda layer_id: (
+        Tensor.from_handle(0x5000, (1,), DType.BF16, device),
+        Tensor.from_handle(0x6000, (1,), DType.BF16, device),
+    )
+    session._batch_full_spans = lambda layer_id, *, rows, positions, slots: (
+        Tensor.from_handle(0x7000, (rows,), DType.INT64, device),
+        SimpleNamespace(rows=rows, slots=slots, span="append"),
+        SimpleNamespace(rows=rows, slots=slots, span="decode"),
+    )
+    session._ensure_full_decode_batch_scratch = lambda layer_id, rows: SimpleNamespace(name="attention", rows=rows)
+    session._ensure_moe_decode_batch_scratch = lambda layer_id, rows: SimpleNamespace(name="moe", rows=rows)
+    copies: list[tuple[int, int, int, int]] = []
+
+    class FakeRuntime:
+        def memcpy_async(self, dst, src, nbytes, kind, stream):
+            copies.append((int(dst), int(src), int(nbytes), int(stream)))
+
+    class FakeState:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def run_full_attention_moe_decode_batch_layer_fp16(self, hidden, **kwargs):
+            self.calls.append((hidden, kwargs))
+            return Tensor.from_handle(0x9000, (kwargs["tokens"], 8), DType.FP16, device)
+
+    state = FakeState()
+    session.runtime = FakeRuntime()
+    session.states = [state]
+
+    out = session._run_layers_batch_decode(rows=2, positions=(4, 7), slots=(0, 2), stream=5)
+
+    assert out.ptr == 0x2000
+    assert len(state.calls) == 1
+    assert state.calls[0][1]["force_per_row_input_rmsnorm"] is True
+    assert copies == [(0x2000, 0x9000, 2 * session.hidden_nbytes, 5)]
+    assert session.last_batch_decode_execution["full_attention_decode_path"] == "native_batch"
+    assert session.last_batch_decode_execution["native_caware_decode"] is False
+    assert session.last_batch_decode_execution["blockers"] == [
+        "full-attention input RMSNorm forced to per-row diagnostic path"
+    ]
+    layer_execution = session.last_batch_decode_execution["layer_executions"][0]
+    assert layer_execution["native_caware_decode"] is False
+    assert layer_execution["full_attention_input_decode_path"] == "per_row_rmsnorm_fallback"
+    metadata = session.batch_execution_metadata(scheduler_owned=True, native_decode=True)
+    assert not metadata.native_caware_decode
+    assert metadata.row_execution == "native_batch_with_diagnostic_fallback"
+    assert "full-attention input RMSNorm forced to per-row diagnostic path" in metadata.blockers
+
+
 def test_qwen35_resident_run_layers_batch_decode_can_force_selected_c1_moe_probe(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE", "1")
     device = Device("hip", 0)

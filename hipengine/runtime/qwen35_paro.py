@@ -3560,6 +3560,7 @@ class Qwen35ParoDecodeState:
         group_size: int = 128,
         block_size: int = 256,
         force_selected_c1_moe: bool = False,
+        force_per_row_input_rmsnorm: bool = False,
         force_per_row_post_attention: bool = False,
         library=None,
         stream: int = 0,
@@ -3583,7 +3584,12 @@ class Qwen35ParoDecodeState:
                 moe_scratch = self.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
         elif not isinstance(moe_scratch, Qwen35ParoMoeScratch):
             moe_scratch = self.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
-        self.input_rmsnorm_fp16(
+        input_rmsnorm_fn = (
+            self.input_rmsnorm_fp16_per_row
+            if force_per_row_input_rmsnorm and tokens > 1
+            else self.input_rmsnorm_fp16
+        )
+        input_rmsnorm_fn(
             hidden,
             attention_scratch.attn_input,
             tokens=tokens,
@@ -4845,6 +4851,46 @@ class Qwen35ParoDecodeState:
             library=_library_for(library, "norm"),
             runtime=self.runtime,
         )
+        return out
+
+    def input_rmsnorm_fp16_per_row(
+        self,
+        hidden: Tensor,
+        out: Tensor,
+        *,
+        tokens: int = 1,
+        eps: float | None = None,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        """Diagnostic c>N input RMSNorm path using the token-1 RMS kernel per row."""
+
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        if tokens == 1:
+            return self.input_rmsnorm_fp16(
+                hidden,
+                out,
+                tokens=tokens,
+                eps=eps,
+                library=library,
+                stream=stream,
+            )
+        weight = self.tensor(f"layers.{self.layer_weights.layer_id}.input_layernorm.weight")
+        norm_library = _library_for(library, "norm")
+        norm_eps = self.config.rms_norm_eps if eps is None else eps
+        for row in range(tokens):
+            paro_rmsnorm_out_fp16(
+                self._row_tensor_view(hidden, row).ptr,
+                weight.ptr,
+                self._row_tensor_view(out, row).ptr,
+                1,
+                self.config.hidden_size,
+                norm_eps,
+                stream=stream,
+                library=norm_library,
+                runtime=self.runtime,
+            )
         return out
 
     def post_attention_add_rmsnorm_fp16(

@@ -3683,6 +3683,9 @@ class Qwen35ParoResidentSession:
         dense_mlp = int(getattr(self.config, "num_experts", 1) or 0) <= 0
         force_selected_c1_moe = (not dense_mlp) and rows > 1 and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE")
         force_per_row_linear = _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR")
+        force_per_row_full_attention_input = rows > 1 and _env_flag(
+            "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"
+        )
         force_per_row_post_attention = rows > 1 and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN")
         use_single_row_c1_linear = rows == 1 and not force_per_row_linear
         use_per_row_linear = force_per_row_linear or use_single_row_c1_linear
@@ -3837,6 +3840,7 @@ class Qwen35ParoResidentSession:
                             moe_scratch=moe_scratch,
                             tokens=rows,
                             force_selected_c1_moe=force_selected_c1_moe,
+                            force_per_row_input_rmsnorm=force_per_row_full_attention_input,
                             force_per_row_post_attention=force_per_row_post_attention,
                             library=self.libraries,
                             stream=stream,
@@ -3874,10 +3878,14 @@ class Qwen35ParoResidentSession:
                             "slots": [int(slot) for slot in slots],
                             "max_context": int(max_context),
                             "full_attention_decode_path": "native_batch",
-                            "native_caware_decode": not force_per_row_post_attention,
+                            "native_caware_decode": not (
+                                force_per_row_full_attention_input or force_per_row_post_attention
+                            ),
                             "moe_decode_path": layer_moe_path,
                             "attn_context_trace_source": "attention_scratch.query_raw",
                         }
+                        if force_per_row_full_attention_input:
+                            layer_execution["full_attention_input_decode_path"] = "per_row_rmsnorm_fallback"
                         if force_per_row_post_attention:
                             layer_execution["post_attention_decode_path"] = "per_row_add_rmsnorm_fallback"
                         full_spans_metadata = getattr(self, "_last_batch_full_spans_metadata", None)
@@ -3976,6 +3984,8 @@ class Qwen35ParoResidentSession:
                         if force_selected_c1_moe
                         else "mixed_grouped_compact_with_per_row_linear_attention_fallback"
                     )
+            if force_per_row_full_attention_input:
+                decode_blockers.append("full-attention input RMSNorm forced to per-row diagnostic path")
             if force_per_row_post_attention:
                 decode_blockers.append("post-attention add/rmsnorm forced to per-row diagnostic path")
             if full_attention_decode_path in {"per_row_splitk_fallback", "per_row_context_fallback"}:
@@ -3993,7 +4003,10 @@ class Qwen35ParoResidentSession:
                 "max_full_attention_context": int(max_full_attention_context),
                 "native_full_attention_layers": int(native_full_attention_layers),
                 "full_attention_decode_path": full_attention_decode_path,
-                "native_caware_decode": full_attention_decode_path not in {"per_row_splitk_fallback", "per_row_context_fallback"} and not force_per_row_linear and not force_per_row_post_attention,
+                "native_caware_decode": full_attention_decode_path not in {"per_row_splitk_fallback", "per_row_context_fallback"}
+                and not force_per_row_linear
+                and not force_per_row_full_attention_input
+                and not force_per_row_post_attention,
                 "linear_attention_segment_metadata": linear_segment_metadata,
                 "moe_decode_path": moe_decode_path,
                 "moe_decode_rows": int(rows),
