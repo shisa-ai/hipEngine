@@ -117,9 +117,15 @@ class SweepCommand:
 
 
 def parse_batch_sizes(text: str) -> tuple[int, ...]:
-    values = tuple(int(item.strip()) for item in text.split(",") if item.strip())
-    if not values:
-        raise argparse.ArgumentTypeError("at least one batch size is required")
+    if not isinstance(text, str) or not text:
+        raise argparse.ArgumentTypeError("batch sizes must be a non-empty string")
+    parts = text.split(",")
+    if any(not item.strip() for item in parts):
+        raise argparse.ArgumentTypeError("batch sizes must not contain empty entries")
+    try:
+        values = tuple(int(item.strip()) for item in parts)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("batch sizes must be integers") from exc
     if any(value <= 0 for value in values):
         raise argparse.ArgumentTypeError("batch sizes must be positive")
     if len(set(values)) != len(values):

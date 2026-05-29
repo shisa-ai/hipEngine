@@ -1956,6 +1956,14 @@ def test_batch_c_sweep_rejects_invalid_batch_sizes_before_creating_artifacts(tmp
         "run",
         lambda *args, **kwargs: pytest.fail("invalid batch sizes should fail before launching subprocesses"),
     )
+    for bad_text, expected in (
+        ("", "batch sizes must be a non-empty string"),
+        ("2,", "batch sizes must not contain empty entries"),
+        ("2,,4", "batch sizes must not contain empty entries"),
+        ("two", "batch sizes must be integers"),
+    ):
+        with pytest.raises(argparse.ArgumentTypeError, match=expected):
+            c_sweep.parse_batch_sizes(bad_text)
     for index, bad_batch_sizes in enumerate(((), (True,), (2.0,), (0,), (2, 2), ["2"])):
         output_dir = tmp_path / f"artifacts-batch-{index}"
         args = build_c_sweep_parser().parse_args(
