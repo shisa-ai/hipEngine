@@ -2687,6 +2687,8 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     command_count = summary.get("command_count")
     if not isinstance(command_count, int) or isinstance(command_count, bool) or command_count < len(entries):
         errors.append("command_count must be an int greater than or equal to completed_command_count")
+    elif summary.get("dry_run") is True and command_count != len(entries):
+        errors.append("dry-run summaries must include all planned commands")
     elif isinstance(options, Mapping) and isinstance(options.get("include_int8"), bool) and batch_sizes:
         expected_plan: list[tuple[str, int]] = []
         for c in batch_sizes:

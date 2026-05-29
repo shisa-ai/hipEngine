@@ -1886,6 +1886,17 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     tampered_dropped_commands["completed_command_count"] = 0
     with pytest.raises(ValueError, match="status_counts must match commands"):
         c_sweep.validate_sweep_summary(tampered_dropped_commands)
+    tampered_partial_dry_run = json.loads(json.dumps(persisted))
+    tampered_partial_dry_run["commands"] = tampered_partial_dry_run["commands"][:3]
+    tampered_partial_dry_run["completed_command_count"] = 3
+    tampered_partial_dry_run["status_counts"] = {"planned": 3}
+    tampered_partial_dry_run["category_status_counts"] = {
+        "primitive": {"planned": 1},
+        "serial_bridge": {"planned": 1},
+        "native_diagnostic": {"planned": 1},
+    }
+    with pytest.raises(ValueError, match="dry-run summaries must include all planned commands"):
+        c_sweep.validate_sweep_summary(tampered_partial_dry_run)
     tampered_dry_run_status = json.loads(json.dumps(persisted))
     tampered_dry_run_status["commands"][0]["status"] = "passed"
     with pytest.raises(ValueError, match=r"commands\[\]\.status must be planned for dry-run summaries"):
