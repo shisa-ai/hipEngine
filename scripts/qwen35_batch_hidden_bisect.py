@@ -146,6 +146,14 @@ def _bf16_bits_to_f32(bits: np.ndarray) -> np.ndarray:
     return (np.asarray(bits, dtype=np.uint32) << np.uint32(16)).view(np.float32)
 
 
+def _f32_to_bf16_bits(values: np.ndarray) -> np.ndarray:
+    f32 = np.asarray(values, dtype=np.float32)
+    bits = f32.view(np.uint32)
+    lsb = (bits >> np.uint32(16)) & np.uint32(1)
+    rounded = bits + np.uint32(0x7FFF) + lsb
+    return np.ascontiguousarray((rounded >> np.uint32(16)).astype(np.uint16))
+
+
 def _hidden_diff_example_at_flat_index(
     batch_bits: np.ndarray,
     c1_bits: np.ndarray,
@@ -3569,6 +3577,160 @@ def _decode_full_kv_sample_rollup(layer_summaries: Sequence[dict[str, Any]]) -> 
     }
 
 
+def _full_kv_source_stage(kind: str) -> str:
+    if kind == "key":
+        return "key_after_prepare"
+    if kind == "value":
+        return "value_after_project"
+    raise ValueError(f"unsupported full-KV kind {kind!r}")
+
+
+def _trace_source_row_f32(
+    trace_layers: dict[int, dict[str, np.ndarray]],
+    *,
+    layer_id: int,
+    row: int,
+    kind: str,
+) -> tuple[str, np.ndarray] | None:
+    stage = _full_kv_source_stage(kind)
+    layer = trace_layers.get(int(layer_id), {})
+    if stage not in layer:
+        return None
+    stage_values = layer[stage]
+    if int(row) < 0 or int(row) >= int(stage_values.shape[0]):
+        return None
+    return stage, _trace_array_to_f32(stage_values[int(row) : int(row) + 1]).reshape(-1)
+
+
+def _current_kv_source_checks(
+    batch_trace_layers: dict[int, dict[str, np.ndarray]],
+    c1_trace_layers: dict[int, dict[str, np.ndarray]],
+    *,
+    layer_id: int,
+    row: int,
+    kind: str,
+    sample_index: int,
+    sample_label: str,
+    sample_position: int,
+    batch_bits: np.ndarray,
+    c1_bits: np.ndarray,
+    atol: float,
+) -> dict[str, Any] | None:
+    batch_source = _trace_source_row_f32(batch_trace_layers, layer_id=layer_id, row=row, kind=kind)
+    c1_source = _trace_source_row_f32(c1_trace_layers, layer_id=layer_id, row=row, kind=kind)
+    if batch_source is None or c1_source is None:
+        return None
+    source_stage, batch_source_f32 = batch_source
+    c1_source_stage, c1_source_f32 = c1_source
+    batch_cache_bits = np.asarray(batch_bits, dtype=np.uint16).reshape(-1)
+    c1_cache_bits = np.asarray(c1_bits, dtype=np.uint16).reshape(-1)
+    batch_source_bits = _f32_to_bf16_bits(batch_source_f32).reshape(-1)
+    c1_source_bits = _f32_to_bf16_bits(c1_source_f32).reshape(-1)
+    check: dict[str, Any] = {
+        "source_stage": source_stage,
+        "c1_source_stage": c1_source_stage,
+        "sample_index": int(sample_index),
+        "sample_label": str(sample_label),
+        "sample_position": int(sample_position),
+    }
+    if (
+        batch_source_bits.shape != batch_cache_bits.shape
+        or c1_source_bits.shape != c1_cache_bits.shape
+        or batch_source_bits.shape != c1_source_bits.shape
+    ):
+        check.update(
+            {
+                "available": False,
+                "reason": "source/cache shape mismatch",
+                "batch_source_shape": [int(dim) for dim in batch_source_bits.shape],
+                "batch_cache_shape": [int(dim) for dim in batch_cache_bits.shape],
+                "c1_source_shape": [int(dim) for dim in c1_source_bits.shape],
+                "c1_cache_shape": [int(dim) for dim in c1_cache_bits.shape],
+            }
+        )
+        return check
+    batch_cache_vs_source = bf16_bits_comparison(batch_cache_bits, batch_source_bits, atol=0.0)
+    c1_cache_vs_source = bf16_bits_comparison(c1_cache_bits, c1_source_bits, atol=0.0)
+    batch_source_vs_c1_source = bf16_bits_comparison(batch_source_bits, c1_source_bits, atol=0.0)
+    check.update(
+        {
+            "available": True,
+            "passed": bool(
+                batch_cache_vs_source["passed"]
+                and c1_cache_vs_source["passed"]
+                and batch_source_vs_c1_source["passed"]
+            ),
+            "batch_cache_vs_source": _compact_comparison(batch_cache_vs_source),
+            "c1_cache_vs_source": _compact_comparison(c1_cache_vs_source),
+            "batch_source_vs_c1_source": _compact_comparison(batch_source_vs_c1_source),
+        }
+    )
+    return check
+
+
+def _decode_full_kv_current_source_failure_summary(steps: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    kind_summaries: dict[str, Any] = {}
+    first_failure: dict[str, Any] | None = None
+    for kind in ("key", "value"):
+        rows: list[int] = []
+        seen_rows: set[int] = set()
+        failed_checks: list[str] = []
+        seen_checks: set[str] = set()
+        kind_first_failure: dict[str, Any] | None = None
+        for step_summary in steps:
+            for layer in step_summary.get("layers", []):
+                for row_summary in layer.get("rows", []):
+                    check = row_summary.get(f"{kind}_current_source_check")
+                    if not isinstance(check, dict) or not bool(check.get("available", False)):
+                        continue
+                    for check_name in ("batch_cache_vs_source", "c1_cache_vs_source", "batch_source_vs_c1_source"):
+                        comparison = check.get(check_name)
+                        if not isinstance(comparison, dict) or bool(comparison.get("passed", False)):
+                            continue
+                        record = {
+                            "decode_step": int(step_summary.get("decode_step", 0)),
+                            "generated_index": int(step_summary.get("generated_index", int(step_summary.get("decode_step", 0)) + 1)),
+                            "layer_index": int(layer.get("layer_index", -1)),
+                            "row": int(row_summary.get("row", -1)),
+                            "kind": kind,
+                            "check": check_name,
+                            "source_stage": str(check.get("source_stage", "")),
+                            "sample_index": int(check.get("sample_index", -1)),
+                            "sample_label": str(check.get("sample_label", "")),
+                            "sample_position": int(check.get("sample_position", -1)),
+                            "max_abs": float(comparison.get("max_abs", 0.0)),
+                            "max_abs_flat_index": comparison.get("max_abs_flat_index"),
+                            "max_abs_index": comparison.get("max_abs_index", []),
+                            "elements_over_atol": int(comparison.get("elements_over_atol", 0)),
+                            "bit_mismatch": int(comparison.get("bit_mismatch", 0)),
+                        }
+                        if kind_first_failure is None:
+                            kind_first_failure = record
+                        if first_failure is None:
+                            first_failure = record
+                        row_index = int(row_summary.get("row", -1))
+                        if row_index >= 0 and row_index not in seen_rows:
+                            rows.append(row_index)
+                            seen_rows.add(row_index)
+                        if check_name not in seen_checks:
+                            failed_checks.append(check_name)
+                            seen_checks.add(check_name)
+        kind_summaries[kind] = {
+            "passed": not rows,
+            "failure_rows": rows,
+            "failure_row_count": len(rows),
+            "failed_checks": failed_checks,
+            "first_failure": kind_first_failure,
+        }
+    failed_kinds = [kind for kind in ("key", "value") if kind_summaries[kind]["failure_rows"]]
+    return {
+        "failed_kinds": failed_kinds,
+        "failed_kind_count": len(failed_kinds),
+        "first_failure": first_failure,
+        "kinds": kind_summaries,
+    }
+
+
 def _decode_full_kv_sample_summary(
     batch: HiddenRun,
     c1: HiddenRun,
@@ -3585,6 +3747,8 @@ def _decode_full_kv_sample_summary(
     for step, (batch_layers, c1_layers) in enumerate(
         zip(batch.decode_full_kv_samples_by_step, c1.decode_full_kv_samples_by_step, strict=True)
     ):
+        batch_trace_layers = batch.decode_full_attention_by_step[step] if step < len(batch.decode_full_attention_by_step) else {}
+        c1_trace_layers = c1.decode_full_attention_by_step[step] if step < len(c1.decode_full_attention_by_step) else {}
         layers: list[dict[str, Any]] = []
         for layer_id in sorted(set(batch_layers) & set(c1_layers)):
             batch_sample = batch_layers[layer_id]
@@ -3616,6 +3780,7 @@ def _decode_full_kv_sample_summary(
                         )
                     comparison = bf16_bits_comparison(batch_bits[row : row + 1], c1_bits[row : row + 1], atol=atol)
                     sample_comparisons: list[dict[str, Any]] = []
+                    current_source_check: dict[str, Any] | None = None
                     for sample_index, label in enumerate(labels):
                         sample_comparison = bf16_bits_comparison(
                             batch_bits[row : row + 1, sample_index : sample_index + 1],
@@ -3633,8 +3798,24 @@ def _decode_full_kv_sample_summary(
                                 "comparison": sample_comparison,
                             }
                         )
+                        if str(label) == "current":
+                            current_source_check = _current_kv_source_checks(
+                                batch_trace_layers,
+                                c1_trace_layers,
+                                layer_id=int(layer_id),
+                                row=int(row),
+                                kind=kind,
+                                sample_index=int(sample_index),
+                                sample_label=str(label),
+                                sample_position=int(batch_positions[row, sample_index]),
+                                batch_bits=batch_bits[row, sample_index],
+                                c1_bits=c1_bits[row, sample_index],
+                                atol=atol,
+                            )
                     row_summary[f"{kind}_comparison"] = comparison
                     row_summary[f"{kind}_sample_comparisons"] = sample_comparisons
+                    if current_source_check is not None:
+                        row_summary[f"{kind}_current_source_check"] = current_source_check
                     row_passed = row_passed and bool(comparison["passed"])
                 row_summary["passed"] = row_passed
                 row_summaries.append(row_summary)
@@ -3719,10 +3900,13 @@ def _decode_full_kv_sample_summary(
                                 kind,
                                 first_failed_sample,
                             )
+    current_source_failure_summary = _decode_full_kv_current_source_failure_summary(steps)
     result = {
         "stage": "decode_full_kv_samples",
         "bf16_atol": float(atol),
         "passed": all(step["passed"] for step in steps),
+        "current_source_passed": bool(current_source_failure_summary["failed_kind_count"] == 0),
+        "current_source_failure_summary": current_source_failure_summary,
         "steps": steps,
     }
     if first_mismatch is not None:

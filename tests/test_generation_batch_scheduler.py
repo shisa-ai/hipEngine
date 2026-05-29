@@ -73,6 +73,7 @@ from scripts.qwen35_batch_hidden_bisect import (
     _decode_full_kv_sample_rollup,
     _first_failing_layer_transition,
     _first_hidden_mismatch,
+    _current_kv_source_checks,
     _decode_full_kv_sample_positions,
     _kv_prefix_hash_comparison,
     _numpy_full_attention_context_row,
@@ -6397,6 +6398,35 @@ def test_hidden_bisect_kv_prefix_hash_comparison_embeds_token_samples() -> None:
         "c1_token_sample_u16": [6, 7, 8, 9],
         "token_sample_word_count": 4,
     }
+
+
+def test_hidden_bisect_current_kv_source_checks_compare_cache_to_trace() -> None:
+    def bf16_bits(values: np.ndarray) -> np.ndarray:
+        return (np.asarray(values, dtype=np.float32).view(np.uint32) >> np.uint32(16)).astype(np.uint16)
+
+    source = np.array([[1.0, -2.0]], dtype=np.float32)
+    check = _current_kv_source_checks(
+        {3: {"key_after_prepare": source.copy()}},
+        {3: {"key_after_prepare": source.copy()}},
+        layer_id=3,
+        row=0,
+        kind="key",
+        sample_index=4,
+        sample_label="current",
+        sample_position=512,
+        batch_bits=bf16_bits(source.reshape(1, 2)),
+        c1_bits=bf16_bits(source.reshape(1, 2)),
+        atol=0.0,
+    )
+
+    assert check is not None
+    assert check["available"] is True
+    assert check["passed"] is True
+    assert check["source_stage"] == "key_after_prepare"
+    assert check["sample_position"] == 512
+    assert check["batch_cache_vs_source"]["max_abs"] == 0.0
+    assert check["c1_cache_vs_source"]["max_abs"] == 0.0
+    assert check["batch_source_vs_c1_source"]["max_abs"] == 0.0
 
 
 def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:

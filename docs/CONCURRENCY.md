@@ -1130,9 +1130,14 @@ roll-up/status view.
       `/tmp/hipengine-hidden-bisect-L8-512-16-c2-kv-token-samples-atol4e-3-focus1269.json`
       is hidden-only red and shows current-token position 512 at layer 3 / row 0
       with a one-word key-token sample delta (`16166` vs `16167`) while
-      post-prefill prefix hashes remain green. The next target is deterministic
-      compact-prefill K/V replay and prompt-tail/current-token slot-content
-      auditing before changing paged-KV writer code. Do not re-open
+      post-prefill prefix hashes remain green. The follow-up current-source
+      audit at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-current-source-check-v2-atol4e-3-focus1269.json`
+      shows both batch and c1 current-token cache writes match their local
+      producer traces exactly (`batch_cache_vs_source` and `c1_cache_vs_source`
+      bit-mismatch zero), while `batch_source_vs_c1_source` already differs at
+      layer 3 / step 0. The next target is replaying/attributing decode-time
+      producer drift before changing paged-KV writer code. Do not re-open
       context softmax math, row setup, native linear segment metadata,
       output trace/copy semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2

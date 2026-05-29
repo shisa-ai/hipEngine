@@ -46793,3 +46793,37 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (selected pytest suite plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no queue item was marked complete, token-sample artifact has `performance_claim=false`, native c>N generated-token equality remains open, and no performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY current-token K/V source audit
+
+Added hidden-bisect current-token source checks for decode full-KV samples. For each sampled `current` K/V token, the diagnostic now compares (1) batch cache BF16 bits vs the batch producer trace rounded to BF16, (2) c=1 cache BF16 bits vs the c=1 producer trace rounded to BF16, and (3) batch producer vs c=1 producer. This separates writer/slot corruption from upstream producer drift.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_current_kv_source_checks_compare_cache_to_trace tests/test_generation_batch_scheduler.py::test_hidden_bisect_kv_prefix_hash_comparison_embeds_token_samples -q
+```
+
+Result: PASS.
+
+Refreshed native L8 hidden-bisect with current-source checks:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-current-source-check-v2-atol4e-3-focus1269.json
+```
+
+Result: `status=mismatch_found`, `failure_modes=["hidden"]`, no performance claim. Post-prefill K/V prefix hashes remain green. Decode sampled-KV current-token checks show `batch_cache_vs_source` and `c1_cache_vs_source` are bit-exact (`bit_mismatch=0`) for layer_limit 8 / decode step 0 / layer 3 / row 0. The failing check is `batch_source_vs_c1_source` (`key max_abs=0.015625`, `bit_mismatch=122`; value `max_abs=0.0078125`, `bit_mismatch=125`), so current-token K/V sample drift is already present in the local producer traces rather than introduced by the paged-KV writer. Next action should replay/attribute decode-time producer drift before touching writer code.
+
+Full validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (selected pytest suite plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no queue item was marked complete, current-source artifact has `performance_claim=false`, native c>N generated-token equality remains open, and no performance/scaling claim was added.
