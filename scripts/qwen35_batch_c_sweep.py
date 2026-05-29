@@ -42,6 +42,7 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_RETAINED_GATE_FLAGS,
     RETAINED_ARTIFACT_RETAINED_GATE_LABELS,
     RETAINED_ARTIFACT_RETAINED_POSTCONDITION_KINDS,
+    RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS,
     RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS,
     RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_VALUE_FLAGS,
     RETAINED_ARTIFACT_RETAINED_PRECONDITION_KINDS,
@@ -98,6 +99,7 @@ def _primitive_context_lens_matches(value: Any, rows: int) -> bool:
 
 _PROFILER_SYNTHESIZED_FIELDS = RETAINED_ARTIFACT_PROFILER_TRACE_SYNTHESIZED_FIELDS
 _RETAINED_BENCH_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS
+_RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS = RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS
 _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS
 _RETAINED_PROFILED_COMMAND_VALUE_FLAGS = RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_VALUE_FLAGS
 _PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS = RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS
@@ -1184,6 +1186,9 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                 reasons.append(f"profiler command trace-dir={command_trace_dir!r} does not match profiler.trace_dir={profiler_trace_dir}")
             if "scripts/qwen35_batch_retained_bench.py" not in profiler_command:
                 reasons.append("profiler command does not target qwen35_batch_retained_bench.py")
+            for flag in _RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS:
+                if _command_text_has_flag(profiler_command, flag):
+                    reasons.append(f"profiler command must not include {flag}")
             expected_model = _command_arg_value(command, "--model")
             command_model = _command_text_arg(profiler_command, "--model")
             if expected_model is not None and command_model != expected_model:
@@ -2539,6 +2544,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         break
                     if _duplicate_flags(profiled_command_argv, _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS):
                         errors.append("commands[].preconditions[].profiler profiled command flags must be unique")
+                        break
+                    if any(_flag_token_matches(token, flag) for token in profiled_command_argv for flag in _RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS):
+                        errors.append("commands[].preconditions[].profiler profiled command must not skip generated equality")
                         break
                     if _empty_inline_flag_values(profiled_command_argv, _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS):
                         errors.append("commands[].preconditions[].profiler profiled command flag values must be non-empty")

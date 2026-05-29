@@ -99,6 +99,7 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_RETAINED_GATE_FLAGS,
     RETAINED_ARTIFACT_RETAINED_GATE_LABELS,
     RETAINED_ARTIFACT_RETAINED_KV_POLICY_FLAGS,
+    RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS,
     RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS,
     RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_VALUE_FLAGS,
     RETAINED_ARTIFACT_SWEEP_COMMAND_CATEGORIES,
@@ -998,6 +999,7 @@ def test_batch_c_sweep_profiler_precondition_synthesizes_trace_fields_from_csv(t
     assert c_sweep._PROFILER_TRACE_DURATION_COLUMNS is RETAINED_ARTIFACT_PROFILER_TRACE_DURATION_COLUMNS
     assert c_sweep._PROFILER_SYNTHESIZED_FIELDS is RETAINED_ARTIFACT_PROFILER_TRACE_SYNTHESIZED_FIELDS
     assert c_sweep._RETAINED_BENCH_UNIQUE_FLAGS is RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS
+    assert c_sweep._RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS is RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS
     assert c_sweep._RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS is RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS
     assert c_sweep._RETAINED_PROFILED_COMMAND_VALUE_FLAGS is RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_VALUE_FLAGS
     assert all(flag in c_sweep._SWEEP_COMMAND_KNOWN_FLAGS for flag in RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS)
@@ -1411,6 +1413,45 @@ def test_batch_c_sweep_profiler_precondition_rejects_wrong_retained_artifact_com
         "artifact_path": str(profiler_path),
         "passed": False,
         "reason": "profiler command --json path does not match retained artifact_path",
+    }
+
+
+def test_batch_c_sweep_profiler_precondition_rejects_skip_generated_equality_command(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"]["command"] = payload["profiler"]["command"].replace(
+        " --json ",
+        f" {RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS[0]} --json ",
+    )
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": f"profiler command must not include {RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS[0]}",
     }
 
 
@@ -4914,6 +4955,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     profiler_precondition["profiler_command"] = profiler_precondition["profiler_command"] + " --kv-storage="
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler profiled command flag values must be non-empty"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_profiled_empty_kv)
+    tampered_profiler_precondition_profiled_skip_equality = json.loads(json.dumps(persisted))
+    profiler_precondition = tampered_profiler_precondition_profiled_skip_equality["commands"][-1]["preconditions"][-1]
+    profiler_precondition["profiler_command"] = profiler_precondition["profiler_command"].replace(
+        " --json ",
+        f" {RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS[0]} --json ",
+    )
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler profiled command must not skip generated equality"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_profiled_skip_equality)
     tampered_profiler_precondition_retained_flag_before_separator = json.loads(json.dumps(persisted))
     profiler_precondition = tampered_profiler_precondition_retained_flag_before_separator["commands"][-1]["preconditions"][-1]
     profiler_precondition["profiler_command"] = profiler_precondition["profiler_command"].replace(
@@ -9923,6 +9972,7 @@ def test_qwen35_retained_profiler_reference_loads_captured_summary(tmp_path: Pat
     assert retained_bench._RETAINED_GATE_FLAGS is RETAINED_ARTIFACT_RETAINED_GATE_FLAGS
     assert retained_bench._RETAINED_GATE_LABELS is RETAINED_ARTIFACT_RETAINED_GATE_LABELS
     assert retained_bench._RETAINED_KV_POLICY_FLAGS is RETAINED_ARTIFACT_RETAINED_KV_POLICY_FLAGS
+    assert retained_bench._RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS is RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS
     assert retained_bench._RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS is RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS
     assert loaded["status"] == "captured"
     assert loaded["output_format"] == "csv"
