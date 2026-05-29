@@ -6930,6 +6930,12 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
             "attn_input_pre_qkv": hidden.copy(),
             "attn_input_after_rotate": hidden.copy(),
             "attn_input_after_project": hidden.copy(),
+            "q_proj_key_after_project": hidden.copy(),
+            "query_raw_after_split": query.copy(),
+            "key_raw_after_cast": query.copy(),
+            "gate_after_split": hidden.copy(),
+            "query_after_prepare": query.copy(),
+            "key_after_prepare": query.copy(),
             "attn_input_after_prepare": hidden.copy(),
             "gate": hidden.copy(),
             "query": query.copy(),
@@ -7069,6 +7075,9 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     assert summary["decode_full_attention"]["stage_passed"]["attn_input_pre_qkv"] is True
     assert summary["decode_full_attention"]["stage_passed"]["attn_input_after_rotate"] is True
     assert summary["decode_full_attention"]["stage_passed"]["attn_input_after_project"] is True
+    assert summary["decode_full_attention"]["stage_passed"]["q_proj_key_after_project"] is True
+    assert summary["decode_full_attention"]["stage_passed"]["query_raw_after_split"] is True
+    assert summary["decode_full_attention"]["stage_passed"]["query_after_prepare"] is True
     assert summary["decode_full_attention"]["stage_passed"]["attn_input_after_prepare"] is True
     assert summary["decode_full_attention"]["stage_passed"]["query"] is True
     assert summary["decode_full_attention"]["stage_passed"]["attn_context"] is True
@@ -7097,6 +7106,12 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         "failure_row_count": 0,
         "first_failure": None,
     }
+    assert stage_failures["stages"]["query_raw_after_split"] == {
+        "passed": True,
+        "failure_rows": [],
+        "failure_row_count": 0,
+        "first_failure": None,
+    }
     assert "first_mismatch" not in summary["decode_full_attention"]
     assert summary["decode_full_attention"]["worst_diff"]["stage"] == "input"
     assert summary["decode_full_attention"]["worst_diff"]["max_abs"] == 0.0
@@ -7104,6 +7119,10 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["attn_context"]["rows"][0]["comparison_kind"] == "fp32"
     assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["attn_input_pre_qkv"]["passed"] is True
     assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["attn_input_after_project"]["passed"] is True
+    assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["q_proj_key_after_project"]["passed"] is True
+    assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["query_raw_after_split"]["rows"][0]["comparison_kind"] == "fp32"
+    assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["gate_after_split"]["rows"][0]["comparison_kind"] == "fp16_bits"
+    assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["query_after_prepare"]["passed"] is True
     assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["attn_input_after_prepare"]["passed"] is True
     assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["residual"]["passed"] is True
     assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["mlp_input"]["passed"] is True
@@ -7273,6 +7292,13 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         "first_failure": None,
     }
     assert top_level_full_attention_rollup["stages"]["attn_input_after_project"] == {
+        "passed": True,
+        "failure_rows": [],
+        "failure_row_count": 0,
+        "failure_comparison_kinds": [],
+        "first_failure": None,
+    }
+    assert top_level_full_attention_rollup["stages"]["query_raw_after_split"] == {
         "passed": True,
         "failure_rows": [],
         "failure_row_count": 0,

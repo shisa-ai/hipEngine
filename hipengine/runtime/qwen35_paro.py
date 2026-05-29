@@ -2471,6 +2471,7 @@ class Qwen35ParoDecodeState:
         max_positions: int,
         tokens: int = 1,
         query_bf16_out: Tensor | None = None,
+        producer_trace: Callable[[str, Tensor], None] | None = None,
         library=None,
         stream: int = 0,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
@@ -2487,6 +2488,9 @@ class Qwen35ParoDecodeState:
             library=_library_for(library, "qwen_rotary"),
             runtime=self.runtime,
         )
+        if producer_trace is not None:
+            producer_trace("query_raw_after_split", scratch.query_raw)
+            producer_trace("gate_after_split", scratch.gate)
         fp16_to_f32(
             scratch.key_bf16.ptr,
             scratch.key_raw.ptr,
@@ -2495,6 +2499,8 @@ class Qwen35ParoDecodeState:
             library=_library_for(library, "cast"),
             runtime=self.runtime,
         )
+        if producer_trace is not None:
+            producer_trace("key_raw_after_cast", scratch.key_raw)
         if query_bf16_out is not None:
             if query_bf16_out.dtype is not DType.BF16 or query_bf16_out.shape != scratch.query.shape:
                 raise ValueError("AOTriton query BF16 output must match full-attention query shape")
@@ -2566,6 +2572,9 @@ class Qwen35ParoDecodeState:
                 runtime=self.runtime,
             )
         query_out = query_bf16_out if query_bf16_out is not None else scratch.query
+        if producer_trace is not None:
+            producer_trace("query_after_prepare", query_out)
+            producer_trace("key_after_prepare", scratch.key)
         return query_out, scratch.key, scratch.value, scratch.gate
 
     @staticmethod
@@ -2651,6 +2660,7 @@ class Qwen35ParoDecodeState:
         tokens: int,
         group_size: int = 128,
         input_scratch_trace: Callable[[str, int, Qwen35ParoAttentionScratch], None] | None = None,
+        qkv_tensor_trace: Callable[[str, int, Tensor], None] | None = None,
         library=None,
         stream: int = 0,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
@@ -2690,6 +2700,13 @@ class Qwen35ParoDecodeState:
             )
             if input_scratch_trace is not None:
                 input_scratch_trace("attn_input_after_project", row, row_scratch)
+            if qkv_tensor_trace is not None:
+                qkv_tensor_trace("q_proj_key_after_project", row, row_scratch.q_proj_key)
+
+            def producer_trace(stage: str, tensor: Tensor, *, _row: int = row) -> None:
+                if qkv_tensor_trace is not None:
+                    qkv_tensor_trace(stage, _row, tensor)
+
             self.prepare_full_attention_qkv_fp16(
                 row_scratch,
                 cos_table=cos_table,
@@ -2697,6 +2714,7 @@ class Qwen35ParoDecodeState:
                 position=row_position,
                 max_positions=max_positions,
                 tokens=1,
+                producer_trace=producer_trace if qkv_tensor_trace is not None else None,
                 library=library,
                 stream=stream,
             )
@@ -3571,6 +3589,7 @@ class Qwen35ParoDecodeState:
         force_per_row_post_attention: bool = False,
         post_input_rmsnorm_trace: Callable[[Qwen35ParoAttentionScratch], None] | None = None,
         input_scratch_trace: Callable[[str, int, Qwen35ParoAttentionScratch], None] | None = None,
+        qkv_tensor_trace: Callable[[str, int, Tensor], None] | None = None,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -3616,6 +3635,7 @@ class Qwen35ParoDecodeState:
             tokens=tokens,
             group_size=group_size,
             input_scratch_trace=input_scratch_trace,
+            qkv_tensor_trace=qkv_tensor_trace,
             library=library,
             stream=stream,
         )

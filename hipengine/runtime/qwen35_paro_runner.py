@@ -2970,6 +2970,46 @@ class Qwen35ParoResidentSession:
             stream=stream,
         )
 
+    def _trace_decode_full_attention_tensor(
+        self,
+        *,
+        layer_id: int,
+        stage: str,
+        tensor: Tensor,
+        rows: int,
+        stream: int = 0,
+    ) -> None:
+        if stage not in {
+            "q_proj_key_after_project",
+            "query_raw_after_split",
+            "key_raw_after_cast",
+            "gate_after_split",
+            "query_after_prepare",
+            "key_after_prepare",
+        }:
+            raise ValueError("decode full-attention tensor trace stage is not recognized")
+        if tensor.dtype == DType.FP32:
+            self._trace_tensor_f32(
+                trace_attr="_decode_full_attention_trace",
+                layer_id=layer_id,
+                stage=stage,
+                tensor=tensor,
+                rows=rows,
+                stream=stream,
+            )
+            return
+        if tensor.dtype.itemsize == 2:
+            self._trace_tensor_bits(
+                trace_attr="_decode_full_attention_trace",
+                layer_id=layer_id,
+                stage=stage,
+                tensor=tensor,
+                rows=rows,
+                stream=stream,
+            )
+            return
+        raise ValueError(f"decode full-attention tensor trace {stage} does not support dtype {tensor.dtype}")
+
     def _trace_decode_full_attention_query(
         self,
         *,
@@ -3841,6 +3881,7 @@ class Qwen35ParoResidentSession:
                             moe_scratch = self._ensure_moe_decode_batch_scratch(layer_id, rows)
                         post_input_rmsnorm_trace = None
                         input_scratch_trace = None
+                        qkv_tensor_trace = None
                         if isinstance(getattr(self, "_decode_full_attention_trace", None), list):
                             def post_input_rmsnorm_trace(
                                 attention_scratch: Qwen35ParoAttentionScratch,
@@ -3873,6 +3914,22 @@ class Qwen35ParoResidentSession:
                                     stream=_stream,
                                 )
 
+                            def qkv_tensor_trace(
+                                stage: str,
+                                row: int,
+                                tensor: Tensor,
+                                *,
+                                _layer_id: int = layer_id,
+                                _stream: int = stream,
+                            ) -> None:
+                                self._trace_decode_full_attention_tensor(
+                                    layer_id=_layer_id,
+                                    stage=stage,
+                                    tensor=tensor,
+                                    rows=1,
+                                    stream=_stream,
+                                )
+
                         out = state.run_full_attention_moe_decode_batch_layer_fp16(
                             hidden,
                             key_cache=key_cache,
@@ -3891,6 +3948,7 @@ class Qwen35ParoResidentSession:
                             force_per_row_post_attention=force_per_row_post_attention,
                             post_input_rmsnorm_trace=post_input_rmsnorm_trace,
                             input_scratch_trace=input_scratch_trace,
+                            qkv_tensor_trace=qkv_tensor_trace,
                             library=self.libraries,
                             stream=stream,
                         )

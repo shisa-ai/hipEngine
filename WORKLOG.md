@@ -46435,3 +46435,42 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (`264` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: C2.3 remains open, the new trace ladder and refreshed artifact are diagnostic/non-retained, no queue item was marked complete, native c>N generated-token equality remains open, and no performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY QKV producer trace ladder
+
+Added row-level QKV producer traces for native full-attention decode:
+
+- `prepare_full_attention_qkv_fp16()` now accepts an optional producer trace and emits `query_raw_after_split`, `gate_after_split`, `key_raw_after_cast`, `query_after_prepare`, and `key_after_prepare`.
+- `prepare_full_attention_qkv_fp16_decode_rows()` emits `q_proj_key_after_project` and plumbs row-aware producer traces.
+- `hipengine/runtime/qwen35_paro_runner.py` records these tensor traces with dtype-aware bit/fp32 capture when hidden-bisect tracing is active.
+- `scripts/qwen35_batch_hidden_bisect.py` includes the new stages in the full-attention stage rollups, and synthetic scheduler coverage verifies pass/rollup behavior plus fp16/fp32 comparison kind labeling.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_summary_embeds_batch_decode_execution_trace -q
+```
+
+Result: PASS.
+
+Refreshed the per-row-attn-input C2.3 probe:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 4,8 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-moe-path selected_c1 --batch-decode-attn-input-path per_row --batch-decode-post-attn-path per_row --json /tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-native-full-core-perrow-attninput-linear-postattn-selected-c1-atol4e-3-focus1269.json
+```
+
+Result: still `status=mismatch_found`, `failure_modes=["hidden"]`, `token_passed=true`, `performance_claim=false`, `native_caware_decode=false`. First final-hidden mismatch remains L8 decode step 6 / row 0 / dim 1269 (`max_abs=0.02734375`). `q_proj_key_after_project`, `query_raw_after_split`, `key_raw_after_cast`, `gate_after_split`, `query_after_prepare`, and `key_after_prepare` all pass at L4/L8, as do the prior `attn_input_*` producer stages. Late post-layer `query` still fails at L8 decode step 0 / dim 2357 (`max_abs=0.005970478057861328`) and `attn_context` at dim 2812 (`max_abs=0.008107900619506836`). Since immediate `query_after_prepare` passes, the next diagnostic should build the full-context oracle from that immediate query rather than from the late `query` trace, then compare it to the true context output. Updated `docs/CONCURRENCY.md`; no correctness item was closed.
+
+Full validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (`264` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: C2.3 remains open, the new QKV producer traces and refreshed artifact are diagnostic/non-retained, no queue item was marked complete, native c>N generated-token equality remains open, and no performance/scaling claim was added.

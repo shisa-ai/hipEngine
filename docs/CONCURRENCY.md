@@ -1092,14 +1092,20 @@ roll-up/status view.
       `attn_input_after_prepare` traces all pass at L4 and L8, so the input
       RMSNorm/rotate/project/prepare path is not overwriting `attn_input`; the
       existing post-layer `attn_input` trace is polluted after those stages and
-      should not drive the fix. The real next target is QKV output divergence:
-      L4 final hidden/token is green but `query` first fails at step 0 / dim 3121
-      (`max_abs=0.005925655364990234`) and `attn_context` at dim 1559, while L8
-      still fails final hidden at step 6. Add row-level `q_proj_key`/`query_raw`
-      producer traces before changing kernels. The per-row fallback's ≤0.004
-      FP16/state amplification is a diagnostic tolerance question only; do not
-      re-open full-attention context math, layer-4 state mapping, native linear
-      segment metadata, output trace/copy semantics, or grouped MoE output yet.
+      should not drive the fix. Row-level QKV producer traces then showed
+      `q_proj_key_after_project`, `query_raw_after_split`, `key_raw_after_cast`,
+      `gate_after_split`, `query_after_prepare`, and `key_after_prepare` all pass
+      at L4 and L8. The remaining actionable signal is therefore the context
+      output / late-scratch boundary: late `query` and `attn_context` traces fail
+      at L8 step 0 (`query` dim 2357, `max_abs=0.005970478057861328`;
+      `attn_context` dim 2812, `max_abs=0.008107900619506836`) while final hidden
+      first fails at L8 step 6. Next target: compute the full-context oracle from
+      immediate `query_after_prepare` instead of the late `query` trace, then
+      compare that to the true context output before changing kernels. The
+      per-row fallback's ≤0.004 FP16/state amplification is a diagnostic
+      tolerance question only; do not re-open layer-4 state mapping, native
+      linear segment metadata, output trace/copy semantics, or grouped MoE output
+      yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions
