@@ -637,6 +637,7 @@ class Qwen35ParoDecodeState:
         in_features: int | None = None,
         group_size: int = 128,
         threads: int = 128,
+        force_gemv: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -668,7 +669,7 @@ class Qwen35ParoDecodeState:
             if not qweight.shape:
                 raise ValueError(f"{prefix}.qweight must have at least one dimension")
             out_packed = _out_packed_from_strided_qweight(qweight)
-            if rows > 1 and group_size % 16 == 0 and width % group_size == 0:
+            if rows > 1 and not force_gemv and group_size % 16 == 0 and width % group_size == 0:
                 awq_fusedw4_prefill_strided_fp16(
                     x.ptr,
                     qweight.ptr,
@@ -702,7 +703,7 @@ class Qwen35ParoDecodeState:
         else:
             qweight = self.tensor(f"{prefix}.qweight_pack8_decode")
             out_packed = _out_packed_from_generic_transposed_qweight(qweight)
-            if rows > 1 and group_size % 16 == 0 and width % group_size == 0:
+            if rows > 1 and not force_gemv and group_size % 16 == 0 and width % group_size == 0:
                 awq_fusedw4_prefill_fp16(
                     x.ptr,
                     qweight.ptr,
@@ -4745,6 +4746,7 @@ class Qwen35ParoDecodeState:
         *,
         tokens: int = 1,
         group_size: int = 128,
+        force_pack8_gemv: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -4781,6 +4783,7 @@ class Qwen35ParoDecodeState:
             in_features=width,
             group_size=group_size,
             threads=64 if tokens > 1 else 128,
+            force_gemv=force_pack8_gemv,
             library=library,
             stream=stream,
         )
@@ -4792,6 +4795,7 @@ class Qwen35ParoDecodeState:
         *,
         tokens: int,
         group_size: int = 128,
+        force_pack8_gemv: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -4820,6 +4824,7 @@ class Qwen35ParoDecodeState:
             in_features=width,
             group_size=group_size,
             threads=64 if tokens > 1 else 128,
+            force_gemv=force_pack8_gemv,
             library=library,
             stream=stream,
         )
@@ -5073,6 +5078,7 @@ class Qwen35ParoDecodeState:
         force_selected_c1_state: bool = False,
         selected_c1_state_pairs: Sequence[tuple[Tensor, Tensor]] | None = None,
         force_selected_c1_out: bool | None = None,
+        force_batch_gemv_out: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -5108,6 +5114,7 @@ class Qwen35ParoDecodeState:
                 scratch,
                 tokens=tokens,
                 group_size=group_size,
+                force_pack8_gemv=force_batch_gemv_out,
                 library=library,
                 stream=stream,
             )
@@ -5115,6 +5122,7 @@ class Qwen35ParoDecodeState:
             scratch,
             tokens=tokens,
             group_size=group_size,
+            force_pack8_gemv=force_batch_gemv_out,
             library=library,
             stream=stream,
         )
@@ -5410,6 +5418,7 @@ class Qwen35ParoDecodeState:
         force_selected_c1_linear_state: bool = False,
         selected_c1_linear_state_pairs: Sequence[tuple[Tensor, Tensor]] | None = None,
         force_selected_c1_linear_out: bool | None = None,
+        force_batch_gemv_linear_out: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -5442,6 +5451,7 @@ class Qwen35ParoDecodeState:
             force_selected_c1_state=force_selected_c1_linear_state,
             selected_c1_state_pairs=selected_c1_linear_state_pairs,
             force_selected_c1_out=force_selected_c1_linear_out,
+            force_batch_gemv_out=force_batch_gemv_linear_out,
             library=library,
             stream=stream,
         )

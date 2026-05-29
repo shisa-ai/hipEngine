@@ -5420,7 +5420,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--batch-decode-linear-output-path",
-        choices=("auto", "batch", "selected_c1"),
+        choices=("auto", "batch", "batch_gemv", "selected_c1"),
         default="auto",
         help="Diagnostic linear-attention output projection path for c>N batch decode; auto follows selected-c1 state replay for compatibility.",
     )
@@ -5520,7 +5520,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
                 and args.batch_decode_linear_path == "batch_segments"
                 and args.batch_decode_linear_projection_path == "batch"
                 and args.batch_decode_linear_state_path == "batch_segments"
-                and args.batch_decode_linear_output_path != "selected_c1"
+                and args.batch_decode_linear_output_path not in {"batch_gemv", "selected_c1"}
                 and args.batch_decode_full_attn_path == "native_batch"
                 and args.batch_decode_attn_input_path == "batch"
                 and args.batch_decode_post_attn_path == "batch"

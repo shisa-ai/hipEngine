@@ -3827,18 +3827,28 @@ class Qwen35ParoResidentSession:
         )
         linear_out_env = os.environ.get("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT", "auto")
         linear_out_mode = linear_out_env.strip().lower()
+        force_batch_gemv_linear_out = False
         if linear_out_mode in {"", "auto"}:
             force_selected_c1_linear_out: bool | None = None
         elif linear_out_mode in {"1", "true", "on", "yes", "selected_c1"}:
             force_selected_c1_linear_out = rows > 1
         elif linear_out_mode in {"0", "false", "off", "no", "batch"}:
             force_selected_c1_linear_out = False
+        elif linear_out_mode in {"batch_gemv", "gemv"}:
+            force_selected_c1_linear_out = False
+            force_batch_gemv_linear_out = rows > 1
         else:
-            raise ValueError("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT must be auto, batch, or selected_c1")
+            raise ValueError(
+                "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT must be auto, batch, batch_gemv, or selected_c1"
+            )
         linear_attention_output_path = (
             "selected_c1_forced"
             if (force_selected_c1_linear_state if force_selected_c1_linear_out is None else force_selected_c1_linear_out)
-            else ("batch_from_f32" if force_selected_c1_linear_state else "native_batch")
+            else (
+                "batch_gemv_from_f32"
+                if force_selected_c1_linear_state and force_batch_gemv_linear_out
+                else "batch_from_f32" if force_selected_c1_linear_state else ("batch_gemv" if force_batch_gemv_linear_out else "native_batch")
+            )
         )
         force_per_row_linear = _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR")
         force_per_row_full_attention_input = rows > 1 and _env_flag(
@@ -3950,6 +3960,7 @@ class Qwen35ParoResidentSession:
                             force_selected_c1_linear_state=force_selected_c1_linear_state,
                             selected_c1_linear_state_pairs=selected_c1_linear_state_pairs,
                             force_selected_c1_linear_out=force_selected_c1_linear_out,
+                            force_batch_gemv_linear_out=force_batch_gemv_linear_out,
                             library=self.libraries,
                             stream=stream,
                         )
@@ -4232,6 +4243,8 @@ class Qwen35ParoResidentSession:
                 decode_blockers.append("linear-attention state forced to selected-c1 diagnostic path")
             if linear_attention_output_path == "selected_c1_forced":
                 decode_blockers.append("linear-attention output projection forced to selected-c1 diagnostic path")
+            if force_batch_gemv_linear_out:
+                decode_blockers.append("linear-attention output projection forced to batch GEMV diagnostic path")
             if force_per_row_linear:
                 decode_blockers.append("linear-attention decode forced to per-row diagnostic path")
                 if not dense_mlp and rows > 1:
@@ -4263,7 +4276,7 @@ class Qwen35ParoResidentSession:
                 and not force_selected_c1_moe
                 and not force_selected_c1_linear_projections
                 and not force_selected_c1_linear_state
-                and linear_attention_output_path != "selected_c1_forced"
+                and linear_attention_output_path not in {"selected_c1_forced", "batch_gemv", "batch_gemv_from_f32"}
                 and not force_per_row_linear
                 and not force_per_row_full_attention_input
                 and not force_per_row_post_attention,

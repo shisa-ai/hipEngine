@@ -1212,9 +1212,15 @@ roll-up/status view.
       projection (`linear_attention_output_path=batch_from_f32`); it goes hidden
       red again, with first layer-0 exact drift at `out_proj` (`bit_mismatch=312`,
       hidden-atol pass) and first layer-0 hidden-atol stage failure at
-      `mlp_input` (`max_abs=0.0078125`). The next target is retained parity for
-      both native segmented conv/GDN/recurrent state and native batched output
-      projection; do not change paged-KV writer code yet. Do not re-open
+      `mlp_input` (`max_abs=0.0078125`). The batch-GEMV output variant at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-selected-c1-state-batch-gemv-out-atol4e-3-focus1269.json`
+      bypasses the row>1 AWQ prefill output kernel and reduces layer-0
+      `out_proj` drift to one bit (`bit_mismatch=1`, `max_abs=2.384185791015625e-07`),
+      but still eventually goes hidden red, so token-1 output projection is still
+      required for the non-retained green diagnostic. The next target is retained
+      parity for both native segmented conv/GDN/recurrent state and native
+      batched output projection; do not change paged-KV writer code yet. Do not
+      re-open
       context softmax math, row setup, native linear segment metadata,
       output trace/copy semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2

@@ -47297,3 +47297,37 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (selected pytest suite plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no queue item was marked complete, the split-output diagnostic artifact has `performance_claim=false` and `native_caware_decode=false`, native retained full generated-token equality remains open, and no performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY batch-GEMV linear output diagnostic
+
+Added a batch-GEMV output projection diagnostic: `--batch-decode-linear-output-path batch_gemv` / `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT=batch_gemv`. This bypasses the row>1 AWQ prefill projection branch inside `project_pack8_fp16` for the linear output projection while staying explicitly non-retained (`native_caware_decode=false`, decode blocker `linear-attention output projection forced to batch GEMV diagnostic path`).
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_dry_run_records_layer_commands -q
+```
+
+Result: PASS.
+
+Refreshed L8 selected-c1 projection/state + batch-GEMV output replay:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --batch-decode-linear-projection-path selected_c1 --batch-decode-linear-state-path selected_c1 --batch-decode-linear-output-path batch_gemv --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-selected-c1-state-batch-gemv-out-atol4e-3-focus1269.json > /tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-selected-c1-state-batch-gemv-out-atol4e-3-focus1269.stdout
+```
+
+Result: `status=mismatch_found`, `failure_modes=["hidden"]`, `performance_claim=false`, workload `native_caware_decode=false`; layer executions record `linear_attention_output_path=batch_gemv_from_f32`. Compared with the native batched output artifact, layer-0 `out_proj` exact drift drops from `bit_mismatch=312`, `max_abs=0.0001220703125` to `bit_mismatch=1`, `max_abs=2.384185791015625e-07`, but the run still eventually goes hidden-red (`first_hidden_mismatch` at decode step 6, flat index 1269, `max_abs=0.026611328125`). Conclusion: row>1 AWQ prefill output projection is a major source of output drift, but batch GEMV is still not exact enough to replace the token-1 output projection in the non-retained green diagnostic.
+
+Full validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (selected pytest suite plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no queue item was marked complete, the batch-GEMV output diagnostic artifact has `performance_claim=false` and `native_caware_decode=false`, native retained full generated-token equality remains open, and no performance/scaling claim was added.
