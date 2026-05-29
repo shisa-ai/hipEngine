@@ -630,8 +630,9 @@ roll-up/status view.
       failing fixture and generated-token equality progresses past the old
       idx-13 failure. Progress: decode batch rows now use grouped compact MoE
       scratch for `tokens>1` instead of selected-MoE c1 wrappers, and
-      decode-execution metadata reports `moe_decode_path`/`moe_decode_rows` so
-      retained gates can reject stale selected-c1 MoE paths, but
+      decode-execution metadata reports `moe_decode_path`/`moe_decode_rows` plus
+      grouped-compact and selected-c1 fallback layer counts so retained gates
+      can reject stale selected-c1 MoE paths, but
       `/tmp/hipengine-hidden-bisect-L1-8-512-1-grouped.json` still reports the
       first hidden mismatch at layer-limit 6 (row 0, generated index 1), and the
       old row-0 token idx-13 mismatch remains. New diagnostic metadata in
@@ -937,7 +938,7 @@ roll-up/status view.
       profiler summaries show the removed bottleneck and equality remains
       green. Progress: accepted/performance-claim c>N artifact schema now rejects
       serial-bridge paths, non-scheduler-owned execution, non-full-native, wrong-path, wrong-layer-limit, or unsupported-layer-bearing prefill plans, non-empty batch/prefill/decode-execution blockers, row executions labeled `serial`/`fallback`, missing or wrong-shape
-      decode-execution row/slot/context/layer-count plus grouped-compact MoE path/row metadata, native-batch decode contexts at or beyond 1024 before row-aware split-K lands, non-`native_batch` full-attention decode paths,
+      decode-execution row/slot/context/layer-count plus grouped-compact MoE path/row/layer-count metadata, native-batch decode contexts at or beyond 1024 before row-aware split-K lands, non-`native_batch` full-attention decode paths,
       per-row full-attention decode fallbacks, non-native sampler metadata, sampler requested-mode mismatches, sampler row/equality-row mismatches, and failed or wrong-row sampler equality artifacts,
       runtime short-context native full-attention metadata now reports the retained-compatible `native_batch` path,
       and retained bench now blocks promotion before schema validation for the same serial/fallback batch/decode metadata,
@@ -952,7 +953,7 @@ roll-up/status view.
       JSON artifacts under `benchmarks/results/`. Acceptance: every perf claim
       cites correctness gate, profiler status, exact command, and hardware.
       Progress: accepted/performance-claim c>N artifacts now fail schema
-      validation unless they include fully native scheduler-owned batch/prefill/decode-execution metadata with empty blockers, the known full-native prefill path, null unsupported-layer fields, positive native full-attention layer evidence, decode rows/slots plus grouped-compact MoE decode rows matching `workload.concurrency`, decode context covering `workload.prompt_tokens_per_request` while staying below the open row-aware split-K threshold, and prefill layer limits matching `workload.max_layers`,
+      validation unless they include fully native scheduler-owned batch/prefill/decode-execution metadata with empty blockers, the known full-native prefill path, null unsupported-layer fields, positive native full-attention layer evidence, decode rows/slots plus grouped-compact MoE decode rows matching `workload.concurrency` with positive grouped-compact layer count and zero selected-c1 fallback layers, decode context covering `workload.prompt_tokens_per_request` while staying below the open row-aware split-K threshold, and prefill layer limits matching `workload.max_layers`,
       workload native prefill/decode flags set, workload scheduler labels matching the execution path, projection evidence artifact JSON reporting accepted same-row evidence with self-matching `artifact_path`/`source_artifact_path` and matching >1 aggregate/per-request row-GEMV speedup ratios, sampler requested mode `batched_lm_head` plus rows/equality rows matching `workload.concurrency` and sampler equality artifact JSON reporting self-matching `artifact_path`/`source_artifact_path` and the same rows with generated-token equality vs independent c=1 (`passed=true`, `skipped=false`, matching batch/c1 sequence lists, empty mismatches),
       generated-token equality sequence lists matching `workload.concurrency`
       rows and seed + warmup + measured decode token counts per row, with

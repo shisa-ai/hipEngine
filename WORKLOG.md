@@ -43878,3 +43878,33 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
 ```
+
+## 2026-05-29 — CONCURRENCY c>N MoE layer-count decode gates
+
+Advanced C2.3/P3/P5 without closing a queue item or adding a retained c>N performance claim. Native batch decode now records grouped-compact and selected-c1 MoE layer counts, and retained gates reject c>N artifacts unless MoE decode has positive grouped-compact coverage with zero selected-c1 fallback layers.
+
+- Updated `Qwen35ParoResidentSession._run_layers_batch_decode(...)` to include `decode_execution.moe_grouped_compact_layers` and `decode_execution.moe_selected_c1_fallback_layers` in addition to `moe_decode_path`/`moe_decode_rows`.
+- Extended retained-bench blockers and accepted artifact schema validation to require a positive grouped-compact MoE layer count and `moe_selected_c1_fallback_layers=0` before retained c>N acceptance.
+- Extended resident-layout and scheduler/schema tests for the new layer-count metadata and rejection cases.
+- Updated `docs/CONCURRENCY.md` C2.3/P3/P5 progress text to document grouped-compact MoE row/path/layer-count gating.
+- No queue status changed and no generated-token equality or retained performance/scaling claim was added.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_qwen35_resident_batch_layout.py -k 'run_layers_batch_decode_reports_native_batch_for_short_context or run_layers_batch_decode_uses_per_row_splitk_fallback_for_long_context' -q
+# 2 passed
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -k 'batch_execution_blockers_reject_serial_and_fallback_paths or artifact_schema_enforces_accepted_row_gates' -q
+# 2 passed
+python3 -m pytest -q tests/test_qwen35_resident_batch_layout.py -q && python3 -m pytest -q tests/test_generation_batch_scheduler.py -q
+# passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
+```

@@ -3197,6 +3197,8 @@ class Qwen35ParoResidentSession:
         native_full_attention_layers = 0
         dense_mlp = int(getattr(self.config, "num_experts", 1) or 0) <= 0
         moe_decode_path = "dense_mlp" if dense_mlp else ("selected_c1" if rows == 1 else "grouped_compact")
+        moe_grouped_compact_layers = 0
+        moe_selected_c1_fallback_layers = 0
         try:
             for layer_id, state in enumerate(self.states):
                 layer_type = self.config.layer_types[layer_id]
@@ -3217,6 +3219,8 @@ class Qwen35ParoResidentSession:
                         library=self.libraries,
                         stream=stream,
                     )
+                    if not dense_mlp and rows > 1:
+                        moe_grouped_compact_layers += 1
                 elif layer_type == "full_attention":
                     max_context = max(int(position) + 1 for position in positions)
                     max_full_attention_context = max(max_full_attention_context, max_context)
@@ -3249,10 +3253,14 @@ class Qwen35ParoResidentSession:
                             library=self.libraries,
                             stream=stream,
                         )
+                        if not dense_mlp and rows > 1:
+                            moe_grouped_compact_layers += 1
                         self.runtime.memcpy_async(next_hidden.ptr, out.ptr, rows * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
                     else:
                         if full_attention_decode_path == "none":
                             full_attention_decode_path = "per_row_splitk_fallback" if max_context >= 1024 else "per_row_context_fallback"
+                        if not dense_mlp and rows > 1:
+                            moe_selected_c1_fallback_layers += 1
                         for row, (slot, position) in enumerate(zip(slots, positions, strict=True)):
                             key_cache, value_cache = self._slot_full_cache(layer_id, slot)
                             position_tensor, append_spans, decode_spans = self._slot_full_spans(layer_id, slot)
@@ -3306,6 +3314,8 @@ class Qwen35ParoResidentSession:
                 "native_caware_decode": full_attention_decode_path not in {"per_row_splitk_fallback", "per_row_context_fallback"},
                 "moe_decode_path": moe_decode_path,
                 "moe_decode_rows": int(rows),
+                "moe_grouped_compact_layers": int(moe_grouped_compact_layers),
+                "moe_selected_c1_fallback_layers": int(moe_selected_c1_fallback_layers),
                 "blockers": decode_blockers,
             }
             return hidden

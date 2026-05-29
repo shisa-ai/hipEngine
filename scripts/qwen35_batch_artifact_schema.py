@@ -1058,6 +1058,11 @@ def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[
             errors.append("execution.batch_execution.decode_execution.moe_decode_rows must be an int for accepted artifacts")
         elif isinstance(concurrency, int) and not isinstance(concurrency, bool) and moe_decode_rows != concurrency:
             errors.append("execution.batch_execution.decode_execution.moe_decode_rows must match workload.concurrency for accepted artifacts")
+        moe_grouped_compact_layers = decode_execution.get("moe_grouped_compact_layers")
+        if isinstance(moe_grouped_compact_layers, bool) or not isinstance(moe_grouped_compact_layers, int) or moe_grouped_compact_layers <= 0:
+            errors.append("execution.batch_execution.decode_execution.moe_grouped_compact_layers must be a positive int for accepted artifacts")
+        if decode_execution.get("moe_selected_c1_fallback_layers") != 0:
+            errors.append("execution.batch_execution.decode_execution.moe_selected_c1_fallback_layers must be zero for accepted artifacts")
         if decode_execution.get("moe_decode_path") != "grouped_compact":
             errors.append("execution.batch_execution.decode_execution.moe_decode_path must be grouped_compact for accepted artifacts")
         if decode_execution.get("full_attention_decode_path") != "native_batch":

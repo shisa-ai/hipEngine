@@ -8406,6 +8406,8 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
             "native_caware_decode": True,
             "moe_decode_path": "grouped_compact",
             "moe_decode_rows": 2,
+            "moe_grouped_compact_layers": 1,
+            "moe_selected_c1_fallback_layers": 0,
             "blockers": [],
         },
     }
@@ -8433,6 +8435,8 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
             "native_caware_decode": False,
             "moe_decode_path": "mixed_grouped_compact_with_per_row_full_attention_fallback",
             "moe_decode_rows": 1,
+            "moe_grouped_compact_layers": 0,
+            "moe_selected_c1_fallback_layers": 1,
             "blockers": ["full-attention decode used a per-row fallback"],
         },
     }
@@ -8466,6 +8470,8 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
     assert "execution.batch_execution.decode_execution.rows must match workload.concurrency" in blockers
     assert "execution.batch_execution.decode_execution.slots entries must be unique" in blockers
     assert "execution.batch_execution.decode_execution.moe_decode_rows must match workload.concurrency" in blockers
+    assert "execution.batch_execution.decode_execution.moe_grouped_compact_layers must be a positive int" in blockers
+    assert "execution.batch_execution.decode_execution.moe_selected_c1_fallback_layers must be zero" in blockers
     assert "execution.batch_execution.decode_execution.moe_decode_path must be grouped_compact for retained c>N MoE decode" in blockers
     assert "execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch" in blockers
     assert "execution.batch_execution.decode_execution.native_caware_decode must be true" in blockers
@@ -9036,6 +9042,8 @@ def test_qwen35_retained_payload_blocks_acceptance_without_graph_histogram_evide
                 "native_caware_decode": True,
                 "moe_decode_path": "grouped_compact",
                 "moe_decode_rows": 2,
+                "moe_grouped_compact_layers": 1,
+                "moe_selected_c1_fallback_layers": 0,
                 "blockers": [],
             },
         },
@@ -9127,6 +9135,8 @@ def test_qwen35_retained_payload_blocks_acceptance_without_memory_evidence(monke
                 "native_caware_decode": True,
                 "moe_decode_path": "grouped_compact",
                 "moe_decode_rows": 2,
+                "moe_grouped_compact_layers": 1,
+                "moe_selected_c1_fallback_layers": 0,
                 "blockers": [],
             },
         },
@@ -9348,6 +9358,8 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                     "native_caware_decode": True,
                     "moe_decode_path": "grouped_compact",
                     "moe_decode_rows": 2,
+                    "moe_grouped_compact_layers": 1,
+                    "moe_selected_c1_fallback_layers": 0,
                     "blockers": [],
                     "sampler_execution": {
                         "rows": 2,
@@ -10349,6 +10361,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     mismatched_moe_decode_rows["execution"]["batch_execution"]["decode_execution"]["moe_decode_rows"] = 1
     with pytest.raises(ValueError, match="decode_execution.moe_decode_rows must match workload.concurrency"):
         validate_cn_diagnostic_artifact_payload(mismatched_moe_decode_rows)
+
+    missing_grouped_moe_layers = json.loads(json.dumps(accepted))
+    missing_grouped_moe_layers["execution"]["batch_execution"]["decode_execution"]["moe_grouped_compact_layers"] = 0
+    with pytest.raises(ValueError, match="decode_execution.moe_grouped_compact_layers must be a positive int"):
+        validate_cn_diagnostic_artifact_payload(missing_grouped_moe_layers)
+
+    selected_c1_moe_fallback_layers = json.loads(json.dumps(accepted))
+    selected_c1_moe_fallback_layers["execution"]["batch_execution"]["decode_execution"]["moe_selected_c1_fallback_layers"] = 1
+    with pytest.raises(ValueError, match="decode_execution.moe_selected_c1_fallback_layers must be zero"):
+        validate_cn_diagnostic_artifact_payload(selected_c1_moe_fallback_layers)
 
     selected_moe_decode_path = json.loads(json.dumps(accepted))
     selected_moe_decode_path["execution"]["batch_execution"]["decode_execution"]["moe_decode_path"] = "selected_c1"

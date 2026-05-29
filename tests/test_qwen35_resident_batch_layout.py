@@ -1135,6 +1135,8 @@ def test_qwen35_resident_run_layers_batch_decode_reports_native_batch_for_short_
         "native_caware_decode": True,
         "moe_decode_path": "grouped_compact",
         "moe_decode_rows": 2,
+        "moe_grouped_compact_layers": 1,
+        "moe_selected_c1_fallback_layers": 0,
         "blockers": [],
     }
     metadata = session.batch_execution_metadata(scheduler_owned=True, native_decode=True)
@@ -1212,6 +1214,8 @@ def test_qwen35_resident_run_layers_batch_decode_uses_per_row_splitk_fallback_fo
         "native_caware_decode": False,
         "moe_decode_path": "mixed_grouped_compact_with_per_row_full_attention_fallback",
         "moe_decode_rows": 2,
+        "moe_grouped_compact_layers": 0,
+        "moe_selected_c1_fallback_layers": 1,
         "blockers": ["full-attention decode used a per-row fallback"],
     }
     metadata = session.batch_execution_metadata(scheduler_owned=True, native_decode=True)

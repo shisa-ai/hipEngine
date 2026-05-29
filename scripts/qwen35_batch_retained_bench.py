@@ -1127,6 +1127,11 @@ def _batch_execution_blockers(
                 blockers.append("execution.batch_execution.decode_execution.moe_decode_rows must be an int")
             elif moe_decode_rows != int(expected_concurrency):
                 blockers.append("execution.batch_execution.decode_execution.moe_decode_rows must match workload.concurrency")
+        moe_grouped_compact_layers = decode_execution.get("moe_grouped_compact_layers")
+        if isinstance(moe_grouped_compact_layers, bool) or not isinstance(moe_grouped_compact_layers, int) or moe_grouped_compact_layers <= 0:
+            blockers.append("execution.batch_execution.decode_execution.moe_grouped_compact_layers must be a positive int")
+        if decode_execution.get("moe_selected_c1_fallback_layers") != 0:
+            blockers.append("execution.batch_execution.decode_execution.moe_selected_c1_fallback_layers must be zero")
         if decode_execution.get("moe_decode_path") != "grouped_compact":
             blockers.append("execution.batch_execution.decode_execution.moe_decode_path must be grouped_compact for retained c>N MoE decode")
         if decode_execution.get("full_attention_decode_path") != "native_batch":
