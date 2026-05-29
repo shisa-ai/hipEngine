@@ -26761,3 +26761,13 @@ Validation:
 ```bash
 git diff --check
 ```
+
+## 2026-05-29 — Step 3.7 Flash punchlist validation closure
+
+Validated the current `docs/STEPFUN.md` Strix Halo GGUF punchlist after the risk-table update. The documentation already contains the multiloop-ready P0-P13 phases, acceptance checks, suggested lanes, open risks/mitigations, and deferred NVFP4/vision/MTP tracks. No further documentation edits were needed in this pass.
+
+Validation:
+
+```bash
+git diff --check
+```
