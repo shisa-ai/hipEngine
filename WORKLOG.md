@@ -44551,3 +44551,23 @@ Results:
 - `/tmp/hipengine-hidden-bisect-L1-8-512-1-atol2e-3.json`: `status=mismatch_found`, `correctness.passed=false`, `hidden_atol=0.002`, with first hidden mismatch at layer-limit 8 / last layer 7 (`full_attention`), row 0, dim 1269, `max_abs=0.002197265625`, `batch=0.44140625`, `c1=0.439208984375`, `elements_over_atol=1`, `first_token_mismatch=null`. The adjacent previous-green layer-limit 7 has the same row/dim as its top diff at `max_abs=0.001953125`, still within `0.002`.
 
 Interpretation: the strict `1e-3` L6 artifact is BF16-scale rather than a large row-mixing failure, but the same row/dim drift grows through L7 and crosses `2e-3` at L8. C2.3 remains open; next useful fixes should inspect accumulated state/residual normalization around dim 1269 across the L6→L8 transition instead of continuing one-off path substitution.
+
+## 2026-05-29 — CONCURRENCY selected hidden-coordinate trace
+
+Advanced C2.3 by making the hidden-bisection artifact record explicitly requested hidden flat indices on every row/layer comparison. This avoids relying on the coordinate appearing in the top-eight list and gives a stable trace for the current dim-1269 blocker.
+
+Code/test changes:
+
+- Added `--focus-hidden-flat-index` to `scripts/qwen35_batch_hidden_bisect.py`; the option may be repeated or comma-separated and is recorded in `workload.focus_hidden_flat_indices`.
+- `hidden_comparison()` now emits `selected_abs_diffs` when focus indices are requested, with BF16 bits, f32 values, signed diff, and absolute diff for each selected coordinate.
+- CPU tests cover focus-index parsing and selected-coordinate comparison output.
+
+Diagnostic command:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 1 --max-layers 8 --layer-limits 5-8 --max-sequence-length 1024 --hidden-atol 0.002 --focus-hidden-flat-index 1269 --json /tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-focus1269.json >/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-focus1269.stdout
+```
+
+Result: `/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-focus1269.json` emitted `status=mismatch_found`, `hidden_atol=0.002`, `performance_claim=false`, and `workload.focus_hidden_flat_indices=[1269]`. Focused row-0 dim-1269 drift is exact at L5 (`0.0`), jumps at L6 (`abs_diff=0.001953125`, `batch=0.85693359375`, `c1=0.85498046875`), remains `0.001953125` at L7 (`batch=1.001953125`, `c1=1.0`), and crosses the 2e-3 tolerance at L8 (`abs_diff=0.00244140625`, `batch=0.441650390625`, `c1=0.439208984375`, `elements_over_atol=1`). Row 1 remains at or below `0.0009765625` on the same coordinate and there is no token mismatch in the one-token reduced run.
+
+Interpretation: dim 1269 is now explicitly traceable across adjacent limits. The failure is still row-0-specific and accumulates from the L6 output through the next full-attention layer, so the next corrective attempt should inspect residual/state normalization for that coordinate rather than add another broad path-substitution toggle.

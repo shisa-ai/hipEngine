@@ -718,6 +718,14 @@ roll-up/status view.
       `max_abs=0.001953125`, no token mismatch). That means the strict 1e-3 L6
       report is a small BF16-scale drift, but it monotonically grows enough by
       L8 to remain a real hidden-state blocker before full 40-layer equality.
+      A selected-coordinate trace at
+      `/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-focus1269.json`
+      adds `--focus-hidden-flat-index 1269` so every row/layer records that
+      coordinate even when it is outside the top-diff list: row 0 is exact at
+      L5, jumps to `0.001953125` at L6 and remains there through L7, then grows
+      to `0.00244140625` at L8; row 1 stays at or below `0.0009765625` and no
+      token mismatch appears. This keeps the live fix target on row-0-specific
+      accumulated hidden state at dim 1269 across the L6→L8 transition.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

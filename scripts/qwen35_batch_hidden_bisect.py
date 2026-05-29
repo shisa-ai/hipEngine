@@ -74,11 +74,55 @@ def _parse_layer_limits(value: str | None, *, max_layers: int) -> list[int]:
     return deduped
 
 
+def _parse_focus_hidden_flat_indices(values: Sequence[str] | None) -> list[int]:
+    if not values:
+        return []
+    indices: list[int] = []
+    seen: set[int] = set()
+    for value in values:
+        for raw_part in str(value).split(","):
+            part = raw_part.strip()
+            if not part:
+                continue
+            index = int(part)
+            if index < 0:
+                raise ValueError("focus hidden flat indices must be non-negative")
+            if index in seen:
+                continue
+            indices.append(index)
+            seen.add(index)
+    return indices
+
+
 _MAX_HIDDEN_DIFF_EXAMPLES = 8
 
 
 def _fp16_bits_to_f32(bits: np.ndarray) -> np.ndarray:
     return np.asarray(bits, dtype=np.uint16).view(np.float16).astype(np.float32)
+
+
+def _hidden_diff_example_at_flat_index(
+    batch_bits: np.ndarray,
+    c1_bits: np.ndarray,
+    batch_f32: np.ndarray,
+    c1_f32: np.ndarray,
+    signed_diff: np.ndarray,
+    diff: np.ndarray,
+    *,
+    flat_index: int,
+) -> dict[str, Any]:
+    flat_batch_bits = np.asarray(batch_bits, dtype=np.uint16).reshape(-1)
+    flat_c1_bits = np.asarray(c1_bits, dtype=np.uint16).reshape(-1)
+    return {
+        "flat_index": int(flat_index),
+        "index": [int(index) for index in np.unravel_index(int(flat_index), diff.shape)],
+        "abs_diff": float(diff.reshape(-1)[int(flat_index)]),
+        "signed_diff": float(signed_diff.reshape(-1)[int(flat_index)]),
+        "batch_value": float(batch_f32.reshape(-1)[int(flat_index)]),
+        "c1_value": float(c1_f32.reshape(-1)[int(flat_index)]),
+        "batch_bits": int(flat_batch_bits[int(flat_index)]),
+        "c1_bits": int(flat_c1_bits[int(flat_index)]),
+    }
 
 
 def _top_abs_diff_examples(
@@ -96,26 +140,60 @@ def _top_abs_diff_examples(
     flat_diff = diff.reshape(-1)
     nonzero_indices = [int(index) for index in np.flatnonzero(flat_diff > 0.0)]
     selected = sorted(nonzero_indices, key=lambda index: (-float(flat_diff[index]), index))[:limit]
-    flat_batch_bits = np.asarray(batch_bits, dtype=np.uint16).reshape(-1)
-    flat_c1_bits = np.asarray(c1_bits, dtype=np.uint16).reshape(-1)
+    return [
+        _hidden_diff_example_at_flat_index(
+            batch_bits,
+            c1_bits,
+            batch_f32,
+            c1_f32,
+            signed_diff,
+            diff,
+            flat_index=flat_index,
+        )
+        for flat_index in selected
+    ]
+
+
+def _selected_abs_diff_examples(
+    batch_bits: np.ndarray,
+    c1_bits: np.ndarray,
+    batch_f32: np.ndarray,
+    c1_f32: np.ndarray,
+    signed_diff: np.ndarray,
+    diff: np.ndarray,
+    *,
+    flat_indices: Sequence[int],
+) -> list[dict[str, Any]]:
     examples: list[dict[str, Any]] = []
-    for flat_index in selected:
+    seen: set[int] = set()
+    for raw_index in flat_indices:
+        flat_index = int(raw_index)
+        if flat_index in seen:
+            continue
+        if flat_index < 0 or flat_index >= diff.size:
+            raise ValueError(f"selected hidden flat index {flat_index} is outside [0, {diff.size})")
+        seen.add(flat_index)
         examples.append(
-            {
-                "flat_index": flat_index,
-                "index": [int(index) for index in np.unravel_index(flat_index, diff.shape)],
-                "abs_diff": float(flat_diff[flat_index]),
-                "signed_diff": float(signed_diff.reshape(-1)[flat_index]),
-                "batch_value": float(batch_f32.reshape(-1)[flat_index]),
-                "c1_value": float(c1_f32.reshape(-1)[flat_index]),
-                "batch_bits": int(flat_batch_bits[flat_index]),
-                "c1_bits": int(flat_c1_bits[flat_index]),
-            }
+            _hidden_diff_example_at_flat_index(
+                batch_bits,
+                c1_bits,
+                batch_f32,
+                c1_f32,
+                signed_diff,
+                diff,
+                flat_index=flat_index,
+            )
         )
     return examples
 
 
-def hidden_comparison(batch_bits: np.ndarray, c1_bits: np.ndarray, *, atol: float) -> dict[str, Any]:
+def hidden_comparison(
+    batch_bits: np.ndarray,
+    c1_bits: np.ndarray,
+    *,
+    atol: float,
+    selected_flat_indices: Sequence[int] = (),
+) -> dict[str, Any]:
     if batch_bits.shape != c1_bits.shape:
         raise ValueError(f"hidden shapes differ: batch={batch_bits.shape!r} c1={c1_bits.shape!r}")
     batch_f32 = _fp16_bits_to_f32(batch_bits)
@@ -136,7 +214,7 @@ def hidden_comparison(batch_bits: np.ndarray, c1_bits: np.ndarray, *, atol: floa
         batch_value = 0.0
         c1_value = 0.0
         max_signed_diff = 0.0
-    return {
+    result = {
         "shape": list(batch_bits.shape),
         "max_abs": max_abs,
         "max_abs_flat_index": max_abs_flat_index,
@@ -150,6 +228,17 @@ def hidden_comparison(batch_bits: np.ndarray, c1_bits: np.ndarray, *, atol: floa
         "top_abs_diffs": _top_abs_diff_examples(batch_bits, c1_bits, batch_f32, c1_f32, signed_diff, diff),
         "passed": bool(max_abs <= float(atol)),
     }
+    if selected_flat_indices:
+        result["selected_abs_diffs"] = _selected_abs_diff_examples(
+            batch_bits,
+            c1_bits,
+            batch_f32,
+            c1_f32,
+            signed_diff,
+            diff,
+            flat_indices=selected_flat_indices,
+        )
+    return result
 
 
 def _first_hidden_mismatch(layer_summaries: Sequence[dict[str, Any]]) -> dict[str, Any] | None:
@@ -523,6 +612,7 @@ def _summarize_layer_limit(
     layer_limit: int,
     atol: float,
     layer_types: Sequence[str] | None = None,
+    focus_hidden_flat_indices: Sequence[int] = (),
 ) -> dict[str, Any]:
     steps: list[dict[str, Any]] = []
     for step, (batch_bits, c1_bits) in enumerate(zip(batch.hidden_bits_by_step, c1.hidden_bits_by_step, strict=True)):
@@ -535,6 +625,7 @@ def _summarize_layer_limit(
                         batch_bits[row : row + 1],
                         c1_bits[row : row + 1],
                         atol=atol,
+                        selected_flat_indices=focus_hidden_flat_indices,
                     ),
                 }
             )
@@ -567,6 +658,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-sequence-length", type=int, default=1024)
     parser.add_argument("--hidden-atol", type=float, default=1.0e-3)
     parser.add_argument(
+        "--focus-hidden-flat-index",
+        action="append",
+        default=None,
+        help="Optional hidden flat index to record for every row/layer comparison; may be repeated or comma-separated.",
+    )
+    parser.add_argument(
         "--batch-decode-moe-path",
         choices=("grouped_compact", "selected_c1"),
         default="grouped_compact",
@@ -593,6 +690,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str, Any]:
     layer_limits = _parse_layer_limits(args.layer_limits, max_layers=args.max_layers)
+    focus_hidden_flat_indices = _parse_focus_hidden_flat_indices(args.focus_hidden_flat_index)
     prompt_lengths: list[int] = []
     if args.dry_run:
         prompts = []
@@ -620,6 +718,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "max_sequence_length": int(args.max_sequence_length),
             "kv_storage_dtype": "bf16",
             "native_compact_prefill": True,
+            "focus_hidden_flat_indices": focus_hidden_flat_indices,
             "batch_decode_moe_path": str(args.batch_decode_moe_path),
             "batch_decode_linear_path": str(args.batch_decode_linear_path),
             "batch_decode_full_attention_path": str(args.batch_decode_full_attn_path),
@@ -686,7 +785,14 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             require_cached_build=args.require_cached_build,
         )
         layer_summaries.append(
-            _summarize_layer_limit(batch, c1, layer_limit=layer_limit, atol=args.hidden_atol, layer_types=layer_types)
+            _summarize_layer_limit(
+                batch,
+                c1,
+                layer_limit=layer_limit,
+                atol=args.hidden_atol,
+                layer_types=layer_types,
+                focus_hidden_flat_indices=focus_hidden_flat_indices,
+            )
         )
 
     hidden_mismatch = _first_hidden_mismatch(layer_summaries)

@@ -66,6 +66,7 @@ from scripts.qwen35_batch_hidden_bisect import (
     HiddenRun,
     _first_failing_layer_transition,
     _first_hidden_mismatch,
+    _parse_focus_hidden_flat_indices,
     _parse_layer_limits,
     _summarize_layer_limit,
     build_parser as build_hidden_bisect_parser,
@@ -6242,6 +6243,7 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert payload["mode"] == "qwen35_paro_native_hidden_bisect"
     assert payload["performance_claim"] is False
     assert payload["workload"]["native_compact_prefill"] is True
+    assert payload["workload"]["focus_hidden_flat_indices"] == []
     assert payload["workload"]["batch_decode_moe_path"] == "grouped_compact"
     assert payload["workload"]["batch_decode_linear_path"] == "batch_segments"
     assert payload["workload"]["batch_decode_full_attention_path"] == "native_batch"
@@ -6254,11 +6256,13 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
 
 def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:
     assert _parse_layer_limits("1,3-4", max_layers=4) == [1, 3, 4]
+    assert _parse_focus_hidden_flat_indices(["1,2", "2", "3"]) == [1, 2, 3]
     same = np.array([[0x3C00, 0x4000]], dtype=np.uint16)
     changed = np.array([[0x3C00, 0x4200]], dtype=np.uint16)
 
     passed = hidden_comparison(same, same.copy(), atol=0.0)
     failed = hidden_comparison(changed, same, atol=0.0)
+    selected = hidden_comparison(changed, same, atol=0.0, selected_flat_indices=[0, 1])
 
     assert passed["passed"] is True
     assert failed["passed"] is False
@@ -6282,6 +6286,19 @@ def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:
             "batch_bits": 0x4200,
             "c1_bits": 0x4000,
         }
+    ]
+    assert selected["selected_abs_diffs"] == [
+        {
+            "flat_index": 0,
+            "index": [0, 0],
+            "abs_diff": 0.0,
+            "signed_diff": 0.0,
+            "batch_value": 1.0,
+            "c1_value": 1.0,
+            "batch_bits": 0x3C00,
+            "c1_bits": 0x3C00,
+        },
+        failed["top_abs_diffs"][0],
     ]
     decode_execution = {
         "rows": 2,
