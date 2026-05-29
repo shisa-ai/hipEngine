@@ -2731,7 +2731,7 @@ def _validate_run_options(args: argparse.Namespace) -> None:
         if not isinstance(value, str) or not value:
             flag = "--" + option.replace("_", "-")
             raise ValueError(f"{flag} must be a non-empty string")
-    for option in ("stop_on_failure", "include_int8", "require_cached_build"):
+    for option in ("dry_run", "stop_on_failure", "include_int8", "require_cached_build"):
         if not isinstance(getattr(args, option, None), bool):
             flag = "--" + option.replace("_", "-")
             raise ValueError(f"{flag} must be a typed bool")

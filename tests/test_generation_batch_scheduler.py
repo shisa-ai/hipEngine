@@ -1973,7 +1973,7 @@ def test_batch_c_sweep_rejects_invalid_option_bools_before_creating_artifacts(tm
         "run",
         lambda *args, **kwargs: pytest.fail("invalid option bools should fail before launching subprocesses"),
     )
-    for option, bad_value in (("stop_on_failure", "yes"), ("include_int8", 1), ("require_cached_build", "false")):
+    for option, bad_value in (("dry_run", "yes"), ("stop_on_failure", "yes"), ("include_int8", 1), ("require_cached_build", "false")):
         output_dir = tmp_path / f"artifacts-{option}"
         args = build_c_sweep_parser().parse_args(
             ["--dry-run", "--batch-sizes", "2", "--output-dir", str(output_dir)]
