@@ -301,7 +301,11 @@ decode is correct.
   `rocminfo | grep -E 'Name:|gfx'`.
 - [~] Record HIP-visible total/free memory after a clean boot and after loading
   the GGUF shards. If full-model load fails, keep the failure as evidence and
-  fall back to slice/layer correctness until offload/tiering exists.
+  fall back to slice/layer correctness until offload/tiering exists. 2026-05-29
+  re-check: `hipMemGetInfo` reports inconsistent values (`free=119.996 GiB`,
+  `total=62.541 GiB`) before and after split-header scan; `rocm-smi` reports
+  only `VIS_VRAM Total=512 MiB`, `Used=416.6 MiB`. This remains unresolved and
+  below the 95.465 GiB raw GGUF payload, so full-model load stays blocked.
 - [x] Record exact GGUF paths and byte sizes for all three shards; do not copy or
   rewrite the 102.50 GB assets into the repo.
 - [x] Establish a llama.cpp oracle command for tokenization and short greedy
@@ -492,11 +496,17 @@ record command, prompt shape, oracle, and result in `WORKLOG.md`.
 ### P12 — Full-model Strix Halo smoke
 
 - [ ] Load all three GGUF shards on the Strix Halo target with a small context
-  and `max_new_tokens` (for example 1-8).
+  and `max_new_tokens` (for example 1-8). 2026-05-29: not attempted because
+  HIP-visible total memory is inconsistent and at most 62.541 GiB while raw
+  GGUF weights are 95.465 GiB before KV/runtime overhead.
 - [ ] Record HIP-visible memory before load, after load, after KV allocation, and
-  after generation; include UMA setting and backend (`hip_gfx1151`).
+  after generation; include UMA setting and backend (`hip_gfx1151`). Current
+  blocker evidence: `hipMemGetInfo free=119.996 GiB,total=62.541 GiB` and
+  `rocm-smi VIS_VRAM Total=512 MiB,Used=416.6 MiB` before/after header scan.
 - [ ] If the model does not fit, keep the failure artifact and decide between
-  offload/tiering, lower context/KV footprint, or slice-only correctness.
+  offload/tiering, lower context/KV footprint, or slice-only correctness. The
+  current decision is slice/layer correctness until UMA/HIP visibility is fixed
+  or offload/tiering exists.
 - [ ] If it fits, run a tiny text-only prompt and confirm no vision/projector/MTP
   path is required.
 

@@ -26964,3 +26964,35 @@ PYTHONPATH=$PWD HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/
 ```
 
 Results: targeted pytest passed (`10 passed` combined; `4 passed` for the StepFun Q3_K HIP test alone). The StepFun test covers gfx1151 registration/dispatch, synthetic BF16→F32 Q3_K GEMV vs CPU reference, BF16→BF16 selected-expert Q3_K vs CPU reference, and real Step layer-0 `attn_q` Q3_K tensor-slice GEMV vs CPU reference. The cached rocprof smoke on gfx1151 produced `/tmp/hipengine-stepfun-q3k-rocprof/strixhalo/1975389_kernel_trace.csv`; the expected Q3_K kernel appears as `gguf_k_prefill_out_kernel<unsigned short, float, 3>` with `DurationNs=13345`, `Scratch_Size=0`, `LDS_Block_Size=512`, `VGPR_Count=16`, `Grid_Size_X=1024`, and `Workgroup_Size_X=128`. No full-model or throughput claim is made.
+
+## 2026-05-29 — StepFun P0/P12 Strix Halo memory blocker re-check
+
+Re-checked the remaining memory/full-load blocker after landing the Q3_K HIP slice kernel. Commands:
+
+```bash
+python3 - <<'PY'
+import ctypes, json
+hip=ctypes.CDLL('libamdhip64.so')
+free=ctypes.c_size_t(); total=ctypes.c_size_t()
+err=hip.hipMemGetInfo(ctypes.byref(free), ctypes.byref(total))
+count=ctypes.c_int(); derr=hip.hipGetDeviceCount(ctypes.byref(count))
+print(json.dumps({'hipMemGetInfo_err': int(err), 'free_bytes': int(free.value), 'total_bytes': int(total.value), 'free_gib': free.value/2**30, 'total_gib': total.value/2**30, 'hipGetDeviceCount_err': int(derr), 'device_count': int(count.value)}, indent=2))
+PY
+rocm-smi --showmeminfo vram --showmeminfo vis_vram --showproductname --showdriverversion
+python3 - <<'PY'
+import ctypes, json
+from pathlib import Path
+from hipengine.loading.gguf import scan_gguf_splits
+hip=ctypes.CDLL('libamdhip64.so')
+def mem(label):
+    free=ctypes.c_size_t(); total=ctypes.c_size_t(); err=hip.hipMemGetInfo(ctypes.byref(free), ctypes.byref(total))
+    return {'label': label, 'err': int(err), 'free_bytes': int(free.value), 'total_bytes': int(total.value), 'free_gib': free.value/2**30, 'total_gib': total.value/2**30}
+paths=tuple(sorted(Path('/data/models/gguf').glob('Step-3.7-flash-Q3_K_L-*.gguf')))
+rows=[mem('before_scan')]
+info=scan_gguf_splits(paths)
+rows.append(mem('after_split_header_scan'))
+print(json.dumps({'split_count': info.split_count, 'tensor_count': len(info.tensors), 'mem': rows}, indent=2))
+PY
+```
+
+Results: HIP still reports contradictory memory (`free=128844787712` / `119.996 GiB`, `total=67152820224` / `62.541 GiB`) both before and after split-header scan. `rocm-smi` reports Radeon 8060S gfx1151 with `VIS_VRAM Total Memory=536870912` bytes and used `416604160` bytes. The three GGUF shards total `95.465 GiB` before KV/runtime overhead. Because the highest coherent HIP total is below the raw weights and `rocm-smi` exposes only 512 MiB VIS_VRAM, a full-model hipEngine load was not attempted; P12 remains blocked pending UMA/HIP visibility fix or offload/tiering. Continue with slice/layer correctness only.
