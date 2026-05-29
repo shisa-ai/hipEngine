@@ -1841,6 +1841,14 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     tampered_extra_command_key["commands"][0]["unexpected"] = "field"
     with pytest.raises(ValueError, match=r"commands\[\] must contain only c-sweep schema keys"):
         c_sweep.validate_sweep_summary(tampered_extra_command_key)
+    tampered_extra_git_key = json.loads(json.dumps(persisted))
+    tampered_extra_git_key["git"]["unexpected"] = "field"
+    with pytest.raises(ValueError, match="git must contain exactly the c-sweep provenance keys"):
+        c_sweep.validate_sweep_summary(tampered_extra_git_key)
+    tampered_missing_git_key = json.loads(json.dumps(persisted))
+    tampered_missing_git_key["git"].pop("status_short")
+    with pytest.raises(ValueError, match="git must contain exactly the c-sweep provenance keys"):
+        c_sweep.validate_sweep_summary(tampered_missing_git_key)
     tampered_schema_bool = json.loads(json.dumps(persisted))
     tampered_schema_bool["schema"] = True
     with pytest.raises(ValueError, match="schema must be typed int 1"):

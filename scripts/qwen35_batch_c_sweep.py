@@ -1681,6 +1681,8 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     if not isinstance(git, Mapping):
         errors.append("git must be an object")
     else:
+        if set(git) != {"commit", "dirty", "status_short"}:
+            errors.append("git must contain exactly the c-sweep provenance keys")
         if not isinstance(git.get("commit"), str) or not git.get("commit").strip():
             errors.append("git.commit must be a non-empty string")
         if not isinstance(git.get("dirty"), bool):
