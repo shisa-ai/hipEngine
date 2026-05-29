@@ -2918,6 +2918,12 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 if postcondition.get("passed") is not True and has_synthesized_field_evidence and list(precondition_fields) != list(profiler_precondition_fields):
                     errors.append("commands[].postconditions[].profiler_precondition_synthesized_fields must match profiler_summary precondition when present")
                     break
+                if postcondition.get("passed") is not True and has_synthesized_field_evidence and any(field not in _PROFILER_SYNTHESIZED_FIELDS for field in profiler_fields):
+                    errors.append("commands[].postconditions[].profiler synthesized fields must be known trace-derived fields when present")
+                    break
+                if postcondition.get("passed") is not True and has_synthesized_field_evidence and len(set(profiler_fields)) != len(profiler_fields):
+                    errors.append("commands[].postconditions[].profiler synthesized fields must be unique when present")
+                    break
                 if postcondition.get("passed") is True and (
                     not isinstance(profiler_fields, list)
                     or not all(isinstance(field, str) for field in profiler_fields)
