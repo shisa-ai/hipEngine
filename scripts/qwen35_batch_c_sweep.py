@@ -2920,8 +2920,13 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     and isinstance(output_dir_text, str)
                     and output_dir_text
                 ):
-                    source_abs = (Path(source_artifact_path) if Path(source_artifact_path).is_absolute() else REPO_ROOT / source_artifact_path).resolve()
+                    source_path = Path(source_artifact_path)
+                    source_check_path = source_path if source_path.is_absolute() else REPO_ROOT / source_path
+                    if source_check_path.is_symlink():
+                        errors.append("commands[].postconditions[].profiler_source_artifact_path must not be a symlink when source check failed")
+                        break
                     output_dir_abs = (Path(output_dir_text) if Path(output_dir_text).is_absolute() else REPO_ROOT / output_dir_text).resolve()
+                    source_abs = source_check_path.resolve()
                     if not source_abs.is_relative_to(output_dir_abs):
                         errors.append("commands[].postconditions[].profiler_source_artifact_path must be under output_dir when source check failed")
                         break

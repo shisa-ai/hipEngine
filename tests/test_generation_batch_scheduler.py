@@ -5491,6 +5491,21 @@ def test_batch_c_sweep_fails_retained_row_on_profiler_synthesis_mismatch(tmp_pat
     tampered_failed_postcondition_source_outside["commands"][-1]["postcondition"] = tampered_failed_postcondition_source_outside["commands"][-1]["postconditions"][0]
     with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler_source_artifact_path must be under output_dir when source check failed"):
         c_sweep.validate_sweep_summary(tampered_failed_postcondition_source_outside)
+    if hasattr(os, "symlink"):
+        symlink_source = output_dir / "symlink-profiler-source.json"
+        try:
+            symlink_source.symlink_to(output_dir / "profiler-c2.json")
+        except (OSError, NotImplementedError):
+            pass
+        else:
+            tampered_failed_postcondition_source_symlink = json.loads(json.dumps(summary))
+            tampered_failed_postcondition_source_symlink["commands"][-1]["postconditions"][0]["reason"] = source_mismatch_reason
+            tampered_failed_postcondition_source_symlink["commands"][-1]["postconditions"][0]["profiler_source_artifact_path"] = str(symlink_source)
+            tampered_failed_postcondition_source_symlink["commands"][-1]["output_tail"] = source_mismatch_reason
+            tampered_failed_postcondition_source_symlink["commands"][-1]["postcondition"] = tampered_failed_postcondition_source_symlink["commands"][-1]["postconditions"][0]
+            with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler_source_artifact_path must not be a symlink when source check failed"):
+                c_sweep.validate_sweep_summary(tampered_failed_postcondition_source_symlink)
+            symlink_source.unlink()
     tampered_failed_postconditions = json.loads(json.dumps(summary))
     tampered_failed_postconditions["failed_postconditions"] = []
     with pytest.raises(ValueError, match="failed_postconditions must match commands.postconditions"):
