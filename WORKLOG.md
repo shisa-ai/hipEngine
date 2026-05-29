@@ -44869,3 +44869,28 @@ python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/
 Result: `/tmp/hipengine-hidden-bisect-L8-512-16-c1-forced-linear-per-row-decode-focus1269.json` is `status=eq_ok`, with `decode_linear_input_passed=true`, `decode_linear_state_passed=true`, `hidden_passed=true`, and `token_passed=true`; step-0 metadata still records `linear_attention_segment_metadata={"cu_seqlens":[0,1],"state_indices":[0]}` and the layer path `selected_c1_per_row_fallback`. This contrasts with `/tmp/hipengine-hidden-bisect-L8-512-16-c1-batch-segments-decode-metadata-focus1269.json`, where rows=1 native segment decode has identical inputs but hidden/state mismatch.
 
 Interpretation: rows=1 c1-kernel control clears the mismatch, so the next C2.3 fix should compare or adjust the native linear segment-length-1 conv/GDN/out-proj path against the specialized c=1 decode kernels. Host row setup, `state_indices`, and full-attention fallback are no longer plausible first blockers for this reduced shape.
+
+## 2026-05-29 — CONCURRENCY singleton linear bridge
+
+Advanced C2.3 by converting the default rows=1 batch-decode linear path to the specialized c1 linear-attention kernel (`linear_attention_decode_path=single_row_c1`) instead of the native segment-length-1 path. This is a correctness bridge for singleton active batches only; c>1 still uses native segment kernels.
+
+Code/test changes:
+
+- `_run_layers_batch_decode` now sets `use_single_row_c1_linear` for rows=1 without the forced diagnostic env and records the layer path as `single_row_c1` with no linear fallback blocker.
+- `test_qwen35_resident_linear_batch_decode_uses_single_row_c1_path` covers default rows=1 dispatch, metadata, no blocker, and no forced selected-c1 fallback count.
+- Existing forced rows=1/rows=2 per-row tests still cover the diagnostic env path.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q hipengine/runtime/qwen35_paro_runner.py tests/test_qwen35_resident_batch_layout.py
+python3 -m pytest -q tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_linear_batch_decode_uses_single_row_c1_path tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_linear_batch_decode_can_force_rows1_per_row_probe tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_linear_batch_decode_can_force_per_row_probe tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_linear_batch_decode_uses_state_indices_for_c2_slots -q
+```
+
+Diagnostic:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 1 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-decode-linear-path batch_segments --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L8-512-16-c1-single-row-c1-linear-focus1269.json >/tmp/hipengine-hidden-bisect-L8-512-16-c1-single-row-c1-linear-focus1269.stdout
+```
+
+Result: `/tmp/hipengine-hidden-bisect-L8-512-16-c1-single-row-c1-linear-focus1269.json` is `status=eq_ok`, with `decode_linear_input_passed=true`, `decode_linear_state_passed=true`, `hidden_passed=true`, and `token_passed=true`. Step-0 metadata records `linear_attention_segment_metadata={"cu_seqlens":[0,1],"state_indices":[0]}`, layer path `single_row_c1`, and no linear fallback blocker. This closes the reduced rows=1 native-segment mismatch by avoiding the segment-length-1 kernel; C2.3 remains open for c>1 native linear segments and native full-attention decode.

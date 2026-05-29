@@ -827,14 +827,18 @@ roll-up/status view.
       is green (`status=eq_ok`, hidden/token/state/input gates all true),
       confirming that the divergence is inside the native segment linear-decode
       wrapper/kernel path rather than row setup, full-attention fallback, or
-      later selected-c1 MoE. A grouped-MoE + native-linear c=2 probe at
+      later selected-c1 MoE. The retained singleton bridge now defaults rows=1
+      batch decode through the specialized c1 linear kernel; the refresh at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c1-single-row-c1-linear-focus1269.json`
+      is also green with `linear_attention_decode_path=single_row_c1` and the
+      same `state_indices=[0]`. A grouped-MoE + native-linear c=2 probe at
       `/tmp/hipengine-hidden-bisect-L8-512-16-native-linear-grouped-decode-metadata-focus1269.json`
       records `state_indices=[0,1]` and fails later at the old row-0 idx-13
       token boundary. The reduced prefill drift is fixed, all-per-row fallback,
-      grouped compact MoE, and segment state-index mapping are not the blocker
-      at this shape; the next C2.3 target is the native linear segment decode
-      kernel path itself (segment length 1 vs the c=1 decode kernels), followed
-      by native full-attention decode state/rounding accumulation.
+      grouped compact MoE, singleton row setup, and segment state-index mapping
+      are not the blocker at this shape; the next C2.3 target is the c>1 native
+      linear segment decode kernel path itself, followed by native
+      full-attention decode state/rounding accumulation.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

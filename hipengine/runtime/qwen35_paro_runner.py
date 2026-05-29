@@ -3420,6 +3420,8 @@ class Qwen35ParoResidentSession:
         dense_mlp = int(getattr(self.config, "num_experts", 1) or 0) <= 0
         force_selected_c1_moe = (not dense_mlp) and rows > 1 and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE")
         force_per_row_linear = _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR")
+        use_single_row_c1_linear = rows == 1 and not force_per_row_linear
+        use_per_row_linear = force_per_row_linear or use_single_row_c1_linear
         moe_decode_path = "dense_mlp" if dense_mlp else ("selected_c1" if rows == 1 else ("selected_c1_forced" if force_selected_c1_moe else "grouped_compact"))
         moe_grouped_compact_layers = 0
         moe_selected_c1_fallback_layers = 0
@@ -3430,8 +3432,10 @@ class Qwen35ParoResidentSession:
                 copied_layer_output = False
                 if layer_type == "linear_attention":
                     self._trace_decode_linear_input(layer_id=layer_id, hidden=hidden, rows=rows, stream=stream)
-                    if force_per_row_linear:
-                        row_moe_path = "dense_mlp" if dense_mlp else "selected_c1_per_row_linear_fallback"
+                    if use_per_row_linear:
+                        row_moe_path = "dense_mlp"
+                        if not dense_mlp:
+                            row_moe_path = "selected_c1" if use_single_row_c1_linear else "selected_c1_per_row_linear_fallback"
                         for row, slot in enumerate(slots):
                             row_hidden = Tensor.from_handle(
                                 hidden.ptr + row * self.hidden_nbytes,
@@ -3441,7 +3445,11 @@ class Qwen35ParoResidentSession:
                             )
                             conv_state, recurrent_state = self._slot_linear_state(layer_id, slot)
                             linear_scratch = self._ensure_linear_decode_batch_scratch(layer_id, 1)
-                            moe_scratch = self._ensure_moe_decode_batch_scratch(layer_id, 1, force_selected_c1_moe=True)
+                            moe_scratch = self._ensure_moe_decode_batch_scratch(
+                                layer_id,
+                                1,
+                                force_selected_c1_moe=not dense_mlp and not use_single_row_c1_linear,
+                            )
                             row_out = state.run_linear_attention_moe_c1_layer_fp16(
                                 row_hidden,
                                 conv_state=conv_state,
@@ -3460,7 +3468,7 @@ class Qwen35ParoResidentSession:
                                 stream,
                             )
                         copied_layer_output = True
-                        if not dense_mlp:
+                        if not dense_mlp and not use_single_row_c1_linear:
                             moe_selected_c1_fallback_layers += 1
                         layer_executions.append(
                             {
@@ -3468,7 +3476,9 @@ class Qwen35ParoResidentSession:
                                 "layer_type": "linear_attention",
                                 "rows": int(rows),
                                 "slots": [int(slot) for slot in slots],
-                                "linear_attention_decode_path": "selected_c1_per_row_fallback",
+                                "linear_attention_decode_path": (
+                                    "single_row_c1" if use_single_row_c1_linear else "selected_c1_per_row_fallback"
+                                ),
                                 "full_attention_decode_path": "not_applicable",
                                 "native_caware_decode": False,
                                 "moe_decode_path": row_moe_path,

@@ -2233,6 +2233,86 @@ def test_qwen35_resident_linear_batch_decode_can_force_per_row_probe(monkeypatch
     }
 
 
+def test_qwen35_resident_linear_batch_decode_uses_single_row_c1_path() -> None:
+    device = Device("hip", 0)
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.device = device
+    session.max_batch_size = 1
+    session.hidden_nbytes = 8 * DType.FP16.itemsize
+    session.config = SimpleNamespace(hidden_size=8, layer_types=("linear_attention",), num_experts=4)
+    session.batch_hidden = Tensor.from_handle(0x1000, (1, 8), DType.FP16, device)
+    session.batch_next_hidden = Tensor.from_handle(0x2000, (1, 8), DType.FP16, device)
+    conv = Tensor.from_handle(0x3000, (8, 4), DType.FP32, device)
+    recurrent = Tensor.from_handle(0x4000, (2, 4, 4), DType.FP32, device)
+    session.linear_states = {
+        0: (
+            conv,
+            recurrent,
+            DeviceBuffer(0x3000, conv.numel * conv.dtype.itemsize),
+            DeviceBuffer(0x4000, recurrent.numel * recurrent.dtype.itemsize),
+            None,
+            None,
+        )
+    }
+    session._batch_decode_segment_metadata = lambda *, rows, slots: (
+        Tensor.from_handle(0xA000, (rows + 1,), DType.INT32, device),
+        Tensor.from_handle(0xB000, (rows,), DType.INT64, device),
+        (),
+    )
+    session._ensure_linear_decode_batch_scratch = lambda layer_id, rows: SimpleNamespace(
+        attn_input=Tensor.from_handle(0x5000, (rows, 8), DType.FP16, device)
+    )
+    force_flags: list[bool] = []
+
+    def fake_moe_scratch(layer_id, rows, *, force_selected_c1_moe=False):
+        force_flags.append(bool(force_selected_c1_moe))
+        return SimpleNamespace(residual=Tensor.from_handle(0x6000, (rows, 8), DType.FP16, device))
+
+    session._ensure_moe_decode_batch_scratch = fake_moe_scratch
+
+    class FakeRuntime:
+        def __init__(self) -> None:
+            self.copies: list[tuple[int, int, int, int]] = []
+
+        def memcpy_async(self, dst, src, nbytes, kind, stream):
+            self.copies.append((int(dst), int(src), int(nbytes), int(stream)))
+
+    class FakeState:
+        def __init__(self) -> None:
+            self.c1_calls = []
+            self.batch_calls = []
+
+        def run_linear_attention_moe_c1_layer_fp16(self, hidden, **kwargs):
+            self.c1_calls.append((hidden, kwargs))
+            return Tensor.from_handle(0x9100, (1, 8), DType.FP16, device)
+
+        def run_linear_attention_moe_decode_batch_layer_fp16(self, hidden, **kwargs):
+            self.batch_calls.append((hidden, kwargs))
+            return Tensor.from_handle(0x9200, (1, 8), DType.FP16, device)
+
+    runtime = FakeRuntime()
+    state = FakeState()
+    session.runtime = runtime
+    session.states = [state]
+    session.libraries = {}
+
+    out = session._run_layers_batch_decode(rows=1, positions=(4,), slots=(0,), stream=5)
+
+    assert out.ptr == 0x2000
+    assert state.batch_calls == []
+    assert len(state.c1_calls) == 1
+    assert force_flags == [False]
+    assert state.c1_calls[0][0].ptr == 0x1000
+    assert runtime.copies == [(0x2000, 0x9100, session.hidden_nbytes, 5)]
+    assert session.last_batch_decode_execution["linear_attention_segment_metadata"] == {
+        "cu_seqlens": [0, 1],
+        "state_indices": [0],
+    }
+    assert session.last_batch_decode_execution["layer_executions"][0]["linear_attention_decode_path"] == "single_row_c1"
+    assert session.last_batch_decode_execution["moe_selected_c1_fallback_layers"] == 0
+    assert session.last_batch_decode_execution["blockers"] == []
+
+
 def test_qwen35_resident_linear_batch_decode_can_force_rows1_per_row_probe(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR", "1")
     device = Device("hip", 0)
