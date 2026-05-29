@@ -140,12 +140,12 @@ def batch_sampler_equality_payload_blockers(
         blockers.append(f"{label} must report passed=true")
     if expected_artifact_path is not None:
         payload_artifact_path = payload.get("artifact_path")
-        if not isinstance(payload_artifact_path, str) or not payload_artifact_path:
+        if not isinstance(payload_artifact_path, str) or not payload_artifact_path.strip():
             blockers.append(f"{label} artifact_path must be a non-empty string")
         elif payload_artifact_path != expected_artifact_path:
             blockers.append(f"{label} artifact_path must match sampler_execution.equality_artifact")
         payload_source_artifact_path = payload.get("source_artifact_path")
-        if not isinstance(payload_source_artifact_path, str) or not payload_source_artifact_path:
+        if not isinstance(payload_source_artifact_path, str) or not payload_source_artifact_path.strip():
             blockers.append(f"{label} source_artifact_path must be a non-empty string")
         elif payload_source_artifact_path != expected_artifact_path:
             blockers.append(f"{label} source_artifact_path must match sampler_execution.equality_artifact")

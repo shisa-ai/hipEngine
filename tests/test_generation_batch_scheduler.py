@@ -5580,6 +5580,15 @@ def test_batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head(tmp_pat
         json.dumps(_sampler_equality_payload(rows=8, artifact_path="benchmarks/results/qwen35-c8-eq.json")),
         encoding="utf-8",
     )
+    blank_artifact_path_equality_payload = _sampler_equality_payload(
+        rows=8,
+        artifact_path="benchmarks/results/qwen35-c8-blank-artifact-path-eq.json",
+    )
+    blank_artifact_path_equality_payload["artifact_path"] = "   "
+    (artifact_dir / "qwen35-c8-blank-artifact-path-eq.json").write_text(
+        json.dumps(blank_artifact_path_equality_payload),
+        encoding="utf-8",
+    )
     missing_source_equality_payload = _sampler_equality_payload(
         rows=8,
         artifact_path="benchmarks/results/qwen35-c8-missing-source-eq.json",
@@ -5587,6 +5596,15 @@ def test_batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head(tmp_pat
     missing_source_equality_payload.pop("source_artifact_path")
     (artifact_dir / "qwen35-c8-missing-source-eq.json").write_text(
         json.dumps(missing_source_equality_payload),
+        encoding="utf-8",
+    )
+    blank_source_equality_payload = _sampler_equality_payload(
+        rows=8,
+        artifact_path="benchmarks/results/qwen35-c8-blank-source-eq.json",
+    )
+    blank_source_equality_payload["source_artifact_path"] = "   "
+    (artifact_dir / "qwen35-c8-blank-source-eq.json").write_text(
+        json.dumps(blank_source_equality_payload),
         encoding="utf-8",
     )
     wrong_source_equality_payload = _sampler_equality_payload(
@@ -5719,6 +5737,16 @@ def test_batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head(tmp_pat
     assert wrong_artifact_path_equality_artifact.mode is BatchSamplerMode.SERIAL_LM_HEAD
     assert "batched LM-head equality artifact artifact_path must match sampler_execution.equality_artifact" in wrong_artifact_path_equality_artifact.blockers
 
+    blank_artifact_path_equality_artifact = plan_batch_sampler_dispatch(
+        rows=8,
+        requested_mode="batched_lm_head",
+        c2_equality_green=True,
+        equality_artifact="benchmarks/results/qwen35-c8-blank-artifact-path-eq.json",
+        equality_rows=8,
+    )
+    assert blank_artifact_path_equality_artifact.mode is BatchSamplerMode.SERIAL_LM_HEAD
+    assert "batched LM-head equality artifact artifact_path must be a non-empty string" in blank_artifact_path_equality_artifact.blockers
+
     missing_source_equality_artifact = plan_batch_sampler_dispatch(
         rows=8,
         requested_mode="batched_lm_head",
@@ -5728,6 +5756,16 @@ def test_batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head(tmp_pat
     )
     assert missing_source_equality_artifact.mode is BatchSamplerMode.SERIAL_LM_HEAD
     assert "batched LM-head equality artifact source_artifact_path must be a non-empty string" in missing_source_equality_artifact.blockers
+
+    blank_source_equality_artifact = plan_batch_sampler_dispatch(
+        rows=8,
+        requested_mode="batched_lm_head",
+        c2_equality_green=True,
+        equality_artifact="benchmarks/results/qwen35-c8-blank-source-eq.json",
+        equality_rows=8,
+    )
+    assert blank_source_equality_artifact.mode is BatchSamplerMode.SERIAL_LM_HEAD
+    assert "batched LM-head equality artifact source_artifact_path must be a non-empty string" in blank_source_equality_artifact.blockers
 
     wrong_source_equality_artifact = plan_batch_sampler_dispatch(
         rows=8,
