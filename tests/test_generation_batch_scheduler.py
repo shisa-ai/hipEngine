@@ -7,6 +7,7 @@ import os
 import shlex
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -66,9 +67,11 @@ from scripts.qwen35_batch_hidden_bisect import (
     HiddenRun,
     _decode_full_attention_stage_rollup,
     _decode_full_context_oracle_rollup,
+    _decode_full_context_oracles_from_trace,
     _first_failing_layer_transition,
     _first_hidden_mismatch,
     _decode_full_kv_sample_positions,
+    _numpy_full_attention_context_row,
     _parse_focus_hidden_flat_indices,
     _parse_layer_limits,
     _row_failure_summary,
@@ -6886,6 +6889,52 @@ def test_hidden_bisect_trace_array_to_f32_uses_fp16_for_uint16_traces() -> None:
     values = _trace_array_to_f32(bits)
 
     np.testing.assert_allclose(values, np.array([[1.0, 2.0, -2.0]], dtype=np.float32))
+
+
+def test_hidden_bisect_full_context_oracle_prefers_immediate_query_trace(monkeypatch: pytest.MonkeyPatch) -> None:
+    def bf16_bits(values: np.ndarray) -> np.ndarray:
+        return (np.asarray(values, dtype=np.float32).view(np.uint32) >> np.uint32(16)).astype(np.uint16)
+
+    key_bits = bf16_bits(np.array([[[1.0, 0.0]], [[0.0, 1.0]]], dtype=np.float32))
+    value_bits = bf16_bits(np.array([[[2.0, 4.0]], [[8.0, 16.0]]], dtype=np.float32))
+
+    def fake_kv_prefix(*_args, **_kwargs):
+        return key_bits, value_bits
+
+    monkeypatch.setattr("scripts.qwen35_batch_hidden_bisect._copy_decode_full_kv_prefix_bits", fake_kv_prefix)
+    session = SimpleNamespace(config=SimpleNamespace(num_attention_heads=1, head_dim=2))
+    immediate_query = np.array([[1.0, 0.0]], dtype=np.float32)
+    late_query = np.array([[0.0, 1.0]], dtype=np.float32)
+
+    oracle = _decode_full_context_oracles_from_trace(
+        session,
+        {
+            3: {
+                "query": late_query,
+                "query_after_prepare": immediate_query,
+                "attn_context": np.zeros((1, 2), dtype=np.float32),
+            }
+        },
+        rows=1,
+        positions=(1,),
+        slots=(0,),
+    )
+
+    expected = _numpy_full_attention_context_row(
+        immediate_query.reshape(1, 2),
+        key_bits,
+        value_bits,
+        scale=float(2 ** -0.5),
+    ).reshape(1, 2)
+    late_expected = _numpy_full_attention_context_row(
+        late_query.reshape(1, 2),
+        key_bits,
+        value_bits,
+        scale=float(2 ** -0.5),
+    ).reshape(1, 2)
+    assert oracle[3]["query_source"] == "query_after_prepare"
+    np.testing.assert_allclose(oracle[3]["context"], expected)
+    assert not np.allclose(oracle[3]["context"], late_expected)
 
 
 def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:

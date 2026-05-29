@@ -1482,13 +1482,14 @@ def _decode_full_context_oracles_from_trace(
     context_lens = np.asarray([int(position) + 1 for position in positions], dtype=np.int64)
     oracles: dict[int, dict[str, np.ndarray]] = {}
     for layer_id, stages in traced_layers.items():
-        if "query" not in stages or "attn_context" not in stages:
+        query_source = "query_after_prepare" if "query_after_prepare" in stages else "query"
+        if query_source not in stages or "attn_context" not in stages:
             continue
-        query_flat = np.asarray(stages["query"], dtype=np.float32)
+        query_flat = np.asarray(stages[query_source], dtype=np.float32)
         expected_width = num_q_heads * head_dim
         if query_flat.shape != (rows, expected_width):
             raise ValueError(
-                f"decode full-attention query trace for layer {layer_id} has shape {query_flat.shape}, "
+                f"decode full-attention {query_source} trace for layer {layer_id} has shape {query_flat.shape}, "
                 f"expected {(rows, expected_width)}"
             )
         query = query_flat.reshape(rows, num_q_heads, head_dim)
@@ -1509,6 +1510,7 @@ def _decode_full_context_oracles_from_trace(
         oracles[int(layer_id)] = {
             "context": context.reshape(rows, expected_width),
             "context_lens": context_lens.copy(),
+            "query_source": query_source,
         }
     return oracles
 
@@ -1518,24 +1520,30 @@ def _merge_decode_full_context_oracle_rows(
     captured: dict[int, dict[str, np.ndarray]],
 ) -> None:
     for layer_id, payload in captured.items():
-        target_layer = target.setdefault(int(layer_id), {"context": [], "context_lens": []})
+        target_layer = target.setdefault(int(layer_id), {"context": [], "context_lens": [], "query_source": []})
         for key in ("context", "context_lens"):
             array = np.asarray(payload[key])
             if int(array.shape[0]) != 1:
                 raise ValueError("c=1 decode full-context oracle traces must contain exactly one row")
             target_layer.setdefault(key, []).append(array.copy())
+        target_layer.setdefault("query_source", []).append(str(payload.get("query_source", "query")))
 
 
 def _stack_decode_full_context_oracle_rows(
     rows_by_layer: dict[int, dict[str, list[np.ndarray]]]
 ) -> dict[int, dict[str, np.ndarray]]:
-    return {
-        int(layer_id): {
+    stacked: dict[int, dict[str, np.ndarray]] = {}
+    for layer_id, payload in rows_by_layer.items():
+        query_sources = [str(source) for source in payload.get("query_source", [])]
+        query_source = query_sources[0] if query_sources else "query"
+        if any(source != query_source for source in query_sources):
+            raise ValueError(f"decode full-context oracle query source differs across c=1 rows for layer {layer_id}")
+        stacked[int(layer_id)] = {
             "context": np.concatenate(payload.get("context", []), axis=0),
             "context_lens": np.concatenate(payload.get("context_lens", []), axis=0),
+            "query_source": query_source,
         }
-        for layer_id, payload in rows_by_layer.items()
-    }
+    return stacked
 
 
 DECODE_FULL_KV_SAMPLE_LABELS = ("first", "page0_last", "page1_first", "previous", "current")
@@ -2701,6 +2709,8 @@ def _decode_full_context_oracle_summary(
             c1_oracle = np.asarray(c1_payload["context"], dtype=np.float32)
             batch_lens = np.asarray(batch_payload["context_lens"], dtype=np.int64)
             c1_lens = np.asarray(c1_payload["context_lens"], dtype=np.int64)
+            batch_query_source = str(batch_payload.get("query_source", "query"))
+            c1_query_source = str(c1_payload.get("query_source", "query"))
             if batch_context.shape != batch_oracle.shape or c1_context.shape != c1_oracle.shape:
                 raise ValueError(
                     f"decode full-context oracle shape differs for step {step}, layer {layer_id}: "
@@ -2735,6 +2745,7 @@ def _decode_full_context_oracle_summary(
                     "row": int(row),
                     "context_len": int(batch_lens[row]),
                     "context_len_match": bool(batch_lens[row] == c1_lens[row]),
+                    "query_source": {"batch": batch_query_source, "c1": c1_query_source},
                     "passed": bool(batch_lens[row] == c1_lens[row])
                     and all(bool(comparison["passed"]) for comparison in comparisons.values()),
                     **comparisons,
@@ -2759,6 +2770,7 @@ def _decode_full_context_oracle_summary(
             layers.append(
                 {
                     "layer_index": int(layer_id),
+                    "query_source": {"batch": batch_query_source, "c1": c1_query_source},
                     "passed": all(row["passed"] for row in row_summaries),
                     "rows": row_summaries,
                 }
