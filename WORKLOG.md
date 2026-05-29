@@ -45114,3 +45114,48 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: PASS (`255` selected pytest tests plus primitive c=2/c=8 correctness artifacts; c=2 `attn_batch_vs_c1_max_abs=0.0`, c=8 `attn_batch_vs_c1_max_abs=0.0`). Prompt-verifier self-check passes: no queue item was newly marked complete, the updated C2.3 note cites the new diagnostic artifact, and no retained c>N performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY model-shape primitive context control
+
+Advanced C2.3 by teaching `scripts/qwen35_batch_correctness.py` to run configurable primitive shapes instead of only the tiny default fixture. Added `--block-size`, `--max-context-len`, `--num-q-heads`, `--num-kv-heads`, `--head-dim`, and `--context-lens`; the NumPy oracle now flattens row paged blocks so multi-block contexts work.
+
+Targeted unit checks:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_correctness.py tests/test_generation_batch_scheduler.py
+pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_batch_correctness_numpy_attention_handles_paged_blocks tests/test_generation_batch_scheduler.py::test_qwen35_batch_correctness_context_lens_parser_validates_rows tests/test_generation_batch_scheduler.py::test_qwen35_primitive_correctness_passed_matches_retained_bounds -q
+```
+
+Default primitive guard compatibility:
+
+```bash
+python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json
+python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Both default artifacts remain `passed=true` with `attn_batch_vs_c1_max_abs=0.0`.
+
+Model-shape control:
+
+```bash
+python3 scripts/qwen35_batch_correctness.py --rows 2 --max-context-len 513 --context-lens 513,512 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 --json /tmp/hipengine-multiloop-c2-modelshape-primitive-correctness.json
+```
+
+Result: `/tmp/hipengine-multiloop-c2-modelshape-primitive-correctness.json` is `passed=true`; append key/value mismatches are zero, `attn_batch_vs_c1_max_abs=0.0`, and `attn_batch_vs_numpy_max_abs=3.166496753692627e-08`.
+
+Interpretation: the standalone BF16 batch append and batch context kernels are green at the failing native-full model shape (rows=2, contexts 513/512, 16x2 heads, head_dim=256). The strict L3→L4 runtime context mismatch is more likely in retained runtime state/metadata around the decode append (or tracing/ordering) than in the primitive context math kernel alone.
+
+Loop validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+python3 scripts/qwen35_batch_correctness.py --rows 2 --max-context-len 513 --context-lens 513,512 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 --json /tmp/hipengine-multiloop-c2-modelshape-primitive-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (`257` selected pytest tests plus primitive c=2/c=8 correctness); model-shape primitive control PASS. Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with concrete artifact evidence, and no retained c>N performance/scaling claim was added.

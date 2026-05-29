@@ -7813,6 +7813,31 @@ def test_qwen35_primitive_correctness_passed_matches_retained_bounds() -> None:
     assert batch_correctness._primitive_correctness_passed(0, 0, 0.0, 3e-5) is False
 
 
+def test_qwen35_batch_correctness_numpy_attention_handles_paged_blocks() -> None:
+    query = np.ones((1, 1, 1), dtype=np.float32)
+    key_cache = np.ones((1, 2, 2, 1, 1), dtype=np.float32)
+    value_cache = np.zeros((1, 2, 2, 1, 1), dtype=np.float32)
+    value_cache.reshape(1, 4, 1, 1)[0, :3, 0, 0] = np.array([1.0, 3.0, 5.0], dtype=np.float32)
+    out = batch_correctness._numpy_attention(
+        query,
+        batch_correctness.float_array_to_bf16_bits(key_cache),
+        batch_correctness.float_array_to_bf16_bits(value_cache),
+        np.array([3], dtype=np.int64),
+        scale=1.0,
+    )
+    assert out.shape == (1, 1, 1)
+    assert float(out[0, 0, 0]) == pytest.approx(3.0)
+
+
+def test_qwen35_batch_correctness_context_lens_parser_validates_rows() -> None:
+    parsed = batch_correctness._parse_context_lens("513,512", rows=2, max_context_len=513)
+    assert parsed.tolist() == [513, 512]
+    with pytest.raises(ValueError, match="length"):
+        batch_correctness._parse_context_lens("513", rows=2, max_context_len=513)
+    with pytest.raises(ValueError, match="1..max_context_len"):
+        batch_correctness._parse_context_lens("514,512", rows=2, max_context_len=513)
+
+
 def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_path: Path) -> None:
     artifact = tmp_path / "primitive-c2.json"
     base_payload = {

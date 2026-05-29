@@ -72,15 +72,17 @@ def _numpy_attention(
     out = np.zeros((rows, num_q_heads, head_dim), dtype=np.float32)
     for row in range(rows):
         context_len = int(context_lens[row])
+        row_key = key[row].reshape(-1, num_kv_heads, head_dim)
+        row_value = value[row].reshape(-1, num_kv_heads, head_dim)
         for q_head in range(num_q_heads):
             kv_head = q_head // kv_group
             scores = np.empty(context_len, dtype=np.float32)
             for token in range(context_len):
-                scores[token] = float((query[row, q_head] * key[row, 0, token, kv_head]).sum() * scale)
+                scores[token] = float((query[row, q_head] * row_key[token, kv_head]).sum() * scale)
             probs = np.exp(scores - scores.max())
             probs = probs / probs.sum()
             for token, prob in enumerate(probs):
-                out[row, q_head] += prob * value[row, 0, token, kv_head]
+                out[row, q_head] += prob * row_value[token, kv_head]
     return out
 
 
@@ -99,20 +101,53 @@ def _primitive_correctness_passed(
     )
 
 
-def run(rows: int, *, seed: int = 1234) -> dict[str, object]:
+def _default_context_lens(rows: int, max_context_len: int) -> np.ndarray:
+    return np.asarray([(idx % max_context_len) + 1 for idx in range(rows)], dtype=np.int64)
+
+
+def _parse_context_lens(text: str, *, rows: int, max_context_len: int) -> np.ndarray:
+    values = [int(part) for part in text.split(",") if part.strip()]
+    if len(values) != rows:
+        raise ValueError("context_lens length must match rows")
+    if any(value <= 0 or value > max_context_len for value in values):
+        raise ValueError("context_lens values must be in 1..max_context_len")
+    return np.asarray(values, dtype=np.int64)
+
+
+def run(
+    rows: int,
+    *,
+    seed: int = 1234,
+    block_size: int = 256,
+    max_context_len: int = 4,
+    num_q_heads: int = 4,
+    num_kv_heads: int = 1,
+    head_dim: int = 8,
+    context_lens: np.ndarray | None = None,
+) -> dict[str, object]:
     if rows <= 0:
         raise ValueError("rows must be positive")
+    if block_size <= 0:
+        raise ValueError("block_size must be positive")
+    if max_context_len <= 0:
+        raise ValueError("max_context_len must be positive")
+    if num_q_heads <= 0 or num_kv_heads <= 0 or num_q_heads % num_kv_heads != 0:
+        raise ValueError("num_q_heads must be positive and divisible by num_kv_heads")
+    if head_dim <= 0 or head_dim > 256:
+        raise ValueError("head_dim must be in 1..256")
     rng = np.random.default_rng(seed)
-    block_size = 256
-    blocks = 1
-    max_context_len = 4
-    num_kv_heads = 1
-    num_q_heads = 4
-    head_dim = 8
+    blocks = (max_context_len + block_size - 1) // block_size
     scale = 1.0 / np.sqrt(head_dim)
-    context_lens = np.asarray([(idx % max_context_len) + 1 for idx in range(rows)], dtype=np.int64)
+    if context_lens is None:
+        context_lens = _default_context_lens(rows, max_context_len)
+    else:
+        context_lens = np.asarray(context_lens, dtype=np.int64)
+        if context_lens.shape != (rows,):
+            raise ValueError("context_lens shape must match rows")
+        if np.any(context_lens <= 0) or np.any(context_lens > max_context_len):
+            raise ValueError("context_lens values must be in 1..max_context_len")
     positions = context_lens - 1
-    block_table = np.zeros((rows, blocks), dtype=np.int32)
+    block_table = np.tile(np.arange(blocks, dtype=np.int32), (rows, 1))
 
     # Append smoke: batch append should match independent c1 append into the same row-major layout.
     append_key = rng.normal(0.0, 0.25, size=(rows, num_kv_heads, head_dim)).astype(np.float32)
@@ -285,9 +320,27 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--rows", type=int, default=2)
     parser.add_argument("--seed", type=int, default=1234)
+    parser.add_argument("--block-size", type=int, default=256)
+    parser.add_argument("--max-context-len", type=int, default=4)
+    parser.add_argument("--num-q-heads", type=int, default=4)
+    parser.add_argument("--num-kv-heads", type=int, default=1)
+    parser.add_argument("--head-dim", type=int, default=8)
+    parser.add_argument("--context-lens", help="comma-separated live counts; defaults to 1..max_context_len coverage")
     parser.add_argument("--json", type=Path)
     args = parser.parse_args()
-    result = run(args.rows, seed=args.seed)
+    context_lens = None
+    if args.context_lens:
+        context_lens = _parse_context_lens(args.context_lens, rows=args.rows, max_context_len=args.max_context_len)
+    result = run(
+        args.rows,
+        seed=args.seed,
+        block_size=args.block_size,
+        max_context_len=args.max_context_len,
+        num_q_heads=args.num_q_heads,
+        num_kv_heads=args.num_kv_heads,
+        head_dim=args.head_dim,
+        context_lens=context_lens,
+    )
     if args.json is not None:
         result["artifact_path"] = str(args.json)
     payload = json.dumps(result, indent=2)
