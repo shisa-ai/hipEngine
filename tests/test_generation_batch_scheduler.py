@@ -48,6 +48,7 @@ from hipengine.generation import (
 )
 from hipengine.kvcache import ChunkedKVPool, FixedPagedKVPolicy
 from hipengine.speculative import AcceptResult, DraftBatch, TargetAcceptSummary, TargetStateCommitBuffers, TargetVerifyBuffers
+from scripts import qwen35_batch_artifact_schema as artifact_schema
 from scripts import qwen35_batch_c_sweep as c_sweep
 from scripts import qwen35_batch_correctness as batch_correctness
 from scripts import qwen35_batch_retained_bench as retained_bench
@@ -66,6 +67,7 @@ from scripts.qwen35_batch_artifact_schema import (
     validate_cn_diagnostic_rollup_evidence,
     validate_cn_diagnostic_validation_summary,
 )
+from scripts.qwen35_batch_constants import PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS
 from scripts.qwen35_batch_c_sweep import build_parser as build_c_sweep_parser, build_sweep_commands, run_sweep
 from scripts.qwen35_batch_gguf_diagnostic import build_parser as build_gguf_diagnostic_parser, run as run_gguf_diagnostic
 from scripts.qwen35_batch_hidden_bisect import (
@@ -1221,6 +1223,10 @@ def test_batch_c_sweep_profiler_precondition_rejects_wrong_workload_command(tmp_
 
 
 def test_batch_c_sweep_profiler_precondition_rejects_diagnostic_kernel_names(tmp_path: Path) -> None:
+    assert artifact_schema._DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS is PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS
+    assert c_sweep._DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS is PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS
+    assert retained_bench._DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS is PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS
+
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
     _write_c_sweep_profiler_summary(output_dir, rows=2)

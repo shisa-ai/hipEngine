@@ -47887,3 +47887,22 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: targeted profiler/schema tests PASS, verify count remains `12`, full guard PASS. Prompt-verifier self-check passes: no queue item was marked complete, the change only blocks diagnostic profiler-kernel evidence in accepted artifacts/summaries, native generated-token equality remains open, and no performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY shared diagnostic profiler deny-list
+
+De-duplicated the retained profiler diagnostic kernel deny-list. Added import-light `scripts/qwen35_batch_constants.py` with `PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS`, and wired the artifact schema, c-sweep profiler precondition, and retained-bench profiler blocker to use that shared tuple. The targeted profiler precondition test now asserts all three evidence paths share the same object before checking selected-c1 diagnostic-kernel rejection, reducing future drift between accepted artifact validation, sweep summaries, and retained bench payload construction.
+
+Validation:
+
+```bash
+pytest -q tests/test_generation_batch_scheduler.py::test_batch_c_sweep_profiler_precondition_rejects_diagnostic_kernel_names tests/test_generation_batch_scheduler.py::test_qwen35_retained_profiler_kernel_evidence_blockers_require_trace_durations tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: targeted profiler/schema tests PASS, verify count remains `12`, full guard PASS. Prompt-verifier self-check passes: no queue item was marked complete, the change only de-duplicates diagnostic profiler-kernel evidence rejection, native generated-token equality remains open, and no performance/scaling claim was added.

@@ -656,8 +656,8 @@ roll-up/status view.
       CLI/env/structured-metadata overrides via a shared fragment list,
       hidden-bisect diagnostic evidence fragments, exact diagnostic hidden-trace
       correctness fields, decode-execution trace fields outside execution,
-      future trace-key fragments in metadata/commands, and diagnostic profiler
-      kernel-name fragments,
+      future trace-key fragments in metadata/commands, and shared diagnostic
+      profiler kernel-name fragments,
       but
       `/tmp/hipengine-hidden-bisect-L1-8-512-1-grouped.json` still reports the
       first hidden mismatch at layer-limit 6 (row 0, generated index 1), and the
