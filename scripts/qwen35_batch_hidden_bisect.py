@@ -355,35 +355,57 @@ def _numeric_row_summaries(batch: np.ndarray, c1: np.ndarray, *, atol: float) ->
     return rows
 
 
+def _hidden_mismatch_record(
+    summary: dict[str, Any],
+    step: dict[str, Any],
+    row: dict[str, Any],
+    comparison: dict[str, Any],
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "layer_limit": int(summary["layer_limit"]),
+        "decode_step": int(step["decode_step"]),
+        "generated_index": int(step["generated_index"]),
+        "row": int(row["row"]),
+        "max_abs": float(comparison.get("max_abs", 0.0)),
+        "max_abs_flat_index": comparison.get("max_abs_flat_index"),
+        "max_abs_index": comparison.get("max_abs_index", []),
+        "batch_value_at_max_abs": float(comparison.get("batch_value_at_max_abs", 0.0)),
+        "c1_value_at_max_abs": float(comparison.get("c1_value_at_max_abs", 0.0)),
+        "signed_diff_at_max_abs": float(comparison.get("signed_diff_at_max_abs", 0.0)),
+        "elements_over_atol": int(comparison.get("elements_over_atol", 0)),
+        "bit_mismatch": int(comparison.get("bit_mismatch", 0)),
+        "passed_under_atol": bool(comparison.get("passed", False)),
+        "top_abs_diffs": comparison.get("top_abs_diffs", []),
+    }
+    if "hidden_atol" in summary:
+        result["hidden_atol"] = float(summary["hidden_atol"])
+    if "last_layer_index" in summary:
+        result["last_layer_index"] = int(summary["last_layer_index"])
+    if "last_layer_type" in summary:
+        result["last_layer_type"] = str(summary["last_layer_type"])
+    decode_execution = step.get("batch_decode_execution")
+    if isinstance(decode_execution, dict):
+        result["batch_decode_execution"] = decode_execution
+    return result
+
+
 def _first_hidden_mismatch(layer_summaries: Sequence[dict[str, Any]]) -> dict[str, Any] | None:
     for summary in layer_summaries:
         for step in summary.get("steps", []):
             for row in step.get("rows", []):
                 comparison = row.get("hidden_comparison", {})
                 if not comparison.get("passed", False):
-                    result: dict[str, Any] = {
-                        "layer_limit": int(summary["layer_limit"]),
-                        "decode_step": int(step["decode_step"]),
-                        "generated_index": int(step["generated_index"]),
-                        "row": int(row["row"]),
-                        "max_abs": float(comparison.get("max_abs", 0.0)),
-                        "max_abs_flat_index": comparison.get("max_abs_flat_index"),
-                        "max_abs_index": comparison.get("max_abs_index", []),
-                        "batch_value_at_max_abs": float(comparison.get("batch_value_at_max_abs", 0.0)),
-                        "c1_value_at_max_abs": float(comparison.get("c1_value_at_max_abs", 0.0)),
-                        "signed_diff_at_max_abs": float(comparison.get("signed_diff_at_max_abs", 0.0)),
-                        "elements_over_atol": int(comparison.get("elements_over_atol", 0)),
-                        "bit_mismatch": int(comparison.get("bit_mismatch", 0)),
-                        "top_abs_diffs": comparison.get("top_abs_diffs", []),
-                    }
-                    if "last_layer_index" in summary:
-                        result["last_layer_index"] = int(summary["last_layer_index"])
-                    if "last_layer_type" in summary:
-                        result["last_layer_type"] = str(summary["last_layer_type"])
-                    decode_execution = step.get("batch_decode_execution")
-                    if isinstance(decode_execution, dict):
-                        result["batch_decode_execution"] = decode_execution
-                    return result
+                    return _hidden_mismatch_record(summary, step, row, comparison)
+    return None
+
+
+def _first_hidden_bit_drift(layer_summaries: Sequence[dict[str, Any]]) -> dict[str, Any] | None:
+    for summary in layer_summaries:
+        for step in summary.get("steps", []):
+            for row in step.get("rows", []):
+                comparison = row.get("hidden_comparison", {})
+                if int(comparison.get("bit_mismatch", 0)) > 0:
+                    return _hidden_mismatch_record(summary, step, row, comparison)
     return None
 
 
@@ -401,6 +423,21 @@ def _hidden_failure_rows(summary: dict[str, Any]) -> list[int]:
         for row in step.get("rows", []):
             comparison = row.get("hidden_comparison", {})
             if comparison.get("passed", False):
+                continue
+            row_index = int(row["row"])
+            if row_index not in seen:
+                rows.append(row_index)
+                seen.add(row_index)
+    return rows
+
+
+def _hidden_bit_drift_rows(summary: dict[str, Any]) -> list[int]:
+    rows: list[int] = []
+    seen: set[int] = set()
+    for step in summary.get("steps", []):
+        for row in step.get("rows", []):
+            comparison = row.get("hidden_comparison", {})
+            if int(comparison.get("bit_mismatch", 0)) <= 0:
                 continue
             row_index = int(row["row"])
             if row_index not in seen:
@@ -477,7 +514,13 @@ def _row_focus_for_flat_index(summary: dict[str, Any], *, flat_index: int) -> li
 
 def _transition_trace_summaries(summary: dict[str, Any]) -> dict[str, Any]:
     traces: dict[str, Any] = {}
-    for key in ("decode_full_attention", "decode_full_kv_samples", "decode_linear_inputs", "decode_linear_states"):
+    for key in (
+        "decode_full_attention",
+        "decode_full_context_oracle",
+        "decode_full_kv_samples",
+        "decode_linear_inputs",
+        "decode_linear_states",
+    ):
         trace = summary.get(key)
         if not isinstance(trace, dict):
             continue
@@ -534,6 +577,7 @@ def _first_failing_layer_transition(layer_summaries: Sequence[dict[str, Any]]) -
             continue
         layer_limit = int(summary["layer_limit"])
         hidden_rows = _hidden_failure_rows(summary)
+        strict_hidden_rows = _hidden_bit_drift_rows(summary)
         token_rows = _token_failure_rows(summary)
         failure_modes: list[str] = []
         if not hidden_passed:
@@ -543,18 +587,29 @@ def _first_failing_layer_transition(layer_summaries: Sequence[dict[str, Any]]) -
         failing_last_layer_index = int(summary.get("last_layer_index", layer_limit - 1))
         failing_layer_execution = _layer_execution_for_index(summary, failing_last_layer_index)
         first_hidden_mismatch = _first_hidden_mismatch([summary])
+        first_hidden_bit_drift = _first_hidden_bit_drift([summary])
         transition: dict[str, Any] = {
             "failing_layer_limit": layer_limit,
             "failing_last_layer_index": failing_last_layer_index,
             "failing_layer_execution": failing_layer_execution,
             "failure_modes": failure_modes,
+            "hidden_atol": float(summary.get("hidden_atol", 0.0)),
             "hidden_passed": hidden_passed,
             "token_passed": token_passed,
             "hidden_failure_rows": hidden_rows,
             "hidden_failure_row_count": len(hidden_rows),
+            "strict_hidden_bit_drift_rows": strict_hidden_rows,
+            "strict_hidden_bit_drift_row_count": len(strict_hidden_rows),
             "token_failure_rows": token_rows,
             "token_failure_row_count": len(token_rows),
             "first_hidden_mismatch": first_hidden_mismatch,
+            "first_tolerance_hidden_mismatch": first_hidden_mismatch,
+            "first_strict_hidden_bit_drift": first_hidden_bit_drift,
+            "hidden_mismatch_kind": (
+                "over_atol"
+                if first_hidden_mismatch is not None
+                else ("bit_drift_only" if first_hidden_bit_drift is not None else None)
+            ),
             "first_token_mismatch": _first_token_mismatch([summary]),
         }
         if "last_layer_type" in summary:
@@ -2040,6 +2095,7 @@ def _summarize_layer_limit(
     token_mismatches = _token_mismatches(batch, c1)
     summary = {
         "layer_limit": int(layer_limit),
+        "hidden_atol": float(atol),
         **_layer_limit_metadata(layer_limit, layer_types),
         "prefill_hidden_passed": True if prefill is None else bool(prefill["hidden_passed"]),
         "prefill_linear_input_passed": True if prefill_linear_inputs is None else bool(prefill_linear_inputs["passed"]),
@@ -2256,6 +2312,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
         )
 
     hidden_mismatch = _first_hidden_mismatch(layer_summaries)
+    hidden_bit_drift = _first_hidden_bit_drift(layer_summaries)
     token_mismatch = _first_token_mismatch(layer_summaries)
     passed = hidden_mismatch is None and token_mismatch is None
     payload["status"] = "eq_ok" if passed else "mismatch_found"
@@ -2263,6 +2320,8 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
         {
             "passed": passed,
             "first_hidden_mismatch": hidden_mismatch,
+            "first_tolerance_hidden_mismatch": hidden_mismatch,
+            "first_hidden_bit_drift": hidden_bit_drift,
             "first_token_mismatch": token_mismatch,
             "first_failing_layer_transition": _first_failing_layer_transition(layer_summaries),
         }

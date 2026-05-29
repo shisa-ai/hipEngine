@@ -45391,3 +45391,36 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (`260` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with concrete live-span/context-oracle evidence, and no retained c>N performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY tolerance-aware hidden transition
+
+Advanced C2.3 diagnostics by separating strict bit drift from tolerance-significant hidden mismatches in `scripts/qwen35_batch_hidden_bisect.py`. The JSON now records top-level `correctness.first_hidden_bit_drift` separately from `first_tolerance_hidden_mismatch`/`first_hidden_mismatch`, stores `hidden_atol` on each layer summary, and augments `first_failing_layer_transition` with `strict_hidden_bit_drift_rows`, `first_strict_hidden_bit_drift`, `first_tolerance_hidden_mismatch`, and `hidden_mismatch_kind`. Transition trace summaries now include `decode_full_context_oracle`.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py
+pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_helpers_find_first_hidden_mismatch tests/test_generation_batch_scheduler.py::test_hidden_bisect_summary_embeds_batch_decode_execution_trace -q
+```
+
+Diagnostic:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 4,8 --max-sequence-length 1024 --hidden-atol 0.001 --state-atol 0 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-full-attn-path native_batch --json /tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-tolerance-transition-focus1269.json >/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-tolerance-transition-focus1269.stdout
+```
+
+Result: `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-tolerance-transition-focus1269.json` is `status=mismatch_found`. `correctness.first_hidden_bit_drift` is the L4 strict-only native-full drift (`max_abs=0.00048828125`, `passed_under_atol=true`, `hidden_atol=0.001`). The first tolerance-significant mismatch is L8 decode step 6 / generated index 7 / row 0 dim 1269 (`max_abs=0.027587890625`, `elements_over_atol=1523`). `first_failing_layer_transition` records `previous_green_layer_limit=4`, `failing_layer_limit=8`, `hidden_mismatch_kind=over_atol`, and includes `decode_full_context_oracle` in `failing_trace_summaries`. This keeps the next work focused on layer-4 linear-state propagation rather than the reduced L4 context noise.
+
+Loop validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (`260` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with concrete tolerance-transition diagnostic evidence, and no retained c>N performance/scaling claim was added.

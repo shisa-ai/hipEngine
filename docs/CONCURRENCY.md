@@ -942,6 +942,16 @@ roll-up/status view.
       the later linear-attention state drift reaches layer 7 context (`batch_numpy_vs_c1_numpy`
       `0.5023813247680664` at decode step 10 in
       `/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-per-row-full-native-live-max-atol1e-3-focus1269.json`).
+      The tolerance-transition refresh at
+      `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-tolerance-transition-focus1269.json`
+      makes this distinction explicit: top-level `first_hidden_bit_drift` is the
+      L4 strict-only native-full drift (`passed_under_atol=true`, `max_abs=0.00048828125`),
+      while `first_tolerance_hidden_mismatch` and
+      `first_failing_layer_transition.hidden_mismatch_kind=over_atol` point to
+      L8 decode step 6 / row 0 dim 1269 (`max_abs=0.027587890625`). The transition
+      now includes `decode_full_context_oracle` in its trace summaries, so the next
+      C2.3 work should target the layer-4 linear-state propagation instead of the
+      already oracle-green reduced full-attention context path.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions
