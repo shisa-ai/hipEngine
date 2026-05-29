@@ -48275,3 +48275,23 @@ git diff -- docs/CONCURRENCY.md docs/BENCHMARK.md benchmarks/README.md benchmark
 ```
 
 Result: targeted retained profiled-command uniqueness tests PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and the change only tightens retained command provenance evidence plumbing.
+
+## 2026-05-29 — CONCURRENCY c-sweep profiled KV flag uniqueness
+
+Extended `scripts/qwen35_batch_c_sweep.py` to consume `RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS`, so sweep summary validation now treats retained profiled-command KV-policy flags (`--kv-storage`, `--kv-scale-dtype`, `--kv-scale-granularity`) like the other retained benchmark flags. Duplicate retained KV flags after the rocprof separator and retained KV flags accidentally placed before the separator are now rejected by the same c-sweep gate that retained-bench and accepted-artifact validation use. Tests assert c-sweep imports the shared profiled-command tuple and cover duplicate/before-separator `--kv-storage` tampering.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_c_sweep.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_batch_c_sweep_profiler_precondition_synthesizes_trace_fields_from_csv tests/test_generation_batch_scheduler.py::test_batch_c_sweep_runs_retained_when_all_references_are_usable -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/CONCURRENCY.md docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md WORKLOG.md && git diff --check
+```
+
+Result: targeted c-sweep profiled-command KV flag tests PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and the change only tightens retained profiler command provenance evidence plumbing.

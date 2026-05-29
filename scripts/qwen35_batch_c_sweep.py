@@ -42,6 +42,7 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_RETAINED_GATE_FLAGS,
     RETAINED_ARTIFACT_RETAINED_GATE_LABELS,
     RETAINED_ARTIFACT_RETAINED_POSTCONDITION_KINDS,
+    RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS,
     RETAINED_ARTIFACT_RETAINED_PRECONDITION_KINDS,
     RETAINED_ARTIFACT_SWEEP_COMMAND_CATEGORIES,
     RETAINED_ARTIFACT_SWEEP_COMMAND_STATUS_LABELS,
@@ -96,6 +97,7 @@ def _primitive_context_lens_matches(value: Any, rows: int) -> bool:
 
 _PROFILER_SYNTHESIZED_FIELDS = RETAINED_ARTIFACT_PROFILER_TRACE_SYNTHESIZED_FIELDS
 _RETAINED_BENCH_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS
+_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS
 _PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS = RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS
 _RETAINED_PRECONDITION_KINDS = RETAINED_ARTIFACT_RETAINED_PRECONDITION_KINDS
 _RETAINED_POSTCONDITION_KINDS = RETAINED_ARTIFACT_RETAINED_POSTCONDITION_KINDS
@@ -116,7 +118,7 @@ _SWEEP_COMMAND_STATUS_LABELS = RETAINED_ARTIFACT_SWEEP_COMMAND_STATUS_LABELS
     _SKIPPED_COMMAND_STATUS,
     _FAILED_COMMAND_STATUS,
 ) = _SWEEP_COMMAND_STATUS_LABELS
-_SWEEP_COMMAND_KNOWN_FLAGS = tuple(dict.fromkeys(_RETAINED_BENCH_UNIQUE_FLAGS + _PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS))
+_SWEEP_COMMAND_KNOWN_FLAGS = tuple(dict.fromkeys(_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS + _PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS))
 
 
 @dataclass(frozen=True, slots=True)
@@ -1989,7 +1991,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if fixture_required and option_fixture is not None and _argv_value(argv, "--fixture") != option_fixture:
                 errors.append("commands[].argv --fixture must match options.fixture")
                 break
-            duplicated_retained_flags = _duplicate_flags(argv, _RETAINED_BENCH_UNIQUE_FLAGS)
+            duplicated_retained_flags = _duplicate_flags(argv, _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS)
             if duplicated_retained_flags:
                 errors.append("commands[].argv must not repeat retained benchmark flags")
                 break
@@ -2533,7 +2535,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     ):
                         errors.append("commands[].preconditions[].profiler_command must launch retained bench after rocprof separator when passed")
                         break
-                    if _duplicate_flags(profiled_command_argv, _RETAINED_BENCH_UNIQUE_FLAGS):
+                    if _duplicate_flags(profiled_command_argv, _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS):
                         errors.append("commands[].preconditions[].profiler profiled command flags must be unique")
                         break
                     profiled_command_flags = (
@@ -2599,7 +2601,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     ) != ("--require-cached-build" in argv):
                         errors.append("commands[].preconditions[].profiler profiled command flags must match retained command")
                         break
-                    if any(_flag_token_matches(token, flag) for token in rocprof_command_argv for flag in _RETAINED_BENCH_UNIQUE_FLAGS):
+                    if any(_flag_token_matches(token, flag) for token in rocprof_command_argv for flag in _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS):
                         errors.append("commands[].preconditions[].profiler_command retained bench flags must appear after rocprof separator when passed")
                         break
                     if any(_flag_token_matches(token, flag) for token in profiled_command_argv for flag in rocprof_command_flags):
