@@ -1754,6 +1754,17 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         "duration_seconds",
         "output_tail",
     }
+    expected_passed_retained_postcondition_keys = {
+        "kind",
+        "artifact_path",
+        "profiler_precondition_artifact_path",
+        "passed",
+        "reason",
+        "profiler_precondition_source_artifact_path",
+        "profiler_source_artifact_path",
+        "profiler_synthesized_fields",
+        "profiler_precondition_synthesized_fields",
+    }
     expected_condition_keys = {
         "kind",
         "artifact_path",
@@ -2746,6 +2757,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     break
                 if postcondition.get("passed") is False and (not isinstance(reason, str) or not reason.strip()):
                     errors.append("commands[].postconditions[].reason must be a non-empty string when failed")
+                    break
+                if postcondition.get("passed") is True and set(postcondition) != expected_passed_retained_postcondition_keys:
+                    errors.append("commands[].postconditions[] passed retained profiler synthesis must contain exactly retained postcondition keys")
                     break
                 profiler_fields = postcondition.get("profiler_synthesized_fields")
                 precondition_fields = postcondition.get("profiler_precondition_synthesized_fields")
