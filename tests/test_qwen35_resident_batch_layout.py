@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from types import MethodType, SimpleNamespace
+import json
 
 import numpy as np
 import pytest
@@ -1229,6 +1230,50 @@ def test_qwen35_resident_batch_execution_metadata_keeps_native_diagnostics_ineli
     assert any("generated-token equality" in blocker for blocker in metadata.blockers)
     assert any("projection dispatch: no c-aware projection candidate applies" in blocker for blocker in metadata.blockers)
     assert metadata.to_json_dict()["projection_dispatch"] == metadata.projection_dispatch
+
+
+def test_qwen35_resident_batch_execution_metadata_loads_projection_dispatch_candidates(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    artifact_dir = tmp_path / "benchmarks" / "results"
+    artifact_dir.mkdir(parents=True)
+    candidate_artifact = artifact_dir / "projection-candidates.json"
+    candidate_artifact.write_text(
+        json.dumps(
+            {
+                "projection_dispatch_candidates": [
+                    {
+                        "name": "wmma_caware",
+                        "selection": {"layer": "linear", "quant": "w4_paro", "variant": "wmma_caware"},
+                        "min_rows": 4,
+                        "max_rows": 8,
+                        "evidence": {
+                            "artifact_path": "benchmarks/results/projection-wmma-c4.json",
+                            "aggregate_vs_row_gemv": 1.35,
+                            "per_request_vs_row_gemv": 1.10,
+                            "accepted": True,
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HIPENGINE_QWEN35_PROJECTION_DISPATCH_ARTIFACT", "benchmarks/results/projection-candidates.json")
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.layer_limit = 3
+    session.config = SimpleNamespace(layer_types=("linear_attention", "linear_attention", "full_attention"))
+
+    metadata = session.batch_execution_metadata(scheduler_owned=True, native_decode=True, active_rows=4)
+
+    assert not metadata.throughput_claim_eligible
+    assert metadata.projection_dispatch is not None
+    assert metadata.projection_dispatch["path"] == "benchmark_accepted_caware_projection"
+    assert metadata.projection_dispatch["selected_candidate"] == "wmma_caware"
+    assert metadata.projection_dispatch["evidence"]["artifact_path"] == "benchmarks/results/projection-wmma-c4.json"
+    assert not any("projection dispatch:" in blocker for blocker in metadata.blockers)
+    assert any("generated-token equality" in blocker for blocker in metadata.blockers)
 
 
 def test_qwen35_resident_step_batch_native_requires_experimental_env(monkeypatch) -> None:

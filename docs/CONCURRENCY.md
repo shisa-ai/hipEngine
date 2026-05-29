@@ -1350,9 +1350,9 @@ roll-up/status view.
       to name an evidence-backed non-row-GEMV c-aware path whose selected
       candidate is present in `projection_dispatch_candidates` and profiler
       expected/trace/duration kernel names; retained native batch metadata records a `projection_dispatch` row-GEMV fallback
-      with an explicit blocker when no c-aware projection candidate is available; and retained bench now blocks promotion before schema validation unless projection dispatch names an evidence-backed non-row-GEMV c-aware candidate present in `projection_dispatch_candidates` with matching row bounds, selection, retained artifact path, an accepted same-row evidence artifact JSON carrying self-matching `artifact_path`/`source_artifact_path` plus matching >1 aggregate/per-request row-GEMV speedup ratios, evidence, and profiler expected/trace/duration kernel names. The
-      item remains open until runtime projection call sites are wired to this
-      policy and retained benchmark artifacts provide the required ratios.
+      with an explicit blocker when no c-aware projection candidate is available and can load optional `HIPENGINE_QWEN35_PROJECTION_DISPATCH_ARTIFACT` retained candidate metadata when available; and retained bench now blocks promotion before schema validation unless projection dispatch names an evidence-backed non-row-GEMV c-aware candidate present in `projection_dispatch_candidates` with matching row bounds, selection, retained artifact path, an accepted same-row evidence artifact JSON carrying self-matching `artifact_path`/`source_artifact_path` plus matching >1 aggregate/per-request row-GEMV speedup ratios, evidence, and profiler expected/trace/duration kernel names. The
+      item remains open until retained benchmark artifacts provide the required
+      ratios and runtime kernels actually use the selected c-aware path.
 - [x] **C3.5 GGUF c>N template.** Port the Qwen/PARO equality template to
       GGUF Q4_K/Q5_K/Q6_K/Q8_0. Acceptance: at least one GGUF c=2 diagnostic
       reaches an unambiguous `eq_ok`, `blocked`, or `rejected_correctness`
