@@ -13432,6 +13432,15 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             in str(diagnostic_command_error.value)
         )
 
+        diagnostic_cli_command = json.loads(json.dumps(accepted))
+        diagnostic_cli_command["commands"][command_field] += " --batch-decode-full-attn-path per_row"
+        with pytest.raises(ValueError) as diagnostic_cli_command_error:
+            validate_cn_diagnostic_artifact_payload(diagnostic_cli_command)
+        assert (
+            f"commands.{command_field} must not include diagnostic override --batch-decode-full-attn-path per_row"
+            in str(diagnostic_cli_command_error.value)
+        )
+
     diagnostic_structured_metadata = json.loads(json.dumps(accepted))
     diagnostic_structured_metadata["diagnostic_environment"] = {
         "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_STATE": "1"
