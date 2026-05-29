@@ -45079,3 +45079,38 @@ python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/
 Result: `/tmp/hipengine-hidden-bisect-L3-L4-512-16-c2-strict-transition-focus1269.json` records `previous_green_layer_limit=3`, `previous_green_hidden_passed=true`, `previous_green_token_passed=true`, and `adjacent_layer_limits=true`. Its failing trace summary shows `decode_full_attention.stage_passed={input:true, attn_input:true, gated_attn:false, o_proj:false, output:false}`, first mismatch at layer 3 `gated_attn` row 0 (`max_abs=3.814697265625e-06`), and worst diff at layer 3 `output` row 0 dim 1269 (`max_abs=0.00048828125`). Previous-green L3 linear input/state worst diffs are zero.
 
 Interpretation: the strict L3→L4 transition is now self-contained: the previous layer-limit is exact, and the failing layer-limit first diverges inside the native full-attention layer after gating, not in the pre-full linear layers. Next work can focus on native full-attention gate/output projection parity or the grouped full-layer MoE path before revisiting downstream layer-4 state amplification.
+
+## 2026-05-29 — CONCURRENCY full-attention gate/context trace
+
+Advanced C2.3 by adding `gate` and FP32 `attn_context` substages to the decode full-attention trace. The native batch path traces `attention_scratch.query_raw` after context decode; the per-row/c1 path traces `attention_scratch.attn_out`, reshaped as one row. This separates QKV/gate projection parity from context-attention parity before the gated-attention and output-projection stages.
+
+Code/test changes:
+
+- `Qwen35ParoResidentSession` now has an FP32 tensor trace path and records full-attention `gate` plus `attn_context` in `_decode_full_attention_trace`.
+- `scripts/qwen35_batch_hidden_bisect.py` accepts mixed uint16/FP32 full-attention trace payloads and uses numeric comparisons for FP32 stages.
+- `test_hidden_bisect_summary_embeds_batch_decode_execution_trace` covers the `attn_context` stage and its `comparison_kind="fp32"` summary.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py
+python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_summary_embeds_batch_decode_execution_trace tests/test_generation_batch_scheduler.py::test_hidden_bisect_helpers_find_first_hidden_mismatch -q
+```
+
+Diagnostic:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 4 --layer-limits 3-4 --max-sequence-length 1024 --hidden-atol 0 --state-atol 0 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-full-attn-path native_batch --json /tmp/hipengine-hidden-bisect-L3-L4-512-16-c2-gate-context-transition-focus1269.json >/tmp/hipengine-hidden-bisect-L3-L4-512-16-c2-gate-context-transition-focus1269.stdout
+```
+
+Result: `/tmp/hipengine-hidden-bisect-L3-L4-512-16-c2-gate-context-transition-focus1269.json` is `status=mismatch_found`, `token_passed=true`, with transition `previous_green_layer_limit=3` and `adjacent_layer_limits=true`. For failing L4, `decode_full_attention.stage_passed={input:true, attn_input:true, gate:true, attn_context:false, gated_attn:false, o_proj:false, output:false}`. The first full-attention substage mismatch is layer 3 `attn_context` row 0 (`max_abs=2.1604321002960205`, all 4096 row context elements over zero tolerance); `gate` stays exact. The final output worst diff remains row 0 dim 1269 (`max_abs=0.00048828125`).
+
+Interpretation: the first strict native-full divergence is the context-attention result, not the input RMSNorm or gate projection. The next fix should compare `qwen35_paged_full_attn_decode_context_bf16_batch_spans` against the c1 context path at the model shape (16 Q heads, 2 KV heads, head_dim 256, context 513), despite the small primitive c=2/c=8 fixture staying green.
+
+Loop validation after fixing no-trace fake-scratch tests:
+
+```bash
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: PASS (`255` selected pytest tests plus primitive c=2/c=8 correctness artifacts; c=2 `attn_batch_vs_c1_max_abs=0.0`, c=8 `attn_batch_vs_c1_max_abs=0.0`). Prompt-verifier self-check passes: no queue item was newly marked complete, the updated C2.3 note cites the new diagnostic artifact, and no retained c>N performance/scaling claim was added.

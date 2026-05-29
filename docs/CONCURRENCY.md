@@ -893,13 +893,16 @@ roll-up/status view.
       1269, `max_abs=0.00048828125`). The strict transition artifact
       `/tmp/hipengine-hidden-bisect-L3-L4-512-16-c2-strict-transition-focus1269.json`
       now records `previous_green_layer_limit=3`, `adjacent_layer_limits=true`,
-      and compact trace summaries: the failing L4 `decode_full_attention` stage
-      first mismatches at `gated_attn` (`max_abs=3.814697265625e-06`) and worst
-      at `output` row 0 dim 1269 (`max_abs=0.00048828125`), while previous L3
-      linear inputs/states stay exact. The next native-full investigation should
-      compare the second full-attention layer after the intervening per-row
-      linear layers and the accumulated layer-4 state drift, while treating the
-      first layer-3 native-full path as tolerance-green but not bit-exact.
+      and compact trace summaries. The gate/context transition refresh at
+      `/tmp/hipengine-hidden-bisect-L3-L4-512-16-c2-gate-context-transition-focus1269.json`
+      shows `input`, `attn_input`, and `gate` are exact, while `attn_context`
+      is the first mismatching substage at layer 3 (`max_abs=2.1604321002960205`,
+      all 4096 row-0 context elements over zero tolerance). The final layer
+      output drift is still row 0 dim 1269 (`max_abs=0.00048828125`), so the
+      next native-full investigation should compare the native batch
+      full-attention context kernel against per-row c1 before gating/output
+      projection, while treating the first layer-3 native-full path as
+      tolerance-green but not bit-exact.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

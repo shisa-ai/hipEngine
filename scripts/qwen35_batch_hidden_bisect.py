@@ -34,7 +34,7 @@ from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen
 from scripts.qwen35_batch_retained_bench import DEFAULT_FIXTURE, DEFAULT_MODEL, _compiler_version, _load_prompt_slices
 
 
-DECODE_FULL_ATTENTION_TRACE_STAGES = ("input", "attn_input", "gated_attn", "o_proj", "output")
+DECODE_FULL_ATTENTION_TRACE_STAGES = ("input", "attn_input", "gate", "attn_context", "gated_attn", "o_proj", "output")
 
 
 @dataclass(frozen=True)
@@ -702,10 +702,15 @@ def _decode_full_attention_layers_from_trace(
         stage = str(entry.get("stage", ""))
         if stage not in DECODE_FULL_ATTENTION_TRACE_STAGES:
             raise ValueError(f"decode full-attention trace for layer {layer_id} has unrecognized stage {stage!r}")
-        bits = np.asarray(entry["bits"], dtype=np.uint16)
-        if bits.ndim != 2:
-            raise ValueError(f"decode full-attention trace for layer {layer_id} must be rank-2")
-        grouped.setdefault(layer_id, {}).setdefault(stage, []).append(bits.copy())
+        if "bits" in entry:
+            values = np.asarray(entry["bits"], dtype=np.uint16)
+        elif "values" in entry:
+            values = np.asarray(entry["values"], dtype=np.float32)
+        else:
+            raise ValueError(f"decode full-attention trace for layer {layer_id}, stage {stage} has no payload")
+        if values.ndim != 2:
+            raise ValueError(f"decode full-attention trace for layer {layer_id}, stage {stage} must be rank-2")
+        grouped.setdefault(layer_id, {}).setdefault(stage, []).append(values.copy())
     return {
         int(layer_id): {stage: np.concatenate(rows, axis=0) for stage, rows in stages.items()}
         for layer_id, stages in grouped.items()
@@ -1192,15 +1197,25 @@ def _decode_full_attention_summary(
                     )
                 row_summaries: list[dict[str, Any]] = []
                 for row in range(int(stage_batch.shape[0])):
-                    comparison = hidden_comparison(
-                        stage_batch[row : row + 1],
-                        stage_c1[row : row + 1],
-                        atol=atol,
-                        selected_flat_indices=focus_hidden_flat_indices,
-                    )
+                    if stage_batch.dtype == np.uint16 and stage_c1.dtype == np.uint16:
+                        comparison = hidden_comparison(
+                            stage_batch[row : row + 1],
+                            stage_c1[row : row + 1],
+                            atol=atol,
+                            selected_flat_indices=focus_hidden_flat_indices,
+                        )
+                        comparison_kind = "fp16_bits"
+                    else:
+                        comparison = numeric_comparison(
+                            stage_batch[row : row + 1],
+                            stage_c1[row : row + 1],
+                            atol=atol,
+                        )
+                        comparison_kind = "fp32"
                     row_summaries.append(
                         {
                             "row": int(row),
+                            "comparison_kind": comparison_kind,
                             "hidden_comparison": comparison,
                             "passed": bool(comparison["passed"]),
                         }

@@ -2874,6 +2874,48 @@ class Qwen35ParoResidentSession:
             }
         )
 
+    def _trace_tensor_f32(
+        self,
+        *,
+        trace_attr: str,
+        layer_id: int,
+        stage: str,
+        tensor: Tensor,
+        rows: int,
+        stream: int = 0,
+    ) -> None:
+        trace = getattr(self, trace_attr, None)
+        if not isinstance(trace, list):
+            return
+        rows = int(rows)
+        if rows <= 0:
+            return
+        if tensor.dtype != DType.FP32:
+            raise ValueError(f"{stage} trace expects an fp32 tensor, got {tensor.dtype}")
+        if not tensor.shape or int(tensor.shape[0]) < rows:
+            raise ValueError(f"{stage} trace tensor must have at least {rows} rows")
+        elements_per_row = 1
+        for dim in tensor.shape[1:]:
+            elements_per_row *= int(dim)
+        if elements_per_row <= 0:
+            raise ValueError(f"{stage} trace tensor has no row payload")
+        if hasattr(self.runtime, "stream_synchronize"):
+            self.runtime.stream_synchronize(stream)
+        values = np.empty((rows, elements_per_row), dtype=np.float32)
+        copy_device_to_host(
+            host_array_ptr(values),
+            DeviceBuffer(tensor.ptr, values.nbytes),
+            runtime=self.runtime,
+        )
+        trace.append(
+            {
+                "layer_index": int(layer_id),
+                "stage": stage,
+                "shape": [int(rows), *(int(dim) for dim in tensor.shape[1:])],
+                "values": values,
+            }
+        )
+
     def _trace_decode_full_attention(
         self,
         *,
@@ -2883,7 +2925,7 @@ class Qwen35ParoResidentSession:
         rows: int,
         stream: int = 0,
     ) -> None:
-        if stage not in {"input", "attn_input", "gated_attn", "o_proj", "output"}:
+        if stage not in {"input", "attn_input", "gate", "gated_attn", "o_proj", "output"}:
             raise ValueError("decode full-attention trace stage is not recognized")
         self._trace_tensor_bits(
             trace_attr="_decode_full_attention_trace",
@@ -2894,12 +2936,39 @@ class Qwen35ParoResidentSession:
             stream=stream,
         )
 
+    def _trace_decode_full_attention_context(
+        self,
+        *,
+        layer_id: int,
+        context: Tensor | None,
+        rows: int,
+        stream: int = 0,
+    ) -> None:
+        if context is None:
+            raise ValueError("decode full-attention context trace requires a context tensor")
+        if rows == 1 and len(context.shape) == 2:
+            context = Tensor.from_handle(
+                context.ptr,
+                (1, int(context.shape[0]), int(context.shape[1])),
+                context.dtype,
+                context.device,
+            )
+        self._trace_tensor_f32(
+            trace_attr="_decode_full_attention_trace",
+            layer_id=layer_id,
+            stage="attn_context",
+            tensor=context,
+            rows=rows,
+            stream=stream,
+        )
+
     def _trace_decode_full_attention_scratch(
         self,
         *,
         layer_id: int,
         attention_scratch: Qwen35ParoAttentionScratch,
         rows: int,
+        context: Tensor | None,
         stream: int = 0,
     ) -> None:
         if not isinstance(getattr(self, "_decode_full_attention_trace", None), list):
@@ -2908,6 +2977,19 @@ class Qwen35ParoResidentSession:
             layer_id=layer_id,
             stage="attn_input",
             hidden=attention_scratch.attn_input,
+            rows=rows,
+            stream=stream,
+        )
+        self._trace_decode_full_attention(
+            layer_id=layer_id,
+            stage="gate",
+            hidden=attention_scratch.gate,
+            rows=rows,
+            stream=stream,
+        )
+        self._trace_decode_full_attention_context(
+            layer_id=layer_id,
+            context=context,
             rows=rows,
             stream=stream,
         )
@@ -3664,6 +3746,7 @@ class Qwen35ParoResidentSession:
                             layer_id=layer_id,
                             attention_scratch=attention_scratch,
                             rows=rows,
+                            context=getattr(attention_scratch, "query_raw", None),
                             stream=stream,
                         )
                         self._trace_decode_full_attention(
@@ -3730,6 +3813,7 @@ class Qwen35ParoResidentSession:
                                 layer_id=layer_id,
                                 attention_scratch=self.full_scratch[layer_id],
                                 rows=1,
+                                context=getattr(self.full_scratch[layer_id], "attn_out", None),
                                 stream=stream,
                             )
                             self._trace_decode_full_attention(
@@ -3866,6 +3950,7 @@ class Qwen35ParoResidentSession:
                     layer_id=layer_id,
                     attention_scratch=self.full_scratch[layer_id],
                     rows=1,
+                    context=getattr(self.full_scratch[layer_id], "attn_out", None),
                     stream=stream,
                 )
                 self._trace_decode_full_attention(

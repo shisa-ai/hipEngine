@@ -6512,7 +6512,16 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         ]
     }
     decode_linear_inputs = {0: hidden.copy()}
-    decode_full_attention = {0: {"input": hidden.copy(), "gated_attn": hidden.copy(), "output": hidden.copy()}}
+    attn_context = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+    decode_full_attention = {
+        0: {
+            "input": hidden.copy(),
+            "gate": hidden.copy(),
+            "attn_context": attn_context.copy(),
+            "gated_attn": hidden.copy(),
+            "output": hidden.copy(),
+        }
+    }
     batch = HiddenRun(
         seed_tokens=[10, 20],
         generated_tokens=[[11], [21]],
@@ -6610,10 +6619,12 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     assert summary["decode_linear_inputs"]["steps"][0]["layers"][0]["rows"][0]["hidden_comparison"]["max_abs"] == 0.0
     assert summary["decode_full_attention"]["stage"] == "decode_full_attention"
     assert summary["decode_full_attention"]["passed"] is True
+    assert summary["decode_full_attention"]["stage_passed"]["attn_context"] is True
     assert summary["decode_full_attention"]["stage_passed"]["gated_attn"] is True
     assert "first_mismatch" not in summary["decode_full_attention"]
     assert summary["decode_full_attention"]["worst_diff"]["stage"] == "input"
     assert summary["decode_full_attention"]["worst_diff"]["max_abs"] == 0.0
+    assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["attn_context"]["rows"][0]["comparison_kind"] == "fp32"
     assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["output"]["passed"] is True
     assert summary["decode_linear_states"]["stage"] == "decode_linear_states"
     assert summary["decode_linear_states"]["passed"] is True
