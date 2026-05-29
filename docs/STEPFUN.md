@@ -442,7 +442,9 @@ primitives.
   prefix, sliding layers expose only the live window.
 - [x] Validate one-token decode and short prefill against CPU attention fixtures.
 - [ ] Only after correctness, profile whether AOTriton or native kernels are the
-  right Strix Halo path.
+  right Strix Halo path. Blocked: CPU-reference attention correctness exists,
+  but there is not yet a native/AOTriton Step attention candidate or full
+  decode/logit gate to profile against.
 
 **Acceptance:** `python3 -m pytest -q tests/test_stepfun_attention.py` passes for
 full/sliding CPU-reference attention, both layer head shapes, and KV live-window
@@ -483,13 +485,16 @@ reporting.
 
 - [ ] Add a Step GGUF runner that streams one-token decode for short prompts with
   the Step tokenizer, split weight index, mixed GGUF quant dispatch, full/sliding
-  attention, and Step MoE.
+  attention, and Step MoE. Remaining blocker: resident Step layer/full-model
+  execution is not wired beyond the prompt planner and CPU replay harness.
 - [x] Use short contexts first (for example <= 512) before exercising long
   context and sliding-window boundaries. `StepFunShortContextDecodePlanner`
   enforces the current c=1 bring-up default `max_context=512`,
   `max_new_tokens=1`, and rejects overlong prompts.
 - [ ] Compare greedy next tokens and/or logits against llama.cpp for a small set
-  of deterministic prompts.
+  of deterministic prompts. Remaining blocker: requires the streaming Step GGUF
+  runner or a smaller exported activation/logit fixture; full-model hipEngine
+  load is blocked by current HIP/UMA memory visibility.
 - [x] Preserve multi-EOS stopping and the chat assistant prefix. The short
   context planner renders the Step chat template with assistant `<think>` prefix
   and carries stop IDs `(1, 2, 128007)` with `should_stop()` checks.

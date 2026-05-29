@@ -27012,3 +27012,13 @@ python3 -m pytest -q tests/test_stepfun_decode_planner.py
 ```
 
 Result: `3 passed`. This completes the safe short-context and stop/chat-prefix parts of P11. The actual streaming Step GGUF runner and llama.cpp next-token/logit parity remain open.
+
+## 2026-05-29 — StepFun remaining-loop blocker summary
+
+After P6 Q3_K HIP linear coverage and P11 prompt-side planning, the remaining P0-P12 items are external or large integration blockers rather than isolated primitive gaps:
+
+- P0/P12 memory: still blocked by inconsistent HIP/ROCm memory visibility (`hipMemGetInfo total=62.541 GiB`, `rocm-smi VIS_VRAM Total=512 MiB`) below the 95.465 GiB raw GGUF payload.
+- P8 native/AOTriton attention profiling: blocked until there is a native Step full/sliding attention candidate and a decode/logit correctness gate; current attention coverage is CPU-reference only.
+- P11 streaming runner and llama.cpp next-token/logit parity: blocked on resident Step layer/full-model execution wiring. The current code has tokenizer/chat, split map, Q3_K/Q5_K/Q8_0 dispatch-key validation, CPU replay, and Q3_K HIP slice correctness, but not a 45-layer streaming runner.
+
+No additional performance or full-model correctness claim is made. Continue only after resolving UMA/HIP visibility, adding offload/tiering, or narrowing P11 to a small exported activation/logit fixture that does not require resident full-model execution.
