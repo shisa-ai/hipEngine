@@ -6556,6 +6556,130 @@ def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:
     }
 
 
+def test_hidden_bisect_transition_records_focus_state_history() -> None:
+    same = np.array([[0x3C00, 0x4000]], dtype=np.uint16)
+    changed = np.array([[0x3C00, 0x4200]], dtype=np.uint16)
+    passed = hidden_comparison(same, same.copy(), atol=0.0)
+    failed = hidden_comparison(changed, same, atol=0.0)
+    state_steps = [
+        {
+            "decode_step": 0,
+            "generated_index": 1,
+            "layers": [
+                {
+                    "layer_index": 1,
+                    "states": {
+                        "conv": {
+                            "row_summaries": [
+                                {
+                                    "row": 0,
+                                    "passed": False,
+                                    "max_abs": 2.0,
+                                    "max_abs_index": [0, 3],
+                                    "elements_over_atol": 1,
+                                    "top_abs_diffs": [{"flat_index": 3, "abs_diff": 2.0}],
+                                }
+                            ]
+                        }
+                    },
+                }
+            ],
+        },
+        {
+            "decode_step": 1,
+            "generated_index": 2,
+            "layers": [
+                {
+                    "layer_index": 1,
+                    "states": {
+                        "conv": {
+                            "row_summaries": [
+                                {
+                                    "row": 0,
+                                    "passed": False,
+                                    "max_abs": 3.0,
+                                    "max_abs_index": [0, 4],
+                                    "elements_over_atol": 2,
+                                    "top_abs_diffs": [{"flat_index": 4, "abs_diff": 3.0}],
+                                }
+                            ]
+                        }
+                    },
+                }
+            ],
+        },
+    ]
+    transition = _first_failing_layer_transition(
+        [
+            {
+                "layer_limit": 2,
+                "last_layer_index": 1,
+                "last_layer_type": "linear_attention",
+                "hidden_passed": False,
+                "token_passed": True,
+                "token_mismatches": [],
+                "steps": [
+                    {"decode_step": 0, "generated_index": 1, "rows": [{"row": 0, "hidden_comparison": passed}]},
+                    {"decode_step": 1, "generated_index": 2, "rows": [{"row": 0, "hidden_comparison": failed}]},
+                ],
+                "decode_linear_inputs": {
+                    "passed": False,
+                    "steps": [
+                        {
+                            "decode_step": 0,
+                            "generated_index": 1,
+                            "layers": [{"layer_index": 1, "rows": [{"row": 0, "hidden_comparison": passed}]}],
+                        },
+                        {
+                            "decode_step": 1,
+                            "generated_index": 2,
+                            "layers": [{"layer_index": 1, "rows": [{"row": 0, "hidden_comparison": failed}]}],
+                        },
+                    ],
+                },
+                "decode_linear_states": {
+                    "passed": False,
+                    "state_atol": 0.0,
+                    "state_focus_atol": 2.5,
+                    "passed_under_focus_atol": False,
+                    "first_mismatch": {
+                        "decode_step": 0,
+                        "generated_index": 1,
+                        "layer_index": 1,
+                        "state": "conv",
+                        "row": 0,
+                        "max_abs": 2.0,
+                        "max_abs_index": [0, 3],
+                        "elements_over_atol": 1,
+                    },
+                    "first_mismatch_over_focus_atol": {
+                        "decode_step": 1,
+                        "generated_index": 2,
+                        "layer_index": 1,
+                        "state": "conv",
+                        "row": 0,
+                        "max_abs": 3.0,
+                        "max_abs_index": [0, 4],
+                        "elements_over_atol": 2,
+                        "state_focus_atol": 2.5,
+                        "passed_under_focus_atol": False,
+                    },
+                    "steps": state_steps,
+                },
+            }
+        ]
+    )
+
+    assert transition is not None
+    assert transition["first_linear_state_mismatch_over_focus_atol"]["decode_step"] == 1
+    history = transition["first_linear_state_mismatch_over_focus_atol_history"]
+    assert [entry["decode_step"] for entry in history] == [0, 1]
+    assert [entry["passed_under_focus_atol"] for entry in history] == [True, False]
+    assert [entry["hidden_row"]["passed"] for entry in history] == [True, False]
+    assert [entry["decode_linear_input"]["passed"] for entry in history] == [True, False]
+    assert history[1]["max_abs"] == 3.0
+
+
 def test_hidden_bisect_full_kv_sample_positions_cover_page_boundaries() -> None:
     assert _decode_full_kv_sample_positions(512, block_size=256) == (0, 255, 256, 511, 512)
     assert _decode_full_kv_sample_positions(2, block_size=256) == (0, 2, 2, 1, 2)

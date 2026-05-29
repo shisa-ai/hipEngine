@@ -693,6 +693,65 @@ def _first_linear_state_mismatch_focus(
     return focus
 
 
+def _linear_state_focus_history(summary: dict[str, Any], focus: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(focus, dict):
+        return []
+    trace = summary.get("decode_linear_states")
+    if not isinstance(trace, dict):
+        return []
+    layer_index = int(focus.get("layer_index", -1))
+    state_name = str(focus.get("state", ""))
+    row_index = int(focus.get("row", -1))
+    if layer_index < 0 or not state_name or row_index < 0:
+        return []
+    focus_atol = focus.get("state_focus_atol")
+    history: list[dict[str, Any]] = []
+    for step in trace.get("steps", []):
+        decode_step = int(step.get("decode_step", -1))
+        for layer in step.get("layers", []):
+            if int(layer.get("layer_index", -1)) != layer_index:
+                continue
+            states = layer.get("states", {})
+            if not isinstance(states, dict):
+                continue
+            state_summary = states.get(state_name)
+            if not isinstance(state_summary, dict):
+                continue
+            for row_summary in state_summary.get("row_summaries", []):
+                if int(row_summary.get("row", -1)) != row_index:
+                    continue
+                entry: dict[str, Any] = {
+                    "decode_step": decode_step,
+                    "generated_index": int(step.get("generated_index", decode_step + 1)),
+                    "layer_index": layer_index,
+                    "state": state_name,
+                    "row": row_index,
+                    "passed": bool(row_summary.get("passed", False)),
+                    "max_abs": float(row_summary.get("max_abs", 0.0)),
+                    "max_abs_index": row_summary.get("max_abs_index", []),
+                    "elements_over_atol": int(row_summary.get("elements_over_atol", 0)),
+                    "top_abs_diffs": row_summary.get("top_abs_diffs", []),
+                }
+                if focus_atol is not None:
+                    entry["state_focus_atol"] = float(focus_atol)
+                    entry["passed_under_focus_atol"] = bool(float(row_summary.get("max_abs", 0.0)) <= float(focus_atol))
+                hidden_row = _hidden_row_comparison_at(summary, decode_step=decode_step, row_index=row_index)
+                if hidden_row is not None:
+                    entry["hidden_row"] = hidden_row
+                linear_input = _decode_linear_input_comparison_at(
+                    summary,
+                    decode_step=decode_step,
+                    layer_index=layer_index,
+                    row_index=row_index,
+                )
+                if linear_input is not None:
+                    entry["decode_linear_input"] = linear_input
+                history.append(entry)
+                break
+            break
+    return history
+
+
 def _linear_state_focus_for_hidden_mismatch(
     summary: dict[str, Any],
     first_hidden_mismatch: dict[str, Any] | None,
@@ -846,6 +905,10 @@ def _first_failing_layer_transition(layer_summaries: Sequence[dict[str, Any]]) -
         )
         if first_focus_state is not None:
             transition["first_linear_state_mismatch_over_focus_atol"] = first_focus_state
+            transition["first_linear_state_mismatch_over_focus_atol_history"] = _linear_state_focus_history(
+                summary,
+                first_focus_state,
+            )
         transition["first_hidden_mismatch_linear_state_focus"] = _linear_state_focus_for_hidden_mismatch(
             summary,
             first_hidden_mismatch,
