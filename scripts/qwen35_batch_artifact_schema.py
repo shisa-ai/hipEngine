@@ -993,6 +993,9 @@ def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[
     for field in _REQUIRED_BATCH_EXECUTION_FLAGS:
         if batch_execution.get(field) is not True:
             errors.append(f"execution.batch_execution.{field} must be true for accepted artifacts")
+    for diagnostic_field in _DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS:
+        if diagnostic_field in batch_execution:
+            errors.append(f"execution.batch_execution.{diagnostic_field} must be absent for native retained decode for accepted artifacts")
     native_prefill_plan = batch_execution.get("native_prefill_plan")
     if not isinstance(native_prefill_plan, Mapping):
         errors.append("execution.batch_execution.native_prefill_plan must be an object for accepted artifacts")

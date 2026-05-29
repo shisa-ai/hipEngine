@@ -1193,6 +1193,9 @@ def _batch_execution_blockers(
             blockers.append("execution.batch_execution.native_prefill_plan.blockers must be empty")
     if batch_execution.get("native_caware_decode") is not True:
         blockers.append("execution.batch_execution.native_caware_decode must be true")
+    for diagnostic_field in _DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS:
+        if diagnostic_field in batch_execution:
+            blockers.append(f"execution.batch_execution.{diagnostic_field} must be absent for native retained decode")
     decode_execution = batch_execution.get("decode_execution")
     if not isinstance(decode_execution, Mapping):
         blockers.append("execution.batch_execution.decode_execution is missing")
