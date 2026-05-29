@@ -265,6 +265,107 @@ def step_headwise_attention_gate(attn_output: ArrayLike, gate_logits: ArrayLike)
     return out * _sigmoid(gate)[..., None]
 
 
+def step_kv_live_span_bounds(
+    live_counts: ArrayLike,
+    *,
+    sliding_window: int | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return visible [start, count] spans for Step full/sliding attention."""
+
+    counts = np.asarray(live_counts, dtype=np.int64).reshape(-1)
+    if np.any(counts < 0):
+        raise ValueError("live_counts must be non-negative")
+    if sliding_window is None:
+        starts = np.zeros_like(counts)
+        visible = counts.copy()
+    else:
+        window = int(sliding_window)
+        if window <= 0:
+            raise ValueError("sliding_window must be positive")
+        starts = np.maximum(counts - window, 0)
+        visible = counts - starts
+    return starts.astype(np.int64), visible.astype(np.int64)
+
+
+def step_gqa_attention_decode(
+    query: ArrayLike,
+    key: ArrayLike,
+    value: ArrayLike,
+    live_counts: ArrayLike,
+    *,
+    sliding_window: int | None = None,
+    scale: float | None = None,
+) -> np.ndarray:
+    """Reference Step GQA decode using full-prefix or sliding-window live spans."""
+
+    q = np.asarray(query, dtype=np.float32)
+    k = np.asarray(key, dtype=np.float32)
+    v = np.asarray(value, dtype=np.float32)
+    if q.ndim != 3:
+        raise ValueError("query must have shape [rows, Hq, D]")
+    if k.ndim == 3:
+        k = k[None, ...]
+        v = v[None, ...]
+    if k.shape != v.shape or k.ndim != 4:
+        raise ValueError("key/value must have shape [rows, S, Hkv, D]")
+    if k.shape[0] != q.shape[0] or k.shape[3] != q.shape[2]:
+        raise ValueError("query and key/value row/head_dim shapes must match")
+    if q.shape[1] % k.shape[2] != 0:
+        raise ValueError("query heads must be divisible by KV heads")
+    starts, visible = step_kv_live_span_bounds(live_counts, sliding_window=sliding_window)
+    if starts.shape != (q.shape[0],):
+        raise ValueError("live_counts must have one entry per query row")
+    scale_value = (q.shape[-1] ** -0.5) if scale is None else float(scale)
+    group = q.shape[1] // k.shape[2]
+    out = np.zeros_like(q, dtype=np.float32)
+    for row in range(q.shape[0]):
+        start = int(starts[row])
+        count = int(visible[row])
+        end = start + count
+        if end > k.shape[1]:
+            raise ValueError("live span exceeds key/value sequence length")
+        for q_head in range(q.shape[1]):
+            kv_head = q_head // group
+            keys = k[row, start:end, kv_head]
+            values = v[row, start:end, kv_head]
+            logits = np.matmul(keys, q[row, q_head]) * scale_value
+            weights = _softmax(logits, axis=0)
+            out[row, q_head] = np.matmul(weights, values)
+    return out
+
+
+def step_gqa_attention_prefill(
+    query: ArrayLike,
+    key: ArrayLike,
+    value: ArrayLike,
+    *,
+    sliding_window: int | None = None,
+    scale: float | None = None,
+) -> np.ndarray:
+    """Reference causal Step GQA prefill for one sequence."""
+
+    q = np.asarray(query, dtype=np.float32)
+    k = np.asarray(key, dtype=np.float32)
+    v = np.asarray(value, dtype=np.float32)
+    if q.ndim != 3 or k.ndim != 3 or v.ndim != 3:
+        raise ValueError("query/key/value must have shape [S, H, D]")
+    if q.shape[0] != k.shape[0] or k.shape != v.shape:
+        raise ValueError("query/key/value must share sequence length and KV shapes")
+    rows = []
+    for pos in range(q.shape[0]):
+        rows.append(
+            step_gqa_attention_decode(
+                q[pos : pos + 1],
+                k[None, : pos + 1],
+                v[None, : pos + 1],
+                np.asarray([pos + 1], dtype=np.int64),
+                sliding_window=sliding_window,
+                scale=scale,
+            )[0]
+        )
+    return np.stack(rows, axis=0)
+
+
 def attention_decode(
     query: ArrayLike,
     key: ArrayLike,
@@ -834,6 +935,8 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
         "rotate": rotate,
         "step_apply_rope": step_apply_rope,
         "step_headwise_attention_gate": step_headwise_attention_gate,
+        "step_gqa_attention_decode": step_gqa_attention_decode,
+        "step_gqa_attention_prefill": step_gqa_attention_prefill,
         "attention_decode": attention_decode,
         "kv_dequant": kv_dequant_int8_per_token_head,
         "paged_attn_decode": paged_attn_decode_int8_per_token_head,

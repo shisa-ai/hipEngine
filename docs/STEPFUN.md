@@ -423,18 +423,19 @@ primitives.
 
 ### P8 — Full and sliding GQA attention
 
-- [ ] Implement full-attention decode/prefill for 64 query heads, 8 KV heads,
+- [x] Implement full-attention decode/prefill for 64 query heads, 8 KV heads,
   head dim 128, and partial-RoPE full layers.
-- [ ] Implement sliding-attention decode/prefill for 96 query heads, 8 KV heads,
+- [x] Implement sliding-attention decode/prefill for 96 query heads, 8 KV heads,
   head dim 128, and window 512.
-- [ ] Represent both policies through `KVLiveSpans`: full layers expose the live
+- [x] Represent both policies through `KVLiveSpans`: full layers expose the live
   prefix, sliding layers expose only the live window.
-- [ ] Validate one-token decode and short prefill against CPU attention fixtures.
+- [x] Validate one-token decode and short prefill against CPU attention fixtures.
 - [ ] Only after correctness, profile whether AOTriton or native kernels are the
   right Strix Halo path.
 
-**Acceptance:** full/sliding attention tests pass for both layer types and KV
-window boundaries.
+**Acceptance:** `python3 -m pytest -q tests/test_stepfun_attention.py` passes for
+full/sliding CPU-reference attention, both layer head shapes, and KV live-window
+boundaries. Native/AOTriton profiling remains deferred until decode correctness.
 
 ### P9 — Dense MLP and Step MoE
 

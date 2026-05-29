@@ -26874,3 +26874,17 @@ python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_
 ```
 
 Results: Step primitive pytest passed (`4 passed`), guard passed (`43 passed` plus CPU fixture checks), and the StepFun punchlist metric dropped from 32 to 27 by completing P7.
+
+## 2026-05-29 — StepFun P8 CPU full/sliding GQA attention
+
+Implemented CPU-reference StepFun GQA attention helpers. Added `step_kv_live_span_bounds()` to express full-prefix vs sliding-window live-span boundaries, `step_gqa_attention_decode()` for one-token decode with GQA head grouping, and `step_gqa_attention_prefill()` for causal prefill by repeated decode. Added `tests/test_stepfun_attention.py` covering full-attention decode with 64 query heads / 8 KV heads / head dim 128, sliding-attention decode with 96 query heads / 8 KV heads / head dim 128 and a 512-token live window, full/sliding live-span boundary behavior, and short causal prefill parity. Native/AOTriton profiling remains deferred until decode correctness and HIP kernels exist.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_attention.py
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+```
+
+Results: Step attention pytest passed (`4 passed`), guard passed (`47 passed` plus CPU fixture checks), and the StepFun punchlist metric dropped from 27 to 23 by completing the CPU/reference portions of P8.
