@@ -2900,7 +2900,8 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     and (
                         not isinstance(profiler_precondition_source, str)
                         or not profiler_precondition_source
-                        or "profiler_source_artifact_path" not in postcondition
+                        or not isinstance(postcondition.get("profiler_source_artifact_path"), str)
+                        or not postcondition.get("profiler_source_artifact_path")
                         or postcondition.get("profiler_source_artifact_path") == profiler_precondition_source
                     )
                 ):

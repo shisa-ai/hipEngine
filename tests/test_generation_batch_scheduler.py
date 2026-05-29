@@ -5470,6 +5470,13 @@ def test_batch_c_sweep_fails_retained_row_on_profiler_synthesis_mismatch(tmp_pat
     tampered_failed_postcondition_source_reason["commands"][-1]["postcondition"] = tampered_failed_postcondition_source_reason["commands"][-1]["postconditions"][0]
     with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler_source_artifact_path must document source mismatch when source check failed"):
         c_sweep.validate_sweep_summary(tampered_failed_postcondition_source_reason)
+    tampered_failed_postcondition_source_type = json.loads(json.dumps(summary))
+    tampered_failed_postcondition_source_type["commands"][-1]["postconditions"][0]["reason"] = source_mismatch_reason
+    tampered_failed_postcondition_source_type["commands"][-1]["postconditions"][0]["profiler_source_artifact_path"] = None
+    tampered_failed_postcondition_source_type["commands"][-1]["output_tail"] = source_mismatch_reason
+    tampered_failed_postcondition_source_type["commands"][-1]["postcondition"] = tampered_failed_postcondition_source_type["commands"][-1]["postconditions"][0]
+    with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler_source_artifact_path must document source mismatch when source check failed"):
+        c_sweep.validate_sweep_summary(tampered_failed_postcondition_source_type)
     tampered_failed_postconditions = json.loads(json.dumps(summary))
     tampered_failed_postconditions["failed_postconditions"] = []
     with pytest.raises(ValueError, match="failed_postconditions must match commands.postconditions"):
