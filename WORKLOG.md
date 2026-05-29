@@ -48096,3 +48096,22 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: targeted retained-flag/schema tests PASS, verify count remains `12`, full guard PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance claim was added, and the change only tightens retained command/provenance evidence plumbing.
+
+## 2026-05-29 — CONCURRENCY shared primitive command flag gates
+
+Moved primitive/correctness-reference command flag allow-lists into `scripts/qwen35_batch_constants.py` as `RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS`, `RETAINED_ARTIFACT_CORRECTNESS_REFERENCE_UNIQUE_FLAGS`, and `RETAINED_ARTIFACT_CORRECTNESS_SCRIPT_ALLOWED_FLAGS`. `scripts/qwen35_batch_c_sweep.py` now validates primitive correctness command uniqueness from the shared primitive tuple, while `scripts/qwen35_batch_artifact_schema.py` validates accepted correctness-reference command uniqueness/allowed flags from the shared correctness-reference tuples. CPU tests assert both modules share the tuples before exercising c-sweep profiler preconditions and accepted-artifact schema validation. This advances P1/P5 command provenance gating by preventing primitive correctness command shape checks from drifting across sweep summaries and retained artifact validation.
+
+Validation:
+
+```bash
+pytest -q tests/test_generation_batch_scheduler.py::test_batch_c_sweep_profiler_precondition_synthesizes_trace_fields_from_csv tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: targeted primitive-command/schema tests PASS, verify count remains `12`, full guard PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance claim was added, and the change only tightens correctness-reference command/provenance evidence plumbing.
