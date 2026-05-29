@@ -657,7 +657,11 @@ roll-up/status view.
       top-diff artifact `/tmp/hipengine-hidden-bisect-L6-512-1-topdiff.json`
       adds `elements_over_atol=1` and the top eight hidden-coordinate diffs to
       each row comparison; row 0's only over-tolerance element is still dim 1269
-      while row 1 remains within tolerance despite bit-level drift.
+      while row 1 remains within tolerance despite bit-level drift. A paired
+      L5/L6 run at `/tmp/hipengine-hidden-bisect-L5-L6-512-1-topdiff.json`
+      confirms L5 hidden/token equality still passes (`max_abs≤0.00048828125`,
+      `elements_over_atol=0` for both rows) and L6 is the first failing layer,
+      with the same row-0 dim-1269 single over-tolerance element.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions
