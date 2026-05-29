@@ -477,6 +477,22 @@ def _token_failure_rows(summary: dict[str, Any]) -> list[int]:
     return rows
 
 
+def _layer_execution_at_step(summary: dict[str, Any], *, decode_step: int, layer_index: int) -> dict[str, Any] | None:
+    for step in summary.get("steps", []):
+        if int(step.get("decode_step", -1)) != int(decode_step):
+            continue
+        decode_execution = step.get("batch_decode_execution")
+        if not isinstance(decode_execution, dict):
+            return None
+        for layer_execution in decode_execution.get("layer_executions", []):
+            if not isinstance(layer_execution, dict):
+                continue
+            if int(layer_execution.get("layer_index", -1)) == int(layer_index):
+                return layer_execution
+        return None
+    return None
+
+
 def _layer_execution_for_index(summary: dict[str, Any], layer_index: int) -> dict[str, Any] | None:
     for step in summary.get("steps", []):
         decode_execution = step.get("batch_decode_execution")
@@ -731,6 +747,9 @@ def _linear_state_focus_history(summary: dict[str, Any], focus: dict[str, Any] |
 
     def _attach_context(entry: dict[str, Any]) -> dict[str, Any]:
         decode_step = int(entry.get("decode_step", -1))
+        layer_execution = _layer_execution_at_step(summary, decode_step=decode_step, layer_index=layer_index)
+        if layer_execution is not None:
+            entry["batch_decode_layer_execution"] = layer_execution
         hidden_row = _hidden_row_comparison_at(summary, decode_step=decode_step, row_index=row_index)
         if hidden_row is not None:
             entry["hidden_row"] = hidden_row

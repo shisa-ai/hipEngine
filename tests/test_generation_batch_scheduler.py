@@ -6620,8 +6620,38 @@ def test_hidden_bisect_transition_records_focus_state_history() -> None:
                 "token_passed": True,
                 "token_mismatches": [],
                 "steps": [
-                    {"decode_step": 0, "generated_index": 1, "rows": [{"row": 0, "hidden_comparison": passed}]},
-                    {"decode_step": 1, "generated_index": 2, "rows": [{"row": 0, "hidden_comparison": failed}]},
+                    {
+                        "decode_step": 0,
+                        "generated_index": 1,
+                        "batch_decode_execution": {
+                            "rows": 1,
+                            "slots": [0],
+                            "layer_executions": [
+                                {
+                                    "layer_index": 1,
+                                    "layer_type": "linear_attention",
+                                    "linear_attention_segment_metadata": {"state_indices": [0]},
+                                }
+                            ],
+                        },
+                        "rows": [{"row": 0, "hidden_comparison": passed}],
+                    },
+                    {
+                        "decode_step": 1,
+                        "generated_index": 2,
+                        "batch_decode_execution": {
+                            "rows": 1,
+                            "slots": [0],
+                            "layer_executions": [
+                                {
+                                    "layer_index": 1,
+                                    "layer_type": "linear_attention",
+                                    "linear_attention_segment_metadata": {"state_indices": [0]},
+                                }
+                            ],
+                        },
+                        "rows": [{"row": 0, "hidden_comparison": failed}],
+                    },
                 ],
                 "decode_linear_inputs": {
                     "passed": False,
@@ -6679,6 +6709,8 @@ def test_hidden_bisect_transition_records_focus_state_history() -> None:
     assert [entry["passed_under_focus_atol"] for entry in history] == [True, False]
     assert [entry["hidden_row"]["passed"] for entry in history] == [True, False]
     assert [entry["decode_linear_input"]["passed"] for entry in history] == [True, False]
+    assert [entry["batch_decode_layer_execution"]["layer_type"] for entry in history] == ["linear_attention", "linear_attention"]
+    assert history[1]["batch_decode_layer_execution"]["linear_attention_segment_metadata"] == {"state_indices": [0]}
     assert [entry["same_focus_index_in_top_abs_diffs"] for entry in history] == [False, True]
     assert history[1]["same_focus_index_top_diff"] == {"flat_index": 4, "abs_diff": 3.0}
     assert history[1]["max_abs"] == 3.0

@@ -45622,3 +45622,36 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (`261` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with concrete state-update-delta diagnostic evidence, and no retained c>N performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY state-focus execution metadata
+
+Advanced C2.3 diagnostics by adding `batch_decode_layer_execution` to each focused state-history entry when batch decode execution metadata is available for the same decode step and layer. This ties the update-delta finding directly to the concrete path/row/slot metadata used at the step where drift amplifies.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py
+pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_transition_records_focus_state_history tests/test_generation_batch_scheduler.py::test_hidden_bisect_summary_embeds_batch_decode_execution_trace tests/test_generation_batch_scheduler.py::test_hidden_bisect_helpers_find_first_hidden_mismatch -q
+```
+
+Diagnostic:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 4,8 --max-sequence-length 1024 --hidden-atol 0.001 --state-atol 0 --state-focus-atol 0.002 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-full-attn-path native_batch --json /tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-state-focus-exec2e-3-focus1269.json >/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-state-focus-exec2e-3-focus1269.stdout
+```
+
+Result: `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-state-focus-exec2e-3-focus1269.json` is `status=mismatch_found`. At the first over-tolerance hidden step 6, the focused state history entry carries `batch_decode_layer_execution={layer_index:4, layer_type:linear_attention, rows:2, slots:[0,1], linear_attention_decode_path:selected_c1_per_row_fallback, native_caware_decode:false, moe_decode_path:selected_c1_per_row_linear_fallback}`. The update delta at the same entry is still the large one (`state_update_delta_comparison.max_abs=0.390625` at `[4852,3]`) with decode-linear-input drift (`0.0081787109375`). This points next work at the layer-4 state update input under the per-row linear control, not native linear segment metadata or the oracle-green full-attention context path.
+
+Loop validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (`261` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with concrete state-focus execution-metadata evidence, and no retained c>N performance/scaling claim was added.
