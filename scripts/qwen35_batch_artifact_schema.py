@@ -1146,8 +1146,18 @@ def _validate_accepted_decode_layer_executions(
                 errors.append(f"{label}.max_context must cover workload.prompt_tokens_per_request for accepted artifacts")
             if "num_splits_per_row" in layer:
                 errors.append(f"{label}.num_splits_per_row must be absent for native retained decode for accepted artifacts")
-        elif layer_type == "linear_attention" and full_attention_path != "not_applicable":
-            errors.append(f"{label}.full_attention_decode_path must be not_applicable for accepted artifacts")
+        elif layer_type == "linear_attention":
+            if full_attention_path != "not_applicable":
+                errors.append(f"{label}.full_attention_decode_path must be not_applicable for accepted artifacts")
+            linear_projection_path = layer.get("linear_attention_projection_path")
+            if linear_projection_path not in {None, "native_batch"}:
+                errors.append(f"{label}.linear_attention_projection_path must be native_batch or absent for accepted artifacts")
+            linear_state_path = layer.get("linear_attention_state_path")
+            if linear_state_path not in {None, "native_segments"}:
+                errors.append(f"{label}.linear_attention_state_path must be native_segments or absent for accepted artifacts")
+            linear_output_path = layer.get("linear_attention_output_path")
+            if linear_output_path not in {None, "native_batch"}:
+                errors.append(f"{label}.linear_attention_output_path must be native_batch or absent for accepted artifacts")
     if isinstance(native_full_attention_layers, int) and not isinstance(native_full_attention_layers, bool):
         if traced_native_full_attention_layers != native_full_attention_layers:
             errors.append("execution.batch_execution.decode_execution.layer_executions native full-attention count must match native_full_attention_layers for accepted artifacts")

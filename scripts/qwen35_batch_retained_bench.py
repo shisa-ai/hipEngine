@@ -1101,8 +1101,18 @@ def _decode_layer_execution_blockers(
                 blockers.append(f"{label}.max_context must cover workload.prompt_tokens_per_request")
             if "num_splits_per_row" in layer:
                 blockers.append(f"{label}.num_splits_per_row must be absent for native retained decode")
-        elif layer_type == "linear_attention" and full_attention_path != "not_applicable":
-            blockers.append(f"{label}.full_attention_decode_path must be not_applicable")
+        elif layer_type == "linear_attention":
+            if full_attention_path != "not_applicable":
+                blockers.append(f"{label}.full_attention_decode_path must be not_applicable")
+            linear_projection_path = layer.get("linear_attention_projection_path")
+            if linear_projection_path not in {None, "native_batch"}:
+                blockers.append(f"{label}.linear_attention_projection_path must be native_batch or absent")
+            linear_state_path = layer.get("linear_attention_state_path")
+            if linear_state_path not in {None, "native_segments"}:
+                blockers.append(f"{label}.linear_attention_state_path must be native_segments or absent")
+            linear_output_path = layer.get("linear_attention_output_path")
+            if linear_output_path not in {None, "native_batch"}:
+                blockers.append(f"{label}.linear_attention_output_path must be native_batch or absent")
     if isinstance(native_full_attention_layers, int) and not isinstance(native_full_attention_layers, bool):
         if traced_native_full_attention_layers != native_full_attention_layers:
             blockers.append("execution.batch_execution.decode_execution.layer_executions native full-attention count must match native_full_attention_layers")

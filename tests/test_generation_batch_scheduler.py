@@ -10579,6 +10579,32 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
     }
 
     assert retained_bench._batch_execution_blockers(valid, expected_max_layers=40, expected_concurrency=2, expected_prompt_length=512) == []
+    linear_output_diagnostic = json.loads(json.dumps(valid))
+    linear_output_diagnostic["decode_execution"]["moe_grouped_compact_layers"] = 2
+    linear_output_diagnostic["decode_execution"]["layer_executions"].append(
+        {
+            "layer_index": 1,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [0, 2],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": True,
+            "moe_decode_path": "grouped_compact",
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "selected_c1_forced",
+        }
+    )
+    linear_output_blockers = retained_bench._batch_execution_blockers(
+        linear_output_diagnostic,
+        expected_max_layers=40,
+        expected_concurrency=2,
+        expected_prompt_length=512,
+    )
+    assert (
+        "execution.batch_execution.decode_execution.layer_executions[1].linear_attention_output_path must be native_batch or absent"
+        in linear_output_blockers
+    )
     long_context_blockers = retained_bench._batch_execution_blockers(long_context, expected_max_layers=40, expected_concurrency=2, expected_prompt_length=512)
     assert (
         "execution.batch_execution.decode_execution.max_full_attention_context must be < 1024 until row-aware split-K native decode lands"
@@ -12541,6 +12567,26 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     fallback_layer_execution["execution"]["batch_execution"]["decode_execution"]["layer_executions"][0]["moe_decode_path"] = "selected_c1_per_row_fallback"
     with pytest.raises(ValueError, match=r"layer_executions\[0\].moe_decode_path must be grouped_compact"):
         validate_cn_diagnostic_artifact_payload(fallback_layer_execution)
+
+    diagnostic_linear_output_layer = json.loads(json.dumps(accepted))
+    diagnostic_decode_execution = diagnostic_linear_output_layer["execution"]["batch_execution"]["decode_execution"]
+    diagnostic_decode_execution["moe_grouped_compact_layers"] = 2
+    diagnostic_decode_execution["layer_executions"].append(
+        {
+            "layer_index": 1,
+            "layer_type": "linear_attention",
+            "rows": 2,
+            "slots": [0, 1],
+            "full_attention_decode_path": "not_applicable",
+            "native_caware_decode": True,
+            "moe_decode_path": "grouped_compact",
+            "linear_attention_projection_path": "native_batch",
+            "linear_attention_state_path": "native_segments",
+            "linear_attention_output_path": "selected_c1_forced",
+        }
+    )
+    with pytest.raises(ValueError, match=r"layer_executions\[1\].linear_attention_output_path must be native_batch or absent"):
+        validate_cn_diagnostic_artifact_payload(diagnostic_linear_output_layer)
 
     blocked_decode_execution = json.loads(json.dumps(accepted))
     blocked_decode_execution["execution"]["batch_execution"]["decode_execution"]["blockers"] = ["decode blocker"]

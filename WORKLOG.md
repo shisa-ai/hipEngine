@@ -47507,3 +47507,22 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: targeted combined-boundary test PASS, resident-layout suite PASS, verify count remains `12`, full guard PASS. Prompt-verifier self-check passes: no queue item was marked complete, combined full-attention boundary controls are explicitly diagnostic/non-native, native generated-token equality remains open, and no performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY retained linear diagnostic path rejection
+
+Tightened retained c>N artifact gates so diagnostic linear-attention per-layer paths cannot be hidden inside otherwise-native metadata. `scripts/qwen35_batch_artifact_schema.py` and `scripts/qwen35_batch_retained_bench.py` now reject accepted/retained rows when a `linear_attention` layer reports selected-c1 projection, selected-c1 state, selected-c1 output, batch-GEMV output, or any other non-native linear diagnostic path. Added coverage in `tests/test_generation_batch_scheduler.py` for both accepted-artifact schema validation and retained-bench precondition blockers using a forged per-layer `linear_attention_output_path="selected_c1_forced"` while top-level native flags stay true.
+
+Validation:
+
+```bash
+pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_paths tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: targeted retained/schema tests PASS, verify count remains `12`, full guard PASS. Prompt-verifier self-check passes: no queue item was marked complete, the new rejection only prevents diagnostic per-layer linear paths from being promoted as retained native c>N rows, native generated-token equality remains open, and no performance/scaling claim was added.
