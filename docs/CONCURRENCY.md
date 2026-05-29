@@ -692,8 +692,14 @@ roll-up/status view.
       `moe_decode_path=selected_c1_forced`/`moe_grouped_compact_layers=0`; the
       L6 row-0 hidden mismatch persists at dim 1269 (`max_abs=0.001953125`, no
       token mismatch), so the reduced failure is not cleared by bypassing the
-      grouped-compact WMMA MoE path and should next distinguish batch linear
-      attention vs multi-row selected-MoE arithmetic.
+      grouped-compact WMMA MoE path. The per-row-linear probe at
+      `/tmp/hipengine-hidden-bisect-L5-L6-512-1-per-row-linear.json` forces
+      `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR=1`; it records
+      `linear_attention_decode_path=selected_c1_per_row_fallback`,
+      `native_caware_decode=false`, and the same L6 row-0 dim-1269 hidden
+      failure (`max_abs=0.00146484375`, no token mismatch), so the reduced
+      failure is also not cleared by replacing the batch linear-attention
+      segment path with per-row c=1 linear layers.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

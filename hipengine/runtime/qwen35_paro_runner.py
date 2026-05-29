@@ -3203,6 +3203,7 @@ class Qwen35ParoResidentSession:
         native_full_attention_layers = 0
         dense_mlp = int(getattr(self.config, "num_experts", 1) or 0) <= 0
         force_selected_c1_moe = (not dense_mlp) and rows > 1 and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE")
+        force_per_row_linear = rows > 1 and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR")
         moe_decode_path = "dense_mlp" if dense_mlp else ("selected_c1" if rows == 1 else ("selected_c1_forced" if force_selected_c1_moe else "grouped_compact"))
         moe_grouped_compact_layers = 0
         moe_selected_c1_fallback_layers = 0
@@ -3210,44 +3211,91 @@ class Qwen35ParoResidentSession:
         try:
             for layer_id, state in enumerate(self.states):
                 layer_type = self.config.layer_types[layer_id]
+                copied_layer_output = False
                 if layer_type == "linear_attention":
-                    conv_state, recurrent_state, _conv_buf, _recurrent_buf, _conv_zero, _recurrent_zero = self.linear_states[layer_id]
-                    linear_scratch = self._ensure_linear_decode_batch_scratch(layer_id, rows)
-                    if force_selected_c1_moe:
-                        moe_scratch = self._ensure_moe_decode_batch_scratch(layer_id, rows, force_selected_c1_moe=True)
-                    else:
-                        moe_scratch = self._ensure_moe_decode_batch_scratch(layer_id, rows)
-                    out = state.run_linear_attention_moe_decode_batch_layer_fp16(
-                        hidden,
-                        conv_state=conv_state,
-                        recurrent_state=recurrent_state,
-                        cu_seqlens=cu_seqlens,
-                        state_indices=state_indices,
-                        segments=rows,
-                        linear_scratch=linear_scratch,
-                        moe_scratch=moe_scratch,
-                        tokens=rows,
-                        force_selected_c1_moe=force_selected_c1_moe,
-                        library=self.libraries,
-                        stream=stream,
-                    )
-                    layer_moe_path = "dense_mlp" if dense_mlp else ("selected_c1" if rows == 1 else ("selected_c1_forced" if force_selected_c1_moe else "grouped_compact"))
-                    if not dense_mlp and rows > 1:
-                        if force_selected_c1_moe:
+                    if force_per_row_linear:
+                        row_moe_path = "dense_mlp" if dense_mlp else "selected_c1_per_row_linear_fallback"
+                        for row, slot in enumerate(slots):
+                            row_hidden = Tensor.from_handle(
+                                hidden.ptr + row * self.hidden_nbytes,
+                                (1, self.config.hidden_size),
+                                hidden.dtype,
+                                hidden.device,
+                            )
+                            conv_state, recurrent_state = self._slot_linear_state(layer_id, slot)
+                            linear_scratch = self._ensure_linear_decode_batch_scratch(layer_id, 1)
+                            moe_scratch = self._ensure_moe_decode_batch_scratch(layer_id, 1, force_selected_c1_moe=True)
+                            row_out = state.run_linear_attention_moe_c1_layer_fp16(
+                                row_hidden,
+                                conv_state=conv_state,
+                                recurrent_state=recurrent_state,
+                                linear_scratch=linear_scratch,
+                                moe_scratch=moe_scratch,
+                                tokens=1,
+                                library=self.libraries,
+                                stream=stream,
+                            )
+                            self.runtime.memcpy_async(
+                                next_hidden.ptr + row * self.hidden_nbytes,
+                                row_out.ptr,
+                                self.hidden_nbytes,
+                                HipMemcpyKind.DEVICE_TO_DEVICE,
+                                stream,
+                            )
+                        copied_layer_output = True
+                        if not dense_mlp:
                             moe_selected_c1_fallback_layers += 1
+                        layer_executions.append(
+                            {
+                                "layer_index": int(layer_id),
+                                "layer_type": "linear_attention",
+                                "rows": int(rows),
+                                "slots": [int(slot) for slot in slots],
+                                "linear_attention_decode_path": "selected_c1_per_row_fallback",
+                                "full_attention_decode_path": "not_applicable",
+                                "native_caware_decode": False,
+                                "moe_decode_path": row_moe_path,
+                            }
+                        )
+                    else:
+                        conv_state, recurrent_state, _conv_buf, _recurrent_buf, _conv_zero, _recurrent_zero = self.linear_states[layer_id]
+                        linear_scratch = self._ensure_linear_decode_batch_scratch(layer_id, rows)
+                        if force_selected_c1_moe:
+                            moe_scratch = self._ensure_moe_decode_batch_scratch(layer_id, rows, force_selected_c1_moe=True)
                         else:
-                            moe_grouped_compact_layers += 1
-                    layer_executions.append(
-                        {
-                            "layer_index": int(layer_id),
-                            "layer_type": "linear_attention",
-                            "rows": int(rows),
-                            "slots": [int(slot) for slot in slots],
-                            "full_attention_decode_path": "not_applicable",
-                            "native_caware_decode": True,
-                            "moe_decode_path": layer_moe_path,
-                        }
-                    )
+                            moe_scratch = self._ensure_moe_decode_batch_scratch(layer_id, rows)
+                        out = state.run_linear_attention_moe_decode_batch_layer_fp16(
+                            hidden,
+                            conv_state=conv_state,
+                            recurrent_state=recurrent_state,
+                            cu_seqlens=cu_seqlens,
+                            state_indices=state_indices,
+                            segments=rows,
+                            linear_scratch=linear_scratch,
+                            moe_scratch=moe_scratch,
+                            tokens=rows,
+                            force_selected_c1_moe=force_selected_c1_moe,
+                            library=self.libraries,
+                            stream=stream,
+                        )
+                        layer_moe_path = "dense_mlp" if dense_mlp else ("selected_c1" if rows == 1 else ("selected_c1_forced" if force_selected_c1_moe else "grouped_compact"))
+                        if not dense_mlp and rows > 1:
+                            if force_selected_c1_moe:
+                                moe_selected_c1_fallback_layers += 1
+                            else:
+                                moe_grouped_compact_layers += 1
+                        layer_executions.append(
+                            {
+                                "layer_index": int(layer_id),
+                                "layer_type": "linear_attention",
+                                "rows": int(rows),
+                                "slots": [int(slot) for slot in slots],
+                                "linear_attention_decode_path": "native_batch_segments",
+                                "full_attention_decode_path": "not_applicable",
+                                "native_caware_decode": True,
+                                "moe_decode_path": layer_moe_path,
+                            }
+                        )
                 elif layer_type == "full_attention":
                     max_context = max(int(position) + 1 for position in positions)
                     max_full_attention_context = max(max_full_attention_context, max_context)
@@ -3360,12 +3408,20 @@ class Qwen35ParoResidentSession:
                         )
                 else:
                     raise ValueError(f"unsupported layer type {layer_type!r} at layer {layer_id}")
-                if layer_type != "full_attention":
+                if layer_type != "full_attention" and not copied_layer_output:
                     self.runtime.memcpy_async(next_hidden.ptr, out.ptr, rows * self.hidden_nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
                 hidden, next_hidden = next_hidden, hidden
             decode_blockers: list[str] = []
             if force_selected_c1_moe:
                 decode_blockers.append("MoE decode forced to selected-c1 diagnostic path")
+            if force_per_row_linear:
+                decode_blockers.append("linear-attention decode forced to per-row diagnostic path")
+                if not dense_mlp and rows > 1:
+                    moe_decode_path = (
+                        "selected_c1_forced_with_per_row_linear_attention_fallback"
+                        if force_selected_c1_moe
+                        else "mixed_grouped_compact_with_per_row_linear_attention_fallback"
+                    )
             if full_attention_decode_path in {"per_row_splitk_fallback", "per_row_context_fallback"}:
                 decode_blockers.append("full-attention decode used a per-row fallback")
                 if not dense_mlp and rows > 1:
@@ -3376,7 +3432,7 @@ class Qwen35ParoResidentSession:
                 "max_full_attention_context": int(max_full_attention_context),
                 "native_full_attention_layers": int(native_full_attention_layers),
                 "full_attention_decode_path": full_attention_decode_path,
-                "native_caware_decode": full_attention_decode_path not in {"per_row_splitk_fallback", "per_row_context_fallback"},
+                "native_caware_decode": full_attention_decode_path not in {"per_row_splitk_fallback", "per_row_context_fallback"} and not force_per_row_linear,
                 "moe_decode_path": moe_decode_path,
                 "moe_decode_rows": int(rows),
                 "moe_grouped_compact_layers": int(moe_grouped_compact_layers),
