@@ -6255,11 +6255,36 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert payload["workload"]["batch_decode_moe_path"] == "grouped_compact"
     assert payload["workload"]["batch_decode_linear_path"] == "batch_segments"
     assert payload["workload"]["batch_decode_full_attention_path"] == "native_batch"
+    assert payload["workload"]["batch_decode_post_attention_path"] == "batch"
     assert payload["workload"]["native_caware_decode"] is True
     assert payload["workload"]["layer_limits"] == [1, 4, 8]
     assert len(payload["commands"]) == 3
     assert all("scripts/qwen35_batch_hidden_bisect.py" in command for command in payload["commands"])
     assert output.exists()
+
+    per_row_post_attn = build_hidden_bisect_parser().parse_args(
+        [
+            "--dry-run",
+            "--batch-decode-post-attn-path",
+            "per_row",
+            "--prompt-length",
+            "32",
+            "--batch-size",
+            "2",
+            "--decode-tokens",
+            "4",
+            "--max-layers",
+            "8",
+            "--layer-limits",
+            "8",
+        ]
+    )
+    per_row_payload = run_hidden_bisect(
+        per_row_post_attn,
+        ["--dry-run", "--batch-decode-post-attn-path", "per_row", "--layer-limits", "8"],
+    )
+    assert per_row_payload["workload"]["batch_decode_post_attention_path"] == "per_row"
+    assert per_row_payload["workload"]["native_caware_decode"] is False
 
 
 def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:

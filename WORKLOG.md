@@ -46157,3 +46157,32 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: targeted tests PASS; verify count remains `12`; full guard PASS (`263` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: completed queue items still cite concrete evidence, native c>N generated-token equality remains open, the new diagnostic path is explicitly blocked/non-retained, and no performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY per-row post-attention hidden-bisect control
+
+Added a hidden-bisect CLI knob for the post-attention diagnostic path: `--batch-decode-post-attn-path {batch,per_row}` records `workload.batch_decode_post_attention_path`, marks `workload.native_caware_decode=false` for the per-row diagnostic, and sets `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN` during real runs.
+
+Ran the focused L4/L8 C2 control:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 4,8 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --batch-decode-post-attn-path per_row --json /tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-perrow-postattn-atol4e-3-focus1269.json
+```
+
+Result: `status=mismatch_found`, `correctness.failure_modes=["hidden"]`, `token_passed=true`, `first_token_mismatch=null`. L4 final hidden/token stays green but decode-full-attention substage drift is visible under the diagnostic fallback; L8 first hidden mismatch moves to decode step 2 / generated index 3 / row 1 / dim 1073 with `max_abs=0.008148193359375`, hidden rows `[1,0]`, token rows `[]`, and decode metadata blocker `post-attention add/rmsnorm forced to per-row diagnostic path`. This means the batch post-attention add/RMSNorm boundary is not the sole native-full blocker and remains a non-retained diagnostic control.
+
+Updated `docs/CONCURRENCY.md` C2.3 progress with the artifact and conclusion. CPU coverage: `test_hidden_bisect_dry_run_records_layer_commands` now checks the new hidden-bisect knob/default and the `per_row` native-caware demotion, alongside the existing resident-layout switch test.
+
+Validation:
+
+```bash
+pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_dry_run_records_layer_commands tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_run_layers_batch_decode_can_force_per_row_post_attention_probe -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: targeted tests PASS; verify count remains `12`; full guard PASS (`263` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: completed queue items still cite concrete evidence, native c>N generated-token equality remains open, the new diagnostic artifact is explicitly hidden-only/non-retained, and no performance/scaling claim was added.

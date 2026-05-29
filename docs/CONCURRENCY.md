@@ -1048,14 +1048,21 @@ roll-up/status view.
       `mlp_input`/post-attention failures from final hidden/token failures; CPU
       coverage lives in `test_hidden_bisect_summary_embeds_batch_decode_execution_trace`.
       A new diagnostic switch,
-      `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN=1`, routes only the
-      c>N full-attention decode post-attention add/RMSNorm boundary through
-      token-1 row kernels, labels the decode as a diagnostic fallback, and is
-      covered by
+      `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN=1` (or hidden-bisect
+      `--batch-decode-post-attn-path per_row`), routes only the c>N
+      full-attention decode post-attention add/RMSNorm boundary through token-1
+      row kernels, labels the decode as a diagnostic fallback, and is covered by
       `test_qwen35_resident_run_layers_batch_decode_can_force_per_row_post_attention_probe`.
-      The next C2.3 work should decide whether the per-row fallback's ≤0.004
-      FP16/state amplification is acceptable under the diagnostic gate while native
-      full-attention/post-attention still needs a stricter path; do not re-open
+      The first focused artifact,
+      `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-perrow-postattn-atol4e-3-focus1269.json`,
+      remains hidden-only red (`token_passed=true`, `failure_modes=["hidden"]`):
+      L4 final hidden/token stays green but full-attention substage drift is visible,
+      and L8 first fails at decode step 2 / row 1 / dim 1073 (`max_abs=0.008148193359375`).
+      Therefore the batch post-attention add/RMSNorm boundary is not the sole
+      native-full blocker. The next C2.3 work should decide whether the per-row
+      fallback's ≤0.004 FP16/state amplification is acceptable under the diagnostic
+      gate while native full-attention/post-attention still needs a stricter path;
+      do not re-open
       full-attention context, layer-4 state mapping, native linear segment metadata,
       output trace/copy semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2

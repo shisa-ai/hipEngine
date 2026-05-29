@@ -3059,6 +3059,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Diagnostic full-attention decode path for native c>N batch decode; per_row forces the existing non-retained row loop.",
     )
     parser.add_argument(
+        "--batch-decode-post-attn-path",
+        choices=("batch", "per_row"),
+        default="batch",
+        help="Diagnostic post-attention add/RMSNorm path for c>N batch decode; per_row forces token-1 row kernels and blocks retained claims.",
+    )
+    parser.add_argument(
         "--batch-prefill-linear-path",
         choices=("packed_segments", "per_segment"),
         default="packed_segments",
@@ -3115,10 +3121,12 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "batch_decode_moe_path": str(args.batch_decode_moe_path),
             "batch_decode_linear_path": str(args.batch_decode_linear_path),
             "batch_decode_full_attention_path": str(args.batch_decode_full_attn_path),
+            "batch_decode_post_attention_path": str(args.batch_decode_post_attn_path),
             "native_caware_decode": bool(
                 args.prompt_length + args.decode_tokens < 1024
                 and args.batch_decode_linear_path == "batch_segments"
                 and args.batch_decode_full_attn_path == "native_batch"
+                and args.batch_decode_post_attn_path == "batch"
             ),
             "full_attention_decode_path": (
                 "per_row_context_fallback"
@@ -3158,6 +3166,9 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
     )
     os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] = (
         "0" if args.batch_decode_full_attn_path == "per_row" else "1"
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN"] = (
+        "1" if args.batch_decode_post_attn_path == "per_row" else "0"
     )
     os.environ["HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR"] = (
         "1" if args.batch_prefill_linear_path == "per_segment" else "0"
