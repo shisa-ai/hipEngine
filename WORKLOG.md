@@ -48355,3 +48355,23 @@ git diff -- docs/CONCURRENCY.md docs/BENCHMARK.md benchmarks/README.md benchmark
 ```
 
 Result: targeted c-sweep/retained-bench rocprof flag tests PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and the change only centralizes retained rocprof command provenance rules.
+
+## 2026-05-29 — CONCURRENCY shared profiler command targets
+
+Added shared `RETAINED_ARTIFACT_ROCPROF_EXECUTABLE` and `RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT` constants in `scripts/qwen35_batch_constants.py` and wired c-sweep plus retained-bench profiler provenance checks through them. The retained evidence gates now use the same rocprof executable and retained-bench script identifiers for command planning, profiler summary preconditions, persisted summary validation, retained-bench command synthesis, and profiler provenance blockers.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_constants.py scripts/qwen35_batch_c_sweep.py scripts/qwen35_batch_retained_bench.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_batch_c_sweep_profiler_precondition_synthesizes_trace_fields_from_csv tests/test_generation_batch_scheduler.py::test_batch_c_sweep_profiler_precondition_rejects_wrong_retained_artifact_command tests/test_generation_batch_scheduler.py::test_batch_c_sweep_runs_retained_when_all_references_are_usable tests/test_generation_batch_scheduler.py::test_qwen35_retained_profiler_reference_loads_captured_summary tests/test_generation_batch_scheduler.py::test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_paths -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/CONCURRENCY.md docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md WORKLOG.md && git diff --check
+```
+
+Result: targeted c-sweep/retained-bench profiler command target tests PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and the change only centralizes retained profiler command target provenance rules.

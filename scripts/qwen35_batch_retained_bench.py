@@ -50,7 +50,9 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_PROFILER_TRACE_START_COLUMNS,
     RETAINED_ARTIFACT_PROFILER_SYNTHESIZED_FIELDS,
     RETAINED_ARTIFACT_ROCPROF_COMMAND_FLAGS,
+    RETAINED_ARTIFACT_ROCPROF_EXECUTABLE,
     RETAINED_ARTIFACT_ROCPROF_OUTPUT_FORMAT,
+    RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT,
     RETAINED_ARTIFACT_RETAINED_GATE_FLAGS,
     RETAINED_ARTIFACT_RETAINED_GATE_LABELS,
     RETAINED_ARTIFACT_RETAINED_KV_POLICY_FLAGS,
@@ -74,7 +76,9 @@ _PROFILER_TRACE_START_COLUMNS = RETAINED_ARTIFACT_PROFILER_TRACE_START_COLUMNS
 _PROFILER_TRACE_END_COLUMNS = RETAINED_ARTIFACT_PROFILER_TRACE_END_COLUMNS
 _PROFILER_TRACE_DURATION_COLUMNS = RETAINED_ARTIFACT_PROFILER_TRACE_DURATION_COLUMNS
 _ROCPROF_COMMAND_FLAGS = RETAINED_ARTIFACT_ROCPROF_COMMAND_FLAGS
+_ROCPROF_EXECUTABLE = RETAINED_ARTIFACT_ROCPROF_EXECUTABLE
 _ROCPROF_OUTPUT_FORMAT = RETAINED_ARTIFACT_ROCPROF_OUTPUT_FORMAT
+_RETAINED_BENCH_SCRIPT = RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT
 _RETAINED_GATE_FLAGS = RETAINED_ARTIFACT_RETAINED_GATE_FLAGS
 _RETAINED_GATE_LABELS = RETAINED_ARTIFACT_RETAINED_GATE_LABELS
 _RETAINED_KV_POLICY_FLAGS = RETAINED_ARTIFACT_RETAINED_KV_POLICY_FLAGS
@@ -964,7 +968,7 @@ def _profiled_command(args: argparse.Namespace, argv: Sequence[str] | None) -> s
     if getattr(args, "profiler_json", None) is None:
         return None
     return (
-        f"rocprofv3 {_ROCPROF_COMMAND_FLAGS[0]} {_ROCPROF_COMMAND_FLAGS[1]} {_ROCPROF_OUTPUT_FORMAT} "
+        f"{_ROCPROF_EXECUTABLE} {_ROCPROF_COMMAND_FLAGS[0]} {_ROCPROF_COMMAND_FLAGS[1]} {_ROCPROF_OUTPUT_FORMAT} "
         f"{_ROCPROF_COMMAND_FLAGS[2]} <profile-dir> -- {_command(argv)}"
     )
 
@@ -1493,16 +1497,16 @@ def _profiler_command_provenance_blockers(
         blockers.append("profiler command must include exactly one rocprof separator")
     rocprof_prefix = _rocprof_command_prefix(command)
     rocprof_prefix_command = _join_command_parts(rocprof_prefix)
-    if not rocprof_prefix or Path(rocprof_prefix[0]).name != "rocprofv3":
+    if not rocprof_prefix or Path(rocprof_prefix[0]).name != _ROCPROF_EXECUTABLE:
         blockers.append("profiler command must start with rocprofv3")
-    if not any(Path(part).name == "rocprofv3" for part in rocprof_prefix):
+    if not any(Path(part).name == _ROCPROF_EXECUTABLE for part in rocprof_prefix):
         blockers.append("profiler command must include rocprofv3")
     for flag in _ROCPROF_COMMAND_FLAGS:
         if _command_flag_count(rocprof_prefix, flag) > 1:
             blockers.append(f"profiler command {flag} must be unique before rocprof separator")
     if _ROCPROF_COMMAND_FLAGS[0] not in rocprof_prefix:
         blockers.append("profiler command must include --kernel-trace")
-    if "scripts/qwen35_batch_retained_bench.py" not in command:
+    if _RETAINED_BENCH_SCRIPT not in command:
         blockers.append("profiler command must target scripts/qwen35_batch_retained_bench.py")
     profiled_segment = _profiled_command_segment(command)
     retained_command = command
@@ -1519,7 +1523,7 @@ def _profiler_command_provenance_blockers(
         if (
             len(profiled_segment) < 2
             or not Path(profiled_segment[0]).name.startswith("python")
-            or profiled_segment[1] != "scripts/qwen35_batch_retained_bench.py"
+            or profiled_segment[1] != _RETAINED_BENCH_SCRIPT
         ):
             blockers.append("profiler command must launch retained bench after rocprof separator")
     if _command_arg_value(rocprof_prefix_command, _ROCPROF_COMMAND_FLAGS[1]) != _ROCPROF_OUTPUT_FORMAT:
@@ -2134,7 +2138,7 @@ def _hardware_context() -> dict[str, Any]:
 
 
 def _command(argv: Sequence[str] | None) -> str:
-    parts = ["python3", "scripts/qwen35_batch_retained_bench.py"]
+    parts = ["python3", _RETAINED_BENCH_SCRIPT]
     parts.extend(sys.argv[1:] if argv is None else list(argv))
     return " ".join(shlex.quote(part) for part in parts)
 

@@ -33,6 +33,7 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS,
     RETAINED_ARTIFACT_PROFILER_TRACE_SYNTHESIZED_FIELDS,
     RETAINED_ARTIFACT_ROCPROF_COMMAND_FLAGS,
+    RETAINED_ARTIFACT_ROCPROF_EXECUTABLE,
     RETAINED_ARTIFACT_ROCPROF_OUTPUT_FORMAT,
     RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA,
     RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SEED,
@@ -42,6 +43,7 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS,
     RETAINED_ARTIFACT_RETAINED_CONDITION_STATUS_LABELS,
     RETAINED_ARTIFACT_RETAINED_GATE_FLAGS,
+    RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT,
     RETAINED_ARTIFACT_RETAINED_GATE_LABELS,
     RETAINED_ARTIFACT_RETAINED_POSTCONDITION_KINDS,
     RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS,
@@ -70,6 +72,7 @@ _PROFILER_TRACE_START_COLUMNS = RETAINED_ARTIFACT_PROFILER_TRACE_START_COLUMNS
 _PROFILER_TRACE_END_COLUMNS = RETAINED_ARTIFACT_PROFILER_TRACE_END_COLUMNS
 _PROFILER_TRACE_DURATION_COLUMNS = RETAINED_ARTIFACT_PROFILER_TRACE_DURATION_COLUMNS
 _ROCPROF_COMMAND_FLAGS = RETAINED_ARTIFACT_ROCPROF_COMMAND_FLAGS
+_ROCPROF_EXECUTABLE = RETAINED_ARTIFACT_ROCPROF_EXECUTABLE
 _ROCPROF_OUTPUT_FORMAT = RETAINED_ARTIFACT_ROCPROF_OUTPUT_FORMAT
 _REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA = RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA
 _REQUIRED_PRIMITIVE_CORRECTNESS_SEED = RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SEED
@@ -102,6 +105,7 @@ def _primitive_context_lens_matches(value: Any, rows: int) -> bool:
 
 
 _PROFILER_SYNTHESIZED_FIELDS = RETAINED_ARTIFACT_PROFILER_TRACE_SYNTHESIZED_FIELDS
+_RETAINED_BENCH_SCRIPT = RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT
 _RETAINED_BENCH_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS
 _RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS = RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS
 _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS
@@ -238,7 +242,7 @@ def build_sweep_commands(args: argparse.Namespace) -> tuple[SweepCommand, ...]:
 
         native_json = output_dir / f"native-diagnostic-c{c}.json"
         native_argv = _batch_bench_argv(
-            "scripts/qwen35_batch_retained_bench.py",
+            _RETAINED_BENCH_SCRIPT,
             args,
             batch_size=c,
             artifact_path=native_json,
@@ -1178,7 +1182,7 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
         if profiler_command is None:
             reasons.append("profiler command is missing")
         else:
-            if "rocprofv3" not in profiler_command or _ROCPROF_COMMAND_FLAGS[0] not in profiler_command:
+            if _ROCPROF_EXECUTABLE not in profiler_command or _ROCPROF_COMMAND_FLAGS[0] not in profiler_command:
                 reasons.append("profiler command does not include rocprofv3 --kernel-trace")
             command_output_format = _command_text_arg(profiler_command, _ROCPROF_COMMAND_FLAGS[1])
             if command_output_format != _ROCPROF_OUTPUT_FORMAT:
@@ -1188,7 +1192,7 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                 reasons.append("profiler command is missing -d <trace_dir>")
             elif profiler_trace_dir is not None and command_trace_dir != profiler_trace_dir:
                 reasons.append(f"profiler command trace-dir={command_trace_dir!r} does not match profiler.trace_dir={profiler_trace_dir}")
-            if "scripts/qwen35_batch_retained_bench.py" not in profiler_command:
+            if _RETAINED_BENCH_SCRIPT not in profiler_command:
                 reasons.append("profiler command does not target qwen35_batch_retained_bench.py")
             for flag in _RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS:
                 if _command_text_has_flag(profiler_command, flag):
@@ -2119,7 +2123,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             expected_scripts_by_category = {
                 _PRIMITIVE_COMMAND_CATEGORY: {"scripts/qwen35_batch_correctness.py"},
                 _SERIAL_BRIDGE_COMMAND_CATEGORY: {"scripts/qwen35_batch_serial_bench.py"},
-                _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY: {"scripts/qwen35_paro_bench.py", "scripts/qwen35_batch_retained_bench.py"},
+                _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY: {"scripts/qwen35_paro_bench.py", _RETAINED_BENCH_SCRIPT},
                 _INT8_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY: {"scripts/qwen35_batch_int8_diagnostic.py"},
             }
             expected_scripts = expected_scripts_by_category.get(entry.get("category"))
@@ -2507,9 +2511,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     profiler_command = profiler_precondition.get("profiler_command")
                     if (
                         not isinstance(profiler_command, str)
-                        or "rocprofv3" not in profiler_command
+                        or _ROCPROF_EXECUTABLE not in profiler_command
                         or _ROCPROF_COMMAND_FLAGS[0] not in profiler_command
-                        or "scripts/qwen35_batch_retained_bench.py" not in profiler_command
+                        or _RETAINED_BENCH_SCRIPT not in profiler_command
                     ):
                         errors.append("commands[].preconditions[].profiler_command must include rocprofv3 kernel trace retained bench when passed")
                         break
@@ -2517,7 +2521,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         profiler_command_argv = shlex.split(profiler_command)
                     except ValueError:
                         profiler_command_argv = []
-                    if not profiler_command_argv or Path(profiler_command_argv[0]).name != "rocprofv3":
+                    if not profiler_command_argv or Path(profiler_command_argv[0]).name != _ROCPROF_EXECUTABLE:
                         errors.append("commands[].preconditions[].profiler_command must start with rocprofv3 when passed")
                         break
                     if profiler_command_argv.count("--") != 1:
@@ -2542,7 +2546,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if (
                         len(profiled_command_argv) < 2
                         or not _is_python_executable(profiled_command_argv[0])
-                        or profiled_command_argv[1] != "scripts/qwen35_batch_retained_bench.py"
+                        or profiled_command_argv[1] != _RETAINED_BENCH_SCRIPT
                     ):
                         errors.append("commands[].preconditions[].profiler_command must launch retained bench after rocprof separator when passed")
                         break
