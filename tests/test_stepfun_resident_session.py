@@ -10,7 +10,7 @@ import pytest
 
 from hipengine.core.hip import get_hip_runtime
 from hipengine.core.memory import memory_stats, reset_memory_stats
-from hipengine.kernels.cpu_reference import gguf_q8_0_embedding
+from hipengine.kernels.cpu_reference import gguf_q3_k_gemv, gguf_q5_k_gemv, gguf_q8_0_embedding
 from hipengine.loading.gguf import GGUFReader, scan_gguf_splits
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.loading.stepfun_gguf import build_stepfun_gguf_tensor_map
@@ -68,6 +68,44 @@ def test_stepfun_resident_session_embeds_real_q8_tokens() -> None:
         stats = memory_stats()
         assert stats["current_allocated_bytes"] == token_tensor.nbytes
         assert stats["active_allocations"] == 1
+    finally:
+        session.free(runtime=runtime)
+
+    assert memory_stats()["current_allocated_bytes"] == 0
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_stepfun_resident_session_projects_real_q3_and_q5_layer_weights() -> None:
+    paths = _stepfun_gguf_paths()
+    info = scan_gguf_splits(paths)
+    model_map = build_stepfun_gguf_tensor_map(info)
+    q3_tensor = model_map.layer(0).tensor("attn_q")
+    q5_tensor = model_map.layer(0).tensor("attn_output")
+    runtime = get_hip_runtime()
+    reset_memory_stats()
+    session = StepFunResidentSession.from_gguf_paths(
+        paths,
+        selected_slots=("layers.0.attn_q", "layers.0.attn_output"),
+        runtime=runtime,
+    )
+    try:
+        x_q3 = ((np.arange(4096, dtype=np.float32).reshape(1, 4096) % 31) - 15) / 128.0
+        x_q3_bits = float_array_to_bf16_bits(x_q3)
+        raw_q3 = GGUFReader(q3_tensor.source_path).tensor_data(q3_tensor.name)
+        expected_q3 = gguf_q3_k_gemv(bf16_to_float32(x_q3_bits), raw_q3)
+        actual_q3 = session.linear_slot_bf16("layers.0.attn_q", x_q3_bits, runtime=runtime)
+        np.testing.assert_allclose(actual_q3, expected_q3, rtol=2.0e-3, atol=2.0e-3)
+
+        x_q5 = ((np.arange(8192, dtype=np.float32).reshape(1, 8192) % 37) - 18) / 96.0
+        x_q5_bits = float_array_to_bf16_bits(x_q5)
+        raw_q5 = GGUFReader(q5_tensor.source_path).tensor_data(q5_tensor.name)
+        expected_q5 = gguf_q5_k_gemv(bf16_to_float32(x_q5_bits), raw_q5)
+        actual_q5 = session.linear_slot_bf16("layers.0.attn_output", x_q5_bits, runtime=runtime)
+        np.testing.assert_allclose(actual_q5, expected_q5, rtol=2.0e-3, atol=2.0e-3)
+
+        expected_nbytes = q3_tensor.nbytes + q5_tensor.nbytes
+        assert session.weights.allocated_nbytes == expected_nbytes
+        assert memory_stats()["current_allocated_bytes"] == expected_nbytes
     finally:
         session.free(runtime=runtime)
 

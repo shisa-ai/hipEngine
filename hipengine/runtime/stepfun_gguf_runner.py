@@ -17,6 +17,7 @@ from hipengine.loading.stepfun_gguf_materialize import (
     materialize_stepfun_gguf_weights,
 )
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
+from hipengine.runtime.gguf_linear import GGUF_OUTPUT_BF16, GGUF_OUTPUT_F32, launch_gguf_linear
 from hipengine.tokenization import StepFunGGUFTokenizer
 
 DEFAULT_STEPFUN_SHORT_CONTEXT = 512
@@ -199,6 +200,18 @@ class StepFunResidentSession:
     def __exit__(self, exc_type, exc, tb) -> None:
         self.free()
 
+    def weight_for_slot(self, slot_path: str):
+        """Return a resident weight by StepFun materialization slot path."""
+
+        if slot_path.startswith("root."):
+            return self.weights.root(slot_path.removeprefix("root."))
+        if slot_path.startswith("layers."):
+            parts = slot_path.split(".", 2)
+            if len(parts) != 3:
+                raise ValueError(f"invalid StepFun layer slot path: {slot_path!r}")
+            return self.weights.layer(int(parts[1])).weight(parts[2])
+        raise ValueError(f"invalid StepFun materialization slot path: {slot_path!r}")
+
     def embed_token_ids_bf16(
         self,
         token_ids: Sequence[int],
@@ -245,6 +258,64 @@ class StepFunResidentSession:
         finally:
             free(out_buf, runtime=runtime)
             free(token_buf, runtime=runtime)
+        return out
+
+    def linear_slot_bf16(
+        self,
+        slot_path: str,
+        x_bf16_bits,
+        *,
+        output_dtype: str = GGUF_OUTPUT_F32,
+        runtime: HipRuntime | None = None,
+        stream: int = 0,
+    ):
+        """Launch a resident GGUF linear slot with BF16-bit activations."""
+
+        import numpy as np
+
+        if self._closed:
+            raise RuntimeError("StepFun resident session is closed")
+        if output_dtype not in {GGUF_OUTPUT_BF16, GGUF_OUTPUT_F32}:
+            raise ValueError(f"unsupported StepFun resident linear output dtype {output_dtype!r}")
+        runtime = runtime or get_hip_runtime()
+        _register_backend_plugin(self.backend)
+        weight = self.weight_for_slot(slot_path)
+        if len(weight.spec.source.shape) != 2:
+            raise ValueError(f"StepFun linear slot must be rank-2, got {slot_path!r}")
+        out_features, in_features = (int(dim) for dim in weight.spec.source.shape)
+        x = np.ascontiguousarray(x_bf16_bits, dtype=np.uint16)
+        if x.ndim != 2:
+            raise ValueError("x_bf16_bits must have shape [rows, in_features]")
+        rows = int(x.shape[0])
+        if rows <= 0:
+            raise ValueError("x_bf16_bits must have at least one row")
+        if int(x.shape[1]) != in_features:
+            raise ValueError(
+                f"x_bf16_bits.shape[1]={x.shape[1]} does not match {slot_path} in_features={in_features}"
+            )
+        out_dtype = np.uint16 if output_dtype == GGUF_OUTPUT_BF16 else np.float32
+        out = np.empty((rows, out_features), dtype=out_dtype)
+        x_buf = malloc(x.nbytes, runtime=runtime)
+        out_buf = malloc(out.nbytes, runtime=runtime)
+        try:
+            copy_host_to_device(x_buf, host_array_ptr(x), runtime=runtime)
+            launch_gguf_linear(
+                weight,
+                x_buf.ptr,
+                out_buf.ptr,
+                rows=rows,
+                in_features=in_features,
+                out_features=out_features,
+                output_dtype=output_dtype,
+                backend=self.backend,
+                stream=stream,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            copy_device_to_host(host_array_ptr(out), out_buf, runtime=runtime)
+        finally:
+            free(out_buf, runtime=runtime)
+            free(x_buf, runtime=runtime)
         return out
 
 

@@ -27075,3 +27075,17 @@ python3 -m pytest -q tests/test_stepfun_resident_session.py
 ```
 
 Result: `3 passed`. No torch import was introduced and no full-generation/performance claim is made.
+
+## 2026-05-29 — StepFun resident mixed-quant linear projections
+
+Extended `StepFunResidentSession` with resident slot lookup and `linear_slot_bf16()`, which launches the existing registry-driven GGUF linear dispatch for resident raw GGUF weights using BF16-bit activations and returns host-visible F32 or BF16 outputs. This validates the next execution primitive needed by P11 before composing attention and MoE.
+
+Updated `tests/test_stepfun_resident_session.py` to load real resident `layers.0.attn_q` (`Q3_K`) and `layers.0.attn_output` (`Q5_K`), run HIP/gfx1151 GEMV with BF16-rounded synthetic activations, and compare against CPU dequantized references. The test also checks temporary activation/output buffers are freed and resident weight allocations remain tracked until session free.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_resident_session.py
+```
+
+Result: `4 passed`. Full Step layer composition, KV cache allocation, logits, and llama.cpp next-token parity remain open.
