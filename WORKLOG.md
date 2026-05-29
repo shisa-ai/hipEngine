@@ -45202,3 +45202,49 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (`257` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with concrete diagnostic/primitive artifacts, and no retained c>N performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY dense-c1 model-shape context control
+
+Advanced C2.3 by tightening `scripts/qwen35_batch_correctness.py` for model-shape context diagnostics:
+
+- Fixed the fixture fill path to write K/V rows across paged block boundaries instead of only `block 0`, and added a unit test for a page-boundary fill.
+- Added `--include-dense-c1`, which keeps the existing exact paged-c1 primitive gate but also compares batch paged context against the actual dense short-context c1 kernel used by runtime when `max_live_count < 1024`.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_correctness.py tests/test_generation_batch_scheduler.py
+pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_batch_correctness_numpy_attention_handles_paged_blocks tests/test_generation_batch_scheduler.py::test_qwen35_batch_correctness_fill_context_cache_rows_crosses_page_boundary tests/test_generation_batch_scheduler.py::test_qwen35_batch_correctness_context_lens_parser_validates_rows tests/test_generation_batch_scheduler.py::test_qwen35_primitive_correctness_passed_matches_retained_bounds -q
+```
+
+Default primitive guard compatibility remains green:
+
+```bash
+python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json
+python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Model-shape dense-c1 control:
+
+```bash
+python3 scripts/qwen35_batch_correctness.py --rows 2 --max-context-len 513 --context-lens 513,513 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 --include-dense-c1 --json /tmp/hipengine-multiloop-c2-modelshape-dense-c1-primitive-correctness.json
+```
+
+Result: `/tmp/hipengine-multiloop-c2-modelshape-dense-c1-primitive-correctness.json` is `passed=true` with exact paged c1 parity (`attn_batch_vs_c1_max_abs=0.0`), NumPy max abs `1.4901161193847656e-08`, dense c1 delta `attn_batch_vs_dense_c1_max_abs=1.862645149230957e-08`, and dense c1 NumPy max abs `1.4901161193847656e-08`. The updated `/tmp/hipengine-multiloop-c2-modelshape-primitive-correctness.json` with `context_lens=513,512` reports the same dense-c1 delta and NumPy max abs after the multi-block fill fix.
+
+Interpretation: the strict runtime `attn_context` mismatch is not explained by dense-vs-paged short-context math; standalone paged batch, paged c1, dense c1, and NumPy agree at the runtime model shape with real multi-block K/V contents. Next work should trace retained runtime K/V cache contents around prefill/decode append.
+
+Loop validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+python3 scripts/qwen35_batch_correctness.py --rows 2 --max-context-len 513 --context-lens 513,513 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 --include-dense-c1 --json /tmp/hipengine-multiloop-c2-modelshape-dense-c1-primitive-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (`258` selected pytest tests plus c=2/c=8 primitive correctness); dense-c1 model-shape primitive control PASS. Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with concrete diagnostic/primitive artifacts, and no retained c>N performance/scaling claim was added.

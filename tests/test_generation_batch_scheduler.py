@@ -7829,6 +7829,22 @@ def test_qwen35_batch_correctness_numpy_attention_handles_paged_blocks() -> None
     assert float(out[0, 0, 0]) == pytest.approx(3.0)
 
 
+def test_qwen35_batch_correctness_fill_context_cache_rows_crosses_page_boundary() -> None:
+    key_cache = np.zeros((1, 2, 2, 1, 1), dtype=np.uint16)
+    value_cache = np.zeros_like(key_cache)
+    key_f32 = np.arange(4, dtype=np.float32).reshape(1, 2, 2, 1, 1)
+    value_f32 = (10.0 + np.arange(4, dtype=np.float32)).reshape(1, 2, 2, 1, 1)
+    batch_correctness._fill_context_cache_rows(
+        key_cache,
+        value_cache,
+        key_f32,
+        value_f32,
+        np.array([3], dtype=np.int64),
+    )
+    assert batch_correctness._bf16_to_f32(key_cache).reshape(1, 4, 1, 1)[0, :, 0, 0].tolist() == [0.0, 1.0, 2.0, 0.0]
+    assert batch_correctness._bf16_to_f32(value_cache).reshape(1, 4, 1, 1)[0, :, 0, 0].tolist() == [10.0, 11.0, 12.0, 0.0]
+
+
 def test_qwen35_batch_correctness_context_lens_parser_validates_rows() -> None:
     parsed = batch_correctness._parse_context_lens("513,512", rows=2, max_context_len=513)
     assert parsed.tolist() == [513, 512]

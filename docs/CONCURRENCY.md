@@ -904,16 +904,19 @@ roll-up/status view.
       records the failing runtime layer with `positions=[512,512]`,
       `decode_live_counts=[513,513]`, `block_table_rows=[[0,1,2,3],[0,1,2,3]]`,
       and `attn_context_trace_source=attention_scratch.query_raw`. Matching
-      model-shape primitive controls now cover the 16-Q/2-KV/head-dim-256 path:
+      model-shape primitive controls now fill paged rows across block boundaries
+      and cover the 16-Q/2-KV/head-dim-256 path:
       `/tmp/hipengine-multiloop-c2-modelshape-primitive-correctness.json`
-      (`context_lens=513,512`) and
+      (`context_lens=513,512`, with dense-c1 comparison) and
       `/tmp/hipengine-multiloop-c2-modelshape-primitive-correctness-513x2.json`
       (`context_lens=513,513`) both pass with append mismatches zero,
       `attn_batch_vs_c1_max_abs=0.0`, and NumPy max abs
-      `3.166496753692627e-08`. The next native-full investigation should
-      compare the runtime layer's retained K/V contents before/after the decode
-      append, while treating live-count/block metadata and standalone batch
-      append/context primitives as model-shape green.
+      `1.4901161193847656e-08`; the dense short-context c1 comparison is also
+      tolerance-green (`attn_batch_vs_dense_c1_max_abs=1.862645149230957e-08`).
+      The next native-full investigation should compare the runtime layer's
+      retained K/V contents before/after the decode append, while treating
+      live-count/block metadata, dense-vs-paged c1 context math, and standalone
+      batch append/context primitives as model-shape green.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

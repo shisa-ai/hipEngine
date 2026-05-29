@@ -22,6 +22,7 @@ from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.attention import (
     build_qwen35_paged_attn_decode,
     build_qwen35_paged_kv_write,
+    qwen35_full_attn_decode_context_bf16,
     qwen35_paged_full_attn_decode_context_bf16_batch_spans,
     qwen35_paged_full_attn_decode_context_bf16_spans,
     qwen35_write_paged_kv_mixed_value_bf16_batch_spans,
@@ -114,6 +115,26 @@ def _parse_context_lens(text: str, *, rows: int, max_context_len: int) -> np.nda
     return np.asarray(values, dtype=np.int64)
 
 
+def _fill_context_cache_rows(
+    key_cache: np.ndarray,
+    value_cache: np.ndarray,
+    key_cache_f32: np.ndarray,
+    value_cache_f32: np.ndarray,
+    context_lens: np.ndarray,
+) -> None:
+    rows, blocks, block_size, num_kv_heads, head_dim = key_cache.shape
+    flat_tokens = blocks * block_size
+    for row, context_len in enumerate(context_lens):
+        if int(context_len) > flat_tokens:
+            raise ValueError("context_len exceeds cache capacity")
+        row_key = key_cache[row].reshape(flat_tokens, num_kv_heads, head_dim)
+        row_value = value_cache[row].reshape(flat_tokens, num_kv_heads, head_dim)
+        row_key_f32 = key_cache_f32[row].reshape(flat_tokens, num_kv_heads, head_dim)
+        row_value_f32 = value_cache_f32[row].reshape(flat_tokens, num_kv_heads, head_dim)
+        row_key[: int(context_len)] = float_array_to_bf16_bits(row_key_f32[: int(context_len)])
+        row_value[: int(context_len)] = float_array_to_bf16_bits(row_value_f32[: int(context_len)])
+
+
 def run(
     rows: int,
     *,
@@ -124,6 +145,7 @@ def run(
     num_kv_heads: int = 1,
     head_dim: int = 8,
     context_lens: np.ndarray | None = None,
+    include_dense_c1: bool = False,
 ) -> dict[str, object]:
     if rows <= 0:
         raise ValueError("rows must be positive")
@@ -225,18 +247,18 @@ def run(
         value_cache_f32 = rng.normal(0.0, 0.25, size=(rows, blocks, block_size, num_kv_heads, head_dim)).astype(np.float32)
         key_cache = np.zeros_like(batch_key_cache)
         value_cache = np.zeros_like(batch_value_cache)
-        for row, context_len in enumerate(context_lens):
-            key_cache[row, 0, :context_len] = float_array_to_bf16_bits(key_cache_f32[row, 0, :context_len])
-            value_cache[row, 0, :context_len] = float_array_to_bf16_bits(value_cache_f32[row, 0, :context_len])
+        _fill_context_cache_rows(key_cache, value_cache, key_cache_f32, value_cache_f32, context_lens)
         query = rng.normal(0.0, 0.25, size=(rows, num_q_heads, head_dim)).astype(np.float32)
         batch_out = np.zeros((rows, num_q_heads, head_dim), dtype=np.float32)
         c1_out = np.zeros_like(batch_out)
+        dense_c1_out = np.zeros_like(batch_out) if include_dense_c1 else None
         query_b = arena.dev(query)
         key_cache_b = arena.dev(key_cache)
         value_cache_b = arena.dev(value_cache)
         live_b = arena.dev(context_lens)
         batch_out_b = arena.dev(batch_out)
         c1_out_b = arena.dev(c1_out)
+        dense_c1_out_b = arena.dev(dense_c1_out) if dense_c1_out is not None else None
         decode_spans = KVLiveSpans.paged_uniform(
             block_table=_device_tensor(bt.ptr, block_table.shape, "int32"),
             live_counts=_device_tensor(live_b.ptr, context_lens.shape, "int64"),
@@ -284,8 +306,25 @@ def run(
                 library=attn_lib,
                 runtime=arena.runtime,
             )
+            if dense_c1_out_b is not None:
+                qwen35_full_attn_decode_context_bf16(
+                    query_b.ptr + row * row_query_bytes,
+                    key_cache_b.ptr + row * row_cache_bytes,
+                    value_cache_b.ptr + row * row_cache_bytes,
+                    dense_c1_out_b.ptr + row * row_out_bytes,
+                    live_b.ptr + row * live_bytes,
+                    max_context_len,
+                    num_q_heads,
+                    num_kv_heads,
+                    head_dim,
+                    scale,
+                    library=attn_lib,
+                    runtime=arena.runtime,
+                )
         copy_device_to_host(host_array_ptr(batch_out), batch_out_b, runtime=arena.runtime)
         copy_device_to_host(host_array_ptr(c1_out), c1_out_b, runtime=arena.runtime)
+        if dense_c1_out_b is not None and dense_c1_out is not None:
+            copy_device_to_host(host_array_ptr(dense_c1_out), dense_c1_out_b, runtime=arena.runtime)
         expected = _numpy_attention(query, key_cache, value_cache, context_lens, scale=scale)
     finally:
         arena.close()
@@ -313,6 +352,13 @@ def run(
             batch_vs_numpy,
         ),
     }
+    if dense_c1_out is not None:
+        result.update(
+            {
+                "attn_batch_vs_dense_c1_max_abs": float(np.max(np.abs(batch_out - dense_c1_out))),
+                "attn_dense_c1_vs_numpy_max_abs": float(np.max(np.abs(dense_c1_out - expected))),
+            }
+        )
     return result
 
 
@@ -326,6 +372,7 @@ def main() -> None:
     parser.add_argument("--num-kv-heads", type=int, default=1)
     parser.add_argument("--head-dim", type=int, default=8)
     parser.add_argument("--context-lens", help="comma-separated live counts; defaults to 1..max_context_len coverage")
+    parser.add_argument("--include-dense-c1", action="store_true", help="also compare batch paged context against the dense c1 short-context kernel")
     parser.add_argument("--json", type=Path)
     args = parser.parse_args()
     context_lens = None
@@ -340,6 +387,7 @@ def main() -> None:
         num_kv_heads=args.num_kv_heads,
         head_dim=args.head_dim,
         context_lens=context_lens,
+        include_dense_c1=args.include_dense_c1,
     )
     if args.json is not None:
         result["artifact_path"] = str(args.json)
