@@ -1433,6 +1433,9 @@ def _retained_profiler_synthesis_postcondition(
         return result
     if isinstance(expected_source_artifact_path, str) and expected_source_artifact_path:
         actual_source_artifact_path = profiler.get("source_artifact_path")
+        if not isinstance(actual_source_artifact_path, str) or not actual_source_artifact_path:
+            result["reason"] = "retained artifact profiler.source_artifact_path is missing or malformed"
+            return result
         result["profiler_source_artifact_path"] = actual_source_artifact_path
         if actual_source_artifact_path != expected_source_artifact_path:
             result["reason"] = "retained artifact profiler.source_artifact_path does not match profiler precondition source path"

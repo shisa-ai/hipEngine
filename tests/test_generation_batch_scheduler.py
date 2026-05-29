@@ -5453,6 +5453,28 @@ def test_batch_c_sweep_fails_retained_row_on_profiler_synthesis_mismatch(tmp_pat
     assert native["postcondition"] == native["postconditions"][0]
     assert native["output_tail"] == "retained artifact profiler.synthesized_fields does not match profiler precondition synthesized fields"
     c_sweep.validate_sweep_summary(summary)
+    missing_source_json = output_dir / "native-diagnostic-missing-source-c2.json"
+    missing_source_json.write_text(json.dumps({"profiler": {"synthesized_fields": ["trace_kernel_names"]}}))
+    missing_source_postcondition = c_sweep._retained_profiler_synthesis_postcondition(
+        c_sweep.SweepCommand(
+            category="native_diagnostic",
+            batch_size=2,
+            artifact_path=missing_source_json,
+            argv=("python3",),
+        ),
+        native["preconditions"],
+    )
+    missing_source_reason = "retained artifact profiler.source_artifact_path is missing or malformed"
+    assert missing_source_postcondition["reason"] == missing_source_reason
+    assert "profiler_source_artifact_path" not in missing_source_postcondition
+    missing_source_summary = json.loads(json.dumps(summary))
+    missing_source_summary["commands"][-1]["output_tail"] = missing_source_reason
+    missing_source_summary["failed_postconditions"][0]["reason"] = missing_source_reason
+    missing_source_summary["commands"][-1]["postconditions"][0]["reason"] = missing_source_reason
+    for key in ("profiler_source_artifact_path", "profiler_synthesized_fields", "profiler_precondition_synthesized_fields"):
+        missing_source_summary["commands"][-1]["postconditions"][0].pop(key, None)
+    missing_source_summary["commands"][-1]["postcondition"] = missing_source_summary["commands"][-1]["postconditions"][0]
+    c_sweep.validate_sweep_summary(missing_source_summary)
     tampered_failed_postcondition_precondition_source = json.loads(json.dumps(summary))
     tampered_failed_postcondition_precondition_source["commands"][-1]["postconditions"][0]["profiler_precondition_source_artifact_path"] = str(output_dir / "stale-profiler.json")
     tampered_failed_postcondition_precondition_source["commands"][-1]["postcondition"] = tampered_failed_postcondition_precondition_source["commands"][-1]["postconditions"][0]
