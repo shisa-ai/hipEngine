@@ -915,9 +915,13 @@ roll-up/status view.
       tolerance-green (`attn_batch_vs_dense_c1_max_abs=1.862645149230957e-08`).
       The KV-tail trace refresh at
       `/tmp/hipengine-hidden-bisect-L3-L4-512-16-c2-kv-tail-transition-focus1269.json`
-      adds BF16 cache samples for `first`, `previous`, and `current` tokens; the
-      failing layer's `decode_full_kv_samples` passes at zero tolerance
-      (`bit_mismatch=0`, worst `max_abs=0.0`) while `attn_context` still fails.
+      added BF16 cache samples for `first`, `previous`, and `current` tokens;
+      the multipoint refresh at
+      `/tmp/hipengine-hidden-bisect-L4-512-16-c2-kv-multipoint-focus1269.json`
+      now samples `first`, `page0_last`, `page1_first`, `previous`, and `current`
+      positions (`[0,255,256,511,512]` for the failing step). The failing layer's
+      `decode_full_kv_samples` still passes at zero tolerance (`bit_mismatch=0`,
+      worst `max_abs=0.0`) while `attn_context` still fails.
       The query refresh at
       `/tmp/hipengine-hidden-bisect-L4-512-16-c2-query-focus1269.json` also shows
       the FP32 `query` launch input is exact (`max_abs=0.0`) while

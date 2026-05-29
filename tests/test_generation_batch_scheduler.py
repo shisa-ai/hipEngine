@@ -66,6 +66,7 @@ from scripts.qwen35_batch_hidden_bisect import (
     HiddenRun,
     _first_failing_layer_transition,
     _first_hidden_mismatch,
+    _decode_full_kv_sample_positions,
     _parse_focus_hidden_flat_indices,
     _parse_layer_limits,
     _summarize_layer_limit,
@@ -6476,6 +6477,11 @@ def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:
             ],
         },
     }
+
+
+def test_hidden_bisect_full_kv_sample_positions_cover_page_boundaries() -> None:
+    assert _decode_full_kv_sample_positions(512, block_size=256) == (0, 255, 256, 511, 512)
+    assert _decode_full_kv_sample_positions(2, block_size=256) == (0, 2, 2, 1, 2)
 
 
 def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:

@@ -749,9 +749,16 @@ def _stack_decode_full_attention_rows(
     }
 
 
-def _decode_full_kv_sample_positions(position: int) -> tuple[int, int, int]:
+DECODE_FULL_KV_SAMPLE_LABELS = ("first", "page0_last", "page1_first", "previous", "current")
+
+
+def _decode_full_kv_sample_positions(position: int, *, block_size: int = 256) -> tuple[int, int, int, int, int]:
     pos = int(position)
-    return (0, max(0, pos - 1), pos)
+    if pos < 0:
+        raise ValueError("position must be non-negative")
+    if block_size <= 0:
+        raise ValueError("block_size must be positive")
+    return (0, min(pos, block_size - 1), min(pos, block_size), max(0, pos - 1), pos)
 
 
 def _copy_decode_full_kv_samples(
@@ -778,7 +785,7 @@ def _copy_decode_full_kv_samples(
             if len(key_cache.shape) != 4 or len(value_cache.shape) != 4:
                 raise ValueError(f"full-attention KV cache for layer {layer_id} must be rank-4")
             _blocks, block_size, num_kv_heads, head_dim = (int(dim) for dim in key_cache.shape)
-            sample_positions = np.asarray(_decode_full_kv_sample_positions(int(position)), dtype=np.int64)
+            sample_positions = np.asarray(_decode_full_kv_sample_positions(int(position), block_size=block_size), dtype=np.int64)
             sample_position_rows.append(sample_positions)
             key_samples = np.empty((len(sample_positions), num_kv_heads, head_dim), dtype=np.uint16)
             value_samples = np.empty_like(key_samples)
@@ -802,7 +809,7 @@ def _copy_decode_full_kv_samples(
             value_rows.append(value_samples)
         if key_rows:
             samples[int(layer_id)] = {
-                "sample_labels": ("first", "previous", "current"),
+                "sample_labels": DECODE_FULL_KV_SAMPLE_LABELS,
                 "sample_positions": np.stack(sample_position_rows, axis=0),
                 "key_bits": np.stack(key_rows, axis=0),
                 "value_bits": np.stack(value_rows, axis=0),
@@ -815,7 +822,7 @@ def _merge_decode_full_kv_sample_rows(
     captured: dict[int, dict[str, np.ndarray | tuple[str, ...]]],
 ) -> None:
     for layer_id, sample in captured.items():
-        target_layer = target.setdefault(int(layer_id), {"sample_labels": ("first", "previous", "current")})
+        target_layer = target.setdefault(int(layer_id), {"sample_labels": DECODE_FULL_KV_SAMPLE_LABELS})
         for key in ("sample_positions", "key_bits", "value_bits"):
             array = np.asarray(sample[key])
             if int(array.shape[0]) != 1:
@@ -829,7 +836,7 @@ def _stack_decode_full_kv_sample_rows(
     stacked: dict[int, dict[str, np.ndarray | tuple[str, ...]]] = {}
     for layer_id, sample in rows_by_layer.items():
         stacked[int(layer_id)] = {
-            "sample_labels": tuple(sample.get("sample_labels", ("first", "previous", "current"))),
+            "sample_labels": tuple(sample.get("sample_labels", DECODE_FULL_KV_SAMPLE_LABELS)),
             "sample_positions": np.concatenate(sample.get("sample_positions", []), axis=0),
             "key_bits": np.concatenate(sample.get("key_bits", []), axis=0),
             "value_bits": np.concatenate(sample.get("value_bits", []), axis=0),
@@ -1455,7 +1462,7 @@ def _decode_full_kv_sample_summary(
         for layer_id in sorted(set(batch_layers) & set(c1_layers)):
             batch_sample = batch_layers[layer_id]
             c1_sample = c1_layers[layer_id]
-            labels = tuple(str(label) for label in batch_sample.get("sample_labels", ("first", "previous", "current")))
+            labels = tuple(str(label) for label in batch_sample.get("sample_labels", DECODE_FULL_KV_SAMPLE_LABELS))
             batch_positions = np.asarray(batch_sample["sample_positions"], dtype=np.int64)
             c1_positions = np.asarray(c1_sample["sample_positions"], dtype=np.int64)
             if batch_positions.shape != c1_positions.shape:
