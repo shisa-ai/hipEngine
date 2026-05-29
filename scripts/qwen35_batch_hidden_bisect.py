@@ -259,6 +259,25 @@ def hidden_comparison(
     return result
 
 
+def _numeric_abs_diff_at_flat_index(batch: np.ndarray, c1: np.ndarray, flat_index: int) -> dict[str, Any]:
+    if batch.shape != c1.shape:
+        raise ValueError(f"numeric shapes differ: batch={batch.shape!r} c1={c1.shape!r}")
+    batch_f32 = np.asarray(batch, dtype=np.float32)
+    c1_f32 = np.asarray(c1, dtype=np.float32)
+    if flat_index < 0 or flat_index >= int(batch_f32.size):
+        raise IndexError(f"flat index {flat_index} out of bounds for shape {batch_f32.shape!r}")
+    signed_diff = batch_f32 - c1_f32
+    diff = np.abs(signed_diff)
+    return {
+        "flat_index": int(flat_index),
+        "index": [int(index) for index in np.unravel_index(int(flat_index), diff.shape)],
+        "abs_diff": float(diff.reshape(-1)[int(flat_index)]),
+        "signed_diff": float(signed_diff.reshape(-1)[int(flat_index)]),
+        "batch_value": float(batch_f32.reshape(-1)[int(flat_index)]),
+        "c1_value": float(c1_f32.reshape(-1)[int(flat_index)]),
+    }
+
+
 def _numeric_top_abs_diff_examples(
     batch: np.ndarray,
     c1: np.ndarray,
@@ -344,6 +363,7 @@ def _numeric_row_summaries(batch: np.ndarray, c1: np.ndarray, *, atol: float) ->
                 "row": int(row),
                 "passed": bool(comparison["passed"]),
                 "max_abs": float(comparison["max_abs"]),
+                "max_abs_flat_index": comparison["max_abs_flat_index"],
                 "max_abs_index": comparison["max_abs_index"],
                 "batch_value_at_max_abs": float(comparison["batch_value_at_max_abs"]),
                 "c1_value_at_max_abs": float(comparison["c1_value_at_max_abs"]),
@@ -578,6 +598,7 @@ def _linear_state_mismatch_record(
         "state": state_name,
         "row": int(row_summary.get("row", -1)),
         "max_abs": float(row_summary.get("max_abs", 0.0)),
+        "max_abs_flat_index": row_summary.get("max_abs_flat_index"),
         "max_abs_index": row_summary.get("max_abs_index", []),
         "elements_over_atol": int(row_summary.get("elements_over_atol", 0)),
     }
@@ -705,6 +726,40 @@ def _linear_state_focus_history(summary: dict[str, Any], focus: dict[str, Any] |
     if layer_index < 0 or not state_name or row_index < 0:
         return []
     focus_atol = focus.get("state_focus_atol")
+    focus_flat_index = focus.get("max_abs_flat_index")
+    focus_max_abs_index = focus.get("max_abs_index", [])
+
+    def _attach_context(entry: dict[str, Any]) -> dict[str, Any]:
+        decode_step = int(entry.get("decode_step", -1))
+        hidden_row = _hidden_row_comparison_at(summary, decode_step=decode_step, row_index=row_index)
+        if hidden_row is not None:
+            entry["hidden_row"] = hidden_row
+        linear_input = _decode_linear_input_comparison_at(
+            summary,
+            decode_step=decode_step,
+            layer_index=layer_index,
+            row_index=row_index,
+        )
+        if linear_input is not None:
+            entry["decode_linear_input"] = linear_input
+        return entry
+
+    exact_history = trace.get("first_mismatch_over_focus_atol_history")
+    if isinstance(exact_history, list):
+        history = []
+        for item in exact_history:
+            if not isinstance(item, dict):
+                continue
+            if int(item.get("layer_index", -1)) != layer_index:
+                continue
+            if str(item.get("state", "")) != state_name:
+                continue
+            if int(item.get("row", -1)) != row_index:
+                continue
+            history.append(_attach_context(dict(item)))
+        if history:
+            return history
+
     history: list[dict[str, Any]] = []
     for step in trace.get("steps", []):
         decode_step = int(step.get("decode_step", -1))
@@ -720,6 +775,17 @@ def _linear_state_focus_history(summary: dict[str, Any], focus: dict[str, Any] |
             for row_summary in state_summary.get("row_summaries", []):
                 if int(row_summary.get("row", -1)) != row_index:
                     continue
+                top_abs_diffs = row_summary.get("top_abs_diffs", [])
+                same_focus_top_diff = None
+                for top_diff in top_abs_diffs:
+                    if not isinstance(top_diff, dict):
+                        continue
+                    if isinstance(focus_flat_index, int) and int(top_diff.get("flat_index", -1)) == int(focus_flat_index):
+                        same_focus_top_diff = top_diff
+                        break
+                    if focus_max_abs_index and top_diff.get("index") == focus_max_abs_index:
+                        same_focus_top_diff = top_diff
+                        break
                 entry: dict[str, Any] = {
                     "decode_step": decode_step,
                     "generated_index": int(step.get("generated_index", decode_step + 1)),
@@ -728,25 +794,20 @@ def _linear_state_focus_history(summary: dict[str, Any], focus: dict[str, Any] |
                     "row": row_index,
                     "passed": bool(row_summary.get("passed", False)),
                     "max_abs": float(row_summary.get("max_abs", 0.0)),
+                    "max_abs_flat_index": row_summary.get("max_abs_flat_index"),
                     "max_abs_index": row_summary.get("max_abs_index", []),
                     "elements_over_atol": int(row_summary.get("elements_over_atol", 0)),
-                    "top_abs_diffs": row_summary.get("top_abs_diffs", []),
+                    "focus_max_abs_index": focus_max_abs_index,
+                    "same_focus_index_in_top_abs_diffs": same_focus_top_diff is not None,
+                    "same_focus_index_top_diff": same_focus_top_diff,
+                    "top_abs_diffs": top_abs_diffs,
                 }
+                if isinstance(focus_flat_index, int):
+                    entry["focus_flat_index"] = int(focus_flat_index)
                 if focus_atol is not None:
                     entry["state_focus_atol"] = float(focus_atol)
                     entry["passed_under_focus_atol"] = bool(float(row_summary.get("max_abs", 0.0)) <= float(focus_atol))
-                hidden_row = _hidden_row_comparison_at(summary, decode_step=decode_step, row_index=row_index)
-                if hidden_row is not None:
-                    entry["hidden_row"] = hidden_row
-                linear_input = _decode_linear_input_comparison_at(
-                    summary,
-                    decode_step=decode_step,
-                    layer_index=layer_index,
-                    row_index=row_index,
-                )
-                if linear_input is not None:
-                    entry["decode_linear_input"] = linear_input
-                history.append(entry)
+                history.append(_attach_context(entry))
                 break
             break
     return history
@@ -2185,6 +2246,66 @@ def _decode_full_kv_sample_summary(
     return result
 
 
+def _decode_linear_state_focus_history(
+    batch: HiddenRun,
+    c1: HiddenRun,
+    *,
+    focus: dict[str, Any],
+    atol: float,
+    focus_atol: float | None,
+) -> list[dict[str, Any]]:
+    layer_index = int(focus.get("layer_index", -1))
+    state_name = str(focus.get("state", ""))
+    row_index = int(focus.get("row", -1))
+    focus_flat_index = focus.get("max_abs_flat_index")
+    focus_max_abs_index = focus.get("max_abs_index", [])
+    history: list[dict[str, Any]] = []
+    for step, (batch_states, c1_states) in enumerate(
+        zip(batch.decode_linear_states_by_step, c1.decode_linear_states_by_step, strict=True)
+    ):
+        if layer_index not in batch_states or layer_index not in c1_states:
+            continue
+        layer_batch = batch_states[layer_index]
+        layer_c1 = c1_states[layer_index]
+        if state_name not in layer_batch or state_name not in layer_c1:
+            continue
+        batch_state = layer_batch[state_name]
+        c1_state = layer_c1[state_name]
+        if row_index < 0 or row_index >= int(batch_state.shape[0]):
+            continue
+        row_batch = batch_state[row_index]
+        row_c1 = c1_state[row_index]
+        comparison = numeric_comparison(row_batch, row_c1, atol=atol)
+        selected_flat_index: int | None = int(focus_flat_index) if isinstance(focus_flat_index, int) else None
+        if selected_flat_index is None and focus_max_abs_index:
+            selected_flat_index = int(np.ravel_multi_index(tuple(int(index) for index in focus_max_abs_index), row_batch.shape))
+        entry: dict[str, Any] = {
+            "decode_step": int(step),
+            "generated_index": int(step + 1),
+            "layer_index": layer_index,
+            "state": state_name,
+            "row": row_index,
+            "passed": bool(comparison["passed"]),
+            "max_abs": float(comparison["max_abs"]),
+            "max_abs_flat_index": comparison["max_abs_flat_index"],
+            "max_abs_index": comparison["max_abs_index"],
+            "elements_over_atol": int(comparison["elements_over_atol"]),
+            "top_abs_diffs": comparison["top_abs_diffs"][:3],
+            "focus_max_abs_index": focus_max_abs_index,
+        }
+        if selected_flat_index is not None:
+            selected = _numeric_abs_diff_at_flat_index(row_batch, row_c1, selected_flat_index)
+            entry["focus_flat_index"] = selected_flat_index
+            entry["same_focus_index_diff"] = selected
+            if focus_atol is not None:
+                entry["same_focus_index_passed_under_focus_atol"] = bool(float(selected["abs_diff"]) <= float(focus_atol))
+        if focus_atol is not None:
+            entry["state_focus_atol"] = float(focus_atol)
+            entry["passed_under_focus_atol"] = bool(float(comparison["max_abs"]) <= float(focus_atol))
+        history.append(entry)
+    return history
+
+
 def _decode_linear_state_summary(
     batch: HiddenRun,
     c1: HiddenRun,
@@ -2224,6 +2345,7 @@ def _decode_linear_state_summary(
                         "state": state_name,
                         "row": int(row["row"]),
                         "max_abs": float(row["max_abs"]),
+                        "max_abs_flat_index": row.get("max_abs_flat_index"),
                         "max_abs_index": row["max_abs_index"],
                         "elements_over_atol": int(row["elements_over_atol"]),
                     }
@@ -2252,6 +2374,7 @@ def _decode_linear_state_summary(
                             "state": state_name,
                             "row": int(row["row"]),
                             "max_abs": float(row["max_abs"]),
+                            "max_abs_flat_index": row.get("max_abs_flat_index"),
                             "max_abs_index": row["max_abs_index"],
                             "elements_over_atol": int(row["elements_over_atol"]),
                             "state_focus_atol": float(focus_atol),
@@ -2282,6 +2405,7 @@ def _decode_linear_state_summary(
                         "row": int(row["row"]),
                         "passed": bool(row["passed"]),
                         "max_abs": float(row["max_abs"]),
+                        "max_abs_flat_index": row.get("max_abs_flat_index"),
                         "max_abs_index": row["max_abs_index"],
                         "elements_over_atol": int(row["elements_over_atol"]),
                     }
@@ -2298,6 +2422,13 @@ def _decode_linear_state_summary(
         result["first_mismatch"] = first_mismatch
     if first_focus_mismatch is not None:
         result["first_mismatch_over_focus_atol"] = first_focus_mismatch
+        result["first_mismatch_over_focus_atol_history"] = _decode_linear_state_focus_history(
+            batch,
+            c1,
+            focus=first_focus_mismatch,
+            atol=atol,
+            focus_atol=focus_atol,
+        )
     if worst_diff is not None:
         result["worst_diff"] = worst_diff
     return result

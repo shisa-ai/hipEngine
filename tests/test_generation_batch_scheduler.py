@@ -6477,6 +6477,7 @@ def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:
             "state": "conv",
             "row": 1,
             "max_abs": 2.0,
+            "max_abs_flat_index": None,
             "max_abs_index": [0, 3],
             "elements_over_atol": 4,
             "hidden_row_at_state_mismatch": {
@@ -6659,6 +6660,7 @@ def test_hidden_bisect_transition_records_focus_state_history() -> None:
                         "state": "conv",
                         "row": 0,
                         "max_abs": 3.0,
+                        "max_abs_flat_index": 4,
                         "max_abs_index": [0, 4],
                         "elements_over_atol": 2,
                         "state_focus_atol": 2.5,
@@ -6677,6 +6679,8 @@ def test_hidden_bisect_transition_records_focus_state_history() -> None:
     assert [entry["passed_under_focus_atol"] for entry in history] == [True, False]
     assert [entry["hidden_row"]["passed"] for entry in history] == [True, False]
     assert [entry["decode_linear_input"]["passed"] for entry in history] == [True, False]
+    assert [entry["same_focus_index_in_top_abs_diffs"] for entry in history] == [False, True]
+    assert history[1]["same_focus_index_top_diff"] == {"flat_index": 4, "abs_diff": 3.0}
     assert history[1]["max_abs"] == 3.0
 
 
@@ -6821,6 +6825,7 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
             "row": 0,
             "passed": True,
             "max_abs": 0.0,
+            "max_abs_flat_index": 0,
             "max_abs_index": [0, 0],
             "batch_value_at_max_abs": 1.0,
             "c1_value_at_max_abs": 1.0,
@@ -6832,6 +6837,7 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
             "row": 1,
             "passed": True,
             "max_abs": 0.0,
+            "max_abs_flat_index": 0,
             "max_abs_index": [0, 0],
             "batch_value_at_max_abs": 3.0,
             "c1_value_at_max_abs": 3.0,
@@ -6920,6 +6926,7 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         "state": "conv",
         "row": 1,
         "max_abs": 4.0,
+        "max_abs_flat_index": 0,
         "max_abs_index": [0, 0],
         "elements_over_atol": 1,
     }
@@ -6943,6 +6950,18 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     assert bad_focus_summary["decode_linear_states"]["state_focus_atol"] == 3.5
     assert bad_focus_summary["decode_linear_states"]["passed_under_focus_atol"] is False
     assert bad_focus_summary["decode_linear_states"]["first_mismatch_over_focus_atol"] == expected_focus_state_mismatch
+    focus_history = bad_focus_summary["decode_linear_states"]["first_mismatch_over_focus_atol_history"]
+    assert len(focus_history) == 1
+    assert focus_history[0]["focus_flat_index"] == 0
+    assert focus_history[0]["same_focus_index_diff"] == {
+        "flat_index": 0,
+        "index": [0, 0],
+        "abs_diff": 4.0,
+        "signed_diff": 4.0,
+        "batch_value": 7.0,
+        "c1_value": 3.0,
+    }
+    assert focus_history[0]["same_focus_index_passed_under_focus_atol"] is False
 
     bad_focus_pass_summary = _summarize_layer_limit(
         bad_batch,

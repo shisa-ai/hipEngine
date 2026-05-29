@@ -972,9 +972,13 @@ roll-up/status view.
       conv row remains over the 0.002 focus threshold from step 0, and at the
       first over-tolerance hidden step (decode step 6) the same row jumps to
       `state max_abs=0.390625` while `decode_linear_input.max_abs=0.0081787109375`
-      and hidden row dim 1269 reaches `0.027587890625`. The next C2.3 work should
-      isolate the layer-4 state update/reuse path that makes this row persist and
-      amplify, not re-open the already oracle-green reduced full-attention context path.
+      and hidden row dim 1269 reaches `0.027587890625`. The same-index refresh at
+      `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-state-focus-same-index2e-3-focus1269.json`
+      tracks the original layer-4 conv index `[64, 3]`; it is only `0.015625` at
+      step 6 while the row max moved to `[4852, 3]`, so the amplification is not
+      one persistent component. The next C2.3 work should isolate the layer-4
+      state update/reuse path that spreads drift across the row, not re-open the
+      already oracle-green reduced full-attention context path.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions
