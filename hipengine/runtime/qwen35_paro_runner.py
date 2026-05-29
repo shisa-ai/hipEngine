@@ -2938,10 +2938,12 @@ class Qwen35ParoResidentSession:
         if force_per_segment_full_attention:
             blockers.append("full-attention packed prefill forced to per-segment diagnostic path")
         self._last_packed_prefill_linear_path = "per_segment" if force_per_segment_linear else "packed_segments"
-        self._last_packed_prefill_full_attention_path = (
-            "per_segment" if force_per_segment_full_attention else "packed_varlen"
-        )
+        self._last_packed_prefill_full_attention_path = "per_segment" if force_per_segment_full_attention else "packed_varlen"
         self._last_packed_prefill_blockers = blockers
+        max_segment_rows = max(
+            int(slab.cu_seqlens_q[index + 1]) - int(slab.cu_seqlens_q[index])
+            for index in range(int(slab.request_count))
+        )
         for layer_id, state in enumerate(self.states):
             layer_type = self.config.layer_types[layer_id]
             copied_layer_output = False
@@ -3104,7 +3106,13 @@ class Qwen35ParoResidentSession:
                     copied_layer_output = True
                 else:
                     key_cache, value_cache = self._full_cache_all_slots(layer_id)
-                    attention_scratch = self._ensure_full_prefill_scratch(tokens=rows)
+                    use_aotriton_attention = self._prefill_use_aotriton_attention_resolved(rows)
+                    if use_aotriton_attention:
+                        self._last_packed_prefill_full_attention_path = "packed_varlen_aotriton"
+                    attention_scratch = self._ensure_full_prefill_scratch(
+                        tokens=rows,
+                        aotriton_attention=use_aotriton_attention,
+                    )
                     moe_scratch = self._ensure_grouped_moe_prefill_scratch(layer_id, tokens=rows)
                     out = state.run_full_attention_moe_prefill_varlen_layer_fp16(
                         hidden,
@@ -3123,6 +3131,9 @@ class Qwen35ParoResidentSession:
                         moe_scratch=moe_scratch,
                         tokens=rows,
                         block_size=self.block_size,
+                        aotriton_attention=use_aotriton_attention,
+                        aotriton_max_seqlen_q=max_segment_rows,
+                        aotriton_max_seqlen_k=max_segment_rows,
                         library=self.libraries,
                         stream=stream,
                     )

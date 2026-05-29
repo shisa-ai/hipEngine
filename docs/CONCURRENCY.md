@@ -773,9 +773,16 @@ roll-up/status view.
       that run clears the L5-L8 hidden/token gate (`status=eq_ok`) and clears
       `prefill_linear_input_passed` for every L5-L8 limit. L5 still reports
       state diffs under the strict `1e-6` state probe, but L6-L8 state summaries
-      also pass. Next fix target is now the retained packed-varlen
-      full-attention prefill path specifically, not linear-state writeback or
-      grouped MoE in isolation.
+      also pass. The retained-path fix then switches packed-varlen full-attention
+      prefill to the AOTriton compact-varlen attention kernel using contiguous
+      scratch K/V plus per-segment max sequence lengths; the follow-up retained
+      artifact
+      `/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-packed-aotriton-all-per-row-inputs-focus1269.json`
+      records `full_attention_prefill_path=packed_varlen_aotriton` with no
+      forced blockers, `status=eq_ok`, and green `prefill_linear_input`,
+      `prefill_linear_state`, hidden, and token gates for every L5-L8 limit.
+      Next validation target is the longer L8/16 and full C2.4/C2.5 generated-token
+      equality gates rather than the reduced layer-4 input drift.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

@@ -44711,3 +44711,23 @@ python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/
 Result: `/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-perseg-fullprefill-all-per-row-inputs-focus1269.json` emitted `status=eq_ok`, `performance_claim=false`, `workload.batch_prefill_full_attention_path=per_segment`, and `batch_prefill_execution.full_attention_prefill_path=per_segment` with blocker `full-attention packed prefill forced to per-segment diagnostic path`. The previous layer-4 pre-linear-input drift disappears: `prefill_linear_input_passed=true` for L5-L8. Decode hidden/token equality also passes for every L5-L8 limit. The strict `state_atol=1e-6` state probe still reports L5 state diffs, but L6-L8 `prefill_linear_state_passed=true`.
 
 Interpretation: the remaining retained-path C2.3 blocker is isolated to packed-varlen full-attention prefill. Forcing per-segment c=1-style full-attention prefill clears the hidden/token gate and downstream linear inputs, so the next fix should compare `run_full_attention_moe_prefill_varlen_layer_fp16()` / `prefill_full_attention_varlen_gqa_gate_fp16()` against the single-segment AOTriton/c1 path around layer 3 rather than continuing to chase linear-state writeback or decode subpaths.
+
+## 2026-05-29 — CONCURRENCY packed-varlen AOTriton prefill fix
+
+Advanced C2.3 by replacing the retained packed-varlen full-attention prefill attention core at AOTriton-eligible prompt sizes. The prior forced per-segment full-attention diagnostic cleared the L5-L8 hidden/token gate, so this iteration keeps the retained packed c>N shape while using AOTriton compact-varlen attention over contiguous packed scratch K/V instead of the native packed-varlen paged attention reducer.
+
+Code/test changes:
+
+- `run_full_attention_moe_prefill_varlen_layer_fp16()` now accepts `aotriton_attention` plus per-segment max sequence lengths. When enabled, it prepares BF16 Q, appends K/V to retained cache for decode, runs AOTriton compact-varlen attention against the contiguous projected scratch K/V, then applies the existing BF16-attention+gate+out-proj path.
+- Packed prefill now resolves the default full-attention path to `packed_varlen_aotriton` when the prefill config's AOTriton threshold is met, and passes the maximum segment length rather than total packed rows to AOTriton.
+- CPU coverage locks the default packed-varlen AOTriton dispatch metadata and max-seqlen arguments, in addition to the forced per-segment diagnostic path.
+
+Diagnostic command:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 1 --max-layers 8 --layer-limits 5-8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-decode-moe-path selected_c1 --batch-decode-linear-path per_row --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-packed-aotriton-all-per-row-inputs-focus1269.json >/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-packed-aotriton-all-per-row-inputs-focus1269.stdout
+```
+
+Result: after correcting the AOTriton max-seqlen arguments to use the per-segment max (512) instead of total packed rows (1024), `/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-packed-aotriton-all-per-row-inputs-focus1269.json` emitted `status=eq_ok`, `performance_claim=false`, and `batch_prefill_execution.full_attention_prefill_path=packed_varlen_aotriton` with no forced blockers. All L5-L8 summaries report `prefill_linear_input_passed=true`, `prefill_linear_state_passed=true`, `prefill_hidden_passed=true`, `hidden_passed=true`, and `token_passed=true`; `first_hidden_mismatch=null` and `first_token_mismatch=null`.
+
+Interpretation: the reduced C2.3 row-0 dim-1269 drift is fixed for the L5-L8 512/1 diagnostic under the retained packed path. The next validation target is the longer L8/16 hidden-bisect / full C2.4 generated-token equality gate, not more linear-state or per-segment full-attention isolation.

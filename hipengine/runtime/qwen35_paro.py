@@ -2813,6 +2813,8 @@ class Qwen35ParoDecodeState:
         key_cache: Tensor | None = None,
         value_cache: Tensor | None = None,
         attn_bf16_out: Tensor | None = None,
+        max_seqlen_q: int | None = None,
+        max_seqlen_k: int | None = None,
         scale: float | None = None,
         library=None,
         stream: int = 0,
@@ -2929,8 +2931,8 @@ class Qwen35ParoDecodeState:
             aotriton_tensor2(lse.ptr, (q_heads, rows), (rows, 1), DType.FP32),
             aotriton_tensor4(attn_bf16.ptr, (1, q_heads, rows, head_dim), (q_width * rows, head_dim, q_width, 1), DType.BF16),
             persistent_atomic_counter_ptr=atomic_counter.ptr,
-            max_seqlen_q=rows,
-            max_seqlen_k=key_rows,
+            max_seqlen_q=int(rows if max_seqlen_q is None else max_seqlen_q),
+            max_seqlen_k=int(key_rows if max_seqlen_k is None else max_seqlen_k),
             sm_scale=(self.config.head_dim ** -0.5) if scale is None else scale,
             is_causal=True,
             stream=stream,
@@ -2952,6 +2954,8 @@ class Qwen35ParoDecodeState:
         query_bf16: Tensor | None = None,
         key_cache: Tensor | None = None,
         value_cache: Tensor | None = None,
+        max_seqlen_q: int | None = None,
+        max_seqlen_k: int | None = None,
         scale: float | None = None,
         library=None,
         stream: int = 0,
@@ -2975,6 +2979,8 @@ class Qwen35ParoDecodeState:
             query_bf16=query_bf16,
             key_cache=key_cache,
             value_cache=value_cache,
+            max_seqlen_q=max_seqlen_q,
+            max_seqlen_k=max_seqlen_k,
             scale=scale,
             library=library,
             stream=stream,
@@ -3895,6 +3901,9 @@ class Qwen35ParoDecodeState:
         tokens: int,
         group_size: int = 128,
         block_size: int = 256,
+        aotriton_attention: bool = False,
+        aotriton_max_seqlen_q: int | None = None,
+        aotriton_max_seqlen_k: int | None = None,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -3907,6 +3916,7 @@ class Qwen35ParoDecodeState:
             num_splits=1,
             activation_dtype=DType.FP16,
             gated_dtype=DType.FP16,
+            query_dtype=DType.BF16 if aotriton_attention else DType.FP32,
         )
         if not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
             moe_scratch = self.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
@@ -3926,6 +3936,14 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
+        aotriton_query_bf16 = None
+        if aotriton_attention:
+            aotriton_query_bf16 = Tensor.from_handle(
+                attention_scratch.query.ptr,
+                attention_scratch.query.shape,
+                DType.BF16,
+                attention_scratch.query.device,
+            )
         _query, _key, _value, gate = self.prepare_full_attention_qkv_fp16(
             attention_scratch,
             cos_table=cos_table,
@@ -3933,6 +3951,7 @@ class Qwen35ParoDecodeState:
             position=positions,
             max_positions=max_positions,
             tokens=tokens,
+            query_bf16_out=aotriton_query_bf16,
             library=library,
             stream=stream,
         )
@@ -3946,28 +3965,51 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
-        gated = self.prefill_full_attention_varlen_gqa_gate_fp16(
-            attention_scratch,
-            key_cache=key_cache,
-            value_cache=value_cache,
-            spans=prefill_spans,
-            cu_seqlens_q=cu_seqlens_q,
-            cu_seqlens_k=cu_seqlens_k,
-            rows=tokens,
-            segments=segments,
-            gate=gate,
-            block_size=block_size,
-            library=library,
-            stream=stream,
-        )
-        attn_out = self.project_full_attention_o_fp16(
-            gated,
-            attention_scratch,
-            tokens=tokens,
-            group_size=group_size,
-            library=library,
-            stream=stream,
-        )
+        if aotriton_attention:
+            attn_bf16 = self.prefill_full_attention_aotriton_varlen_gqa_bf16(
+                attention_scratch,
+                cu_seqlens_q=cu_seqlens_q,
+                cu_seqlens_k=cu_seqlens_k,
+                rows=tokens,
+                segments=segments,
+                query_bf16=aotriton_query_bf16,
+                max_seqlen_q=aotriton_max_seqlen_q,
+                max_seqlen_k=aotriton_max_seqlen_k,
+                library=library,
+                stream=stream,
+            )
+            attn_out = self.project_full_attention_o_bf16_attn_gate_fp16(
+                attn_bf16,
+                gate,
+                attention_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        else:
+            gated = self.prefill_full_attention_varlen_gqa_gate_fp16(
+                attention_scratch,
+                key_cache=key_cache,
+                value_cache=value_cache,
+                spans=prefill_spans,
+                cu_seqlens_q=cu_seqlens_q,
+                cu_seqlens_k=cu_seqlens_k,
+                rows=tokens,
+                segments=segments,
+                gate=gate,
+                block_size=block_size,
+                library=library,
+                stream=stream,
+            )
+            attn_out = self.project_full_attention_o_fp16(
+                gated,
+                attention_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
         mlp_input, residual = self.post_attention_add_rmsnorm_fp16(
             hidden,
             attn_out,

@@ -789,6 +789,74 @@ def test_qwen35_resident_run_native_prefill_packed_layers_can_force_per_segment_
     ]
 
 
+def test_qwen35_resident_run_native_prefill_packed_layers_uses_aotriton_varlen_when_resolved(monkeypatch) -> None:
+    monkeypatch.delenv("HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_FULL_ATTN", raising=False)
+    monkeypatch.delenv("HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR", raising=False)
+    device = Device("hip", 0)
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.device = device
+    session.config = SimpleNamespace(hidden_size=4, layer_types=("full_attention",))
+    session.prefill_hidden = Tensor.from_handle(0x1000, (4, 4), DType.FP16, device)
+    session.hidden_nbytes = 4 * DType.FP16.itemsize
+    session.block_size = 256
+    session.max_sequence_length = 8
+    session.libraries = {}
+    session.cos = Tensor.from_handle(0x2000, (8, 2), DType.FP16, device)
+    session.sin = Tensor.from_handle(0x3000, (8, 2), DType.FP16, device)
+    key = Tensor.from_handle(0x5000, (4, 256, 1, 2), DType.BF16, device)
+    value = Tensor.from_handle(0x6000, (4, 256, 1, 2), DType.BF16, device)
+    session._full_cache_all_slots = lambda layer_id: (key, value)
+    session._prefill_use_aotriton_attention_resolved = lambda rows: True
+    session._ensure_full_prefill_scratch = lambda *, tokens, aotriton_attention=False: SimpleNamespace(
+        name="attention",
+        tokens=tokens,
+        aotriton_attention=aotriton_attention,
+    )
+    session._ensure_grouped_moe_prefill_scratch = lambda layer_id, *, tokens: SimpleNamespace(
+        name="grouped_moe",
+        layer_id=layer_id,
+        tokens=tokens,
+    )
+    copies: list[tuple[int, int, int, int]] = []
+
+    class FakeRuntime:
+        def memcpy_async(self, dst, src, nbytes, kind, stream):
+            copies.append((int(dst), int(src), int(nbytes), int(stream)))
+
+    class FakeState:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def run_full_attention_moe_prefill_varlen_layer_fp16(self, hidden, **kwargs):
+            self.calls.append((hidden, kwargs))
+            return Tensor.from_handle(0x9000, hidden.shape, DType.FP16, device)
+
+    state = FakeState()
+    session.runtime = FakeRuntime()
+    session.states = [state]
+    slab = SimpleNamespace(rows=4, request_count=2, cu_seqlens_q=(0, 2, 4), physical_slot_ids=(0, 1))
+    metadata = SimpleNamespace(
+        append_spans="append",
+        prefill_spans="prefill",
+        cu_seqlens_q=Tensor.from_handle(0xA000, (3,), DType.INT32, device),
+        cu_seqlens_k=Tensor.from_handle(0xB000, (3,), DType.INT32, device),
+        positions=Tensor.from_handle(0xC000, (4,), DType.INT64, device),
+    )
+
+    out = session._run_native_prefill_packed_layers(slab, metadata, stream=3)
+
+    assert out.ptr == 0x1000
+    assert session._last_packed_prefill_full_attention_path == "packed_varlen_aotriton"
+    assert session._last_packed_prefill_blockers == []
+    assert state.calls[0][0].ptr == 0x1000
+    assert state.calls[0][1]["aotriton_attention"] is True
+    assert state.calls[0][1]["aotriton_max_seqlen_q"] == 2
+    assert state.calls[0][1]["aotriton_max_seqlen_k"] == 2
+    assert state.calls[0][1]["attention_scratch"].aotriton_attention is True
+    assert state.calls[0][1]["tokens"] == 4
+    assert copies == [(0x1000, 0x9000, 4 * session.hidden_nbytes, 3)]
+
+
 def test_qwen35_resident_run_native_prefill_packed_layers_can_force_per_segment_full_attention(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_FULL_ATTN", "1")
     device = Device("hip", 0)
