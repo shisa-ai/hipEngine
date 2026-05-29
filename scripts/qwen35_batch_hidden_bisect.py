@@ -59,6 +59,8 @@ DECODE_FULL_ATTENTION_TRACE_STAGES = (
     "output",
 )
 DECODE_FULL_CONTEXT_ORACLE_ATOL = 3.0e-5
+KV_PREFIX_MISMATCH_POSITION_LIMIT = 8
+KV_PREFIX_TAIL_WINDOW = 16
 
 
 @dataclass(frozen=True)
@@ -2104,6 +2106,7 @@ def _prefill_full_kv_prefix_failure_record(
 ) -> dict[str, Any]:
     comparison = row_summary.get(f"{kind}_prefix_hash_comparison", {})
     first = comparison.get("first_mismatch") if isinstance(comparison, dict) else None
+    position_summary = comparison.get("mismatch_positions", {}) if isinstance(comparison, dict) else {}
     record: dict[str, Any] = {
         "layer_index": int(layer.get("layer_index", -1)),
         "row": int(row_summary.get("row", -1)),
@@ -2112,6 +2115,10 @@ def _prefill_full_kv_prefix_failure_record(
         "context_len_match": bool(row_summary.get("context_len_match", False)),
         "mismatch_count": int(comparison.get("mismatch_count", 0)) if isinstance(comparison, dict) else 0,
         "first_mismatch_position": None if not isinstance(first, dict) else int(first.get("position", -1)),
+        "last_mismatch_position": position_summary.get("last_position"),
+        "mismatch_positions_first": list(position_summary.get("first_positions", [])),
+        "mismatch_positions_last": list(position_summary.get("last_positions", [])),
+        "tail_mismatch_count": int(position_summary.get("tail_mismatch_count", 0)),
         "batch_hash": None if not isinstance(first, dict) else int(first.get("batch_hash", 0)),
         "c1_hash": None if not isinstance(first, dict) else int(first.get("c1_hash", 0)),
     }
@@ -2894,6 +2901,26 @@ def _decode_full_context_oracle_rollup(layer_summaries: Sequence[dict[str, Any]]
     }
 
 
+def _kv_prefix_mismatch_position_summary(mismatches: np.ndarray, *, context_len: int) -> dict[str, Any]:
+    positions = [int(pos) for pos in np.asarray(mismatches, dtype=np.int64).reshape(-1)]
+    live = int(context_len)
+    limit = int(KV_PREFIX_MISMATCH_POSITION_LIMIT)
+    tail_window = min(int(KV_PREFIX_TAIL_WINDOW), max(live, 0))
+    tail_start = max(0, live - tail_window)
+    tail_positions = [pos for pos in positions if pos >= tail_start]
+    return {
+        "first_positions": positions[:limit],
+        "last_positions": positions[-limit:] if len(positions) > limit else positions[:],
+        "first_position": positions[0] if positions else None,
+        "last_position": positions[-1] if positions else None,
+        "span_width": (positions[-1] - positions[0] + 1) if positions else 0,
+        "tail_window": tail_window,
+        "tail_start": tail_start,
+        "tail_mismatch_count": len(tail_positions),
+        "tail_positions": tail_positions[:limit],
+    }
+
+
 def _kv_prefix_hash_comparison(batch_hashes: np.ndarray, c1_hashes: np.ndarray, *, context_len: int) -> dict[str, Any]:
     live = int(context_len)
     batch_row = np.asarray(batch_hashes, dtype=np.uint64).reshape(-1)
@@ -2901,6 +2928,7 @@ def _kv_prefix_hash_comparison(batch_hashes: np.ndarray, c1_hashes: np.ndarray, 
     if live < 0 or live > int(batch_row.shape[0]) or live > int(c1_row.shape[0]):
         raise ValueError("KV prefix hash comparison context_len exceeds hash row width")
     mismatches = np.flatnonzero(batch_row[:live] != c1_row[:live])
+    position_summary = _kv_prefix_mismatch_position_summary(mismatches, context_len=live)
     first_mismatch: dict[str, Any] | None = None
     if mismatches.size:
         pos = int(mismatches[0])
@@ -2914,6 +2942,7 @@ def _kv_prefix_hash_comparison(batch_hashes: np.ndarray, c1_hashes: np.ndarray, 
         "context_len": live,
         "mismatch_count": int(mismatches.size),
         "first_mismatch": first_mismatch,
+        "mismatch_positions": position_summary,
     }
 
 
@@ -2927,6 +2956,7 @@ def _decode_full_context_kv_prefix_failure_record(
 ) -> dict[str, Any]:
     comparison = row_summary.get(f"{kind}_prefix_hash_comparison", {})
     first = comparison.get("first_mismatch") if isinstance(comparison, dict) else None
+    position_summary = comparison.get("mismatch_positions", {}) if isinstance(comparison, dict) else {}
     record: dict[str, Any] = {
         "decode_step": int(step_summary.get("decode_step", 0)),
         "generated_index": int(step_summary.get("generated_index", int(step_summary.get("decode_step", 0)) + 1)),
@@ -2936,6 +2966,10 @@ def _decode_full_context_kv_prefix_failure_record(
         "context_len": int(row_summary.get("context_len", 0)),
         "mismatch_count": int(comparison.get("mismatch_count", 0)) if isinstance(comparison, dict) else 0,
         "first_mismatch_position": None if not isinstance(first, dict) else int(first.get("position", -1)),
+        "last_mismatch_position": position_summary.get("last_position"),
+        "mismatch_positions_first": list(position_summary.get("first_positions", [])),
+        "mismatch_positions_last": list(position_summary.get("last_positions", [])),
+        "tail_mismatch_count": int(position_summary.get("tail_mismatch_count", 0)),
         "batch_hash": None if not isinstance(first, dict) else int(first.get("batch_hash", 0)),
         "c1_hash": None if not isinstance(first, dict) else int(first.get("c1_hash", 0)),
     }

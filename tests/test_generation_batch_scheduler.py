@@ -7129,11 +7129,23 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     assert summary["prefill_full_kv_prefix_hashes"]["stage"] == "prefill_full_kv_prefix_hashes"
     assert summary["prefill_full_kv_prefix_hashes"]["passed"] is True
     assert summary["prefill_full_kv_prefix_hashes"]["failure_summary"]["failed_kinds"] == []
+    no_prefix_mismatches = {
+        "first_positions": [],
+        "last_positions": [],
+        "first_position": None,
+        "last_position": None,
+        "span_width": 0,
+        "tail_window": 3,
+        "tail_start": 0,
+        "tail_mismatch_count": 0,
+        "tail_positions": [],
+    }
     assert summary["prefill_full_kv_prefix_hashes"]["layers"][0]["rows"][0]["key_prefix_hash_comparison"] == {
         "passed": True,
         "context_len": 3,
         "mismatch_count": 0,
         "first_mismatch": None,
+        "mismatch_positions": no_prefix_mismatches,
     }
     conv_state = summary["prefill_linear_states"]["layers"][0]["states"]["conv"]
     assert conv_state["max_abs"] == 0.0
@@ -7262,6 +7274,7 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         "context_len": 3,
         "mismatch_count": 0,
         "first_mismatch": None,
+        "mismatch_positions": no_prefix_mismatches,
     }
     assert summary["decode_full_context_oracle"]["steps"][0]["layers"][0]["rows"][0]["batch_context_vs_numpy"]["max_abs"] == 0.0
     assert summary["decode_full_context_oracle"]["steps"][0]["layers"][0]["rows"][0]["batch_numpy_vs_c1_numpy"]["max_abs"] == 0.0
@@ -7288,6 +7301,10 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         "context_len_match": True,
         "mismatch_count": 1,
         "first_mismatch_position": 2,
+        "last_mismatch_position": 2,
+        "mismatch_positions_first": [2],
+        "mismatch_positions_last": [2],
+        "tail_mismatch_count": 1,
         "batch_hash": 777,
         "c1_hash": 203,
     }
@@ -7328,6 +7345,10 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         "context_len": 3,
         "mismatch_count": 1,
         "first_mismatch_position": 1,
+        "last_mismatch_position": 1,
+        "mismatch_positions_first": [1],
+        "mismatch_positions_last": [1],
+        "tail_mismatch_count": 1,
         "batch_hash": 999,
         "c1_hash": 102,
     }

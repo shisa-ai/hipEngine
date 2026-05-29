@@ -1107,18 +1107,25 @@ roll-up/status view.
       `test_hidden_bisect_summary_embeds_batch_decode_execution_trace`. It now
       additionally snapshots post-prefill full-KV prefix hashes before any decode
       write and emits `correctness.prefill_full_kv_prefix_failure_summary`, also
-      covered by that CPU test. The refreshed prefill-aware probe at
+      covered by that CPU test. K/V prefix comparisons now carry compact
+      `mismatch_positions` summaries (first/last sampled positions, span width,
+      and tail-window counts) so prompt-tail/current-token failures can be
+      compared across repeats without dumping full K/V. The refreshed
+      prefill-aware probe at
       `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-prefill-kv-prefix-native-full-core-atol4e-3-focus1269.json`
       is still hidden-only red, has green post-prefill K/V prefix hashes in that
       run, and localizes the decode-time prefix/sample failure to L8 step 0 /
       layer 7 / row 0 current token 512. An L4-only repeat
       `/tmp/hipengine-hidden-bisect-L4-512-16-c2-prefill-kv-prefix-repeat-atol4e-3-focus1269.json`
       caught a pre-decode prompt-tail hash failure at layer 3 / row 0 token 500
-      that the decode prefix then inherited; a second L4 repeat was green, so the
-      immediate target is to make the compact-prefill K/V hash probe deterministic
-      and audit prompt-tail/current-token slot contents before changing paged-KV
-      writer code. Do not re-open context softmax math, row setup, native linear
-      segment metadata, output trace/copy semantics, or grouped MoE output yet.
+      that the decode prefix then inherited; the position-summary rerun
+      `/tmp/hipengine-hidden-bisect-L4-512-16-c2-kv-position-summary-atol4e-3-focus1269.json`
+      was green and records an empty tail window (`tail_start=496`,
+      `tail_mismatch_count=0`) for the same probe shape. The immediate target is
+      deterministic compact-prefill K/V replay and prompt-tail/current-token
+      slot-content auditing before changing paged-KV writer code. Do not re-open
+      context softmax math, row setup, native linear segment metadata,
+      output trace/copy semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions
