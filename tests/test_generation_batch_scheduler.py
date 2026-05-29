@@ -6468,6 +6468,25 @@ def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:
                 "worst_diff": {"stage": "output", "max_abs": 0.0},
             }
         },
+        "first_linear_state_mismatch_focus": {
+            "decode_step": 3,
+            "generated_index": 4,
+            "layer_index": 1,
+            "state": "conv",
+            "row": 1,
+            "max_abs": 2.0,
+            "max_abs_index": [0, 3],
+            "elements_over_atol": 4,
+            "hidden_row_at_state_mismatch": {
+                "passed": False,
+                "max_abs": 1.0,
+                "max_abs_index": [0, 1],
+                "elements_over_atol": 1,
+                "max_abs_flat_index": 1,
+                "bit_mismatch": 1,
+                "top_abs_diffs": failed["top_abs_diffs"],
+            },
+        },
         "first_hidden_mismatch_focus": {
             "row": 1,
             "flat_index": 1,

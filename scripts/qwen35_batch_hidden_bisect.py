@@ -539,6 +539,108 @@ def _transition_trace_summaries(summary: dict[str, Any]) -> dict[str, Any]:
     return traces
 
 
+def _compact_comparison(comparison: dict[str, Any]) -> dict[str, Any]:
+    compact: dict[str, Any] = {
+        "passed": bool(comparison.get("passed", False)),
+        "max_abs": float(comparison.get("max_abs", 0.0)),
+        "max_abs_index": comparison.get("max_abs_index", []),
+        "elements_over_atol": int(comparison.get("elements_over_atol", 0)),
+    }
+    if "max_abs_flat_index" in comparison:
+        compact["max_abs_flat_index"] = comparison.get("max_abs_flat_index")
+    if "bit_mismatch" in comparison:
+        compact["bit_mismatch"] = int(comparison.get("bit_mismatch", 0))
+    if "top_abs_diffs" in comparison:
+        compact["top_abs_diffs"] = comparison.get("top_abs_diffs", [])[:3]
+    return compact
+
+
+def _linear_state_mismatch_from_trace(trace: dict[str, Any]) -> dict[str, Any] | None:
+    first = trace.get("first_mismatch")
+    if isinstance(first, dict):
+        return dict(first)
+    for step in trace.get("steps", []):
+        for layer in step.get("layers", []):
+            states = layer.get("states", {})
+            if not isinstance(states, dict):
+                continue
+            for state_name in ("conv", "recurrent"):
+                state_summary = states.get(state_name)
+                if not isinstance(state_summary, dict):
+                    continue
+                for row_summary in state_summary.get("row_summaries", []):
+                    if bool(row_summary.get("passed", False)):
+                        continue
+                    return {
+                        "decode_step": int(step.get("decode_step", 0)),
+                        "generated_index": int(step.get("generated_index", int(step.get("decode_step", 0)) + 1)),
+                        "layer_index": int(layer.get("layer_index", -1)),
+                        "state": state_name,
+                        "row": int(row_summary.get("row", -1)),
+                        "max_abs": float(row_summary.get("max_abs", 0.0)),
+                        "max_abs_index": row_summary.get("max_abs_index", []),
+                        "elements_over_atol": int(row_summary.get("elements_over_atol", 0)),
+                    }
+    return None
+
+
+def _hidden_row_comparison_at(summary: dict[str, Any], *, decode_step: int, row_index: int) -> dict[str, Any] | None:
+    for step in summary.get("steps", []):
+        if int(step.get("decode_step", -1)) != int(decode_step):
+            continue
+        for row in step.get("rows", []):
+            if int(row.get("row", -1)) == int(row_index) and isinstance(row.get("hidden_comparison"), dict):
+                return _compact_comparison(row["hidden_comparison"])
+    return None
+
+
+def _decode_linear_input_comparison_at(
+    summary: dict[str, Any],
+    *,
+    decode_step: int,
+    layer_index: int,
+    row_index: int,
+) -> dict[str, Any] | None:
+    trace = summary.get("decode_linear_inputs")
+    if not isinstance(trace, dict):
+        return None
+    for step in trace.get("steps", []):
+        if int(step.get("decode_step", -1)) != int(decode_step):
+            continue
+        for layer in step.get("layers", []):
+            if int(layer.get("layer_index", -1)) != int(layer_index):
+                continue
+            for row in layer.get("rows", []):
+                if int(row.get("row", -1)) == int(row_index) and isinstance(row.get("hidden_comparison"), dict):
+                    return _compact_comparison(row["hidden_comparison"])
+    return None
+
+
+def _first_linear_state_mismatch_focus(summary: dict[str, Any]) -> dict[str, Any] | None:
+    trace = summary.get("decode_linear_states")
+    if not isinstance(trace, dict):
+        return None
+    first = _linear_state_mismatch_from_trace(trace)
+    if first is None:
+        return None
+    decode_step = int(first.get("decode_step", -1))
+    layer_index = int(first.get("layer_index", -1))
+    row_index = int(first.get("row", -1))
+    focus: dict[str, Any] = {**first}
+    hidden_row = _hidden_row_comparison_at(summary, decode_step=decode_step, row_index=row_index)
+    if hidden_row is not None:
+        focus["hidden_row_at_state_mismatch"] = hidden_row
+    linear_input = _decode_linear_input_comparison_at(
+        summary,
+        decode_step=decode_step,
+        layer_index=layer_index,
+        row_index=row_index,
+    )
+    if linear_input is not None:
+        focus["decode_linear_input_at_state_mismatch"] = linear_input
+    return focus
+
+
 def _linear_state_focus_for_hidden_mismatch(
     summary: dict[str, Any],
     first_hidden_mismatch: dict[str, Any] | None,
@@ -684,6 +786,7 @@ def _first_failing_layer_transition(layer_summaries: Sequence[dict[str, Any]]) -
             if previous_green_trace_summaries:
                 transition["previous_green_trace_summaries"] = previous_green_trace_summaries
         transition["first_hidden_mismatch_focus"] = _transition_hidden_focus(summary, previous_green, first_hidden_mismatch)
+        transition["first_linear_state_mismatch_focus"] = _first_linear_state_mismatch_focus(summary)
         transition["first_hidden_mismatch_linear_state_focus"] = _linear_state_focus_for_hidden_mismatch(
             summary,
             first_hidden_mismatch,

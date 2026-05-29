@@ -955,8 +955,14 @@ roll-up/status view.
       adds `first_hidden_mismatch_linear_state_focus`; at the first over-tolerance
       hidden mismatch, layers 0-2 conv/recurrent state diffs are zero while layer 4
       has row-0 `conv max_abs=0.390625` and `recurrent max_abs=0.021587848663330078`.
-      The next C2.3 work should target layer-4 linear-state propagation instead of
-      the already oracle-green reduced full-attention context path.
+      The first-state focus refresh at
+      `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-first-linear-state-focus1269.json`
+      adds `first_linear_state_mismatch_focus`; it shows the earliest state drift
+      in the L8 failing run is decode step 0 / layer 0 `recurrent` row 0
+      (`max_abs=0.001646714168600738`) while that step's hidden row and layer-0
+      decode input are still tolerance/exact green. The next C2.3 work should
+      separate immediate state-only drift from the later layer-4 state amplification
+      instead of re-opening the already oracle-green reduced full-attention context path.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

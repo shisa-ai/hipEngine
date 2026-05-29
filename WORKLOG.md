@@ -45457,3 +45457,36 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (`260` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with concrete linear-state-focus diagnostic evidence, and no retained c>N performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY first linear-state mismatch focus
+
+Advanced C2.3 diagnostics by adding `first_linear_state_mismatch_focus` to `first_failing_layer_transition`. Unlike the prior hidden-mismatch state focus, this field finds the earliest row/state mismatch in `decode_linear_states` and attaches compact hidden and decode-linear-input comparisons for the same decode step/row/layer when available.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py
+pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_helpers_find_first_hidden_mismatch tests/test_generation_batch_scheduler.py::test_hidden_bisect_summary_embeds_batch_decode_execution_trace -q
+```
+
+Diagnostic:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 4,8 --max-sequence-length 1024 --hidden-atol 0.001 --state-atol 0 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-full-attn-path native_batch --json /tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-first-linear-state-focus1269.json >/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-first-linear-state-focus1269.stdout
+```
+
+Result: `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-first-linear-state-focus1269.json` is `status=mismatch_found`. The earliest linear-state mismatch is decode step 0 / generated index 1 / layer 0 `recurrent` row 0 (`max_abs=0.001646714168600738`, `elements_over_atol=512` with `state_atol=0`). The same step's hidden row is still tolerance-green (`max_abs=0.000244140625`, `elements_over_atol=0` at `hidden_atol=0.001`) and the layer-0 decode input is exact (`max_abs=0.0`, `bit_mismatch=0`). The prior hidden-mismatch state focus still shows layer 4 is bad by the first over-tolerance hidden step. Next work should separate this immediate state-only drift from later amplification.
+
+Loop validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (`260` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with concrete first-linear-state-focus diagnostic evidence, and no retained c>N performance/scaling claim was added.
