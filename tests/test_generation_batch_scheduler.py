@@ -4469,6 +4469,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_category_status_count_label["category_status_counts"]["native_diagnostic"]["blocked"] = 1
     with pytest.raises(ValueError, match="category_status_counts must contain only known command status labels"):
         c_sweep.validate_sweep_summary(tampered_category_status_count_label)
+    tampered_category_status_category_label = json.loads(json.dumps(persisted))
+    tampered_category_status_category_label["category_status_counts"]["other_category"] = {"passed": 1}
+    with pytest.raises(ValueError, match="category_status_counts must contain only known command category labels"):
+        c_sweep.validate_sweep_summary(tampered_category_status_category_label)
+    tampered_precondition_count_kind_label = json.loads(json.dumps(persisted))
+    tampered_precondition_count_kind_label["retained_precondition_counts"]["other_gate"] = {"passed": 1}
+    with pytest.raises(ValueError, match="retained_precondition_counts must contain only known retained precondition labels"):
+        c_sweep.validate_sweep_summary(tampered_precondition_count_kind_label)
     tampered_precondition_count_label = json.loads(json.dumps(persisted))
     tampered_precondition_count_label["retained_precondition_counts"]["primitive_correctness"]["blocked"] = 1
     with pytest.raises(ValueError, match="retained_precondition_counts must contain only passed/failed status labels"):
@@ -4492,6 +4500,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_postcondition_counts["retained_postcondition_counts"] = {}
     with pytest.raises(ValueError, match="retained_postcondition_counts must match commands.postconditions"):
         c_sweep.validate_sweep_summary(tampered_postcondition_counts)
+    tampered_postcondition_count_kind_label = json.loads(json.dumps(persisted))
+    tampered_postcondition_count_kind_label["retained_postcondition_counts"]["other_check"] = {"passed": 1}
+    with pytest.raises(ValueError, match="retained_postcondition_counts must contain only known retained postcondition labels"):
+        c_sweep.validate_sweep_summary(tampered_postcondition_count_kind_label)
     tampered_postcondition_count_label = json.loads(json.dumps(persisted))
     tampered_postcondition_count_label["retained_postcondition_counts"]["retained_profiler_synthesis"]["blocked"] = 1
     with pytest.raises(ValueError, match="retained_postcondition_counts must contain only passed/failed status labels"):
