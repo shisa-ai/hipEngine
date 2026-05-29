@@ -47263,3 +47263,37 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (selected pytest suite plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no queue item was marked complete, the selected-c1 projection+state replay artifact has `performance_claim=false` and `native_caware_decode=false`, native retained full generated-token equality remains open, and no performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY split linear output diagnostic
+
+Split the selected-c1 linear state diagnostic from the linear output projection path. Added `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT` / `--batch-decode-linear-output-path {auto,batch,selected_c1}`. `auto` preserves the previous selected-c1-state behavior by using token-1 output projection when state replay is selected; `batch` forces the batched output projection from the selected-c1 recurrent state; metadata records `linear_attention_output_path` and keeps non-retained paths at `native_caware_decode=false`.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_dry_run_records_layer_commands -q
+```
+
+Result: PASS.
+
+Refreshed L8 selected-c1 state + native output replay:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --batch-decode-linear-projection-path selected_c1 --batch-decode-linear-state-path selected_c1 --batch-decode-linear-output-path batch --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-selected-c1-state-native-out-atol4e-3-focus1269.json > /tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-selected-c1-state-native-out-atol4e-3-focus1269.stdout
+```
+
+Result: `status=mismatch_found`, `failure_modes=["hidden"]`, `performance_claim=false`, workload `native_caware_decode=false`. Decode blockers correctly include selected-c1 projection/state diagnostics but not selected-c1 output. Layer executions record `linear_attention_output_path=batch_from_f32`. The first exact layer-0 drift is `out_proj` (`bit_mismatch=312`, `max_abs=0.0001220703125`, hidden-atol pass); the first layer-0 hidden-atol stage failure is downstream `mlp_input` (`max_abs=0.0078125`, `elements_over_atol=1`). Therefore token-1 output projection is also required for the non-retained L8 green path; retained native work must fix/prove both segmented conv/GDN/recurrent state and batched output projection parity.
+
+Full validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (selected pytest suite plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no queue item was marked complete, the split-output diagnostic artifact has `performance_claim=false` and `native_caware_decode=false`, native retained full generated-token equality remains open, and no performance/scaling claim was added.

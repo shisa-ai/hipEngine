@@ -6276,6 +6276,7 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert payload["workload"]["batch_decode_linear_path"] == "batch_segments"
     assert payload["workload"]["batch_decode_linear_projection_path"] == "batch"
     assert payload["workload"]["batch_decode_linear_state_path"] == "batch_segments"
+    assert payload["workload"]["batch_decode_linear_output_path"] == "auto"
     assert payload["workload"]["batch_decode_full_attention_path"] == "native_batch"
     assert payload["workload"]["batch_decode_attention_input_path"] == "batch"
     assert payload["workload"]["batch_decode_post_attention_path"] == "batch"
@@ -6404,6 +6405,30 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     )
     assert selected_c1_state_payload["workload"]["batch_decode_linear_state_path"] == "selected_c1"
     assert selected_c1_state_payload["workload"]["native_caware_decode"] is False
+
+    selected_c1_output = build_hidden_bisect_parser().parse_args(
+        [
+            "--dry-run",
+            "--batch-decode-linear-output-path",
+            "selected_c1",
+            "--prompt-length",
+            "32",
+            "--batch-size",
+            "2",
+            "--decode-tokens",
+            "4",
+            "--max-layers",
+            "8",
+            "--layer-limits",
+            "8",
+        ]
+    )
+    selected_c1_output_payload = run_hidden_bisect(
+        selected_c1_output,
+        ["--dry-run", "--batch-decode-linear-output-path", "selected_c1", "--layer-limits", "8"],
+    )
+    assert selected_c1_output_payload["workload"]["batch_decode_linear_output_path"] == "selected_c1"
+    assert selected_c1_output_payload["workload"]["native_caware_decode"] is False
 
 
 def test_hidden_bisect_repeat_rollup_counts_prefix_failures() -> None:

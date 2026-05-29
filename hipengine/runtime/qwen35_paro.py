@@ -5072,6 +5072,7 @@ class Qwen35ParoDecodeState:
         force_selected_c1_projections: bool = False,
         force_selected_c1_state: bool = False,
         selected_c1_state_pairs: Sequence[tuple[Tensor, Tensor]] | None = None,
+        force_selected_c1_out: bool | None = None,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -5092,8 +5093,18 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
-        if force_selected_c1_state:
+        if force_selected_c1_out is None:
+            force_selected_c1_out = force_selected_c1_state
+        if force_selected_c1_out:
             return self.project_linear_attention_decode_rows_out_fp16(
+                scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        if force_selected_c1_state:
+            return self.project_linear_attention_out_fp16(
                 scratch,
                 tokens=tokens,
                 group_size=group_size,
@@ -5398,6 +5409,7 @@ class Qwen35ParoDecodeState:
         force_selected_c1_linear_projections: bool = False,
         force_selected_c1_linear_state: bool = False,
         selected_c1_linear_state_pairs: Sequence[tuple[Tensor, Tensor]] | None = None,
+        force_selected_c1_linear_out: bool | None = None,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -5429,6 +5441,7 @@ class Qwen35ParoDecodeState:
             force_selected_c1_projections=force_selected_c1_linear_projections,
             force_selected_c1_state=force_selected_c1_linear_state,
             selected_c1_state_pairs=selected_c1_linear_state_pairs,
+            force_selected_c1_out=force_selected_c1_linear_out,
             library=library,
             stream=stream,
         )

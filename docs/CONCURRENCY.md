@@ -1206,9 +1206,15 @@ roll-up/status view.
       keeping grouped-compact MoE; it is hidden/token green (`status=eq_ok`,
       `correctness.passed=true`) but non-retained (`native_caware_decode=false`)
       and leaves only tiny exact-bit layer-0 output drift (`bit_mismatch=541`,
-      `max_abs=3.0517578125e-05`). The next target is a minimal native
-      segmented conv/GDN/recurrent-state fix or a retained native kernel parity
-      proof; do not change paged-KV writer code yet. Do not re-open
+      `max_abs=3.0517578125e-05`). Splitting the output path at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-selected-c1-state-native-out-atol4e-3-focus1269.json`
+      keeps selected-c1 projection/state replay but forces native batched output
+      projection (`linear_attention_output_path=batch_from_f32`); it goes hidden
+      red again, with first layer-0 exact drift at `out_proj` (`bit_mismatch=312`,
+      hidden-atol pass) and first layer-0 hidden-atol stage failure at
+      `mlp_input` (`max_abs=0.0078125`). The next target is retained parity for
+      both native segmented conv/GDN/recurrent state and native batched output
+      projection; do not change paged-KV writer code yet. Do not re-open
       context softmax math, row setup, native linear segment metadata,
       output trace/copy semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
