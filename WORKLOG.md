@@ -26799,3 +26799,17 @@ python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_
 ```
 
 Results: Step split loader pytest passed (`5 passed`), guard passed (`29 passed` plus CPU fixture checks), and the StepFun punchlist metric dropped from 51 to 47 by completing P2.
+
+## 2026-05-29 — StepFun P3 model plugin and quant registration
+
+Implemented the text-first StepFun model plugin lane. Added `hipengine/models/stepfun.py` registering `stepfun_step3_7_gguf` for GGUF/HF aliases (`step35`, `step3p5`, `step3p7`, `Step3p5ForCausalLM`, `Step3p7ForConditionalGeneration`) with default quant `gguf_q3_k_l`, default backend `hip_gfx1151`, representative full/sliding attention decode sequences, and explicit deferred capabilities for vision/projector/MTP/speculative decode/ModelOpt NVFP4. Added a `gguf_q3_k_l` quant plugin to describe the mixed Step GGUF file type. Updated `LLM._load_model_metadata()` to use the split GGUF index when a GGUF path resolves to multiple shards, enabling Step metadata resolution without loading tensors. Added `tests/test_stepfun_model_plugin.py` for alias resolution, capability failures, quant registration, and split-GGUF `LLM(..., quant='gguf_q3_k_l')` metadata resolution without importing torch.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_model_plugin.py
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+```
+
+Results: Step model plugin pytest passed (`3 passed`), guard passed (`32 passed` plus CPU fixture checks), and the StepFun punchlist metric dropped from 47 to 43 by completing P3.

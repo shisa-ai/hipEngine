@@ -344,17 +344,18 @@ weights into memory; tests skip cleanly if external Step assets are absent.
 
 ### P3 — Model plugin and capability registration
 
-- [ ] Register a text-first `step35` / `step3p7` model plugin with aliases for
+- [x] Register a text-first `step35` / `step3p7` model plugin with aliases for
   GGUF and HF metadata names.
-- [ ] Encode capabilities explicitly: text decode supported-in-progress; vision,
+- [x] Encode capabilities explicitly: text decode supported-in-progress; vision,
   projector, MTP, and NVFP4 unsupported/deferred until their tracks land.
-- [ ] Keep dispatch on the existing axes `(backend, layer, quant, variant)`;
+- [x] Keep dispatch on the existing axes `(backend, layer, quant, variant)`;
   avoid engine/model branches such as `if backend == ...` or `if quant == ...`.
-- [ ] Add registry tests showing Step resolves to the plugin and unsupported
+- [x] Add registry tests showing Step resolves to the plugin and unsupported
   capability requests fail clearly.
 
-**Acceptance:** plugin/registry tests pass and `LLM(..., quant='gguf_q3_k_l')`
-can resolve Step metadata without importing torch.
+**Acceptance:** `python3 -m pytest -q tests/test_stepfun_model_plugin.py` passes;
+`LLM(..., quant='gguf_q3_k_l')` resolves split Step metadata without importing
+torch.
 
 ### P4 — DeepSeek-V3 GGUF tokenizer and chat template
 

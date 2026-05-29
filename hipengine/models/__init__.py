@@ -9,6 +9,11 @@ from hipengine.models.qwen35 import (
     Qwen35MoeGGUFModel,
     Qwen35ParoMoeModel,
 )
+from hipengine.models.stepfun import (
+    STEPFUN_STEP37_GGUF,
+    StepFunStep37GGUFModel,
+    StepFunUnsupportedCapabilityError,
+)
 from hipengine.models.registry import (
     DuplicateModelError,
     MissingModelError,
@@ -28,7 +33,10 @@ __all__ = [
     "Qwen35GGUFModel",
     "Qwen35MoeGGUFModel",
     "Qwen35ParoMoeModel",
+    "STEPFUN_STEP37_GGUF",
     "TOY_ONE_LAYER",
+    "StepFunStep37GGUFModel",
+    "StepFunUnsupportedCapabilityError",
     "ToyOneLayerModel",
     "register_model",
     "registered_models",

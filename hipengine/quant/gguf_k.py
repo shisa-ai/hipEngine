@@ -47,6 +47,19 @@ class GGUFQ5KQuant:
 
 
 @dataclass(frozen=True)
+class GGUFQ3KLQuant:
+    """GGUF Q3_K_L mixed-file quantization contract for StepFun bring-up."""
+
+    name: str = "gguf_q3_k_l"
+    weight_storage: str = "gguf_mixed_q3_k_l"
+    activation_preprocess: str = "none"
+    compute_dtype: str = "fp32_accum"
+    scale_granularity: str = "mixed_gguf_block"
+    calibration_artifact: str = "gguf"
+    kernel_family: str = "gguf_q3_k_l_mixed_gemv"
+
+
+@dataclass(frozen=True)
 class GGUFIQ4XSQuant:
     """GGUF iq4_xs weight-only quantization contract."""
 
@@ -75,6 +88,7 @@ class GGUFQ6KQuant:
 GGUF_Q8_0 = register_quant(GGUFQ80Quant())
 GGUF_Q4_1 = register_quant(GGUFQ41Quant())
 GGUF_Q5_K = register_quant(GGUFQ5KQuant())
+GGUF_Q3_K_L = register_quant(GGUFQ3KLQuant())
 GGUF_Q6_K = register_quant(GGUFQ6KQuant())
 GGUF_IQ4_XS = register_quant(GGUFIQ4XSQuant())
 
@@ -83,11 +97,13 @@ __all__ = [
     "GGUFQ80Quant",
     "GGUFQ41Quant",
     "GGUFQ5KQuant",
+    "GGUFQ3KLQuant",
     "GGUFQ6KQuant",
     "GGUFIQ4XSQuant",
     "GGUF_IQ4_XS",
     "GGUF_Q4_1",
     "GGUF_Q5_K",
+    "GGUF_Q3_K_L",
     "GGUF_Q6_K",
     "GGUF_Q8_0",
 ]
