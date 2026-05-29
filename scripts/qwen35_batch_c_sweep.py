@@ -1754,6 +1754,65 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         "duration_seconds",
         "output_tail",
     }
+    expected_condition_keys = {
+        "kind",
+        "artifact_path",
+        "passed",
+        "reason",
+        "primitive_schema",
+        "primitive_artifact_path",
+        "primitive_seed",
+        "primitive_block_size",
+        "primitive_max_context_len",
+        "primitive_num_q_heads",
+        "primitive_num_kv_heads",
+        "primitive_head_dim",
+        "primitive_context_lens",
+        "primitive_rows",
+        "append_key_mismatch",
+        "append_value_mismatch",
+        "attn_batch_vs_c1_max_abs",
+        "attn_batch_vs_numpy_max_abs",
+        "reference_artifact_path",
+        "reference_status",
+        "reference_reason",
+        "workload_concurrency",
+        "prompt_tokens_per_request",
+        "gen_tokens_per_request",
+        "decode_tok_s_aggregate",
+        "decode_tok_s_per_request",
+        "profiler_status",
+        "profiler_source_artifact_path",
+        "profiler_command",
+        "profiler_output_format",
+        "profiler_trace_dir",
+        "profiler_trace_files",
+        "profiler_trace_kernel_names",
+        "profiler_trace_synthesized_fields",
+        "retained_artifact_path",
+        "c1_baseline_artifact_path",
+        "serial_bridge_artifact_path",
+        "primitive_correctness_artifact_path",
+        "profiler_compiler_version_file",
+        "profiler_require_cached_build",
+        "profiler_model",
+        "profiler_fixture",
+        "profiler_warmup_decode_tokens",
+        "profiler_max_layers",
+        "expected_kernel_names",
+        "kernel_durations_ns",
+        "total_kernel_duration_ns",
+        "kernel_duration_shares",
+        "kernel_duration_categories_ns",
+        "kernel_duration_category_shares",
+        "cpu_side_total_seconds",
+        "cpu_side_bottlenecks_seconds",
+        "cpu_side_bottleneck_shares",
+        "profiler_precondition_artifact_path",
+        "profiler_precondition_source_artifact_path",
+        "profiler_synthesized_fields",
+        "profiler_precondition_synthesized_fields",
+    }
     if entries:
         for entry in entries:
             if not set(entry).issubset(expected_command_keys):
@@ -2066,6 +2125,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 for condition in conditions:
                     if not isinstance(condition, dict):
                         errors.append(f"commands[].{condition_field}[] must be an object")
+                        condition_schema_error = True
+                        break
+                    if not set(condition).issubset(expected_condition_keys):
+                        errors.append(f"commands[].{condition_field}[] must contain only c-sweep condition schema keys")
                         condition_schema_error = True
                         break
                     if not isinstance(condition.get("kind"), str) or not condition.get("kind").strip():

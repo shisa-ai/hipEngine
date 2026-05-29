@@ -3841,6 +3841,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     ]
     persisted = json.loads(summary_path.read_text())
     c_sweep.validate_sweep_summary(persisted)
+    tampered_unknown_condition_key = json.loads(json.dumps(persisted))
+    tampered_unknown_condition_key["commands"][-1]["preconditions"][0]["unexpected"] = "field"
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\] must contain only c-sweep condition schema keys"):
+        c_sweep.validate_sweep_summary(tampered_unknown_condition_key)
     assert c_sweep.main(["--validate-summary-json", str(summary_path)]) == 0
     if hasattr(os, "symlink"):
         symlink_output_dir = tmp_path / "artifacts-link"
