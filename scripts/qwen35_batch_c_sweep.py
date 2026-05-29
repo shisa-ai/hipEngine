@@ -1948,7 +1948,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         errors.append(f"commands[].{condition_field}[] must be an object")
                         condition_schema_error = True
                         break
-                    if not isinstance(condition.get("kind"), str) or not condition.get("kind"):
+                    if not isinstance(condition.get("kind"), str) or not condition.get("kind").strip():
                         errors.append(f"commands[].{condition_field}[].kind must be a non-empty string")
                         condition_schema_error = True
                         break
@@ -1962,7 +1962,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                             errors.append("commands[].preconditions[].reason must be null when passed")
                             condition_schema_error = True
                             break
-                        if condition.get("passed") is False and (not isinstance(reason, str) or not reason):
+                        if condition.get("passed") is False and (not isinstance(reason, str) or not reason.strip()):
                             errors.append("commands[].preconditions[].reason must be a non-empty string when failed")
                             condition_schema_error = True
                             break
@@ -2548,7 +2548,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 if postcondition.get("passed") is True and reason is not None:
                     errors.append("commands[].postconditions[].reason must be null when passed")
                     break
-                if postcondition.get("passed") is False and (not isinstance(reason, str) or not reason):
+                if postcondition.get("passed") is False and (not isinstance(reason, str) or not reason.strip()):
                     errors.append("commands[].postconditions[].reason must be a non-empty string when failed")
                     break
                 profiler_fields = postcondition.get("profiler_synthesized_fields")

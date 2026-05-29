@@ -4241,10 +4241,13 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_passed_postcondition_reason["commands"][-1]["postconditions"][0]["reason"] = "unexpected"
     with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.reason must be null when passed"):
         c_sweep.validate_sweep_summary(tampered_passed_postcondition_reason)
-    tampered_failed_postcondition_reason = json.loads(json.dumps(persisted))
-    tampered_failed_postcondition_reason["commands"][-1]["postconditions"][0]["passed"] = False
-    with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.reason must be a non-empty string when failed"):
-        c_sweep.validate_sweep_summary(tampered_failed_postcondition_reason)
+    for failed_reason in (None, "   "):
+        tampered_failed_postcondition_reason = json.loads(json.dumps(persisted))
+        failed_postcondition = tampered_failed_postcondition_reason["commands"][-1]["postconditions"][0]
+        failed_postcondition["passed"] = False
+        failed_postcondition["reason"] = failed_reason
+        with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.reason must be a non-empty string when failed"):
+            c_sweep.validate_sweep_summary(tampered_failed_postcondition_reason)
     tampered_postcondition_precondition_source = json.loads(json.dumps(persisted))
     tampered_postcondition_precondition_source["commands"][-1]["postconditions"][0]["profiler_precondition_source_artifact_path"] = str(output_dir / "other-profiler-c2.json")
     with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler_precondition_source_artifact_path must match profiler_summary precondition"):
@@ -4363,10 +4366,13 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_passed_precondition_reason["commands"][-1]["preconditions"][0]["reason"] = "unexpected"
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.reason must be null when passed"):
         c_sweep.validate_sweep_summary(tampered_passed_precondition_reason)
-    tampered_failed_precondition_reason = json.loads(json.dumps(persisted))
-    tampered_failed_precondition_reason["commands"][-1]["preconditions"][0]["passed"] = False
-    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.reason must be a non-empty string when failed"):
-        c_sweep.validate_sweep_summary(tampered_failed_precondition_reason)
+    for failed_reason in (None, "   "):
+        tampered_failed_precondition_reason = json.loads(json.dumps(persisted))
+        failed_precondition = tampered_failed_precondition_reason["commands"][-1]["preconditions"][0]
+        failed_precondition["passed"] = False
+        failed_precondition["reason"] = failed_reason
+        with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.reason must be a non-empty string when failed"):
+            c_sweep.validate_sweep_summary(tampered_failed_precondition_reason)
     tampered_passed_row_failed_precondition = json.loads(json.dumps(persisted))
     failed_gate = tampered_passed_row_failed_precondition["commands"][-1]["preconditions"][0]
     failed_gate["passed"] = False
@@ -4391,10 +4397,16 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     failed_row["returncode"] = 0
     with pytest.raises(ValueError, match=r"commands\[\]\.status failed with returncode 0 cannot include only passed postconditions"):
         c_sweep.validate_sweep_summary(tampered_failed_row_passed_postcondition)
-    tampered_postcondition_schema = json.loads(json.dumps(persisted))
-    tampered_postcondition_schema["commands"][-1]["postconditions"][0]["kind"] = ""
-    with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.kind must be a non-empty string"):
-        c_sweep.validate_sweep_summary(tampered_postcondition_schema)
+    for bad_kind in ("", "   "):
+        tampered_postcondition_schema = json.loads(json.dumps(persisted))
+        tampered_postcondition_schema["commands"][-1]["postconditions"][0]["kind"] = bad_kind
+        with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.kind must be a non-empty string"):
+            c_sweep.validate_sweep_summary(tampered_postcondition_schema)
+    for bad_kind in ("", "   "):
+        tampered_precondition_schema = json.loads(json.dumps(persisted))
+        tampered_precondition_schema["commands"][-1]["preconditions"][0]["kind"] = bad_kind
+        with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.kind must be a non-empty string"):
+            c_sweep.validate_sweep_summary(tampered_precondition_schema)
     tampered_retained_gate_kinds = json.loads(json.dumps(persisted))
     tampered_retained_gate_kinds["commands"][-1]["preconditions"].pop()
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions must include retained native gate kinds"):
