@@ -2198,6 +2198,22 @@ def test_batch_c_sweep_rejects_empty_model_fixture_before_creating_artifacts(tmp
             run_sweep(args)
         assert not output_dir.exists()
 
+    typed_model_args = build_c_sweep_parser().parse_args(
+        ["--dry-run", "--batch-sizes", "2", "--output-dir", str(tmp_path / "typed-model")]
+    )
+    typed_model_args.model = None
+    with pytest.raises(ValueError, match="--model must be a non-empty string"):
+        run_sweep(typed_model_args)
+    assert not (tmp_path / "typed-model").exists()
+
+    typed_fixture_args = build_c_sweep_parser().parse_args(
+        ["--dry-run", "--batch-sizes", "2", "--output-dir", str(tmp_path / "typed-fixture")]
+    )
+    typed_fixture_args.fixture = Path("/tmp/fixture.json")
+    with pytest.raises(ValueError, match="--fixture must be a non-empty string"):
+        run_sweep(typed_fixture_args)
+    assert not (tmp_path / "typed-fixture").exists()
+
 
 def test_batch_c_sweep_stops_and_counts_failed_command(tmp_path: Path, monkeypatch) -> None:
     args = build_c_sweep_parser().parse_args(

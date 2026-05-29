@@ -2727,7 +2727,8 @@ def _validate_cli_path_option(flag: str, path: str | Path) -> None:
 
 def _validate_run_options(args: argparse.Namespace) -> None:
     for option in ("model", "fixture"):
-        if not str(getattr(args, option)):
+        value = getattr(args, option, None)
+        if not isinstance(value, str) or not value:
             flag = "--" + option.replace("_", "-")
             raise ValueError(f"{flag} must be a non-empty string")
     for option in ("stop_on_failure", "include_int8", "require_cached_build"):
