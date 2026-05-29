@@ -46134,3 +46134,26 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: targeted test PASS; verify count remains `12`; full guard PASS (`262` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: completed queue items still cite concrete evidence, no retained c>N performance claim was added, native c>N generated-token equality remains open, and no partial/blocked item was marked done.
+
+## 2026-05-29 — CONCURRENCY per-row post-attention diagnostic fallback
+
+Added a focused C2.3 diagnostic for the native full-attention post-attention boundary. `Qwen35ParoDecodeState.post_attention_add_rmsnorm_fp16_per_row(...)` now routes c>N post-attention add/RMSNorm through the token-1 kernel one row at a time, and `_run_layers_batch_decode` wires it behind `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN=1` for native full-attention decode layers only.
+
+The fallback is explicitly non-retained: decode metadata sets `native_caware_decode=false`, tags the full-attention layer with `post_attention_decode_path=per_row_add_rmsnorm_fallback`, and adds the blocker `post-attention add/rmsnorm forced to per-row diagnostic path`. `batch_execution_metadata(...)` now respects diagnostic decode fallbacks whose `decode_execution.native_caware_decode` is false instead of labeling them `native_compact_caware_layers`.
+
+CPU coverage: `test_qwen35_resident_run_layers_batch_decode_can_force_per_row_post_attention_probe` asserts the env switch reaches `run_full_attention_moe_decode_batch_layer_fp16(force_per_row_post_attention=True)`, marks layer/top-level decode metadata as non-native-caware, and propagates the blocker into batch execution metadata. Updated `docs/CONCURRENCY.md` C2.3 progress to cite the switch. No item was marked complete and no throughput claim was added.
+
+Validation:
+
+```bash
+pytest -q tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_run_layers_batch_decode_can_force_per_row_post_attention_probe tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_run_layers_batch_decode_reports_native_batch_for_short_context -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: targeted tests PASS; verify count remains `12`; full guard PASS (`263` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: completed queue items still cite concrete evidence, native c>N generated-token equality remains open, the new diagnostic path is explicitly blocked/non-retained, and no performance/scaling claim was added.

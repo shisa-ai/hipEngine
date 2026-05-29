@@ -1047,8 +1047,13 @@ roll-up/status view.
       and a compact `first_failure` record, so native-full artifacts can tell
       `mlp_input`/post-attention failures from final hidden/token failures; CPU
       coverage lives in `test_hidden_bisect_summary_embeds_batch_decode_execution_trace`.
-      The next
-      C2.3 work should decide whether the per-row fallback's ≤0.004
+      A new diagnostic switch,
+      `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN=1`, routes only the
+      c>N full-attention decode post-attention add/RMSNorm boundary through
+      token-1 row kernels, labels the decode as a diagnostic fallback, and is
+      covered by
+      `test_qwen35_resident_run_layers_batch_decode_can_force_per_row_post_attention_probe`.
+      The next C2.3 work should decide whether the per-row fallback's ≤0.004
       FP16/state amplification is acceptable under the diagnostic gate while native
       full-attention/post-attention still needs a stricter path; do not re-open
       full-attention context, layer-4 state mapping, native linear segment metadata,

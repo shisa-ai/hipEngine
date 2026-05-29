@@ -3560,6 +3560,7 @@ class Qwen35ParoDecodeState:
         group_size: int = 128,
         block_size: int = 256,
         force_selected_c1_moe: bool = False,
+        force_per_row_post_attention: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -3629,7 +3630,12 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
-        mlp_input, residual = self.post_attention_add_rmsnorm_fp16(
+        post_attention_fn = (
+            self.post_attention_add_rmsnorm_fp16_per_row
+            if force_per_row_post_attention and tokens > 1
+            else self.post_attention_add_rmsnorm_fp16
+        )
+        mlp_input, residual = post_attention_fn(
             hidden,
             attn_out,
             moe_scratch,
@@ -4866,6 +4872,50 @@ class Qwen35ParoDecodeState:
             library=_library_for(library, "norm"),
             runtime=self.runtime,
         )
+        return scratch.normed, scratch.residual
+
+    def post_attention_add_rmsnorm_fp16_per_row(
+        self,
+        hidden: Tensor,
+        attn_out: Tensor,
+        scratch: Qwen35ParoMoeScratch,
+        *,
+        tokens: int = 1,
+        eps: float | None = None,
+        library=None,
+        stream: int = 0,
+    ) -> tuple[Tensor, Tensor]:
+        """Diagnostic c>N post-attention path using the token-1 RMS kernel per row."""
+
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        if tokens == 1:
+            return self.post_attention_add_rmsnorm_fp16(
+                hidden,
+                attn_out,
+                scratch,
+                tokens=tokens,
+                eps=eps,
+                library=library,
+                stream=stream,
+            )
+        weight = self.tensor(f"layers.{self.layer_weights.layer_id}.post_attention_layernorm.weight")
+        norm_library = _library_for(library, "norm")
+        norm_eps = self.config.rms_norm_eps if eps is None else eps
+        for row in range(tokens):
+            paro_add_rmsnorm_out_fp16(
+                self._row_tensor_view(hidden, row).ptr,
+                self._row_tensor_view(attn_out, row).ptr,
+                weight.ptr,
+                self._row_tensor_view(scratch.normed, row).ptr,
+                self._row_tensor_view(scratch.residual, row).ptr,
+                1,
+                self.config.hidden_size,
+                norm_eps,
+                stream=stream,
+                library=norm_library,
+                runtime=self.runtime,
+            )
         return scratch.normed, scratch.residual
 
     def run_linear_attention_moe_c1_layer_fp16(
