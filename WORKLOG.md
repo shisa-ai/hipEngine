@@ -27028,3 +27028,17 @@ No additional performance or full-model correctness claim is made. Continue only
 User confirmed the Strix Halo boot config in `/etc/modprobe.d/amdgpu_llm_optimized.conf`: `amdgpu gttsize=120000`, `ttm pages_limit=31457280` (~120 GiB), `ttm page_pool_size=2081024` (~8 GiB preassigned), and `amdgpu vm_fragment_size=8`. This should make the 95.465 GiB raw StepFun Q3_K_L GGUF payload feasible in GTT with current ~5 GiB resident system use. Reclassified the earlier `rocm-smi VIS_VRAM=512 MiB` and contradictory `hipMemGetInfo free=119.996 GiB,total=62.541 GiB` observations as insufficient fit/fail proxies rather than hard blockers.
 
 Action: docs now say to continue implementation and validate memory via a real allocation/load attempt once the resident Step runner/load path is wired. Remaining P8/P11/P12 open items are implementation/validation tasks, not blockers caused by memory readouts alone.
+
+## 2026-05-29 — StepFun split GGUF resident materialization
+
+Added `hipengine/loading/stepfun_gguf_materialize.py`, a torch-free StepFun-specific split GGUF materialization layer. It builds a resident plan from the validated Step tensor map, keeps Q3_K/Q5_K/Q8_0 tensors in raw GGUF layout, keeps F32 tensors dense, and reads payloads from each tensor's owning split shard. The plan covers all 754 StepFun Q3_K_L tensors (`95.4598 GiB`) with quant counts: `gguf_q3_k=309`, `gguf_q5_k=177`, `gguf_q8_0=2`, `f32=266`.
+
+Added `tests/test_stepfun_materialize.py` covering all-tensor planning, split-shard payload access against `GGUFReader`, Q3_K dispatch-key resolution for `hip_gfx1151`, selected-slot HIP materialization/free (`root.output_norm`, `layers.0.attn_q`, `layers.3.ffn_gate_inp`), memory stats, and no torch import.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_materialize.py
+```
+
+Result: `4 passed`. This is an implementation step toward P11/P12 resident execution; it does not claim full-model generation or throughput. Full 95.46 GiB allocation/load still needs to be attempted once the execution path is ready or through a dedicated load smoke.

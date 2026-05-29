@@ -486,9 +486,11 @@ reporting.
 
 - [ ] Add a Step GGUF runner that streams one-token decode for short prompts with
   the Step tokenizer, split weight index, mixed GGUF quant dispatch, full/sliding
-  attention, and Step MoE. Remaining implementation task: resident Step
-  layer/full-model execution is not wired beyond the prompt planner and CPU
-  replay harness.
+  attention, and Step MoE. 2026-05-29 progress: split-shard resident
+  materialization now plans all 754 tensors / 95.46 GiB and selected-slot HIP
+  loading/freeing is tested; remaining implementation task is the actual
+  layer/full-model execution loop beyond the prompt planner and CPU replay
+  harness.
 - [x] Use short contexts first (for example <= 512) before exercising long
   context and sliding-window boundaries. `StepFunShortContextDecodePlanner`
   enforces the current c=1 bring-up default `max_context=512`,
@@ -519,9 +521,11 @@ next-token/logit parity remains open until the streaming runner is wired.
 > real allocations; do not block implementation solely on those readouts.
 
 - [ ] Load all three GGUF shards on the Strix Halo target with a small context
-  and `max_new_tokens` (for example 1-8). 2026-05-29: not attempted yet because
-  full resident Step execution is not wired; the configured 120 GB GTT means the
-  prior HIP/ROCm memory readouts are not treated as a hard fit blocker.
+  and `max_new_tokens` (for example 1-8). 2026-05-29: full generation not
+  attempted yet because resident Step execution is not wired. The resident
+  materialization layer can plan all 754 split-shard tensors and selected-slot
+  HIP loads now pass; full-model allocation/load evidence remains to be captured
+  under the configured 120 GB GTT setup.
 - [ ] Record HIP-visible memory before load, after load, after KV allocation, and
   after generation; include UMA/GTT setting and backend (`hip_gfx1151`). Current
   preflight evidence to reconcile: `hipMemGetInfo free=119.996 GiB,total=62.541
@@ -536,7 +540,10 @@ next-token/logit parity remains open until the streaming runner is wired.
   path is required.
 
 **Acceptance:** full-model smoke produces token(s) or a documented fit failure.
-This is still not a throughput benchmark.
+Current materialization coverage is validated by
+`python3 -m pytest -q tests/test_stepfun_materialize.py` for all-tensor planning,
+split-shard payload access, selected-slot HIP loading/freeing, and torch-free
+imports. This is still not a throughput benchmark.
 
 ### P13 — Benchmark and rollup only after correctness
 
