@@ -30,6 +30,17 @@ from hipengine.kernels.hip_gfx1100.attention import (
 )
 from hipengine.kvcache import KVLiveSpans
 from hipengine.loading import float_array_to_bf16_bits
+from scripts.qwen35_batch_constants import (
+    RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT,
+    RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA,
+    RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SEED,
+    RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS,
+)
+
+_REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA = RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA
+_REQUIRED_PRIMITIVE_CORRECTNESS_SEED = RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SEED
+_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS = RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS
+_PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT = RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT
 
 
 def _bf16_to_f32(bits: np.ndarray) -> np.ndarray:
@@ -98,7 +109,7 @@ def _primitive_correctness_passed(
         and append_value_mismatch == 0
         and float(batch_vs_c1) == 0.0
         and math.isfinite(float(batch_vs_numpy))
-        and 0.0 <= float(batch_vs_numpy) <= 2e-5
+        and 0.0 <= float(batch_vs_numpy) <= _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT
     )
 
 
@@ -138,12 +149,12 @@ def _fill_context_cache_rows(
 def run(
     rows: int,
     *,
-    seed: int = 1234,
-    block_size: int = 256,
-    max_context_len: int = 4,
-    num_q_heads: int = 4,
-    num_kv_heads: int = 1,
-    head_dim: int = 8,
+    seed: int = _REQUIRED_PRIMITIVE_CORRECTNESS_SEED,
+    block_size: int = _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS["block_size"],
+    max_context_len: int = _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS["max_context_len"],
+    num_q_heads: int = _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS["num_q_heads"],
+    num_kv_heads: int = _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS["num_kv_heads"],
+    head_dim: int = _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS["head_dim"],
     context_lens: np.ndarray | None = None,
     include_dense_c1: bool = False,
 ) -> dict[str, object]:
@@ -332,7 +343,7 @@ def run(
     batch_vs_c1 = float(np.max(np.abs(batch_out - c1_out)))
     batch_vs_numpy = float(np.max(np.abs(batch_out - expected)))
     result = {
-        "schema": 1,
+        "schema": _REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA,
         "rows": rows,
         "seed": seed,
         "block_size": block_size,
@@ -365,12 +376,12 @@ def run(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--rows", type=int, default=2)
-    parser.add_argument("--seed", type=int, default=1234)
-    parser.add_argument("--block-size", type=int, default=256)
-    parser.add_argument("--max-context-len", type=int, default=4)
-    parser.add_argument("--num-q-heads", type=int, default=4)
-    parser.add_argument("--num-kv-heads", type=int, default=1)
-    parser.add_argument("--head-dim", type=int, default=8)
+    parser.add_argument("--seed", type=int, default=_REQUIRED_PRIMITIVE_CORRECTNESS_SEED)
+    parser.add_argument("--block-size", type=int, default=_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS["block_size"])
+    parser.add_argument("--max-context-len", type=int, default=_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS["max_context_len"])
+    parser.add_argument("--num-q-heads", type=int, default=_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS["num_q_heads"])
+    parser.add_argument("--num-kv-heads", type=int, default=_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS["num_kv_heads"])
+    parser.add_argument("--head-dim", type=int, default=_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS["head_dim"])
     parser.add_argument("--context-lens", help="comma-separated live counts; defaults to 1..max_context_len coverage")
     parser.add_argument("--include-dense-c1", action="store_true", help="also compare batch paged context against the dense c1 short-context kernel")
     parser.add_argument("--json", type=Path)
