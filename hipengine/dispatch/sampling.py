@@ -113,6 +113,14 @@ def _generated_token_equality(payload: Mapping[str, Any]) -> Mapping[str, Any] |
     return equality if isinstance(equality, Mapping) else None
 
 
+def _token_sequence_rows_are_int_lists(value: list[Any]) -> bool:
+    return all(
+        isinstance(row, list)
+        and all(isinstance(token, int) and not isinstance(token, bool) and token >= 0 for token in row)
+        for row in value
+    )
+
+
 def batch_sampler_equality_payload_blockers(
     payload: Mapping[str, Any],
     *,
@@ -168,6 +176,10 @@ def batch_sampler_equality_payload_blockers(
     else:
         if len(batch_sequences) != rows or len(c1_sequences) != rows:
             blockers.append(f"{label} generated_token_equality sequence row counts must match batch rows")
+        if not _token_sequence_rows_are_int_lists(batch_sequences):
+            blockers.append(f"{label} generated_token_equality batch_sequences rows must be integer lists")
+        if not _token_sequence_rows_are_int_lists(c1_sequences):
+            blockers.append(f"{label} generated_token_equality c1_sequences rows must be integer lists")
         if batch_sequences != c1_sequences:
             blockers.append(f"{label} generated_token_equality batch_sequences must equal c1_sequences")
     mismatches = equality.get("mismatches")

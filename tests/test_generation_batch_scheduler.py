@@ -5576,6 +5576,16 @@ def test_batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head(tmp_pat
         encoding="utf-8",
     )
     (artifact_dir / "qwen35-c8-primitive-only-eq.json").write_text(json.dumps({"schema": 1, "rows": 8, "passed": True}), encoding="utf-8")
+    malformed_sequences_payload = _sampler_equality_payload(
+        rows=8,
+        artifact_path="benchmarks/results/qwen35-c8-malformed-sequences-eq.json",
+        batch_sequences=[["bad-token"] for _ in range(8)],
+        c1_sequences=[["bad-token"] for _ in range(8)],
+    )
+    (artifact_dir / "qwen35-c8-malformed-sequences-eq.json").write_text(
+        json.dumps(malformed_sequences_payload),
+        encoding="utf-8",
+    )
     (artifact_dir / "qwen35-c8-wrong-artifact-path-eq.json").write_text(
         json.dumps(_sampler_equality_payload(rows=8, artifact_path="benchmarks/results/qwen35-c8-eq.json")),
         encoding="utf-8",
@@ -5726,6 +5736,17 @@ def test_batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head(tmp_pat
     )
     assert primitive_only_equality_artifact.mode is BatchSamplerMode.SERIAL_LM_HEAD
     assert "batched LM-head equality artifact must include generated-token equality details" in primitive_only_equality_artifact.blockers
+
+    malformed_sequences_equality_artifact = plan_batch_sampler_dispatch(
+        rows=8,
+        requested_mode="batched_lm_head",
+        c2_equality_green=True,
+        equality_artifact="benchmarks/results/qwen35-c8-malformed-sequences-eq.json",
+        equality_rows=8,
+    )
+    assert malformed_sequences_equality_artifact.mode is BatchSamplerMode.SERIAL_LM_HEAD
+    assert "batched LM-head equality artifact generated_token_equality batch_sequences rows must be integer lists" in malformed_sequences_equality_artifact.blockers
+    assert "batched LM-head equality artifact generated_token_equality c1_sequences rows must be integer lists" in malformed_sequences_equality_artifact.blockers
 
     wrong_artifact_path_equality_artifact = plan_batch_sampler_dispatch(
         rows=8,
