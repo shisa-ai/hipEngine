@@ -58,6 +58,17 @@ DECODE_FULL_ATTENTION_TRACE_STAGES = (
     "mlp_input",
     "output",
 )
+DECODE_LINEAR_TRACE_STAGES = (
+    "attn_input",
+    "qkv",
+    "z",
+    "conv_out",
+    "recurrent_out",
+    "out_proj",
+    "residual",
+    "mlp_input",
+    "output",
+)
 DECODE_FULL_CONTEXT_ORACLE_ATOL = 3.0e-5
 KV_PREFIX_MISMATCH_POSITION_LIMIT = 8
 KV_PREFIX_TAIL_WINDOW = 16
@@ -76,6 +87,7 @@ class HiddenRun:
     prefill_full_kv_prefix_hashes: dict[int, dict[str, np.ndarray]] = field(default_factory=dict)
     decode_linear_inputs_by_step: list[dict[int, np.ndarray]] = field(default_factory=list)
     decode_linear_outputs_by_step: list[dict[int, np.ndarray]] = field(default_factory=list)
+    decode_linear_stages_by_step: list[dict[int, dict[str, np.ndarray]]] = field(default_factory=list)
     decode_full_attention_by_step: list[dict[int, dict[str, np.ndarray]]] = field(default_factory=list)
     decode_full_context_oracles_by_step: list[dict[int, dict[str, np.ndarray]]] = field(default_factory=list)
     decode_full_kv_samples_by_step: list[dict[int, dict[str, np.ndarray | tuple[str, ...]]]] = field(default_factory=list)
@@ -680,6 +692,7 @@ def _transition_trace_summaries(summary: dict[str, Any]) -> dict[str, Any]:
         "decode_full_kv_samples",
         "decode_linear_inputs",
         "decode_linear_handoffs",
+        "decode_linear_stages",
         "decode_linear_states",
     ):
         trace = summary.get(key)
@@ -1364,6 +1377,30 @@ def _decode_linear_input_layers_from_trace(trace: Sequence[dict[str, Any]] | Non
     return layers
 
 
+def _decode_linear_stage_layers_from_trace(trace: Sequence[dict[str, Any]] | None) -> dict[int, dict[str, np.ndarray]]:
+    grouped: dict[int, dict[str, list[np.ndarray]]] = {}
+    if not trace:
+        return {}
+    for entry in trace:
+        layer_id = int(entry["layer_index"])
+        stage = str(entry.get("stage", ""))
+        if stage not in DECODE_LINEAR_TRACE_STAGES:
+            raise ValueError(f"decode linear trace for layer {layer_id} has unrecognized stage {stage!r}")
+        if "bits" in entry:
+            values = np.asarray(entry["bits"], dtype=np.uint16)
+        elif "values" in entry:
+            values = np.asarray(entry["values"], dtype=np.float32)
+        else:
+            raise ValueError(f"decode linear trace for layer {layer_id}, stage {stage} has no payload")
+        if values.ndim != 2:
+            raise ValueError(f"decode linear trace for layer {layer_id}, stage {stage} must be rank-2")
+        grouped.setdefault(layer_id, {}).setdefault(stage, []).append(values.copy())
+    return {
+        int(layer_id): {stage: np.concatenate(rows, axis=0) for stage, rows in stages.items()}
+        for layer_id, stages in grouped.items()
+    }
+
+
 def _decode_full_attention_layers_from_trace(
     trace: Sequence[dict[str, Any]] | None,
 ) -> dict[int, dict[str, np.ndarray]]:
@@ -1899,6 +1936,7 @@ def _run_batch_hidden(
         hidden_bits_by_step: list[np.ndarray] = []
         decode_linear_inputs_by_step: list[dict[int, np.ndarray]] = []
         decode_linear_outputs_by_step: list[dict[int, np.ndarray]] = []
+        decode_linear_stages_by_step: list[dict[int, dict[str, np.ndarray]]] = []
         decode_full_attention_by_step: list[dict[int, dict[str, np.ndarray]]] = []
         decode_full_context_oracles_by_step: list[dict[int, dict[str, np.ndarray]]] = []
         decode_full_kv_samples_by_step: list[dict[int, dict[str, np.ndarray | tuple[str, ...]]]] = []
@@ -1908,6 +1946,7 @@ def _run_batch_hidden(
             positions = tuple(len(prompt) + step for prompt in prompts)
             session._decode_linear_input_trace = []
             session._decode_linear_output_trace = []
+            session._decode_linear_stage_trace = []
             session._decode_full_attention_trace = []
             session._set_batch_token_embeddings(next_tokens, stream=0)
             session._set_batch_positions(positions, stream=0)
@@ -1928,6 +1967,9 @@ def _run_batch_hidden(
             )
             decode_linear_outputs_by_step.append(
                 _decode_linear_input_layers_from_trace(getattr(session, "_decode_linear_output_trace", None))
+            )
+            decode_linear_stages_by_step.append(
+                _decode_linear_stage_layers_from_trace(getattr(session, "_decode_linear_stage_trace", None))
             )
             decode_full_attention_layers = _decode_full_attention_layers_from_trace(
                 getattr(session, "_decode_full_attention_trace", None)
@@ -1968,6 +2010,7 @@ def _run_batch_hidden(
             prefill_full_kv_prefix_hashes=prefill_full_kv_prefix_hashes,
             decode_linear_inputs_by_step=decode_linear_inputs_by_step,
             decode_linear_outputs_by_step=decode_linear_outputs_by_step,
+            decode_linear_stages_by_step=decode_linear_stages_by_step,
             decode_full_attention_by_step=decode_full_attention_by_step,
             decode_full_context_oracles_by_step=decode_full_context_oracles_by_step,
             decode_full_kv_samples_by_step=decode_full_kv_samples_by_step,
@@ -1995,6 +2038,7 @@ def _run_c1_hidden(
     prefill_full_kv_prefix_hash_rows: dict[int, dict[str, list[np.ndarray]]] = {}
     decode_linear_input_rows_by_step: list[dict[int, list[np.ndarray]]] = [{} for _ in range(decode_tokens)]
     decode_linear_output_rows_by_step: list[dict[int, list[np.ndarray]]] = [{} for _ in range(decode_tokens)]
+    decode_linear_stage_rows_by_step: list[dict[int, dict[str, list[np.ndarray]]]] = [{} for _ in range(decode_tokens)]
     decode_full_attention_rows_by_step: list[dict[int, dict[str, list[np.ndarray]]]] = [{} for _ in range(decode_tokens)]
     decode_full_context_oracle_rows_by_step: list[dict[int, dict[str, list[np.ndarray]]]] = [
         {} for _ in range(decode_tokens)
@@ -2042,6 +2086,7 @@ def _run_c1_hidden(
                 position = len(prompt) + step
                 session._decode_linear_input_trace = []
                 session._decode_linear_output_trace = []
+                session._decode_linear_stage_trace = []
                 session._decode_full_attention_trace = []
                 session._set_token_embedding(next_token, stream=0)
                 session._set_position(position, stream=0)
@@ -2055,6 +2100,10 @@ def _run_c1_hidden(
                 _merge_decode_linear_input_row(
                     decode_linear_output_rows_by_step[step],
                     _decode_linear_input_layers_from_trace(getattr(session, "_decode_linear_output_trace", None)),
+                )
+                _merge_decode_full_attention_rows(
+                    decode_linear_stage_rows_by_step[step],
+                    _decode_linear_stage_layers_from_trace(getattr(session, "_decode_linear_stage_trace", None)),
                 )
                 decode_full_attention_layers = _decode_full_attention_layers_from_trace(
                     getattr(session, "_decode_full_attention_trace", None)
@@ -2099,6 +2148,9 @@ def _run_c1_hidden(
         ],
         decode_linear_outputs_by_step=[
             _stack_decode_linear_input_rows(rows_by_layer) for rows_by_layer in decode_linear_output_rows_by_step
+        ],
+        decode_linear_stages_by_step=[
+            _stack_decode_full_attention_rows(rows_by_layer) for rows_by_layer in decode_linear_stage_rows_by_step
         ],
         decode_full_attention_by_step=[
             _stack_decode_full_attention_rows(rows_by_layer) for rows_by_layer in decode_full_attention_rows_by_step
@@ -2535,6 +2587,185 @@ def _decode_linear_input_summary(
     if worst_diff is not None:
         result["worst_diff"] = worst_diff
     return result
+
+
+def _stage_array_comparison(batch_values: np.ndarray, c1_values: np.ndarray, *, atol: float) -> tuple[str, dict[str, Any]]:
+    if batch_values.dtype == np.uint16 and c1_values.dtype == np.uint16:
+        return "fp16_bits", hidden_comparison(batch_values, c1_values, atol=atol)
+    batch_f32 = np.ascontiguousarray(batch_values, dtype=np.float32)
+    c1_f32 = np.ascontiguousarray(c1_values, dtype=np.float32)
+    comparison = numeric_comparison(batch_f32, c1_f32, atol=atol)
+    comparison["bit_mismatch"] = int(np.count_nonzero(batch_f32.view(np.uint32) != c1_f32.view(np.uint32)))
+    return "fp32", comparison
+
+
+def _decode_linear_stage_summary(
+    batch: HiddenRun,
+    c1: HiddenRun,
+    *,
+    atol: float,
+) -> dict[str, Any] | None:
+    if not batch.decode_linear_stages_by_step or not c1.decode_linear_stages_by_step:
+        return None
+    steps: list[dict[str, Any]] = []
+    first_mismatch: dict[str, Any] | None = None
+    first_bit_drift: dict[str, Any] | None = None
+    stage_passed = {stage: True for stage in DECODE_LINEAR_TRACE_STAGES}
+    for step, (batch_layers, c1_layers) in enumerate(
+        zip(batch.decode_linear_stages_by_step, c1.decode_linear_stages_by_step, strict=True)
+    ):
+        layers: list[dict[str, Any]] = []
+        for layer_id in sorted(set(batch_layers) & set(c1_layers)):
+            stage_summaries: dict[str, Any] = {}
+            for stage in DECODE_LINEAR_TRACE_STAGES:
+                if stage not in batch_layers[layer_id] or stage not in c1_layers[layer_id]:
+                    continue
+                layer_batch = batch_layers[layer_id][stage]
+                layer_c1 = c1_layers[layer_id][stage]
+                if layer_batch.shape != layer_c1.shape:
+                    raise ValueError(
+                        f"decode linear stage trace shape differs for step {step}, layer {layer_id}, stage {stage}: "
+                        f"batch={layer_batch.shape} c1={layer_c1.shape}"
+                    )
+                row_summaries: list[dict[str, Any]] = []
+                for row in range(int(layer_batch.shape[0])):
+                    comparison_kind, comparison = _stage_array_comparison(
+                        layer_batch[row : row + 1],
+                        layer_c1[row : row + 1],
+                        atol=atol,
+                    )
+                    row_summary = {
+                        "row": int(row),
+                        "comparison_kind": comparison_kind,
+                        "hidden_comparison": comparison,
+                        "passed": bool(comparison["passed"]),
+                    }
+                    row_summaries.append(row_summary)
+                    if first_mismatch is None and not bool(comparison["passed"]):
+                        first_mismatch = {
+                            "decode_step": int(step),
+                            "generated_index": int(step + 1),
+                            "layer_index": int(layer_id),
+                            "stage": stage,
+                            "row": int(row),
+                            "comparison_kind": comparison_kind,
+                            "max_abs": float(comparison["max_abs"]),
+                            "max_abs_flat_index": comparison.get("max_abs_flat_index"),
+                            "max_abs_index": comparison.get("max_abs_index", []),
+                            "elements_over_atol": int(comparison.get("elements_over_atol", 0)),
+                            "bit_mismatch": int(comparison.get("bit_mismatch", 0)),
+                        }
+                    if first_bit_drift is None and int(comparison.get("bit_mismatch", 0)) > 0:
+                        first_bit_drift = {
+                            "decode_step": int(step),
+                            "generated_index": int(step + 1),
+                            "layer_index": int(layer_id),
+                            "stage": stage,
+                            "row": int(row),
+                            "comparison_kind": comparison_kind,
+                            "passed_under_atol": bool(comparison["passed"]),
+                            "bit_mismatch": int(comparison.get("bit_mismatch", 0)),
+                            "max_abs": float(comparison["max_abs"]),
+                            "max_abs_flat_index": comparison.get("max_abs_flat_index"),
+                            "max_abs_index": comparison.get("max_abs_index", []),
+                            "elements_over_atol": int(comparison.get("elements_over_atol", 0)),
+                        }
+                stage_summary = {
+                    "passed": all(bool(row["passed"]) for row in row_summaries),
+                    "rows": row_summaries,
+                }
+                stage_summaries[stage] = stage_summary
+                stage_passed[stage] = bool(stage_passed[stage] and stage_summary["passed"])
+            layers.append(
+                {
+                    "layer_index": int(layer_id),
+                    "passed": all(bool(stage_summary["passed"]) for stage_summary in stage_summaries.values()),
+                    "stages": stage_summaries,
+                }
+            )
+        steps.append(
+            {
+                "decode_step": int(step),
+                "generated_index": int(step + 1),
+                "passed": all(bool(layer["passed"]) for layer in layers),
+                "layers": layers,
+            }
+        )
+    result = {
+        "stage": "decode_linear_stages",
+        "hidden_atol": float(atol),
+        "passed": all(bool(step["passed"]) for step in steps),
+        "stage_passed": stage_passed,
+        "steps": steps,
+    }
+    if first_mismatch is not None:
+        result["first_mismatch"] = first_mismatch
+    if first_bit_drift is not None:
+        result["first_bit_drift"] = first_bit_drift
+    return result
+
+
+def _decode_linear_stage_bit_drift_rollup(layer_summaries: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    stage_rollups: dict[str, dict[str, Any]] = {}
+    first_bit_drift: dict[str, Any] | None = None
+    for summary in layer_summaries:
+        layer_limit = int(summary.get("layer_limit", 0))
+        trace = summary.get("decode_linear_stages")
+        if not isinstance(trace, dict):
+            continue
+        for step_summary in trace.get("steps", []):
+            for layer in step_summary.get("layers", []):
+                for stage, stage_summary in layer.get("stages", {}).items():
+                    rollup = stage_rollups.setdefault(
+                        str(stage),
+                        {
+                            "passed": True,
+                            "bit_drift_rows": [],
+                            "bit_drift_row_count": 0,
+                            "total_bit_mismatch": 0,
+                            "first_bit_drift": None,
+                        },
+                    )
+                    seen_rows = set(rollup.get("bit_drift_rows", []))
+                    for row_summary in stage_summary.get("rows", []):
+                        comparison = row_summary.get("hidden_comparison", {})
+                        bit_mismatch = int(comparison.get("bit_mismatch", 0)) if isinstance(comparison, dict) else 0
+                        if bit_mismatch <= 0:
+                            continue
+                        max_abs_flat_index = comparison.get("max_abs_flat_index") if isinstance(comparison, dict) else None
+                        record = {
+                            "layer_limit": layer_limit,
+                            "decode_step": int(step_summary.get("decode_step", 0)),
+                            "generated_index": int(step_summary.get("generated_index", int(step_summary.get("decode_step", 0)) + 1)),
+                            "layer_index": int(layer.get("layer_index", -1)),
+                            "stage": str(stage),
+                            "row": int(row_summary.get("row", -1)),
+                            "comparison_kind": str(row_summary.get("comparison_kind", "unknown")),
+                            "passed_under_atol": bool(row_summary.get("passed", False)),
+                            "bit_mismatch": bit_mismatch,
+                            "max_abs": float(comparison.get("max_abs", 0.0)) if isinstance(comparison, dict) else 0.0,
+                            "max_abs_flat_index": None if max_abs_flat_index is None else int(max_abs_flat_index),
+                            "max_abs_index": comparison.get("max_abs_index", []) if isinstance(comparison, dict) else [],
+                            "elements_over_atol": int(comparison.get("elements_over_atol", 0)) if isinstance(comparison, dict) else 0,
+                        }
+                        rollup["passed"] = False
+                        rollup["total_bit_mismatch"] = int(rollup["total_bit_mismatch"]) + bit_mismatch
+                        if rollup["first_bit_drift"] is None:
+                            rollup["first_bit_drift"] = record
+                        if first_bit_drift is None:
+                            first_bit_drift = record
+                        row_index = int(row_summary.get("row", -1))
+                        if row_index >= 0 and row_index not in seen_rows:
+                            rollup["bit_drift_rows"].append(row_index)
+                            seen_rows.add(row_index)
+                            rollup["bit_drift_row_count"] = len(rollup["bit_drift_rows"])
+    drift_stages = [stage for stage in DECODE_LINEAR_TRACE_STAGES if stage in stage_rollups and not bool(stage_rollups[stage]["passed"])]
+    return {
+        "drift_stages": drift_stages,
+        "drift_stage_count": len(drift_stages),
+        "first_bit_drift": first_bit_drift,
+        "stages": {stage: stage_rollups[stage] for stage in DECODE_LINEAR_TRACE_STAGES if stage in stage_rollups},
+    }
 
 
 def _decode_linear_handoff_record(
@@ -4907,6 +5138,11 @@ def _summarize_layer_limit(
         atol=atol,
         focus_hidden_flat_indices=focus_hidden_flat_indices,
     )
+    decode_linear_stages = _decode_linear_stage_summary(
+        batch,
+        c1,
+        atol=atol,
+    )
     decode_full_attention = _decode_full_attention_summary(
         batch,
         c1,
@@ -4950,6 +5186,7 @@ def _summarize_layer_limit(
         ),
         "decode_linear_input_passed": True if decode_linear_inputs is None else bool(decode_linear_inputs["passed"]),
         "decode_linear_handoff_passed": True if decode_linear_handoffs is None else bool(decode_linear_handoffs["passed"]),
+        "decode_linear_stage_passed": True if decode_linear_stages is None else bool(decode_linear_stages["passed"]),
         "decode_full_attention_input_passed": (
             True if decode_full_attention is None else bool(decode_full_attention["input_passed"])
         ),
@@ -4994,6 +5231,8 @@ def _summarize_layer_limit(
         summary["decode_linear_inputs"] = decode_linear_inputs
     if decode_linear_handoffs is not None:
         summary["decode_linear_handoffs"] = decode_linear_handoffs
+    if decode_linear_stages is not None:
+        summary["decode_linear_stages"] = decode_linear_stages
     if decode_full_attention is not None:
         summary["decode_full_attention"] = decode_full_attention
     if decode_full_context_oracle is not None:
@@ -5374,6 +5613,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "failure_modes": _failure_modes(hidden_passed=hidden_passed, token_passed=token_passed),
             "row_failure_summary": _row_failure_summary(layer_summaries),
             "decode_linear_handoff_summary": _decode_linear_handoff_rollup(layer_summaries),
+            "decode_linear_stage_bit_drift_summary": _decode_linear_stage_bit_drift_rollup(layer_summaries),
             "decode_linear_input_bit_drift_summary": _decode_linear_input_bit_drift_rollup(layer_summaries),
             "decode_full_attention_stage_failure_summary": _decode_full_attention_stage_rollup(layer_summaries),
             "decode_full_attention_bit_drift_summary": _decode_full_attention_bit_drift_rollup(layer_summaries),

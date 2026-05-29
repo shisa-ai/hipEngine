@@ -1185,9 +1185,16 @@ roll-up/status view.
       (`bit_mismatch=1079`), so the early drift is not a grouped-compact MoE
       reducer artifact. Selected-c1 MoE diagnostics now mark
       `native_caware_decode=false` in workload and layer execution metadata to
-      avoid overclaiming. The next target is a minimal native `batch_segments`
-      vs per-row layer-0 replay/fix for the segmented linear-attention producer;
-      do not change paged-KV writer code yet. Do not re-open
+      avoid overclaiming. The linear-stage trace at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-stage-trace-atol4e-3-focus1269.json`
+      adds `correctness.decode_linear_stage_bit_drift_summary` and shows the
+      first layer-0 native `batch_segments` drift starts at the linear-attention
+      `qkv` projection (`bit_mismatch=622`, `max_abs=0.0078125`, flat index
+      2274) while layer-0 `attn_input` is still exact; downstream `z`,
+      `conv_out`, `recurrent_out`, `out_proj`, residual/MLP/output then drift.
+      The next target is a minimal native `batch_segments` vs token-1 projection
+      replay/fix for the layer-0 linear-attention QKV/Z projection; do not
+      change paged-KV writer code yet. Do not re-open
       context softmax math, row setup, native linear segment metadata,
       output trace/copy semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2

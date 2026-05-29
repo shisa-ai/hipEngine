@@ -2862,6 +2862,80 @@ class Qwen35ParoResidentSession:
             stream=stream,
         )
 
+    def _trace_decode_linear_tensor(
+        self,
+        *,
+        layer_id: int,
+        stage: str,
+        tensor: Tensor,
+        rows: int,
+        stream: int = 0,
+    ) -> None:
+        if stage not in {
+            "attn_input",
+            "qkv",
+            "z",
+            "conv_out",
+            "recurrent_out",
+            "out_proj",
+            "residual",
+            "mlp_input",
+            "output",
+        }:
+            raise ValueError("decode linear-attention trace stage is not recognized")
+        if tensor.dtype == DType.FP32:
+            self._trace_tensor_f32(
+                trace_attr="_decode_linear_stage_trace",
+                layer_id=layer_id,
+                stage=stage,
+                tensor=tensor,
+                rows=rows,
+                stream=stream,
+            )
+            return
+        if tensor.dtype.itemsize == 2:
+            self._trace_tensor_bits(
+                trace_attr="_decode_linear_stage_trace",
+                layer_id=layer_id,
+                stage=stage,
+                tensor=tensor,
+                rows=rows,
+                stream=stream,
+            )
+            return
+        raise ValueError(f"decode linear-attention tensor trace {stage} does not support dtype {tensor.dtype}")
+
+    def _trace_decode_linear_stages(
+        self,
+        *,
+        layer_id: int,
+        linear_scratch: Qwen35ParoLinearAttentionScratch,
+        moe_scratch: Qwen35ParoMoeScratch | Qwen35ParoGroupedMoeScratch | Qwen35ParoDenseMlpScratch,
+        output: Tensor,
+        rows: int,
+        stream: int = 0,
+    ) -> None:
+        if not isinstance(getattr(self, "_decode_linear_stage_trace", None), list):
+            return
+        for stage, tensor in (
+            ("attn_input", linear_scratch.attn_input),
+            ("qkv", linear_scratch.qkv),
+            ("z", linear_scratch.z),
+            ("conv_out", linear_scratch.conv_out),
+            ("recurrent_out", linear_scratch.recurrent_out),
+            ("out_proj", linear_scratch.out_proj),
+            ("residual", moe_scratch.residual),
+            ("mlp_input", moe_scratch.normed),
+            ("output", output),
+        ):
+            self._trace_decode_linear_tensor(
+                layer_id=layer_id,
+                stage=stage,
+                tensor=tensor,
+                rows=rows,
+                stream=stream,
+            )
+
     def _trace_tensor_bits(
         self,
         *,
@@ -3790,6 +3864,14 @@ class Qwen35ParoResidentSession:
                                 library=self.libraries,
                                 stream=stream,
                             )
+                            self._trace_decode_linear_stages(
+                                layer_id=layer_id,
+                                linear_scratch=linear_scratch,
+                                moe_scratch=moe_scratch,
+                                output=row_out,
+                                rows=1,
+                                stream=stream,
+                            )
                             self.runtime.memcpy_async(
                                 next_hidden.ptr + row * self.hidden_nbytes,
                                 row_out.ptr,
@@ -3839,6 +3921,14 @@ class Qwen35ParoResidentSession:
                             tokens=rows,
                             force_selected_c1_moe=force_selected_c1_moe,
                             library=self.libraries,
+                            stream=stream,
+                        )
+                        self._trace_decode_linear_stages(
+                            layer_id=layer_id,
+                            linear_scratch=linear_scratch,
+                            moe_scratch=moe_scratch,
+                            output=out,
+                            rows=rows,
                             stream=stream,
                         )
                         self._trace_decode_linear_output(layer_id=layer_id, hidden=out, rows=rows, stream=stream)
@@ -4167,6 +4257,14 @@ class Qwen35ParoResidentSession:
                     linear_scratch=self.linear_scratch[layer_id],
                     moe_scratch=self.moe_scratch[layer_id],
                     library=self.libraries,
+                    stream=stream,
+                )
+                self._trace_decode_linear_stages(
+                    layer_id=layer_id,
+                    linear_scratch=self.linear_scratch[layer_id],
+                    moe_scratch=self.moe_scratch[layer_id],
+                    output=out,
+                    rows=1,
                     stream=stream,
                 )
                 self._trace_decode_linear_output(layer_id=layer_id, hidden=out, rows=1, stream=stream)

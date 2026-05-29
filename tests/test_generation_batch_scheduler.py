@@ -76,6 +76,8 @@ from scripts.qwen35_batch_hidden_bisect import (
     _decode_linear_handoff_rollup,
     _decode_linear_handoff_summary,
     _decode_linear_input_bit_drift_rollup,
+    _decode_linear_stage_bit_drift_rollup,
+    _decode_linear_stage_summary,
     _first_failing_layer_transition,
     _first_hidden_mismatch,
     _current_kv_source_checks,
@@ -6662,6 +6664,71 @@ def test_hidden_bisect_current_source_rollup_promotes_failures() -> None:
         "first_bit_drift": linear_bit_rollup["first_bit_drift"],
     }
     assert linear_bit_rollup["layer_limits"] == [{"layer_limit": 8, "drift_layers": [3]}]
+
+
+def test_hidden_bisect_linear_stage_summary_rolls_up_first_bit_drift() -> None:
+    def fp16_bits(values: list[list[float]]) -> np.ndarray:
+        return np.asarray(values, dtype=np.float16).view(np.uint16)
+
+    batch = HiddenRun(
+        seed_tokens=[],
+        generated_tokens=[],
+        hidden_bits_by_step=[],
+        decode_linear_stages_by_step=[
+            {
+                0: {
+                    "attn_input": fp16_bits([[1.0, 2.0]]),
+                    "qkv": fp16_bits([[3.0, 4.0]]),
+                    "conv_out": np.asarray([[5.0, 6.0]], dtype=np.float32),
+                }
+            }
+        ],
+    )
+    c1 = HiddenRun(
+        seed_tokens=[],
+        generated_tokens=[],
+        hidden_bits_by_step=[],
+        decode_linear_stages_by_step=[
+            {
+                0: {
+                    "attn_input": fp16_bits([[1.0, 2.0]]),
+                    "qkv": fp16_bits([[3.0, 4.00390625]]),
+                    "conv_out": np.asarray([[5.0, 6.25]], dtype=np.float32),
+                }
+            }
+        ],
+    )
+
+    summary = _decode_linear_stage_summary(batch, c1, atol=0.004)
+
+    assert summary is not None
+    assert summary["passed"] is False
+    assert summary["stage_passed"]["attn_input"] is True
+    assert summary["stage_passed"]["qkv"] is True
+    assert summary["stage_passed"]["conv_out"] is False
+    assert summary["first_bit_drift"] == {
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 0,
+        "stage": "qkv",
+        "row": 0,
+        "comparison_kind": "fp16_bits",
+        "passed_under_atol": True,
+        "bit_mismatch": 1,
+        "max_abs": 0.00390625,
+        "max_abs_flat_index": 1,
+        "max_abs_index": [0, 1],
+        "elements_over_atol": 0,
+    }
+    assert summary["first_mismatch"]["stage"] == "conv_out"
+    assert summary["first_mismatch"]["comparison_kind"] == "fp32"
+
+    rollup = _decode_linear_stage_bit_drift_rollup([{"layer_limit": 8, "decode_linear_stages": summary}])
+    assert rollup["drift_stages"] == ["qkv", "conv_out"]
+    assert rollup["first_bit_drift"]["layer_limit"] == 8
+    assert rollup["first_bit_drift"]["stage"] == "qkv"
+    assert rollup["stages"]["qkv"]["bit_drift_rows"] == [0]
+    assert rollup["stages"]["conv_out"]["first_bit_drift"]["comparison_kind"] == "fp32"
 
 
 def test_hidden_bisect_linear_handoff_summary_distinguishes_copy_from_producer_drift() -> None:
