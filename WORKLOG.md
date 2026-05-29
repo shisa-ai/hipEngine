@@ -46581,3 +46581,37 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (`265` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no queue item was marked complete, the diagnostic artifact has `performance_claim=false`, native c>N generated-token equality remains open, and no performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY c1 input-scratch trace symmetry
+
+Extended independent c=1 full-attention decode tracing to emit the same input-scratch stages as native c=2 (`attn_input_pre_qkv`, `attn_input_after_rotate`, `attn_input_after_project`, `attn_input_after_prepare`) in addition to the producer traces added previously. This makes C2.3's full-attention stage rollup compare like-for-like inputs before attributing drift to projection or KV write code.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_summary_embeds_batch_decode_execution_trace -q
+```
+
+Result: PASS.
+
+Refreshed the C2.3 L4/L8 per-row-attn-input probe:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 4,8 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-moe-path selected_c1 --batch-decode-attn-input-path per_row --batch-decode-post-attn-path per_row --json /tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-native-full-core-perrow-attninput-linear-postattn-selected-c1-atol4e-3-focus1269.json
+```
+
+Result: still `status=mismatch_found`, `failure_modes=["hidden"]`, `token_passed=true`, `performance_claim=false`, `native_caware_decode=false`. With c1 input-scratch traces present, L4 producer stages are exactly green (`attn_input_*`, `q_proj_key_after_project`, `query_after_prepare`, `key_after_prepare` all pass). The first full-attention stage drift is now L8 decode step 0 / row 0 at `attn_input_pre_qkv` (`max_abs=0.015625`, dim 1269), and the same row then differs at `q_proj_key_after_project` (`max_abs=0.0078125`), `query_after_prepare` (`max_abs=0.005970478057861328`), and `key_after_prepare` (`max_abs=0.005676984786987305`). The full-context oracle still fails only `batch_numpy_vs_c1_numpy`; L4's reduced oracle delta is `max_abs=0.0033351778984069824` while L4 sampled KV is green, so the next diagnostic should localize full-prefix/prompt-KV drift instead of changing paged-KV writer code. Top-level KV sample first failure is back to L8 current position 512.
+
+Full validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (`265` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no queue item was marked complete, the diagnostic artifact has `performance_claim=false`, native c>N generated-token equality remains open, and no performance/scaling claim was added.

@@ -1092,20 +1092,22 @@ roll-up/status view.
       `attn_input_after_prepare` traces all pass at L4 and L8, so the input
       RMSNorm/rotate/project/prepare path is not overwriting `attn_input`; the
       existing post-layer `attn_input` trace is polluted after those stages and
-      should not drive the fix. Row-level QKV producer tracing is now symmetric
-      for native c=2 and independent c=1 decode and includes `value_after_project`.
-      That refresh moved the actionable boundary earlier than the KV writer:
-      `q_proj_key_after_project` first differs at L4 step 0 / row 0
-      (`max_abs=0.0078125`), `query_raw_after_split` and `query_after_prepare`
-      also first differ at L4 step 0, and the full-context oracle now uses
-      `query_after_prepare` for both batch and c1 while still failing only
-      `batch_numpy_vs_c1_numpy` (`max_abs=0.007934749126434326` at L4 step 0 /
-      row 0 / dim 1673). Full-KV sample attribution likewise reports key/value
-      drift, but the first failure is now a pre-existing L4 `previous` prompt
-      sample at position 511, so the prior current-token-only KV-write diagnosis
-      was incomplete. Next target: audit the token-1 row projection/producer trace
-      parity and compact-prefill KV image before changing the paged-KV writer;
-      do not re-open context softmax math, row setup, native linear segment
+      should not drive the fix. C1 input-scratch tracing is now symmetric with
+      native c=2 and includes `attn_input_pre_qkv`, `attn_input_after_rotate`,
+      `attn_input_after_project`, and `attn_input_after_prepare`. The refreshed
+      probe shows L4 producer stages now pass exactly, so the earlier L4
+      `q_proj_key_after_project` signal was missing-c1-trace noise. The first
+      full-attention stage drift is now L8 decode step 0 / row 0 at
+      `attn_input_pre_qkv` (`max_abs=0.015625`, dim 1269), propagating through
+      Q/K preparation (`q_proj_key_after_project` `max_abs=0.0078125`,
+      `query_after_prepare` `max_abs=0.005970478057861328`, `key_after_prepare`
+      `max_abs=0.005676984786987305`). The full-context oracle still fails only
+      `batch_numpy_vs_c1_numpy`; L4's reduced oracle delta (`max_abs=0.0033351778984069824`)
+      with L4 sampled KV green means unsampled compact-prefill KV/image coverage
+      is still needed. Full-KV sample attribution now first fails at L8 current
+      position 512. Next target: add full-prefix/prompt-KV drift localization or
+      otherwise audit the compact-prefill KV image before changing paged-KV writer
+      code; do not re-open context softmax math, row setup, native linear segment
       metadata, output trace/copy semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial

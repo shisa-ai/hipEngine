@@ -3459,6 +3459,8 @@ class Qwen35ParoDecodeState:
         block_size: int = 256,
         chunk_size: int = 256,
         num_splits: int = 1,
+        post_input_rmsnorm_trace: Callable[[Qwen35ParoAttentionScratch], None] | None = None,
+        input_scratch_trace: Callable[[str, Qwen35ParoAttentionScratch], None] | None = None,
         qkv_tensor_trace: Callable[[str, Tensor], None] | None = None,
         library=None,
         stream: int = 0,
@@ -3478,6 +3480,8 @@ class Qwen35ParoDecodeState:
         else:
             moe_scratch = moe_scratch or self.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
         self.input_rmsnorm_fp16(hidden, attention_scratch.attn_input, tokens=tokens, library=library, stream=stream)
+        if post_input_rmsnorm_trace is not None:
+            post_input_rmsnorm_trace(attention_scratch)
         self.rotate_full_attention_inputs_fp16(
             attention_scratch.attn_input,
             attention_scratch,
@@ -3486,6 +3490,8 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
+        if input_scratch_trace is not None:
+            input_scratch_trace("attn_input_after_rotate", attention_scratch)
         self.project_full_attention_qkv_fp16(
             attention_scratch,
             tokens=tokens,
@@ -3494,6 +3500,8 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
+        if input_scratch_trace is not None:
+            input_scratch_trace("attn_input_after_project", attention_scratch)
         _query, _key, _value, gate = self.prepare_full_attention_qkv_fp16(
             attention_scratch,
             cos_table=cos_table,
@@ -3505,6 +3513,8 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
+        if input_scratch_trace is not None:
+            input_scratch_trace("attn_input_after_prepare", attention_scratch)
         self.append_full_attention_kv_fp16(
             attention_scratch,
             key_cache=key_cache,

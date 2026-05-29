@@ -4168,8 +4168,39 @@ class Qwen35ParoResidentSession:
                 key_cache, value_cache = self._slot_full_cache(layer_id, slot)
                 position_tensor, append_spans, decode_spans = self._slot_full_spans(layer_id, slot)
                 num_splits = num_splits_override or max(1, (position + 1 + self.decode_chunk_size - 1) // self.decode_chunk_size)
+                post_input_rmsnorm_trace = None
+                input_scratch_trace = None
                 qkv_tensor_trace = None
                 if isinstance(getattr(self, "_decode_full_attention_trace", None), list):
+                    def post_input_rmsnorm_trace(
+                        attention_scratch: Qwen35ParoAttentionScratch,
+                        *,
+                        _layer_id: int = layer_id,
+                        _stream: int = stream,
+                    ) -> None:
+                        self._trace_decode_full_attention(
+                            layer_id=_layer_id,
+                            stage="attn_input_pre_qkv",
+                            hidden=attention_scratch.attn_input,
+                            rows=1,
+                            stream=_stream,
+                        )
+
+                    def input_scratch_trace(
+                        stage: str,
+                        attention_scratch: Qwen35ParoAttentionScratch,
+                        *,
+                        _layer_id: int = layer_id,
+                        _stream: int = stream,
+                    ) -> None:
+                        self._trace_decode_full_attention(
+                            layer_id=_layer_id,
+                            stage=stage,
+                            hidden=attention_scratch.attn_input,
+                            rows=1,
+                            stream=_stream,
+                        )
+
                     def qkv_tensor_trace(
                         stage: str,
                         tensor: Tensor,
@@ -4199,6 +4230,8 @@ class Qwen35ParoResidentSession:
                     moe_scratch=self.moe_scratch[layer_id],
                     chunk_size=self.decode_chunk_size,
                     num_splits=num_splits,
+                    post_input_rmsnorm_trace=post_input_rmsnorm_trace,
+                    input_scratch_trace=input_scratch_trace,
                     qkv_tensor_trace=qkv_tensor_trace,
                     library=self.libraries,
                     stream=stream,
