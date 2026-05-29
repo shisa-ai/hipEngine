@@ -1706,6 +1706,14 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         "precondition_artifact_path",
         "reason",
     }
+    expected_failed_postcondition_keys = {
+        "category",
+        "batch_size",
+        "artifact_path",
+        "kind",
+        "profiler_precondition_artifact_path",
+        "reason",
+    }
     skipped_preconditions = summary.get("skipped_preconditions")
     if isinstance(skipped_preconditions, list):
         for skipped_precondition in skipped_preconditions:
@@ -1715,6 +1723,12 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     expected_skipped_preconditions = _skipped_preconditions(entries)
     if not _typed_json_like_matches(skipped_preconditions, expected_skipped_preconditions):
         errors.append("skipped_preconditions must match commands.preconditions")
+    summary_failed_postconditions = summary.get("failed_postconditions")
+    if isinstance(summary_failed_postconditions, list):
+        for failed_postcondition in summary_failed_postconditions:
+            if not isinstance(failed_postcondition, Mapping) or set(failed_postcondition) != expected_failed_postcondition_keys:
+                errors.append("failed_postconditions[] must contain exactly failed postcondition rollup keys")
+                break
     expected_command_keys = {
         "category",
         "batch_size",
@@ -3018,7 +3032,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     if not _typed_count_mapping_matches(summary.get("retained_postcondition_counts"), expected_postcondition_counts):
         errors.append("retained_postcondition_counts must match commands.postconditions")
     expected_failed_postconditions = _failed_postconditions(entries)
-    if not _typed_json_like_matches(summary.get("failed_postconditions"), expected_failed_postconditions):
+    if not _typed_json_like_matches(summary_failed_postconditions, expected_failed_postconditions):
         errors.append("failed_postconditions must match commands.postconditions")
     for entry in entries:
         preconditions = entry.get("preconditions")

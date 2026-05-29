@@ -5425,6 +5425,10 @@ def test_batch_c_sweep_fails_retained_row_on_profiler_synthesis_mismatch(tmp_pat
     tampered_failed_postconditions["failed_postconditions"] = []
     with pytest.raises(ValueError, match="failed_postconditions must match commands.postconditions"):
         c_sweep.validate_sweep_summary(tampered_failed_postconditions)
+    tampered_failed_postcondition_keys = json.loads(json.dumps(summary))
+    tampered_failed_postcondition_keys["failed_postconditions"][0]["extra"] = "field"
+    with pytest.raises(ValueError, match=r"failed_postconditions\[\] must contain exactly failed postcondition rollup keys"):
+        c_sweep.validate_sweep_summary(tampered_failed_postcondition_keys)
     tampered_failed_postcondition_batch_type = json.loads(json.dumps(summary))
     tampered_failed_postcondition_batch_type["failed_postconditions"][0]["batch_size"] = 2.0
     with pytest.raises(ValueError, match="failed_postconditions must match commands.postconditions"):
