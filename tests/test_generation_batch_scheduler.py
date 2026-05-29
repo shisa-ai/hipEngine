@@ -6357,6 +6357,13 @@ def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:
                 "last_layer_type": "linear_attention",
                 "hidden_passed": True,
                 "token_passed": True,
+                "decode_full_attention": {
+                    "passed": True,
+                    "input_passed": True,
+                    "output_passed": True,
+                    "stage_passed": {"input": True, "output": True},
+                    "worst_diff": {"stage": "output", "max_abs": 0.0},
+                },
                 "steps": [{"decode_step": 0, "generated_index": 1, "rows": [{"row": 0, "hidden_comparison": passed}]}],
             },
             {
@@ -6377,6 +6384,11 @@ def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:
                     }
                 ],
                 "token_mismatches": [],
+                "decode_linear_inputs": {
+                    "passed": False,
+                    "first_mismatch": {"decode_step": 3, "layer_index": 1, "row": 1, "max_abs": 1.0},
+                    "worst_diff": {"decode_step": 3, "layer_index": 1, "row": 1, "max_abs": 1.0},
+                },
             },
         ]
     ) == {
@@ -6393,6 +6405,13 @@ def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:
         "first_hidden_mismatch": expected_first,
         "first_token_mismatch": None,
         "failing_last_layer_type": "linear_attention",
+        "failing_trace_summaries": {
+            "decode_linear_inputs": {
+                "passed": False,
+                "first_mismatch": {"decode_step": 3, "layer_index": 1, "row": 1, "max_abs": 1.0},
+                "worst_diff": {"decode_step": 3, "layer_index": 1, "row": 1, "max_abs": 1.0},
+            }
+        },
         "previous_green_layer_limit": 1,
         "previous_green_last_layer_index": 0,
         "previous_green_hidden_passed": True,
@@ -6400,6 +6419,15 @@ def test_hidden_bisect_helpers_find_first_hidden_mismatch() -> None:
         "adjacent_layer_limits": True,
         "previous_green_layer_execution": None,
         "previous_green_last_layer_type": "linear_attention",
+        "previous_green_trace_summaries": {
+            "decode_full_attention": {
+                "passed": True,
+                "input_passed": True,
+                "output_passed": True,
+                "stage_passed": {"input": True, "output": True},
+                "worst_diff": {"stage": "output", "max_abs": 0.0},
+            }
+        },
         "first_hidden_mismatch_focus": {
             "row": 1,
             "flat_index": 1,

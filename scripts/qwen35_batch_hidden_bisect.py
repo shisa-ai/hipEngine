@@ -462,6 +462,27 @@ def _row_focus_for_flat_index(summary: dict[str, Any], *, flat_index: int) -> li
     return rows
 
 
+def _transition_trace_summaries(summary: dict[str, Any]) -> dict[str, Any]:
+    traces: dict[str, Any] = {}
+    for key in ("decode_full_attention", "decode_linear_inputs", "decode_linear_states"):
+        trace = summary.get(key)
+        if not isinstance(trace, dict):
+            continue
+        compact: dict[str, Any] = {"passed": bool(trace.get("passed", True))}
+        if "input_passed" in trace:
+            compact["input_passed"] = bool(trace["input_passed"])
+        if "output_passed" in trace:
+            compact["output_passed"] = bool(trace["output_passed"])
+        if isinstance(trace.get("stage_passed"), dict):
+            compact["stage_passed"] = trace["stage_passed"]
+        if isinstance(trace.get("first_mismatch"), dict):
+            compact["first_mismatch"] = trace["first_mismatch"]
+        if isinstance(trace.get("worst_diff"), dict):
+            compact["worst_diff"] = trace["worst_diff"]
+        traces[key] = compact
+    return traces
+
+
 def _transition_hidden_focus(
     summary: dict[str, Any],
     previous_green: dict[str, Any] | None,
@@ -525,6 +546,9 @@ def _first_failing_layer_transition(layer_summaries: Sequence[dict[str, Any]]) -
         }
         if "last_layer_type" in summary:
             transition["failing_last_layer_type"] = str(summary["last_layer_type"])
+        failing_trace_summaries = _transition_trace_summaries(summary)
+        if failing_trace_summaries:
+            transition["failing_trace_summaries"] = failing_trace_summaries
         if previous_green is not None:
             previous_limit = int(previous_green["layer_limit"])
             transition.update(
@@ -540,6 +564,9 @@ def _first_failing_layer_transition(layer_summaries: Sequence[dict[str, Any]]) -
             transition["previous_green_layer_execution"] = previous_layer_execution
             if "last_layer_type" in previous_green:
                 transition["previous_green_last_layer_type"] = str(previous_green["last_layer_type"])
+            previous_green_trace_summaries = _transition_trace_summaries(previous_green)
+            if previous_green_trace_summaries:
+                transition["previous_green_trace_summaries"] = previous_green_trace_summaries
         transition["first_hidden_mismatch_focus"] = _transition_hidden_focus(summary, previous_green, first_hidden_mismatch)
         return transition
     return None

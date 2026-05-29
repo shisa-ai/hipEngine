@@ -45053,3 +45053,29 @@ Results:
 - `/tmp/hipengine-hidden-bisect-L4-512-16-c2-strict-native-full-focus1269.json`: `status=mismatch_found`, `token_passed=true`; first final hidden mismatch is generated index 1, row 0 dim 1269 (`max_abs=0.00048828125`, 1103 elements over zero tolerance). This same shape is tolerance-green at `hidden_atol=0.002` in `/tmp/hipengine-hidden-bisect-L4-512-16-c2-worst-diff-focus1269.json`.
 
 Interpretation: strict controls confirm the first native-full layer introduces bit-level BF16 drift even though it stays below the current hidden tolerance; the all-per-row fallback does not. The larger L8 failure is likely amplification of this tolerance-green drift through later per-row linear state, so the next fix should either make native-full L4 bit-exact enough for downstream state or add a focused oracle that compares native-full attention/MoE substages before state amplification.
+
+## 2026-05-29 — CONCURRENCY transition trace summaries
+
+Advanced the hidden-bisect handoff schema by adding compact decode trace summaries to `correctness.first_failing_layer_transition`. The transition now carries failing and previous-green `decode_full_attention`, `decode_linear_inputs`, and `decode_linear_states` pass bits, `first_mismatch`, `worst_diff`, and full-attention `stage_passed` where present. This avoids opening the full per-step trace when checking whether the preceding layer-limit was green and where the failing layer-limit first diverged.
+
+Code/test changes:
+
+- `scripts/qwen35_batch_hidden_bisect.py:_first_failing_layer_transition` now emits `failing_trace_summaries` and `previous_green_trace_summaries` when trace summaries are present.
+- `test_hidden_bisect_helpers_find_first_hidden_mismatch` covers the new transition fields without changing existing hidden/token transition semantics.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py
+python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_helpers_find_first_hidden_mismatch tests/test_generation_batch_scheduler.py::test_hidden_bisect_summary_embeds_batch_decode_execution_trace -q
+```
+
+Diagnostic:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 4 --layer-limits 3-4 --max-sequence-length 1024 --hidden-atol 0 --state-atol 0 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-full-attn-path native_batch --json /tmp/hipengine-hidden-bisect-L3-L4-512-16-c2-strict-transition-focus1269.json >/tmp/hipengine-hidden-bisect-L3-L4-512-16-c2-strict-transition-focus1269.stdout
+```
+
+Result: `/tmp/hipengine-hidden-bisect-L3-L4-512-16-c2-strict-transition-focus1269.json` records `previous_green_layer_limit=3`, `previous_green_hidden_passed=true`, `previous_green_token_passed=true`, and `adjacent_layer_limits=true`. Its failing trace summary shows `decode_full_attention.stage_passed={input:true, attn_input:true, gated_attn:false, o_proj:false, output:false}`, first mismatch at layer 3 `gated_attn` row 0 (`max_abs=3.814697265625e-06`), and worst diff at layer 3 `output` row 0 dim 1269 (`max_abs=0.00048828125`). Previous-green L3 linear input/state worst diffs are zero.
+
+Interpretation: the strict L3→L4 transition is now self-contained: the previous layer-limit is exact, and the failing layer-limit first diverges inside the native full-attention layer after gating, not in the pre-full linear layers. Next work can focus on native full-attention gate/output projection parity or the grouped full-layer MoE path before revisiting downstream layer-4 state amplification.

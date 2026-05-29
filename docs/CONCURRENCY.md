@@ -890,7 +890,13 @@ roll-up/status view.
       is also exact, while native-full L4
       `/tmp/hipengine-hidden-bisect-L4-512-16-c2-strict-native-full-focus1269.json`
       fails immediately at generated index 1 (`token_passed=true`, row 0 dim
-      1269, `max_abs=0.00048828125`). The next native-full investigation should
+      1269, `max_abs=0.00048828125`). The strict transition artifact
+      `/tmp/hipengine-hidden-bisect-L3-L4-512-16-c2-strict-transition-focus1269.json`
+      now records `previous_green_layer_limit=3`, `adjacent_layer_limits=true`,
+      and compact trace summaries: the failing L4 `decode_full_attention` stage
+      first mismatches at `gated_attn` (`max_abs=3.814697265625e-06`) and worst
+      at `output` row 0 dim 1269 (`max_abs=0.00048828125`), while previous L3
+      linear inputs/states stay exact. The next native-full investigation should
       compare the second full-attention layer after the intervening per-row
       linear layers and the accumulated layer-4 state drift, while treating the
       first layer-3 native-full path as tolerance-green but not bit-exact.
