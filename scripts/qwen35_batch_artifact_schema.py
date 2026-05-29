@@ -1053,6 +1053,13 @@ def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[
                 errors.append("execution.batch_execution.decode_execution.slots entries must be non-negative ints for accepted artifacts")
             elif len(set(decode_slots)) != len(decode_slots):
                 errors.append("execution.batch_execution.decode_execution.slots entries must be unique for accepted artifacts")
+        moe_decode_rows = decode_execution.get("moe_decode_rows")
+        if isinstance(moe_decode_rows, bool) or not isinstance(moe_decode_rows, int):
+            errors.append("execution.batch_execution.decode_execution.moe_decode_rows must be an int for accepted artifacts")
+        elif isinstance(concurrency, int) and not isinstance(concurrency, bool) and moe_decode_rows != concurrency:
+            errors.append("execution.batch_execution.decode_execution.moe_decode_rows must match workload.concurrency for accepted artifacts")
+        if decode_execution.get("moe_decode_path") != "grouped_compact":
+            errors.append("execution.batch_execution.decode_execution.moe_decode_path must be grouped_compact for accepted artifacts")
         if decode_execution.get("full_attention_decode_path") != "native_batch":
             errors.append("execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch for accepted artifacts")
         if decode_execution.get("native_caware_decode") is not True:

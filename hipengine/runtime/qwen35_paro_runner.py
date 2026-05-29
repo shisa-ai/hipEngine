@@ -3195,6 +3195,8 @@ class Qwen35ParoResidentSession:
         full_attention_decode_path = "none"
         max_full_attention_context = 0
         native_full_attention_layers = 0
+        dense_mlp = int(getattr(self.config, "num_experts", 1) or 0) <= 0
+        moe_decode_path = "dense_mlp" if dense_mlp else ("selected_c1" if rows == 1 else "grouped_compact")
         try:
             for layer_id, state in enumerate(self.states):
                 layer_type = self.config.layer_types[layer_id]
@@ -3293,6 +3295,8 @@ class Qwen35ParoResidentSession:
             decode_blockers: list[str] = []
             if full_attention_decode_path in {"per_row_splitk_fallback", "per_row_context_fallback"}:
                 decode_blockers.append("full-attention decode used a per-row fallback")
+                if not dense_mlp and rows > 1:
+                    moe_decode_path = "mixed_grouped_compact_with_per_row_full_attention_fallback"
             self.last_batch_decode_execution = {
                 "rows": int(rows),
                 "slots": [int(slot) for slot in slots],
@@ -3300,6 +3304,8 @@ class Qwen35ParoResidentSession:
                 "native_full_attention_layers": int(native_full_attention_layers),
                 "full_attention_decode_path": full_attention_decode_path,
                 "native_caware_decode": full_attention_decode_path not in {"per_row_splitk_fallback", "per_row_context_fallback"},
+                "moe_decode_path": moe_decode_path,
+                "moe_decode_rows": int(rows),
                 "blockers": decode_blockers,
             }
             return hidden

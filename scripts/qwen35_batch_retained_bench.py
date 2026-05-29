@@ -1122,6 +1122,13 @@ def _batch_execution_blockers(
                     blockers.append("execution.batch_execution.decode_execution.slots entries must be non-negative ints")
                 elif len(set(decode_slots)) != len(decode_slots):
                     blockers.append("execution.batch_execution.decode_execution.slots entries must be unique")
+            moe_decode_rows = decode_execution.get("moe_decode_rows")
+            if isinstance(moe_decode_rows, bool) or not isinstance(moe_decode_rows, int):
+                blockers.append("execution.batch_execution.decode_execution.moe_decode_rows must be an int")
+            elif moe_decode_rows != int(expected_concurrency):
+                blockers.append("execution.batch_execution.decode_execution.moe_decode_rows must match workload.concurrency")
+        if decode_execution.get("moe_decode_path") != "grouped_compact":
+            blockers.append("execution.batch_execution.decode_execution.moe_decode_path must be grouped_compact for retained c>N MoE decode")
         if decode_execution.get("full_attention_decode_path") != "native_batch":
             blockers.append("execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch")
         if decode_execution.get("native_caware_decode") is not True:
