@@ -2397,20 +2397,34 @@ def _generated_sequences_from_bench(bench: dict[str, Any], request_ids: Sequence
     return rows
 
 
-def _apply_runtime_env_args(args: argparse.Namespace) -> None:
-    os.environ["HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"] = "1"
-    projection_dispatch_artifact = getattr(args, "projection_dispatch_artifact", None)
-    if projection_dispatch_artifact is not None:
-        os.environ[_PROJECTION_DISPATCH_ARTIFACT_ENV] = str(projection_dispatch_artifact)
-
-
-def _projection_dispatch_candidates_for_payload(args: argparse.Namespace) -> list[dict[str, Any]] | None:
+def _projection_dispatch_artifact_arg(args: argparse.Namespace) -> str | None:
     artifact = getattr(args, "projection_dispatch_artifact", None)
     if artifact is None:
         raw_artifact = os.environ.get(_PROJECTION_DISPATCH_ARTIFACT_ENV)
         if raw_artifact is None or not raw_artifact.strip():
             return None
         artifact = raw_artifact.strip()
+    artifact_text = str(artifact).strip()
+    if not artifact_text:
+        return None
+    if not _is_retained_artifact_path(artifact_text):
+        raise ValueError(
+            f"invalid projection dispatch artifact {artifact_text}: must be a relative path under benchmarks/results"
+        )
+    return artifact_text
+
+
+def _apply_runtime_env_args(args: argparse.Namespace) -> None:
+    os.environ["HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"] = "1"
+    projection_dispatch_artifact = _projection_dispatch_artifact_arg(args)
+    if projection_dispatch_artifact is not None:
+        os.environ[_PROJECTION_DISPATCH_ARTIFACT_ENV] = projection_dispatch_artifact
+
+
+def _projection_dispatch_candidates_for_payload(args: argparse.Namespace) -> list[dict[str, Any]] | None:
+    artifact = _projection_dispatch_artifact_arg(args)
+    if artifact is None:
+        return None
     path = Path(artifact)
     if not path.is_absolute():
         path = Path.cwd() / path

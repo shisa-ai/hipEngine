@@ -2174,6 +2174,22 @@ def test_retained_bench_projection_dispatch_artifact_fails_closed(tmp_path: Path
     artifact_dir.mkdir(parents=True)
     monkeypatch.chdir(tmp_path)
 
+    absolute_path = artifact_dir / "projection-candidates.json"
+    absolute_path.write_text(json.dumps({"projection_dispatch_candidates": []}), encoding="utf-8")
+    absolute = SimpleNamespace(projection_dispatch_artifact=absolute_path)
+    with pytest.raises(ValueError, match="must be a relative path under benchmarks/results"):
+        retained_bench._projection_dispatch_candidates_for_payload(absolute)
+
+    traversal = SimpleNamespace(projection_dispatch_artifact=Path("benchmarks/results/../projection-candidates.json"))
+    with pytest.raises(ValueError, match="must be a relative path under benchmarks/results"):
+        retained_bench._projection_dispatch_candidates_for_payload(traversal)
+
+    monkeypatch.setenv(retained_bench._PROJECTION_DISPATCH_ARTIFACT_ENV, "/tmp/projection-candidates.json")
+    from_env = SimpleNamespace(projection_dispatch_artifact=None)
+    with pytest.raises(ValueError, match="must be a relative path under benchmarks/results"):
+        retained_bench._projection_dispatch_candidates_for_payload(from_env)
+    monkeypatch.delenv(retained_bench._PROJECTION_DISPATCH_ARTIFACT_ENV, raising=False)
+
     missing = SimpleNamespace(projection_dispatch_artifact=Path("benchmarks/results/missing.json"))
     with pytest.raises(ValueError, match="invalid projection dispatch artifact"):
         retained_bench._projection_dispatch_candidates_for_payload(missing)
