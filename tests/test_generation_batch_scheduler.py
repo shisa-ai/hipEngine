@@ -6578,15 +6578,20 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     assert summary["decode_linear_inputs"]["stage"] == "decode_linear_inputs"
     assert summary["decode_linear_inputs"]["passed"] is True
     assert "first_mismatch" not in summary["decode_linear_inputs"]
+    assert summary["decode_linear_inputs"]["worst_diff"]["max_abs"] == 0.0
     assert summary["decode_linear_inputs"]["steps"][0]["layers"][0]["rows"][0]["hidden_comparison"]["max_abs"] == 0.0
     assert summary["decode_full_attention"]["stage"] == "decode_full_attention"
     assert summary["decode_full_attention"]["passed"] is True
     assert summary["decode_full_attention"]["stage_passed"]["gated_attn"] is True
     assert "first_mismatch" not in summary["decode_full_attention"]
+    assert summary["decode_full_attention"]["worst_diff"]["stage"] == "input"
+    assert summary["decode_full_attention"]["worst_diff"]["max_abs"] == 0.0
     assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["output"]["passed"] is True
     assert summary["decode_linear_states"]["stage"] == "decode_linear_states"
     assert summary["decode_linear_states"]["passed"] is True
     assert "first_mismatch" not in summary["decode_linear_states"]
+    assert summary["decode_linear_states"]["worst_diff"]["state"] == "conv"
+    assert summary["decode_linear_states"]["worst_diff"]["max_abs"] == 0.0
     assert summary["decode_linear_states"]["steps"][0]["layers"][0]["states"]["recurrent"]["max_abs"] == 0.0
     assert summary["steps"][0]["batch_decode_execution"] == decode_execution
 
@@ -6617,7 +6622,7 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         atol=0.0,
         layer_types=("full_attention",),
     )
-    assert bad_summary["decode_linear_inputs"]["first_mismatch"] == {
+    expected_input_mismatch = {
         "decode_step": 0,
         "generated_index": 1,
         "layer_index": 0,
@@ -6627,7 +6632,9 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         "max_abs_index": [0, 1],
         "elements_over_atol": 1,
     }
-    assert bad_summary["decode_linear_states"]["first_mismatch"] == {
+    assert bad_summary["decode_linear_inputs"]["first_mismatch"] == expected_input_mismatch
+    assert bad_summary["decode_linear_inputs"]["worst_diff"] == {**expected_input_mismatch, "passed": False}
+    expected_state_mismatch = {
         "decode_step": 0,
         "generated_index": 1,
         "layer_index": 0,
@@ -6637,6 +6644,8 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         "max_abs_index": [0, 0],
         "elements_over_atol": 1,
     }
+    assert bad_summary["decode_linear_states"]["first_mismatch"] == expected_state_mismatch
+    assert bad_summary["decode_linear_states"]["worst_diff"] == {**expected_state_mismatch, "passed": False}
 
 
 def test_gguf_cN_diagnostic_template_records_blocked_c2_command(tmp_path: Path) -> None:

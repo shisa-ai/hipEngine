@@ -874,10 +874,17 @@ roll-up/status view.
       first diverges earlier at decode step 0, layer 4 `conv` row 0
       (`max_abs=0.0078125`), while visible linear input drift first appears at
       decode step 6, layer 4 row 0 dim 1504 (`max_abs=0.008148193359375`). The
-      next native-full investigation should compare the second full-attention
-      layer after the intervening per-row linear layers and the accumulated
-      layer-4 state drift, not only the first layer-3 attention kernel in
-      isolation.
+      worst-diff refresh at
+      `/tmp/hipengine-hidden-bisect-L4-512-16-c2-worst-diff-focus1269.json`
+      keeps the layer-3-only run green but exposes its largest native-full
+      subthreshold drift at layer 3 `output` row 0 dim 1269
+      (`max_abs=0.00048828125`). The matching L8 artifact
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-worst-diff-focus1269.json`
+      shows worst drift later in layer 7 `attn_input` (`max_abs=0.3984375`) and
+      layer-4 `conv` state (`max_abs=0.390625`). The next native-full
+      investigation should compare the second full-attention layer after the
+      intervening per-row linear layers and the accumulated layer-4 state drift,
+      not only the first layer-3 attention kernel in isolation.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

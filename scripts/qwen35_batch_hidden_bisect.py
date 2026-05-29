@@ -1099,6 +1099,25 @@ def _decode_linear_input_summary(
                 break
         if first_mismatch is not None:
             break
+    worst_diff: dict[str, Any] | None = None
+    for step_summary in steps:
+        for layer in step_summary["layers"]:
+            for row in layer["rows"]:
+                comparison = row["hidden_comparison"]
+                if worst_diff is not None and float(comparison["max_abs"]) <= float(worst_diff["max_abs"]):
+                    continue
+                max_abs_flat_index = comparison.get("max_abs_flat_index")
+                worst_diff = {
+                    "decode_step": int(step_summary["decode_step"]),
+                    "generated_index": int(step_summary["generated_index"]),
+                    "layer_index": int(layer["layer_index"]),
+                    "row": int(row["row"]),
+                    "passed": bool(row["passed"]),
+                    "max_abs": float(comparison["max_abs"]),
+                    "max_abs_flat_index": None if max_abs_flat_index is None else int(max_abs_flat_index),
+                    "max_abs_index": comparison["max_abs_index"],
+                    "elements_over_atol": int(comparison["elements_over_atol"]),
+                }
     result = {
         "stage": "decode_linear_inputs",
         "hidden_atol": float(atol),
@@ -1107,6 +1126,8 @@ def _decode_linear_input_summary(
     }
     if first_mismatch is not None:
         result["first_mismatch"] = first_mismatch
+    if worst_diff is not None:
+        result["worst_diff"] = worst_diff
     return result
 
 
@@ -1213,6 +1234,30 @@ def _decode_full_attention_summary(
                 break
         if first_mismatch is not None:
             break
+    worst_diff: dict[str, Any] | None = None
+    for step_summary in steps:
+        for layer in step_summary["layers"]:
+            for stage in DECODE_FULL_ATTENTION_TRACE_STAGES:
+                stage_summary = layer["stages"].get(stage)
+                if stage_summary is None:
+                    continue
+                for row in stage_summary["rows"]:
+                    comparison = row["hidden_comparison"]
+                    if worst_diff is not None and float(comparison["max_abs"]) <= float(worst_diff["max_abs"]):
+                        continue
+                    max_abs_flat_index = comparison.get("max_abs_flat_index")
+                    worst_diff = {
+                        "decode_step": int(step_summary["decode_step"]),
+                        "generated_index": int(step_summary["generated_index"]),
+                        "layer_index": int(layer["layer_index"]),
+                        "stage": stage,
+                        "row": int(row["row"]),
+                        "passed": bool(row["passed"]),
+                        "max_abs": float(comparison["max_abs"]),
+                        "max_abs_flat_index": None if max_abs_flat_index is None else int(max_abs_flat_index),
+                        "max_abs_index": comparison["max_abs_index"],
+                        "elements_over_atol": int(comparison["elements_over_atol"]),
+                    }
     result = {
         "stage": "decode_full_attention",
         "hidden_atol": float(atol),
@@ -1224,6 +1269,8 @@ def _decode_full_attention_summary(
     }
     if first_mismatch is not None:
         result["first_mismatch"] = first_mismatch
+    if worst_diff is not None:
+        result["worst_diff"] = worst_diff
     return result
 
 
@@ -1275,6 +1322,27 @@ def _decode_linear_state_summary(
                 break
         if first_mismatch is not None:
             break
+    worst_diff: dict[str, Any] | None = None
+    for step_summary in steps:
+        for layer in step_summary["layers"]:
+            for state_name in ("conv", "recurrent"):
+                state_summary = layer["states"].get(state_name)
+                if state_summary is None:
+                    continue
+                for row in state_summary.get("row_summaries", []):
+                    if worst_diff is not None and float(row["max_abs"]) <= float(worst_diff["max_abs"]):
+                        continue
+                    worst_diff = {
+                        "decode_step": int(step_summary["decode_step"]),
+                        "generated_index": int(step_summary["generated_index"]),
+                        "layer_index": int(layer["layer_index"]),
+                        "state": state_name,
+                        "row": int(row["row"]),
+                        "passed": bool(row["passed"]),
+                        "max_abs": float(row["max_abs"]),
+                        "max_abs_index": row["max_abs_index"],
+                        "elements_over_atol": int(row["elements_over_atol"]),
+                    }
     result = {
         "stage": "decode_linear_states",
         "state_atol": float(atol),
@@ -1283,6 +1351,8 @@ def _decode_linear_state_summary(
     }
     if first_mismatch is not None:
         result["first_mismatch"] = first_mismatch
+    if worst_diff is not None:
+        result["worst_diff"] = worst_diff
     return result
 
 

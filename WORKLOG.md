@@ -45003,3 +45003,33 @@ python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/
 Result: `/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-first-mismatch-focus1269.json` is `status=mismatch_found`, `token_passed=true`. Its compact summaries report `decode_linear_states.first_mismatch={decode_step:0, generated_index:1, layer_index:4, state:"conv", row:0, max_abs:0.0078125, max_abs_index:[64,3], elements_over_atol:5264}` and `decode_linear_inputs.first_mismatch={decode_step:6, generated_index:7, layer_index:4, row:0, max_abs:0.008148193359375, max_abs_flat_index:1504, elements_over_atol:770}`. The full-attention substage first mismatch remains layer 7 `attn_input` at decode step 0 / row 0 dim 1269 (`max_abs=0.015625`), and final hidden mismatch remains decode step 6 / row 0 dim 1269 (`max_abs=0.027587890625`).
 
 Interpretation: strict linear state drift is visible immediately after the first post-layer-3 per-row linear layer, while linear input and final hidden drift cross the 0.002 hidden tolerance later. The next fix should audit why layer-4 per-row fallback updates/copies conv state differently from independent c=1 after a native-full layer-3 control that is green at L4.
+
+## 2026-05-29 — CONCURRENCY worst-diff trace summaries
+
+Advanced C2.3 by adding compact `worst_diff` records to decode linear-input, decode linear-state, and decode full-attention summaries. These records expose the largest observed drift even when a stage remains below its pass/fail tolerance, without changing correctness thresholds.
+
+Code/test changes:
+
+- `scripts/qwen35_batch_hidden_bisect.py` now emits `worst_diff` alongside `first_mismatch` for `decode_linear_inputs`, `decode_linear_states`, and `decode_full_attention` summaries.
+- `test_hidden_bisect_summary_embeds_batch_decode_execution_trace` covers green `worst_diff` records and synthetic mismatch `worst_diff` records for linear inputs/states.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py
+python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_summary_embeds_batch_decode_execution_trace -q
+```
+
+Diagnostics:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 4 --layer-limits 4 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-full-attn-path native_batch --json /tmp/hipengine-hidden-bisect-L4-512-16-c2-worst-diff-focus1269.json >/tmp/hipengine-hidden-bisect-L4-512-16-c2-worst-diff-focus1269.stdout
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-full-attn-path native_batch --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-worst-diff-focus1269.json >/tmp/hipengine-hidden-bisect-L8-512-16-c2-worst-diff-focus1269.stdout
+```
+
+Results:
+
+- `/tmp/hipengine-hidden-bisect-L4-512-16-c2-worst-diff-focus1269.json`: `status=eq_ok`; full-attention `worst_diff` is layer 3 `output`, row 0 dim 1269, `max_abs=0.00048828125` and `passed=true`; linear input/state worst diffs are zero.
+- `/tmp/hipengine-hidden-bisect-L8-512-16-c2-worst-diff-focus1269.json`: `status=mismatch_found`, `token_passed=true`; full-attention `worst_diff` is layer 7 `attn_input`, row 0 dim 1269, `max_abs=0.3984375`; linear input `worst_diff` is layer 6 row 0 dim 1269, `max_abs=0.03076171875`; linear state `worst_diff` is layer 4 `conv` row 0, `max_abs=0.390625`.
+
+Interpretation: layer-3 native-full decode is still green in isolation but not bit-exact; its largest subthreshold output drift is at the same row/dim later amplified by layer-7. The largest L8 drift is accumulated through layer-4 conv state and subsequent per-row linear layers, so the next fix should audit layer-4 conv-state parity after a native-full layer-3 output that is only approximately equal.
