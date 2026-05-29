@@ -1017,11 +1017,18 @@ roll-up/status view.
       (`max_abs=0.00146484375` at focus dim 1269) under `per_row_context_fallback`.
       This means native full-attention/post-attention is not the only c>N equality
       source; small FP16 state drift from the per-row fallback can also cross the
-      strict `hidden_atol=0.001` gate. The next C2.3 work should decide whether this
-      RMSNorm/state amplification is acceptable under the equality gate or needs a
-      stricter c>N post-attention/state path; do not re-open full-attention context,
-      layer-4 state mapping, native linear segment metadata, output trace/copy
-      semantics, or grouped MoE output yet.
+      strict `hidden_atol=0.001` gate. The tolerance-sensitivity refresh separates
+      those regimes: the all-per-row control passes generated-token and hidden
+      equality at `hidden_atol=0.004` in
+      `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-perrow-fullattn-atol4e-3-focus1269.json`,
+      while native full-attention is still over tolerance at the same threshold in
+      `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-native-fullattn-atol4e-3-focus1269.json`
+      (`max_abs=0.027587890625`, 345 elements over). The next C2.3 work should
+      decide whether the per-row fallback's ≤0.004 FP16/state amplification is
+      acceptable under the diagnostic gate while native full-attention/post-attention
+      still needs a stricter path; do not re-open full-attention context, layer-4
+      state mapping, native linear segment metadata, output trace/copy semantics,
+      or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions
