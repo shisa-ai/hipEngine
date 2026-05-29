@@ -2882,6 +2882,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 if postcondition.get("passed") is False and (not isinstance(reason, str) or not reason.strip()):
                     errors.append("commands[].postconditions[].reason must be a non-empty string when failed")
                     break
+                if postcondition.get("passed") is False and not set(postcondition).issubset(expected_passed_retained_postcondition_keys):
+                    errors.append("commands[].postconditions[] failed retained profiler synthesis must contain only retained postcondition keys")
+                    break
                 if postcondition.get("passed") is True and set(postcondition) != expected_passed_retained_postcondition_keys:
                     errors.append("commands[].postconditions[] passed retained profiler synthesis must contain exactly retained postcondition keys")
                     break

@@ -5457,6 +5457,11 @@ def test_batch_c_sweep_fails_retained_row_on_profiler_synthesis_mismatch(tmp_pat
     tampered_failed_postconditions["failed_postconditions"] = []
     with pytest.raises(ValueError, match="failed_postconditions must match commands.postconditions"):
         c_sweep.validate_sweep_summary(tampered_failed_postconditions)
+    tampered_failed_retained_postcondition_keys = json.loads(json.dumps(summary))
+    tampered_failed_retained_postcondition_keys["commands"][-1]["postconditions"][0]["primitive_seed"] = 1234
+    tampered_failed_retained_postcondition_keys["commands"][-1]["postcondition"]["primitive_seed"] = 1234
+    with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\] failed retained profiler synthesis must contain only retained postcondition keys"):
+        c_sweep.validate_sweep_summary(tampered_failed_retained_postcondition_keys)
     tampered_failed_postcondition_keys = json.loads(json.dumps(summary))
     tampered_failed_postcondition_keys["failed_postconditions"][0]["extra"] = "field"
     with pytest.raises(ValueError, match=r"failed_postconditions\[\] must contain exactly failed postcondition rollup keys"):
