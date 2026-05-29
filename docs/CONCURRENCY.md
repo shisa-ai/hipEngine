@@ -650,7 +650,8 @@ roll-up/status view.
       selected-c1 projection/state replay inputs, selected-c1/batch-GEMV
       linear-output diagnostic metadata plus blockers, hidden-bisect
       all-selected-c1 CLI/workload metadata, and retained-schema rejection for
-      diagnostic per-layer linear/full-attention boundary paths,
+      diagnostic per-layer linear projection/state/output and full-attention
+      boundary paths,
       but
       `/tmp/hipengine-hidden-bisect-L1-8-512-1-grouped.json` still reports the
       first hidden mismatch at layer-limit 6 (row 0, generated index 1), and the
