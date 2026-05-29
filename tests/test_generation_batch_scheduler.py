@@ -4050,10 +4050,15 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_serial_cached_build_command_mismatch["commands"][-1]["command"] = shlex.join(native_argv)
     with pytest.raises(ValueError, match=r"commands\[\]\.argv require-cached-build must match options.require_cached_build"):
         c_sweep.validate_sweep_summary(tampered_serial_cached_build_command_mismatch)
-    tampered_command_argv = json.loads(json.dumps(persisted))
-    tampered_command_argv["commands"][-1]["argv"] = []
-    with pytest.raises(ValueError, match=r"commands\[\]\.argv must be a non-empty string list"):
-        c_sweep.validate_sweep_summary(tampered_command_argv)
+    for bad_argv in ([], ["   "]):
+        tampered_command_argv = json.loads(json.dumps(persisted))
+        tampered_command_argv["commands"][-1]["argv"] = bad_argv
+        with pytest.raises(ValueError, match=r"commands\[\]\.argv must be a non-empty string list"):
+            c_sweep.validate_sweep_summary(tampered_command_argv)
+    tampered_blank_command_text = json.loads(json.dumps(persisted))
+    tampered_blank_command_text["commands"][-1]["command"] = "   "
+    with pytest.raises(ValueError, match=r"commands\[\]\.command must be a non-empty string"):
+        c_sweep.validate_sweep_summary(tampered_blank_command_text)
     tampered_command_text = json.loads(json.dumps(persisted))
     tampered_command_text["commands"][-1]["command"] = "python3 scripts/qwen35_batch_retained_bench.py --tampered"
     with pytest.raises(ValueError, match=r"commands\[\]\.command must match"):

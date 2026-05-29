@@ -1668,11 +1668,11 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 errors.append("commands[].artifact_path parent directories must not be symlinks")
                 break
             command_text = entry.get("command")
-            if not isinstance(command_text, str) or not command_text:
+            if not isinstance(command_text, str) or not command_text.strip():
                 errors.append("commands[].command must be a non-empty string")
                 break
             argv = entry.get("argv")
-            if not isinstance(argv, list) or not argv or not all(isinstance(item, str) and item for item in argv):
+            if not isinstance(argv, list) or not argv or not all(isinstance(item, str) and item.strip() for item in argv):
                 errors.append("commands[].argv must be a non-empty string list")
                 break
             if command_text != shlex.join(argv):
