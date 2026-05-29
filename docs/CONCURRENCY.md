@@ -1140,9 +1140,15 @@ roll-up/status view.
       `/tmp/hipengine-hidden-bisect-L8-512-16-c2-current-source-rollup-atol4e-3-focus1269.json`
       reports `correctness.decode_full_kv_current_source_failure_summary` with
       failed kinds `key,value`, first failure `batch_source_vs_c1_source`, and
-      layer-limit status without opening the full layer dump. The next target is
-      replaying/attributing decode-time producer drift before changing paged-KV
-      writer code. Do not re-open
+      layer-limit status without opening the full layer dump. The stage-context
+      rerun at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-current-source-stage-context-atol4e-3-focus1269.json`
+      attaches the same first failure to its producer trace: `key_after_prepare`
+      itself is under the hidden tolerance (`max_abs=0.0029807090759277344`),
+      while the first failed producer stage is `attn_input_pre_qkv`
+      (`max_abs=0.0078125`, flat index 859). The next target is replaying or
+      fixing decode-time producer drift before changing paged-KV writer code.
+      Do not re-open
       context softmax math, row setup, native linear segment metadata,
       output trace/copy semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2

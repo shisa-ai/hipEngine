@@ -46861,3 +46861,39 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (selected pytest suite plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no queue item was marked complete, current-source rollup artifact has `performance_claim=false`, native c>N generated-token equality remains open, and no performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY current-source producer-stage context
+
+Added compact producer-stage context to the top-level hidden-bisect current-token K/V source rollup. `correctness.decode_full_kv_current_source_failure_summary.first_failure.producer_stage_context` now records the relevant full-attention stages for the failing current-token source (`input` through `key_after_prepare` or `value_after_project`), the first failed producer stage, and the source-stage comparison without requiring the full layer dump.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_current_source_rollup_promotes_failures tests/test_generation_batch_scheduler.py::test_hidden_bisect_current_kv_source_checks_compare_cache_to_trace tests/test_generation_batch_scheduler.py::test_hidden_bisect_repeat_rollup_counts_prefix_failures -q
+```
+
+Result: PASS.
+
+Refreshed native L8 probe with producer-stage context:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-current-source-stage-context-atol4e-3-focus1269.json
+```
+
+Result: `status=mismatch_found`, `failure_modes=["hidden"]`, `performance_claim=false`. Top-level current-source first failure is layer_limit 8 / step 0 / layer 3 / row 0 / current token 512 / `batch_source_vs_c1_source` at `key_after_prepare` (`max_abs=0.015625`, `bit_mismatch=122`). The attached `producer_stage_context` attributes the first hidden-tolerance failure for that source path to `attn_input_pre_qkv` (`max_abs=0.0078125`, `max_abs_flat_index=859`, `elements_over_atol=2`); the `key_after_prepare` stage comparison itself remains under hidden tolerance (`max_abs=0.0029807090759277344`, `elements_over_atol=0`). This keeps the KV-writer conclusion intact: cache writes still match local producers, and the remaining drift is decode-time full-attention producer input drift.
+
+Full validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (selected pytest suite plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no queue item was marked complete, the new artifact has `performance_claim=false`, native c>N generated-token equality remains open, and no performance/scaling claim was added.
+
+After a readability cleanup in `scripts/qwen35_batch_hidden_bisect.py`, reran the same full guard command above: PASS, with c=2/c=8 primitive artifacts still passing (`append_*_mismatch=0`, `attn_batch_vs_c1_max_abs=0.0`).

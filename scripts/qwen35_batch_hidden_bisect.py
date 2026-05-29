@@ -3668,6 +3668,96 @@ def _current_kv_source_checks(
     return check
 
 
+def _decode_full_kv_source_stage_context_stages(source_stage: str) -> tuple[str, ...]:
+    if source_stage == "key_after_prepare":
+        return (
+            "input",
+            "attn_input_pre_qkv",
+            "attn_input_after_rotate",
+            "attn_input_after_project",
+            "q_proj_key_after_project",
+            "key_raw_after_cast",
+            "key_after_prepare",
+        )
+    if source_stage == "value_after_project":
+        return (
+            "input",
+            "attn_input_pre_qkv",
+            "attn_input_after_rotate",
+            "attn_input_after_project",
+            "value_after_project",
+        )
+    return (source_stage,) if source_stage in DECODE_FULL_ATTENTION_TRACE_STAGES else ()
+
+
+def _decode_full_attention_row_stage_record(stage: str, row_summary: dict[str, Any]) -> dict[str, Any]:
+    comparison = row_summary.get("hidden_comparison", {})
+    max_abs_flat_index = comparison.get("max_abs_flat_index") if isinstance(comparison, dict) else None
+    return {
+        "stage": stage,
+        "passed": bool(row_summary.get("passed", False)),
+        "comparison_kind": str(row_summary.get("comparison_kind", "unknown")),
+        "max_abs": float(comparison.get("max_abs", 0.0)) if isinstance(comparison, dict) else 0.0,
+        "max_abs_flat_index": None if max_abs_flat_index is None else int(max_abs_flat_index),
+        "max_abs_index": comparison.get("max_abs_index", []) if isinstance(comparison, dict) else [],
+        "elements_over_atol": int(comparison.get("elements_over_atol", 0)) if isinstance(comparison, dict) else 0,
+    }
+
+
+def _decode_full_attention_stage_context_for_current_source(
+    trace: dict[str, Any] | None,
+    failure: dict[str, Any],
+) -> dict[str, Any] | None:
+    if not isinstance(trace, dict):
+        return None
+    source_stage = str(failure.get("source_stage", ""))
+    context_stages = _decode_full_kv_source_stage_context_stages(source_stage)
+    if not context_stages:
+        return None
+    decode_step = int(failure.get("decode_step", -1))
+    layer_index = int(failure.get("layer_index", -1))
+    row_index = int(failure.get("row", -1))
+    for step_summary in trace.get("steps", []):
+        if int(step_summary.get("decode_step", -1)) != decode_step:
+            continue
+        for layer in step_summary.get("layers", []):
+            if int(layer.get("layer_index", -1)) != layer_index:
+                continue
+            records: list[dict[str, Any]] = []
+            stages = layer.get("stages", {})
+            if not isinstance(stages, dict):
+                return None
+            for stage in context_stages:
+                stage_summary = stages.get(stage)
+                if not isinstance(stage_summary, dict):
+                    continue
+                matching_row = next(
+                    (
+                        row_summary
+                        for row_summary in stage_summary.get("rows", [])
+                        if int(row_summary.get("row", -1)) == row_index
+                    ),
+                    None,
+                )
+                if isinstance(matching_row, dict):
+                    records.append(_decode_full_attention_row_stage_record(stage, matching_row))
+            if not records:
+                return None
+            first_failed_stage = next((record for record in records if not bool(record.get("passed", False))), None)
+            source_stage_record = next((record for record in records if record.get("stage") == source_stage), None)
+            return {
+                "decode_step": decode_step,
+                "layer_index": layer_index,
+                "row": row_index,
+                "source_stage": source_stage,
+                "context_stage_count": len(records),
+                "first_failed_stage": first_failed_stage,
+                "source_stage_record": source_stage_record,
+                "stages": records,
+            }
+    return None
+
+
 def _decode_full_kv_current_source_failure_summary(steps: Sequence[dict[str, Any]]) -> dict[str, Any]:
     kind_summaries: dict[str, Any] = {}
     first_failure: dict[str, Any] | None = None
@@ -3754,6 +3844,13 @@ def _decode_full_kv_current_source_rollup(layer_summaries: Sequence[dict[str, An
             failure = kind_summary.get("first_failure")
             if isinstance(failure, dict):
                 failure_with_limit = {"layer_limit": layer_limit, **failure}
+                trace_for_context = summary.get("decode_full_attention")
+                producer_context = _decode_full_attention_stage_context_for_current_source(
+                    trace_for_context if isinstance(trace_for_context, dict) else None,
+                    failure,
+                )
+                if producer_context is not None:
+                    failure_with_limit["producer_stage_context"] = producer_context
                 if kind_first_failure is None:
                     kind_first_failure = failure_with_limit
                 if first_failure is None:

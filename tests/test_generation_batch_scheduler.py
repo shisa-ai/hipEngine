@@ -6402,9 +6402,50 @@ def test_hidden_bisect_kv_prefix_hash_comparison_embeds_token_samples() -> None:
 
 
 def test_hidden_bisect_current_source_rollup_promotes_failures() -> None:
+    def stage_summary(stage: str, *, passed: bool, max_abs: float) -> tuple[str, dict[str, object]]:
+        return (
+            stage,
+            {
+                "rows": [
+                    {
+                        "row": 0,
+                        "passed": passed,
+                        "comparison_kind": "fp16_bits",
+                        "hidden_comparison": {
+                            "max_abs": max_abs,
+                            "max_abs_flat_index": 1269,
+                            "max_abs_index": [0, 1269],
+                            "elements_over_atol": 0 if passed else 1,
+                        },
+                    }
+                ]
+            },
+        )
+
     layer_summaries = [
         {
             "layer_limit": 8,
+            "decode_full_attention": {
+                "steps": [
+                    {
+                        "decode_step": 0,
+                        "layers": [
+                            {
+                                "layer_index": 3,
+                                "stages": dict(
+                                    [
+                                        stage_summary("input", passed=True, max_abs=0.0),
+                                        stage_summary("attn_input_pre_qkv", passed=False, max_abs=0.015625),
+                                        stage_summary("q_proj_key_after_project", passed=False, max_abs=0.0078125),
+                                        stage_summary("key_raw_after_cast", passed=True, max_abs=0.0),
+                                        stage_summary("key_after_prepare", passed=False, max_abs=0.005859375),
+                                    ]
+                                ),
+                            }
+                        ],
+                    }
+                ]
+            },
             "decode_full_kv_samples": {
                 "current_source_passed": False,
                 "current_source_failure_summary": {
@@ -6451,6 +6492,19 @@ def test_hidden_bisect_current_source_rollup_promotes_failures() -> None:
     assert rollup["first_failure"]["layer_limit"] == 8
     assert rollup["first_failure"]["source_stage"] == "key_after_prepare"
     assert rollup["first_failure"]["bit_mismatch"] == 122
+    producer_context = rollup["first_failure"]["producer_stage_context"]
+    assert producer_context["source_stage"] == "key_after_prepare"
+    assert producer_context["first_failed_stage"]["stage"] == "attn_input_pre_qkv"
+    assert producer_context["first_failed_stage"]["max_abs"] == 0.015625
+    assert producer_context["source_stage_record"]["stage"] == "key_after_prepare"
+    assert producer_context["source_stage_record"]["passed"] is False
+    assert [record["stage"] for record in producer_context["stages"]] == [
+        "input",
+        "attn_input_pre_qkv",
+        "q_proj_key_after_project",
+        "key_raw_after_cast",
+        "key_after_prepare",
+    ]
     assert rollup["kinds"]["key"]["failed_checks"] == ["batch_source_vs_c1_source"]
     assert rollup["kinds"]["value"]["passed"] is True
     assert rollup["layer_limits"] == [{"layer_limit": 8, "passed": False, "failed_kinds": ["key"]}]
