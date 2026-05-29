@@ -10581,6 +10581,11 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
     assert retained_bench._batch_execution_blockers(valid, expected_max_layers=40, expected_concurrency=2, expected_prompt_length=512) == []
     for field, diagnostic_value, expected_message in (
         (
+            "linear_attention_decode_path",
+            "selected_c1_per_row_fallback",
+            "execution.batch_execution.decode_execution.layer_executions[1].linear_attention_decode_path must be native_batch_segments or absent",
+        ),
+        (
             "linear_attention_projection_path",
             "selected_c1_forced",
             "execution.batch_execution.decode_execution.layer_executions[1].linear_attention_projection_path must be native_batch or absent",
@@ -12619,6 +12624,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     assert "layer_executions[0].post_attention_decode_path must be absent for native retained decode" in boundary_error_message
 
     for field, diagnostic_value, expected_message in (
+        (
+            "linear_attention_decode_path",
+            "selected_c1_per_row_fallback",
+            "layer_executions[1].linear_attention_decode_path must be native_batch_segments or absent",
+        ),
         (
             "linear_attention_projection_path",
             "selected_c1_forced",

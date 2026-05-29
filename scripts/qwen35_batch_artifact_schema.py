@@ -1153,6 +1153,9 @@ def _validate_accepted_decode_layer_executions(
         elif layer_type == "linear_attention":
             if full_attention_path != "not_applicable":
                 errors.append(f"{label}.full_attention_decode_path must be not_applicable for accepted artifacts")
+            linear_decode_path = layer.get("linear_attention_decode_path")
+            if linear_decode_path not in {None, "native_batch_segments"}:
+                errors.append(f"{label}.linear_attention_decode_path must be native_batch_segments or absent for accepted artifacts")
             linear_projection_path = layer.get("linear_attention_projection_path")
             if linear_projection_path not in {None, "native_batch"}:
                 errors.append(f"{label}.linear_attention_projection_path must be native_batch or absent for accepted artifacts")

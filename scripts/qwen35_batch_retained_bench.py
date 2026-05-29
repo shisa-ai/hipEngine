@@ -1108,6 +1108,9 @@ def _decode_layer_execution_blockers(
         elif layer_type == "linear_attention":
             if full_attention_path != "not_applicable":
                 blockers.append(f"{label}.full_attention_decode_path must be not_applicable")
+            linear_decode_path = layer.get("linear_attention_decode_path")
+            if linear_decode_path not in {None, "native_batch_segments"}:
+                blockers.append(f"{label}.linear_attention_decode_path must be native_batch_segments or absent")
             linear_projection_path = layer.get("linear_attention_projection_path")
             if linear_projection_path not in {None, "native_batch"}:
                 blockers.append(f"{label}.linear_attention_projection_path must be native_batch or absent")
