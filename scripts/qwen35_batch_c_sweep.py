@@ -2204,7 +2204,8 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     separator_index = profiler_command_argv.index("--")
                     rocprof_command_argv = profiler_command_argv[:separator_index]
                     profiled_command_argv = profiler_command_argv[separator_index + 1 :]
-                    if _duplicate_flags(rocprof_command_argv, ("--kernel-trace", "--output-format", "-d")):
+                    rocprof_command_flags = ("--kernel-trace", "--output-format", "-d")
+                    if _duplicate_flags(rocprof_command_argv, rocprof_command_flags):
                         errors.append("commands[].preconditions[].profiler_command rocprof options must be unique")
                         break
                     if "--kernel-trace" not in rocprof_command_argv:
@@ -2285,6 +2286,12 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         "--require-cached-build" in profiled_command_argv
                     ) != ("--require-cached-build" in argv):
                         errors.append("commands[].preconditions[].profiler profiled command flags must match retained command")
+                        break
+                    if any(_flag_token_matches(token, flag) for token in rocprof_command_argv for flag in _RETAINED_BENCH_UNIQUE_FLAGS):
+                        errors.append("commands[].preconditions[].profiler_command retained bench flags must appear after rocprof separator when passed")
+                        break
+                    if any(_flag_token_matches(token, flag) for token in profiled_command_argv for flag in rocprof_command_flags):
+                        errors.append("commands[].preconditions[].profiler_command rocprof options must appear before rocprof separator when passed")
                         break
                     profiler_synthesized_fields = profiler_precondition.get("profiler_trace_synthesized_fields")
                     if not isinstance(profiler_synthesized_fields, list) or not all(isinstance(field, str) for field in profiler_synthesized_fields):

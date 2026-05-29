@@ -4598,6 +4598,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     profiler_precondition["profiler_command"] = profiler_precondition["profiler_command"] + f" --json {output_dir / 'other-native.json'}"
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler profiled command flags must be unique"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_profiled_duplicate)
+    tampered_profiler_precondition_retained_flag_before_separator = json.loads(json.dumps(persisted))
+    profiler_precondition = tampered_profiler_precondition_retained_flag_before_separator["commands"][-1]["preconditions"][-1]
+    profiler_precondition["profiler_command"] = profiler_precondition["profiler_command"].replace(
+        " -- python3 scripts/qwen35_batch_retained_bench.py",
+        " --model /tmp/model -- python3 scripts/qwen35_batch_retained_bench.py",
+    )
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_command retained bench flags must appear after rocprof separator when passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_retained_flag_before_separator)
     tampered_profiler_precondition_model = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_model["commands"][-1]["preconditions"][-1]["profiler_model"] = "/tmp/other-model"
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler model must match retained command"):
@@ -4675,6 +4683,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     )
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_command must include --output-format csv before rocprof separator when passed"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_output_after_separator)
+    tampered_profiler_precondition_rocprof_flag_after_separator = json.loads(json.dumps(persisted))
+    profiler_precondition = tampered_profiler_precondition_rocprof_flag_after_separator["commands"][-1]["preconditions"][-1]
+    profiler_precondition["profiler_command"] = profiler_precondition["profiler_command"].replace(
+        " -- python3 scripts/qwen35_batch_retained_bench.py",
+        " -- python3 scripts/qwen35_batch_retained_bench.py --kernel-trace",
+    )
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_command rocprof options must appear before rocprof separator when passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_rocprof_flag_after_separator)
     tampered_profiler_precondition_trace_dir = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_trace_dir["commands"][-1]["preconditions"][-1].pop("profiler_trace_dir")
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_dir must be a non-empty string when passed"):
@@ -4701,7 +4717,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         " -- python3 scripts/qwen35_batch_retained_bench.py",
         f" -- python3 scripts/qwen35_batch_retained_bench.py -d {output_dir / 'profile-c2'}",
     )
-    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_dir must match profiler command -d"):
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_command rocprof options must appear before rocprof separator when passed"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_trace_dir_after_separator)
     tampered_profiler_precondition_trace_dir_output = json.loads(json.dumps(persisted))
     profiler_precondition = tampered_profiler_precondition_trace_dir_output["commands"][-1]["preconditions"][-1]
