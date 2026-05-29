@@ -58,6 +58,7 @@ from scripts.qwen35_batch_artifact_schema import (
     DISALLOWED_ACCEPTED_DIAGNOSTIC_EVIDENCE_FRAGMENTS,
     DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_FRAGMENTS,
     DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_NAMES,
+    _UNUSABLE_ACCEPTED_SCALING_BASELINE_STATUSES,
     _load_benchmark_results_json_artifact,
     _summary_json_path_is_in_current_results,
     _validate_benchmark_results_artifact_path,
@@ -73,6 +74,7 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_EVIDENCE_FRAGMENTS,
     RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_TRACE_FIELD_FRAGMENTS,
     RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_TRACE_FIELD_NAMES,
+    RETAINED_ARTIFACT_UNUSABLE_SCALING_BASELINE_STATUSES,
 )
 from scripts.qwen35_batch_c_sweep import build_parser as build_c_sweep_parser, build_sweep_commands, run_sweep
 from scripts.qwen35_batch_gguf_diagnostic import build_parser as build_gguf_diagnostic_parser, run as run_gguf_diagnostic
@@ -3524,6 +3526,53 @@ def test_batch_c_sweep_scaling_reference_requires_artifact_path(tmp_path: Path) 
     assert missing_artifact_path["reason"] == "artifact_path is missing or not a non-empty string"
     assert mismatched_artifact_path["passed"] is False
     assert mismatched_artifact_path["reason"] == "artifact_path does not match scaling reference artifact path"
+
+
+@pytest.mark.parametrize("status", RETAINED_ARTIFACT_UNUSABLE_SCALING_BASELINE_STATUSES)
+def test_batch_c_sweep_scaling_reference_rejects_shared_unusable_statuses(tmp_path: Path, status: str) -> None:
+    assert c_sweep._UNUSABLE_SCALING_REFERENCE_STATUSES is RETAINED_ARTIFACT_UNUSABLE_SCALING_BASELINE_STATUSES
+
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    reference_path = output_dir / "serial-bridge-c2.json"
+    reference_path.write_text(
+        json.dumps(
+            {
+                "artifact_path": str(reference_path),
+                "schema": 2,
+                "status": status,
+                "workload": {"concurrency": 2, "prompt_tokens_per_request": 16, "gen_tokens_per_request": 2},
+                "measurements": {"decode_tok_s_aggregate": 20.0, "decode_tok_s_per_request": 10.0},
+            }
+        )
+    )
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._scaling_reference_precondition(
+        native,
+        flag="--serial-bridge-json",
+        kind="serial_bridge",
+        expected_concurrency=2,
+    )
+
+    assert precondition["passed"] is False
+    assert precondition["reason"] == f"status={status!r} is not usable as a scaling reference"
 
 
 def test_batch_c_sweep_scaling_reference_rejects_nonfinite_rates(tmp_path: Path) -> None:
@@ -13274,20 +13323,17 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="scaling.serial_bridge_baseline.reference_artifact_path must match artifact_path"):
         validate_cn_diagnostic_artifact_payload(mismatched_serial_reference_artifact)
 
-    failed_c1_status = json.loads(json.dumps(accepted))
-    failed_c1_status["scaling"]["c1_baseline"]["status"] = "missing"
-    with pytest.raises(ValueError, match="c1_baseline.status must be usable"):
-        validate_cn_diagnostic_artifact_payload(failed_c1_status)
+    assert _UNUSABLE_ACCEPTED_SCALING_BASELINE_STATUSES is RETAINED_ARTIFACT_UNUSABLE_SCALING_BASELINE_STATUSES
+    for unusable_status in RETAINED_ARTIFACT_UNUSABLE_SCALING_BASELINE_STATUSES:
+        unusable_c1_status = json.loads(json.dumps(accepted))
+        unusable_c1_status["scaling"]["c1_baseline"]["status"] = unusable_status
+        with pytest.raises(ValueError, match="c1_baseline.status must be usable"):
+            validate_cn_diagnostic_artifact_payload(unusable_c1_status)
 
-    rejected_c1_status = json.loads(json.dumps(accepted))
-    rejected_c1_status["scaling"]["c1_baseline"]["status"] = "rejected_correctness"
-    with pytest.raises(ValueError, match="c1_baseline.status must be usable"):
-        validate_cn_diagnostic_artifact_payload(rejected_c1_status)
-
-    failed_serial_status = json.loads(json.dumps(accepted))
-    failed_serial_status["scaling"]["serial_bridge_baseline"]["status"] = "failed"
-    with pytest.raises(ValueError, match="serial_bridge_baseline.status must be usable"):
-        validate_cn_diagnostic_artifact_payload(failed_serial_status)
+        unusable_serial_status = json.loads(json.dumps(accepted))
+        unusable_serial_status["scaling"]["serial_bridge_baseline"]["status"] = unusable_status
+        with pytest.raises(ValueError, match="serial_bridge_baseline.status must be usable"):
+            validate_cn_diagnostic_artifact_payload(unusable_serial_status)
 
     missing_c1_concurrency = json.loads(json.dumps(accepted))
     missing_c1_concurrency["scaling"]["c1_baseline"].pop("workload_concurrency")

@@ -23,7 +23,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from scripts.qwen35_batch_constants import PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS
+from scripts.qwen35_batch_constants import (
+    PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS,
+    RETAINED_ARTIFACT_UNUSABLE_SCALING_BASELINE_STATUSES,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL = (
@@ -34,6 +37,7 @@ DEFAULT_FIXTURE = "fixtures/qwen35_paro/parent_512_32_seed1234.json"
 DEFAULT_BATCH_SIZES = (1, 2, 4, 8)
 _OUTPUT_TAIL_MAX_CHARS = 4000
 _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS
+_UNUSABLE_SCALING_REFERENCE_STATUSES = RETAINED_ARTIFACT_UNUSABLE_SCALING_BASELINE_STATUSES
 _PROFILER_KERNEL_DURATION_CATEGORIES = (
     "attention",
     "moe",
@@ -999,7 +1003,7 @@ def _scaling_reference_precondition(
             source_artifact_path = raw_artifact_path
         raw_status = payload.get("status")
         status = str(raw_status) if raw_status else "loaded"
-        if status in {"failed", "rejected", "rejected_correctness", "missing", "invalid_json"}:
+        if status in _UNUSABLE_SCALING_REFERENCE_STATUSES:
             reasons.append(f"status={status!r} is not usable as a scaling reference")
         reference_reason = payload.get("reason")
         if reference_reason is not None:
