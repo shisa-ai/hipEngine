@@ -695,6 +695,59 @@ def _decode_linear_input_comparison_at(
     return None
 
 
+def _decode_full_attention_layer_focus_at(
+    summary: dict[str, Any],
+    *,
+    decode_step: int,
+    layer_index: int,
+    row_index: int,
+) -> dict[str, Any] | None:
+    trace = summary.get("decode_full_attention")
+    if not isinstance(trace, dict):
+        return None
+    for step in trace.get("steps", []):
+        if int(step.get("decode_step", -1)) != int(decode_step):
+            continue
+        for layer in step.get("layers", []):
+            if int(layer.get("layer_index", -1)) != int(layer_index):
+                continue
+            focus: dict[str, Any] = {
+                "decode_step": decode_step,
+                "generated_index": int(step.get("generated_index", decode_step + 1)),
+                "layer_index": layer_index,
+                "row": row_index,
+                "stage_passed": {},
+                "stages": {},
+            }
+            layer_execution = _layer_execution_at_step(summary, decode_step=decode_step, layer_index=layer_index)
+            if layer_execution is not None:
+                focus["batch_decode_layer_execution"] = layer_execution
+            first_bad_stage: dict[str, Any] | None = None
+            for stage in DECODE_FULL_ATTENTION_TRACE_STAGES:
+                stage_summary = layer.get("stages", {}).get(stage)
+                if not isinstance(stage_summary, dict):
+                    continue
+                for row in stage_summary.get("rows", []):
+                    if int(row.get("row", -1)) != row_index or not isinstance(row.get("hidden_comparison"), dict):
+                        continue
+                    compact = _compact_comparison(row["hidden_comparison"])
+                    compact["comparison_kind"] = str(row.get("comparison_kind", "unknown"))
+                    focus["stages"][stage] = compact
+                    focus["stage_passed"][stage] = bool(compact["passed"])
+                    if first_bad_stage is None and not bool(compact["passed"]):
+                        first_bad_stage = {
+                            "stage": stage,
+                            "max_abs": float(compact["max_abs"]),
+                            "max_abs_index": compact.get("max_abs_index", []),
+                            "elements_over_atol": int(compact.get("elements_over_atol", 0)),
+                        }
+                    break
+            if first_bad_stage is not None:
+                focus["first_over_atol_stage"] = first_bad_stage
+            return focus if focus["stages"] else None
+    return None
+
+
 def _first_linear_state_mismatch_focus(
     summary: dict[str, Any],
     *,
@@ -761,6 +814,14 @@ def _linear_state_focus_history(summary: dict[str, Any], focus: dict[str, Any] |
         )
         if linear_input is not None:
             entry["decode_linear_input"] = linear_input
+        producer_full_attention = _decode_full_attention_layer_focus_at(
+            summary,
+            decode_step=decode_step,
+            layer_index=layer_index - 1,
+            row_index=row_index,
+        )
+        if producer_full_attention is not None:
+            entry["decode_linear_input_producer_full_attention"] = producer_full_attention
         return entry
 
     exact_history = trace.get("first_mismatch_over_focus_atol_history")

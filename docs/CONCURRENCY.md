@@ -989,9 +989,15 @@ roll-up/status view.
       `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-state-focus-rowmap2e-3-focus1269.json`
       records `linear_attention_row_state_map=[{row:0,slot:0,state_index:0},{row:1,slot:1,state_index:1}]`
       and matching `state_indices=[0,1]`, so the step-6 drift is not a row/slot
-      metadata swap. The next C2.3 work should isolate the layer-4 state update
-      input values at step 6, not re-open the already oracle-green reduced
-      full-attention context path or native linear segment metadata.
+      metadata swap. The producer refresh at
+      `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-layer4-input-producer-focus1269.json`
+      ties that layer-4 input drift to the preceding layer-3 full-attention block:
+      stages `input`, `attn_input`, `gate`, `query`, `attn_context`, `gated_attn`,
+      and `o_proj` are green, while final `output` is over tolerance
+      (`max_abs=0.0081787109375`, dim 1504) under `native_batch` full-attention
+      plus `grouped_compact` MoE. The next C2.3 work should isolate layer-3
+      grouped MoE / output-combine after o_proj, not re-open full-attention context,
+      layer-4 state mapping, or native linear segment metadata.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

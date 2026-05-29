@@ -6668,6 +6668,37 @@ def test_hidden_bisect_transition_records_focus_state_history() -> None:
                         },
                     ],
                 },
+                "decode_full_attention": {
+                    "passed": False,
+                    "steps": [
+                        {
+                            "decode_step": 0,
+                            "generated_index": 1,
+                            "layers": [
+                                {
+                                    "layer_index": 0,
+                                    "stages": {
+                                        "input": {"passed": True, "rows": [{"row": 0, "comparison_kind": "fp16_bits", "hidden_comparison": passed, "passed": True}]},
+                                        "output": {"passed": True, "rows": [{"row": 0, "comparison_kind": "fp16_bits", "hidden_comparison": passed, "passed": True}]},
+                                    },
+                                }
+                            ],
+                        },
+                        {
+                            "decode_step": 1,
+                            "generated_index": 2,
+                            "layers": [
+                                {
+                                    "layer_index": 0,
+                                    "stages": {
+                                        "input": {"passed": True, "rows": [{"row": 0, "comparison_kind": "fp16_bits", "hidden_comparison": passed, "passed": True}]},
+                                        "output": {"passed": False, "rows": [{"row": 0, "comparison_kind": "fp16_bits", "hidden_comparison": failed, "passed": False}]},
+                                    },
+                                }
+                            ],
+                        },
+                    ],
+                },
                 "decode_linear_states": {
                     "passed": False,
                     "state_atol": 0.0,
@@ -6709,6 +6740,11 @@ def test_hidden_bisect_transition_records_focus_state_history() -> None:
     assert [entry["passed_under_focus_atol"] for entry in history] == [True, False]
     assert [entry["hidden_row"]["passed"] for entry in history] == [True, False]
     assert [entry["decode_linear_input"]["passed"] for entry in history] == [True, False]
+    producer = history[1]["decode_linear_input_producer_full_attention"]
+    assert producer["layer_index"] == 0
+    assert producer["first_over_atol_stage"]["stage"] == "output"
+    assert producer["stages"]["input"]["passed"] is True
+    assert producer["stages"]["output"]["passed"] is False
     assert [entry["batch_decode_layer_execution"]["layer_type"] for entry in history] == ["linear_attention", "linear_attention"]
     assert history[1]["batch_decode_layer_execution"]["linear_attention_segment_metadata"] == {"state_indices": [0]}
     assert [entry["same_focus_index_in_top_abs_diffs"] for entry in history] == [False, True]

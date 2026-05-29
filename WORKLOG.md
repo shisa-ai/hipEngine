@@ -45688,3 +45688,36 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (`261` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with concrete row-map metadata evidence, and no retained c>N performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY layer-4 input producer focus
+
+Advanced C2.3 diagnostics by adding `decode_linear_input_producer_full_attention` to focused state-history entries when the focused linear input is produced by the immediately previous full-attention layer. The focus summarizes the same row across full-attention trace stages and records the first over-tolerance producer stage.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py
+pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_transition_records_focus_state_history tests/test_generation_batch_scheduler.py::test_hidden_bisect_summary_embeds_batch_decode_execution_trace tests/test_generation_batch_scheduler.py::test_hidden_bisect_helpers_find_first_hidden_mismatch -q
+```
+
+Diagnostic:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 4,8 --max-sequence-length 1024 --hidden-atol 0.001 --state-atol 0 --state-focus-atol 0.002 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-full-attn-path native_batch --json /tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-layer4-input-producer-focus1269.json >/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-layer4-input-producer-focus1269.stdout
+```
+
+Result: `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-layer4-input-producer-focus1269.json` is `status=mismatch_found`. At step 6, the focused layer-4 input producer is layer 3 full-attention. Producer stages `input`, `attn_input`, `gate`, `query`, `attn_context`, `gated_attn`, and `o_proj` are green (`o_proj max_abs=6.103515625e-05`), while final `output` is the first over-tolerance stage (`max_abs=0.0081787109375`, dim 1504). The layer execution is `full_attention_decode_path=native_batch`, `moe_decode_path=grouped_compact`. This shifts the next target from layer-4 state update bookkeeping to layer-3 grouped MoE / output-combine after o_proj.
+
+Loop validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (`261` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with concrete layer-4-input producer evidence, and no retained c>N performance/scaling claim was added.
