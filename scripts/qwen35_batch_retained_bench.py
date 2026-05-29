@@ -1044,6 +1044,74 @@ def _retained_memory_payload(args: argparse.Namespace, kv_policy: ResolvedKVPoli
     return memory
 
 
+def _decode_layer_execution_blockers(
+    decode_execution: Mapping[str, Any],
+    *,
+    expected_concurrency: int | None = None,
+    expected_prompt_length: int | None = None,
+) -> list[str]:
+    blockers: list[str] = []
+    layer_executions = decode_execution.get("layer_executions")
+    if not isinstance(layer_executions, list) or not layer_executions:
+        return ["execution.batch_execution.decode_execution.layer_executions must be a non-empty list"]
+    decode_slots = decode_execution.get("slots")
+    native_full_attention_layers = decode_execution.get("native_full_attention_layers")
+    moe_grouped_compact_layers = decode_execution.get("moe_grouped_compact_layers")
+    traced_native_full_attention_layers = 0
+    traced_grouped_moe_layers = 0
+    for index, layer in enumerate(layer_executions):
+        label = f"execution.batch_execution.decode_execution.layer_executions[{index}]"
+        if not isinstance(layer, Mapping):
+            blockers.append(f"{label} must be an object")
+            continue
+        layer_index = layer.get("layer_index")
+        if isinstance(layer_index, bool) or not isinstance(layer_index, int) or layer_index < 0:
+            blockers.append(f"{label}.layer_index must be a non-negative int")
+        layer_type = layer.get("layer_type")
+        if layer_type not in {"linear_attention", "full_attention"}:
+            blockers.append(f"{label}.layer_type must be linear_attention or full_attention")
+        rows = layer.get("rows")
+        if expected_concurrency is not None:
+            if isinstance(rows, bool) or not isinstance(rows, int):
+                blockers.append(f"{label}.rows must be an int")
+            elif rows != int(expected_concurrency):
+                blockers.append(f"{label}.rows must match workload.concurrency")
+        slots = layer.get("slots")
+        if isinstance(decode_slots, list) and slots != decode_slots:
+            blockers.append(f"{label}.slots must match decode_execution.slots")
+        elif not isinstance(slots, list):
+            blockers.append(f"{label}.slots must be a list")
+        if layer.get("native_caware_decode") is not True:
+            blockers.append(f"{label}.native_caware_decode must be true")
+        moe_path = layer.get("moe_decode_path")
+        if moe_path != "grouped_compact":
+            blockers.append(f"{label}.moe_decode_path must be grouped_compact")
+        else:
+            traced_grouped_moe_layers += 1
+        full_attention_path = layer.get("full_attention_decode_path")
+        if layer_type == "full_attention":
+            if full_attention_path != "native_batch":
+                blockers.append(f"{label}.full_attention_decode_path must be native_batch")
+            else:
+                traced_native_full_attention_layers += 1
+            max_context = layer.get("max_context")
+            if isinstance(max_context, bool) or not isinstance(max_context, int):
+                blockers.append(f"{label}.max_context must be an int")
+            elif expected_prompt_length is not None and max_context < int(expected_prompt_length):
+                blockers.append(f"{label}.max_context must cover workload.prompt_tokens_per_request")
+            if "num_splits_per_row" in layer:
+                blockers.append(f"{label}.num_splits_per_row must be absent for native retained decode")
+        elif layer_type == "linear_attention" and full_attention_path != "not_applicable":
+            blockers.append(f"{label}.full_attention_decode_path must be not_applicable")
+    if isinstance(native_full_attention_layers, int) and not isinstance(native_full_attention_layers, bool):
+        if traced_native_full_attention_layers != native_full_attention_layers:
+            blockers.append("execution.batch_execution.decode_execution.layer_executions native full-attention count must match native_full_attention_layers")
+    if isinstance(moe_grouped_compact_layers, int) and not isinstance(moe_grouped_compact_layers, bool):
+        if traced_grouped_moe_layers != moe_grouped_compact_layers:
+            blockers.append("execution.batch_execution.decode_execution.layer_executions grouped MoE count must match moe_grouped_compact_layers")
+    return blockers
+
+
 def _batch_execution_blockers(
     batch_execution: Mapping[str, Any],
     *,
@@ -1138,6 +1206,13 @@ def _batch_execution_blockers(
             blockers.append("execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch")
         if decode_execution.get("native_caware_decode") is not True:
             blockers.append("execution.batch_execution.decode_execution.native_caware_decode must be true")
+        blockers.extend(
+            _decode_layer_execution_blockers(
+                decode_execution,
+                expected_concurrency=expected_concurrency,
+                expected_prompt_length=expected_prompt_length,
+            )
+        )
         if decode_execution.get("blockers") != []:
             blockers.append("execution.batch_execution.decode_execution.blockers must be empty")
     return blockers

@@ -1069,6 +1069,7 @@ def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[
             errors.append("execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch for accepted artifacts")
         if decode_execution.get("native_caware_decode") is not True:
             errors.append("execution.batch_execution.decode_execution.native_caware_decode must be true for accepted artifacts")
+        _validate_accepted_decode_layer_executions(decode_execution, workload, errors)
         if decode_execution.get("blockers") != []:
             errors.append("execution.batch_execution.decode_execution.blockers must be empty for accepted artifacts")
         sampler_execution = decode_execution.get("sampler_execution")
@@ -1082,6 +1083,77 @@ def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[
         errors.append("execution.scheduler_metadata must be an object for accepted artifacts")
     else:
         _validate_accepted_scheduler_metadata(scheduler_metadata, workload, errors)
+
+
+def _validate_accepted_decode_layer_executions(
+    decode_execution: Mapping[str, Any],
+    workload: Mapping[str, Any],
+    errors: list[str],
+) -> None:
+    layer_executions = decode_execution.get("layer_executions")
+    if not isinstance(layer_executions, list) or not layer_executions:
+        errors.append("execution.batch_execution.decode_execution.layer_executions must be a non-empty list for accepted artifacts")
+        return
+    decode_slots = decode_execution.get("slots")
+    concurrency = workload.get("concurrency")
+    prompt_tokens_per_request = workload.get("prompt_tokens_per_request")
+    native_full_attention_layers = decode_execution.get("native_full_attention_layers")
+    moe_grouped_compact_layers = decode_execution.get("moe_grouped_compact_layers")
+    traced_native_full_attention_layers = 0
+    traced_grouped_moe_layers = 0
+    for index, layer in enumerate(layer_executions):
+        label = f"execution.batch_execution.decode_execution.layer_executions[{index}]"
+        if not isinstance(layer, Mapping):
+            errors.append(f"{label} must be an object for accepted artifacts")
+            continue
+        layer_index = layer.get("layer_index")
+        if isinstance(layer_index, bool) or not isinstance(layer_index, int) or layer_index < 0:
+            errors.append(f"{label}.layer_index must be a non-negative int for accepted artifacts")
+        layer_type = layer.get("layer_type")
+        if layer_type not in {"linear_attention", "full_attention"}:
+            errors.append(f"{label}.layer_type must be linear_attention or full_attention for accepted artifacts")
+        rows = layer.get("rows")
+        if isinstance(rows, bool) or not isinstance(rows, int):
+            errors.append(f"{label}.rows must be an int for accepted artifacts")
+        elif isinstance(concurrency, int) and not isinstance(concurrency, bool) and rows != concurrency:
+            errors.append(f"{label}.rows must match workload.concurrency for accepted artifacts")
+        slots = layer.get("slots")
+        if isinstance(decode_slots, list) and slots != decode_slots:
+            errors.append(f"{label}.slots must match decode_execution.slots for accepted artifacts")
+        elif not isinstance(slots, list):
+            errors.append(f"{label}.slots must be a list for accepted artifacts")
+        if layer.get("native_caware_decode") is not True:
+            errors.append(f"{label}.native_caware_decode must be true for accepted artifacts")
+        moe_path = layer.get("moe_decode_path")
+        if moe_path != "grouped_compact":
+            errors.append(f"{label}.moe_decode_path must be grouped_compact for accepted artifacts")
+        else:
+            traced_grouped_moe_layers += 1
+        full_attention_path = layer.get("full_attention_decode_path")
+        if layer_type == "full_attention":
+            if full_attention_path != "native_batch":
+                errors.append(f"{label}.full_attention_decode_path must be native_batch for accepted artifacts")
+            else:
+                traced_native_full_attention_layers += 1
+            max_context = layer.get("max_context")
+            if isinstance(max_context, bool) or not isinstance(max_context, int):
+                errors.append(f"{label}.max_context must be an int for accepted artifacts")
+            elif (
+                isinstance(prompt_tokens_per_request, int)
+                and not isinstance(prompt_tokens_per_request, bool)
+                and max_context < prompt_tokens_per_request
+            ):
+                errors.append(f"{label}.max_context must cover workload.prompt_tokens_per_request for accepted artifacts")
+            if "num_splits_per_row" in layer:
+                errors.append(f"{label}.num_splits_per_row must be absent for native retained decode for accepted artifacts")
+        elif layer_type == "linear_attention" and full_attention_path != "not_applicable":
+            errors.append(f"{label}.full_attention_decode_path must be not_applicable for accepted artifacts")
+    if isinstance(native_full_attention_layers, int) and not isinstance(native_full_attention_layers, bool):
+        if traced_native_full_attention_layers != native_full_attention_layers:
+            errors.append("execution.batch_execution.decode_execution.layer_executions native full-attention count must match native_full_attention_layers for accepted artifacts")
+    if isinstance(moe_grouped_compact_layers, int) and not isinstance(moe_grouped_compact_layers, bool):
+        if traced_grouped_moe_layers != moe_grouped_compact_layers:
+            errors.append("execution.batch_execution.decode_execution.layer_executions grouped MoE count must match moe_grouped_compact_layers for accepted artifacts")
 
 
 def _validate_accepted_projection_dispatch(

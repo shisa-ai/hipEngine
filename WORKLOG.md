@@ -44016,3 +44016,31 @@ PY
 python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
 # pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
 ```
+
+## 2026-05-29 — CONCURRENCY retained per-layer decode-trace gates
+
+Advanced P3/P5 without closing a queue item or adding a retained c>N performance claim. Retained c>N promotion now requires the per-layer decode trace added in the previous iteration, so accepted artifacts must prove layer-level native full-attention/grouped-MoE execution rather than only global decode counters.
+
+- Added `_decode_layer_execution_blockers(...)` in `scripts/qwen35_batch_retained_bench.py` and wired it into `_batch_execution_blockers(...)`.
+- Extended accepted-artifact schema validation in `scripts/qwen35_batch_artifact_schema.py` to require non-empty `decode_execution.layer_executions`, matching rows/slots, native per-layer full-attention paths, grouped-compact MoE paths, no fallback split-count traces, and trace counts matching global native full-attention/grouped-MoE layer counts.
+- Extended scheduler/schema tests for valid per-layer traces plus missing/stale trace rejection.
+- Updated `docs/CONCURRENCY.md` P3/P5 progress text with the retained/schema layer-trace gates.
+- No queue status changed and no generated-token equality or retained performance/scaling claim was added.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -k 'batch_execution_blockers_reject_serial_and_fallback_paths or artifact_schema_enforces_accepted_row_gates' -q
+# 2 passed
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -q
+# passed
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+# 12
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+# pytest passed; c=2/c=8 primitive correctness passed and emitted matching artifact_path fields
+```

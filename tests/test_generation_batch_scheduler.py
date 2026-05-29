@@ -8408,6 +8408,18 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
             "moe_decode_rows": 2,
             "moe_grouped_compact_layers": 1,
             "moe_selected_c1_fallback_layers": 0,
+            "layer_executions": [
+                {
+                    "layer_index": 0,
+                    "layer_type": "full_attention",
+                    "rows": 2,
+                    "slots": [0, 2],
+                    "max_context": 512,
+                    "full_attention_decode_path": "native_batch",
+                    "native_caware_decode": True,
+                    "moe_decode_path": "grouped_compact",
+                }
+            ],
             "blockers": [],
         },
     }
@@ -8475,6 +8487,7 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
     assert "execution.batch_execution.decode_execution.moe_decode_path must be grouped_compact for retained c>N MoE decode" in blockers
     assert "execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch" in blockers
     assert "execution.batch_execution.decode_execution.native_caware_decode must be true" in blockers
+    assert "execution.batch_execution.decode_execution.layer_executions must be a non-empty list" in blockers
     assert "execution.batch_execution.decode_execution.blockers must be empty" in blockers
 
 
@@ -9360,6 +9373,18 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                     "moe_decode_rows": 2,
                     "moe_grouped_compact_layers": 1,
                     "moe_selected_c1_fallback_layers": 0,
+                    "layer_executions": [
+                        {
+                            "layer_index": 0,
+                            "layer_type": "full_attention",
+                            "rows": 2,
+                            "slots": [0, 1],
+                            "max_context": 512,
+                            "full_attention_decode_path": "native_batch",
+                            "native_caware_decode": True,
+                            "moe_decode_path": "grouped_compact",
+                        }
+                    ],
                     "blockers": [],
                     "sampler_execution": {
                         "rows": 2,
@@ -10386,6 +10411,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     non_native_decode_execution["execution"]["batch_execution"]["decode_execution"]["native_caware_decode"] = False
     with pytest.raises(ValueError, match="decode_execution.native_caware_decode must be true"):
         validate_cn_diagnostic_artifact_payload(non_native_decode_execution)
+
+    missing_layer_executions = json.loads(json.dumps(accepted))
+    missing_layer_executions["execution"]["batch_execution"]["decode_execution"].pop("layer_executions")
+    with pytest.raises(ValueError, match="decode_execution.layer_executions must be a non-empty list"):
+        validate_cn_diagnostic_artifact_payload(missing_layer_executions)
+
+    fallback_layer_execution = json.loads(json.dumps(accepted))
+    fallback_layer_execution["execution"]["batch_execution"]["decode_execution"]["layer_executions"][0]["moe_decode_path"] = "selected_c1_per_row_fallback"
+    with pytest.raises(ValueError, match=r"layer_executions\[0\].moe_decode_path must be grouped_compact"):
+        validate_cn_diagnostic_artifact_payload(fallback_layer_execution)
 
     blocked_decode_execution = json.loads(json.dumps(accepted))
     blocked_decode_execution["execution"]["batch_execution"]["decode_execution"]["blockers"] = ["decode blocker"]
