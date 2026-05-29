@@ -65,6 +65,7 @@ from scripts.qwen35_batch_c_sweep import build_parser as build_c_sweep_parser, b
 from scripts.qwen35_batch_gguf_diagnostic import build_parser as build_gguf_diagnostic_parser, run as run_gguf_diagnostic
 from scripts.qwen35_batch_hidden_bisect import (
     HiddenRun,
+    _decode_full_attention_bit_drift_rollup,
     _decode_full_attention_stage_rollup,
     _decode_full_attention_summary,
     _decode_full_context_kv_prefix_rollup,
@@ -6435,7 +6436,7 @@ def test_hidden_bisect_current_source_rollup_promotes_failures() -> None:
                                 "layer_index": 3,
                                 "stages": dict(
                                     [
-                                        stage_summary("input", passed=True, max_abs=0.0),
+                                        stage_summary("input", passed=True, max_abs=0.0, bit_mismatch=3),
                                         stage_summary(
                                             "attn_input_pre_qkv",
                                             passed=False,
@@ -6512,8 +6513,8 @@ def test_hidden_bisect_current_source_rollup_promotes_failures() -> None:
     assert producer_context["source_stage"] == "key_after_prepare"
     assert producer_context["first_failed_stage"]["stage"] == "attn_input_pre_qkv"
     assert producer_context["first_failed_stage"]["max_abs"] == 0.015625
-    assert producer_context["first_bit_mismatch_stage"]["stage"] == "attn_input_pre_qkv"
-    assert producer_context["first_bit_mismatch_stage"]["bit_mismatch"] == 4
+    assert producer_context["first_bit_mismatch_stage"]["stage"] == "input"
+    assert producer_context["first_bit_mismatch_stage"]["bit_mismatch"] == 3
     assert producer_context["source_stage_record"]["stage"] == "key_after_prepare"
     assert producer_context["source_stage_record"]["passed"] is False
     assert producer_context["source_stage_record"]["bit_mismatch"] == 1
@@ -6528,6 +6529,34 @@ def test_hidden_bisect_current_source_rollup_promotes_failures() -> None:
     assert rollup["kinds"]["key"]["failed_checks"] == ["batch_source_vs_c1_source"]
     assert rollup["kinds"]["value"]["passed"] is True
     assert rollup["layer_limits"] == [{"layer_limit": 8, "passed": False, "failed_kinds": ["key"]}]
+
+    bit_rollup = _decode_full_attention_bit_drift_rollup(layer_summaries)
+    assert bit_rollup["drift_stages"] == [
+        "input",
+        "attn_input_pre_qkv",
+        "q_proj_key_after_project",
+        "key_after_prepare",
+    ]
+    assert bit_rollup["first_bit_drift"]["stage"] == "input"
+    assert bit_rollup["first_bit_drift"]["passed_under_atol"] is True
+    assert bit_rollup["stages"]["input"] == {
+        "passed": False,
+        "bit_drift_rows": [0],
+        "bit_drift_row_count": 1,
+        "total_bit_mismatch": 3,
+        "first_bit_drift": bit_rollup["first_bit_drift"],
+    }
+    assert bit_rollup["layer_limits"] == [
+        {
+            "layer_limit": 8,
+            "drift_stages": [
+                "input",
+                "attn_input_pre_qkv",
+                "q_proj_key_after_project",
+                "key_after_prepare",
+            ],
+        }
+    ]
 
 
 def test_hidden_bisect_current_kv_source_checks_compare_cache_to_trace() -> None:

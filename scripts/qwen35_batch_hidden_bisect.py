@@ -2601,6 +2601,109 @@ def _decode_full_attention_stage_failure_summary(steps: Sequence[dict[str, Any]]
     }
 
 
+def _decode_full_attention_bit_drift_record(
+    step_summary: dict[str, Any],
+    layer: dict[str, Any],
+    stage: str,
+    row_summary: dict[str, Any],
+    *,
+    layer_limit: int | None = None,
+) -> dict[str, Any]:
+    comparison = row_summary.get("hidden_comparison", {})
+    max_abs_flat_index = comparison.get("max_abs_flat_index") if isinstance(comparison, dict) else None
+    record = {
+        "decode_step": int(step_summary.get("decode_step", 0)),
+        "generated_index": int(step_summary.get("generated_index", int(step_summary.get("decode_step", 0)) + 1)),
+        "layer_index": int(layer.get("layer_index", -1)),
+        "stage": stage,
+        "row": int(row_summary.get("row", -1)),
+        "comparison_kind": str(row_summary.get("comparison_kind", "unknown")),
+        "passed_under_atol": bool(row_summary.get("passed", False)),
+        "bit_mismatch": int(comparison.get("bit_mismatch", 0)) if isinstance(comparison, dict) else 0,
+        "max_abs": float(comparison.get("max_abs", 0.0)) if isinstance(comparison, dict) else 0.0,
+        "max_abs_flat_index": None if max_abs_flat_index is None else int(max_abs_flat_index),
+        "max_abs_index": comparison.get("max_abs_index", []) if isinstance(comparison, dict) else [],
+        "elements_over_atol": int(comparison.get("elements_over_atol", 0)) if isinstance(comparison, dict) else 0,
+    }
+    if layer_limit is not None:
+        return {"layer_limit": int(layer_limit), **record}
+    return record
+
+
+def _decode_full_attention_bit_drift_rollup(layer_summaries: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    stage_summaries: dict[str, Any] = {}
+    first_bit_drift: dict[str, Any] | None = None
+    for stage in DECODE_FULL_ATTENTION_TRACE_STAGES:
+        rows: list[int] = []
+        seen_rows: set[int] = set()
+        first_stage_bit_drift: dict[str, Any] | None = None
+        total_bit_mismatch = 0
+        for summary in layer_summaries:
+            layer_limit = int(summary.get("layer_limit", 0))
+            trace = summary.get("decode_full_attention")
+            if not isinstance(trace, dict):
+                continue
+            for step_summary in trace.get("steps", []):
+                for layer in step_summary.get("layers", []):
+                    stage_summary = layer.get("stages", {}).get(stage)
+                    if not isinstance(stage_summary, dict):
+                        continue
+                    for row_summary in stage_summary.get("rows", []):
+                        comparison = row_summary.get("hidden_comparison", {})
+                        bit_mismatch = int(comparison.get("bit_mismatch", 0)) if isinstance(comparison, dict) else 0
+                        if bit_mismatch <= 0:
+                            continue
+                        total_bit_mismatch += bit_mismatch
+                        record = _decode_full_attention_bit_drift_record(
+                            step_summary,
+                            layer,
+                            stage,
+                            row_summary,
+                            layer_limit=layer_limit,
+                        )
+                        if first_stage_bit_drift is None:
+                            first_stage_bit_drift = record
+                        if first_bit_drift is None:
+                            first_bit_drift = record
+                        row_index = int(row_summary.get("row", -1))
+                        if row_index >= 0 and row_index not in seen_rows:
+                            rows.append(row_index)
+                            seen_rows.add(row_index)
+        stage_summaries[stage] = {
+            "passed": not rows,
+            "bit_drift_rows": rows,
+            "bit_drift_row_count": len(rows),
+            "total_bit_mismatch": int(total_bit_mismatch),
+            "first_bit_drift": first_stage_bit_drift,
+        }
+    drift_stages = [stage for stage in DECODE_FULL_ATTENTION_TRACE_STAGES if stage_summaries[stage]["bit_drift_rows"]]
+    return {
+        "drift_stages": drift_stages,
+        "drift_stage_count": len(drift_stages),
+        "first_bit_drift": first_bit_drift,
+        "input_has_bit_drift": bool(stage_summaries["input"]["bit_drift_rows"]),
+        "stages": stage_summaries,
+        "layer_limits": [
+            {
+                "layer_limit": int(summary.get("layer_limit", 0)),
+                "drift_stages": [
+                    stage
+                    for stage in DECODE_FULL_ATTENTION_TRACE_STAGES
+                    if any(
+                        int(row.get("hidden_comparison", {}).get("bit_mismatch", 0)) > 0
+                        for step_summary in summary.get("decode_full_attention", {}).get("steps", [])
+                        for layer in step_summary.get("layers", [])
+                        for row in layer.get("stages", {}).get(stage, {}).get("rows", [])
+                    )
+                ]
+                if isinstance(summary.get("decode_full_attention"), dict)
+                else [],
+            }
+            for summary in layer_summaries
+        ],
+    }
+
+
 def _decode_full_attention_stage_rollup(layer_summaries: Sequence[dict[str, Any]]) -> dict[str, Any]:
     stage_summaries: dict[str, Any] = {}
     for stage in DECODE_FULL_ATTENTION_TRACE_STAGES:
@@ -4850,6 +4953,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "failure_modes": _failure_modes(hidden_passed=hidden_passed, token_passed=token_passed),
             "row_failure_summary": _row_failure_summary(layer_summaries),
             "decode_full_attention_stage_failure_summary": _decode_full_attention_stage_rollup(layer_summaries),
+            "decode_full_attention_bit_drift_summary": _decode_full_attention_bit_drift_rollup(layer_summaries),
             "prefill_full_kv_prefix_failure_summary": _prefill_full_kv_prefix_rollup(layer_summaries),
             "decode_full_context_oracle_failure_summary": _decode_full_context_oracle_rollup(layer_summaries),
             "decode_full_context_kv_prefix_failure_summary": _decode_full_context_kv_prefix_rollup(layer_summaries),

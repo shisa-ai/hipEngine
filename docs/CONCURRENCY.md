@@ -1148,9 +1148,15 @@ roll-up/status view.
       tolerance (`max_abs=0.0029807090759277344`), the first hidden-tolerance
       producer failure is `attn_input_pre_qkv` (`max_abs=0.0078125`, flat index
       859, `bit_mismatch=1488`), and the first exact-bit producer drift is
-      already at full-attention `input` (`bit_mismatch=1531`). The next target is
-      replaying or fixing decode-time producer/input drift before changing
-      paged-KV writer code. Do not re-open
+      already at full-attention `input` (`bit_mismatch=1531`). The follow-up
+      rollup at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-full-attn-bit-drift-rollup-atol4e-3-focus1269.json`
+      emits `correctness.decode_full_attention_bit_drift_summary`; in that run
+      the first exact-bit drift is again layer 3 / row 0 full-attention `input`
+      (`bit_mismatch=1574`, hidden-atol pass), while the first hidden-atol stage
+      failure remains `attn_input_pre_qkv`. The next target is replaying or
+      fixing decode-time producer/input drift before changing paged-KV writer
+      code. Do not re-open
       context softmax math, row setup, native linear segment metadata,
       output trace/copy semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
