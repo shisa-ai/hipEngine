@@ -456,15 +456,17 @@ optimization remain deferred until correctness.
 
 ### P10 — One-layer and block replay
 
-- [ ] Build a deterministic replay harness for a dense layer, a full-attention
+- [x] Build a deterministic replay harness for a dense layer, a full-attention
   MoE layer, and a sliding-attention MoE layer.
-- [ ] Capture or derive reference activations/logits from llama.cpp, HF
+- [x] Capture or derive reference activations/logits from llama.cpp, HF
   Transformers, or CPU-reference code without committing large blobs.
-- [ ] Gate each block on numerical tolerances appropriate for quantized GGUF
+- [x] Gate each block on numerical tolerances appropriate for quantized GGUF
   inference before integrating all 45 layers.
 
-**Acceptance:** representative dense/full/sliding block replays pass and failures
-identify the exact substage.
+**Acceptance:** `python3 -m pytest -q tests/test_stepfun_replay.py` passes for
+representative dense/full/sliding CPU-reference block replays, compact in-memory
+stage captures, quantized-tolerance comparison, and exact-substage mismatch
+reporting.
 
 ### P11 — Text-only c=1 decode runner
 
