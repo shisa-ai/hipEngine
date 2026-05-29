@@ -2110,10 +2110,27 @@ def _decode_linear_input_summary(
 
 
 def _decode_full_attention_stage_failure_summary(steps: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    def _failure_record(step_summary: dict[str, Any], layer: dict[str, Any], stage: str, row_summary: dict[str, Any]) -> dict[str, Any]:
+        comparison = row_summary.get("hidden_comparison", {})
+        max_abs_flat_index = comparison.get("max_abs_flat_index")
+        return {
+            "decode_step": int(step_summary.get("decode_step", 0)),
+            "generated_index": int(step_summary.get("generated_index", int(step_summary.get("decode_step", 0)) + 1)),
+            "layer_index": int(layer.get("layer_index", -1)),
+            "stage": stage,
+            "row": int(row_summary.get("row", -1)),
+            "comparison_kind": str(row_summary.get("comparison_kind", "unknown")),
+            "max_abs": float(comparison.get("max_abs", 0.0)),
+            "max_abs_flat_index": None if max_abs_flat_index is None else int(max_abs_flat_index),
+            "max_abs_index": comparison.get("max_abs_index", []),
+            "elements_over_atol": int(comparison.get("elements_over_atol", 0)),
+        }
+
     stage_summaries: dict[str, Any] = {}
     for stage in DECODE_FULL_ATTENTION_TRACE_STAGES:
         rows: list[int] = []
         seen_rows: set[int] = set()
+        first_failure: dict[str, Any] | None = None
         for step_summary in steps:
             for layer in step_summary.get("layers", []):
                 stage_summary = layer.get("stages", {}).get(stage)
@@ -2123,6 +2140,8 @@ def _decode_full_attention_stage_failure_summary(steps: Sequence[dict[str, Any]]
                     if bool(row_summary.get("passed", False)):
                         continue
                     row_index = int(row_summary.get("row", -1))
+                    if first_failure is None:
+                        first_failure = _failure_record(step_summary, layer, stage, row_summary)
                     if row_index < 0 or row_index in seen_rows:
                         continue
                     rows.append(row_index)
@@ -2131,11 +2150,31 @@ def _decode_full_attention_stage_failure_summary(steps: Sequence[dict[str, Any]]
             "passed": not rows,
             "failure_rows": rows,
             "failure_row_count": len(rows),
+            "first_failure": first_failure,
         }
+    first_failure: dict[str, Any] | None = None
+    for step_summary in steps:
+        for layer in step_summary.get("layers", []):
+            for stage in DECODE_FULL_ATTENTION_TRACE_STAGES:
+                stage_summary = layer.get("stages", {}).get(stage)
+                if not isinstance(stage_summary, dict):
+                    continue
+                for row_summary in stage_summary.get("rows", []):
+                    if bool(row_summary.get("passed", False)):
+                        continue
+                    first_failure = _failure_record(step_summary, layer, stage, row_summary)
+                    break
+                if first_failure is not None:
+                    break
+            if first_failure is not None:
+                break
+        if first_failure is not None:
+            break
     failed_stages = [stage for stage in DECODE_FULL_ATTENTION_TRACE_STAGES if stage_summaries[stage]["failure_rows"]]
     return {
         "failed_stages": failed_stages,
         "failed_stage_count": len(failed_stages),
+        "first_failure": first_failure,
         "stages": stage_summaries,
     }
 

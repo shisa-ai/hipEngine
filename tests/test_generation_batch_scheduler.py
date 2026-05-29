@@ -7018,10 +7018,12 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     stage_failures = summary["decode_full_attention"]["stage_failure_summary"]
     assert stage_failures["failed_stages"] == []
     assert stage_failures["failed_stage_count"] == 0
+    assert stage_failures["first_failure"] is None
     assert stage_failures["stages"]["mlp_input"] == {
         "passed": True,
         "failure_rows": [],
         "failure_row_count": 0,
+        "first_failure": None,
     }
     assert "first_mismatch" not in summary["decode_full_attention"]
     assert summary["decode_full_attention"]["worst_diff"]["stage"] == "input"
@@ -7070,17 +7072,32 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     assert bad_full_attention_summary["token_passed"] is True
     assert bad_full_attention_summary["decode_full_attention"]["passed"] is False
     assert bad_full_attention_summary["decode_full_attention"]["first_mismatch"]["stage"] == "mlp_input"
+    expected_full_attention_stage_failure = {
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 0,
+        "stage": "mlp_input",
+        "row": 0,
+        "comparison_kind": "fp16_bits",
+        "max_abs": 1.0,
+        "max_abs_flat_index": 1,
+        "max_abs_index": [0, 1],
+        "elements_over_atol": 1,
+    }
     assert bad_stage_failures["failed_stages"] == ["mlp_input"]
     assert bad_stage_failures["failed_stage_count"] == 1
+    assert bad_stage_failures["first_failure"] == expected_full_attention_stage_failure
     assert bad_stage_failures["stages"]["mlp_input"] == {
         "passed": False,
         "failure_rows": [0],
         "failure_row_count": 1,
+        "first_failure": expected_full_attention_stage_failure,
     }
     assert bad_stage_failures["stages"]["output"] == {
         "passed": True,
         "failure_rows": [],
         "failure_row_count": 0,
+        "first_failure": None,
     }
 
     hidden_fail_bits = hidden.copy()

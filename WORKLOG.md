@@ -46113,3 +46113,24 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: targeted tests PASS; verify count remains `12`; full guard PASS (`262` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: completed queue items still cite concrete evidence, no retained c>N performance claim was added, native c>N generated-token equality remains open, and no partial/blocked item was marked done.
+
+## 2026-05-29 — CONCURRENCY hidden-bisect first stage failure
+
+Extended `decode_full_attention.stage_failure_summary` with a compact `first_failure` record at both the trace level and per-stage level. The record carries decode step, generated index, layer, stage, row, comparison kind, max-abs/error index, and over-tolerance count, giving C2.3 native-full/post-attention artifacts a single field to cite before digging into nested trace rows.
+
+CPU coverage: extended `test_hidden_bisect_summary_embeds_batch_decode_execution_trace` to assert `first_failure is None` for the all-green case and to assert the synthetic `mlp_input`-only failure records `decode_step=0`, `layer_index=0`, `stage=mlp_input`, `row=0`, `comparison_kind=fp16_bits`, and `max_abs=1.0`. Updated `docs/CONCURRENCY.md` C2.3 progress to cite the compact first-failure field. No item was marked complete and no throughput claim was added.
+
+Validation:
+
+```bash
+pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_summary_embeds_batch_decode_execution_trace -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: targeted test PASS; verify count remains `12`; full guard PASS (`262` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: completed queue items still cite concrete evidence, no retained c>N performance claim was added, native c>N generated-token equality remains open, and no partial/blocked item was marked done.
