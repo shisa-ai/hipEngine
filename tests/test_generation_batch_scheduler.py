@@ -64,6 +64,7 @@ from scripts.qwen35_batch_c_sweep import build_parser as build_c_sweep_parser, b
 from scripts.qwen35_batch_gguf_diagnostic import build_parser as build_gguf_diagnostic_parser, run as run_gguf_diagnostic
 from scripts.qwen35_batch_hidden_bisect import (
     HiddenRun,
+    _decode_full_context_oracle_rollup,
     _first_failing_layer_transition,
     _first_hidden_mismatch,
     _decode_full_kv_sample_positions,
@@ -7119,6 +7120,27 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         "first_failure": expected_context_failure,
     }
     assert bad_context_failures["comparisons"]["c1_context_vs_numpy"]["passed"] is True
+    top_level_context_rollup = _decode_full_context_oracle_rollup([summary, bad_context_summary])
+    expected_top_level_context_failure = {"layer_limit": 1, **expected_context_failure}
+    assert top_level_context_rollup["failed_comparisons"] == [
+        "batch_context_vs_numpy",
+        "batch_numpy_vs_c1_numpy",
+    ]
+    assert top_level_context_rollup["first_failure"] == expected_top_level_context_failure
+    assert top_level_context_rollup["comparisons"]["batch_context_vs_numpy"] == {
+        "passed": False,
+        "failure_rows": [0],
+        "failure_row_count": 1,
+        "first_failure": expected_top_level_context_failure,
+    }
+    assert top_level_context_rollup["layer_limits"] == [
+        {"layer_limit": 1, "passed": True, "failed_comparisons": []},
+        {
+            "layer_limit": 1,
+            "passed": False,
+            "failed_comparisons": ["batch_context_vs_numpy", "batch_numpy_vs_c1_numpy"],
+        },
+    ]
     assert summary["decode_full_kv_sample_passed"] is True
     assert summary["decode_full_kv_samples"]["stage"] == "decode_full_kv_samples"
     assert summary["decode_full_kv_samples"]["passed"] is True

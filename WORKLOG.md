@@ -46235,3 +46235,26 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: targeted test PASS; verify count remains `12`; full guard PASS (`263` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: completed queue items still cite concrete evidence, C2.3 remains open, the change only improves diagnostic schema, and no performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY top-level full-context oracle rollup
+
+Lifted the hidden-bisect full-context oracle rollup into top-level correctness as `correctness.decode_full_context_oracle_failure_summary`. The aggregate carries failed comparisons, unique failing rows, first-failure records with `layer_limit`, and per-layer-limit pass/fail summaries across `context_len_match`, `batch_context_vs_numpy`, `c1_context_vs_numpy`, and `batch_numpy_vs_c1_numpy`.
+
+Purpose: C2.3 native-full artifacts can now be triaged from `correctness.*` without scanning every layer's nested oracle rows; context-oracle failures are separated from `decode_full_attention.stage_failure_summary` and final hidden/token failures.
+
+CPU coverage: extended `test_hidden_bisect_summary_embeds_batch_decode_execution_trace` to assert the top-level rollup over one green and one synthetic bad context-oracle summary. Updated `docs/CONCURRENCY.md` C2.3 progress. No item was marked complete and no throughput claim was added.
+
+Validation:
+
+```bash
+pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_summary_embeds_batch_decode_execution_trace -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: targeted test PASS; verify count remains `12`; full guard PASS (`263` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: completed queue items still cite concrete evidence, C2.3 remains open, the change only improves diagnostic schema, and no performance/scaling claim was added.

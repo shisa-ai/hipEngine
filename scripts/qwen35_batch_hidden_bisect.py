@@ -2406,6 +2406,69 @@ DECODE_FULL_CONTEXT_ORACLE_COMPARISONS = (
 )
 
 
+def _decode_full_context_oracle_rollup(layer_summaries: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    comparison_summaries: dict[str, Any] = {}
+    first_failure: dict[str, Any] | None = None
+    for comparison_name in DECODE_FULL_CONTEXT_ORACLE_COMPARISONS:
+        rows: list[int] = []
+        seen_rows: set[int] = set()
+        comparison_first_failure: dict[str, Any] | None = None
+        for summary in layer_summaries:
+            layer_limit = int(summary.get("layer_limit", 0))
+            oracle = summary.get("decode_full_context_oracle")
+            if not isinstance(oracle, dict):
+                continue
+            failure_summary = oracle.get("comparison_failure_summary")
+            if not isinstance(failure_summary, dict):
+                continue
+            comparison_summary = failure_summary.get("comparisons", {}).get(comparison_name)
+            if not isinstance(comparison_summary, dict):
+                continue
+            failure = comparison_summary.get("first_failure")
+            if isinstance(failure, dict):
+                failure_with_limit = {"layer_limit": layer_limit, **failure}
+                if comparison_first_failure is None:
+                    comparison_first_failure = failure_with_limit
+                if first_failure is None:
+                    first_failure = failure_with_limit
+            for raw_row in comparison_summary.get("failure_rows", []):
+                row_index = int(raw_row)
+                if row_index in seen_rows:
+                    continue
+                rows.append(row_index)
+                seen_rows.add(row_index)
+        comparison_summaries[comparison_name] = {
+            "passed": not rows,
+            "failure_rows": rows,
+            "failure_row_count": len(rows),
+            "first_failure": comparison_first_failure,
+        }
+    failed_comparisons = [
+        comparison_name
+        for comparison_name in DECODE_FULL_CONTEXT_ORACLE_COMPARISONS
+        if comparison_summaries[comparison_name]["failure_rows"]
+    ]
+    return {
+        "failed_comparisons": failed_comparisons,
+        "failed_comparison_count": len(failed_comparisons),
+        "first_failure": first_failure,
+        "comparisons": comparison_summaries,
+        "layer_limits": [
+            {
+                "layer_limit": int(summary["layer_limit"]),
+                "passed": bool(summary.get("decode_full_context_oracle_passed", True)),
+                "failed_comparisons": list(
+                    summary.get("decode_full_context_oracle", {})
+                    .get("comparison_failure_summary", {})
+                    .get("failed_comparisons", [])
+                ),
+            }
+            for summary in layer_summaries
+            if isinstance(summary.get("decode_full_context_oracle"), dict)
+        ],
+    }
+
+
 def _decode_full_context_oracle_failure_summary(steps: Sequence[dict[str, Any]]) -> dict[str, Any]:
     def _failure_record(
         step_summary: dict[str, Any],
@@ -3309,6 +3372,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "token_passed": token_passed,
             "failure_modes": _failure_modes(hidden_passed=hidden_passed, token_passed=token_passed),
             "row_failure_summary": _row_failure_summary(layer_summaries),
+            "decode_full_context_oracle_failure_summary": _decode_full_context_oracle_rollup(layer_summaries),
             "first_hidden_mismatch": hidden_mismatch,
             "first_tolerance_hidden_mismatch": hidden_mismatch,
             "first_hidden_bit_drift": hidden_bit_drift,
