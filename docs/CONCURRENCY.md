@@ -632,7 +632,9 @@ roll-up/status view.
       scratch for `tokens>1` instead of selected-MoE c1 wrappers, and
       decode-execution metadata reports `moe_decode_path`/`moe_decode_rows` plus
       grouped-compact and selected-c1 fallback layer counts so retained gates
-      can reject stale selected-c1 MoE paths, but
+      can reject stale selected-c1 MoE paths; CPU coverage now locks the
+      token-major routed-lane → token-row and lane-to-sorted-row helper semantics
+      used by grouped MoE combine metadata, but
       `/tmp/hipengine-hidden-bisect-L1-8-512-1-grouped.json` still reports the
       first hidden mismatch at layer-limit 6 (row 0, generated index 1), and the
       old row-0 token idx-13 mismatch remains. New diagnostic metadata in

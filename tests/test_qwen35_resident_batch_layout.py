@@ -14,7 +14,12 @@ from hipengine.generation import CompactPromptSlab
 from hipengine.kvcache import FixedPagedKVPolicy
 from hipengine.runtime import PrefillConfig
 from hipengine.runtime.prefill import resolve_prefill_config_for_sequence
-from hipengine.runtime.qwen35_paro import Qwen35ParoGroupedMoeScratch
+from hipengine.runtime.qwen35_paro import (
+    Qwen35ParoGroupedMoeScratch,
+    qwen35_grouped_moe_lane_rows,
+    qwen35_grouped_moe_lane_to_sorted_row,
+    qwen35_grouped_moe_sorted_token_rows,
+)
 from hipengine.runtime import qwen35_paro_runner as runner_module
 from hipengine.runtime.qwen35_paro_runner import (
     Qwen35ParoResidentBatchLayout,
@@ -1417,6 +1422,24 @@ class _FakePrefillState:
         self.run_calls.append((hidden, kwargs))
         tokens = kwargs["tokens"]
         return Tensor.from_handle(0x30000 + tokens * 0x100, (tokens, 8), DType.FP16, self.device)
+
+
+def test_qwen35_grouped_moe_lane_helpers_map_sorted_lanes_to_token_rows() -> None:
+    sorted_lanes = (1, 3, 5, 0, 2, 4)
+
+    assert qwen35_grouped_moe_lane_rows(tokens=3, top_k=2) == (0, 0, 1, 1, 2, 2)
+    assert qwen35_grouped_moe_sorted_token_rows(sorted_lanes, tokens=3, top_k=2) == (0, 1, 2, 0, 1, 2)
+    lane_to_sorted_row = qwen35_grouped_moe_lane_to_sorted_row(sorted_lanes, tokens=3, top_k=2)
+
+    assert lane_to_sorted_row == (3, 0, 4, 1, 5, 2)
+    for lane, sorted_row in enumerate(lane_to_sorted_row):
+        token_row = lane // 2
+        assert sorted_lanes[sorted_row] == lane
+        assert qwen35_grouped_moe_sorted_token_rows(sorted_lanes, tokens=3, top_k=2)[sorted_row] == token_row
+
+    for bad_sorted_lanes in ((1, 1, 2, 3, 4, 5), (0, 1, 2, 3, 4, 6), (0, 1, 2, 3, 4, True)):
+        with pytest.raises(ValueError, match="sorted_lanes entries must be unique lane ints in range"):
+            qwen35_grouped_moe_lane_to_sorted_row(bad_sorted_lanes, tokens=3, top_k=2)
 
 
 def test_qwen35_resident_decode_batch_uses_grouped_moe_scratch_for_rows_gt1() -> None:

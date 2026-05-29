@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
+from typing import Sequence
 
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipRuntime, get_hip_runtime
@@ -152,6 +153,61 @@ from hipengine.runtime.workspace import RuntimeWorkspace
 
 
 _PAGED_KV_REGISTRY_BACKEND = "hip_gfx1100"
+
+
+def qwen35_grouped_moe_lane_rows(tokens: int, top_k: int) -> tuple[int, ...]:
+    """Return the token row for each token-major routed MoE lane."""
+
+    if not isinstance(tokens, int) or isinstance(tokens, bool) or tokens <= 0:
+        raise ValueError("tokens must be a positive int")
+    if not isinstance(top_k, int) or isinstance(top_k, bool) or top_k <= 0:
+        raise ValueError("top_k must be a positive int")
+    return tuple(lane // top_k for lane in range(tokens * top_k))
+
+
+def qwen35_grouped_moe_sorted_token_rows(
+    sorted_lanes: Sequence[int],
+    *,
+    tokens: int,
+    top_k: int,
+) -> tuple[int, ...]:
+    """Return token rows in grouped-MoE sorted-lane order."""
+
+    lane_rows = qwen35_grouped_moe_lane_rows(tokens, top_k)
+    total_lanes = len(lane_rows)
+    if len(sorted_lanes) != total_lanes:
+        raise ValueError("sorted_lanes length must match tokens * top_k")
+    rows: list[int] = []
+    seen: set[int] = set()
+    for lane in sorted_lanes:
+        if not isinstance(lane, int) or isinstance(lane, bool) or lane < 0 or lane >= total_lanes:
+            raise ValueError("sorted_lanes entries must be unique lane ints in range")
+        if lane in seen:
+            raise ValueError("sorted_lanes entries must be unique lane ints in range")
+        seen.add(lane)
+        rows.append(lane_rows[lane])
+    return tuple(rows)
+
+
+def qwen35_grouped_moe_lane_to_sorted_row(
+    sorted_lanes: Sequence[int],
+    *,
+    tokens: int,
+    top_k: int,
+) -> tuple[int, ...]:
+    """Mirror the grouped-MoE combine kernel's lane-to-sorted-row inverse map."""
+
+    total_lanes = len(qwen35_grouped_moe_lane_rows(tokens, top_k))
+    if len(sorted_lanes) != total_lanes:
+        raise ValueError("sorted_lanes length must match tokens * top_k")
+    lane_to_row = [-1] * total_lanes
+    for sorted_row, lane in enumerate(sorted_lanes):
+        if not isinstance(lane, int) or isinstance(lane, bool) or lane < 0 or lane >= total_lanes:
+            raise ValueError("sorted_lanes entries must be unique lane ints in range")
+        if lane_to_row[lane] != -1:
+            raise ValueError("sorted_lanes entries must be unique lane ints in range")
+        lane_to_row[lane] = sorted_row
+    return tuple(lane_to_row)
 
 
 @dataclass(frozen=True)
