@@ -3425,7 +3425,12 @@ class Qwen35ParoResidentSession:
             if full_attention_decode_path in {"per_row_splitk_fallback", "per_row_context_fallback"}:
                 decode_blockers.append("full-attention decode used a per-row fallback")
                 if not dense_mlp and rows > 1:
-                    moe_decode_path = "mixed_grouped_compact_with_per_row_full_attention_fallback"
+                    if force_selected_c1_moe:
+                        moe_decode_path = "selected_c1_forced_with_per_row_full_attention_fallback"
+                    elif force_per_row_linear:
+                        moe_decode_path = "mixed_grouped_compact_with_per_row_linear_and_full_attention_fallback"
+                    else:
+                        moe_decode_path = "mixed_grouped_compact_with_per_row_full_attention_fallback"
             self.last_batch_decode_execution = {
                 "rows": int(rows),
                 "slots": [int(slot) for slot in slots],

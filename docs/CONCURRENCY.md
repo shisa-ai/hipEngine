@@ -724,8 +724,14 @@ roll-up/status view.
       coordinate even when it is outside the top-diff list: row 0 is exact at
       L5, jumps to `0.001953125` at L6 and remains there through L7, then grows
       to `0.00244140625` at L8; row 1 stays at or below `0.0009765625` and no
-      token mismatch appears. This keeps the live fix target on row-0-specific
-      accumulated hidden state at dim 1269 across the L6→L8 transition.
+      token mismatch appears. The all-per-row variant
+      `/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-all-per-row-focus1269.json`
+      combines selected-c1 MoE, per-row linear attention, and per-row
+      full-attention fallbacks (`moe_grouped_compact_layers=0`,
+      `moe_selected_c1_fallback_layers=8`); it still fails first at L8 on row 0
+      dim 1269 (`max_abs=0.002197265625`, no token mismatch). This keeps the
+      live fix target on row-0-specific slot state / scratch lifetime after
+      compact prefill, rather than any single native batch decode subpath.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

@@ -44571,3 +44571,22 @@ python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/
 Result: `/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-focus1269.json` emitted `status=mismatch_found`, `hidden_atol=0.002`, `performance_claim=false`, and `workload.focus_hidden_flat_indices=[1269]`. Focused row-0 dim-1269 drift is exact at L5 (`0.0`), jumps at L6 (`abs_diff=0.001953125`, `batch=0.85693359375`, `c1=0.85498046875`), remains `0.001953125` at L7 (`batch=1.001953125`, `c1=1.0`), and crosses the 2e-3 tolerance at L8 (`abs_diff=0.00244140625`, `batch=0.441650390625`, `c1=0.439208984375`, `elements_over_atol=1`). Row 1 remains at or below `0.0009765625` on the same coordinate and there is no token mismatch in the one-token reduced run.
 
 Interpretation: dim 1269 is now explicitly traceable across adjacent limits. The failure is still row-0-specific and accumulates from the L6 output through the next full-attention layer, so the next corrective attempt should inspect residual/state normalization for that coordinate rather than add another broad path-substitution toggle.
+
+## 2026-05-29 — CONCURRENCY all-per-row decode isolation
+
+Advanced C2.3 by fixing combined fallback metadata and running the strongest available path-substitution probe: selected-c1 MoE + per-row linear attention + per-row full attention together. This makes the diagnostic artifact explicit when no grouped-compact MoE layer ran.
+
+Code/test changes:
+
+- `hipengine/runtime/qwen35_paro_runner.py` now reports `moe_decode_path=selected_c1_forced_with_per_row_full_attention_fallback` when selected-c1 MoE is forced and full-attention decode also takes a per-row fallback, instead of incorrectly saying `mixed_grouped_compact_*` while `moe_grouped_compact_layers=0`.
+- Added a resident-layout CPU test for the combined selected-c1 + per-row full-attention metadata and blocker list.
+
+Diagnostic command:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 1 --max-layers 8 --layer-limits 5-8 --max-sequence-length 1024 --hidden-atol 0.002 --focus-hidden-flat-index 1269 --batch-decode-moe-path selected_c1 --batch-decode-linear-path per_row --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-all-per-row-focus1269.json >/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-all-per-row-focus1269.stdout
+```
+
+Result: `/tmp/hipengine-hidden-bisect-L5-L8-512-1-atol2e-3-all-per-row-focus1269.json` emitted `status=mismatch_found`, `performance_claim=false`, `workload.batch_decode_moe_path=selected_c1`, `workload.batch_decode_linear_path=per_row`, `workload.batch_decode_full_attention_path=per_row`, `native_caware_decode=false`, and decode metadata `moe_decode_path=selected_c1_forced_with_per_row_full_attention_fallback`, `moe_grouped_compact_layers=0`, `moe_selected_c1_fallback_layers=8`, blockers `[MoE forced, linear per-row, full-attention per-row]`. Focused row-0 dim-1269 drift is exact at L5, `0.00146484375` at L6, `0.001953125` at L7, and `0.002197265625` at L8 (`elements_over_atol=1`); row 1 stays at or below `0.00048828125`; tokens still match for the one-token reduced run.
+
+Interpretation: even when all c>N decode subpaths are replaced by per-row c=1-style fallbacks, the reduced hidden drift persists. That points the next fix toward compact-prefill-produced slot state, per-slot state selection, or scratch/alias lifetime differences in the resident batch session, rather than grouped MoE, native linear-attention batch segments, or native full-attention batch kernels in isolation.
