@@ -654,7 +654,7 @@ roll-up/status view.
       output, full-attention boundary, per-layer trace-source, batch/decode
       aggregate trace-summary paths via a shared deny-list, diagnostic
       CLI/env/structured-metadata overrides via a shared constants fragment list,
-      shared hidden-bisect diagnostic evidence fragments, exact diagnostic hidden-trace
+      shared hidden-bisect diagnostic evidence fragments, shared diagnostic hidden-trace
       correctness fields, decode-execution trace fields outside execution,
       future trace-key fragments in metadata/commands, and shared diagnostic
       profiler kernel-name fragments,

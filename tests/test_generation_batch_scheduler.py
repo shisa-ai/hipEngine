@@ -71,6 +71,8 @@ from scripts.qwen35_batch_constants import (
     PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS,
     RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_COMMAND_FRAGMENTS,
     RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_EVIDENCE_FRAGMENTS,
+    RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_TRACE_FIELD_FRAGMENTS,
+    RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_TRACE_FIELD_NAMES,
 )
 from scripts.qwen35_batch_c_sweep import build_parser as build_c_sweep_parser, build_sweep_commands, run_sweep
 from scripts.qwen35_batch_gguf_diagnostic import build_parser as build_gguf_diagnostic_parser, run as run_gguf_diagnostic
@@ -13490,6 +13492,9 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     for diagnostic_fragment in DISALLOWED_ACCEPTED_DIAGNOSTIC_EVIDENCE_FRAGMENTS:
         assert "diagnostic_evidence_paths" in diagnostic_evidence_structured_metadata_error_message
         assert f"must not include diagnostic evidence {diagnostic_fragment}" in diagnostic_evidence_structured_metadata_error_message
+
+    assert DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_NAMES is RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_TRACE_FIELD_NAMES
+    assert DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_FRAGMENTS is RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_TRACE_FIELD_FRAGMENTS
 
     diagnostic_trace_metadata = json.loads(json.dumps(accepted))
     diagnostic_trace_metadata["correctness"].update(
