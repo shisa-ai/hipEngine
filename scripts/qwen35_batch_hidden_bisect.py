@@ -2275,6 +2275,19 @@ def _decode_linear_state_focus_history(
             continue
         row_batch = batch_state[row_index]
         row_c1 = c1_state[row_index]
+        previous_batch_states = batch.prefill_linear_states if step == 0 else batch.decode_linear_states_by_step[step - 1]
+        previous_c1_states = c1.prefill_linear_states if step == 0 else c1.decode_linear_states_by_step[step - 1]
+        previous_row_batch = None
+        previous_row_c1 = None
+        if layer_index in previous_batch_states and layer_index in previous_c1_states:
+            previous_layer_batch = previous_batch_states[layer_index]
+            previous_layer_c1 = previous_c1_states[layer_index]
+            if state_name in previous_layer_batch and state_name in previous_layer_c1:
+                previous_state_batch = previous_layer_batch[state_name]
+                previous_state_c1 = previous_layer_c1[state_name]
+                if row_index < int(previous_state_batch.shape[0]) and row_index < int(previous_state_c1.shape[0]):
+                    previous_row_batch = previous_state_batch[row_index]
+                    previous_row_c1 = previous_state_c1[row_index]
         comparison = numeric_comparison(row_batch, row_c1, atol=atol)
         selected_flat_index: int | None = int(focus_flat_index) if isinstance(focus_flat_index, int) else None
         if selected_flat_index is None and focus_max_abs_index:
@@ -2299,6 +2312,24 @@ def _decode_linear_state_focus_history(
             entry["same_focus_index_diff"] = selected
             if focus_atol is not None:
                 entry["same_focus_index_passed_under_focus_atol"] = bool(float(selected["abs_diff"]) <= float(focus_atol))
+        if previous_row_batch is not None and previous_row_c1 is not None:
+            previous_comparison = numeric_comparison(previous_row_batch, previous_row_c1, atol=atol)
+            batch_delta = np.asarray(row_batch, dtype=np.float32) - np.asarray(previous_row_batch, dtype=np.float32)
+            c1_delta = np.asarray(row_c1, dtype=np.float32) - np.asarray(previous_row_c1, dtype=np.float32)
+            delta_comparison = numeric_comparison(batch_delta, c1_delta, atol=atol)
+            entry["previous_state_comparison"] = _compact_comparison(previous_comparison)
+            entry["state_update_delta_comparison"] = _compact_comparison(delta_comparison)
+            if selected_flat_index is not None:
+                entry["same_focus_index_previous_diff"] = _numeric_abs_diff_at_flat_index(
+                    previous_row_batch,
+                    previous_row_c1,
+                    selected_flat_index,
+                )
+                entry["same_focus_index_delta_diff"] = _numeric_abs_diff_at_flat_index(
+                    batch_delta,
+                    c1_delta,
+                    selected_flat_index,
+                )
         if focus_atol is not None:
             entry["state_focus_atol"] = float(focus_atol)
             entry["passed_under_focus_atol"] = bool(float(comparison["max_abs"]) <= float(focus_atol))

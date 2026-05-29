@@ -976,9 +976,13 @@ roll-up/status view.
       `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-state-focus-same-index2e-3-focus1269.json`
       tracks the original layer-4 conv index `[64, 3]`; it is only `0.015625` at
       step 6 while the row max moved to `[4852, 3]`, so the amplification is not
-      one persistent component. The next C2.3 work should isolate the layer-4
-      state update/reuse path that spreads drift across the row, not re-open the
-      already oracle-green reduced full-attention context path.
+      one persistent component. The delta refresh at
+      `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-state-focus-delta2e-3-focus1269.json`
+      adds previous-state and update-delta comparisons; at step 6 the previous
+      state row is still tiny (`max_abs=0.0078125`) but the update delta is already
+      large (`max_abs=0.390625`, top index `[4852, 3]`). The next C2.3 work should
+      isolate the layer-4 state update calculation/input at step 6, not re-open
+      the already oracle-green reduced full-attention context path.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

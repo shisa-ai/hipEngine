@@ -6962,6 +6962,10 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         "c1_value": 3.0,
     }
     assert focus_history[0]["same_focus_index_passed_under_focus_atol"] is False
+    assert focus_history[0]["previous_state_comparison"]["max_abs"] == 0.0
+    assert focus_history[0]["state_update_delta_comparison"]["max_abs"] == 4.0
+    assert focus_history[0]["same_focus_index_previous_diff"]["abs_diff"] == 0.0
+    assert focus_history[0]["same_focus_index_delta_diff"]["abs_diff"] == 4.0
 
     bad_focus_pass_summary = _summarize_layer_limit(
         bad_batch,

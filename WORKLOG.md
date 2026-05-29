@@ -45589,3 +45589,36 @@ python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generat
 ```
 
 Result: verify count remains `12`; full guard PASS (`261` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with concrete same-index state-focus diagnostic evidence, and no retained c>N performance/scaling claim was added.
+
+## 2026-05-29 — CONCURRENCY state-focus update-delta trace
+
+Advanced C2.3 diagnostics by adding previous-state and update-delta comparisons to `first_mismatch_over_focus_atol_history`. Exact history entries now include compact `previous_state_comparison`, `state_update_delta_comparison`, and same-focus-index previous/delta diffs for the focused layer/state/row.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py
+pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_transition_records_focus_state_history tests/test_generation_batch_scheduler.py::test_hidden_bisect_summary_embeds_batch_decode_execution_trace tests/test_generation_batch_scheduler.py::test_hidden_bisect_helpers_find_first_hidden_mismatch -q
+```
+
+Diagnostic:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 4,8 --max-sequence-length 1024 --hidden-atol 0.001 --state-atol 0 --state-focus-atol 0.002 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-full-attn-path native_batch --json /tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-state-focus-delta2e-3-focus1269.json >/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-state-focus-delta2e-3-focus1269.stdout
+```
+
+Result: `/tmp/hipengine-hidden-bisect-L4-L8-512-16-c2-state-focus-delta2e-3-focus1269.json` is `status=mismatch_found`. At step 0, layer-4 conv row 0 has no carried drift (`previous_state_comparison.max_abs=0.0`) and the update delta introduces `0.0078125`. At the first over-tolerance hidden step 6, carried row drift is still tiny (`previous_state_comparison.max_abs=0.0078125`) but the update delta is already large (`state_update_delta_comparison.max_abs=0.390625`, top index `[4852, 3]`); the original focus index `[64, 3]` has only `same_focus_index_delta_diff=0.015625`. Same-step decode linear input is over hidden tolerance (`0.0081787109375`) and hidden row dim 1269 is `0.027587890625`. This points to the layer-4 state update calculation/input at step 6 rather than persistent carried state, one component, or the full-attention context path.
+
+Loop validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+```
+
+Result: verify count remains `12`; full guard PASS (`261` selected pytest tests plus c=2/c=8 primitive correctness). Prompt-verifier self-check passes: no item was newly marked complete, C2.3 remains open with concrete state-update-delta diagnostic evidence, and no retained c>N performance/scaling claim was added.
