@@ -44918,3 +44918,30 @@ Interpretation: after avoiding rows=1 segment-length-1 linear kernels, the c=2 a
 Advanced C2.3 documentation after checking the existing diagnostic matrix before adding another selector. The post-singleton c=2 native-full control (`/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-per-row-full-native-after-singleton-focus1269.json`) still used grouped compact MoE on full-attention layers and failed at decode step 6 / row 0 dim 1269 (`max_abs=0.027587890625`, tokens green). However the earlier selected-c1/full-only control already exists: `/tmp/hipengine-hidden-bisect-L8-512-16-native-full-only-decode-states-focus1269.json` forced selected-c1 MoE plus per-row linear attention and still failed at decode step 6 / row 0 dim 1269 (`max_abs=0.02734375`, tokens green).
 
 Interpretation: a new full-attention-MoE selector would be redundant. Native full-attention decode remains an independent blocker even when full-layer MoE is selected-c1; the next useful diagnostic/fix should inspect native full-attention KV append/decode math or trace full-attention inputs/outputs, not grouped MoE on those layers.
+
+## 2026-05-29 — CONCURRENCY full-attention I/O trace
+
+Advanced C2.3 by adding decode full-attention input/output tracing to the resident runner and hidden-bisect harness. The trace is opt-in via `_decode_full_attention_trace`, records per-layer `input` and `output` BF16 bits for native batch and c1/per-row fallback paths, and the summary now reports `decode_full_attention_input_passed` / `decode_full_attention_output_passed` plus per-step/layer/stage row comparisons. This is diagnostic-only; no retained performance claim.
+
+Code/test changes:
+
+- `Qwen35ParoResidentSession` traces full-attention decode layer inputs before dispatch and layer outputs after native batch or c1/per-row fallback dispatch.
+- `scripts/qwen35_batch_hidden_bisect.py` merges native batch and independent c1 full-attention traces into JSON summaries.
+- `test_hidden_bisect_summary_embeds_batch_decode_execution_trace` now covers the new full-attention summary fields.
+
+Targeted validation:
+
+```bash
+python3 -m compileall -q hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py
+python3 -m pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_summary_embeds_batch_decode_execution_trace -q
+```
+
+Diagnostic:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.002 --state-atol 1e-6 --focus-hidden-flat-index 1269 --batch-decode-linear-path per_row --batch-decode-full-attn-path native_batch --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-full-attn-io-trace-focus1269.json >/tmp/hipengine-hidden-bisect-L8-512-16-c2-full-attn-io-trace-focus1269.stdout
+```
+
+Result: `/tmp/hipengine-hidden-bisect-L8-512-16-c2-full-attn-io-trace-focus1269.json` is `status=mismatch_found`, with `token_passed=true`, `hidden_passed=false`, `decode_full_attention_input_passed=false`, and `decode_full_attention_output_passed=false`. The first full-attention-stage mismatch is decode step 6 / generated index 7, layer 3 `output`, row 0 (`max_abs=0.008148193359375`, max flat dim 1504); the layer-limit hidden max at the same generated index remains row 0 dim 1269 (`max_abs=0.027587890625`). Later full-attention input mismatches are therefore downstream of the first native full-attention output mismatch.
+
+Interpretation: with c1-linear and per-row linear controls in place, native full-attention decode now has a precise first-output divergence point for the c=2/L8/16 reduced shape. The next C2.3 work should inspect row-aware native full-attention decode/KV math around layer 3 at generated index 7, using per-row full attention as the green control.

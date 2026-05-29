@@ -850,7 +850,14 @@ roll-up/status view.
       and segment state-index mapping are not the blocker at this shape; the
       next C2.3 targets are c>1 native full-attention decode and c>1 native
       linear segment decode, with the per-row linear/full fallbacks serving only
-      as non-retained correctness controls until native paths pass.
+      as non-retained correctness controls until native paths pass. The
+      full-attention I/O trace refresh at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-full-attn-io-trace-focus1269.json`
+      adds per-step input/output summaries from
+      `scripts/qwen35_batch_hidden_bisect.py` and shows the first native-full
+      mismatch at decode step 6 / generated index 7, layer 3 `output` (`row 0`,
+      `max_abs=0.008148193359375`, tokens still green), before the layer-limit
+      hidden max reaches row 0 dim 1269 at `0.027587890625`.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

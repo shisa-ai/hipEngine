@@ -2832,6 +2832,31 @@ class Qwen35ParoResidentSession:
             stream=stream,
         )
 
+    def _trace_decode_full_attention(
+        self,
+        *,
+        layer_id: int,
+        stage: str,
+        hidden: Tensor,
+        rows: int,
+        stream: int = 0,
+    ) -> None:
+        trace = getattr(self, "_decode_full_attention_trace", None)
+        if not isinstance(trace, list):
+            return
+        if stage not in {"input", "output"}:
+            raise ValueError("decode full-attention trace stage must be input or output")
+        before = len(trace)
+        self._trace_linear_input_bits(
+            trace_attr="_decode_full_attention_trace",
+            layer_id=layer_id,
+            hidden=hidden,
+            rows=rows,
+            stream=stream,
+        )
+        if len(trace) > before:
+            trace[-1]["stage"] = stage
+
     def _run_native_prefill_layers(self, *, tokens: int, stream: int = 0) -> Tensor:
         hidden = self._prefill_hidden_view_for_rows(tokens)
         use_aotriton_attention = self._prefill_use_aotriton_attention_resolved(tokens)
@@ -3524,6 +3549,13 @@ class Qwen35ParoResidentSession:
                             }
                         )
                 elif layer_type == "full_attention":
+                    self._trace_decode_full_attention(
+                        layer_id=layer_id,
+                        stage="input",
+                        hidden=hidden,
+                        rows=rows,
+                        stream=stream,
+                    )
                     max_context = max(int(position) + 1 for position in positions)
                     max_full_attention_context = max(max_full_attention_context, max_context)
                     native_full = _env_flag("HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE", True) and max_context < 1024
@@ -3557,6 +3589,13 @@ class Qwen35ParoResidentSession:
                             tokens=rows,
                             force_selected_c1_moe=force_selected_c1_moe,
                             library=self.libraries,
+                            stream=stream,
+                        )
+                        self._trace_decode_full_attention(
+                            layer_id=layer_id,
+                            stage="output",
+                            hidden=out,
+                            rows=rows,
                             stream=stream,
                         )
                         layer_moe_path = "dense_mlp" if dense_mlp else ("selected_c1" if rows == 1 else ("selected_c1_forced" if force_selected_c1_moe else "grouped_compact"))
@@ -3610,6 +3649,13 @@ class Qwen35ParoResidentSession:
                                 chunk_size=self.decode_chunk_size,
                                 num_splits=num_splits,
                                 library=self.libraries,
+                                stream=stream,
+                            )
+                            self._trace_decode_full_attention(
+                                layer_id=layer_id,
+                                stage="output",
+                                hidden=row_out,
+                                rows=1,
                                 stream=stream,
                             )
                             self.runtime.memcpy_async(
@@ -3708,6 +3754,13 @@ class Qwen35ParoResidentSession:
                     stream=stream,
                 )
             elif layer_type == "full_attention":
+                self._trace_decode_full_attention(
+                    layer_id=layer_id,
+                    stage="input",
+                    hidden=hidden,
+                    rows=1,
+                    stream=stream,
+                )
                 key_cache, value_cache = self._slot_full_cache(layer_id, slot)
                 position_tensor, append_spans, decode_spans = self._slot_full_spans(layer_id, slot)
                 num_splits = num_splits_override or max(1, (position + 1 + self.decode_chunk_size - 1) // self.decode_chunk_size)
@@ -3726,6 +3779,13 @@ class Qwen35ParoResidentSession:
                     chunk_size=self.decode_chunk_size,
                     num_splits=num_splits,
                     library=self.libraries,
+                    stream=stream,
+                )
+                self._trace_decode_full_attention(
+                    layer_id=layer_id,
+                    stage="output",
+                    hidden=out,
+                    rows=1,
                     stream=stream,
                 )
             else:

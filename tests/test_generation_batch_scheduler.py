@@ -6484,6 +6484,7 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         ]
     }
     decode_linear_inputs = {0: hidden.copy()}
+    decode_full_attention = {0: {"input": hidden.copy(), "output": hidden.copy()}}
     batch = HiddenRun(
         seed_tokens=[10, 20],
         generated_tokens=[[11], [21]],
@@ -6493,6 +6494,7 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         prefill_linear_states=linear_state,
         prefill_linear_inputs=linear_inputs,
         decode_linear_inputs_by_step=[decode_linear_inputs],
+        decode_full_attention_by_step=[decode_full_attention],
         decode_linear_states_by_step=[linear_state],
         decode_execution_by_step=[decode_execution],
     )
@@ -6504,6 +6506,7 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
         prefill_linear_states=linear_state,
         prefill_linear_inputs=linear_inputs,
         decode_linear_inputs_by_step=[decode_linear_inputs],
+        decode_full_attention_by_step=[decode_full_attention],
         decode_linear_states_by_step=[linear_state],
     )
 
@@ -6521,6 +6524,8 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     assert summary["prefill_linear_input_passed"] is True
     assert summary["prefill_linear_state_passed"] is True
     assert summary["decode_linear_input_passed"] is True
+    assert summary["decode_full_attention_input_passed"] is True
+    assert summary["decode_full_attention_output_passed"] is True
     assert summary["decode_linear_state_passed"] is True
     assert summary["token_passed"] is True
     assert summary["prefill"]["stage"] == "prefill_final_hidden"
@@ -6573,6 +6578,9 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     assert summary["decode_linear_inputs"]["stage"] == "decode_linear_inputs"
     assert summary["decode_linear_inputs"]["passed"] is True
     assert summary["decode_linear_inputs"]["steps"][0]["layers"][0]["rows"][0]["hidden_comparison"]["max_abs"] == 0.0
+    assert summary["decode_full_attention"]["stage"] == "decode_full_attention"
+    assert summary["decode_full_attention"]["passed"] is True
+    assert summary["decode_full_attention"]["steps"][0]["layers"][0]["stages"]["output"]["passed"] is True
     assert summary["decode_linear_states"]["stage"] == "decode_linear_states"
     assert summary["decode_linear_states"]["passed"] is True
     assert summary["decode_linear_states"]["steps"][0]["layers"][0]["states"]["recurrent"]["max_abs"] == 0.0
