@@ -48475,3 +48475,23 @@ git diff -- docs/CONCURRENCY.md docs/BENCHMARK.md benchmarks/README.md benchmark
 ```
 
 Result: targeted GGUF diagnostic command-constant test PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and the change only centralizes blocked GGUF future/independent-c1 command paths.
+
+## 2026-05-29 — CONCURRENCY graph bucket metrics zero-fill known buckets
+
+Advanced the open per-bucket graph-cache observability packet. `/metrics` now zero-fills all known `GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS` when graph-bucket stats are available, while still filtering unknown bucket labels. This keeps Prometheus label series stable for live graph-cache runs and makes the observability item more concrete without claiming replay performance. `docs/CONCURRENCY.md` progress text now records the zero-filled known-bucket counter behavior and keeps the item open until real replay profiler evidence populates buckets.
+
+Validation:
+
+```bash
+python3 -m compileall -q hipengine/server/api.py tests/test_server_api.py && pytest -q tests/test_server_api.py::test_metrics_endpoint_is_opt_in_and_additive -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: targeted metrics test PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and the docs explicitly keep the graph-cache observability item open until real replay profiler evidence exists.

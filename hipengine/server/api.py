@@ -952,9 +952,11 @@ def _graph_bucket_metric_values(engine: Any | None) -> dict[str, Any]:
     values["replay_hit_rate"] = values["hits"] / lookups if lookups > 0.0 else 0.0
     values["miss_reasons"] = _non_negative_metric_mapping(data.get("miss_reasons"))
     kernel_time_histogram = _non_negative_metric_mapping(data.get("kernel_time_histogram_ns"))
-    values["kernel_time_histogram_ns"] = {
-        bucket: value for bucket, value in kernel_time_histogram.items() if bucket in _GRAPH_KERNEL_TIME_HISTOGRAM_BUCKET_SET
-    }
+    known_kernel_time_histogram = {bucket: 0.0 for bucket in GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS}
+    for bucket, value in kernel_time_histogram.items():
+        if bucket in _GRAPH_KERNEL_TIME_HISTOGRAM_BUCKET_SET:
+            known_kernel_time_histogram[bucket] = value
+    values["kernel_time_histogram_ns"] = known_kernel_time_histogram
     return values
 
 

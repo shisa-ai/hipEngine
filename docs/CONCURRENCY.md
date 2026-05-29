@@ -1905,9 +1905,10 @@ endpoint live; retained c>N rows include all gates above.
       `GraphBucketCache.stats.to_json_dict()` now includes miss-reason counts
       and typed-integer kernel-time histogram buckets, retained/serial scripts emit that
       shape, retained bench validates decode shape-key axes (including context-bucket coverage for the workload prompt length) and merges integer profiler kernel durations into the histogram, blocking promotion when shape keys are invalid, hit/miss/replay-rate stats are invalid, no known-bucket observations remain, or unknown buckets appear, and accepted-artifact schema shares the runtime bucket taxonomy and requires context-bucket workload coverage plus per-bucket known-bucket histogram observations that cover profiler kernel-duration evidence
-      for accepted rows, and `/metrics` exports labeled miss-reason and
-      known kernel-time-bucket counters; the item remains open until real replay
-      profiler evidence populates kernel-time buckets.
+      for accepted rows, and `/metrics` exports labeled miss-reason counters plus
+      zero-filled counters for every known kernel-time bucket while filtering
+      unknown bucket labels; the item remains open until real replay profiler
+      evidence populates kernel-time buckets.
 - [x] Retained-row gates 4 (admission/completion timestamps + p50/p95) and
       6/7/8 (dynamic pool + stable block id + prefix sharing artifact)
       enforced by the bench harness.

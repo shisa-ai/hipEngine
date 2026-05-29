@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 from hipengine import SamplingParams
+from hipengine.generation import GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS
 from hipengine.server import ServerConfig, create_app, render_chat_prompt
 from hipengine.server.__main__ import build_parser
 from hipengine.server.api import ChatCompletionRequest, _GenerationBatcher
@@ -468,6 +469,11 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
     assert _labeled_metric_value(metrics.text, "hipengine_graph_bucket_miss_reason_total", reason="shape_changed") == 3
     assert _labeled_metric_value(metrics.text, "hipengine_graph_bucket_kernel_time_bucket_total", bucket="le_10us") == 2
     assert _labeled_metric_value(metrics.text, "hipengine_graph_bucket_kernel_time_bucket_total", bucket="le_100us") == 4
+    assert _labeled_metric_value(metrics.text, "hipengine_graph_bucket_kernel_time_bucket_total", bucket="le_1ms") == 0
+    assert _labeled_metric_value(metrics.text, "hipengine_graph_bucket_kernel_time_bucket_total", bucket="le_10ms") == 0
+    assert _labeled_metric_value(metrics.text, "hipengine_graph_bucket_kernel_time_bucket_total", bucket="gt_10ms") == 0
+    for bucket in GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS:
+        assert f'hipengine_graph_bucket_kernel_time_bucket_total{{bucket="{bucket}"}}' in metrics.text
     assert 'hipengine_graph_bucket_kernel_time_bucket_total{bucket="lt_1us"}' not in metrics.text
 
 
