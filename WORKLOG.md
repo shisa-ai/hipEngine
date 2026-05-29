@@ -26731,3 +26731,13 @@ Validation:
 ```bash
 git diff --check
 ```
+
+## 2026-05-29 — Step 3.7 Flash docs refresh
+
+Refreshed `docs/STEPFUN.md` after the HF download completed. The local `Step-3.7-Flash-NVFP4` snapshot now has all 13 safetensors shards resolved with no `.incomplete` blobs; resolved shard bytes sum to 124,385,256,328 bytes while the safetensors index reports `total_size=124,385,012,840` tensor payload bytes. Added public serving/runtime hints from the model card for vLLM, SGLang, Transformers, and llama.cpp, while keeping the recommended hipEngine first target as text-only GGUF Q3_K_L.
+
+Validation:
+
+```bash
+git diff --check
+```

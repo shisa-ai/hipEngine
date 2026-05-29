@@ -12,11 +12,13 @@
   `36afbf6e15100cdc2d7a5b79d7e95d276ed33679`.
 - HF cache snapshot present at
   `~/.cache/huggingface/hub/models--stepfun-ai--Step-3.7-Flash-NVFP4/snapshots/36afbf6e15100cdc2d7a5b79d7e95d276ed33679`.
-  The cache currently has metadata/code files (`config.json`,
-  `configuration_step3p7.py`, `hf_quant_config.json`, `README.md`,
-  `chat_template.jinja`, `generation_config.json`, benchmark image) and eight
-  large `.incomplete` blob downloads. The 13-shard safetensors index is not yet
-  symlinked into the local snapshot.
+  The cache currently has metadata/code/tokenizer files (`config.json`,
+  `configuration_step3p7.py`, `modeling_step3p7.py`, `hf_quant_config.json`,
+  `README.md`, `chat_template.jinja`, `generation_config.json`,
+  `model.safetensors.index.json`, etc.) and all 13 safetensors shards resolved
+  in the snapshot; no `.incomplete` blobs were present when checked on
+  2026-05-29. Resolved shard bytes sum to 124,385,256,328 bytes; the index
+  metadata's `total_size=124,385,012,840` appears to count tensor payload bytes.
 - GGUF language-model shards found under `/data/models/gguf/` (the shorter
   `/data/gguf/` path was not present on this machine):
   - `Step-3.7-flash-Q3_K_L-00001-of-00003.gguf` — 46,544,161,344 bytes
@@ -32,7 +34,8 @@ The model card describes Step 3.7 Flash as a sparse MoE vision-language model:
 196B language parameters plus a 1.8B vision encoder, about 11B active parameters
 per token, and a 256k context window. The HF NVFP4 index reports
 103,810,330,432 stored parameters and `total_size=124,385,012,840` bytes
-(124.39 GB / 115.84 GiB) across 13 safetensors shards.
+(124.39 GB / 115.84 GiB tensor payload) across 13 safetensors shards; the local
+resolved files sum to 124,385,256,328 bytes including container/header overhead.
 
 Text config facts from `config.json` / `configuration_step3p7.py`:
 
@@ -68,6 +71,23 @@ Tokenizer / chat facts:
 - GGUF metadata reports `tokenizer.ggml.model='gpt2'` and
   `tokenizer.ggml.pre='deepseek-v3'`, not the existing hipEngine Qwen3.5 GGUF
   tokenizer pre-tokenizer key.
+
+## Public local-serving hints
+
+The model card lists vLLM, SGLang, Transformers, and llama.cpp support. These
+examples are useful runtime references, not hipEngine design mandates:
+
+- vLLM FP8/BF16 examples use tensor parallel size 8, expert parallelism,
+  `--disable-cascade-attn`, and the `step3p5` reasoning parser.
+- vLLM NVFP4 example uses tensor parallel size 4, expert parallelism,
+  `--quantization modelopt`, `--kv-cache-dtype fp8`, and `--max-model-len 8192`.
+- SGLang NVFP4 example uses `--tp 4 --ep 4`, `--quantization modelopt_fp4`, and
+  `--kv-cache-dtype fp8_e4m3`.
+- Transformers is presented as a debug/verification path and requires
+  Transformers 5.0 or later.
+- llama.cpp deployment notes list Q3_K_L language weights at 102.5 GB,
+  multimodal projector FP16 at 3.97 GB, about 7 GB runtime overhead, minimum
+  120 GB unified memory/VRAM, and 128 GB unified memory recommended.
 
 ## Weight formats observed
 
