@@ -43,6 +43,7 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_RETAINED_GATE_LABELS,
     RETAINED_ARTIFACT_RETAINED_POSTCONDITION_KINDS,
     RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS,
+    RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_VALUE_FLAGS,
     RETAINED_ARTIFACT_RETAINED_PRECONDITION_KINDS,
     RETAINED_ARTIFACT_SWEEP_COMMAND_CATEGORIES,
     RETAINED_ARTIFACT_SWEEP_COMMAND_STATUS_LABELS,
@@ -98,6 +99,7 @@ def _primitive_context_lens_matches(value: Any, rows: int) -> bool:
 _PROFILER_SYNTHESIZED_FIELDS = RETAINED_ARTIFACT_PROFILER_TRACE_SYNTHESIZED_FIELDS
 _RETAINED_BENCH_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS
 _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS
+_RETAINED_PROFILED_COMMAND_VALUE_FLAGS = RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_VALUE_FLAGS
 _PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS = RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS
 _RETAINED_PRECONDITION_KINDS = RETAINED_ARTIFACT_RETAINED_PRECONDITION_KINDS
 _RETAINED_POSTCONDITION_KINDS = RETAINED_ARTIFACT_RETAINED_POSTCONDITION_KINDS
@@ -2538,19 +2540,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if _duplicate_flags(profiled_command_argv, _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS):
                         errors.append("commands[].preconditions[].profiler profiled command flags must be unique")
                         break
-                    profiled_command_flags = (
-                        "--model",
-                        "--fixture",
-                        "--batch-size",
-                        "--prompt-length",
-                        "--decode-tokens",
-                        "--warmup-decode-tokens",
-                        "--max-layers",
-                        "--json",
-                        *_RETAINED_GATE_FLAGS,
-                        "--compiler-version-file",
-                    )
-                    if _empty_inline_flag_values(profiled_command_argv, profiled_command_flags):
+                    if _empty_inline_flag_values(profiled_command_argv, _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS):
                         errors.append("commands[].preconditions[].profiler profiled command flag values must be non-empty")
                         break
                     if _command_text_arg(profiler_command, "--model") != _argv_value(argv, "--model") or profiler_precondition.get("profiler_model") != _argv_value(argv, "--model"):
@@ -2596,7 +2586,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if profiler_precondition.get("profiler_require_cached_build") != ("--require-cached-build" in argv):
                         errors.append("commands[].preconditions[].profiler_require_cached_build must match retained command")
                         break
-                    if any(_argv_value(profiled_command_argv, flag) != _argv_value(argv, flag) for flag in profiled_command_flags) or (
+                    if any(_argv_value(profiled_command_argv, flag) != _argv_value(argv, flag) for flag in _RETAINED_PROFILED_COMMAND_VALUE_FLAGS) or (
                         "--require-cached-build" in profiled_command_argv
                     ) != ("--require-cached-build" in argv):
                         errors.append("commands[].preconditions[].profiler profiled command flags must match retained command")

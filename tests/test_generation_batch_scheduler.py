@@ -100,6 +100,7 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_RETAINED_GATE_LABELS,
     RETAINED_ARTIFACT_RETAINED_KV_POLICY_FLAGS,
     RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS,
+    RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_VALUE_FLAGS,
     RETAINED_ARTIFACT_SWEEP_COMMAND_CATEGORIES,
     RETAINED_ARTIFACT_SWEEP_COMMAND_STATUS_LABELS,
     RETAINED_ARTIFACT_RETAINED_POSTCONDITION_KINDS,
@@ -998,6 +999,7 @@ def test_batch_c_sweep_profiler_precondition_synthesizes_trace_fields_from_csv(t
     assert c_sweep._PROFILER_SYNTHESIZED_FIELDS is RETAINED_ARTIFACT_PROFILER_TRACE_SYNTHESIZED_FIELDS
     assert c_sweep._RETAINED_BENCH_UNIQUE_FLAGS is RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS
     assert c_sweep._RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS is RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS
+    assert c_sweep._RETAINED_PROFILED_COMMAND_VALUE_FLAGS is RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_VALUE_FLAGS
     assert all(flag in c_sweep._SWEEP_COMMAND_KNOWN_FLAGS for flag in RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS)
     assert c_sweep._PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS is RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS
     assert c_sweep._RETAINED_PRECONDITION_KINDS is RETAINED_ARTIFACT_RETAINED_PRECONDITION_KINDS
@@ -4902,6 +4904,16 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     profiler_precondition["profiler_command"] = profiler_precondition["profiler_command"] + " --kv-storage bf16 --kv-storage auto"
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler profiled command flags must be unique"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_profiled_duplicate_kv)
+    tampered_profiler_precondition_profiled_kv_mismatch = json.loads(json.dumps(persisted))
+    profiler_precondition = tampered_profiler_precondition_profiled_kv_mismatch["commands"][-1]["preconditions"][-1]
+    profiler_precondition["profiler_command"] = profiler_precondition["profiler_command"] + " --kv-storage bf16"
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler profiled command flags must match retained command"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_profiled_kv_mismatch)
+    tampered_profiler_precondition_profiled_empty_kv = json.loads(json.dumps(persisted))
+    profiler_precondition = tampered_profiler_precondition_profiled_empty_kv["commands"][-1]["preconditions"][-1]
+    profiler_precondition["profiler_command"] = profiler_precondition["profiler_command"] + " --kv-storage="
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler profiled command flag values must be non-empty"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_profiled_empty_kv)
     tampered_profiler_precondition_retained_flag_before_separator = json.loads(json.dumps(persisted))
     profiler_precondition = tampered_profiler_precondition_retained_flag_before_separator["commands"][-1]["preconditions"][-1]
     profiler_precondition["profiler_command"] = profiler_precondition["profiler_command"].replace(
