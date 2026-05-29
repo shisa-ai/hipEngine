@@ -2663,6 +2663,8 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
     tampered_skipped_failed_precondition["commands"][-1]["preconditions"][1].update(
         {
             "reference_artifact_path": str(output_dir / "native-baseline-c1.json"),
+            "reference_status": "loaded",
+            "reference_reason": None,
             "workload_concurrency": 1,
             "prompt_tokens_per_request": 16,
             "gen_tokens_per_request": 2,
@@ -2673,6 +2675,8 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
     tampered_skipped_failed_precondition["commands"][-1]["preconditions"][2].update(
         {
             "reference_artifact_path": str(output_dir / "serial-bridge-c2.json"),
+            "reference_status": "loaded",
+            "reference_reason": None,
             "workload_concurrency": 2,
             "prompt_tokens_per_request": 16,
             "gen_tokens_per_request": 2,
@@ -3849,6 +3853,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_primitive_precondition_keys["commands"][-1]["preconditions"][0]["profiler_status"] = "captured"
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\] passed primitive_correctness must contain exactly primitive precondition keys"):
         c_sweep.validate_sweep_summary(tampered_primitive_precondition_keys)
+    tampered_scaling_precondition_keys = json.loads(json.dumps(persisted))
+    tampered_scaling_precondition_keys["commands"][-1]["preconditions"][1]["profiler_status"] = "captured"
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\] passed scaling reference must contain exactly scaling precondition keys"):
+        c_sweep.validate_sweep_summary(tampered_scaling_precondition_keys)
     tampered_profiler_precondition_keys = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_keys["commands"][-1]["preconditions"][3]["primitive_seed"] = 1234
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\] passed profiler_summary must contain exactly profiler precondition keys"):

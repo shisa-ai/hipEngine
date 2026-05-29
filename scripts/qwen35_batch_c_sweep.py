@@ -1785,6 +1785,20 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         "attn_batch_vs_c1_max_abs",
         "attn_batch_vs_numpy_max_abs",
     }
+    expected_passed_scaling_precondition_keys = {
+        "kind",
+        "artifact_path",
+        "passed",
+        "reason",
+        "reference_artifact_path",
+        "reference_status",
+        "reference_reason",
+        "workload_concurrency",
+        "prompt_tokens_per_request",
+        "gen_tokens_per_request",
+        "decode_tok_s_aggregate",
+        "decode_tok_s_per_request",
+    }
     expected_passed_profiler_precondition_keys = {
         "kind",
         "artifact_path",
@@ -2378,6 +2392,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     expected_aggregate_rate = float(scaling_precondition["decode_tok_s_per_request"]) * int(expected_concurrency)
                     if abs(float(scaling_precondition["decode_tok_s_aggregate"]) - expected_aggregate_rate) > max(1e-9, expected_aggregate_rate * 1e-6):
                         errors.append("commands[].preconditions[].decode aggregate rate must match per-request rate times concurrency when passed")
+                        scaling_precondition_error = True
+                        break
+                    if set(scaling_precondition) != expected_passed_scaling_precondition_keys:
+                        errors.append("commands[].preconditions[] passed scaling reference must contain exactly scaling precondition keys")
                         scaling_precondition_error = True
                         break
                 if scaling_precondition_error:
