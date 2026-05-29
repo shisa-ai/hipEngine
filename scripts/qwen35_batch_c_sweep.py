@@ -1765,6 +1765,42 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         "profiler_synthesized_fields",
         "profiler_precondition_synthesized_fields",
     }
+    expected_passed_profiler_precondition_keys = {
+        "kind",
+        "artifact_path",
+        "passed",
+        "reason",
+        "profiler_status",
+        "profiler_source_artifact_path",
+        "profiler_command",
+        "profiler_output_format",
+        "profiler_trace_dir",
+        "profiler_trace_files",
+        "profiler_trace_kernel_names",
+        "profiler_trace_synthesized_fields",
+        "retained_artifact_path",
+        "c1_baseline_artifact_path",
+        "serial_bridge_artifact_path",
+        "primitive_correctness_artifact_path",
+        "profiler_compiler_version_file",
+        "profiler_require_cached_build",
+        "profiler_model",
+        "profiler_fixture",
+        "profiler_warmup_decode_tokens",
+        "profiler_max_layers",
+        "workload_concurrency",
+        "prompt_tokens_per_request",
+        "gen_tokens_per_request",
+        "expected_kernel_names",
+        "kernel_durations_ns",
+        "total_kernel_duration_ns",
+        "kernel_duration_shares",
+        "kernel_duration_categories_ns",
+        "kernel_duration_category_shares",
+        "cpu_side_total_seconds",
+        "cpu_side_bottlenecks_seconds",
+        "cpu_side_bottleneck_shares",
+    }
     expected_condition_keys = {
         "kind",
         "artifact_path",
@@ -2717,6 +2753,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         break
                     if abs(cpu_share_sum - 1.0) > 1e-6:
                         errors.append("commands[].preconditions[].cpu_side_bottleneck_shares must sum to 1.0 when profiler passed")
+                        break
+                    if set(profiler_precondition) != expected_passed_profiler_precondition_keys:
+                        errors.append("commands[].preconditions[] passed profiler_summary must contain exactly profiler precondition keys")
                         break
             postconditions = entry.get("postconditions")
             preconditions = entry.get("preconditions")
