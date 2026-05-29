@@ -26751,3 +26751,13 @@ Validation:
 ```bash
 git diff --check
 ```
+
+## 2026-05-29 — Step 3.7 Flash punchlist risk table
+
+Revisited task #9 after the task store lost the original entry and added an explicit `Open risks and mitigations` section to `docs/STEPFUN.md`. The new table calls out Strix Halo UMA fit risk, gfx1151 kernel coverage, missing Q3_K support, tokenizer/chat oracle risk, mixed full/sliding attention KV bugs, full-model oracle availability, and the risk of NVFP4 distracting from the GGUF-first path.
+
+Validation:
+
+```bash
+git diff --check
+```

@@ -518,6 +518,18 @@ user has explicitly approved the run.
 | `step-decode` | Text-only c=1 short-prompt next-token parity | `HIPENGINE_BACKEND=hip_gfx1151 python -m pytest -q tests/test_stepfun_decode.py` |
 | `step-smoke` | Full GGUF load/generate on Strix Halo | command TBD after P11; record memory and oracle in `WORKLOG.md` |
 
+## Open risks and mitigations
+
+| Risk | Why it matters | Mitigation / decision gate |
+| --- | --- | --- |
+| Strix Halo UMA may be too tight for full GGUF + KV + runtime overhead | GGUF weights are 95.46 GiB and public llama.cpp notes recommend 128 GB UMA | P0/P12 must record HIP-visible free memory and fit/fail evidence before full-model claims; keep slice correctness unblocked if full load fails |
+| gfx1151 kernel coverage may lag gfx1100 | Existing hipEngine code and lineage are gfx1100-centered | Treat `hip_gfx1151` as a peer backend registration/build target; run minimal kernel smoke and `rocprofv3` before relying on copied gfx1100 kernels |
+| Q3_K is the dominant missing quant path | Step Q3_K_L heavily uses Q3_K and hipEngine's existing GGUF work is Q4_K/Q5_K/Q6_K/Q8_0 focused | Land CPU Q3_K first, then HIP Q3_K slice correctness; do not integrate decode through lossy ad-hoc dequant shortcuts |
+| Tokenizer/chat mismatch can invalidate every oracle comparison | Step GGUF uses DeepSeek-V3 GPT-2 BPE metadata, not Qwen3.5 tokenizer metadata | Make tokenizer parity a separate lane with llama.cpp/HF token-id fixtures before logits/decode work |
+| Sliding/full mixed attention can hide KV bugs until long prompts | Step alternates full and 512-window sliding layers with different head counts and RoPE settings | Exercise both layer types through `KVLiveSpans` boundary tests before full-model smoke |
+| llama.cpp/HF oracle may be unavailable for full-model comparisons on the same box | The model is large and HF Transformers may require more memory than GGUF | Use llama.cpp for tokenization/short greedy where possible and derive small activation/tensor-slice fixtures for earlier lanes |
+| NVFP4 completion may distract from GGUF bring-up | NVFP4 files are now cached but require ModelOpt FP4/FP8 support with unclear RDNA3/RDNA3.5 upside | Keep NVFP4 explicitly deferred until P11/P12 text-only GGUF correctness is established |
+
 ## Remaining open questions
 
 - What exact Strix Halo UMA size and HIP-visible free memory do we have after a
