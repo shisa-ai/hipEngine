@@ -27313,3 +27313,17 @@ python3 -m pytest -q tests/test_stepfun_resident_session.py
 ```
 
 Result: `11 passed`.
+
+## 2026-05-30 — StepFun resident selected-expert projection
+
+Added `StepFunResidentSession.selected_expert_linear_bf16()`, wiring resident rank-3 expert tensors into the existing registry-selected GGUF GEMV kernels (`selected_gemv_bf16_bf16_out`). The helper validates selected expert IDs, launches the selected kernel for raw GGUF expert weights, returns BF16 output rows, and frees temporary x/selected/output buffers.
+
+Extended `tests/test_stepfun_resident_session.py` with a real layer-3 `ffn_gate_exps` selected-expert probe. The test materializes the resident `Q3_K` expert gate tensor, runs selected experts for two BF16-rounded activation rows, compares BF16 outputs (converted to F32) against CPU dequantized per-expert references within quantized tolerance, and checks allocation cleanup.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_resident_session.py
+```
+
+Result: `12 passed`.

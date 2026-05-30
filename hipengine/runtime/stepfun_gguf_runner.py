@@ -435,6 +435,73 @@ class StepFunResidentSession:
             free(x_buf, runtime=runtime)
         return out
 
+    def selected_expert_linear_bf16(
+        self,
+        slot_path: str,
+        x_bf16_bits,
+        selected_experts,
+        *,
+        runtime: HipRuntime | None = None,
+        stream: int = 0,
+    ):
+        """Launch a resident selected-expert GGUF linear slot with BF16 output."""
+
+        import numpy as np
+
+        if self._closed:
+            raise RuntimeError("StepFun resident session is closed")
+        runtime = runtime or get_hip_runtime()
+        _register_backend_plugin(self.backend)
+        weight = self.weight_for_slot(slot_path)
+        if len(weight.spec.source.shape) != 3:
+            raise ValueError(f"StepFun selected-expert slot must be rank-3, got {slot_path!r}")
+        num_experts, out_features, in_features = (int(dim) for dim in weight.spec.source.shape)
+        x = np.ascontiguousarray(x_bf16_bits, dtype=np.uint16)
+        selected = np.ascontiguousarray(selected_experts, dtype=np.int64).reshape(-1)
+        if x.ndim != 2:
+            raise ValueError("x_bf16_bits must have shape [x_rows, in_features]")
+        x_rows = int(x.shape[0])
+        if x_rows <= 0:
+            raise ValueError("x_bf16_bits must have at least one row")
+        if int(x.shape[1]) != in_features:
+            raise ValueError(
+                f"x_bf16_bits.shape[1]={x.shape[1]} does not match {slot_path} in_features={in_features}"
+            )
+        rows = int(selected.shape[0])
+        if rows <= 0 or rows % x_rows != 0:
+            raise ValueError("selected_experts length must be positive and divisible by x rows")
+        if np.any(selected < 0) or np.any(selected >= num_experts):
+            raise ValueError("selected_experts contain out-of-range expert IDs")
+        out = np.empty((rows, out_features), dtype=np.uint16)
+        x_buf = malloc(x.nbytes, runtime=runtime)
+        selected_buf = malloc(selected.nbytes, runtime=runtime)
+        out_buf = malloc(out.nbytes, runtime=runtime)
+        try:
+            copy_host_to_device(x_buf, host_array_ptr(x), runtime=runtime)
+            copy_host_to_device(selected_buf, host_array_ptr(selected), runtime=runtime)
+            key = KernelKey(self.backend, "linear", weight.spec.quant_key, "selected_gemv_bf16_bf16_out")
+            fn = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
+            fn(
+                x_buf.ptr,
+                selected_buf.ptr,
+                weight.allocation().buffer.ptr,
+                out_buf.ptr,
+                x_rows=x_rows,
+                rows=rows,
+                num_experts=num_experts,
+                in_features=in_features,
+                out_features=out_features,
+                runtime=runtime,
+                stream=stream,
+            )
+            runtime.device_synchronize()
+            copy_device_to_host(host_array_ptr(out), out_buf, runtime=runtime)
+        finally:
+            free(out_buf, runtime=runtime)
+            free(selected_buf, runtime=runtime)
+            free(x_buf, runtime=runtime)
+        return out
+
     def project_attention_inputs_bf16(
         self,
         layer_id: int,

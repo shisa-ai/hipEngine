@@ -341,6 +341,55 @@ def test_stepfun_resident_session_moe_router_probe_matches_cpu_reference() -> No
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_stepfun_resident_session_selected_expert_gate_projection_matches_cpu_reference() -> None:
+    paths = _stepfun_gguf_paths()
+    info = scan_gguf_splits(paths)
+    model_map = build_stepfun_gguf_tensor_map(info)
+    tensor = model_map.layer(3).tensor("ffn_gate_exps")
+    assert tensor.ggml_type_name == "Q3_K"
+    x = ((np.arange(2 * 4096, dtype=np.float32).reshape(2, 4096) % 53) - 26) / 192.0
+    x_bits = float_array_to_bf16_bits(x)
+    x_bf16 = bf16_to_float32(x_bits)
+    selected = np.asarray([0, 7, 13, 21, 2, 5, 8, 11], dtype=np.int64)
+    raw = GGUFReader(tensor.source_path).tensor_data(tensor.name)
+    expected_f32 = np.empty((selected.size, 1280), dtype=np.float32)
+    rows_per_x = selected.size // x_bf16.shape[0]
+    for row, expert_id in enumerate(selected):
+        x_row = row // rows_per_x
+        expected_f32[row] = gguf_q3_k_gemv(x_bf16[x_row : x_row + 1], raw[int(expert_id)])[0]
+    expected_bits = float_array_to_bf16_bits(expected_f32)
+    runtime = get_hip_runtime()
+    reset_memory_stats()
+    session = StepFunResidentSession.from_gguf_paths(
+        paths,
+        selected_slots=("layers.3.ffn_gate_exps",),
+        runtime=runtime,
+    )
+    try:
+        actual_bits = session.selected_expert_linear_bf16(
+            "layers.3.ffn_gate_exps",
+            x_bits,
+            selected,
+            runtime=runtime,
+        )
+        assert actual_bits.shape == expected_bits.shape == (selected.size, 1280)
+        np.testing.assert_allclose(
+            bf16_to_float32(actual_bits),
+            bf16_to_float32(expected_bits),
+            rtol=2.0e-3,
+            atol=2.0e-3,
+        )
+        assert session.weights.allocated_nbytes == tensor.nbytes
+        assert memory_stats()["current_allocated_bytes"] == tensor.nbytes
+        assert memory_stats()["active_allocations"] == 1
+    finally:
+        session.free(runtime=runtime)
+
+    assert memory_stats()["current_allocated_bytes"] == 0
+    assert memory_stats()["active_allocations"] == 0
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 def test_stepfun_resident_session_dense_mlp_probe_matches_cpu_reference() -> None:
     paths = _stepfun_gguf_paths()
     info = scan_gguf_splits(paths)
