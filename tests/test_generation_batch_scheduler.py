@@ -6128,6 +6128,8 @@ def test_projection_dispatch_candidate_loads_schema_checked_artifact_blocks() ->
     assert not candidate.applies_to(16)
     with pytest.raises(ValueError, match="selection.quant must be a non-empty string"):
         ProjectionDispatchCandidate.from_json_dict({**payload, "selection": {"layer": "linear", "variant": "wmma_caware"}})
+    with pytest.raises(ValueError, match="name must name a c-aware projection candidate, not row_gemv"):
+        ProjectionDispatchCandidate.from_json_dict({**payload, "name": "row_gemv"})
     with pytest.raises(ValueError, match="selection.variant must name a c-aware projection kernel, not row_gemv"):
         ProjectionDispatchCandidate.from_json_dict(
             {**payload, "selection": {"layer": "linear", "quant": "w4_paro", "variant": "row_gemv"}}
@@ -6170,6 +6172,8 @@ def test_projection_dispatch_candidate_list_loads_ordered_artifact_blocks() -> N
         projection_dispatch_candidates_from_json({"name": "mmq_caware"})
     with pytest.raises(ValueError, match=r"candidates\[1\] must be an object"):
         projection_dispatch_candidates_from_json([first, "not-a-candidate"])
+    with pytest.raises(ValueError, match=r"candidates\[1\]\.name must be unique"):
+        projection_dispatch_candidates_from_json([first, {**second, "name": "mmq_caware"}])
     with pytest.raises(ValueError, match=r"candidates\[0\].*min_rows must be a positive int"):
         projection_dispatch_candidates_from_json([{**first, "min_rows": 0}])
 

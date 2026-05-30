@@ -1340,7 +1340,7 @@ roll-up/status view.
       `projection_dispatch_candidates_from_json(...)`,
       `projection_dispatch_candidates_from_artifact(...)`, and
       `plan_projection_dispatch_from_artifact(...)` schema-check retained
-      artifact candidate/evidence lists before the policy can consume them;
+      artifact candidate/evidence lists before the policy can consume them, including rejecting row-GEMV-named retained candidates and duplicate candidate names so `selected_candidate` cannot be ambiguous;
       projection speedup evidence must reference an artifact under
       `benchmarks/results/` whose resolved target stays inside the active
       results tree and, when accepted, must beat row-GEMV on both

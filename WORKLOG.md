@@ -48675,3 +48675,23 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: targeted c-sweep provenance test PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and C3.4 remains open until retained benchmark ratios plus actual runtime c-aware kernel use are green.
+
+## 2026-05-30 — CONCURRENCY projection candidate identity provenance
+
+Advanced C3.4 projection-dispatch artifact hardening. `hipengine.dispatch.projection.ProjectionDispatchCandidate.from_json_dict(...)` now rejects retained candidate metadata whose `name` is `row_gemv`, and `projection_dispatch_candidates_from_json(...)` rejects duplicate candidate names. This keeps retained `selected_candidate` provenance unambiguous before accepted c>N artifacts can promote a c-aware projection path. `docs/CONCURRENCY.md` notes the new candidate identity checks while leaving C3.4 open until retained benchmark ratios and actual runtime c-aware kernels are available.
+
+Validation:
+
+```bash
+python3 -m compileall -q hipengine/dispatch/projection.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_projection_dispatch_candidate_loads_schema_checked_artifact_blocks tests/test_generation_batch_scheduler.py::test_projection_dispatch_candidate_list_loads_ordered_artifact_blocks -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: targeted projection candidate identity tests PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and C3.4 remains open until retained benchmark ratios plus actual runtime c-aware kernel use are green.

@@ -121,6 +121,8 @@ class ProjectionDispatchCandidate:
         name = payload.get("name")
         if not isinstance(name, str) or not name:
             errors.append("name must be a non-empty string")
+        elif name == "row_gemv":
+            errors.append("name must name a c-aware projection candidate, not row_gemv")
         selection_payload = payload.get("selection")
         selection: ProjectionKernelSelection | None = None
         if not isinstance(selection_payload, Mapping):
@@ -231,15 +233,22 @@ def projection_dispatch_candidates_from_json(payload: Any) -> tuple[ProjectionDi
     if not isinstance(payload, list):
         raise ValueError("projection dispatch candidates must be a list")
     candidates: list[ProjectionDispatchCandidate] = []
+    seen_names: set[str] = set()
     errors: list[str] = []
     for index, item in enumerate(payload):
         if not isinstance(item, Mapping):
             errors.append(f"candidates[{index}] must be an object")
             continue
         try:
-            candidates.append(ProjectionDispatchCandidate.from_json_dict(item))
+            candidate = ProjectionDispatchCandidate.from_json_dict(item)
         except ValueError as exc:
             errors.append(f"candidates[{index}]: {exc}")
+            continue
+        if candidate.name in seen_names:
+            errors.append(f"candidates[{index}].name must be unique")
+            continue
+        seen_names.add(candidate.name)
+        candidates.append(candidate)
     if errors:
         raise ValueError("invalid projection dispatch candidates: " + "; ".join(errors))
     return tuple(candidates)
