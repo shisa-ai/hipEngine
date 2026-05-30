@@ -854,6 +854,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.pseudo_vocab_size <= 0:
         raise ValueError("--pseudo-vocab-size must be positive")
     payload = run(args)
+    if args.json is not None:
+        payload["artifact_path"] = str(args.json)
+        payload["source_artifact_path"] = str(args.json)
     text = json.dumps(payload, indent=2)
     print(text)
     if args.json is not None:

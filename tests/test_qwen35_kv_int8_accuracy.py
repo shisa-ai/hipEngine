@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import json
+from pathlib import Path
 
 import numpy as np
 
-from scripts.qwen35_kv_int8_accuracy import _compare_path, run
+from scripts.qwen35_kv_int8_accuracy import _compare_path, main, run
 
 
 def _args(**overrides):
@@ -47,6 +49,34 @@ def test_qwen35_kv_int8_accuracy_cpu_runs_short_and_page_boundary_cases() -> Non
         assert case["paths"]["bf16"]["pseudo_logit_gate"]["top1_agreement"] == 1.0
         assert case["paths"]["int8_per_token_head"]["pseudo_logit_gate"]["top1_agreement"] == 1.0
         assert "bf16_vs_int8_quantization" in case
+
+
+def test_qwen35_kv_int8_accuracy_json_self_describes_artifact_path(tmp_path: Path) -> None:
+    artifact_path = tmp_path / "int8-primitive.json"
+
+    rc = main(
+        [
+            "--device",
+            "cpu",
+            "--contexts",
+            "4,9",
+            "--block-size",
+            "4",
+            "--num-q-heads",
+            "4",
+            "--num-kv-heads",
+            "2",
+            "--head-dim",
+            "8",
+            "--json",
+            str(artifact_path),
+        ]
+    )
+
+    assert rc == 0
+    payload = json.loads(artifact_path.read_text(encoding="utf-8"))
+    assert payload["artifact_path"] == str(artifact_path)
+    assert payload["source_artifact_path"] == str(artifact_path)
 
 
 def test_qwen35_kv_int8_accuracy_reports_numerical_mismatch_clearly() -> None:

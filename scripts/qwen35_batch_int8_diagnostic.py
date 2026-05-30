@@ -47,6 +47,10 @@ def _future_gate_command(args: argparse.Namespace) -> str:
         str(args.kv_scale_dtype),
         "--kv-scale-granularity",
         "per_token_head",
+        "--int8-kv-primitive-cpu-json",
+        str(args.primitive_cpu_json),
+        "--int8-kv-primitive-hip-json",
+        str(args.primitive_hip_json),
         "--json",
         str(args.future_json),
     ]

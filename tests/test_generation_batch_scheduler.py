@@ -464,6 +464,40 @@ def _sampler_equality_payload(
     }
 
 
+def _int8_kv_primitive_accuracy_summary(*, device: str, artifact_path: str, prompt_length: int = 512) -> dict[str, object]:
+    return {
+        "artifact_path": artifact_path,
+        "source_artifact_path": artifact_path,
+        "status": "loaded",
+        "artifact_status": "accepted",
+        "schema": 1,
+        "mode": "qwen35_kv_int8_layer_accuracy",
+        "device": device,
+        "command": (
+            "python3 scripts/qwen35_kv_int8_accuracy.py "
+            f"--device {device} --contexts {prompt_length},{prompt_length + 1} "
+            "--block-size 256 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 "
+            f"--scale-dtype fp16 --seed 1234 --json {artifact_path}"
+            + (" --require-int8-hip" if device == "hip" else "")
+        ),
+        "passed": True,
+        "shape": {
+            "contexts": [prompt_length, prompt_length + 1],
+            "block_size": 256,
+            "num_q_heads": 16,
+            "num_kv_heads": 2,
+            "head_dim": 256,
+            "scale_dtype": "fp16",
+        },
+        "kv_policy": {
+            "storage_dtype": "int8_per_token_head",
+            "scale_metadata_format": {"scale_dtype": "fp16"},
+        },
+        "blocked_reasons": [],
+        "correctness_failures": [],
+    }
+
+
 def _tensor(ptr: int, shape: tuple[int, ...], dtype: str) -> Tensor:
     return Tensor.from_handle(ptr, shape, dtype, Device("hip", 0))
 
@@ -9024,6 +9058,8 @@ def test_int8_cN_diagnostic_template_records_blocked_c2_gate(tmp_path: Path) -> 
     future_gate_tokens = shlex.split(payload["commands"]["future_generated_token_gate"])
     assert future_gate_tokens[1] == RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT
     assert "--kv-storage int8_per_token_head" in payload["commands"]["future_generated_token_gate"]
+    assert future_gate_tokens[future_gate_tokens.index("--int8-kv-primitive-cpu-json") + 1] == "/tmp/hipengine-int8-c2-primitive-cpu.json"
+    assert future_gate_tokens[future_gate_tokens.index("--int8-kv-primitive-hip-json") + 1] == "/tmp/hipengine-int8-c2-primitive-hip.json"
     cpu_primitive_tokens = shlex.split(payload["commands"]["primitive_layer_accuracy_cpu_reference"])
     assert cpu_primitive_tokens[:3] == ["python3", "scripts/qwen35_kv_int8_accuracy.py", "--device"]
     assert cpu_primitive_tokens[cpu_primitive_tokens.index("--device") + 1] == "cpu"
@@ -9036,6 +9072,74 @@ def test_int8_cN_diagnostic_template_records_blocked_c2_gate(tmp_path: Path) -> 
     assert hip_primitive_tokens[hip_primitive_tokens.index("--contexts") + 1] == "512,513"
     assert any("compact c>N native prefill" in reason for reason in payload["blockers"])
     validate_cn_diagnostic_artifact_payload(payload)
+
+
+def test_retained_bench_int8_primitive_reference_requires_self_describing_hip_gate(tmp_path: Path) -> None:
+    artifact_path = tmp_path / "benchmarks" / "results" / "int8-primitive-hip-c2.json"
+    artifact_path.parent.mkdir(parents=True)
+    payload = {
+        "schema": 1,
+        "status": "accepted",
+        "passed": True,
+        "mode": "qwen35_kv_int8_layer_accuracy",
+        "device": "hip",
+        "artifact_path": str(artifact_path),
+        "source_artifact_path": str(artifact_path),
+        "command": (
+            "python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 512,513 --block-size 256 "
+            "--num-q-heads 16 --num-kv-heads 2 --head-dim 256 --scale-dtype fp16 --seed 1234 "
+            f"--json {artifact_path} --require-int8-hip"
+        ),
+        "kv_policy": {
+            "storage_dtype": "int8_per_token_head",
+            "scale_metadata_format": {"scale_dtype": "fp16"},
+        },
+        "shape": {
+            "contexts": [512, 513],
+            "block_size": 256,
+            "num_q_heads": 16,
+            "num_kv_heads": 2,
+            "head_dim": 256,
+            "scale_dtype": "fp16",
+        },
+        "cases": [{"paths": {"int8_per_token_head": {"passed": True}}}],
+        "blocked_reasons": [],
+        "correctness_failures": [],
+    }
+    artifact_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    reference = retained_bench._int8_kv_primitive_layer_accuracy_reference(
+        artifact_path,
+        device="hip",
+        prompt_length=512,
+        scale_dtype="fp16",
+    )
+
+    assert reference["passed"] is True
+
+    stale_payload = json.loads(json.dumps(payload))
+    stale_payload["source_artifact_path"] = str(artifact_path.parent / "other.json")
+    artifact_path.write_text(json.dumps(stale_payload), encoding="utf-8")
+    stale_reference = retained_bench._int8_kv_primitive_layer_accuracy_reference(
+        artifact_path,
+        device="hip",
+        prompt_length=512,
+        scale_dtype="fp16",
+    )
+    assert stale_reference["passed"] is False
+    assert "source_artifact_path does not match" in stale_reference["reason"]
+
+    missing_require = json.loads(json.dumps(payload))
+    missing_require["command"] = missing_require["command"].replace(" --require-int8-hip", "")
+    artifact_path.write_text(json.dumps(missing_require), encoding="utf-8")
+    missing_require_reference = retained_bench._int8_kv_primitive_layer_accuracy_reference(
+        artifact_path,
+        device="hip",
+        prompt_length=512,
+        scale_dtype="fp16",
+    )
+    assert missing_require_reference["passed"] is False
+    assert "missing --require-int8-hip" in missing_require_reference["reason"]
 
 
 def test_submit_poll_text_generator_preserves_prompt_order_and_row_seeds() -> None:
@@ -12621,6 +12725,54 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     monkeypatch.chdir(artifact_root)
 
     validate_cn_diagnostic_artifact_payload(accepted)
+
+    def _accepted_with_int8_kv_policy() -> dict[str, object]:
+        payload = json.loads(json.dumps(accepted))
+        int8_policy = {
+            "policy_class": "FixedPagedKVPolicy",
+            "storage_dtype": "int8_per_token_head",
+            "resolved_storage_dtype": "int8_per_token_head",
+            "requested_scale_dtype": "fp16",
+            "scale_metadata_format": {"present": True, "scale_dtype": "fp16", "granularity": "per_token_head"},
+        }
+        payload["workload"]["kv_storage_dtype"] = "int8_per_token_head"
+        payload["workload"]["kv_policy"] = int8_policy
+        payload["memory"]["kv_storage_dtype"] = "int8_per_token_head"
+        payload["memory"]["kv_policy"] = int8_policy
+        return payload
+
+    missing_int8_primitive = _accepted_with_int8_kv_policy()
+    with pytest.raises(ValueError, match="int8_kv_primitive_layer_accuracy must be an object"):
+        validate_cn_diagnostic_artifact_payload(missing_int8_primitive)
+
+    accepted_int8 = _accepted_with_int8_kv_policy()
+    accepted_int8["correctness"]["int8_kv_primitive_layer_accuracy"] = {
+        "cpu_reference": _int8_kv_primitive_accuracy_summary(
+            device="cpu",
+            artifact_path="benchmarks/results/int8-primitive-cpu-c2.json",
+        ),
+        "hip_gate": _int8_kv_primitive_accuracy_summary(
+            device="hip",
+            artifact_path="benchmarks/results/int8-primitive-hip-c2.json",
+        ),
+    }
+    validate_cn_diagnostic_artifact_payload(accepted_int8)
+
+    stale_int8_hip_source = json.loads(json.dumps(accepted_int8))
+    stale_int8_hip_source["correctness"]["int8_kv_primitive_layer_accuracy"]["hip_gate"]["source_artifact_path"] = (
+        "benchmarks/results/int8-primitive-other.json"
+    )
+    with pytest.raises(ValueError, match="hip_gate.source_artifact_path must match artifact_path"):
+        validate_cn_diagnostic_artifact_payload(stale_int8_hip_source)
+
+    missing_int8_hip_requirement = json.loads(json.dumps(accepted_int8))
+    missing_int8_hip_requirement["correctness"]["int8_kv_primitive_layer_accuracy"]["hip_gate"]["command"] = (
+        "python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 512,513 --block-size 256 "
+        "--num-q-heads 16 --num-kv-heads 2 --head-dim 256 --scale-dtype fp16 --seed 1234 "
+        "--json benchmarks/results/int8-primitive-hip-c2.json"
+    )
+    with pytest.raises(ValueError, match="hip_gate.command must include --require-int8-hip"):
+        validate_cn_diagnostic_artifact_payload(missing_int8_hip_requirement)
 
     def _accepted_with_sampler_equality_artifact(artifact_path: str) -> dict[str, object]:
         payload = json.loads(json.dumps(accepted))

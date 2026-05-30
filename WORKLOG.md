@@ -48976,3 +48976,23 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: targeted retained-bench/schema split-K metadata tests PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, no benchmark rollup files changed, and C2.7 remains open until row-aware split-K native decode plus long-context generated-token equality exist.
+
+## 2026-05-30 — CONCURRENCY retained INT8 primitive evidence gates
+
+Advanced C3.1 INT8 KV c>N parity gating. `scripts/qwen35_batch_retained_bench.py` now accepts `--int8-kv-primitive-cpu-json` and `--int8-kv-primitive-hip-json`; when retained KV storage resolves to `int8_per_token_head`, accepted promotion is blocked unless both artifacts load as accepted `scripts/qwen35_kv_int8_accuracy.py` layer-accuracy runs, self-describe their JSON paths, match prompt/context-boundary coverage `prompt,prompt+1`, match the retained scale dtype, have empty blockers/failures, and the HIP artifact command includes `--require-int8-hip`. `scripts/qwen35_kv_int8_accuracy.py` now writes `artifact_path`/`source_artifact_path` when `--json` is used, the blocked INT8 diagnostic future retained command passes the new primitive flags, accepted artifact schema requires the same CPU+HIP evidence for any `int8_per_token_head` retained row, and `docs/CONCURRENCY.md` records the new gate. C3.1 remains open until generated-token equality actually executes and is accepted/rejected_correctness.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_artifact_schema.py scripts/qwen35_batch_retained_bench.py scripts/qwen35_batch_int8_diagnostic.py scripts/qwen35_kv_int8_accuracy.py tests/test_generation_batch_scheduler.py tests/test_qwen35_kv_int8_accuracy.py && pytest -q tests/test_generation_batch_scheduler.py::test_int8_cN_diagnostic_template_records_blocked_c2_gate tests/test_generation_batch_scheduler.py::test_retained_bench_int8_primitive_reference_requires_self_describing_hip_gate tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates tests/test_qwen35_kv_int8_accuracy.py::test_qwen35_kv_int8_accuracy_json_self_describes_artifact_path -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: targeted INT8 primitive retained-gate tests PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, no benchmark rollup files changed, and C3.1 remains open until end-to-end INT8 generated-token equality runs.

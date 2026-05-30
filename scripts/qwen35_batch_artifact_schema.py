@@ -2225,6 +2225,107 @@ def _validate_optional_projection_dispatch_candidates(payload: Mapping[str, Any]
         errors.append(str(exc))
 
 
+def _validate_int8_kv_primitive_layer_accuracy_gates(
+    payload: Mapping[str, Any],
+    correctness: Mapping[str, Any],
+    errors: list[str],
+) -> None:
+    workload = payload.get("workload")
+    workload = workload if isinstance(workload, Mapping) else {}
+    if workload.get("kv_storage_dtype") != "int8_per_token_head":
+        return
+    evidence = correctness.get("int8_kv_primitive_layer_accuracy")
+    if not isinstance(evidence, Mapping):
+        errors.append("correctness.int8_kv_primitive_layer_accuracy must be an object for accepted int8_per_token_head artifacts")
+        return
+    expected_prompt = workload.get("prompt_tokens_per_request")
+    if not isinstance(expected_prompt, int) or isinstance(expected_prompt, bool) or expected_prompt <= 0:
+        expected_prompt = None
+    expected_scale_dtype = None
+    kv_policy = workload.get("kv_policy")
+    if isinstance(kv_policy, Mapping):
+        scale_format = kv_policy.get("scale_metadata_format")
+        if isinstance(scale_format, Mapping) and isinstance(scale_format.get("scale_dtype"), str):
+            expected_scale_dtype = scale_format.get("scale_dtype")
+        elif isinstance(kv_policy.get("requested_scale_dtype"), str):
+            expected_scale_dtype = kv_policy.get("requested_scale_dtype")
+    if expected_scale_dtype is None and isinstance(workload.get("kv_scale_dtype"), str):
+        expected_scale_dtype = workload.get("kv_scale_dtype")
+    expected_scale_dtype = expected_scale_dtype or "fp16"
+    for label, expected_device in (("cpu_reference", "cpu"), ("hip_gate", "hip")):
+        entry = evidence.get(label)
+        field = f"correctness.int8_kv_primitive_layer_accuracy.{label}"
+        if not isinstance(entry, Mapping):
+            errors.append(f"{field} must be an object for accepted int8_per_token_head artifacts")
+            continue
+        if entry.get("status") != "loaded":
+            errors.append(f"{field}.status must be loaded for accepted int8_per_token_head artifacts")
+        if entry.get("artifact_status") != "accepted":
+            errors.append(f"{field}.artifact_status must be accepted for accepted int8_per_token_head artifacts")
+        if entry.get("passed") is not True:
+            errors.append(f"{field}.passed must be true for accepted int8_per_token_head artifacts")
+        if entry.get("schema") != 1 or isinstance(entry.get("schema"), bool):
+            errors.append(f"{field}.schema must be 1 for accepted int8_per_token_head artifacts")
+        if entry.get("mode") != "qwen35_kv_int8_layer_accuracy":
+            errors.append(f"{field}.mode must be qwen35_kv_int8_layer_accuracy for accepted int8_per_token_head artifacts")
+        if entry.get("device") != expected_device:
+            errors.append(f"{field}.device must be {expected_device} for accepted int8_per_token_head artifacts")
+        artifact_path = entry.get("artifact_path")
+        if not isinstance(artifact_path, str) or not artifact_path:
+            errors.append(f"{field}.artifact_path must be a non-empty string for accepted int8_per_token_head artifacts")
+        else:
+            _validate_benchmark_results_artifact_path(f"{field}.artifact_path", artifact_path, errors)
+        source_artifact_path = entry.get("source_artifact_path")
+        if not isinstance(source_artifact_path, str) or not source_artifact_path:
+            errors.append(f"{field}.source_artifact_path must be a non-empty string for accepted int8_per_token_head artifacts")
+        elif isinstance(artifact_path, str) and artifact_path and source_artifact_path != artifact_path:
+            errors.append(f"{field}.source_artifact_path must match artifact_path for accepted int8_per_token_head artifacts")
+        shape = entry.get("shape")
+        if not isinstance(shape, Mapping):
+            errors.append(f"{field}.shape must be an object for accepted int8_per_token_head artifacts")
+        else:
+            if expected_prompt is not None and shape.get("contexts") != [expected_prompt, expected_prompt + 1]:
+                errors.append(f"{field}.shape.contexts must match prompt and prompt+1 for accepted int8_per_token_head artifacts")
+            for shape_field, expected_value in (("block_size", 256), ("num_q_heads", 16), ("num_kv_heads", 2), ("head_dim", 256)):
+                if shape.get(shape_field) != expected_value or isinstance(shape.get(shape_field), bool):
+                    errors.append(f"{field}.shape.{shape_field} must be {expected_value} for accepted int8_per_token_head artifacts")
+            if shape.get("scale_dtype") != expected_scale_dtype:
+                errors.append(f"{field}.shape.scale_dtype must match workload KV scale dtype for accepted int8_per_token_head artifacts")
+        entry_kv_policy = entry.get("kv_policy")
+        if not isinstance(entry_kv_policy, Mapping):
+            errors.append(f"{field}.kv_policy must be an object for accepted int8_per_token_head artifacts")
+        elif entry_kv_policy.get("storage_dtype") != "int8_per_token_head":
+            errors.append(f"{field}.kv_policy.storage_dtype must be int8_per_token_head for accepted int8_per_token_head artifacts")
+        blocked_reasons = entry.get("blocked_reasons")
+        if not isinstance(blocked_reasons, list):
+            errors.append(f"{field}.blocked_reasons must be a list for accepted int8_per_token_head artifacts")
+        elif blocked_reasons:
+            errors.append(f"{field}.blocked_reasons must be empty for accepted int8_per_token_head artifacts")
+        correctness_failures = entry.get("correctness_failures")
+        if not isinstance(correctness_failures, list):
+            errors.append(f"{field}.correctness_failures must be a list for accepted int8_per_token_head artifacts")
+        elif correctness_failures:
+            errors.append(f"{field}.correctness_failures must be empty for accepted int8_per_token_head artifacts")
+        command = entry.get("command")
+        if not isinstance(command, str) or "scripts/qwen35_kv_int8_accuracy.py" not in command:
+            errors.append(f"{field}.command must invoke scripts/qwen35_kv_int8_accuracy.py for accepted int8_per_token_head artifacts")
+        else:
+            if f"--device {expected_device}" not in command:
+                errors.append(f"{field}.command must include --device {expected_device} for accepted int8_per_token_head artifacts")
+            if expected_prompt is not None and f"--contexts {expected_prompt},{expected_prompt + 1}" not in command:
+                errors.append(f"{field}.command must include retained prompt/context boundary coverage for accepted int8_per_token_head artifacts")
+            if expected_device == "hip" and "--require-int8-hip" not in command:
+                errors.append(f"{field}.command must include --require-int8-hip for accepted int8_per_token_head artifacts")
+            if isinstance(artifact_path, str) and artifact_path:
+                _validate_command_json_matches_artifact_path(
+                    command,
+                    field=field,
+                    artifact_field=f"{field}.artifact_path",
+                    artifact_path=artifact_path,
+                    errors=errors,
+                )
+
+
 def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness: Mapping[str, Any], errors: list[str]) -> None:
     if correctness.get("passed") is not True:
         errors.append("correctness.passed must be true for accepted artifacts")
@@ -2370,6 +2471,7 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
         errors.append("correctness.primitive_batch_correctness.attn_batch_vs_numpy_max_abs must be finite numeric for accepted artifacts")
     elif float(attn_vs_numpy) < 0.0 or float(attn_vs_numpy) > _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT:
         errors.append("correctness.primitive_batch_correctness.attn_batch_vs_numpy_max_abs must be between 0.0 and 2e-5 for accepted artifacts")
+    _validate_int8_kv_primitive_layer_accuracy_gates(payload, correctness, errors)
 
 
 def _validate_generated_token_sequence_lengths(

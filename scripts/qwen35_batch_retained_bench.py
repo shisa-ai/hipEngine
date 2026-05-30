@@ -595,6 +595,148 @@ def _primitive_correctness_reference(path: Path | None, *, rows: int) -> dict[st
     }
 
 
+def _int8_kv_primitive_layer_accuracy_reference(
+    path: Path | None,
+    *,
+    device: str,
+    prompt_length: int,
+    scale_dtype: str,
+) -> dict[str, Any]:
+    if path is None:
+        return {
+            "artifact_path": None,
+            "status": "missing",
+            "device": device,
+            "passed": False,
+            "reason": f"no INT8 KV primitive {device} artifact path provided",
+        }
+    path = Path(path)
+    if not path.exists():
+        return {
+            "artifact_path": str(path),
+            "status": "missing",
+            "device": device,
+            "passed": False,
+            "reason": "artifact path does not exist",
+        }
+    try:
+        payload = json.loads(path.read_text())
+    except Exception as exc:
+        return {
+            "artifact_path": str(path),
+            "status": "invalid_json",
+            "device": device,
+            "passed": False,
+            "reason": f"{type(exc).__name__}: {exc}",
+        }
+    if not isinstance(payload, Mapping):
+        return {
+            "artifact_path": str(path),
+            "status": "invalid_json",
+            "device": device,
+            "passed": False,
+            "reason": "artifact root is not an object",
+        }
+
+    reasons: list[str] = []
+    if payload.get("schema") != 1 or isinstance(payload.get("schema"), bool):
+        reasons.append("schema is missing or not 1")
+    if payload.get("status") != "accepted":
+        reasons.append("status is not accepted")
+    if payload.get("passed") is not True:
+        reasons.append("payload did not pass")
+    if payload.get("mode") != "qwen35_kv_int8_layer_accuracy":
+        reasons.append("mode is not qwen35_kv_int8_layer_accuracy")
+    if payload.get("device") != device:
+        reasons.append(f"device is not {device}")
+    source_artifact_path = payload.get("artifact_path")
+    if not isinstance(source_artifact_path, str) or not source_artifact_path:
+        source_artifact_path = None
+        reasons.append("artifact_path is missing or not a non-empty string")
+    elif source_artifact_path != str(path):
+        reasons.append("artifact_path does not match INT8 KV primitive artifact path")
+    source_self_path = payload.get("source_artifact_path")
+    if not isinstance(source_self_path, str) or not source_self_path:
+        source_self_path = None
+        reasons.append("source_artifact_path is missing or not a non-empty string")
+    elif source_self_path != str(path):
+        reasons.append("source_artifact_path does not match INT8 KV primitive artifact path")
+
+    shape = payload.get("shape")
+    if not isinstance(shape, Mapping):
+        reasons.append("shape is missing or not an object")
+        shape = {}
+    expected_contexts = [int(prompt_length), int(prompt_length) + 1]
+    if shape.get("contexts") != expected_contexts:
+        reasons.append(f"shape.contexts does not match {expected_contexts}")
+    for field, expected_value in (("block_size", 256), ("num_q_heads", 16), ("num_kv_heads", 2), ("head_dim", 256)):
+        if shape.get(field) != expected_value or isinstance(shape.get(field), bool):
+            reasons.append(f"shape.{field} is missing or not {expected_value}")
+    if shape.get("scale_dtype") != str(scale_dtype):
+        reasons.append(f"shape.scale_dtype is not {scale_dtype}")
+
+    kv_policy = payload.get("kv_policy")
+    if not isinstance(kv_policy, Mapping):
+        reasons.append("kv_policy is missing or not an object")
+    else:
+        if kv_policy.get("storage_dtype") != "int8_per_token_head":
+            reasons.append("kv_policy.storage_dtype is not int8_per_token_head")
+        scale_format = kv_policy.get("scale_metadata_format")
+        if not isinstance(scale_format, Mapping) or scale_format.get("scale_dtype") != str(scale_dtype):
+            reasons.append(f"kv_policy.scale_metadata_format.scale_dtype is not {scale_dtype}")
+
+    for field in ("blocked_reasons", "correctness_failures"):
+        value = payload.get(field)
+        if not isinstance(value, list):
+            reasons.append(f"{field} is missing or not a list")
+        elif value:
+            reasons.append(f"{field} is not empty")
+    command = payload.get("command")
+    if not isinstance(command, str) or "scripts/qwen35_kv_int8_accuracy.py" not in command:
+        reasons.append("command is missing scripts/qwen35_kv_int8_accuracy.py")
+    elif f"--device {device}" not in command or f"--contexts {prompt_length},{prompt_length + 1}" not in command:
+        reasons.append("command does not match retained INT8 KV primitive device/contexts")
+    if device == "hip" and isinstance(command, str) and "--require-int8-hip" not in command:
+        reasons.append("HIP INT8 KV primitive command is missing --require-int8-hip")
+
+    cases = payload.get("cases")
+    if not isinstance(cases, list) or not cases:
+        reasons.append("cases is missing or empty")
+    else:
+        for case_index, case in enumerate(cases):
+            if not isinstance(case, Mapping):
+                reasons.append(f"cases[{case_index}] is not an object")
+                continue
+            paths = case.get("paths")
+            int8_path = paths.get("int8_per_token_head") if isinstance(paths, Mapping) else None
+            if not isinstance(int8_path, Mapping) or int8_path.get("passed") is not True:
+                reasons.append(f"cases[{case_index}].paths.int8_per_token_head did not pass")
+
+    return {
+        "artifact_path": str(path),
+        "source_artifact_path": source_self_path,
+        "status": "loaded",
+        "artifact_status": payload.get("status"),
+        "schema": payload.get("schema"),
+        "mode": payload.get("mode"),
+        "device": payload.get("device"),
+        "command": payload.get("command"),
+        "passed": not reasons,
+        "shape": payload.get("shape"),
+        "kv_policy": payload.get("kv_policy"),
+        "blocked_reasons": payload.get("blocked_reasons"),
+        "correctness_failures": payload.get("correctness_failures"),
+        "reason": None if not reasons else "; ".join(reasons),
+    }
+
+
+def _int8_kv_primitive_layer_accuracy_blockers(reference: Mapping[str, Any], *, label: str) -> list[str]:
+    if reference.get("passed") is True:
+        return []
+    reason = reference.get("reason")
+    return [f"INT8 KV primitive {label} gate did not pass: {reason}"]
+
+
 def _is_finite_nonnegative_number(value: Any) -> bool:
     return (
         not isinstance(value, bool)
@@ -2564,6 +2706,31 @@ def _build_payload(
         primitive_correctness_path,
         rows=args.batch_size,
     )
+    int8_kv_primitive_layer_accuracy: dict[str, Any] | None = None
+    int8_kv_primitive_blockers: list[str] = []
+    if kv_policy.storage_dtype.value == "int8_per_token_head":
+        cpu_reference = _int8_kv_primitive_layer_accuracy_reference(
+            getattr(args, "int8_kv_primitive_cpu_json", None),
+            device="cpu",
+            prompt_length=args.prompt_length,
+            scale_dtype=str(args.kv_scale_dtype),
+        )
+        hip_gate = _int8_kv_primitive_layer_accuracy_reference(
+            getattr(args, "int8_kv_primitive_hip_json", None),
+            device="hip",
+            prompt_length=args.prompt_length,
+            scale_dtype=str(args.kv_scale_dtype),
+        )
+        int8_kv_primitive_layer_accuracy = {
+            "cpu_reference": cpu_reference,
+            "hip_gate": hip_gate,
+        }
+        int8_kv_primitive_blockers.extend(
+            _int8_kv_primitive_layer_accuracy_blockers(cpu_reference, label="cpu_reference")
+        )
+        int8_kv_primitive_blockers.extend(
+            _int8_kv_primitive_layer_accuracy_blockers(hip_gate, label="hip_gate")
+        )
     primitive_seed = primitive_correctness.get("seed")
     correctness_reference_seed = primitive_seed if isinstance(primitive_seed, int) and not isinstance(primitive_seed, bool) else 1234
     correctness_reference_command = _primitive_correctness_command(
@@ -2644,6 +2811,7 @@ def _build_payload(
     protocol_shape = args.max_layers == 40 and args.prompt_length >= 512 and args.decode_tokens >= 128
     scaling_complete = bool(scaling["complete"])
     primitive_passed = bool(primitive_correctness["passed"])
+    int8_kv_primitive_passed = not int8_kv_primitive_blockers
     accepted = bool(
         bench["finite_logits"]
         and throughput_claim_eligible
@@ -2658,6 +2826,7 @@ def _build_payload(
         and not sampler_blockers
         and not memory_blockers
         and not graph_bucket_blockers
+        and not int8_kv_primitive_blockers
     )
     primitive_loaded = primitive_correctness.get("status") == "loaded"
     correctness_rejected = bool(bench["finite_logits"] and (not equality_passed or (primitive_loaded and not primitive_passed)))
@@ -2685,6 +2854,7 @@ def _build_payload(
     blocked_reasons.extend(sampler_blockers)
     blocked_reasons.extend(memory_blockers)
     blocked_reasons.extend(graph_bucket_blockers)
+    blocked_reasons.extend(int8_kv_primitive_blockers)
     per_request_observability = dict(bench.get("request_observability", {}))
     admission_timestamps = {
         request_id: row.get("admitted_timestamp")
@@ -2752,7 +2922,7 @@ def _build_payload(
             "profiler": profiled_command,
         },
         "correctness": {
-            "passed": bool(bench["finite_logits"] and equality_passed and primitive_passed),
+            "passed": bool(bench["finite_logits"] and equality_passed and primitive_passed and int8_kv_primitive_passed),
             "oracle": "generated-token ids equal independent c=1 resident runs through the same native packed prefill/decode path plus scripts/qwen35_batch_correctness.py primitive GPU correctness for the same c>N row count",
             "finite_logits": bool(bench["finite_logits"]),
             "generated_token_equality": equality,
@@ -2800,6 +2970,8 @@ def _build_payload(
             "Batch split-K decode remains out of scope; this accepted protocol keeps context < 1024.",
         ],
     }
+    if int8_kv_primitive_layer_accuracy is not None:
+        payload["correctness"]["int8_kv_primitive_layer_accuracy"] = int8_kv_primitive_layer_accuracy
     if isinstance(projection_dispatch_candidates, list):
         payload["projection_dispatch_candidates"] = projection_dispatch_candidates
     validate_cn_diagnostic_artifact_payload(payload)
@@ -2822,6 +2994,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(_RETAINED_GATE_FLAGS[1], type=Path, help="scheduler serial-bridge artifact for retained scaling ratios")
     parser.add_argument(_RETAINED_GATE_FLAGS[2], type=Path, help="scripts/qwen35_batch_correctness.py JSON for this c>N row count")
     parser.add_argument(_RETAINED_GATE_FLAGS[3], type=Path, help="Captured rocprofv3 summary JSON to attach to retained evidence")
+    parser.add_argument(
+        "--int8-kv-primitive-cpu-json",
+        type=Path,
+        help="scripts/qwen35_kv_int8_accuracy.py --device cpu JSON required before retained int8_per_token_head c>N promotion",
+    )
+    parser.add_argument(
+        "--int8-kv-primitive-hip-json",
+        type=Path,
+        help="scripts/qwen35_kv_int8_accuracy.py --device hip --require-int8-hip JSON required before retained int8_per_token_head c>N promotion",
+    )
     parser.add_argument(
         "--projection-dispatch-artifact",
         type=Path,
