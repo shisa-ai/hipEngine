@@ -1213,6 +1213,8 @@ def _validate_accepted_decode_layer_executions(
                 and max_context < prompt_tokens_per_request
             ):
                 errors.append(f"{label}.max_context must cover workload.prompt_tokens_per_request for accepted artifacts")
+            elif max_context >= 1024:
+                errors.append(f"{label}.max_context must be < 1024 until row-aware split-K native decode lands for accepted artifacts")
             if "num_splits_per_row" in layer:
                 errors.append(f"{label}.num_splits_per_row must be absent for native retained decode for accepted artifacts")
             if "full_attention_input_decode_path" in layer:

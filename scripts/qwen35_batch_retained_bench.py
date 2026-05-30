@@ -1114,6 +1114,8 @@ def _decode_layer_execution_blockers(
                 blockers.append(f"{label}.max_context must be an int")
             elif expected_prompt_length is not None and max_context < int(expected_prompt_length):
                 blockers.append(f"{label}.max_context must cover workload.prompt_tokens_per_request")
+            elif max_context >= 1024:
+                blockers.append(f"{label}.max_context must be < 1024 until row-aware split-K native decode lands")
             if "num_splits_per_row" in layer:
                 blockers.append(f"{label}.num_splits_per_row must be absent for native retained decode")
             if "full_attention_input_decode_path" in layer:

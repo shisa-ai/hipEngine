@@ -48956,3 +48956,23 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: targeted INT8 diagnostic/primitive tests PASS, CPU-reference 512/513 primitive artifact PASS (`status=accepted`, no blocked reasons/correctness failures, top-1 gates green), verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, no benchmark rollup files changed, and C3.1 remains open until c>N INT8 generated-token equality executes and is accepted/rejected_correctness.
+
+## 2026-05-30 — CONCURRENCY per-layer split-K retained gate
+
+Advanced C2.7 long-context split-K promotion safety. `scripts/qwen35_batch_retained_bench.py` and `scripts/qwen35_batch_artifact_schema.py` now reject accepted/retained c>N metadata when any full-attention layer trace reports `max_context >= 1024`, even if aggregate `decode_execution.max_full_attention_context` is tampered lower and the top-level path still says `native_batch`. This keeps per-row split-K fallback evidence from being hidden inside per-layer traces before a row-aware native split-K reducer lands. `tests/test_generation_batch_scheduler.py` covers the retained-bench blocker and accepted-artifact schema blocker, and `docs/CONCURRENCY.md` records that both aggregate and per-layer full-attention contexts must remain below 1024 while C2.7 is open.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_artifact_schema.py scripts/qwen35_batch_retained_bench.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_paths tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: targeted retained-bench/schema split-K metadata tests PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, no benchmark rollup files changed, and C2.7 remains open until row-aware split-K native decode plus long-context generated-token equality exist.

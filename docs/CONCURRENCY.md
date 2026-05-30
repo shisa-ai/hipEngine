@@ -1283,10 +1283,11 @@ roll-up/status view.
       independent c=1. Batch execution metadata now records
       `decode_execution.full_attention_decode_path=per_row_splitk_fallback` and
       forces `native_caware_decode=false` when that fallback is used; the retained
-      bench payload mirrors that execution flag, and accepted artifact schema now
-      requires `decode_execution.full_attention_decode_path=native_batch` plus
-      `decode_execution.native_caware_decode=true`, so artifacts cannot overclaim
-      long-context native decode. The item remains open until the split-K reducer
+      bench payload mirrors that execution flag, and retained-bench plus accepted
+      artifact schema now require `decode_execution.full_attention_decode_path=native_batch`,
+      `decode_execution.native_caware_decode=true`, and both aggregate and per-layer
+      full-attention contexts below 1024, so artifacts cannot overclaim
+      long-context native decode by hiding split-K in per-layer traces. The item remains open until the split-K reducer
       itself is row-aware/native c>N.
 - [x] **C2.8 append-only block-id contract.** Prevent block ids from changing
       backing pointer during a live request; add a debug/memory-audit test.
