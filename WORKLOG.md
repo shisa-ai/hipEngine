@@ -27217,3 +27217,15 @@ Result: `status=loaded`. The run loaded all 754 resident weight tensors (`102,49
 - `after_free`: `hip_free=119.8573 GiB`, hipEngine current allocations `0`.
 
 P12 memory evidence now includes before load, after weight load, and after KV allocation/free. Generation snapshots and tiny text decode remain open.
+
+## 2026-05-30 — StepFun resident rows>1 linear probe
+
+Hardened the resident StepFun linear probe so `tests/test_stepfun_resident_session.py` now feeds two BF16-rounded activation rows through real layer-0 `Q3_K` `attn_q` and `Q5_K` `attn_output` weights. This exercises the rows>1 prefill dispatch path rather than only the c=1 GEMV decode shape, while still comparing HIP F32 outputs against CPU dequantized references and checking allocation cleanup/no `torch` import.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_resident_session.py
+```
+
+Result: `4 passed`.

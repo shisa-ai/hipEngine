@@ -111,26 +111,26 @@ def test_stepfun_resident_session_projects_real_q3_and_q5_layer_weights() -> Non
     )
     try:
         x_q3 = (
-            (np.arange(q3_in_features, dtype=np.float32).reshape(1, q3_in_features) % 31)
+            (np.arange(2 * q3_in_features, dtype=np.float32).reshape(2, q3_in_features) % 31)
             - 15
         ) / 128.0
         x_q3_bits = float_array_to_bf16_bits(x_q3)
         raw_q3 = GGUFReader(q3_tensor.source_path).tensor_data(q3_tensor.name)
         expected_q3 = gguf_q3_k_gemv(bf16_to_float32(x_q3_bits), raw_q3)
         actual_q3 = session.linear_slot_bf16("layers.0.attn_q", x_q3_bits, runtime=runtime)
-        assert actual_q3.shape == expected_q3.shape == (1, q3_out_features)
+        assert actual_q3.shape == expected_q3.shape == (2, q3_out_features)
         assert actual_q3.dtype == np.float32
         np.testing.assert_allclose(actual_q3, expected_q3, rtol=2.0e-3, atol=2.0e-3)
 
         x_q5 = (
-            (np.arange(q5_in_features, dtype=np.float32).reshape(1, q5_in_features) % 37)
+            (np.arange(2 * q5_in_features, dtype=np.float32).reshape(2, q5_in_features) % 37)
             - 18
         ) / 96.0
         x_q5_bits = float_array_to_bf16_bits(x_q5)
         raw_q5 = GGUFReader(q5_tensor.source_path).tensor_data(q5_tensor.name)
         expected_q5 = gguf_q5_k_gemv(bf16_to_float32(x_q5_bits), raw_q5)
         actual_q5 = session.linear_slot_bf16("layers.0.attn_output", x_q5_bits, runtime=runtime)
-        assert actual_q5.shape == expected_q5.shape == (1, q5_out_features)
+        assert actual_q5.shape == expected_q5.shape == (2, q5_out_features)
         assert actual_q5.dtype == np.float32
         np.testing.assert_allclose(actual_q5, expected_q5, rtol=2.0e-3, atol=2.0e-3)
 

@@ -497,8 +497,9 @@ reporting.
   launch real Q8_0 token embedding from resident `token_embd.weight` into BF16
   for BOS/EOS/chat-stop/final-vocab rows with exact CPU BF16 parity, and
   resident layer-0 `Q3_K` `attn_q` plus `Q5_K` `attn_output` projections match
-  CPU dequantized references with BF16-rounded activations and allocation
-  cleanup checks. Remaining implementation task is composing those primitives
+  CPU dequantized references with two BF16-rounded activation rows (exercising
+  rows>1 prefill dispatch) and allocation cleanup checks. Remaining
+  implementation task is composing those primitives
   into the layer/full-model execution loop beyond embedding, the prompt
   planner, and CPU replay harness.
 - [x] Use short contexts first (for example <= 512) before exercising long
@@ -520,9 +521,10 @@ passes for short-context limits, mixed-quant dispatch-key validation,
 assistant-prefix rendering, multi-EOS stopping, and torch-free imports.
 `python3 -m pytest -q tests/test_stepfun_resident_session.py` passes for real
 resident Q8_0 token embedding of `[0, BOS, EOS, 128007, vocab-1, EOS]` plus
-real layer-0 `Q3_K` `attn_q` and `Q5_K` `attn_output` GEMV projection vs CPU
-references using BF16-rounded inputs. It also checks resident memory cleanup
-(two active weight allocations before session free, zero after) and no torch
+real layer-0 `Q3_K` `attn_q` and `Q5_K` `attn_output` projection vs CPU
+references using two BF16-rounded activation rows. It also checks rows>1
+prefill dispatch, resident memory cleanup (two active weight allocations before
+session free, zero after), and no torch
 import. Full next-token/logit parity remains open until the streaming
 layer loop is wired.
 
