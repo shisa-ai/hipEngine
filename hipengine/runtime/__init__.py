@@ -24,6 +24,7 @@ from hipengine.runtime.qwen35_paro import (
 from hipengine.runtime.stepfun_gguf_runner import (
     StepFunDecodePlan,
     StepFunKVCacheAllocation,
+    StepFunPromptEmbedding,
     StepFunResidentSession,
     StepFunShortContextDecodePlanner,
 )
@@ -60,6 +61,7 @@ __all__ = [
     "RuntimeWorkspace",
     "StepFunDecodePlan",
     "StepFunKVCacheAllocation",
+    "StepFunPromptEmbedding",
     "StepFunResidentSession",
     "StepFunShortContextDecodePlanner",
     "launch_gguf_linear",

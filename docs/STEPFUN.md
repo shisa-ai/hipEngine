@@ -494,8 +494,9 @@ reporting.
   materialization now plans all 754 tensors / 95.46 GiB across all three shards,
   verifies Q3_K/Q5_K/Q8_0/F32 layout coverage, tests selected-slot HIP
   loading/freeing across first/last shard tensors, `StepFunResidentSession` can
-  launch real Q8_0 token embedding from resident `token_embd.weight` into BF16
-  for BOS/EOS/chat-stop/final-vocab rows with exact CPU BF16 parity, and
+  render a short Step chat prompt and launch real Q8_0 token embeddings from
+  resident `token_embd.weight` into BF16 for the resulting prompt IDs, has exact
+  CPU BF16 parity for BOS/EOS/chat-stop/final-vocab rows, and
   resident layer-0 `Q3_K` `attn_q` plus `Q5_K` `attn_output` projections match
   CPU dequantized references with two BF16-rounded activation rows (exercising
   rows>1 prefill dispatch), the resident attention-input bundle launches
@@ -524,8 +525,9 @@ reporting.
 passes for short-context limits, mixed-quant dispatch-key validation,
 assistant-prefix rendering, multi-EOS stopping, and torch-free imports.
 `python3 -m pytest -q tests/test_stepfun_resident_session.py` passes for real
-resident Q8_0 token embedding of `[0, BOS, EOS, 128007, vocab-1, EOS]` plus
-real layer-0 `Q3_K` `attn_q` and `Q5_K` `attn_output` projection vs CPU
+resident Q8_0 token embedding of a rendered Step chat prompt and `[0, BOS, EOS,
+128007, vocab-1, EOS]` plus real layer-0 `Q3_K` `attn_q` and `Q5_K`
+`attn_output` projection vs CPU
 references using two BF16-rounded activation rows. It also checks rows>1
 prefill dispatch, the resident attention-input Q/K/V/gate projection bundle,
 the dense-MLP gate/up projection bundle, the dense MLP correctness probe

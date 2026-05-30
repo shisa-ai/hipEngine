@@ -27285,3 +27285,17 @@ python3 -m pytest -q tests/test_stepfun_resident_session.py
 ```
 
 Result: `9 passed`.
+
+## 2026-05-30 — StepFun resident chat prompt embedding
+
+Added `StepFunPromptEmbedding` and `StepFunResidentSession.embed_chat_prompt_bf16()`. The helper renders Step chat messages with the GGUF tokenizer/chat template, tokenizes the rendered prompt, and launches resident Q8_0 token embeddings for the resulting IDs. This binds the prompt-side planner/tokenizer path to resident execution while still stopping before layer decode or logits.
+
+Extended `tests/test_stepfun_resident_session.py` with a real rendered-chat prompt embedding test. The test renders `[{"role": "user", "content": "hello"}]` with `reasoning_effort="low"`, verifies the assistant `<think>` prefix, compares every resident HIP BF16 embedding row against CPU-dequantized Q8_0 GGUF rows for the produced token IDs, checks resident memory stats, and verifies no `torch` import.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_resident_session.py
+```
+
+Result: `10 passed`.

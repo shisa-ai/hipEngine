@@ -91,6 +91,44 @@ def test_stepfun_resident_session_embeds_real_q8_tokens() -> None:
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_stepfun_resident_session_embeds_rendered_chat_prompt() -> None:
+    had_torch = "torch" in sys.modules
+    paths = _stepfun_gguf_paths()
+    info = scan_gguf_splits(paths)
+    model_map = build_stepfun_gguf_tensor_map(info)
+    token_tensor = model_map.root("token_embedding")
+    raw = GGUFReader(token_tensor.source_path).tensor_data(token_tensor.name)
+    runtime = get_hip_runtime()
+    reset_memory_stats()
+    session = StepFunResidentSession.from_gguf_paths(
+        paths,
+        selected_slots=("root.token_embedding",),
+        runtime=runtime,
+    )
+    try:
+        prompt = session.embed_chat_prompt_bf16(
+            [{"role": "user", "content": "hello"}],
+            reasoning_effort="low",
+            runtime=runtime,
+        )
+        assert prompt.rendered_prompt.endswith("<|im_start|>assistant\n<think>\n")
+        assert prompt.prompt_length == len(prompt.input_ids) > 0
+        assert prompt.embeddings_bf16.shape == (prompt.prompt_length, model_map.config.hidden_size)
+        expected_bits = float_array_to_bf16_bits(
+            gguf_q8_0_embedding(np.asarray(prompt.input_ids, dtype=np.int64), raw)
+        )
+        np.testing.assert_array_equal(prompt.embeddings_bf16, expected_bits)
+        assert memory_stats()["current_allocated_bytes"] == token_tensor.nbytes
+        assert memory_stats()["active_allocations"] == 1
+    finally:
+        session.free(runtime=runtime)
+
+    assert memory_stats()["current_allocated_bytes"] == 0
+    if not had_torch:
+        assert "torch" not in sys.modules
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 def test_stepfun_resident_session_projects_real_q3_and_q5_layer_weights() -> None:
     had_torch = "torch" in sys.modules
     paths = _stepfun_gguf_paths()

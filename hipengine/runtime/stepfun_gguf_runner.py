@@ -53,6 +53,19 @@ class StepFunDecodePlan:
 
 
 @dataclass(frozen=True)
+class StepFunPromptEmbedding:
+    """Rendered/tokenized Step prompt plus resident BF16 embedding rows."""
+
+    rendered_prompt: str
+    input_ids: tuple[int, ...]
+    embeddings_bf16: object
+
+    @property
+    def prompt_length(self) -> int:
+        return len(self.input_ids)
+
+
+@dataclass(frozen=True)
 class StepFunKVCacheAllocation:
     """Owned synthetic BF16 KV-cache buffers for StepFun decode bring-up."""
 
@@ -331,6 +344,30 @@ class StepFunResidentSession:
             free(token_buf, runtime=runtime)
         return out
 
+    def embed_chat_prompt_bf16(
+        self,
+        messages: Sequence[Mapping[str, object]],
+        *,
+        reasoning_effort: str | None = "low",
+        add_generation_prompt: bool = True,
+        runtime: HipRuntime | None = None,
+        stream: int = 0,
+    ) -> StepFunPromptEmbedding:
+        """Render/tokenize a Step chat prompt and launch resident embeddings."""
+
+        rendered = self.tokenizer.render_chat(
+            messages,
+            add_generation_prompt=add_generation_prompt,
+            reasoning_effort=reasoning_effort,
+        )
+        input_ids = tuple(self.tokenizer.encode(rendered, add_bos=False))
+        embeddings = self.embed_token_ids_bf16(input_ids, runtime=runtime, stream=stream)
+        return StepFunPromptEmbedding(
+            rendered_prompt=rendered,
+            input_ids=input_ids,
+            embeddings_bf16=embeddings,
+        )
+
     def linear_slot_bf16(
         self,
         slot_path: str,
@@ -528,6 +565,7 @@ __all__ = [
     "DEFAULT_STEPFUN_SHORT_CONTEXT",
     "StepFunDecodePlan",
     "StepFunKVCacheAllocation",
+    "StepFunPromptEmbedding",
     "StepFunResidentSession",
     "StepFunShortContextDecodePlanner",
 ]
