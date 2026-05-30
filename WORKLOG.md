@@ -48935,3 +48935,24 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: docs re-read OK, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, no benchmark rollup files changed, and the docs accurately describe existing sampler/projection evidence gates.
+
+## 2026-05-30 — CONCURRENCY INT8 c>N primitive gate handoff
+
+Advanced C3.1 INT8 KV c>N parity handoff. `scripts/qwen35_batch_int8_diagnostic.py` now records the lower-level INT8 KV primitive layer-accuracy commands alongside the future generated-token gate: a CPU-reference `scripts/qwen35_kv_int8_accuracy.py --device cpu --contexts 512,513 ...` command and a HIP-required `--device hip --require-int8-hip` command using the same scale dtype. `tests/test_generation_batch_scheduler.py::test_int8_cN_diagnostic_template_records_blocked_c2_gate` asserts both commands are present in the blocked diagnostic template, and `docs/CONCURRENCY.md` records that C3.1 handoff artifacts now name both the generated-token gate and primitive INT8 KV accuracy gate before promotion. The item remains open because blocked-before-execution is not accepted/rejected_correctness equality evidence.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_int8_diagnostic.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_int8_cN_diagnostic_template_records_blocked_c2_gate tests/test_qwen35_kv_int8_accuracy.py::test_qwen35_kv_int8_accuracy_cpu_runs_short_and_page_boundary_cases -q
+python3 scripts/qwen35_kv_int8_accuracy.py --device cpu --contexts 512,513 --block-size 256 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 --scale-dtype fp16 --seed 1234 --json /tmp/hipengine-int8-c2-primitive-cpu.json
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: targeted INT8 diagnostic/primitive tests PASS, CPU-reference 512/513 primitive artifact PASS (`status=accepted`, no blocked reasons/correctness failures, top-1 gates green), verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, no benchmark rollup files changed, and C3.1 remains open until c>N INT8 generated-token equality executes and is accepted/rejected_correctness.

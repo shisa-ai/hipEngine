@@ -1311,7 +1311,11 @@ roll-up/status view.
       template behind `--include-int8`, producing an `int8_native_diagnostic`
       command in `/tmp/hipengine-c-sweep-int8-plan/summary.json`; dry-run summary
       tests now assert `options.include_int8=true`, `command_count=7`, and an
-      `int8_native_diagnostic` category count. The item remains open because
+      `int8_native_diagnostic` category count. The blocked template also records
+      the CPU-reference and HIP-required primitive layer-accuracy commands from
+      `scripts/qwen35_kv_int8_accuracy.py` for prompt/context-boundary
+      `512,513`, so C3.1 handoff artifacts name both the generated-token gate
+      and the lower-level INT8 KV accuracy gate before promotion. The item remains open because
       blocked-before-execution is not an accepted C3.1 terminal status.
 - [x] **C3.2 per-row `KVLiveSpans` everywhere.** Audit full-attention decode,
       KV append, and storage-dtype wrappers for scalar `(block_table,

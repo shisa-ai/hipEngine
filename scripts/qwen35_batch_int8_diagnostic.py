@@ -53,6 +53,34 @@ def _future_gate_command(args: argparse.Namespace) -> str:
     return shlex.join(argv)
 
 
+def _primitive_layer_accuracy_command(args: argparse.Namespace, *, device: str, output: Path) -> str:
+    argv = [
+        "python3",
+        "scripts/qwen35_kv_int8_accuracy.py",
+        "--device",
+        device,
+        "--contexts",
+        f"{args.prompt_length},{args.prompt_length + 1}",
+        "--block-size",
+        "256",
+        "--num-q-heads",
+        "16",
+        "--num-kv-heads",
+        "2",
+        "--head-dim",
+        "256",
+        "--scale-dtype",
+        str(args.kv_scale_dtype),
+        "--seed",
+        "1234",
+        "--json",
+        str(output),
+    ]
+    if device == "hip":
+        argv.append("--require-int8-hip")
+    return shlex.join(argv)
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     if args.rows <= 1:
         raise ValueError("INT8 c>N diagnostic requires --rows > 1")
@@ -91,6 +119,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         },
         "commands": {
             "future_generated_token_gate": _future_gate_command(args),
+            "primitive_layer_accuracy_cpu_reference": _primitive_layer_accuracy_command(
+                args,
+                device="cpu",
+                output=args.primitive_cpu_json,
+            ),
+            "primitive_layer_accuracy_hip_gate": _primitive_layer_accuracy_command(
+                args,
+                device="hip",
+                output=args.primitive_hip_json,
+            ),
             "correctness_reference": "inline independent c=1 resident rows in qwen35_batch_retained_bench.py once INT8 c>N prefill/decode is wired",
         },
         "correctness": {
@@ -140,6 +178,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-layers", type=int, default=40)
     parser.add_argument("--kv-scale-dtype", choices=("fp16", "fp32"), default="fp16")
     parser.add_argument("--future-json", type=Path, default=Path("/tmp/hipengine-int8-c2-retained-future.json"))
+    parser.add_argument("--primitive-cpu-json", type=Path, default=Path("/tmp/hipengine-int8-c2-primitive-cpu.json"))
+    parser.add_argument("--primitive-hip-json", type=Path, default=Path("/tmp/hipengine-int8-c2-primitive-hip.json"))
     parser.add_argument("--json", type=Path)
     return parser
 
