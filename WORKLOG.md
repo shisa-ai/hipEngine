@@ -27271,3 +27271,17 @@ python3 -m pytest -q tests/test_stepfun_resident_session.py
 ```
 
 Result: `8 passed`.
+
+## 2026-05-30 — StepFun resident KV allocation helper
+
+Added `StepFunKVCacheAllocation` and `StepFunResidentSession.allocate_kv_cache()`. The helper allocates owned per-layer BF16 K/V buffers from StepFun GGUF metadata (`kv_head_counts`, `head_dim`, `value_dim`) using hipEngine memory tracking, and frees partial allocations on error. This moves the KV allocation shape from the load-smoke script into the resident runtime object that future decode work will use. It does not execute attention, write KV contents, or generate tokens.
+
+Extended `tests/test_stepfun_resident_session.py` with a small resident KV allocation/free test: materialize only `root.output_norm`, allocate `context_pages=1`, `page_size=16`, verify 90 K/V buffers (45 layers x K/V), expected byte count, active allocation stats, KV free returning to only the resident weight allocation, and session free returning to zero allocations.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_resident_session.py
+```
+
+Result: `9 passed`.

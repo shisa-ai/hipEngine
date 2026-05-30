@@ -331,6 +331,57 @@ def test_stepfun_resident_session_embedding_is_torch_free() -> None:
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_stepfun_resident_session_allocates_and_frees_kv_cache() -> None:
+    paths = _stepfun_gguf_paths()
+    info = scan_gguf_splits(paths)
+    model_map = build_stepfun_gguf_tensor_map(info)
+    weight_nbytes = model_map.root("output_norm").nbytes
+    page_size = 16
+    context_pages = 1
+    expected_kv_nbytes = sum(
+        context_pages
+        * page_size
+        * kv_heads
+        * (model_map.config.head_dim + model_map.config.value_dim)
+        * 2
+        for kv_heads in model_map.config.kv_head_counts
+    )
+    runtime = get_hip_runtime()
+    reset_memory_stats()
+    session = StepFunResidentSession.from_gguf_paths(
+        paths,
+        selected_slots=("root.output_norm",),
+        runtime=runtime,
+    )
+    kv = None
+    try:
+        kv = session.allocate_kv_cache(
+            context_pages=context_pages,
+            page_size=page_size,
+            runtime=runtime,
+        )
+        assert kv.tokens == page_size
+        assert kv.buffer_count == model_map.config.block_count * 2
+        assert kv.nbytes == expected_kv_nbytes
+        assert len(kv.layer_nbytes) == model_map.config.block_count
+        stats = memory_stats()
+        assert stats["current_allocated_bytes"] == weight_nbytes + expected_kv_nbytes
+        assert stats["active_allocations"] == 1 + kv.buffer_count
+        kv.free(runtime=runtime)
+        kv = None
+        stats = memory_stats()
+        assert stats["current_allocated_bytes"] == weight_nbytes
+        assert stats["active_allocations"] == 1
+    finally:
+        if kv is not None:
+            kv.free(runtime=runtime)
+        session.free(runtime=runtime)
+
+    assert memory_stats()["current_allocated_bytes"] == 0
+    assert memory_stats()["active_allocations"] == 0
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 def test_stepfun_resident_session_requires_resident_embedding_weight() -> None:
     runtime = get_hip_runtime()
     session = StepFunResidentSession.from_gguf_paths(

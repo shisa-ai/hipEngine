@@ -502,9 +502,10 @@ reporting.
   layer-0 Q/K/V/gate projections vs CPU references, the dense-MLP input
   bundle launches layer-0 `ffn_gate`/`ffn_up` projections vs CPU references,
   and a dense-MLP correctness probe composes gate/up, host SwiGLU BF16 rounding,
-  and resident `ffn_down` vs CPU reference. Remaining implementation task is
-  composing those primitives into the layer/full-model execution loop beyond
-  embedding, the prompt planner, and CPU replay harness.
+  and resident `ffn_down` vs CPU reference. The resident session also owns a
+  BF16 KV-cache allocation/free helper for future decode state. Remaining
+  implementation task is composing those primitives into the layer/full-model
+  execution loop beyond embedding, the prompt planner, and CPU replay harness.
 - [x] Use short contexts first (for example <= 512) before exercising long
   context and sliding-window boundaries. `StepFunShortContextDecodePlanner`
   enforces the current c=1 bring-up default `max_context=512`,
@@ -528,10 +529,10 @@ real layer-0 `Q3_K` `attn_q` and `Q5_K` `attn_output` projection vs CPU
 references using two BF16-rounded activation rows. It also checks rows>1
 prefill dispatch, the resident attention-input Q/K/V/gate projection bundle,
 the dense-MLP gate/up projection bundle, the dense MLP correctness probe
-(gate/up + host SwiGLU/BF16 + resident down projection), resident memory cleanup
-(two/three/four active weight allocations before session free, zero after), and
-no torch import. Full next-token/logit parity remains open until the streaming
-layer loop is wired.
+(gate/up + host SwiGLU/BF16 + resident down projection), resident KV-cache
+allocation/free, resident memory cleanup (two/three/four active weight
+allocations before session free, zero after), and no torch import. Full
+next-token/logit parity remains open until the streaming layer loop is wired.
 
 ### P12 — Full-model Strix Halo smoke
 
@@ -562,7 +563,9 @@ layer loop is wired.
   /tmp/stepfun-full-load-kv-smoke.json`. It allocated an additional
   `94,371,840` bytes (`0.0879 GiB`) across 90 K/V buffers, with free memory
   `23.9061 GiB` after weights -> `23.8183 GiB` after KV -> `23.9061 GiB` after
-  KV free. Generation snapshots remain open.
+  KV free. `StepFunResidentSession.allocate_kv_cache()` now covers the same
+  owned per-layer K/V allocation/free shape for runtime bring-up. Generation
+  snapshots remain open.
 - [x] If the model does not fit, keep the failure artifact and decide between
   offload/tiering, lower context/KV footprint, or slice-only correctness. No
   current fit failure is claimed from VIS_VRAM/`hipMemGetInfo` alone; decision

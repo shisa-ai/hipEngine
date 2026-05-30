@@ -8,7 +8,14 @@ from pathlib import Path
 from typing import Mapping, Sequence
 
 from hipengine.core.hip import HipRuntime, get_hip_runtime
-from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
+from hipengine.core.memory import (
+    DeviceBuffer,
+    copy_device_to_host,
+    copy_host_to_device,
+    free,
+    host_array_ptr,
+    malloc,
+)
 from hipengine.kernels.registry import KernelKey, resolve
 from hipengine.loading.gguf import GGUFSplitModelInfo, scan_gguf_splits
 from hipengine.loading.stepfun_gguf import StepFunGGUFModelMap, build_stepfun_gguf_tensor_map
@@ -22,6 +29,7 @@ from hipengine.tokenization import StepFunGGUFTokenizer
 
 DEFAULT_STEPFUN_SHORT_CONTEXT = 512
 DEFAULT_STEPFUN_MAX_NEW_TOKENS = 1
+BF16_BYTES = 2
 
 
 @dataclass(frozen=True)
@@ -42,6 +50,32 @@ class StepFunDecodePlan:
 
     def should_stop(self, token_id: int) -> bool:
         return int(token_id) in self.stop_token_ids
+
+
+@dataclass(frozen=True)
+class StepFunKVCacheAllocation:
+    """Owned synthetic BF16 KV-cache buffers for StepFun decode bring-up."""
+
+    buffers: tuple[DeviceBuffer, ...]
+    context_pages: int
+    page_size: int
+    layer_nbytes: tuple[tuple[int, int], ...]
+
+    @property
+    def tokens(self) -> int:
+        return self.context_pages * self.page_size
+
+    @property
+    def nbytes(self) -> int:
+        return sum(key_bytes + value_bytes for key_bytes, value_bytes in self.layer_nbytes)
+
+    @property
+    def buffer_count(self) -> int:
+        return len(self.buffers)
+
+    def free(self, *, runtime: HipRuntime | None = None) -> None:
+        for buffer in reversed(self.buffers):
+            free(buffer, runtime=runtime)
 
 
 @dataclass(frozen=True)
@@ -199,6 +233,43 @@ class StepFunResidentSession:
 
     def __exit__(self, exc_type, exc, tb) -> None:
         self.free()
+
+    def allocate_kv_cache(
+        self,
+        *,
+        context_pages: int,
+        page_size: int = DEFAULT_STEPFUN_SHORT_CONTEXT,
+        runtime: HipRuntime | None = None,
+    ) -> StepFunKVCacheAllocation:
+        """Allocate per-layer BF16 K/V buffers for StepFun decode bring-up."""
+
+        if self._closed:
+            raise RuntimeError("StepFun resident session is closed")
+        if context_pages <= 0:
+            raise ValueError("context_pages must be positive")
+        if page_size <= 0:
+            raise ValueError("page_size must be positive")
+        runtime = runtime or get_hip_runtime()
+        tokens = int(context_pages) * int(page_size)
+        buffers: list[DeviceBuffer] = []
+        layer_nbytes: list[tuple[int, int]] = []
+        try:
+            for kv_heads in self.model_map.config.kv_head_counts:
+                key_nbytes = tokens * int(kv_heads) * int(self.model_map.config.head_dim) * BF16_BYTES
+                value_nbytes = tokens * int(kv_heads) * int(self.model_map.config.value_dim) * BF16_BYTES
+                buffers.append(malloc(key_nbytes, runtime=runtime))
+                buffers.append(malloc(value_nbytes, runtime=runtime))
+                layer_nbytes.append((key_nbytes, value_nbytes))
+        except Exception:
+            for buffer in reversed(buffers):
+                free(buffer, runtime=runtime)
+            raise
+        return StepFunKVCacheAllocation(
+            buffers=tuple(buffers),
+            context_pages=int(context_pages),
+            page_size=int(page_size),
+            layer_nbytes=tuple(layer_nbytes),
+        )
 
     def weight_for_slot(self, slot_path: str):
         """Return a resident weight by StepFun materialization slot path."""
@@ -456,6 +527,7 @@ __all__ = [
     "DEFAULT_STEPFUN_MAX_NEW_TOKENS",
     "DEFAULT_STEPFUN_SHORT_CONTEXT",
     "StepFunDecodePlan",
+    "StepFunKVCacheAllocation",
     "StepFunResidentSession",
     "StepFunShortContextDecodePlanner",
 ]
