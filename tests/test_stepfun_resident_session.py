@@ -458,6 +458,109 @@ def test_stepfun_resident_session_projects_moe_expert_inputs() -> None:
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_stepfun_resident_session_moe_mlp_probe_matches_cpu_reference() -> None:
+    paths = _stepfun_gguf_paths()
+    info = scan_gguf_splits(paths)
+    model_map = build_stepfun_gguf_tensor_map(info)
+    layer = model_map.layer(3)
+    tensors = {
+        "router": layer.tensor("ffn_gate_inp"),
+        "bias": layer.tensor("exp_probs_bias"),
+        "expert_gate": layer.tensor("ffn_gate_exps"),
+        "expert_up": layer.tensor("ffn_up_exps"),
+        "expert_down": layer.tensor("ffn_down_exps"),
+        "shared_gate": layer.tensor("ffn_gate_shexp"),
+        "shared_up": layer.tensor("ffn_up_shexp"),
+        "shared_down": layer.tensor("ffn_down_shexp"),
+    }
+    assert tensors["expert_down"].ggml_type_name == "Q5_K"
+    assert tensors["shared_down"].ggml_type_name == "Q5_K"
+    x = ((np.arange(2 * 4096, dtype=np.float32).reshape(2, 4096) % 61) - 30) / 240.0
+    x_bits = float_array_to_bf16_bits(x)
+    x_bf16 = bf16_to_float32(x_bits)
+    router_weight = GGUFReader(tensors["router"].source_path).tensor_data(tensors["router"].name)
+    router_bias = GGUFReader(tensors["bias"].source_path).tensor_data(tensors["bias"].name)
+    routing, selected, _ = step_moe_router(
+        x_bf16,
+        router_weight,
+        router_bias=router_bias,
+        top_k=model_map.config.expert_used_count,
+        routing_scale=model_map.config.expert_weights_scale,
+        normalize_selected=model_map.config.expert_weights_norm,
+    )
+    selected_flat = selected.reshape(-1)
+    rows_per_x = selected_flat.size // x_bf16.shape[0]
+    expert_gate_raw = GGUFReader(tensors["expert_gate"].source_path).tensor_data(tensors["expert_gate"].name)
+    expert_up_raw = GGUFReader(tensors["expert_up"].source_path).tensor_data(tensors["expert_up"].name)
+    expert_down_raw = GGUFReader(tensors["expert_down"].source_path).tensor_data(tensors["expert_down"].name)
+    expert_gate = np.empty((selected_flat.size, 1280), dtype=np.float32)
+    expert_up = np.empty_like(expert_gate)
+    for row, expert_id in enumerate(selected_flat):
+        x_row = row // rows_per_x
+        expert_gate[row] = gguf_q3_k_gemv(x_bf16[x_row : x_row + 1], expert_gate_raw[int(expert_id)])[0]
+        expert_up[row] = gguf_q3_k_gemv(x_bf16[x_row : x_row + 1], expert_up_raw[int(expert_id)])[0]
+    expert_gate = bf16_to_float32(float_array_to_bf16_bits(expert_gate))
+    expert_up = bf16_to_float32(float_array_to_bf16_bits(expert_up))
+    expert_fused = expert_gate / (np.float32(1.0) + np.exp(-expert_gate).astype(np.float32)) * expert_up
+    expert_fused_bits = float_array_to_bf16_bits(expert_fused)
+    expert_down = np.empty((selected_flat.size, 4096), dtype=np.float32)
+    for row, expert_id in enumerate(selected_flat):
+        expert_down[row] = gguf_q5_k_gemv(
+            bf16_to_float32(expert_fused_bits[row : row + 1]),
+            expert_down_raw[int(expert_id)],
+        )[0]
+    expert_down = bf16_to_float32(float_array_to_bf16_bits(expert_down)).reshape(2, -1, 4096)
+    expected = np.sum(expert_down * routing[..., None], axis=1, dtype=np.float32)
+
+    shared_gate = gguf_q3_k_gemv(
+        x_bf16,
+        GGUFReader(tensors["shared_gate"].source_path).tensor_data(tensors["shared_gate"].name),
+    )
+    shared_up = gguf_q3_k_gemv(
+        x_bf16,
+        GGUFReader(tensors["shared_up"].source_path).tensor_data(tensors["shared_up"].name),
+    )
+    shared_gate = bf16_to_float32(float_array_to_bf16_bits(shared_gate))
+    shared_up = bf16_to_float32(float_array_to_bf16_bits(shared_up))
+    shared_fused = shared_gate / (np.float32(1.0) + np.exp(-shared_gate).astype(np.float32)) * shared_up
+    shared_down = gguf_q5_k_gemv(
+        bf16_to_float32(float_array_to_bf16_bits(shared_fused)),
+        GGUFReader(tensors["shared_down"].source_path).tensor_data(tensors["shared_down"].name),
+    )
+    expected += bf16_to_float32(float_array_to_bf16_bits(shared_down))
+
+    runtime = get_hip_runtime()
+    reset_memory_stats()
+    session = StepFunResidentSession.from_gguf_paths(
+        paths,
+        selected_slots=(
+            "layers.3.ffn_gate_inp",
+            "layers.3.exp_probs_bias",
+            "layers.3.ffn_gate_exps",
+            "layers.3.ffn_up_exps",
+            "layers.3.ffn_down_exps",
+            "layers.3.ffn_gate_shexp",
+            "layers.3.ffn_up_shexp",
+            "layers.3.ffn_down_shexp",
+        ),
+        runtime=runtime,
+    )
+    try:
+        actual = session.moe_mlp_probe_bf16(3, x_bits, runtime=runtime)
+        assert actual.shape == expected.shape == (2, 4096)
+        np.testing.assert_allclose(actual, expected, rtol=2.5e-3, atol=2.5e-3)
+        expected_nbytes = sum(tensor.nbytes for tensor in tensors.values())
+        assert session.weights.allocated_nbytes == expected_nbytes
+        assert memory_stats()["current_allocated_bytes"] == expected_nbytes
+        assert memory_stats()["active_allocations"] == len(tensors)
+    finally:
+        session.free(runtime=runtime)
+
+    assert memory_stats()["current_allocated_bytes"] == 0
+    assert memory_stats()["active_allocations"] == 0
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 def test_stepfun_resident_session_dense_mlp_probe_matches_cpu_reference() -> None:
     paths = _stepfun_gguf_paths()
     info = scan_gguf_splits(paths)

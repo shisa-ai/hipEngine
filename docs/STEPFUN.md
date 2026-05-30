@@ -505,10 +505,13 @@ reporting.
   and a dense-MLP correctness probe composes gate/up, host SwiGLU BF16 rounding,
   and resident `ffn_down` vs CPU reference. The resident session also owns a
   BF16 KV-cache allocation/free helper, a layer-3 MoE router probe that
-  matches CPU top-k routing from resident F32 router/bias weights, and a
-  selected-expert `Q3_K` gate projection probe for layer-3 `ffn_gate_exps`, and
-  a MoE expert-input bundle that launches selected gate/up plus shared gate/up
-  projections vs CPU references. Remaining
+  matches CPU top-k routing from resident F32 router/bias weights, a
+  selected-expert `Q3_K` gate projection probe for layer-3 `ffn_gate_exps`, a
+  MoE expert-input bundle that launches selected gate/up plus shared gate/up
+  projections vs CPU references, and a MoE correctness probe that composes
+  routing, selected/shared gate/up, host SwiGLU BF16 intermediates,
+  selected/shared down projections, and host routing aggregation vs CPU
+  reference. Remaining
   implementation task is composing those primitives into the layer/full-model
   execution loop beyond embedding, the prompt planner, and CPU replay harness.
 - [x] Use short contexts first (for example <= 512) before exercising long
@@ -538,8 +541,9 @@ the dense-MLP gate/up projection bundle, the dense MLP correctness probe
 (gate/up + host SwiGLU/BF16 + resident down projection), the layer-3 MoE router
 probe (resident F32 router/bias weights -> CPU top-k routing), selected-expert
 `Q3_K` gate projection via existing selected GEMV kernels, the MoE expert-input
-bundle (selected gate/up plus shared gate/up), resident KV-cache allocation/free,
-resident memory cleanup (two/three/four active weight allocations before session
+bundle (selected gate/up plus shared gate/up), the MoE correctness probe
+(router + selected/shared MLP chain with BF16 intermediates), resident KV-cache
+allocation/free, resident memory cleanup (two/three/four active weight allocations before session
 free, zero after), and no torch import. Full
 next-token/logit parity remains open until the streaming layer loop is wired.
 

@@ -27341,3 +27341,17 @@ python3 -m pytest -q tests/test_stepfun_resident_session.py
 ```
 
 Result: `13 passed`.
+
+## 2026-05-30 — StepFun resident MoE MLP correctness probe
+
+Added `StepFunResidentSession.moe_mlp_probe_bf16()`, a correctness-only MoE probe that composes resident router weights, selected/shared gate-up projections, host SwiGLU BF16 intermediates, selected/shared down projections, and host routing aggregation. The probe still uses host activation/aggregation and is not the final fused/device-side MoE path, but it validates the real Step layer-3 MoE numeric chain over resident GGUF weights.
+
+Extended `tests/test_stepfun_resident_session.py` with a real layer-3 MoE MLP probe. The test materializes router/bias, selected expert gate/up/down tensors, and shared expert gate/up/down tensors, builds a matched CPU reference with the same BF16-rounded intermediate boundaries, runs the resident probe on HIP/gfx1151, compares the final F32 output, and checks allocation cleanup.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_resident_session.py
+```
+
+Result: `14 passed`.

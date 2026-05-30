@@ -627,6 +627,68 @@ class StepFunResidentSession:
             ),
         }
 
+    def moe_mlp_probe_bf16(
+        self,
+        layer_id: int,
+        x_bf16_bits,
+        *,
+        runtime: HipRuntime | None = None,
+        stream: int = 0,
+    ):
+        """Correctness probe for a resident Step MoE MLP layer.
+
+        Routing plus gate/up/down projections run through resident weights.
+        SwiGLU activation and expert aggregation happen on the host until a
+        device-side MoE composition path is available.
+        """
+
+        import numpy as np
+        from hipengine.quant.gguf import bf16_to_float32
+
+        runtime = runtime or get_hip_runtime()
+        router = self.moe_router_probe_bf16(layer_id, x_bf16_bits, runtime=runtime)
+        selected = np.asarray(router.selected_experts, dtype=np.int64)
+        routing = np.asarray(router.routing_weights, dtype=np.float32)
+        top_k = int(routing.shape[-1])
+        projections = self.project_moe_expert_inputs_bf16(
+            layer_id,
+            x_bf16_bits,
+            selected.reshape(-1),
+            runtime=runtime,
+            stream=stream,
+        )
+        expert_fused_bits = _swiglu_bf16_bits(
+            bf16_to_float32(np.asarray(projections["expert_gate"], dtype=np.uint16)),
+            bf16_to_float32(np.asarray(projections["expert_up"], dtype=np.uint16)),
+            self.model_map.config.swiglu_clamp_exp[layer_id],
+        )
+        expert_down_bits = self.selected_expert_linear_bf16(
+            f"layers.{layer_id}.ffn_down_exps",
+            expert_fused_bits,
+            selected.reshape(-1),
+            runtime=runtime,
+            stream=stream,
+        )
+        expert_down = bf16_to_float32(np.asarray(expert_down_bits, dtype=np.uint16)).reshape(
+            routing.shape[0],
+            top_k,
+            -1,
+        )
+        out = np.sum(expert_down * routing[..., None], axis=1, dtype=np.float32)
+        shared_fused_bits = _swiglu_bf16_bits(
+            bf16_to_float32(np.asarray(projections["shared_gate"], dtype=np.uint16)),
+            bf16_to_float32(np.asarray(projections["shared_up"], dtype=np.uint16)),
+            self.model_map.config.swiglu_clamp_shexp[layer_id],
+        )
+        shared_down_bits = self.linear_slot_bf16(
+            f"layers.{layer_id}.ffn_down_shexp",
+            shared_fused_bits,
+            output_dtype=GGUF_OUTPUT_BF16,
+            runtime=runtime,
+            stream=stream,
+        )
+        return (out + bf16_to_float32(np.asarray(shared_down_bits, dtype=np.uint16))).astype(np.float32)
+
     def moe_router_probe_bf16(
         self,
         layer_id: int,
@@ -722,6 +784,20 @@ class StepFunResidentSession:
     def _validate_layer_id(self, layer_id: int) -> None:
         if layer_id < 0 or layer_id >= self.model_map.config.block_count:
             raise ValueError(f"layer_id out of range: {layer_id}")
+
+
+def _swiglu_bf16_bits(gate, up, limit: float):
+    import numpy as np
+    from hipengine.loading.materialize import float_array_to_bf16_bits
+
+    gate_arr = np.asarray(gate, dtype=np.float32)
+    up_arr = np.asarray(up, dtype=np.float32)
+    activated = gate_arr / (np.float32(1.0) + np.exp(-gate_arr).astype(np.float32))
+    if float(limit) > 0.0:
+        clamp = np.float32(limit)
+        activated = np.minimum(activated, clamp)
+        up_arr = np.clip(up_arr, -clamp, clamp)
+    return float_array_to_bf16_bits(activated * up_arr)
 
 
 def _register_backend_plugin(backend: str) -> None:
