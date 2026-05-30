@@ -48915,3 +48915,23 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: targeted runtime sampler stale self-description coverage PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, no benchmark rollup files changed, and C3.6 remains open until row-aware LM-head/sampler equality plus profiler evidence is green.
+
+## 2026-05-30 — CONCURRENCY env docs for retained evidence gates
+
+Updated `docs/ENVS.md` to document the fail-closed retained-evidence requirements behind the c>N sampler and projection env knobs. `HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT` now explicitly documents that the artifact must be a relative regular JSON path under `benchmarks/results/` and that missing, non-JSON, symlinked/non-regular, failed, wrong-row, self-mismatched, skipped, sequence-mismatched, or non-empty-mismatch artifacts keep `batched_lm_head` on the serial fallback. `HIPENGINE_QWEN35_PROJECTION_DISPATCH_ARTIFACT` now documents that retained runs fail closed if candidate evidence artifacts are missing/unsafe/rejected/self-mismatched/out-of-bounds or lack matching >1 aggregate/per-request row-GEMV ratios. No queue item was marked complete; this is handoff/operator documentation for the existing C3.4/C3.6 gates.
+
+Validation:
+
+```bash
+# re-read docs/ENVS.md PARO env rows after edit
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: docs re-read OK, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, no benchmark rollup files changed, and the docs accurately describe existing sampler/projection evidence gates.
