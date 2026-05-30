@@ -395,6 +395,48 @@ class StepFunResidentSession:
             ),
         }
 
+    def dense_mlp_probe_bf16(
+        self,
+        layer_id: int,
+        x_bf16_bits,
+        *,
+        output_dtype: str = GGUF_OUTPUT_F32,
+        runtime: HipRuntime | None = None,
+        stream: int = 0,
+    ):
+        """Correctness probe for a resident dense SwiGLU MLP layer.
+
+        Gate/up/down projections run through resident GGUF linears. SwiGLU and
+        BF16 rounding happen on the host until a device-side fused MLP path is
+        available, so this is not the final streaming hot path.
+        """
+
+        import numpy as np
+        from hipengine.loading.materialize import float_array_to_bf16_bits
+
+        projections = self.project_dense_mlp_inputs_bf16(
+            layer_id,
+            x_bf16_bits,
+            output_dtype=GGUF_OUTPUT_F32,
+            runtime=runtime,
+            stream=stream,
+        )
+        gate = np.asarray(projections["gate"], dtype=np.float32)
+        up = np.asarray(projections["up"], dtype=np.float32)
+        activated_gate = gate / (np.float32(1.0) + np.exp(-gate).astype(np.float32))
+        limit = float(self.model_map.config.swiglu_clamp_exp[layer_id])
+        if limit > 0.0:
+            activated_gate = np.minimum(activated_gate, np.float32(limit))
+            up = np.clip(up, np.float32(-limit), np.float32(limit))
+        fused_bits = float_array_to_bf16_bits(activated_gate * up)
+        return self.linear_slot_bf16(
+            f"layers.{layer_id}.ffn_down",
+            fused_bits,
+            output_dtype=output_dtype,
+            runtime=runtime,
+            stream=stream,
+        )
+
     def _validate_layer_id(self, layer_id: int) -> None:
         if layer_id < 0 or layer_id >= self.model_map.config.block_count:
             raise ValueError(f"layer_id out of range: {layer_id}")

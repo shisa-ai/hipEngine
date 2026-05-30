@@ -27257,3 +27257,17 @@ python3 -m pytest -q tests/test_stepfun_resident_session.py
 ```
 
 Result: `7 passed`.
+
+## 2026-05-30 — StepFun dense MLP correctness probe
+
+Added `StepFunResidentSession.dense_mlp_probe_bf16()`, a correctness-only dense MLP probe that composes resident `ffn_gate`/`ffn_up` projections, host SwiGLU activation with BF16 rounding, and resident `ffn_down` projection. This keeps the runtime torch-free and validates the real Step layer-0 dense MLP numeric chain while explicitly leaving a fully device-side fused MLP path and full streaming decode for later.
+
+Extended `tests/test_stepfun_resident_session.py` with a real layer-0 dense MLP probe. The test materializes `ffn_gate`/`ffn_up` (`Q3_K`) and `ffn_down` (`Q5_K`), computes a CPU reference using BF16-rounded inputs and BF16-rounded SwiGLU intermediate, runs the resident probe on HIP/gfx1151, compares the F32 output, and checks allocation cleanup.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_resident_session.py
+```
+
+Result: `8 passed`.
