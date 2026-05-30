@@ -211,6 +211,16 @@ def _is_positive_number(value: Any) -> bool:
     return _is_number(value) and float(value) > 0.0
 
 
+def _path_has_symlink_parent(path: Path, stop: Path) -> bool:
+    current = path.parent
+    while True:
+        if current.is_symlink():
+            return True
+        if current == stop or current == current.parent:
+            return False
+        current = current.parent
+
+
 def _is_retained_artifact_path(value: str) -> bool:
     path = Path(value)
     if (
@@ -221,8 +231,13 @@ def _is_retained_artifact_path(value: str) -> bool:
     ):
         return False
     results_root = (Path.cwd() / "benchmarks" / "results").resolve()
+    check_path = Path.cwd() / path
     try:
-        return (Path.cwd() / path).resolve().is_relative_to(results_root)
+        if check_path.is_symlink() or _path_has_symlink_parent(check_path, results_root):
+            return False
+        if check_path.exists() and not check_path.is_file():
+            return False
+        return check_path.resolve().is_relative_to(results_root)
     except OSError:
         return False
 

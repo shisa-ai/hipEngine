@@ -6062,11 +6062,24 @@ def test_projection_dispatch_evidence_loads_schema_checked_artifact_blocks(
     external_artifact_dir.mkdir(parents=True)
     external_artifact = external_artifact_dir / "projection-wmma-c4.json"
     external_artifact.write_text("{}", encoding="utf-8")
+    directory_artifact = artifact_dir / "projection-wmma-c4-directory.json"
+    directory_artifact.mkdir()
+    internal_target_artifact = artifact_dir / "projection-wmma-c4-target.json"
+    internal_target_artifact.write_text("{}", encoding="utf-8")
     symlink_artifact = artifact_dir / "projection-wmma-c4-symlink.json"
+    internal_symlink_artifact = artifact_dir / "projection-wmma-c4-internal-symlink.json"
+    symlink_parent = artifact_dir / "symlink-parent"
+    symlink_parent_target = artifact_dir / "symlink-parent-target"
+    symlink_parent_target.mkdir()
+    (symlink_parent_target / "projection-wmma-c4.json").write_text("{}", encoding="utf-8")
     try:
         symlink_artifact.symlink_to(external_artifact)
+        internal_symlink_artifact.symlink_to(internal_target_artifact)
+        symlink_parent.symlink_to(symlink_parent_target, target_is_directory=True)
     except (OSError, NotImplementedError):
         symlink_artifact = None
+        internal_symlink_artifact = None
+        symlink_parent = None
     monkeypatch.chdir(repo_root)
 
     payload = {
@@ -6091,10 +6104,22 @@ def test_projection_dispatch_evidence_loads_schema_checked_artifact_blocks(
         ProjectionDispatchEvidence.from_json_dict(
             {**payload, "artifact_path": "benchmarks/results/../tmp/projection-wmma-c4.json"}
         )
+    with pytest.raises(ValueError, match="artifact_path must be under benchmarks/results"):
+        ProjectionDispatchEvidence.from_json_dict(
+            {**payload, "artifact_path": "benchmarks/results/projection-wmma-c4-directory.json"}
+        )
     if symlink_artifact is not None:
         with pytest.raises(ValueError, match="artifact_path must be under benchmarks/results"):
             ProjectionDispatchEvidence.from_json_dict(
                 {**payload, "artifact_path": "benchmarks/results/projection-wmma-c4-symlink.json"}
+            )
+        with pytest.raises(ValueError, match="artifact_path must be under benchmarks/results"):
+            ProjectionDispatchEvidence.from_json_dict(
+                {**payload, "artifact_path": "benchmarks/results/projection-wmma-c4-internal-symlink.json"}
+            )
+        with pytest.raises(ValueError, match="artifact_path must be under benchmarks/results"):
+            ProjectionDispatchEvidence.from_json_dict(
+                {**payload, "artifact_path": "benchmarks/results/symlink-parent/projection-wmma-c4.json"}
             )
     with pytest.raises(ValueError, match="accepted aggregate_vs_row_gemv must be > 1.0"):
         ProjectionDispatchEvidence.from_json_dict({**payload, "aggregate_vs_row_gemv": 1.0})
