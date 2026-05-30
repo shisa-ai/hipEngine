@@ -303,11 +303,14 @@ decode is correct.
   the GGUF shards. If full-model load fails, keep the failure as evidence and
   fall back to slice/layer correctness until offload/tiering exists. 2026-05-29
   update: with `amdgpu gttsize=120000` and `ttm pages_limit=31457280`,
-  `python3 scripts/stepfun_gguf_load_smoke.py --pretty` successfully loaded all
-  754 resident weight tensors (`102,499,149,312` bytes / `95.4598 GiB`) in 754
-  HIP allocations. `hipMemGetInfo` remains internally inconsistent
-  (`total=62.5409 GiB`) but usable free memory dropped from `119.9961 GiB` to
-  `23.9061 GiB` after load and returned to `119.8573 GiB` after free.
+  `PYTHONUNBUFFERED=1 python3 scripts/stepfun_gguf_load_smoke.py --pretty >
+  /tmp/stepfun-full-load-smoke-task20.json` successfully loaded all 754
+  resident weight tensors (`102,499,149,312` bytes / `95.4598 GiB`) in 754 HIP
+  allocations. Committed evidence:
+  `benchmarks/results/2026-05-29-stepfun-q3kl-full-load-smoke-task20.json`.
+  `hipMemGetInfo` remains internally inconsistent (`total=62.5409 GiB`) but
+  usable free memory dropped from `119.9961 GiB` to `23.9061 GiB` after load and
+  returned to `119.8573 GiB` after free.
 - [x] Record exact GGUF paths and byte sizes for all three shards; do not copy or
   rewrite the 102.50 GB assets into the repo.
 - [x] Establish a llama.cpp oracle command for tokenization and short greedy
@@ -529,15 +532,18 @@ the streaming layer loop is wired.
 
 - [ ] Load all three GGUF shards on the Strix Halo target with a small context
   and `max_new_tokens` (for example 1-8). 2026-05-29: resident weight load now
-  succeeds for all 754 tensors / `95.4598 GiB` under the configured 120 GB GTT;
+  succeeds for all 754 tensors / `95.4598 GiB` under the configured 120 GB GTT
+  (`benchmarks/results/2026-05-29-stepfun-q3kl-full-load-smoke-task20.json`);
   full generation is still open because resident Step execution, KV allocation,
   and logits are not wired yet.
 - [ ] Record HIP-visible memory before load, after load, after KV allocation, and
   after generation; include UMA/GTT setting and backend (`hip_gfx1151`). Weight
-  load evidence from `scripts/stepfun_gguf_load_smoke.py`: before scan/free
-  `119.9961 GiB`, after resident weight load `23.9061 GiB`, after free
-  `119.8573 GiB`; hipEngine allocation stats peaked at `102,499,149,312` bytes
-  across 754 allocations. KV and generation snapshots remain open.
+  load evidence from
+  `benchmarks/results/2026-05-29-stepfun-q3kl-full-load-smoke-task20.json`:
+  before scan/free `119.9961 GiB`, after resident weight load `23.9061 GiB`,
+  after free `119.8573 GiB`; hipEngine allocation stats peaked at
+  `102,499,149,312` bytes across 754 allocations. KV and generation snapshots
+  remain open.
 - [x] If the model does not fit, keep the failure artifact and decide between
   offload/tiering, lower context/KV footprint, or slice-only correctness. No
   current fit failure is claimed from VIS_VRAM/`hipMemGetInfo` alone; decision

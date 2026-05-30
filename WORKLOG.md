@@ -27135,3 +27135,15 @@ Result: `status=loaded`. The smoke planned and loaded all 754 resident tensors (
 - `after_free`: `hip_free=119.8573 GiB`, hipEngine current allocations `0`, total freed `102,499,149,312` bytes, elapsed `35.55s`.
 
 Conclusion: full resident weight allocation/load succeeds under the boot config (`amdgpu gttsize=120000`, `ttm pages_limit=31457280`). KV allocation, generation, and llama.cpp parity remain separate tasks.
+
+## 2026-05-29 — StepFun full-load evidence recorded
+
+Recorded task #21 evidence in `docs/STEPFUN.md` using the committed task #20 artifact `benchmarks/results/2026-05-29-stepfun-q3kl-full-load-smoke-task20.json`. The P0 memory/load preflight now cites the exact load command and artifact path. P12 now distinguishes completed resident weight-load evidence from still-open KV allocation, generation snapshots, and tiny text decode.
+
+Evidence source:
+
+```bash
+PYTHONUNBUFFERED=1 python3 scripts/stepfun_gguf_load_smoke.py --pretty > /tmp/stepfun-full-load-smoke-task20.json
+```
+
+Result from the artifact: full resident StepFun Q3_K_L weight load succeeded for 754 tensors / `102,499,149,312` bytes (`95.4598 GiB`) under the configured 120 GB GTT path. HIP free memory moved `119.9961 GiB` before scan/load -> `23.9061 GiB` after load -> `119.8573 GiB` after free; hipEngine allocation stats peaked at 754 active allocations and returned to zero after free. This remains allocation/load evidence only, not generation correctness or throughput.
