@@ -512,7 +512,9 @@ reporting.
   selected/shared gate/up, host SwiGLU BF16 intermediates, selected/shared down
   projections, and host routing aggregation vs CPU reference, and a final-logits
   probe that composes host output RMSNorm/BF16 rounding with resident Q8_0
-  `lm_head` projection for selected full-vocab rows vs CPU reference. Remaining
+  `lm_head` projection for selected full-vocab rows vs CPU reference. A root-only
+  prompt logits smoke now renders/tokenizes a Step chat prompt, embeds it, and
+  runs final root logits from the last prompt embedding row. Remaining
   implementation task is composing those primitives into the layer/full-model
   execution loop beyond embedding, the prompt planner, and CPU replay harness.
 - [x] Use short contexts first (for example <= 512) before exercising long
@@ -545,7 +547,8 @@ probe (resident F32 router/bias weights -> CPU top-k routing), selected-expert
 bundle (selected gate/up plus shared gate/up), the MoE correctness probe
 (router + selected/shared MLP chain with BF16 intermediates), the final-logits
 probe (output RMSNorm + resident Q8_0 `lm_head` projection for sampled vocab
-rows), resident KV-cache allocation/free, resident memory cleanup
+rows), the root-only prompt logits smoke (chat prompt -> embedding -> final root
+logits), resident KV-cache allocation/free, resident memory cleanup
 (two/three/four active weight allocations before session free, zero after), and
 no torch import. Full next-token/logit parity remains open until the streaming
 layer loop is wired.

@@ -27369,3 +27369,17 @@ python3 -m pytest -q tests/test_stepfun_resident_session.py
 ```
 
 Result: `15 passed`.
+
+## 2026-05-30 — StepFun root-only prompt logits smoke
+
+Added `StepFunRootOnlyLogitsProbe` and `StepFunResidentSession.root_only_prompt_logits_probe_bf16()`. The helper renders a Step chat prompt, tokenizes it, launches resident Q8_0 token embeddings, takes the last prompt embedding row as a synthetic hidden state, then runs the final RMSNorm + resident Q8_0 `lm_head` logits probe. This binds tokenizer/chat rendering, embedding, final root normalization, and lm-head projection together while explicitly skipping transformer layers, so it is not llama.cpp next-token parity.
+
+Extended `tests/test_stepfun_resident_session.py` with a real root-only prompt logits smoke. The test materializes `root.token_embedding`, `root.output_norm`, and `root.lm_head`, renders `[{"role": "user", "content": "hello"}]`, verifies the assistant `<think>` prefix, compares sampled full-vocab logits `[0, 1, 128007, vocab-1]` against CPU GGUF references, checks the helper's host argmax fields are self-consistent, and verifies allocation cleanup.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_resident_session.py
+```
+
+Result: `16 passed`.

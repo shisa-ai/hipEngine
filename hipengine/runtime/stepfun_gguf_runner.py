@@ -62,6 +62,24 @@ class StepFunMoERouterResult:
 
 
 @dataclass(frozen=True)
+class StepFunRootOnlyLogitsProbe:
+    """Root-only prompt embedding plus final logits smoke result."""
+
+    prompt: "StepFunPromptEmbedding"
+    logits: object
+
+    @property
+    def next_token_id(self) -> int:
+        import numpy as np
+
+        return int(np.argmax(self.logits[-1]))
+
+    @property
+    def next_token_logit(self) -> float:
+        return float(self.logits[-1, self.next_token_id])
+
+
+@dataclass(frozen=True)
 class StepFunPromptEmbedding:
     """Rendered/tokenized Step prompt plus resident BF16 embedding rows."""
 
@@ -376,6 +394,31 @@ class StepFunResidentSession:
             input_ids=input_ids,
             embeddings_bf16=embeddings,
         )
+
+    def root_only_prompt_logits_probe_bf16(
+        self,
+        messages: Sequence[Mapping[str, object]],
+        *,
+        reasoning_effort: str | None = "low",
+        add_generation_prompt: bool = True,
+        runtime: HipRuntime | None = None,
+        stream: int = 0,
+    ) -> StepFunRootOnlyLogitsProbe:
+        """Run tokenizer -> embedding -> final logits without transformer layers."""
+
+        prompt = self.embed_chat_prompt_bf16(
+            messages,
+            reasoning_effort=reasoning_effort,
+            add_generation_prompt=add_generation_prompt,
+            runtime=runtime,
+            stream=stream,
+        )
+        logits = self.final_logits_probe_bf16(
+            prompt.embeddings_bf16[-1:].copy(),
+            runtime=runtime,
+            stream=stream,
+        )
+        return StepFunRootOnlyLogitsProbe(prompt=prompt, logits=logits)
 
     def linear_slot_bf16(
         self,
@@ -845,5 +888,6 @@ __all__ = [
     "StepFunMoERouterResult",
     "StepFunPromptEmbedding",
     "StepFunResidentSession",
+    "StepFunRootOnlyLogitsProbe",
     "StepFunShortContextDecodePlanner",
 ]

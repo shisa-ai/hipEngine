@@ -27,6 +27,7 @@ from hipengine.runtime.stepfun_gguf_runner import (
     StepFunMoERouterResult,
     StepFunPromptEmbedding,
     StepFunResidentSession,
+    StepFunRootOnlyLogitsProbe,
     StepFunShortContextDecodePlanner,
 )
 from hipengine.runtime.qwen35_paro_runner import (
@@ -65,6 +66,7 @@ __all__ = [
     "StepFunMoERouterResult",
     "StepFunPromptEmbedding",
     "StepFunResidentSession",
+    "StepFunRootOnlyLogitsProbe",
     "StepFunShortContextDecodePlanner",
     "launch_gguf_linear",
     "resolve_gguf_linear_dispatch",

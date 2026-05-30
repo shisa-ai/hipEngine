@@ -741,6 +741,55 @@ def test_stepfun_resident_session_final_logits_probe_matches_cpu_rows() -> None:
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_stepfun_resident_session_root_only_prompt_logits_probe_matches_cpu_rows() -> None:
+    paths = _stepfun_gguf_paths()
+    info = scan_gguf_splits(paths)
+    model_map = build_stepfun_gguf_tensor_map(info)
+    token_tensor = model_map.root("token_embedding")
+    norm_tensor = model_map.root("output_norm")
+    head_tensor = model_map.root("lm_head")
+    token_raw = GGUFReader(token_tensor.source_path).tensor_data(token_tensor.name)
+    head_raw = GGUFReader(head_tensor.source_path).tensor_data(head_tensor.name)
+    norm_weight = GGUFReader(norm_tensor.source_path).tensor_data(norm_tensor.name)
+    runtime = get_hip_runtime()
+    reset_memory_stats()
+    session = StepFunResidentSession.from_gguf_paths(
+        paths,
+        selected_slots=("root.token_embedding", "root.output_norm", "root.lm_head"),
+        runtime=runtime,
+    )
+    try:
+        probe = session.root_only_prompt_logits_probe_bf16(
+            [{"role": "user", "content": "hello"}],
+            reasoning_effort="low",
+            runtime=runtime,
+        )
+        assert probe.prompt.rendered_prompt.endswith("<|im_start|>assistant\n<think>\n")
+        assert probe.prompt.prompt_length > 0
+        assert probe.logits.shape == (1, model_map.config.vocab_size)
+        prompt_ids = np.asarray(probe.prompt.input_ids, dtype=np.int64)
+        prompt_bits = float_array_to_bf16_bits(gguf_q8_0_embedding(prompt_ids, token_raw))
+        last_hidden = bf16_to_float32(prompt_bits[-1:])
+        normed_bits = float_array_to_bf16_bits(
+            step_rmsnorm(last_hidden, norm_weight, eps=model_map.config.rms_norm_eps)
+        )
+        rows = np.asarray([0, 1, 128007, model_map.config.vocab_size - 1], dtype=np.int64)
+        expected_rows = gguf_q8_0_gemv(bf16_to_float32(normed_bits), head_raw[rows])
+        np.testing.assert_allclose(probe.logits[:, rows], expected_rows, rtol=2.0e-3, atol=2.0e-3)
+        assert probe.next_token_id == int(np.argmax(probe.logits[-1]))
+        assert probe.next_token_logit == float(np.max(probe.logits[-1]))
+        expected_nbytes = token_tensor.nbytes + norm_tensor.nbytes + head_tensor.nbytes
+        assert session.weights.allocated_nbytes == expected_nbytes
+        assert memory_stats()["current_allocated_bytes"] == expected_nbytes
+        assert memory_stats()["active_allocations"] == 3
+    finally:
+        session.free(runtime=runtime)
+
+    assert memory_stats()["current_allocated_bytes"] == 0
+    assert memory_stats()["active_allocations"] == 0
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 def test_stepfun_resident_session_requires_resident_embedding_weight() -> None:
     runtime = get_hip_runtime()
     session = StepFunResidentSession.from_gguf_paths(
