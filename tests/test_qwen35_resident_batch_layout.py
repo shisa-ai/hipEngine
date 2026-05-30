@@ -2118,37 +2118,33 @@ def test_qwen35_resident_sample_batch_rejects_stale_equality_artifact_metadata(t
     artifact_dir = tmp_path / "benchmarks" / "results"
     artifact_dir.mkdir(parents=True)
     artifact_path = "benchmarks/results/qwen35-c2-stale-eq.json"
-    (artifact_dir / "qwen35-c2-stale-eq.json").write_text(
-        json.dumps(
-            {
-                "schema": 1,
-                "rows": 2,
-                "artifact_path": artifact_path,
-                "source_artifact_path": "benchmarks/results/qwen35-c2-other-eq.json",
-                "passed": True,
-                "generated_token_equality": {
-                    "passed": True,
-                    "skipped": False,
-                    "batch_sequences": [[11, 12], [21, 22]],
-                    "c1_sequences": [[11, 12], [21, 22]],
-                    "mismatches": [],
-                },
-                "execution": {
-                    "batch_execution": {
-                        "decode_execution": {
-                            "sampler_execution": {
-                                "requested_mode": "batched_lm_head",
-                                "mode": "batched_lm_head",
-                                "native_row_aware_lm_head": True,
-                                "blockers": [],
-                            }
-                        }
+    stale_payload = {
+        "schema": 1,
+        "rows": 2,
+        "artifact_path": artifact_path,
+        "source_artifact_path": "benchmarks/results/qwen35-c2-other-eq.json",
+        "passed": True,
+        "generated_token_equality": {
+            "passed": True,
+            "skipped": False,
+            "batch_sequences": [[11, 12], [21, 22]],
+            "c1_sequences": [[11, 12], [21, 22]],
+            "mismatches": [],
+        },
+        "execution": {
+            "batch_execution": {
+                "decode_execution": {
+                    "sampler_execution": {
+                        "requested_mode": "batched_lm_head",
+                        "mode": "batched_lm_head",
+                        "native_row_aware_lm_head": True,
+                        "blockers": [],
                     }
-                },
+                }
             }
-        ),
-        encoding="utf-8",
-    )
+        },
+    }
+    (artifact_dir / "qwen35-c2-stale-eq.json").write_text(json.dumps(stale_payload), encoding="utf-8")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_SAMPLE_MODE", "batched_lm_head")
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_SAMPLE_C2_EQ_OK", "1")
@@ -2175,6 +2171,21 @@ def test_qwen35_resident_sample_batch_rejects_stale_equality_artifact_metadata(t
     assert session.last_batch_sampler_execution["native_row_aware_lm_head"] is False
     assert (
         "batched LM-head equality artifact source_artifact_path must match sampler_execution.equality_artifact"
+        in session.last_batch_sampler_execution["blockers"]
+    )
+
+    stale_payload["artifact_path"] = "benchmarks/results/qwen35-c2-other-eq.json"
+    stale_payload["source_artifact_path"] = artifact_path
+    (artifact_dir / "qwen35-c2-stale-eq.json").write_text(json.dumps(stale_payload), encoding="utf-8")
+    sampled_ptrs.clear()
+
+    artifact_path_results = session._sample_batch_from_hidden(hidden, rows=2)
+
+    assert [result.token_id for result in artifact_path_results] == [0x5300, 0x5300 + session.hidden_nbytes]
+    assert sampled_ptrs == [0x5300, 0x5300 + session.hidden_nbytes]
+    assert session.last_batch_sampler_execution["mode"] == "serial_lm_head"
+    assert (
+        "batched LM-head equality artifact artifact_path must match sampler_execution.equality_artifact"
         in session.last_batch_sampler_execution["blockers"]
     )
 
