@@ -27159,3 +27159,16 @@ python3 -m pytest -q tests/test_stepfun_resident_session.py
 ```
 
 Result: `4 passed`.
+
+## 2026-05-29 — StepFun embedding progress recorded
+
+Recorded task #24 embedding/resident-session evidence in `docs/STEPFUN.md`. The P11 progress note now states that `StepFunResidentSession` launches real resident Q8_0 `token_embd.weight` lookup into BF16 for token rows `[0, BOS, EOS, 128007, vocab-1, EOS]` with exact CPU BF16 parity, while layer composition and llama.cpp next-token/logit parity remain open. The acceptance note now ties this to `tests/test_stepfun_resident_session.py`, including resident memory cleanup and no torch import.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_resident_session.py
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Result: resident-session targeted tests `4 passed`; full StepFun loop guard `68 passed` plus CPU reference fixtures.
