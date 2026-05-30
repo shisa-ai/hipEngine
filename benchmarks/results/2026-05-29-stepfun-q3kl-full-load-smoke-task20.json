@@ -1,0 +1,108 @@
+{
+  "artifact_kind": "stepfun_full_gguf_load_smoke",
+  "backend": "hip_gfx1151",
+  "command": "PYTHONUNBUFFERED=1 python3 scripts/stepfun_gguf_load_smoke.py --pretty > /tmp/stepfun-full-load-smoke-task20.json",
+  "cwd": "/home/lhl/github/shisa-ai/hipEngine",
+  "date": "2026-05-29",
+  "model": "Step-3.7-flash-Q3_K_L split GGUF",
+  "not_benchmark": true,
+  "purpose": "Validate full resident weight allocation/load under configured 120 GB GTT; no generation or throughput claim.",
+  "result": {
+    "boot_config_path": "/etc/modprobe.d/amdgpu_llm_optimized.conf",
+    "boot_config_text": "### Maximize GTT for LLM usage on 128GB UMA system\n\n# 120GB - legacy info\noptions amdgpu gttsize=120000\n\n# 120GB - actual assignment\noptions ttm pages_limit=31457280\n\n# 8GB preassigned\noptions ttm page_pool_size=2081024\n\n## 60GB preassigned\n# options ttm page_pool_size=15728640\n\n# 2MiB fragments more efficient?\noptions amdgpu vm_fragment_size=8\n",
+    "error": null,
+    "loaded_nbytes": 102499149312,
+    "loaded_weight_count": 754,
+    "model_dir": "/data/models/gguf",
+    "paths": [
+      "/data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf",
+      "/data/models/gguf/Step-3.7-flash-Q3_K_L-00002-of-00003.gguf",
+      "/data/models/gguf/Step-3.7-flash-Q3_K_L-00003-of-00003.gguf"
+    ],
+    "pattern": "Step-3.7-flash-Q3_K_L-*.gguf",
+    "plan_tensor_count": 754,
+    "plan_total_gib": 95.4597716331482,
+    "plan_total_nbytes": 102499149312,
+    "quant_counts": {
+      "f32": 266,
+      "gguf_q3_k": 309,
+      "gguf_q5_k": 177,
+      "gguf_q8_0": 2
+    },
+    "selected_slots": null,
+    "snapshots": [
+      {
+        "elapsed_s": 0.1502973628230393,
+        "hip_free_bytes": 128844787712,
+        "hip_free_gib": 119.99605941772461,
+        "hip_total_bytes": 67152820224,
+        "hip_total_gib": 62.540937423706055,
+        "hipengine_memory_stats": {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 0,
+          "peak_allocations": 0,
+          "total_allocated_bytes": 0,
+          "total_freed_bytes": 0
+        },
+        "label": "before_scan",
+        "max_rss_kib": 158724
+      },
+      {
+        "elapsed_s": 0.24791612103581429,
+        "hip_free_bytes": 128844787712,
+        "hip_free_gib": 119.99605941772461,
+        "hip_total_bytes": 67152820224,
+        "hip_total_gib": 62.540937423706055,
+        "hipengine_memory_stats": {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 0,
+          "peak_allocations": 0,
+          "total_allocated_bytes": 0,
+          "total_freed_bytes": 0
+        },
+        "label": "after_plan",
+        "max_rss_kib": 182048
+      },
+      {
+        "elapsed_s": 34.64173690392636,
+        "hip_free_bytes": 25669029888,
+        "hip_free_gib": 23.906147003173828,
+        "hip_total_bytes": 67152820224,
+        "hip_total_gib": 62.540937423706055,
+        "hipengine_memory_stats": {
+          "active_allocations": 754,
+          "current_allocated_bytes": 102499149312,
+          "peak_allocated_bytes": 102499149312,
+          "peak_allocations": 754,
+          "total_allocated_bytes": 102499149312,
+          "total_freed_bytes": 0
+        },
+        "label": "after_load",
+        "max_rss_kib": 1281300
+      },
+      {
+        "elapsed_s": 35.54609721084125,
+        "hip_free_bytes": 128695816192,
+        "hip_free_gib": 119.85731887817383,
+        "hip_total_bytes": 67152820224,
+        "hip_total_gib": 62.540937423706055,
+        "hipengine_memory_stats": {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 102499149312,
+          "peak_allocations": 754,
+          "total_allocated_bytes": 102499149312,
+          "total_freed_bytes": 102499149312
+        },
+        "label": "after_free",
+        "max_rss_kib": 1281300
+      }
+    ],
+    "split_count": 3,
+    "status": "loaded",
+    "tensor_count": 754
+  },
+  "schema": 1
+}

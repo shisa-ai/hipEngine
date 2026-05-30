@@ -27114,3 +27114,24 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Result: materialization targeted tests `4 passed`; full StepFun loop guard `68 passed` plus CPU reference fixtures.
+
+## 2026-05-29 — StepFun task #20 full GGUF load smoke rerun
+
+Focused task #20 run: executed the StepFun full resident GGUF load smoke against the local `/data/models/gguf/Step-3.7-flash-Q3_K_L-*.gguf` shards to validate the configured 120 GB GTT path.
+
+Exact command:
+
+```bash
+PYTHONUNBUFFERED=1 python3 scripts/stepfun_gguf_load_smoke.py --pretty > /tmp/stepfun-full-load-smoke-task20.json
+```
+
+Committed JSON evidence artifact: `benchmarks/results/2026-05-29-stepfun-q3kl-full-load-smoke-task20.json` (marked `not_benchmark`; this is allocation/load evidence only, not throughput or generation correctness).
+
+Result: `status=loaded`. The smoke planned and loaded all 754 resident tensors (`102,499,149,312` bytes / `95.4598 GiB`) and freed them successfully. Memory/allocation evidence:
+
+- `before_scan`: `hip_free=119.9961 GiB`, `hip_total=62.5409 GiB`, hipEngine current allocations `0`.
+- `after_plan`: `hip_free=119.9961 GiB`, `hip_total=62.5409 GiB`, hipEngine current allocations `0`.
+- `after_load`: `hip_free=23.9061 GiB`, hipEngine current allocations `102,499,149,312` bytes, active allocations `754`, elapsed `34.64s`.
+- `after_free`: `hip_free=119.8573 GiB`, hipEngine current allocations `0`, total freed `102,499,149,312` bytes, elapsed `35.55s`.
+
+Conclusion: full resident weight allocation/load succeeds under the boot config (`amdgpu gttsize=120000`, `ttm pages_limit=31457280`). KV allocation, generation, and llama.cpp parity remain separate tasks.
