@@ -1635,6 +1635,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     option_model: str | None = None
     option_fixture: str | None = None
     option_seed: int | None = None
+    option_projection_dispatch_artifact: str | None = None
     option_shape_values: dict[str, int] = {}
     if not isinstance(options, Mapping):
         errors.append("options must be an object")
@@ -1693,6 +1694,8 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 projection_path = Path(projection_dispatch_artifact)
                 if projection_path.is_absolute() or len(projection_path.parts) < 3 or projection_path.parts[:2] != ("benchmarks", "results") or _path_has_parent_directory_component(projection_dispatch_artifact):
                     errors.append("options.projection_dispatch_artifact must be a relative path under benchmarks/results")
+                else:
+                    option_projection_dispatch_artifact = projection_dispatch_artifact
         compiler_version_file = options.get("compiler_version_file")
         if compiler_version_file is not None and not isinstance(compiler_version_file, str):
             errors.append("options.compiler_version_file must be a string or null")
@@ -2031,6 +2034,25 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             duplicated_retained_flags = _duplicate_flags(argv, _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS)
             if duplicated_retained_flags:
                 errors.append("commands[].argv must not repeat retained benchmark flags")
+                break
+            projection_dispatch_arg = _argv_value(argv, "--projection-dispatch-artifact")
+            projection_dispatch_flag_present = any(
+                _flag_token_matches(token, "--projection-dispatch-artifact") for token in argv
+            )
+            if entry.get("category") == _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY:
+                if entry.get("batch_size") == 1:
+                    if projection_dispatch_flag_present:
+                        errors.append("commands[].argv c=1 native baseline must not include --projection-dispatch-artifact")
+                        break
+                elif option_projection_dispatch_artifact is None:
+                    if projection_dispatch_flag_present:
+                        errors.append("commands[].argv --projection-dispatch-artifact requires options.projection_dispatch_artifact")
+                        break
+                elif projection_dispatch_arg != option_projection_dispatch_artifact:
+                    errors.append("commands[].argv --projection-dispatch-artifact must match options.projection_dispatch_artifact")
+                    break
+            elif projection_dispatch_flag_present:
+                errors.append("commands[].argv --projection-dispatch-artifact is only valid for c>N retained native commands")
                 break
             try:
                 json_path = argv[argv.index("--json") + 1]

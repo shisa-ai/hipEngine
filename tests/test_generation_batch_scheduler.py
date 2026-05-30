@@ -2138,6 +2138,36 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
     assert "--profiler-json" in retained_c2.argv
     assert str(tmp_path / "artifacts" / "profiler-c2.json") in retained_c2.argv
 
+    retained_c2_entry_index = next(
+        index
+        for index, entry in enumerate(persisted["commands"])
+        if entry["category"] == "native_diagnostic" and entry["batch_size"] == 2
+    )
+    missing_projection_flag = json.loads(json.dumps(persisted))
+    missing_projection_argv = missing_projection_flag["commands"][retained_c2_entry_index]["argv"]
+    projection_flag_index = missing_projection_argv.index("--projection-dispatch-artifact")
+    del missing_projection_argv[projection_flag_index : projection_flag_index + 2]
+    missing_projection_flag["commands"][retained_c2_entry_index]["command"] = shlex.join(missing_projection_argv)
+    with pytest.raises(ValueError, match="--projection-dispatch-artifact must match options.projection_dispatch_artifact"):
+        c_sweep.validate_sweep_summary(missing_projection_flag)
+
+    missing_projection_option = json.loads(json.dumps(persisted))
+    missing_projection_option["options"]["projection_dispatch_artifact"] = None
+    with pytest.raises(ValueError, match="--projection-dispatch-artifact requires options.projection_dispatch_artifact"):
+        c_sweep.validate_sweep_summary(missing_projection_option)
+
+    retained_c1_entry_index = next(
+        index
+        for index, entry in enumerate(persisted["commands"])
+        if entry["category"] == "native_diagnostic" and entry["batch_size"] == 1
+    )
+    c1_projection_flag = json.loads(json.dumps(persisted))
+    c1_projection_argv = c1_projection_flag["commands"][retained_c1_entry_index]["argv"]
+    c1_projection_argv.extend(["--projection-dispatch-artifact", "benchmarks/results/projection-candidates.json"])
+    c1_projection_flag["commands"][retained_c1_entry_index]["command"] = shlex.join(c1_projection_argv)
+    with pytest.raises(ValueError, match="c=1 native baseline must not include --projection-dispatch-artifact"):
+        c_sweep.validate_sweep_summary(c1_projection_flag)
+
 
 def test_retained_bench_projection_dispatch_artifact_env_and_payload(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     artifact_dir = tmp_path / "benchmarks" / "results"
