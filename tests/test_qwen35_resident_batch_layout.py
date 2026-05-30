@@ -1237,6 +1237,20 @@ def test_qwen35_resident_batch_execution_metadata_loads_projection_dispatch_cand
 ) -> None:
     artifact_dir = tmp_path / "benchmarks" / "results"
     artifact_dir.mkdir(parents=True)
+    (artifact_dir / "projection-wmma-c4.json").write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "rows": 4,
+                "artifact_path": "benchmarks/results/projection-wmma-c4.json",
+                "source_artifact_path": "benchmarks/results/projection-wmma-c4.json",
+                "accepted": True,
+                "aggregate_vs_row_gemv": 1.35,
+                "per_request_vs_row_gemv": 1.10,
+            }
+        ),
+        encoding="utf-8",
+    )
     candidate_artifact = artifact_dir / "projection-candidates.json"
     candidate_artifact.write_text(
         json.dumps(
@@ -1274,6 +1288,37 @@ def test_qwen35_resident_batch_execution_metadata_loads_projection_dispatch_cand
     assert metadata.projection_dispatch["evidence"]["artifact_path"] == "benchmarks/results/projection-wmma-c4.json"
     assert not any("projection dispatch:" in blocker for blocker in metadata.blockers)
     assert any("generated-token equality" in blocker for blocker in metadata.blockers)
+
+    candidate_artifact.write_text(
+        json.dumps(
+            {
+                "projection_dispatch_candidates": [
+                    {
+                        "name": "wmma_caware",
+                        "selection": {"layer": "linear", "quant": "w4_paro", "variant": "wmma_caware"},
+                        "min_rows": 4,
+                        "max_rows": 8,
+                        "evidence": {
+                            "artifact_path": "benchmarks/results/projection-missing-c4.json",
+                            "aggregate_vs_row_gemv": 1.35,
+                            "per_request_vs_row_gemv": 1.10,
+                            "accepted": True,
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    missing_evidence_metadata = session.batch_execution_metadata(scheduler_owned=True, native_decode=True, active_rows=4)
+
+    assert missing_evidence_metadata.projection_dispatch is not None
+    assert missing_evidence_metadata.projection_dispatch["selected_candidate"] == "row_gemv"
+    assert any(
+        "projection dispatch:" in blocker and "wmma_caware evidence artifact_path must point to an existing JSON artifact" in blocker
+        for blocker in missing_evidence_metadata.blockers
+    )
 
 
 def test_qwen35_resident_step_batch_native_requires_experimental_env(monkeypatch) -> None:

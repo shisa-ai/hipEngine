@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -61,6 +61,7 @@ from hipengine.dispatch import (
     plan_batch_sampler_dispatch,
     plan_projection_dispatch,
     projection_dispatch_candidates_from_artifact,
+    projection_dispatch_evidence_payload_blockers,
 )
 from hipengine.kvcache import FixedPagedKVPolicy, KVLiveSpans, KVScaleMetadata
 from hipengine.kvcache.policy import KV_SCALE_GRANULARITY_CHOICES
@@ -116,32 +117,125 @@ def _env_flag(name: str, default: bool = False) -> bool:
 _PROJECTION_DISPATCH_ARTIFACT_ENV = "HIPENGINE_QWEN35_PROJECTION_DISPATCH_ARTIFACT"
 
 
+def _path_has_benchmark_results_symlink_parent(path: Path) -> bool:
+    results_root = (Path.cwd() / "benchmarks" / "results").resolve()
+    current = path.parent
+    while True:
+        try:
+            current_resolved = current.resolve()
+        except OSError:
+            return False
+        if not current_resolved.is_relative_to(results_root):
+            return False
+        if current.is_symlink():
+            return True
+        if current == current.parent:
+            return False
+        current = current.parent
+
+
+def _load_projection_dispatch_env_artifact(path_text: str, *, label: str) -> tuple[Mapping[str, Any] | None, tuple[str, ...]]:
+    path = Path(path_text)
+    if path.is_absolute() or len(path.parts) < 3 or path.parts[:2] != ("benchmarks", "results") or ".." in path.parts:
+        return None, (f"{label} must be a relative path under benchmarks/results",)
+    check_path = Path.cwd() / path
+    results_root = (Path.cwd() / "benchmarks" / "results").resolve()
+    try:
+        if check_path.is_symlink():
+            return None, (f"{label} must not be a symlink",)
+        if _path_has_benchmark_results_symlink_parent(check_path):
+            return None, (f"{label} parent directories must not be symlinks",)
+        if check_path.suffix.lower() != ".json":
+            return None, (f"{label} must point to a .json artifact",)
+        if not check_path.exists():
+            return None, (f"{label} must point to an existing JSON artifact",)
+        if not check_path.is_file():
+            return None, (f"{label} must point to a regular JSON artifact",)
+        if not check_path.resolve().is_relative_to(results_root):
+            return None, (f"{label} must resolve under benchmarks/results",)
+        payload = json.loads(check_path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        return None, (f"{label} must point to a readable JSON artifact: {exc}",)
+    except json.JSONDecodeError as exc:
+        return None, (f"{label} must be valid JSON: {exc}",)
+    if not isinstance(payload, Mapping):
+        return None, (f"{label} must be a JSON object",)
+    return payload, ()
+
+
+def _artifact_row_count(payload: Mapping[str, Any]) -> Any:
+    rows = payload.get("rows")
+    if rows is not None:
+        return rows
+    workload = payload.get("workload")
+    if isinstance(workload, Mapping):
+        return workload.get("concurrency")
+    return None
+
+
+def _artifact_is_accepted(payload: Mapping[str, Any]) -> bool:
+    if payload.get("accepted") is True or payload.get("passed") is True or payload.get("status") == "accepted":
+        return True
+    decision = payload.get("decision")
+    return isinstance(decision, Mapping) and decision.get("accepted") is True
+
+
+def _projection_candidate_evidence_blockers(candidate: Any) -> tuple[str, ...]:
+    evidence = getattr(candidate, "evidence", None)
+    if evidence is None:
+        return ()
+    evidence_payload, errors = _load_projection_dispatch_env_artifact(
+        evidence.artifact_path,
+        label=f"{candidate.name} evidence artifact_path",
+    )
+    if errors:
+        return errors
+    if evidence_payload is None:
+        return ()
+    blockers: list[str] = []
+    if not _artifact_is_accepted(evidence_payload):
+        blockers.append(f"{candidate.name} evidence artifact_path artifact must be accepted")
+    artifact_rows = _artifact_row_count(evidence_payload)
+    if isinstance(artifact_rows, bool) or not isinstance(artifact_rows, int):
+        blockers.append(f"{candidate.name} evidence artifact_path rows must be an int")
+    elif not candidate.applies_to(artifact_rows):
+        blockers.append(f"{candidate.name} evidence artifact_path rows must be within candidate row bounds")
+    else:
+        blockers.extend(
+            f"{candidate.name} evidence {blocker}"
+            for blocker in projection_dispatch_evidence_payload_blockers(
+                evidence_payload,
+                evidence,
+                rows=artifact_rows,
+                label="artifact_path",
+            )
+        )
+    return tuple(blockers)
+
+
 def _env_projection_dispatch_candidates() -> tuple[tuple[Any, ...], tuple[str, ...]]:
     raw = os.environ.get(_PROJECTION_DISPATCH_ARTIFACT_ENV)
     if raw is None or not raw.strip():
         return (), ()
-    path_text = raw.strip()
-    path = Path(path_text)
-    if path.is_absolute() or len(path.parts) < 3 or path.parts[:2] != ("benchmarks", "results") or ".." in path.parts:
-        return (), (f"{_PROJECTION_DISPATCH_ARTIFACT_ENV} must be a relative path under benchmarks/results",)
-    results_root = (Path.cwd() / "benchmarks" / "results").resolve()
-    artifact_path = (Path.cwd() / path).resolve()
-    try:
-        if not artifact_path.is_relative_to(results_root):
-            return (), (f"{_PROJECTION_DISPATCH_ARTIFACT_ENV} must resolve under benchmarks/results",)
-        payload = json.loads(artifact_path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return (), (f"{_PROJECTION_DISPATCH_ARTIFACT_ENV} must point to an existing JSON artifact",)
-    except json.JSONDecodeError as exc:
-        return (), (f"{_PROJECTION_DISPATCH_ARTIFACT_ENV} must be valid JSON: {exc}",)
-    if not isinstance(payload, dict):
-        return (), (f"{_PROJECTION_DISPATCH_ARTIFACT_ENV} must be a JSON object",)
+    payload, artifact_errors = _load_projection_dispatch_env_artifact(
+        raw.strip(),
+        label=_PROJECTION_DISPATCH_ARTIFACT_ENV,
+    )
+    if artifact_errors:
+        return (), artifact_errors
+    if payload is None:
+        return (), ()
     try:
         candidates = projection_dispatch_candidates_from_artifact(payload)
     except ValueError as exc:
         return (), (f"{_PROJECTION_DISPATCH_ARTIFACT_ENV} has invalid projection_dispatch_candidates: {exc}",)
     if not candidates:
         return (), (f"{_PROJECTION_DISPATCH_ARTIFACT_ENV} must include projection_dispatch_candidates",)
+    candidate_blockers: list[str] = []
+    for candidate in candidates:
+        candidate_blockers.extend(_projection_candidate_evidence_blockers(candidate))
+    if candidate_blockers:
+        return (), tuple(f"{_PROJECTION_DISPATCH_ARTIFACT_ENV} {blocker}" for blocker in candidate_blockers)
     return candidates, ()
 
 
