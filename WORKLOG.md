@@ -48996,3 +48996,24 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: targeted INT8 primitive retained-gate tests PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, no benchmark rollup files changed, and C3.1 remains open until end-to-end INT8 generated-token equality runs.
+
+## 2026-05-30 — CONCURRENCY INT8 primitive command binding
+
+Tightened the C3.1 retained INT8 primitive evidence gate. The new `--int8-kv-primitive-cpu-json` and `--int8-kv-primitive-hip-json` flags are now part of the shared retained-bench/profiler command flag allow-list/uniqueness/value-binding constants, so c-sweep and accepted-artifact validation understand them. Accepted `int8_per_token_head` artifacts now require the retained benchmark and profiler commands to carry those flags and to bind them to the same CPU-reference and HIP `--require-int8-hip` primitive evidence artifact paths recorded under `correctness.int8_kv_primitive_layer_accuracy`. C3.1 remains open until generated-token equality executes.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_constants.py scripts/qwen35_batch_artifact_schema.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q
+pytest -q tests/test_generation_batch_scheduler.py::test_int8_cN_diagnostic_template_records_blocked_c2_gate tests/test_generation_batch_scheduler.py::test_retained_bench_int8_primitive_reference_requires_self_describing_hip_gate -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: targeted schema/constant tests PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, no benchmark rollup files changed, and C3.1 remains open pending executed INT8 generated-token equality.

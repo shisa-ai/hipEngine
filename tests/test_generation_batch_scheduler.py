@@ -12739,6 +12739,12 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         payload["workload"]["kv_policy"] = int8_policy
         payload["memory"]["kv_storage_dtype"] = "int8_per_token_head"
         payload["memory"]["kv_policy"] = int8_policy
+        int8_gate_flags = (
+            " --int8-kv-primitive-cpu-json benchmarks/results/int8-primitive-cpu-c2.json"
+            " --int8-kv-primitive-hip-json benchmarks/results/int8-primitive-hip-c2.json"
+        )
+        payload["commands"]["benchmark"] += int8_gate_flags
+        payload["commands"]["profiler"] += int8_gate_flags
         return payload
 
     missing_int8_primitive = _accepted_with_int8_kv_policy()
@@ -12773,6 +12779,14 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     )
     with pytest.raises(ValueError, match="hip_gate.command must include --require-int8-hip"):
         validate_cn_diagnostic_artifact_payload(missing_int8_hip_requirement)
+
+    mismatched_int8_benchmark_flag = json.loads(json.dumps(accepted_int8))
+    mismatched_int8_benchmark_flag["commands"]["benchmark"] = mismatched_int8_benchmark_flag["commands"]["benchmark"].replace(
+        "benchmarks/results/int8-primitive-cpu-c2.json",
+        "benchmarks/results/int8-primitive-other-c2.json",
+    )
+    with pytest.raises(ValueError, match="commands.benchmark --int8-kv-primitive-cpu-json must match"):
+        validate_cn_diagnostic_artifact_payload(mismatched_int8_benchmark_flag)
 
     def _accepted_with_sampler_equality_artifact(artifact_path: str) -> dict[str, object]:
         payload = json.loads(json.dumps(accepted))

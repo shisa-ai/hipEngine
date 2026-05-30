@@ -1321,8 +1321,9 @@ roll-up/status view.
       `--int8-kv-primitive-hip-json`, `scripts/qwen35_kv_int8_accuracy.py`
       self-describes written JSON paths, and accepted c>N artifact schema
       requires loaded, self-matching CPU-reference plus HIP `--require-int8-hip`
-      INT8 primitive layer-accuracy evidence before any `int8_per_token_head`
-      retained row can validate. The item remains open because
+      INT8 primitive layer-accuracy evidence whose retained-bench/profiler
+      command flags are bound to those artifact paths before any
+      `int8_per_token_head` retained row can validate. The item remains open because
       blocked-before-execution is not an accepted C3.1 terminal status.
 - [x] **C3.2 per-row `KVLiveSpans` everywhere.** Audit full-attention decode,
       KV append, and storage-dtype wrappers for scalar `(block_table,

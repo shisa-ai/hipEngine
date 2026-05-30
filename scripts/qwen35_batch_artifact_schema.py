@@ -25,6 +25,7 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_EVIDENCE_FRAGMENTS,
     RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_TRACE_FIELD_FRAGMENTS,
     RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_TRACE_FIELD_NAMES,
+    RETAINED_ARTIFACT_INT8_PRIMITIVE_GATE_FLAGS,
     RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT,
     RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_SCRIPT,
     RETAINED_ARTIFACT_PROFILER_SYNTHESIZED_FIELDS,
@@ -174,6 +175,7 @@ _PRIMITIVE_CORRECTNESS_SCRIPT = RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_SCRIPT
 _RETAINED_BENCH_SCRIPT = RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT
 _RETAINED_BENCH_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS
 _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS
+_INT8_PRIMITIVE_GATE_FLAGS = RETAINED_ARTIFACT_INT8_PRIMITIVE_GATE_FLAGS
 _CORRECTNESS_REFERENCE_UNIQUE_FLAGS = RETAINED_ARTIFACT_CORRECTNESS_REFERENCE_UNIQUE_FLAGS
 _CORRECTNESS_SCRIPT_ALLOWED_FLAGS = RETAINED_ARTIFACT_CORRECTNESS_SCRIPT_ALLOWED_FLAGS
 _FULL_COMMIT_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", re.IGNORECASE)
@@ -2252,6 +2254,7 @@ def _validate_int8_kv_primitive_layer_accuracy_gates(
     if expected_scale_dtype is None and isinstance(workload.get("kv_scale_dtype"), str):
         expected_scale_dtype = workload.get("kv_scale_dtype")
     expected_scale_dtype = expected_scale_dtype or "fp16"
+    gate_artifact_paths: dict[str, str] = {}
     for label, expected_device in (("cpu_reference", "cpu"), ("hip_gate", "hip")):
         entry = evidence.get(label)
         field = f"correctness.int8_kv_primitive_layer_accuracy.{label}"
@@ -2275,6 +2278,7 @@ def _validate_int8_kv_primitive_layer_accuracy_gates(
             errors.append(f"{field}.artifact_path must be a non-empty string for accepted int8_per_token_head artifacts")
         else:
             _validate_benchmark_results_artifact_path(f"{field}.artifact_path", artifact_path, errors)
+            gate_artifact_paths[label] = artifact_path
         source_artifact_path = entry.get("source_artifact_path")
         if not isinstance(source_artifact_path, str) or not source_artifact_path:
             errors.append(f"{field}.source_artifact_path must be a non-empty string for accepted int8_per_token_head artifacts")
@@ -2324,6 +2328,24 @@ def _validate_int8_kv_primitive_layer_accuracy_gates(
                     artifact_path=artifact_path,
                     errors=errors,
                 )
+    commands = payload.get("commands")
+    if not isinstance(commands, Mapping):
+        return
+    for command_field in ("benchmark", "profiler"):
+        retained_command = commands.get(command_field)
+        if not isinstance(retained_command, str):
+            continue
+        try:
+            retained_argv = shlex.split(retained_command)
+        except ValueError:
+            continue
+        for label, flag in zip(("cpu_reference", "hip_gate"), _INT8_PRIMITIVE_GATE_FLAGS, strict=True):
+            artifact_path = gate_artifact_paths.get(label)
+            flag_value = _argv_value(retained_argv, flag)
+            if flag_value is None:
+                errors.append(f"commands.{command_field} must include {flag} for accepted int8_per_token_head artifacts")
+            elif isinstance(artifact_path, str) and artifact_path and flag_value != artifact_path:
+                errors.append(f"commands.{command_field} {flag} must match correctness.int8_kv_primitive_layer_accuracy.{label}.artifact_path for accepted int8_per_token_head artifacts")
 
 
 def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness: Mapping[str, Any], errors: list[str]) -> None:
