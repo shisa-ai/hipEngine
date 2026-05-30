@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic c>N-vs-independent-c1 correctness smokes for Qwen3.5/PARO primitives."""
+"""Deterministic c>N-vs-independent-c1 and GPU A/A smokes for Qwen3.5/PARO primitives."""
 
 from __future__ import annotations
 
@@ -103,11 +103,18 @@ def _primitive_correctness_passed(
     append_value_mismatch: int,
     batch_vs_c1: float,
     batch_vs_numpy: float,
+    *,
+    append_batch_aa_key_mismatch: int = 0,
+    append_batch_aa_value_mismatch: int = 0,
+    attn_batch_aa_max_abs: float = 0.0,
 ) -> bool:
     return (
         append_key_mismatch == 0
         and append_value_mismatch == 0
+        and append_batch_aa_key_mismatch == 0
+        and append_batch_aa_value_mismatch == 0
         and float(batch_vs_c1) == 0.0
+        and float(attn_batch_aa_max_abs) == 0.0
         and math.isfinite(float(batch_vs_numpy))
         and 0.0 <= float(batch_vs_numpy) <= _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT
     )
@@ -199,8 +206,12 @@ def run(
         pos = arena.dev(positions)
         key = arena.dev(append_key)
         value = arena.dev(append_value)
+        batch_key_cache_aa = np.zeros_like(batch_key_cache)
+        batch_value_cache_aa = np.zeros_like(batch_value_cache)
         bkc = arena.dev(batch_key_cache)
         bvc = arena.dev(batch_value_cache)
+        bkc_aa = arena.dev(batch_key_cache_aa)
+        bvc_aa = arena.dev(batch_value_cache_aa)
         ckc = arena.dev(c1_key_cache)
         cvc = arena.dev(c1_value_cache)
         write_spans = KVLiveSpans.paged_uniform(
@@ -214,6 +225,19 @@ def run(
             value.ptr,
             bkc.ptr,
             bvc.ptr,
+            write_spans,
+            rows,
+            block_size,
+            num_kv_heads,
+            head_dim,
+            library=kv_lib,
+            runtime=arena.runtime,
+        )
+        qwen35_write_paged_kv_mixed_value_bf16_batch_spans(
+            key.ptr,
+            value.ptr,
+            bkc_aa.ptr,
+            bvc_aa.ptr,
             write_spans,
             rows,
             block_size,
@@ -248,10 +272,14 @@ def run(
             )
         copy_device_to_host(host_array_ptr(batch_key_cache), bkc, runtime=arena.runtime)
         copy_device_to_host(host_array_ptr(batch_value_cache), bvc, runtime=arena.runtime)
+        copy_device_to_host(host_array_ptr(batch_key_cache_aa), bkc_aa, runtime=arena.runtime)
+        copy_device_to_host(host_array_ptr(batch_value_cache_aa), bvc_aa, runtime=arena.runtime)
         copy_device_to_host(host_array_ptr(c1_key_cache), ckc, runtime=arena.runtime)
         copy_device_to_host(host_array_ptr(c1_value_cache), cvc, runtime=arena.runtime)
         append_key_mismatch = int(np.count_nonzero(batch_key_cache != c1_key_cache))
         append_value_mismatch = int(np.count_nonzero(batch_value_cache != c1_value_cache))
+        append_batch_aa_key_mismatch = int(np.count_nonzero(batch_key_cache != batch_key_cache_aa))
+        append_batch_aa_value_mismatch = int(np.count_nonzero(batch_value_cache != batch_value_cache_aa))
 
         # Attention smoke: batch context decode should match independent c1 decode and NumPy oracle.
         key_cache_f32 = rng.normal(0.0, 0.25, size=(rows, blocks, block_size, num_kv_heads, head_dim)).astype(np.float32)
@@ -261,6 +289,7 @@ def run(
         _fill_context_cache_rows(key_cache, value_cache, key_cache_f32, value_cache_f32, context_lens)
         query = rng.normal(0.0, 0.25, size=(rows, num_q_heads, head_dim)).astype(np.float32)
         batch_out = np.zeros((rows, num_q_heads, head_dim), dtype=np.float32)
+        batch_out_aa = np.zeros_like(batch_out)
         c1_out = np.zeros_like(batch_out)
         dense_c1_out = np.zeros_like(batch_out) if include_dense_c1 else None
         query_b = arena.dev(query)
@@ -268,6 +297,7 @@ def run(
         value_cache_b = arena.dev(value_cache)
         live_b = arena.dev(context_lens)
         batch_out_b = arena.dev(batch_out)
+        batch_out_aa_b = arena.dev(batch_out_aa)
         c1_out_b = arena.dev(c1_out)
         dense_c1_out_b = arena.dev(dense_c1_out) if dense_c1_out is not None else None
         decode_spans = KVLiveSpans.paged_uniform(
@@ -281,6 +311,22 @@ def run(
             key_cache_b.ptr,
             value_cache_b.ptr,
             batch_out_b.ptr,
+            decode_spans,
+            rows,
+            max_context_len,
+            block_size,
+            num_q_heads,
+            num_kv_heads,
+            head_dim,
+            scale,
+            library=attn_lib,
+            runtime=arena.runtime,
+        )
+        qwen35_paged_full_attn_decode_context_bf16_batch_spans(
+            query_b.ptr,
+            key_cache_b.ptr,
+            value_cache_b.ptr,
+            batch_out_aa_b.ptr,
             decode_spans,
             rows,
             max_context_len,
@@ -333,6 +379,7 @@ def run(
                     runtime=arena.runtime,
                 )
         copy_device_to_host(host_array_ptr(batch_out), batch_out_b, runtime=arena.runtime)
+        copy_device_to_host(host_array_ptr(batch_out_aa), batch_out_aa_b, runtime=arena.runtime)
         copy_device_to_host(host_array_ptr(c1_out), c1_out_b, runtime=arena.runtime)
         if dense_c1_out_b is not None and dense_c1_out is not None:
             copy_device_to_host(host_array_ptr(dense_c1_out), dense_c1_out_b, runtime=arena.runtime)
@@ -342,6 +389,7 @@ def run(
 
     batch_vs_c1 = float(np.max(np.abs(batch_out - c1_out)))
     batch_vs_numpy = float(np.max(np.abs(batch_out - expected)))
+    attn_batch_aa = float(np.max(np.abs(batch_out - batch_out_aa)))
     result = {
         "schema": _REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA,
         "rows": rows,
@@ -354,13 +402,24 @@ def run(
         "context_lens": context_lens.tolist(),
         "append_key_mismatch": append_key_mismatch,
         "append_value_mismatch": append_value_mismatch,
+        "append_batch_aa_key_mismatch": append_batch_aa_key_mismatch,
+        "append_batch_aa_value_mismatch": append_batch_aa_value_mismatch,
         "attn_batch_vs_c1_max_abs": batch_vs_c1,
         "attn_batch_vs_numpy_max_abs": batch_vs_numpy,
+        "attn_batch_aa_max_abs": attn_batch_aa,
+        "aa_passed": (
+            append_batch_aa_key_mismatch == 0
+            and append_batch_aa_value_mismatch == 0
+            and float(attn_batch_aa) == 0.0
+        ),
         "passed": _primitive_correctness_passed(
             append_key_mismatch,
             append_value_mismatch,
             batch_vs_c1,
             batch_vs_numpy,
+            append_batch_aa_key_mismatch=append_batch_aa_key_mismatch,
+            append_batch_aa_value_mismatch=append_batch_aa_value_mismatch,
+            attn_batch_aa_max_abs=attn_batch_aa,
         ),
     }
     if dense_c1_out is not None:

@@ -10224,6 +10224,14 @@ def test_qwen35_primitive_correctness_passed_matches_retained_bounds() -> None:
     assert batch_correctness._primitive_correctness_passed(0, 0, 0.0, math.nan) is False
     assert batch_correctness._primitive_correctness_passed(0, 0, 0.0, -1e-8) is False
     assert batch_correctness._primitive_correctness_passed(0, 0, 0.0, 3e-5) is False
+    assert (
+        batch_correctness._primitive_correctness_passed(0, 0, 0.0, 1e-8, append_batch_aa_key_mismatch=1)
+        is False
+    )
+    assert (
+        batch_correctness._primitive_correctness_passed(0, 0, 0.0, 1e-8, attn_batch_aa_max_abs=1e-8)
+        is False
+    )
 
 
 def test_qwen35_batch_correctness_numpy_attention_handles_paged_blocks() -> None:
