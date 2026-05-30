@@ -12432,6 +12432,30 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         json.dumps(_sampler_equality_payload(rows=2, artifact_path="benchmarks/results/qwen35-c2-sampler-eq.json")),
         encoding="utf-8",
     )
+    (sampler_artifact_dir / "qwen35-c2-sampler-eq.txt").write_text(
+        json.dumps(_sampler_equality_payload(rows=2, artifact_path="benchmarks/results/qwen35-c2-sampler-eq.txt")),
+        encoding="utf-8",
+    )
+    (sampler_artifact_dir / "qwen35-c2-sampler-directory-eq.json").mkdir()
+    sampler_symlink_artifact = sampler_artifact_dir / "qwen35-c2-sampler-symlink-eq.json"
+    sampler_symlink_parent = sampler_artifact_dir / "sampler-equality-link"
+    sampler_symlink_parent_target = sampler_artifact_dir / "sampler-equality-target"
+    sampler_symlink_parent_target.mkdir()
+    (sampler_symlink_parent_target / "qwen35-c2-sampler-eq.json").write_text(
+        json.dumps(
+            _sampler_equality_payload(
+                rows=2,
+                artifact_path="benchmarks/results/sampler-equality-link/qwen35-c2-sampler-eq.json",
+            )
+        ),
+        encoding="utf-8",
+    )
+    try:
+        sampler_symlink_artifact.symlink_to(sampler_artifact_dir / "qwen35-c2-sampler-eq.json")
+        sampler_symlink_parent.symlink_to(sampler_symlink_parent_target, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        sampler_symlink_artifact = None
+        sampler_symlink_parent = None
     (sampler_artifact_dir / "projection-wmma-c2.json").write_text(
         json.dumps(_projection_evidence_payload(rows=2)),
         encoding="utf-8",
@@ -12439,6 +12463,29 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     monkeypatch.chdir(artifact_root)
 
     validate_cn_diagnostic_artifact_payload(accepted)
+
+    def _accepted_with_sampler_equality_artifact(artifact_path: str) -> dict[str, object]:
+        payload = json.loads(json.dumps(accepted))
+        payload["execution"]["batch_execution"]["decode_execution"]["sampler_execution"]["equality_artifact"] = artifact_path
+        return payload
+
+    non_json_sampler_equality = _accepted_with_sampler_equality_artifact("benchmarks/results/qwen35-c2-sampler-eq.txt")
+    with pytest.raises(ValueError, match="sampler_execution.equality_artifact must point to a .json artifact"):
+        validate_cn_diagnostic_artifact_payload(non_json_sampler_equality)
+
+    directory_sampler_equality = _accepted_with_sampler_equality_artifact("benchmarks/results/qwen35-c2-sampler-directory-eq.json")
+    with pytest.raises(ValueError, match="sampler_execution.equality_artifact must point to a regular JSON artifact"):
+        validate_cn_diagnostic_artifact_payload(directory_sampler_equality)
+
+    if sampler_symlink_artifact is not None:
+        symlink_sampler_equality = _accepted_with_sampler_equality_artifact("benchmarks/results/qwen35-c2-sampler-symlink-eq.json")
+        with pytest.raises(ValueError, match="sampler_execution.equality_artifact must point to a regular JSON artifact, not a symlink"):
+            validate_cn_diagnostic_artifact_payload(symlink_sampler_equality)
+        parent_symlink_sampler_equality = _accepted_with_sampler_equality_artifact(
+            "benchmarks/results/sampler-equality-link/qwen35-c2-sampler-eq.json"
+        )
+        with pytest.raises(ValueError, match="sampler_execution.equality_artifact parent directories must not be symlinks"):
+            validate_cn_diagnostic_artifact_payload(parent_symlink_sampler_equality)
 
     projection_candidate = {
         "name": "wmma_caware",

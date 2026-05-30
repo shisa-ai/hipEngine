@@ -48775,3 +48775,23 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: targeted core sampler equality gate test PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and C3.6 remains open until retained native sampler equality/profiler evidence is green.
+
+## 2026-05-30 — CONCURRENCY accepted sampler equality schema coverage
+
+Advanced C3.6 native LM-head/sampler promotion evidence at accepted-artifact schema level. `tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates` now explicitly covers sampler equality artifacts that are non-`.json`, existing non-regular paths, symlinked artifacts, and symlink-parent paths, proving `scripts/qwen35_batch_artifact_schema.py` rejects unsafe equality evidence for accepted retained c>N artifacts even if runtime-side gates are bypassed. `docs/CONCURRENCY.md` records that core dispatch, retained-bench, and accepted-schema loaders all reject those paths while C3.6 stays open until real native sampler equality/profiler evidence exists.
+
+Validation:
+
+```bash
+python3 -m compileall -q tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: targeted accepted schema sampler-equality path coverage PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and C3.6 remains open until retained native sampler equality/profiler evidence is green.
