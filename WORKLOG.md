@@ -48875,3 +48875,23 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: targeted retained projection self-description coverage PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, no benchmark rollup files changed, and C3.4 remains open until retained projection ratios plus actual runtime c-aware kernel use are green.
+
+## 2026-05-30 — CONCURRENCY runtime sampler evidence self-description coverage
+
+Advanced C3.6 native LM-head/sampler evidence gating at runtime integration level. `tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_sample_batch_rejects_stale_equality_artifact_metadata` now proves `_sample_batch_from_hidden(...)` stays on the serial LM-head fallback even when env flags request `batched_lm_head` with green equality and a retained-path artifact if that JSON has stale self-description (`source_artifact_path` not matching `HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ARTIFACT`). This protects runtime sampler metadata from creating a native sampler claim before same-concurrency generated-token equality artifacts are self-matching and profiler evidence is green. C3.6 remains open until real row-aware LM-head/sampler kernels and c=2/4/8 equality/profiler evidence exist.
+
+Validation:
+
+```bash
+python3 -m compileall -q tests/test_qwen35_resident_batch_layout.py && pytest -q tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_sample_batch_rejects_stale_equality_artifact_metadata -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: targeted runtime sampler stale-equality-artifact coverage PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, no benchmark rollup files changed, and C3.6 remains open until row-aware LM-head/sampler equality plus profiler evidence is green.
