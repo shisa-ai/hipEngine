@@ -27147,3 +27147,15 @@ PYTHONUNBUFFERED=1 python3 scripts/stepfun_gguf_load_smoke.py --pretty > /tmp/st
 ```
 
 Result from the artifact: full resident StepFun Q3_K_L weight load succeeded for 754 tensors / `102,499,149,312` bytes (`95.4598 GiB`) under the configured 120 GB GTT path. HIP free memory moved `119.9961 GiB` before scan/load -> `23.9061 GiB` after load -> `119.8573 GiB` after free; hipEngine allocation stats peaked at 754 active allocations and returned to zero after free. This remains allocation/load evidence only, not generation correctness or throughput.
+
+## 2026-05-29 — StepFun resident Q8 embedding test hardening
+
+Focused task #23 update: strengthened `tests/test_stepfun_resident_session.py` so the real StepFun Q8_0 token embedding test covers BOS/EOS, chat stop token `128007`, the final vocabulary row, and a duplicate EOS row to check ordering/reuse. The test now asserts the GGUF tensor type is `Q8_0`, validates the raw row count against StepFun vocab size, compares exact HIP BF16 output bits against CPU-dequantized BF16 reference rows, checks resident memory stats, and verifies no `torch` import appears during the embedding path. Existing HIP/model availability skips remain in place.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_resident_session.py
+```
+
+Result: `4 passed`.
