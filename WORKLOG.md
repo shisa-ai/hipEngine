@@ -27299,3 +27299,17 @@ python3 -m pytest -q tests/test_stepfun_resident_session.py
 ```
 
 Result: `10 passed`.
+
+## 2026-05-30 — StepFun resident MoE router probe
+
+Added `StepFunMoERouterResult` and `StepFunResidentSession.moe_router_probe_bf16()`. The probe copies resident F32 MoE router weights/bias through hipEngine memory APIs and applies the CPU-reference Step router top-k math on BF16-rounded activations. This validates the real Step MoE routing inputs before composing selected expert/shared expert execution; it does not add a device-side router kernel or generation path.
+
+Extended `tests/test_stepfun_resident_session.py` with a real layer-3 MoE router test. The test materializes `layers.3.ffn_gate_inp` and `layers.3.exp_probs_bias`, validates they are F32, compares selected experts, routing weights, and logits against direct GGUF CPU references using `expert_used_count`, `expert_weights_scale`, and `expert_weights_norm` from metadata, and checks allocation cleanup.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_resident_session.py
+```
+
+Result: `11 passed`.

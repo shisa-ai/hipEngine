@@ -40,6 +40,7 @@ from hipengine.kernels.cpu_reference.ops import (
     register_cpu_reference_kernels,
     rmsnorm,
     rotate,
+    step_moe_router,
     write_paged_kv_int8_per_token_head,
 )
 
@@ -77,6 +78,7 @@ __all__ = [
     "register_cpu_reference_kernels",
     "rmsnorm",
     "rotate",
+    "step_moe_router",
     "run_fixture",
     "save_fixture",
     "write_paged_kv_int8_per_token_head",

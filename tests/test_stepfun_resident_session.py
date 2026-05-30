@@ -10,7 +10,12 @@ import pytest
 
 from hipengine.core.hip import get_hip_runtime
 from hipengine.core.memory import memory_stats, reset_memory_stats
-from hipengine.kernels.cpu_reference import gguf_q3_k_gemv, gguf_q5_k_gemv, gguf_q8_0_embedding
+from hipengine.kernels.cpu_reference import (
+    gguf_q3_k_gemv,
+    gguf_q5_k_gemv,
+    gguf_q8_0_embedding,
+    step_moe_router,
+)
 from hipengine.loading.gguf import GGUFReader, scan_gguf_splits
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.loading.stepfun_gguf import build_stepfun_gguf_tensor_map
@@ -276,6 +281,55 @@ def test_stepfun_resident_session_projects_dense_mlp_inputs() -> None:
             assert actual[name].shape == expected_value.shape == (2, 11264)
             np.testing.assert_allclose(actual[name], expected_value, rtol=2.0e-3, atol=2.0e-3)
         expected_nbytes = sum(tensor.nbytes for tensor in tensors.values())
+        assert session.weights.allocated_nbytes == expected_nbytes
+        assert memory_stats()["current_allocated_bytes"] == expected_nbytes
+        assert memory_stats()["active_allocations"] == 2
+    finally:
+        session.free(runtime=runtime)
+
+    assert memory_stats()["current_allocated_bytes"] == 0
+    assert memory_stats()["active_allocations"] == 0
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_stepfun_resident_session_moe_router_probe_matches_cpu_reference() -> None:
+    paths = _stepfun_gguf_paths()
+    info = scan_gguf_splits(paths)
+    model_map = build_stepfun_gguf_tensor_map(info)
+    router_tensor = model_map.layer(3).tensor("ffn_gate_inp")
+    bias_tensor = model_map.layer(3).tensor("exp_probs_bias")
+    assert model_map.layer(3).mlp_type == "moe"
+    assert router_tensor.ggml_type_name == "F32"
+    assert bias_tensor.ggml_type_name == "F32"
+    x = ((np.arange(2 * 4096, dtype=np.float32).reshape(2, 4096) % 47) - 23) / 160.0
+    x_bits = float_array_to_bf16_bits(x)
+    x_bf16 = bf16_to_float32(x_bits)
+    router_weight = GGUFReader(router_tensor.source_path).tensor_data(router_tensor.name)
+    router_bias = GGUFReader(bias_tensor.source_path).tensor_data(bias_tensor.name)
+    expected_weights, expected_experts, expected_logits = step_moe_router(
+        x_bf16,
+        router_weight,
+        router_bias=router_bias,
+        top_k=model_map.config.expert_used_count,
+        routing_scale=model_map.config.expert_weights_scale,
+        normalize_selected=model_map.config.expert_weights_norm,
+    )
+    runtime = get_hip_runtime()
+    reset_memory_stats()
+    session = StepFunResidentSession.from_gguf_paths(
+        paths,
+        selected_slots=("layers.3.ffn_gate_inp", "layers.3.exp_probs_bias"),
+        runtime=runtime,
+    )
+    try:
+        actual = session.moe_router_probe_bf16(3, x_bits, runtime=runtime)
+        assert actual.routing_weights.shape == (2, model_map.config.expert_used_count)
+        assert actual.selected_experts.shape == (2, model_map.config.expert_used_count)
+        assert actual.logits.shape == (2, model_map.config.expert_count)
+        np.testing.assert_array_equal(actual.selected_experts, expected_experts)
+        np.testing.assert_allclose(actual.routing_weights, expected_weights, rtol=0.0, atol=0.0)
+        np.testing.assert_allclose(actual.logits, expected_logits, rtol=0.0, atol=0.0)
+        expected_nbytes = router_tensor.nbytes + bias_tensor.nbytes
         assert session.weights.allocated_nbytes == expected_nbytes
         assert memory_stats()["current_allocated_bytes"] == expected_nbytes
         assert memory_stats()["active_allocations"] == 2

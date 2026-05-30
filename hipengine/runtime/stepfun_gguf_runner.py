@@ -53,6 +53,15 @@ class StepFunDecodePlan:
 
 
 @dataclass(frozen=True)
+class StepFunMoERouterResult:
+    """Host-visible Step MoE router outputs for correctness probes."""
+
+    routing_weights: object
+    selected_experts: object
+    logits: object
+
+
+@dataclass(frozen=True)
 class StepFunPromptEmbedding:
     """Rendered/tokenized Step prompt plus resident BF16 embedding rows."""
 
@@ -503,6 +512,46 @@ class StepFunResidentSession:
             ),
         }
 
+    def moe_router_probe_bf16(
+        self,
+        layer_id: int,
+        x_bf16_bits,
+        *,
+        runtime: HipRuntime | None = None,
+    ) -> StepFunMoERouterResult:
+        """Correctness probe for a resident Step MoE router.
+
+        Router weights/bias are resident F32 tensors; this probe copies them
+        through hipEngine's memory API and applies the CPU-reference routing
+        math on the host until a device-side router is introduced.
+        """
+
+        import numpy as np
+        from hipengine.kernels.cpu_reference import step_moe_router
+        from hipengine.quant.gguf import bf16_to_float32
+
+        self._validate_layer_id(layer_id)
+        layer = self.model_map.layer(layer_id)
+        if "ffn_gate_inp" not in layer.tensors or "exp_probs_bias" not in layer.tensors:
+            raise RuntimeError(f"layer {layer_id} does not expose MoE router weights")
+        runtime = runtime or get_hip_runtime()
+        hidden = bf16_to_float32(np.ascontiguousarray(x_bf16_bits, dtype=np.uint16))
+        router_weight = self._copy_resident_f32_weight(f"layers.{layer_id}.ffn_gate_inp", runtime=runtime)
+        router_bias = self._copy_resident_f32_weight(f"layers.{layer_id}.exp_probs_bias", runtime=runtime)
+        routing_weights, selected_experts, logits = step_moe_router(
+            hidden,
+            router_weight,
+            router_bias=router_bias,
+            top_k=self.model_map.config.expert_used_count,
+            routing_scale=self.model_map.config.expert_weights_scale,
+            normalize_selected=self.model_map.config.expert_weights_norm,
+        )
+        return StepFunMoERouterResult(
+            routing_weights=routing_weights,
+            selected_experts=selected_experts,
+            logits=logits,
+        )
+
     def dense_mlp_probe_bf16(
         self,
         layer_id: int,
@@ -545,6 +594,16 @@ class StepFunResidentSession:
             stream=stream,
         )
 
+    def _copy_resident_f32_weight(self, slot_path: str, *, runtime: HipRuntime):
+        import numpy as np
+
+        weight = self.weight_for_slot(slot_path)
+        if weight.spec.quant_key != "f32":
+            raise ValueError(f"resident slot {slot_path!r} is not an F32 tensor")
+        out = np.empty(tuple(int(dim) for dim in weight.spec.source.shape), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(out), weight.allocation().buffer, runtime=runtime)
+        return out
+
     def _validate_layer_id(self, layer_id: int) -> None:
         if layer_id < 0 or layer_id >= self.model_map.config.block_count:
             raise ValueError(f"layer_id out of range: {layer_id}")
@@ -565,6 +624,7 @@ __all__ = [
     "DEFAULT_STEPFUN_SHORT_CONTEXT",
     "StepFunDecodePlan",
     "StepFunKVCacheAllocation",
+    "StepFunMoERouterResult",
     "StepFunPromptEmbedding",
     "StepFunResidentSession",
     "StepFunShortContextDecodePlanner",
