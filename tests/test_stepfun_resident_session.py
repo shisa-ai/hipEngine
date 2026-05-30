@@ -14,8 +14,10 @@ from hipengine.kernels.cpu_reference import (
     gguf_q3_k_gemv,
     gguf_q5_k_gemv,
     gguf_q8_0_embedding,
+    gguf_q8_0_gemv,
     step_moe_router,
 )
+from hipengine.kernels.cpu_reference.ops import step_rmsnorm
 from hipengine.loading.gguf import GGUFReader, scan_gguf_splits
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.loading.stepfun_gguf import build_stepfun_gguf_tensor_map
@@ -687,6 +689,51 @@ def test_stepfun_resident_session_allocates_and_frees_kv_cache() -> None:
     finally:
         if kv is not None:
             kv.free(runtime=runtime)
+        session.free(runtime=runtime)
+
+    assert memory_stats()["current_allocated_bytes"] == 0
+    assert memory_stats()["active_allocations"] == 0
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_stepfun_resident_session_final_logits_probe_matches_cpu_rows() -> None:
+    paths = _stepfun_gguf_paths()
+    info = scan_gguf_splits(paths)
+    model_map = build_stepfun_gguf_tensor_map(info)
+    norm_tensor = model_map.root("output_norm")
+    head_tensor = model_map.root("lm_head")
+    assert norm_tensor.ggml_type_name == "F32"
+    assert head_tensor.ggml_type_name == "Q8_0"
+    x = ((np.arange(4096, dtype=np.float32).reshape(1, 4096) % 67) - 33) / 256.0
+    x_bits = float_array_to_bf16_bits(x)
+    hidden = bf16_to_float32(x_bits)
+    norm_weight = GGUFReader(norm_tensor.source_path).tensor_data(norm_tensor.name)
+    normed = step_rmsnorm(hidden, norm_weight, eps=model_map.config.rms_norm_eps)
+    normed_bits = float_array_to_bf16_bits(normed)
+    head_rows = np.asarray([0, 1, 128007, model_map.config.vocab_size - 1], dtype=np.int64)
+    head_raw = GGUFReader(head_tensor.source_path).tensor_data(head_tensor.name)
+    expected_rows = gguf_q8_0_gemv(bf16_to_float32(normed_bits), head_raw[head_rows])
+    runtime = get_hip_runtime()
+    reset_memory_stats()
+    session = StepFunResidentSession.from_gguf_paths(
+        paths,
+        selected_slots=("root.output_norm", "root.lm_head"),
+        runtime=runtime,
+    )
+    try:
+        logits = session.final_logits_probe_bf16(x_bits, runtime=runtime)
+        assert logits.shape == (1, model_map.config.vocab_size)
+        np.testing.assert_allclose(
+            logits[:, head_rows],
+            expected_rows,
+            rtol=2.0e-3,
+            atol=2.0e-3,
+        )
+        expected_nbytes = norm_tensor.nbytes + head_tensor.nbytes
+        assert session.weights.allocated_nbytes == expected_nbytes
+        assert memory_stats()["current_allocated_bytes"] == expected_nbytes
+        assert memory_stats()["active_allocations"] == 2
+    finally:
         session.free(runtime=runtime)
 
     assert memory_stats()["current_allocated_bytes"] == 0

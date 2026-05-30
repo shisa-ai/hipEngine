@@ -627,6 +627,33 @@ class StepFunResidentSession:
             ),
         }
 
+    def final_logits_probe_bf16(
+        self,
+        x_bf16_bits,
+        *,
+        runtime: HipRuntime | None = None,
+        stream: int = 0,
+    ):
+        """Correctness probe for final RMSNorm + output projection logits."""
+
+        import numpy as np
+        from hipengine.kernels.cpu_reference.ops import step_rmsnorm
+        from hipengine.loading.materialize import float_array_to_bf16_bits
+        from hipengine.quant.gguf import bf16_to_float32
+
+        runtime = runtime or get_hip_runtime()
+        hidden = bf16_to_float32(np.ascontiguousarray(x_bf16_bits, dtype=np.uint16))
+        norm_weight = self._copy_resident_f32_weight("root.output_norm", runtime=runtime)
+        normed = step_rmsnorm(hidden, norm_weight, eps=self.model_map.config.rms_norm_eps)
+        normed_bits = float_array_to_bf16_bits(normed)
+        return self.linear_slot_bf16(
+            "root.lm_head",
+            normed_bits,
+            output_dtype=GGUF_OUTPUT_F32,
+            runtime=runtime,
+            stream=stream,
+        )
+
     def moe_mlp_probe_bf16(
         self,
         layer_id: int,

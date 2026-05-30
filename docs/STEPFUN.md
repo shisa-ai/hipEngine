@@ -508,10 +508,11 @@ reporting.
   matches CPU top-k routing from resident F32 router/bias weights, a
   selected-expert `Q3_K` gate projection probe for layer-3 `ffn_gate_exps`, a
   MoE expert-input bundle that launches selected gate/up plus shared gate/up
-  projections vs CPU references, and a MoE correctness probe that composes
-  routing, selected/shared gate/up, host SwiGLU BF16 intermediates,
-  selected/shared down projections, and host routing aggregation vs CPU
-  reference. Remaining
+  projections vs CPU references, a MoE correctness probe that composes routing,
+  selected/shared gate/up, host SwiGLU BF16 intermediates, selected/shared down
+  projections, and host routing aggregation vs CPU reference, and a final-logits
+  probe that composes host output RMSNorm/BF16 rounding with resident Q8_0
+  `lm_head` projection for selected full-vocab rows vs CPU reference. Remaining
   implementation task is composing those primitives into the layer/full-model
   execution loop beyond embedding, the prompt planner, and CPU replay harness.
 - [x] Use short contexts first (for example <= 512) before exercising long
@@ -542,10 +543,12 @@ the dense-MLP gate/up projection bundle, the dense MLP correctness probe
 probe (resident F32 router/bias weights -> CPU top-k routing), selected-expert
 `Q3_K` gate projection via existing selected GEMV kernels, the MoE expert-input
 bundle (selected gate/up plus shared gate/up), the MoE correctness probe
-(router + selected/shared MLP chain with BF16 intermediates), resident KV-cache
-allocation/free, resident memory cleanup (two/three/four active weight allocations before session
-free, zero after), and no torch import. Full
-next-token/logit parity remains open until the streaming layer loop is wired.
+(router + selected/shared MLP chain with BF16 intermediates), the final-logits
+probe (output RMSNorm + resident Q8_0 `lm_head` projection for sampled vocab
+rows), resident KV-cache allocation/free, resident memory cleanup
+(two/three/four active weight allocations before session free, zero after), and
+no torch import. Full next-token/logit parity remains open until the streaming
+layer loop is wired.
 
 ### P12 — Full-model Strix Halo smoke
 
@@ -562,8 +565,9 @@ next-token/logit parity remains open until the streaming layer loop is wired.
   succeeds for all 754 tensors / `95.4598 GiB` under the configured 120 GB GTT
   (`benchmarks/results/2026-05-29-stepfun-q3kl-full-load-smoke-task20.json`),
   and the load smoke can allocate/free a synthetic 512-token BF16 KV footprint
-  after weight load; full generation is still open because resident Step layer
-  execution and logits are not wired yet.
+  after weight load; final-logits projection is covered for synthetic hidden
+  states, but full generation is still open because resident Step layer
+  execution is not wired yet.
 - [ ] Record HIP-visible memory before load, after load, after KV allocation, and
   after generation; include UMA/GTT setting and backend (`hip_gfx1151`). Weight
   load evidence from

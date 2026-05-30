@@ -27355,3 +27355,17 @@ python3 -m pytest -q tests/test_stepfun_resident_session.py
 ```
 
 Result: `14 passed`.
+
+## 2026-05-30 — StepFun final logits correctness probe
+
+Added `StepFunResidentSession.final_logits_probe_bf16()`, a correctness probe for the final root stage. The probe copies resident F32 `output_norm.weight`, applies CPU-reference Step RMSNorm on BF16-rounded hidden states, BF16-rounds the normalized hidden vector, and launches the resident Q8_0 `lm_head` (`output.weight`) projection to produce full-vocab F32 logits. This validates the real Step root tensors and GGUF Q8_0 output projection path; it is not llama.cpp next-token parity because the hidden state is synthetic and the full layer loop is not wired.
+
+Extended `tests/test_stepfun_resident_session.py` with a real root-tensor test. The test materializes `root.output_norm` and `root.lm_head`, runs the final-logits probe on HIP/gfx1151, and compares sampled vocabulary rows `[0, 1, 128007, vocab-1]` against a CPU reference built from GGUF output norm and selected Q8_0 lm-head rows. It also checks resident allocation cleanup.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_resident_session.py
+```
+
+Result: `15 passed`.
