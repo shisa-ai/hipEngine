@@ -150,6 +150,60 @@ def test_stepfun_resident_session_projects_real_q3_and_q5_layer_weights() -> Non
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_stepfun_resident_session_projects_attention_inputs() -> None:
+    paths = _stepfun_gguf_paths()
+    info = scan_gguf_splits(paths)
+    model_map = build_stepfun_gguf_tensor_map(info)
+    tensors = {
+        "q": model_map.layer(0).tensor("attn_q"),
+        "k": model_map.layer(0).tensor("attn_k"),
+        "v": model_map.layer(0).tensor("attn_v"),
+        "gate": model_map.layer(0).tensor("attn_gate"),
+    }
+    assert {name: tensor.ggml_type_name for name, tensor in tensors.items()} == {
+        "q": "Q3_K",
+        "k": "Q3_K",
+        "v": "Q5_K",
+        "gate": "Q3_K",
+    }
+    x = ((np.arange(4096, dtype=np.float32).reshape(1, 4096) % 29) - 14) / 112.0
+    x_bits = float_array_to_bf16_bits(x)
+    x_bf16 = bf16_to_float32(x_bits)
+    expected = {}
+    for name, tensor in tensors.items():
+        raw = GGUFReader(tensor.source_path).tensor_data(tensor.name)
+        ref_fn = gguf_q5_k_gemv if tensor.ggml_type_name == "Q5_K" else gguf_q3_k_gemv
+        expected[name] = ref_fn(x_bf16, raw)
+    runtime = get_hip_runtime()
+    reset_memory_stats()
+    session = StepFunResidentSession.from_gguf_paths(
+        paths,
+        selected_slots=(
+            "layers.0.attn_q",
+            "layers.0.attn_k",
+            "layers.0.attn_v",
+            "layers.0.attn_gate",
+        ),
+        runtime=runtime,
+    )
+    try:
+        actual = session.project_attention_inputs_bf16(0, x_bits, runtime=runtime)
+        assert set(actual) == {"q", "k", "v", "gate"}
+        for name, expected_value in expected.items():
+            assert actual[name].shape == expected_value.shape
+            np.testing.assert_allclose(actual[name], expected_value, rtol=2.0e-3, atol=2.0e-3)
+        expected_nbytes = sum(tensor.nbytes for tensor in tensors.values())
+        assert session.weights.allocated_nbytes == expected_nbytes
+        assert memory_stats()["current_allocated_bytes"] == expected_nbytes
+        assert memory_stats()["active_allocations"] == 4
+    finally:
+        session.free(runtime=runtime)
+
+    assert memory_stats()["current_allocated_bytes"] == 0
+    assert memory_stats()["active_allocations"] == 0
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 def test_stepfun_resident_session_embedding_is_torch_free() -> None:
     had_torch = "torch" in sys.modules
     runtime = get_hip_runtime()

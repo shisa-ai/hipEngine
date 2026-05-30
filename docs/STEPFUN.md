@@ -498,7 +498,8 @@ reporting.
   for BOS/EOS/chat-stop/final-vocab rows with exact CPU BF16 parity, and
   resident layer-0 `Q3_K` `attn_q` plus `Q5_K` `attn_output` projections match
   CPU dequantized references with two BF16-rounded activation rows (exercising
-  rows>1 prefill dispatch) and allocation cleanup checks. Remaining
+  rows>1 prefill dispatch), and the resident attention-input bundle launches
+  layer-0 Q/K/V/gate projections vs CPU references. Remaining
   implementation task is composing those primitives
   into the layer/full-model execution loop beyond embedding, the prompt
   planner, and CPU replay harness.
@@ -523,10 +524,10 @@ assistant-prefix rendering, multi-EOS stopping, and torch-free imports.
 resident Q8_0 token embedding of `[0, BOS, EOS, 128007, vocab-1, EOS]` plus
 real layer-0 `Q3_K` `attn_q` and `Q5_K` `attn_output` projection vs CPU
 references using two BF16-rounded activation rows. It also checks rows>1
-prefill dispatch, resident memory cleanup (two active weight allocations before
-session free, zero after), and no torch
-import. Full next-token/logit parity remains open until the streaming
-layer loop is wired.
+prefill dispatch, the resident attention-input Q/K/V/gate projection bundle,
+resident memory cleanup (two/four active weight allocations before session free,
+zero after), and no torch import. Full next-token/logit parity remains open
+until the streaming layer loop is wired.
 
 ### P12 — Full-model Strix Halo smoke
 

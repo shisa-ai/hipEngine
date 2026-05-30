@@ -27229,3 +27229,17 @@ python3 -m pytest -q tests/test_stepfun_resident_session.py
 ```
 
 Result: `4 passed`.
+
+## 2026-05-30 — StepFun resident attention projection bundle
+
+Added `StepFunResidentSession.project_attention_inputs_bf16()`, a small resident layer bring-up helper that launches registry-dispatched Q/K/V/gate input projections for a StepFun layer from BF16-bit activations. This composes existing resident linear slots without introducing engine-wide backend or quant branches; attention softmax, RoPE/KV write, output projection composition, and generation remain open.
+
+Extended `tests/test_stepfun_resident_session.py` with a real layer-0 Q/K/V/gate probe. The test materializes `attn_q`, `attn_k`, `attn_v`, and `attn_gate`, validates their GGUF quant types (`Q3_K`, `Q3_K`, `Q5_K`, `Q3_K`), launches the resident bundle on HIP/gfx1151, compares each F32 output against CPU dequantized references, and checks allocation cleanup.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_resident_session.py
+```
+
+Result: `5 passed`.

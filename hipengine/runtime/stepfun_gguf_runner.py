@@ -318,6 +318,51 @@ class StepFunResidentSession:
             free(x_buf, runtime=runtime)
         return out
 
+    def project_attention_inputs_bf16(
+        self,
+        layer_id: int,
+        x_bf16_bits,
+        *,
+        output_dtype: str = GGUF_OUTPUT_F32,
+        runtime: HipRuntime | None = None,
+        stream: int = 0,
+    ) -> Mapping[str, object]:
+        """Launch resident StepFun Q/K/V/gate input projections for one layer."""
+
+        if layer_id < 0 or layer_id >= self.model_map.config.block_count:
+            raise ValueError(f"layer_id out of range: {layer_id}")
+        prefix = f"layers.{layer_id}"
+        return {
+            "q": self.linear_slot_bf16(
+                f"{prefix}.attn_q",
+                x_bf16_bits,
+                output_dtype=output_dtype,
+                runtime=runtime,
+                stream=stream,
+            ),
+            "k": self.linear_slot_bf16(
+                f"{prefix}.attn_k",
+                x_bf16_bits,
+                output_dtype=output_dtype,
+                runtime=runtime,
+                stream=stream,
+            ),
+            "v": self.linear_slot_bf16(
+                f"{prefix}.attn_v",
+                x_bf16_bits,
+                output_dtype=output_dtype,
+                runtime=runtime,
+                stream=stream,
+            ),
+            "gate": self.linear_slot_bf16(
+                f"{prefix}.attn_gate",
+                x_bf16_bits,
+                output_dtype=output_dtype,
+                runtime=runtime,
+                stream=stream,
+            ),
+        }
+
 
 def _register_backend_plugin(backend: str) -> None:
     # Import-time backend plugins populate aliases/registrations. Resolve by
