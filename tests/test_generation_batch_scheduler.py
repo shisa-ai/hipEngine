@@ -2328,6 +2328,60 @@ def test_retained_bench_projection_dispatch_artifact_fails_closed(tmp_path: Path
     with pytest.raises(ValueError, match="wmma_caware evidence artifact_path rows must be within candidate row bounds"):
         retained_bench._projection_dispatch_candidates_for_payload(wrong_rows_evidence)
 
+    mismatched_artifact_payload = _projection_evidence_payload(
+        rows=2,
+        artifact_path="benchmarks/results/projection-stale-artifact-path.json",
+        aggregate_vs_row_gemv=1.25,
+        per_request_vs_row_gemv=1.05,
+    )
+    mismatched_artifact_payload["artifact_path"] = "benchmarks/results/projection-stale-other.json"
+    (artifact_dir / "projection-stale-artifact-path.json").write_text(
+        json.dumps(mismatched_artifact_payload),
+        encoding="utf-8",
+    )
+    stale_artifact_candidate = json.loads(json.dumps(candidate_with_missing_evidence))
+    stale_artifact_candidate["evidence"]["artifact_path"] = "benchmarks/results/projection-stale-artifact-path.json"
+    stale_artifact_path = artifact_dir / "stale-artifact-path-candidate.json"
+    stale_artifact_path.write_text(
+        json.dumps({"projection_dispatch_candidates": [stale_artifact_candidate]}),
+        encoding="utf-8",
+    )
+    stale_artifact = SimpleNamespace(
+        projection_dispatch_artifact=Path("benchmarks/results/stale-artifact-path-candidate.json")
+    )
+    with pytest.raises(
+        ValueError,
+        match="wmma_caware evidence artifact_path evidence.artifact_path must match projection_dispatch.evidence.artifact_path",
+    ):
+        retained_bench._projection_dispatch_candidates_for_payload(stale_artifact)
+
+    mismatched_source_payload = _projection_evidence_payload(
+        rows=2,
+        artifact_path="benchmarks/results/projection-stale-source-path.json",
+        aggregate_vs_row_gemv=1.25,
+        per_request_vs_row_gemv=1.05,
+    )
+    mismatched_source_payload["source_artifact_path"] = "benchmarks/results/projection-stale-other.json"
+    (artifact_dir / "projection-stale-source-path.json").write_text(
+        json.dumps(mismatched_source_payload),
+        encoding="utf-8",
+    )
+    stale_source_candidate = json.loads(json.dumps(candidate_with_missing_evidence))
+    stale_source_candidate["evidence"]["artifact_path"] = "benchmarks/results/projection-stale-source-path.json"
+    stale_source_path = artifact_dir / "stale-source-path-candidate.json"
+    stale_source_path.write_text(
+        json.dumps({"projection_dispatch_candidates": [stale_source_candidate]}),
+        encoding="utf-8",
+    )
+    stale_source = SimpleNamespace(
+        projection_dispatch_artifact=Path("benchmarks/results/stale-source-path-candidate.json")
+    )
+    with pytest.raises(
+        ValueError,
+        match="wmma_caware evidence artifact_path evidence.source_artifact_path must match projection_dispatch.evidence.artifact_path",
+    ):
+        retained_bench._projection_dispatch_candidates_for_payload(stale_source)
+
 
 def test_batch_c_sweep_rejects_wrong_seed_before_creating_artifacts(tmp_path: Path, monkeypatch) -> None:
     output_dir = tmp_path / "artifacts"
