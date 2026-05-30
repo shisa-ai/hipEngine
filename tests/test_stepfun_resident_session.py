@@ -204,6 +204,67 @@ def test_stepfun_resident_session_projects_attention_inputs() -> None:
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_stepfun_resident_session_projects_dense_mlp_inputs() -> None:
+    paths = _stepfun_gguf_paths()
+    info = scan_gguf_splits(paths)
+    model_map = build_stepfun_gguf_tensor_map(info)
+    tensors = {
+        "gate": model_map.layer(0).tensor("ffn_gate"),
+        "up": model_map.layer(0).tensor("ffn_up"),
+    }
+    assert model_map.layer(0).mlp_type == "dense_mlp"
+    assert {name: tensor.ggml_type_name for name, tensor in tensors.items()} == {
+        "gate": "Q3_K",
+        "up": "Q3_K",
+    }
+    x = ((np.arange(2 * 4096, dtype=np.float32).reshape(2, 4096) % 41) - 20) / 144.0
+    x_bits = float_array_to_bf16_bits(x)
+    x_bf16 = bf16_to_float32(x_bits)
+    expected = {}
+    for name, tensor in tensors.items():
+        raw = GGUFReader(tensor.source_path).tensor_data(tensor.name)
+        expected[name] = gguf_q3_k_gemv(x_bf16, raw)
+    runtime = get_hip_runtime()
+    reset_memory_stats()
+    session = StepFunResidentSession.from_gguf_paths(
+        paths,
+        selected_slots=("layers.0.ffn_gate", "layers.0.ffn_up"),
+        runtime=runtime,
+    )
+    try:
+        actual = session.project_dense_mlp_inputs_bf16(0, x_bits, runtime=runtime)
+        assert set(actual) == {"gate", "up"}
+        for name, expected_value in expected.items():
+            assert actual[name].shape == expected_value.shape == (2, 11264)
+            np.testing.assert_allclose(actual[name], expected_value, rtol=2.0e-3, atol=2.0e-3)
+        expected_nbytes = sum(tensor.nbytes for tensor in tensors.values())
+        assert session.weights.allocated_nbytes == expected_nbytes
+        assert memory_stats()["current_allocated_bytes"] == expected_nbytes
+        assert memory_stats()["active_allocations"] == 2
+    finally:
+        session.free(runtime=runtime)
+
+    assert memory_stats()["current_allocated_bytes"] == 0
+    assert memory_stats()["active_allocations"] == 0
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_stepfun_resident_session_rejects_dense_mlp_projection_for_moe_layer() -> None:
+    runtime = get_hip_runtime()
+    session = StepFunResidentSession.from_gguf_paths(
+        _stepfun_gguf_paths(),
+        selected_slots=("layers.3.ffn_gate_inp",),
+        runtime=runtime,
+    )
+    try:
+        x_bits = float_array_to_bf16_bits(np.zeros((1, 4096), dtype=np.float32))
+        with pytest.raises(RuntimeError, match="dense ffn_gate/ffn_up"):
+            session.project_dense_mlp_inputs_bf16(3, x_bits, runtime=runtime)
+    finally:
+        session.free(runtime=runtime)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 def test_stepfun_resident_session_embedding_is_torch_free() -> None:
     had_torch = "torch" in sys.modules
     runtime = get_hip_runtime()

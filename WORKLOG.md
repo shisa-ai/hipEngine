@@ -27243,3 +27243,17 @@ python3 -m pytest -q tests/test_stepfun_resident_session.py
 ```
 
 Result: `5 passed`.
+
+## 2026-05-30 — StepFun resident dense MLP input projections
+
+Added `StepFunResidentSession.project_dense_mlp_inputs_bf16()`, a resident dense-layer bring-up helper that launches the Step dense-SwiGLU `ffn_gate` and `ffn_up` projections from BF16-bit activations. The helper validates that the layer exposes dense `ffn_gate`/`ffn_up` weights and rejects MoE layers, leaving SwiGLU activation, down projection composition, MoE routing, and full decode for later iterations.
+
+Extended `tests/test_stepfun_resident_session.py` with real layer-0 dense MLP input projection coverage. The test materializes `layers.0.ffn_gate` and `layers.0.ffn_up`, validates both are `Q3_K`, launches two BF16-rounded activation rows through HIP/gfx1151, compares each F32 output against CPU dequantized references, and checks allocation cleanup. A separate negative test verifies the dense helper rejects MoE layer 3.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_resident_session.py
+```
+
+Result: `7 passed`.

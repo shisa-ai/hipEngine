@@ -329,8 +329,7 @@ class StepFunResidentSession:
     ) -> Mapping[str, object]:
         """Launch resident StepFun Q/K/V/gate input projections for one layer."""
 
-        if layer_id < 0 or layer_id >= self.model_map.config.block_count:
-            raise ValueError(f"layer_id out of range: {layer_id}")
+        self._validate_layer_id(layer_id)
         prefix = f"layers.{layer_id}"
         return {
             "q": self.linear_slot_bf16(
@@ -362,6 +361,43 @@ class StepFunResidentSession:
                 stream=stream,
             ),
         }
+
+    def project_dense_mlp_inputs_bf16(
+        self,
+        layer_id: int,
+        x_bf16_bits,
+        *,
+        output_dtype: str = GGUF_OUTPUT_F32,
+        runtime: HipRuntime | None = None,
+        stream: int = 0,
+    ) -> Mapping[str, object]:
+        """Launch resident dense-SwiGLU gate/up projections for one layer."""
+
+        self._validate_layer_id(layer_id)
+        layer = self.model_map.layer(layer_id)
+        if "ffn_gate" not in layer.tensors or "ffn_up" not in layer.tensors:
+            raise RuntimeError(f"layer {layer_id} does not expose dense ffn_gate/ffn_up weights")
+        prefix = f"layers.{layer_id}"
+        return {
+            "gate": self.linear_slot_bf16(
+                f"{prefix}.ffn_gate",
+                x_bf16_bits,
+                output_dtype=output_dtype,
+                runtime=runtime,
+                stream=stream,
+            ),
+            "up": self.linear_slot_bf16(
+                f"{prefix}.ffn_up",
+                x_bf16_bits,
+                output_dtype=output_dtype,
+                runtime=runtime,
+                stream=stream,
+            ),
+        }
+
+    def _validate_layer_id(self, layer_id: int) -> None:
+        if layer_id < 0 or layer_id >= self.model_map.config.block_count:
+            raise ValueError(f"layer_id out of range: {layer_id}")
 
 
 def _register_backend_plugin(backend: str) -> None:
