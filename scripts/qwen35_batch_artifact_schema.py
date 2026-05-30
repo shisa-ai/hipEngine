@@ -2477,12 +2477,24 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
             errors.append(f"correctness.primitive_batch_correctness.{field} must be an int for accepted artifacts")
         elif value != expected_value:
             errors.append(f"correctness.primitive_batch_correctness.{field} must match scripts/qwen35_batch_correctness.py fixture shape for accepted artifacts")
-    for field in ("append_key_mismatch", "append_value_mismatch"):
+    for field in (
+        "append_key_mismatch",
+        "append_value_mismatch",
+        "append_batch_aa_key_mismatch",
+        "append_batch_aa_value_mismatch",
+    ):
         value = primitive.get(field)
         if not isinstance(value, int) or isinstance(value, bool):
             errors.append(f"correctness.primitive_batch_correctness.{field} must be an int for accepted artifacts")
         elif value != 0:
             errors.append(f"correctness.primitive_batch_correctness.{field} must be 0 for accepted artifacts")
+    attn_batch_aa = primitive.get("attn_batch_aa_max_abs")
+    if not _is_number(attn_batch_aa):
+        errors.append("correctness.primitive_batch_correctness.attn_batch_aa_max_abs must be numeric for accepted artifacts")
+    elif float(attn_batch_aa) != 0.0:
+        errors.append("correctness.primitive_batch_correctness.attn_batch_aa_max_abs must be 0.0 for accepted artifacts")
+    if primitive.get("aa_passed") is not True:
+        errors.append("correctness.primitive_batch_correctness.aa_passed must be true for accepted artifacts")
     attn_vs_c1 = primitive.get("attn_batch_vs_c1_max_abs")
     if not _is_number(attn_vs_c1):
         errors.append("correctness.primitive_batch_correctness.attn_batch_vs_c1_max_abs must be numeric for accepted artifacts")

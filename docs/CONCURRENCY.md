@@ -1263,9 +1263,11 @@ roll-up/status view.
       `attn_batch_vs_c1_max_abs=0.0`, passed). The primitive script also re-runs
       the batched KV append and batched full-attention context kernels on the
       same inputs and emits A/A determinism fields (`append_batch_aa_*` and
-      `attn_batch_aa_max_abs`) that must be zero for `passed=true`. This does
-      not close C2.5 because generated-token equality vs independent c=1 for
-      c=4/c=8 is still missing.
+      `attn_batch_aa_max_abs`) that must be zero for `passed=true`; retained
+      bench loading and accepted-artifact schema validation now reject primitive
+      gate artifacts missing those zero A/A fields. This does not close C2.5
+      because generated-token equality vs independent c=1 for c=4/c=8 is still
+      missing.
 - [x] **C2.6 slot-validation and long-context fallback guards.** Add CPU
       structural tests for invalid slot orders/duplicates/out-of-range ids,
       INT8 KV rejection, and the current `max_context >= 1024` per-row split-K

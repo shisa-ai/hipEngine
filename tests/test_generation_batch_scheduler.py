@@ -10290,8 +10290,12 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
         "passed": True,
         "append_key_mismatch": 0,
         "append_value_mismatch": 0,
+        "append_batch_aa_key_mismatch": 0,
+        "append_batch_aa_value_mismatch": 0,
         "attn_batch_vs_c1_max_abs": 0.0,
         "attn_batch_vs_numpy_max_abs": 5.0e-8,
+        "attn_batch_aa_max_abs": 0.0,
+        "aa_passed": True,
     }
 
     def write_primitive(path: Path, payload: dict[str, object]) -> None:
@@ -10349,6 +10353,11 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     bool_append_payload = json.loads(artifact.read_text())
     bool_append_payload["append_key_mismatch"] = False
     write_primitive(bool_append_artifact, bool_append_payload)
+    mismatched_aa_artifact = tmp_path / "primitive-c2-aa.json"
+    aa_payload = json.loads(artifact.read_text())
+    aa_payload["attn_batch_aa_max_abs"] = 1e-8
+    aa_payload["aa_passed"] = False
+    write_primitive(mismatched_aa_artifact, aa_payload)
     wrong_artifact_path_artifact = tmp_path / "primitive-c2-wrong-artifact-path.json"
     wrong_artifact_path_payload = json.loads(artifact.read_text())
     wrong_artifact_path_artifact.write_text(json.dumps(wrong_artifact_path_payload))
@@ -10365,6 +10374,7 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     mismatched_context = retained_bench._primitive_correctness_reference(mismatched_context_artifact, rows=2)
     bool_context = retained_bench._primitive_correctness_reference(bool_context_artifact, rows=2)
     bool_append = retained_bench._primitive_correctness_reference(bool_append_artifact, rows=2)
+    mismatched_aa = retained_bench._primitive_correctness_reference(mismatched_aa_artifact, rows=2)
     wrong_artifact_path = retained_bench._primitive_correctness_reference(wrong_artifact_path_artifact, rows=2)
     missing = retained_bench._primitive_correctness_reference(None, rows=2)
 
@@ -10397,6 +10407,9 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     assert "context_lens is missing or does not match fixture coverage" in bool_context["reason"]
     assert bool_append["passed"] is False
     assert "append_key_mismatch is missing or not integer zero" in bool_append["reason"]
+    assert mismatched_aa["passed"] is False
+    assert "attn_batch_aa_max_abs is missing or not 0.0" in mismatched_aa["reason"]
+    assert "aa_passed is not true" in mismatched_aa["reason"]
     assert wrong_artifact_path["passed"] is False
     assert wrong_artifact_path["source_artifact_path"] == str(artifact)
     assert "artifact_path does not match primitive correctness artifact path" in wrong_artifact_path["reason"]
@@ -12442,8 +12455,12 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                 "passed": True,
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
+                "append_batch_aa_key_mismatch": 0,
+                "append_batch_aa_value_mismatch": 0,
                 "attn_batch_vs_c1_max_abs": 0.0,
                 "attn_batch_vs_numpy_max_abs": 5.0e-8,
+                "attn_batch_aa_max_abs": 0.0,
+                "aa_passed": True,
             },
         },
         "execution": {
@@ -13477,6 +13494,21 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     primitive_append_mismatch["correctness"]["primitive_batch_correctness"]["append_key_mismatch"] = 1
     with pytest.raises(ValueError, match="primitive_batch_correctness.append_key_mismatch must be 0"):
         validate_cn_diagnostic_artifact_payload(primitive_append_mismatch)
+
+    primitive_append_aa_mismatch = json.loads(json.dumps(accepted))
+    primitive_append_aa_mismatch["correctness"]["primitive_batch_correctness"]["append_batch_aa_key_mismatch"] = 1
+    with pytest.raises(ValueError, match="primitive_batch_correctness.append_batch_aa_key_mismatch must be 0"):
+        validate_cn_diagnostic_artifact_payload(primitive_append_aa_mismatch)
+
+    primitive_attn_aa_mismatch = json.loads(json.dumps(accepted))
+    primitive_attn_aa_mismatch["correctness"]["primitive_batch_correctness"]["attn_batch_aa_max_abs"] = 1e-8
+    with pytest.raises(ValueError, match="primitive_batch_correctness.attn_batch_aa_max_abs must be 0.0"):
+        validate_cn_diagnostic_artifact_payload(primitive_attn_aa_mismatch)
+
+    primitive_aa_passed_false = json.loads(json.dumps(accepted))
+    primitive_aa_passed_false["correctness"]["primitive_batch_correctness"]["aa_passed"] = False
+    with pytest.raises(ValueError, match="primitive_batch_correctness.aa_passed must be true"):
+        validate_cn_diagnostic_artifact_payload(primitive_aa_passed_false)
 
     primitive_attn_mismatch = json.loads(json.dumps(accepted))
     primitive_attn_mismatch["correctness"]["primitive_batch_correctness"]["attn_batch_vs_c1_max_abs"] = 0.25

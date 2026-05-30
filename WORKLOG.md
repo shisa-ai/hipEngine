@@ -49038,3 +49038,23 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: targeted primitive A/A gate test PASS; the explicit c=2 primitive run PASSed with `append_batch_aa_key_mismatch=0`, `append_batch_aa_value_mismatch=0`, `attn_batch_aa_max_abs=0.0`, and `aa_passed=true`; verify count remains `12`; full guard PASS with c=2/c=8 primitive A/A fields also zero; diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, no benchmark rollup files changed, and C2.5 remains open until generated-token equality vs independent c=1 exists for c=4/c=8.
+
+## 2026-05-30 — CONCURRENCY retained primitive A/A gate binding
+
+Bound the new C2.5 primitive GPU A/A evidence into retained promotion checks. `scripts/qwen35_batch_retained_bench.py` now rejects primitive correctness artifacts that omit zero `append_batch_aa_key_mismatch`, `append_batch_aa_value_mismatch`, `attn_batch_aa_max_abs`, or `aa_passed=true`, and it carries those fields into retained payloads. `scripts/qwen35_batch_artifact_schema.py` now enforces the same fields for accepted c>N artifacts. `docs/CONCURRENCY.md` records that stale primitive artifacts without A/A determinism fields are no longer promotable. C2.5 remains open because generated-token equality vs independent c=1 for c=4/c=8 is still missing.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_retained_bench.py scripts/qwen35_batch_artifact_schema.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_retained_primitive_correctness_reference_requires_same_rows tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: targeted retained-bench/schema primitive A/A tests PASS, verify count remains `12`, full guard PASS with c=2/c=8 primitive A/A fields zero, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, no benchmark rollup files changed, and C2.5 remains open until c=4/c=8 generated-token equality vs independent c=1 exists.

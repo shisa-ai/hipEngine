@@ -562,6 +562,14 @@ def _primitive_correctness_reference(path: Path | None, *, rows: int) -> dict[st
     for field in ("append_key_mismatch", "append_value_mismatch"):
         if not _is_zero_int(payload.get(field)):
             reasons.append(f"{field} is missing or not integer zero")
+    for field in ("append_batch_aa_key_mismatch", "append_batch_aa_value_mismatch"):
+        if not _is_zero_int(payload.get(field)):
+            reasons.append(f"{field} is missing or not integer zero")
+    attn_batch_aa = payload.get("attn_batch_aa_max_abs")
+    if not _is_number(attn_batch_aa) or float(attn_batch_aa) != 0.0:
+        reasons.append("attn_batch_aa_max_abs is missing or not 0.0")
+    if payload.get("aa_passed") is not True:
+        reasons.append("aa_passed is not true")
     attn_vs_c1 = payload.get("attn_batch_vs_c1_max_abs")
     if not _is_number(attn_vs_c1) or float(attn_vs_c1) != 0.0:
         reasons.append("attn_batch_vs_c1_max_abs is missing or not 0.0")
@@ -589,8 +597,12 @@ def _primitive_correctness_reference(path: Path | None, *, rows: int) -> dict[st
         "passed": not reasons,
         "append_key_mismatch": payload.get("append_key_mismatch"),
         "append_value_mismatch": payload.get("append_value_mismatch"),
+        "append_batch_aa_key_mismatch": payload.get("append_batch_aa_key_mismatch"),
+        "append_batch_aa_value_mismatch": payload.get("append_batch_aa_value_mismatch"),
         "attn_batch_vs_c1_max_abs": attn_vs_c1,
         "attn_batch_vs_numpy_max_abs": payload.get("attn_batch_vs_numpy_max_abs"),
+        "attn_batch_aa_max_abs": attn_batch_aa,
+        "aa_passed": payload.get("aa_passed"),
         "reason": None if not reasons else "; ".join(reasons),
     }
 
