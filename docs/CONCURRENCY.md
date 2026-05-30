@@ -1345,7 +1345,7 @@ roll-up/status view.
       `benchmarks/results/` whose resolved target stays inside the active
       results tree (with symlink parents rejected), retained promotion rejects non-JSON/non-regular/symlinked evidence artifacts before scoring candidates, and, when accepted, must beat row-GEMV on both
       aggregate and per-request ratios; accepted c>N artifact schema rejects
-      malformed optional `projection_dispatch_candidates` metadata; accepted c>N
+      malformed optional `projection_dispatch_candidates` metadata plus non-JSON/non-regular/symlinked projection evidence paths; accepted c>N
       artifact schema now requires `execution.batch_execution.projection_dispatch`
       to name an evidence-backed non-row-GEMV c-aware path whose selected
       candidate is present in `projection_dispatch_candidates` and profiler

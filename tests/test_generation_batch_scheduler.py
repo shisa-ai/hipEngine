@@ -12460,6 +12460,30 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         json.dumps(_projection_evidence_payload(rows=2)),
         encoding="utf-8",
     )
+    (sampler_artifact_dir / "projection-wmma-c2.txt").write_text(
+        json.dumps(_projection_evidence_payload(rows=2, artifact_path="benchmarks/results/projection-wmma-c2.txt")),
+        encoding="utf-8",
+    )
+    (sampler_artifact_dir / "projection-wmma-c2-directory.json").mkdir()
+    projection_symlink_artifact = sampler_artifact_dir / "projection-wmma-c2-symlink.json"
+    projection_symlink_parent = sampler_artifact_dir / "projection-evidence-link"
+    projection_symlink_parent_target = sampler_artifact_dir / "projection-evidence-target"
+    projection_symlink_parent_target.mkdir()
+    (projection_symlink_parent_target / "projection-wmma-c2.json").write_text(
+        json.dumps(
+            _projection_evidence_payload(
+                rows=2,
+                artifact_path="benchmarks/results/projection-evidence-link/projection-wmma-c2.json",
+            )
+        ),
+        encoding="utf-8",
+    )
+    try:
+        projection_symlink_artifact.symlink_to(sampler_artifact_dir / "projection-wmma-c2.json")
+        projection_symlink_parent.symlink_to(projection_symlink_parent_target, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        projection_symlink_artifact = None
+        projection_symlink_parent = None
     monkeypatch.chdir(artifact_root)
 
     validate_cn_diagnostic_artifact_payload(accepted)
@@ -12486,6 +12510,30 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         )
         with pytest.raises(ValueError, match="sampler_execution.equality_artifact parent directories must not be symlinks"):
             validate_cn_diagnostic_artifact_payload(parent_symlink_sampler_equality)
+
+    def _accepted_with_projection_evidence_artifact(artifact_path: str) -> dict[str, object]:
+        payload = json.loads(json.dumps(accepted))
+        payload["execution"]["batch_execution"]["projection_dispatch"]["evidence"]["artifact_path"] = artifact_path
+        payload["projection_dispatch_candidates"][0]["evidence"]["artifact_path"] = artifact_path
+        return payload
+
+    non_json_projection_evidence = _accepted_with_projection_evidence_artifact("benchmarks/results/projection-wmma-c2.txt")
+    with pytest.raises(ValueError, match="projection_dispatch.evidence.artifact_path must point to a .json artifact"):
+        validate_cn_diagnostic_artifact_payload(non_json_projection_evidence)
+
+    directory_projection_evidence = _accepted_with_projection_evidence_artifact("benchmarks/results/projection-wmma-c2-directory.json")
+    with pytest.raises(ValueError, match="artifact_path must be under benchmarks/results"):
+        validate_cn_diagnostic_artifact_payload(directory_projection_evidence)
+
+    if projection_symlink_artifact is not None:
+        symlink_projection_evidence = _accepted_with_projection_evidence_artifact("benchmarks/results/projection-wmma-c2-symlink.json")
+        with pytest.raises(ValueError, match="artifact_path must be under benchmarks/results"):
+            validate_cn_diagnostic_artifact_payload(symlink_projection_evidence)
+        parent_symlink_projection_evidence = _accepted_with_projection_evidence_artifact(
+            "benchmarks/results/projection-evidence-link/projection-wmma-c2.json"
+        )
+        with pytest.raises(ValueError, match="artifact_path must be under benchmarks/results"):
+            validate_cn_diagnostic_artifact_payload(parent_symlink_projection_evidence)
 
     projection_candidate = {
         "name": "wmma_caware",
