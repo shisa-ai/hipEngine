@@ -1971,10 +1971,20 @@ def _load_sampler_equality_artifact(value: str) -> tuple[Mapping[str, Any] | Non
     path = Path(value)
     if not path.is_absolute():
         path = Path.cwd() / path
+    if path.suffix.lower() != ".json":
+        return None, "equality_artifact must point to a .json artifact"
+    if path.is_symlink():
+        return None, "equality_artifact must point to a regular JSON artifact, not a symlink"
+    if _path_has_retained_results_symlink_parent(path):
+        return None, "equality_artifact parent directories must not be symlinks"
+    if not path.exists():
+        return None, "equality_artifact must point to an existing JSON artifact"
+    if not path.is_file():
+        return None, "equality_artifact must point to a regular JSON artifact"
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return None, "equality_artifact must point to an existing JSON artifact"
+    except OSError as exc:
+        return None, f"equality_artifact must point to a readable JSON artifact: {exc}"
     except json.JSONDecodeError as exc:
         return None, f"equality_artifact must point to a valid JSON artifact: {exc}"
     if not isinstance(payload, Mapping):

@@ -11468,6 +11468,25 @@ def test_qwen35_retained_sampler_execution_blockers_require_native_lm_head_evide
         json.dumps(wrong_source_sampler_payload),
         encoding="utf-8",
     )
+    (artifact_dir / "qwen35-c2-sampler-eq.txt").write_text(
+        json.dumps(_sampler_equality_payload(rows=2, artifact_path="benchmarks/results/qwen35-c2-sampler-eq.txt")),
+        encoding="utf-8",
+    )
+    (artifact_dir / "qwen35-c2-sampler-directory-eq.json").mkdir()
+    symlink_equality_artifact = artifact_dir / "qwen35-c2-sampler-symlink-eq.json"
+    symlink_parent = artifact_dir / "sampler-equality-link"
+    symlink_parent_target = artifact_dir / "sampler-equality-target"
+    symlink_parent_target.mkdir()
+    (symlink_parent_target / "qwen35-c2-sampler-eq.json").write_text(
+        json.dumps(_sampler_equality_payload(rows=2, artifact_path="benchmarks/results/sampler-equality-link/qwen35-c2-sampler-eq.json")),
+        encoding="utf-8",
+    )
+    try:
+        symlink_equality_artifact.symlink_to(artifact_dir / "qwen35-c2-sampler-eq.json")
+        symlink_parent.symlink_to(symlink_parent_target, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        symlink_equality_artifact = None
+        symlink_parent = None
     monkeypatch.chdir(tmp_path)
 
     valid = {
@@ -11563,6 +11582,33 @@ def test_qwen35_retained_sampler_execution_blockers_require_native_lm_head_evide
     wrong_source["decode_execution"]["sampler_execution"]["equality_artifact"] = "benchmarks/results/qwen35-c2-sampler-wrong-source-eq.json"
     wrong_source_blockers = retained_bench._sampler_execution_blockers(wrong_source, expected_concurrency=2)
     assert "execution.batch_execution.decode_execution.sampler_execution.equality_artifact source_artifact_path must match sampler_execution.equality_artifact" in wrong_source_blockers
+
+    def _sampler_with_artifact(artifact_path: str) -> dict[str, object]:
+        sampler = json.loads(json.dumps(valid))
+        sampler["decode_execution"]["sampler_execution"]["equality_artifact"] = artifact_path
+        return sampler
+
+    non_json_blockers = retained_bench._sampler_execution_blockers(
+        _sampler_with_artifact("benchmarks/results/qwen35-c2-sampler-eq.txt"),
+        expected_concurrency=2,
+    )
+    assert "execution.batch_execution.decode_execution.sampler_execution.equality_artifact must point to a .json artifact" in non_json_blockers
+    directory_blockers = retained_bench._sampler_execution_blockers(
+        _sampler_with_artifact("benchmarks/results/qwen35-c2-sampler-directory-eq.json"),
+        expected_concurrency=2,
+    )
+    assert "execution.batch_execution.decode_execution.sampler_execution.equality_artifact must point to a regular JSON artifact" in directory_blockers
+    if symlink_equality_artifact is not None:
+        symlink_blockers = retained_bench._sampler_execution_blockers(
+            _sampler_with_artifact("benchmarks/results/qwen35-c2-sampler-symlink-eq.json"),
+            expected_concurrency=2,
+        )
+        assert "execution.batch_execution.decode_execution.sampler_execution.equality_artifact must point to a regular JSON artifact, not a symlink" in symlink_blockers
+        parent_symlink_blockers = retained_bench._sampler_execution_blockers(
+            _sampler_with_artifact("benchmarks/results/sampler-equality-link/qwen35-c2-sampler-eq.json"),
+            expected_concurrency=2,
+        )
+        assert "execution.batch_execution.decode_execution.sampler_execution.equality_artifact parent directories must not be symlinks" in parent_symlink_blockers
 
 
 def test_qwen35_retained_memory_evidence_blockers_cover_required_fields() -> None:
