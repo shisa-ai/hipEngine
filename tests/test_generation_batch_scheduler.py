@@ -11219,6 +11219,19 @@ def test_qwen35_retained_projection_dispatch_blockers_require_caware_candidate(t
         json.dumps(wrong_source_projection_payload),
         encoding="utf-8",
     )
+    (artifact_dir / "projection-wmma-c2.txt").write_text(json.dumps(_projection_evidence_payload(rows=2)), encoding="utf-8")
+    (artifact_dir / "projection-wmma-c2-directory.json").mkdir()
+    symlink_artifact = artifact_dir / "projection-wmma-c2-symlink.json"
+    symlink_parent = artifact_dir / "projection-evidence-link"
+    symlink_parent_target = artifact_dir / "projection-evidence-target"
+    symlink_parent_target.mkdir()
+    (symlink_parent_target / "projection-wmma-c2.json").write_text(json.dumps(_projection_evidence_payload(rows=2)), encoding="utf-8")
+    try:
+        symlink_artifact.symlink_to(artifact_dir / "projection-wmma-c2.json")
+        symlink_parent.symlink_to(symlink_parent_target, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        symlink_artifact = None
+        symlink_parent = None
     monkeypatch.chdir(tmp_path)
 
     valid_dispatch = {
@@ -11280,6 +11293,13 @@ def test_qwen35_retained_projection_dispatch_blockers_require_caware_candidate(t
     wrong_artifact_path_candidate = json.loads(json.dumps(valid_candidate))
     wrong_artifact_path_candidate["evidence"]["artifact_path"] = "benchmarks/results/projection-wmma-c2-wrong-artifact-path.json"
 
+    def _dispatch_and_candidate_for_artifact(artifact_path: str) -> tuple[dict[str, object], dict[str, object]]:
+        dispatch = json.loads(json.dumps(valid_dispatch))
+        dispatch["projection_dispatch"]["evidence"]["artifact_path"] = artifact_path
+        candidate = json.loads(json.dumps(valid_candidate))
+        candidate["evidence"]["artifact_path"] = artifact_path
+        return dispatch, candidate
+
     assert retained_bench._projection_dispatch_blockers(
         valid_dispatch,
         concurrency=2,
@@ -11322,6 +11342,37 @@ def test_qwen35_retained_projection_dispatch_blockers_require_caware_candidate(t
         candidates=[wrong_source_candidate],
     )
     assert "execution.batch_execution.projection_dispatch.evidence.artifact_path evidence.source_artifact_path must match projection_dispatch.evidence.artifact_path" in wrong_source_blockers
+    non_json_dispatch, non_json_candidate = _dispatch_and_candidate_for_artifact("benchmarks/results/projection-wmma-c2.txt")
+    non_json_blockers = retained_bench._projection_dispatch_blockers(
+        non_json_dispatch,
+        concurrency=2,
+        candidates=[non_json_candidate],
+    )
+    assert "execution.batch_execution.projection_dispatch.evidence.artifact_path must point to a .json artifact" in non_json_blockers
+    directory_dispatch, directory_candidate = _dispatch_and_candidate_for_artifact("benchmarks/results/projection-wmma-c2-directory.json")
+    directory_blockers = retained_bench._projection_dispatch_blockers(
+        directory_dispatch,
+        concurrency=2,
+        candidates=[directory_candidate],
+    )
+    assert "execution.batch_execution.projection_dispatch.evidence.artifact_path must point to a regular JSON artifact" in directory_blockers
+    if symlink_artifact is not None:
+        symlink_dispatch, symlink_candidate = _dispatch_and_candidate_for_artifact("benchmarks/results/projection-wmma-c2-symlink.json")
+        symlink_blockers = retained_bench._projection_dispatch_blockers(
+            symlink_dispatch,
+            concurrency=2,
+            candidates=[symlink_candidate],
+        )
+        assert "execution.batch_execution.projection_dispatch.evidence.artifact_path must point to a regular JSON artifact, not a symlink" in symlink_blockers
+        parent_symlink_dispatch, parent_symlink_candidate = _dispatch_and_candidate_for_artifact(
+            "benchmarks/results/projection-evidence-link/projection-wmma-c2.json"
+        )
+        parent_symlink_blockers = retained_bench._projection_dispatch_blockers(
+            parent_symlink_dispatch,
+            concurrency=2,
+            candidates=[parent_symlink_candidate],
+        )
+        assert "execution.batch_execution.projection_dispatch.evidence.artifact_path parent directories must not be symlinks" in parent_symlink_blockers
     assert retained_bench._projection_dispatch_profiler_blockers(
         valid_dispatch,
         {

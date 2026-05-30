@@ -1258,14 +1258,41 @@ def _batch_execution_blockers(
     return blockers
 
 
+def _path_has_retained_results_symlink_parent(path: Path) -> bool:
+    results_root = (Path.cwd() / "benchmarks" / "results").resolve()
+    current = path.parent
+    while True:
+        try:
+            current_resolved = current.resolve()
+        except OSError:
+            return False
+        if not current_resolved.is_relative_to(results_root):
+            return False
+        if current.is_symlink():
+            return True
+        if current == current.parent:
+            return False
+        current = current.parent
+
+
 def _load_retained_json_artifact(value: str) -> tuple[Mapping[str, Any] | None, str | None]:
     path = Path(value)
     if not path.is_absolute():
         path = Path.cwd() / path
+    if path.suffix.lower() != ".json":
+        return None, "artifact_path must point to a .json artifact"
+    if path.is_symlink():
+        return None, "artifact_path must point to a regular JSON artifact, not a symlink"
+    if _path_has_retained_results_symlink_parent(path):
+        return None, "artifact_path parent directories must not be symlinks"
+    if not path.exists():
+        return None, "artifact_path must point to an existing JSON artifact"
+    if not path.is_file():
+        return None, "artifact_path must point to a regular JSON artifact"
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return None, "artifact_path must point to an existing JSON artifact"
+    except OSError as exc:
+        return None, f"artifact_path must point to a readable JSON artifact: {exc}"
     except json.JSONDecodeError as exc:
         return None, f"artifact_path must point to a valid JSON artifact: {exc}"
     if not isinstance(payload, Mapping):

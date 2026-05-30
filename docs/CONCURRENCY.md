@@ -1343,7 +1343,7 @@ roll-up/status view.
       artifact candidate/evidence lists before the policy can consume them, including rejecting row-GEMV-named retained candidates and duplicate candidate names so `selected_candidate` cannot be ambiguous;
       projection speedup evidence must reference a non-symlink regular artifact under
       `benchmarks/results/` whose resolved target stays inside the active
-      results tree (with symlink parents rejected) and, when accepted, must beat row-GEMV on both
+      results tree (with symlink parents rejected), retained promotion rejects non-JSON/non-regular/symlinked evidence artifacts before scoring candidates, and, when accepted, must beat row-GEMV on both
       aggregate and per-request ratios; accepted c>N artifact schema rejects
       malformed optional `projection_dispatch_candidates` metadata; accepted c>N
       artifact schema now requires `execution.batch_execution.projection_dispatch`
