@@ -27184,3 +27184,16 @@ python3 -m pytest -q tests/test_stepfun_resident_session.py
 ```
 
 Result: `4 passed`.
+
+## 2026-05-29 — StepFun linear projection progress recorded
+
+Recorded task #27 resident linear projection evidence in `docs/STEPFUN.md`. The P11 progress note now calls out the real layer-0 `Q3_K` `attn_q` and `Q5_K` `attn_output` projections, BF16-rounded activation inputs, CPU dequantized reference comparisons, resident allocation cleanup checks, and no `torch` import. This documents the current primitive-level execution state only: composing embedding + linears + CPU/reference attention/MoE into the streaming Step layer loop and llama.cpp next-token/logit parity remain open.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_resident_session.py
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Result: resident-session targeted tests `4 passed`; full StepFun loop guard `68 passed` plus CPU reference fixtures.

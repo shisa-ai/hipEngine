@@ -496,9 +496,11 @@ reporting.
   loading/freeing across first/last shard tensors, `StepFunResidentSession` can
   launch real Q8_0 token embedding from resident `token_embd.weight` into BF16
   for BOS/EOS/chat-stop/final-vocab rows with exact CPU BF16 parity, and
-  resident Q3_K/Q5_K layer-0 linear projections match CPU references. Remaining
-  implementation task is composing those primitives into the layer/full-model
-  execution loop beyond embedding, the prompt planner, and CPU replay harness.
+  resident layer-0 `Q3_K` `attn_q` plus `Q5_K` `attn_output` projections match
+  CPU dequantized references with BF16-rounded activations and allocation
+  cleanup checks. Remaining implementation task is composing those primitives
+  into the layer/full-model execution loop beyond embedding, the prompt
+  planner, and CPU replay harness.
 - [x] Use short contexts first (for example <= 512) before exercising long
   context and sliding-window boundaries. `StepFunShortContextDecodePlanner`
   enforces the current c=1 bring-up default `max_context=512`,
@@ -518,8 +520,10 @@ passes for short-context limits, mixed-quant dispatch-key validation,
 assistant-prefix rendering, multi-EOS stopping, and torch-free imports.
 `python3 -m pytest -q tests/test_stepfun_resident_session.py` passes for real
 resident Q8_0 token embedding of `[0, BOS, EOS, 128007, vocab-1, EOS]` plus
-Q3_K/Q5_K layer projection vs CPU BF16 references, resident memory cleanup, and
-no torch import. Full next-token/logit parity remains open until the streaming
+real layer-0 `Q3_K` `attn_q` and `Q5_K` `attn_output` GEMV projection vs CPU
+references using BF16-rounded inputs. It also checks resident memory cleanup
+(two active weight allocations before session free, zero after) and no torch
+import. Full next-token/logit parity remains open until the streaming
 layer loop is wired.
 
 ### P12 — Full-model Strix Halo smoke
