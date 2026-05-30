@@ -2478,6 +2478,35 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
         os.environ[_PROJECTION_DISPATCH_ARTIFACT_ENV] = projection_dispatch_artifact
 
 
+def _projection_candidate_evidence_artifact_errors(candidate: Any) -> list[str]:
+    evidence = getattr(candidate, "evidence", None)
+    if evidence is None:
+        return []
+    payload, error = _load_retained_json_artifact(evidence.artifact_path)
+    if error is not None:
+        return [error]
+    if payload is None:
+        return []
+    errors: list[str] = []
+    if not _retained_artifact_accepted(payload):
+        errors.append("artifact_path artifact must be accepted")
+    artifact_rows = _retained_artifact_row_count(payload)
+    if isinstance(artifact_rows, bool) or not isinstance(artifact_rows, int):
+        errors.append("artifact_path rows must be an int")
+    elif not candidate.applies_to(artifact_rows):
+        errors.append("artifact_path rows must be within candidate row bounds")
+    else:
+        errors.extend(
+            projection_dispatch_evidence_payload_blockers(
+                payload,
+                evidence,
+                rows=artifact_rows,
+                label="artifact_path",
+            )
+        )
+    return errors
+
+
 def _projection_dispatch_candidates_for_payload(args: argparse.Namespace) -> list[dict[str, Any]] | None:
     artifact = _projection_dispatch_artifact_arg(args)
     if artifact is None:
@@ -2498,6 +2527,14 @@ def _projection_dispatch_candidates_for_payload(args: argparse.Namespace) -> lis
     if not candidates:
         raise ValueError(
             f"invalid projection dispatch artifact {artifact}: must include projection_dispatch_candidates"
+        )
+    evidence_errors: list[str] = []
+    for candidate in candidates:
+        for error in _projection_candidate_evidence_artifact_errors(candidate):
+            evidence_errors.append(f"{candidate.name} evidence {error}")
+    if evidence_errors:
+        raise ValueError(
+            f"invalid projection dispatch artifact {artifact}: " + "; ".join(evidence_errors)
         )
     return [candidate.to_json_dict() for candidate in candidates]
 

@@ -2184,6 +2184,17 @@ def test_retained_bench_projection_dispatch_artifact_env_and_payload(tmp_path: P
             "accepted": True,
         },
     }
+    (artifact_dir / "projection-wmma-c2.json").write_text(
+        json.dumps(
+            _projection_evidence_payload(
+                rows=2,
+                artifact_path="benchmarks/results/projection-wmma-c2.json",
+                aggregate_vs_row_gemv=1.25,
+                per_request_vs_row_gemv=1.05,
+            )
+        ),
+        encoding="utf-8",
+    )
     (artifact_dir / "projection-candidates.json").write_text(
         json.dumps({"projection_dispatch_candidates": [candidate]}),
         encoding="utf-8",
@@ -2269,6 +2280,53 @@ def test_retained_bench_projection_dispatch_artifact_fails_closed(tmp_path: Path
     )
     with pytest.raises(ValueError, match="invalid projection_dispatch_candidates"):
         retained_bench._projection_dispatch_candidates_for_payload(malformed_candidate)
+
+    candidate_with_missing_evidence = {
+        "name": "wmma_caware",
+        "selection": {"layer": "linear", "quant": "w4_paro", "variant": "wmma_caware"},
+        "min_rows": 2,
+        "max_rows": 8,
+        "evidence": {
+            "artifact_path": "benchmarks/results/projection-missing-evidence.json",
+            "aggregate_vs_row_gemv": 1.25,
+            "per_request_vs_row_gemv": 1.05,
+            "accepted": True,
+        },
+    }
+    missing_evidence_path = artifact_dir / "missing-evidence-candidate.json"
+    missing_evidence_path.write_text(
+        json.dumps({"projection_dispatch_candidates": [candidate_with_missing_evidence]}),
+        encoding="utf-8",
+    )
+    missing_evidence = SimpleNamespace(
+        projection_dispatch_artifact=Path("benchmarks/results/missing-evidence-candidate.json")
+    )
+    with pytest.raises(ValueError, match="wmma_caware evidence artifact_path must point to an existing JSON artifact"):
+        retained_bench._projection_dispatch_candidates_for_payload(missing_evidence)
+
+    (artifact_dir / "projection-wrong-rows-evidence.json").write_text(
+        json.dumps(
+            _projection_evidence_payload(
+                rows=16,
+                artifact_path="benchmarks/results/projection-wrong-rows-evidence.json",
+                aggregate_vs_row_gemv=1.25,
+                per_request_vs_row_gemv=1.05,
+            )
+        ),
+        encoding="utf-8",
+    )
+    wrong_rows_candidate = json.loads(json.dumps(candidate_with_missing_evidence))
+    wrong_rows_candidate["evidence"]["artifact_path"] = "benchmarks/results/projection-wrong-rows-evidence.json"
+    wrong_rows_path = artifact_dir / "wrong-rows-evidence-candidate.json"
+    wrong_rows_path.write_text(
+        json.dumps({"projection_dispatch_candidates": [wrong_rows_candidate]}),
+        encoding="utf-8",
+    )
+    wrong_rows_evidence = SimpleNamespace(
+        projection_dispatch_artifact=Path("benchmarks/results/wrong-rows-evidence-candidate.json")
+    )
+    with pytest.raises(ValueError, match="wmma_caware evidence artifact_path rows must be within candidate row bounds"):
+        retained_bench._projection_dispatch_candidates_for_payload(wrong_rows_evidence)
 
 
 def test_batch_c_sweep_rejects_wrong_seed_before_creating_artifacts(tmp_path: Path, monkeypatch) -> None:

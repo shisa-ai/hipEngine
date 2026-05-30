@@ -48815,3 +48815,23 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: targeted accepted schema projection-evidence path coverage PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and C3.4 remains open until retained projection ratios plus actual runtime c-aware kernel use are green.
+
+## 2026-05-30 — CONCURRENCY retained projection candidate evidence load gate
+
+Advanced C3.4 c-aware projection dispatch promotion evidence. `scripts/qwen35_batch_retained_bench.py` now validates loaded `projection_dispatch_candidates` before running the retained native benchmark: if a candidate carries accepted evidence, its referenced evidence artifact must be loadable, accepted, self-describing, and have row count within that candidate's row bounds. This prevents runtime metadata from selecting a c-aware projection candidate based on stale/missing evidence metadata before retained-bench/schema blockers run. `docs/CONCURRENCY.md` records that candidate evidence artifacts fail closed before an expensive run while C3.4 stays open until real retained projection ratios and runtime c-aware kernels exist.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_retained_bench.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_retained_bench_projection_dispatch_artifact_env_and_payload tests/test_generation_batch_scheduler.py::test_retained_bench_projection_dispatch_artifact_fails_closed -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: targeted retained projection candidate evidence load-gate tests PASS, verify count remains `12`, full guard PASS, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and C3.4 remains open until retained projection ratios plus actual runtime c-aware kernel use are green.
