@@ -209,14 +209,41 @@ def batch_sampler_equality_payload_blockers(
     return tuple(blockers)
 
 
+def _path_has_retained_results_symlink_parent(path: Path) -> bool:
+    results_root = (Path.cwd() / "benchmarks" / "results").resolve()
+    current = path.parent
+    while True:
+        try:
+            current_resolved = current.resolve()
+        except OSError:
+            return False
+        if not current_resolved.is_relative_to(results_root):
+            return False
+        if current.is_symlink():
+            return True
+        if current == current.parent:
+            return False
+        current = current.parent
+
+
 def _equality_artifact_blockers(value: str, *, rows: int) -> tuple[str, ...]:
     path = Path(value)
     if not path.is_absolute():
         path = Path.cwd() / path
+    if path.suffix.lower() != ".json":
+        return ("batched LM-head equality artifact must point to a .json artifact",)
+    if path.is_symlink():
+        return ("batched LM-head equality artifact must point to a regular JSON artifact, not a symlink",)
+    if _path_has_retained_results_symlink_parent(path):
+        return ("batched LM-head equality artifact parent directories must not be symlinks",)
+    if not path.exists():
+        return ("batched LM-head equality artifact must point to an existing JSON artifact",)
+    if not path.is_file():
+        return ("batched LM-head equality artifact must point to a regular JSON artifact",)
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return ("batched LM-head equality artifact must point to an existing JSON artifact",)
+    except OSError as exc:
+        return (f"batched LM-head equality artifact must be readable JSON: {exc}",)
     except json.JSONDecodeError as exc:
         return (f"batched LM-head equality artifact must be valid JSON: {exc}",)
     if not isinstance(payload, Mapping):

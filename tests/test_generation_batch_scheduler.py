@@ -6450,6 +6450,30 @@ def test_batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head(tmp_pat
         json.dumps(wrong_source_equality_payload),
         encoding="utf-8",
     )
+    (artifact_dir / "qwen35-c8-eq.txt").write_text(
+        json.dumps(_sampler_equality_payload(rows=8, artifact_path="benchmarks/results/qwen35-c8-eq.txt")),
+        encoding="utf-8",
+    )
+    (artifact_dir / "qwen35-c8-directory-eq.json").mkdir()
+    internal_symlink_equality_artifact = artifact_dir / "qwen35-c8-internal-symlink-eq.json"
+    internal_symlink_target = artifact_dir / "qwen35-c8-internal-symlink-target-eq.json"
+    internal_symlink_target.write_text(
+        json.dumps(_sampler_equality_payload(rows=8, artifact_path="benchmarks/results/qwen35-c8-internal-symlink-eq.json")),
+        encoding="utf-8",
+    )
+    symlink_parent = artifact_dir / "sampler-equality-link"
+    symlink_parent_target = artifact_dir / "sampler-equality-target"
+    symlink_parent_target.mkdir()
+    (symlink_parent_target / "qwen35-c8-eq.json").write_text(
+        json.dumps(_sampler_equality_payload(rows=8, artifact_path="benchmarks/results/sampler-equality-link/qwen35-c8-eq.json")),
+        encoding="utf-8",
+    )
+    try:
+        internal_symlink_equality_artifact.symlink_to(internal_symlink_target)
+        symlink_parent.symlink_to(symlink_parent_target, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        internal_symlink_equality_artifact = None
+        symlink_parent = None
     external_artifact_dir = tmp_path / "external" / "benchmarks" / "results"
     external_artifact_dir.mkdir(parents=True)
     external_artifact = external_artifact_dir / "qwen35-c8-external-eq.json"
@@ -6511,6 +6535,46 @@ def test_batch_sampler_dispatch_requires_c2_equality_for_batched_lm_head(tmp_pat
             "batched LM-head equality artifact path must be under benchmarks/results"
             in symlink_escape_artifact.blockers
         )
+
+    non_json_equality_artifact = plan_batch_sampler_dispatch(
+        rows=8,
+        requested_mode="batched_lm_head",
+        c2_equality_green=True,
+        equality_artifact="benchmarks/results/qwen35-c8-eq.txt",
+        equality_rows=8,
+    )
+    assert non_json_equality_artifact.mode is BatchSamplerMode.SERIAL_LM_HEAD
+    assert "batched LM-head equality artifact must point to a .json artifact" in non_json_equality_artifact.blockers
+
+    directory_equality_artifact = plan_batch_sampler_dispatch(
+        rows=8,
+        requested_mode="batched_lm_head",
+        c2_equality_green=True,
+        equality_artifact="benchmarks/results/qwen35-c8-directory-eq.json",
+        equality_rows=8,
+    )
+    assert directory_equality_artifact.mode is BatchSamplerMode.SERIAL_LM_HEAD
+    assert "batched LM-head equality artifact must point to a regular JSON artifact" in directory_equality_artifact.blockers
+
+    if internal_symlink_equality_artifact is not None:
+        internal_symlink_artifact = plan_batch_sampler_dispatch(
+            rows=8,
+            requested_mode="batched_lm_head",
+            c2_equality_green=True,
+            equality_artifact="benchmarks/results/qwen35-c8-internal-symlink-eq.json",
+            equality_rows=8,
+        )
+        assert internal_symlink_artifact.mode is BatchSamplerMode.SERIAL_LM_HEAD
+        assert "batched LM-head equality artifact must point to a regular JSON artifact, not a symlink" in internal_symlink_artifact.blockers
+        parent_symlink_artifact = plan_batch_sampler_dispatch(
+            rows=8,
+            requested_mode="batched_lm_head",
+            c2_equality_green=True,
+            equality_artifact="benchmarks/results/sampler-equality-link/qwen35-c8-eq.json",
+            equality_rows=8,
+        )
+        assert parent_symlink_artifact.mode is BatchSamplerMode.SERIAL_LM_HEAD
+        assert "batched LM-head equality artifact parent directories must not be symlinks" in parent_symlink_artifact.blockers
 
     missing_equality_rows = plan_batch_sampler_dispatch(
         rows=8,
