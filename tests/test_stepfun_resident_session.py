@@ -92,11 +92,16 @@ def test_stepfun_resident_session_embeds_real_q8_tokens() -> None:
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 def test_stepfun_resident_session_projects_real_q3_and_q5_layer_weights() -> None:
+    had_torch = "torch" in sys.modules
     paths = _stepfun_gguf_paths()
     info = scan_gguf_splits(paths)
     model_map = build_stepfun_gguf_tensor_map(info)
     q3_tensor = model_map.layer(0).tensor("attn_q")
     q5_tensor = model_map.layer(0).tensor("attn_output")
+    assert q3_tensor.ggml_type_name == "Q3_K"
+    assert q5_tensor.ggml_type_name == "Q5_K"
+    q3_out_features, q3_in_features = (int(dim) for dim in q3_tensor.shape)
+    q5_out_features, q5_in_features = (int(dim) for dim in q5_tensor.shape)
     runtime = get_hip_runtime()
     reset_memory_stats()
     session = StepFunResidentSession.from_gguf_paths(
@@ -105,27 +110,43 @@ def test_stepfun_resident_session_projects_real_q3_and_q5_layer_weights() -> Non
         runtime=runtime,
     )
     try:
-        x_q3 = ((np.arange(4096, dtype=np.float32).reshape(1, 4096) % 31) - 15) / 128.0
+        x_q3 = (
+            (np.arange(q3_in_features, dtype=np.float32).reshape(1, q3_in_features) % 31)
+            - 15
+        ) / 128.0
         x_q3_bits = float_array_to_bf16_bits(x_q3)
         raw_q3 = GGUFReader(q3_tensor.source_path).tensor_data(q3_tensor.name)
         expected_q3 = gguf_q3_k_gemv(bf16_to_float32(x_q3_bits), raw_q3)
         actual_q3 = session.linear_slot_bf16("layers.0.attn_q", x_q3_bits, runtime=runtime)
+        assert actual_q3.shape == expected_q3.shape == (1, q3_out_features)
+        assert actual_q3.dtype == np.float32
         np.testing.assert_allclose(actual_q3, expected_q3, rtol=2.0e-3, atol=2.0e-3)
 
-        x_q5 = ((np.arange(8192, dtype=np.float32).reshape(1, 8192) % 37) - 18) / 96.0
+        x_q5 = (
+            (np.arange(q5_in_features, dtype=np.float32).reshape(1, q5_in_features) % 37)
+            - 18
+        ) / 96.0
         x_q5_bits = float_array_to_bf16_bits(x_q5)
         raw_q5 = GGUFReader(q5_tensor.source_path).tensor_data(q5_tensor.name)
         expected_q5 = gguf_q5_k_gemv(bf16_to_float32(x_q5_bits), raw_q5)
         actual_q5 = session.linear_slot_bf16("layers.0.attn_output", x_q5_bits, runtime=runtime)
+        assert actual_q5.shape == expected_q5.shape == (1, q5_out_features)
+        assert actual_q5.dtype == np.float32
         np.testing.assert_allclose(actual_q5, expected_q5, rtol=2.0e-3, atol=2.0e-3)
 
         expected_nbytes = q3_tensor.nbytes + q5_tensor.nbytes
         assert session.weights.allocated_nbytes == expected_nbytes
-        assert memory_stats()["current_allocated_bytes"] == expected_nbytes
+        stats = memory_stats()
+        assert stats["current_allocated_bytes"] == expected_nbytes
+        assert stats["active_allocations"] == 2
     finally:
         session.free(runtime=runtime)
 
-    assert memory_stats()["current_allocated_bytes"] == 0
+    stats = memory_stats()
+    assert stats["current_allocated_bytes"] == 0
+    assert stats["active_allocations"] == 0
+    if not had_torch:
+        assert "torch" not in sys.modules
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

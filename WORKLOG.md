@@ -27172,3 +27172,15 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Result: resident-session targeted tests `4 passed`; full StepFun loop guard `68 passed` plus CPU reference fixtures.
+
+## 2026-05-29 — StepFun resident Q3/Q5 projection test hardening
+
+Focused task #26 update: hardened `tests/test_stepfun_resident_session.py` for real resident layer-0 `Q3_K`/`Q5_K` GEMV probes. The test now asserts the GGUF quant types, derives input/output dimensions from the real tensor metadata, compares HIP F32 outputs for `layers.0.attn_q` and `layers.0.attn_output` against CPU dequantized references with BF16-rounded activations, and checks temporary buffers are freed by requiring only the two resident weight allocations remain before session free and zero allocations remain after free. It also checks no `torch` import appears during the projection path.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_resident_session.py
+```
+
+Result: `4 passed`.
