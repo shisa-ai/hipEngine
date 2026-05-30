@@ -502,6 +502,54 @@ class StepFunResidentSession:
             free(x_buf, runtime=runtime)
         return out
 
+    def project_moe_expert_inputs_bf16(
+        self,
+        layer_id: int,
+        x_bf16_bits,
+        selected_experts,
+        *,
+        runtime: HipRuntime | None = None,
+        stream: int = 0,
+    ) -> Mapping[str, object]:
+        """Launch selected and shared MoE gate/up input projections."""
+
+        self._validate_layer_id(layer_id)
+        layer = self.model_map.layer(layer_id)
+        required = ("ffn_gate_exps", "ffn_up_exps", "ffn_gate_shexp", "ffn_up_shexp")
+        if any(slot not in layer.tensors for slot in required):
+            raise RuntimeError(f"layer {layer_id} does not expose MoE expert input weights")
+        prefix = f"layers.{layer_id}"
+        return {
+            "expert_gate": self.selected_expert_linear_bf16(
+                f"{prefix}.ffn_gate_exps",
+                x_bf16_bits,
+                selected_experts,
+                runtime=runtime,
+                stream=stream,
+            ),
+            "expert_up": self.selected_expert_linear_bf16(
+                f"{prefix}.ffn_up_exps",
+                x_bf16_bits,
+                selected_experts,
+                runtime=runtime,
+                stream=stream,
+            ),
+            "shared_gate": self.linear_slot_bf16(
+                f"{prefix}.ffn_gate_shexp",
+                x_bf16_bits,
+                output_dtype=GGUF_OUTPUT_BF16,
+                runtime=runtime,
+                stream=stream,
+            ),
+            "shared_up": self.linear_slot_bf16(
+                f"{prefix}.ffn_up_shexp",
+                x_bf16_bits,
+                output_dtype=GGUF_OUTPUT_BF16,
+                runtime=runtime,
+                stream=stream,
+            ),
+        }
+
     def project_attention_inputs_bf16(
         self,
         layer_id: int,

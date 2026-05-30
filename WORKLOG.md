@@ -27327,3 +27327,17 @@ python3 -m pytest -q tests/test_stepfun_resident_session.py
 ```
 
 Result: `12 passed`.
+
+## 2026-05-30 — StepFun resident MoE expert input bundle
+
+Added `StepFunResidentSession.project_moe_expert_inputs_bf16()`, which bundles the MoE projections needed after routing: selected expert `ffn_gate_exps`/`ffn_up_exps` via the existing selected GGUF GEMV kernels plus shared expert `ffn_gate_shexp`/`ffn_up_shexp` via regular resident GGUF linears. Outputs are BF16 rows for the downstream expert activation/down-projection composition that remains to be wired.
+
+Extended `tests/test_stepfun_resident_session.py` with a real layer-3 MoE expert-input test. The test materializes selected and shared `Q3_K` gate/up tensors, runs two BF16-rounded activation rows and eight selected expert IDs, compares all four projection outputs against CPU dequantized references, and checks resident allocation cleanup.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_resident_session.py
+```
+
+Result: `13 passed`.

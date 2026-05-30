@@ -390,6 +390,74 @@ def test_stepfun_resident_session_selected_expert_gate_projection_matches_cpu_re
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_stepfun_resident_session_projects_moe_expert_inputs() -> None:
+    paths = _stepfun_gguf_paths()
+    info = scan_gguf_splits(paths)
+    model_map = build_stepfun_gguf_tensor_map(info)
+    tensors = {
+        "expert_gate": model_map.layer(3).tensor("ffn_gate_exps"),
+        "expert_up": model_map.layer(3).tensor("ffn_up_exps"),
+        "shared_gate": model_map.layer(3).tensor("ffn_gate_shexp"),
+        "shared_up": model_map.layer(3).tensor("ffn_up_shexp"),
+    }
+    assert {name: tensor.ggml_type_name for name, tensor in tensors.items()} == {
+        "expert_gate": "Q3_K",
+        "expert_up": "Q3_K",
+        "shared_gate": "Q3_K",
+        "shared_up": "Q3_K",
+    }
+    x = ((np.arange(2 * 4096, dtype=np.float32).reshape(2, 4096) % 59) - 29) / 224.0
+    x_bits = float_array_to_bf16_bits(x)
+    x_bf16 = bf16_to_float32(x_bits)
+    selected = np.asarray([0, 7, 13, 21, 2, 5, 8, 11], dtype=np.int64)
+    rows_per_x = selected.size // x_bf16.shape[0]
+    expected: dict[str, np.ndarray] = {}
+    for name in ("expert_gate", "expert_up"):
+        raw = GGUFReader(tensors[name].source_path).tensor_data(tensors[name].name)
+        out = np.empty((selected.size, 1280), dtype=np.float32)
+        for row, expert_id in enumerate(selected):
+            x_row = row // rows_per_x
+            out[row] = gguf_q3_k_gemv(x_bf16[x_row : x_row + 1], raw[int(expert_id)])[0]
+        expected[name] = float_array_to_bf16_bits(out)
+    for name in ("shared_gate", "shared_up"):
+        raw = GGUFReader(tensors[name].source_path).tensor_data(tensors[name].name)
+        expected[name] = float_array_to_bf16_bits(gguf_q3_k_gemv(x_bf16, raw))
+    runtime = get_hip_runtime()
+    reset_memory_stats()
+    session = StepFunResidentSession.from_gguf_paths(
+        paths,
+        selected_slots=(
+            "layers.3.ffn_gate_exps",
+            "layers.3.ffn_up_exps",
+            "layers.3.ffn_gate_shexp",
+            "layers.3.ffn_up_shexp",
+        ),
+        runtime=runtime,
+    )
+    try:
+        actual = session.project_moe_expert_inputs_bf16(3, x_bits, selected, runtime=runtime)
+        assert set(actual) == {"expert_gate", "expert_up", "shared_gate", "shared_up"}
+        assert actual["expert_gate"].shape == actual["expert_up"].shape == (selected.size, 1280)
+        assert actual["shared_gate"].shape == actual["shared_up"].shape == (2, 1280)
+        for name, expected_bits in expected.items():
+            np.testing.assert_allclose(
+                bf16_to_float32(actual[name]),
+                bf16_to_float32(expected_bits),
+                rtol=2.0e-3,
+                atol=2.0e-3,
+            )
+        expected_nbytes = sum(tensor.nbytes for tensor in tensors.values())
+        assert session.weights.allocated_nbytes == expected_nbytes
+        assert memory_stats()["current_allocated_bytes"] == expected_nbytes
+        assert memory_stats()["active_allocations"] == 4
+    finally:
+        session.free(runtime=runtime)
+
+    assert memory_stats()["current_allocated_bytes"] == 0
+    assert memory_stats()["active_allocations"] == 0
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 def test_stepfun_resident_session_dense_mlp_probe_matches_cpu_reference() -> None:
     paths = _stepfun_gguf_paths()
     info = scan_gguf_splits(paths)
