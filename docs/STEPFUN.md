@@ -324,10 +324,10 @@ decode is correct.
   `22405a9`. Inspect the reported drift before copying code.
 
 **Acceptance:** WORKLOG preflight entry with hardware, memory, paths, and oracle
-plan; no runtime correctness or performance claim yet. 2026-05-29 preflight
-confirmed gfx1151 and recorded shard/oracle details, but full GGUF load memory
-is still open because HIP/ROCm visible memory needs reconciliation before a
-95.46 GiB weight load attempt.
+plan; no runtime correctness or performance claim yet. 2026-05-29/30 preflight
+confirmed gfx1151, recorded shard/oracle details, and successfully loaded the
+95.46 GiB resident weight set under the configured 120 GiB GTT path despite
+misleading `hipMemGetInfo` total/free readouts.
 
 ### P1 — Metadata-only parser fixtures
 
@@ -539,17 +539,23 @@ layer loop is wired.
 - [ ] Load all three GGUF shards on the Strix Halo target with a small context
   and `max_new_tokens` (for example 1-8). 2026-05-29: resident weight load now
   succeeds for all 754 tensors / `95.4598 GiB` under the configured 120 GB GTT
-  (`benchmarks/results/2026-05-29-stepfun-q3kl-full-load-smoke-task20.json`);
-  full generation is still open because resident Step execution, KV allocation,
-  and logits are not wired yet.
+  (`benchmarks/results/2026-05-29-stepfun-q3kl-full-load-smoke-task20.json`),
+  and the load smoke can allocate/free a synthetic 512-token BF16 KV footprint
+  after weight load; full generation is still open because resident Step layer
+  execution and logits are not wired yet.
 - [ ] Record HIP-visible memory before load, after load, after KV allocation, and
   after generation; include UMA/GTT setting and backend (`hip_gfx1151`). Weight
   load evidence from
   `benchmarks/results/2026-05-29-stepfun-q3kl-full-load-smoke-task20.json`:
   before scan/free `119.9961 GiB`, after resident weight load `23.9061 GiB`,
   after free `119.8573 GiB`; hipEngine allocation stats peaked at
-  `102,499,149,312` bytes across 754 allocations. KV and generation snapshots
-  remain open.
+  `102,499,149,312` bytes across 754 allocations. 2026-05-30 KV smoke command:
+  `PYTHONUNBUFFERED=1 python3 scripts/stepfun_gguf_load_smoke.py
+  --kv-context-pages 1 --kv-page-size 512 --pretty >
+  /tmp/stepfun-full-load-kv-smoke.json`. It allocated an additional
+  `94,371,840` bytes (`0.0879 GiB`) across 90 K/V buffers, with free memory
+  `23.9061 GiB` after weights -> `23.8183 GiB` after KV -> `23.9061 GiB` after
+  KV free. Generation snapshots remain open.
 - [x] If the model does not fit, keep the failure artifact and decide between
   offload/tiering, lower context/KV footprint, or slice-only correctness. No
   current fit failure is claimed from VIS_VRAM/`hipMemGetInfo` alone; decision

@@ -27197,3 +27197,23 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Result: resident-session targeted tests `4 passed`; full StepFun loop guard `68 passed` plus CPU reference fixtures.
+
+## 2026-05-30 — StepFun full weight + KV allocation smoke
+
+Extended `scripts/stepfun_gguf_load_smoke.py` with optional synthetic BF16 KV-cache allocation flags so P12 can record memory after resident weight load and after KV allocation/free before generation is wired. The script now accepts `--kv-context-pages` and `--kv-page-size`, computes the StepFun KV footprint from GGUF metadata (`block_count`, `kv_head_counts`, `head_dim`, `value_dim`), allocates separate K/V buffers per layer through hipEngine memory tracking, records `after_kv_alloc` and `after_kv_free` snapshots, and frees KV before resident weights. This is allocation evidence only; it does not execute attention or generation.
+
+Full-load + 512-token KV validation command:
+
+```bash
+PYTHONUNBUFFERED=1 python3 scripts/stepfun_gguf_load_smoke.py --kv-context-pages 1 --kv-page-size 512 --pretty > /tmp/stepfun-full-load-kv-smoke.json
+```
+
+Result: `status=loaded`. The run loaded all 754 resident weight tensors (`102,499,149,312` bytes / `95.4598 GiB`), then allocated a synthetic BF16 KV footprint of `94,371,840` bytes (`0.0879 GiB`) across 90 K/V buffers (45 layers x K/V). Memory/allocation snapshots from the JSON output:
+
+- `before_scan`: `hip_free=119.9961 GiB`, hipEngine current allocations `0`.
+- `after_load`: `hip_free=23.9061 GiB`, hipEngine current allocations `102,499,149,312`, active allocations `754`.
+- `after_kv_alloc`: `hip_free=23.8183 GiB`, hipEngine current allocations `102,593,521,152`, active allocations `844`.
+- `after_kv_free`: `hip_free=23.9061 GiB`, hipEngine current allocations `102,499,149,312`, active allocations `754`.
+- `after_free`: `hip_free=119.8573 GiB`, hipEngine current allocations `0`.
+
+P12 memory evidence now includes before load, after weight load, and after KV allocation/free. Generation snapshots and tiny text decode remain open.

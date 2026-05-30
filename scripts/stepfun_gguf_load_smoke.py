@@ -15,9 +15,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from hipengine.core.hip import HipError, get_hip_runtime
-from hipengine.core.memory import memory_stats, reset_memory_stats
+from hipengine.core.memory import DeviceBuffer, free, malloc, memory_stats, reset_memory_stats
 from hipengine.loading.gguf import scan_gguf_splits
-from hipengine.loading.stepfun_gguf import build_stepfun_gguf_tensor_map
+from hipengine.loading.stepfun_gguf import StepFunGGUFConfig, build_stepfun_gguf_tensor_map
 from hipengine.loading.stepfun_gguf_materialize import (
     materialize_stepfun_gguf_weights,
     plan_stepfun_gguf_materialization,
@@ -26,6 +26,51 @@ from hipengine.loading.stepfun_gguf_materialize import (
 DEFAULT_MODEL_DIR = Path("/data/models/gguf")
 DEFAULT_PATTERN = "Step-3.7-flash-Q3_K_L-*.gguf"
 BOOT_CONFIG = Path("/etc/modprobe.d/amdgpu_llm_optimized.conf")
+BF16_BYTES = 2
+
+
+def _stepfun_kv_cache_nbytes(
+    config: StepFunGGUFConfig,
+    *,
+    context_pages: int,
+    page_size: int,
+) -> int:
+    if context_pages <= 0:
+        return 0
+    tokens = context_pages * page_size
+    return sum(
+        tokens * kv_heads * (config.head_dim + config.value_dim) * BF16_BYTES
+        for kv_heads in config.kv_head_counts
+    )
+
+
+def _allocate_stepfun_kv_cache(
+    config: StepFunGGUFConfig,
+    *,
+    context_pages: int,
+    page_size: int,
+    runtime,
+) -> list[DeviceBuffer]:
+    if context_pages <= 0:
+        return []
+    tokens = context_pages * page_size
+    buffers: list[DeviceBuffer] = []
+    try:
+        for layer_id, kv_heads in enumerate(config.kv_head_counts):
+            key_nbytes = tokens * kv_heads * config.head_dim * BF16_BYTES
+            value_nbytes = tokens * kv_heads * config.value_dim * BF16_BYTES
+            buffers.append(malloc(key_nbytes, runtime=runtime))
+            buffers.append(malloc(value_nbytes, runtime=runtime))
+            print(
+                f"[kv_alloc] layer={layer_id} key={key_nbytes} value={value_nbytes}",
+                file=sys.stderr,
+                flush=True,
+            )
+    except Exception:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+        raise
+    return buffers
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -38,8 +83,25 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Optional StepFun slot path to load; repeat for selected-slot smoke. Omit to load all weights.",
     )
+    parser.add_argument(
+        "--kv-context-pages",
+        type=int,
+        default=0,
+        help="Optionally allocate a synthetic BF16 KV cache with this many pages after weight load.",
+    )
+    parser.add_argument(
+        "--kv-page-size",
+        type=int,
+        default=512,
+        help="Tokens per synthetic KV page when --kv-context-pages is non-zero.",
+    )
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output")
     args = parser.parse_args(argv)
+
+    if args.kv_context_pages < 0:
+        raise ValueError("--kv-context-pages must be non-negative")
+    if args.kv_page_size <= 0:
+        raise ValueError("--kv-page-size must be positive")
 
     paths = tuple(sorted(args.model_dir.glob(args.pattern)))
     if not paths:
@@ -76,6 +138,12 @@ def main(argv: list[str] | None = None) -> int:
 
     selected_slots = None if args.selected_slot is None else tuple(args.selected_slot)
     weights = None
+    kv_buffers: list[DeviceBuffer] = []
+    kv_nbytes = _stepfun_kv_cache_nbytes(
+        model_map.config,
+        context_pages=args.kv_context_pages,
+        page_size=args.kv_page_size,
+    )
     status = "unknown"
     error: dict[str, object] | None = None
     try:
@@ -90,6 +158,20 @@ def main(argv: list[str] | None = None) -> int:
             runtime=runtime,
         )
         snap("after_load")
+        if args.kv_context_pages:
+            kv_buffers = _allocate_stepfun_kv_cache(
+                model_map.config,
+                context_pages=args.kv_context_pages,
+                page_size=args.kv_page_size,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            snap("after_kv_alloc")
+            for buffer in reversed(kv_buffers):
+                free(buffer, runtime=runtime)
+            kv_buffers = []
+            runtime.device_synchronize()
+            snap("after_kv_free")
         status = "loaded"
     except HipError as exc:
         status = "hip_error"
@@ -100,6 +182,9 @@ def main(argv: list[str] | None = None) -> int:
         error = {"type": type(exc).__name__, "message": str(exc)}
         snap("after_error")
     finally:
+        for buffer in reversed(kv_buffers):
+            free(buffer, runtime=runtime)
+        kv_buffers = []
         if weights is not None:
             weights.free(runtime=runtime)
             runtime.device_synchronize()
@@ -120,6 +205,11 @@ def main(argv: list[str] | None = None) -> int:
         "selected_slots": selected_slots,
         "loaded_weight_count": 0 if weights is None else len(weights.weights),
         "loaded_nbytes": 0 if weights is None else weights.allocated_nbytes,
+        "kv_context_pages": args.kv_context_pages,
+        "kv_page_size": args.kv_page_size,
+        "kv_buffer_count": 0 if not args.kv_context_pages else model_map.config.block_count * 2,
+        "kv_nbytes": kv_nbytes,
+        "kv_gib": kv_nbytes / 2**30,
         "boot_config_path": str(BOOT_CONFIG),
         "boot_config_text": BOOT_CONFIG.read_text() if BOOT_CONFIG.exists() else None,
         "snapshots": snapshots,
