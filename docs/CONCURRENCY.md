@@ -1359,9 +1359,10 @@ roll-up/status view.
       `same_first_over_atol_location_with_record_and_drift_delta`: the first
       over-tolerance record has the same location in both routes (`layer_limit=2`,
       layer 1, step 0, row 0, QKV, flat index 857) with only a one-bit-count
-      difference (`3722` vs `3721`). The compare helper now accepts expectation
-      flags for that classification/status, so this diagnostic can be rechecked
-      mechanically without a bespoke JSON assertion snippet. They differ at L1:
+      difference (`3722` vs `3721`). The compare helper now accepts top-level
+      and per-layer-limit expectation flags for those classifications/statuses,
+      so this diagnostic can be rechecked mechanically without a bespoke JSON
+      assertion snippet. They differ at L1:
       selected-QKV/Z/native-A/B has no QKV/Z drift while the A/B-selected route
       has under-tolerance QKV/Z drift. Together with the green selected-all
       projection control, this means both QKV/Z bit exactness and A/B exactness

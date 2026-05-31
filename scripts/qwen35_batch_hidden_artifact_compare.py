@@ -311,6 +311,36 @@ def _parse_expected_kinds(value: str | None) -> list[str] | None:
     return [part.strip() for part in value.split(",") if part.strip()]
 
 
+def _parse_layer_expectation(value: str) -> tuple[int, str]:
+    if "=" not in value:
+        raise ValueError(f"layer expectation {value!r} must use LAYER=VALUE")
+    raw_layer, expected = value.split("=", 1)
+    raw_layer = raw_layer.strip()
+    expected = expected.strip()
+    if not raw_layer or not expected:
+        raise ValueError(f"layer expectation {value!r} must use non-empty LAYER=VALUE")
+    try:
+        layer_limit = int(raw_layer)
+    except ValueError as exc:
+        raise ValueError(f"layer expectation {value!r} has non-integer layer limit") from exc
+    return layer_limit, expected
+
+
+def _layer_limit_by_value(comparison: dict[str, Any], layer_limit: int) -> dict[str, Any] | None:
+    entries = comparison.get("layer_limits", [])
+    if not isinstance(entries, list):
+        return None
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        try:
+            if int(entry.get("layer_limit")) == layer_limit:
+                return entry
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
 def _validate_expectations(payload: dict[str, Any], args: argparse.Namespace) -> None:
     comparison = payload.get("comparison", {})
     if not isinstance(comparison, dict):
@@ -334,6 +364,23 @@ def _validate_expectations(payload: dict[str, Any], args: argparse.Namespace) ->
             "first_diverging_layer_limit expected "
             f"{expected_first_diverging!r} but found {comparison.get('first_diverging_layer_limit')!r}"
         )
+    for raw_expectation in getattr(args, "expect_layer_route_classification", None) or []:
+        layer_limit, expected = _parse_layer_expectation(str(raw_expectation))
+        entry = _layer_limit_by_value(comparison, layer_limit)
+        found = None if entry is None else entry.get("route_classification")
+        if found != expected:
+            errors.append(
+                f"layer {layer_limit} route_classification expected {expected!r} but found {found!r}"
+            )
+    for raw_expectation in getattr(args, "expect_layer_route_difference_kinds", None) or []:
+        layer_limit, raw_expected = _parse_layer_expectation(str(raw_expectation))
+        expected = _parse_expected_kinds(raw_expected) or []
+        entry = _layer_limit_by_value(comparison, layer_limit)
+        found = None if entry is None else entry.get("route_difference_kinds")
+        if found != expected:
+            errors.append(
+                f"layer {layer_limit} route_difference_kinds expected {expected!r} but found {found!r}"
+            )
     if getattr(args, "expect_hidden_passed_all", False) and comparison.get("hidden_passed_all") is not True:
         errors.append(f"hidden_passed_all expected True but found {comparison.get('hidden_passed_all')!r}")
     if getattr(args, "expect_token_passed_all", False) and comparison.get("token_passed_all") is not True:
@@ -463,6 +510,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--expect-route-difference-kinds",
         help="Comma-separated exact comparison.route_difference_kinds expectation",
+    )
+    parser.add_argument(
+        "--expect-layer-route-classification",
+        action="append",
+        help="Fail unless a layer limit has the expected route classification, as LAYER=CLASSIFICATION",
+    )
+    parser.add_argument(
+        "--expect-layer-route-difference-kinds",
+        action="append",
+        help="Fail unless a layer limit has exact comma-separated route difference kinds, as LAYER=KIND[,KIND...]",
     )
     parser.add_argument("--expect-first-diverging-layer-limit", type=int, help="Fail unless first_diverging_layer_limit matches")
     parser.add_argument("--expect-hidden-passed-all", action="store_true", help="Fail unless hidden_passed_all is true")
