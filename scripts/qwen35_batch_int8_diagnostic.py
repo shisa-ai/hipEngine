@@ -23,6 +23,10 @@ from scripts.qwen35_batch_retained_bench import DEFAULT_FIXTURE, DEFAULT_MODEL
 _RETAINED_BENCH_SCRIPT = RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT
 
 
+def _payload_json(payload: Any) -> str:
+    return json.dumps(payload, indent=2, allow_nan=False)
+
+
 def _future_gate_command(args: argparse.Namespace) -> str:
     argv = [
         "python3",
@@ -191,7 +195,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     payload = run(args)
-    text = json.dumps(payload, indent=2)
+    text = _payload_json(payload)
     print(text)
     if args.json is not None:
         args.json.parent.mkdir(parents=True, exist_ok=True)

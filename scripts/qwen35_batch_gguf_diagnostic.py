@@ -29,6 +29,10 @@ _GGUF_DIAGNOSTIC_SCRIPT = RETAINED_ARTIFACT_GGUF_DIAGNOSTIC_SCRIPT
 _GGUF_E2E_CORRECTNESS_SCRIPT = RETAINED_ARTIFACT_GGUF_E2E_CORRECTNESS_SCRIPT
 
 
+def _payload_json(payload: Any) -> str:
+    return json.dumps(payload, indent=2, allow_nan=False)
+
+
 def _load_fixture(path: Path) -> dict[str, Any]:
     fixture = json.loads(path.read_text())
     required = {"model", "prompt", "prompt_ids", "sampling", "acceptance"}
@@ -151,7 +155,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     payload = run(args)
-    text = json.dumps(payload, indent=2)
+    text = _payload_json(payload)
     print(text)
     if args.json is not None:
         args.json.parent.mkdir(parents=True, exist_ok=True)

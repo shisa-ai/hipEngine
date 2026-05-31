@@ -51196,3 +51196,25 @@ git diff --check
 ```
 
 Result: focused primitive finite-serializer tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and generated-token equality requirements remain open/unchanged.
+
+## 2026-05-31 — CONCURRENCY INT8/GGUF diagnostic finite JSON serializers
+
+Tightened the remaining blocked c>N diagnostic template serializers. `scripts/qwen35_batch_int8_diagnostic.py` and `scripts/qwen35_batch_gguf_diagnostic.py` now route final payload output through `_payload_json(..., allow_nan=False)`, so blocked/rejected INT8 and GGUF diagnostic artifacts fail serialization instead of writing non-standard `NaN`/`Infinity` values. Added focused coverage for both helpers plus finite round-trips, and updated `docs/CONCURRENCY.md` to list INT8/GGUF templates alongside retained-bench, c-sweep, primitive correctness, and serial-bridge strict serializers. This is artifact hardening only; no retained c>N performance/scaling claim was added.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 -m compileall -q scripts/qwen35_batch_int8_diagnostic.py scripts/qwen35_batch_gguf_diagnostic.py tests/test_generation_batch_scheduler.py && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py::test_gguf_and_int8_diagnostic_payload_json_reject_nonfinite tests/test_generation_batch_scheduler.py::test_gguf_cN_diagnostic_template_records_blocked_c2_command tests/test_generation_batch_scheduler.py::test_int8_cN_diagnostic_template_records_blocked_c2_gate -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue))
+print(count)
+assert count == 12
+PY
+HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+git diff --check
+```
+
+Result: focused INT8/GGUF finite-serializer tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and generated-token equality requirements remain open/unchanged.

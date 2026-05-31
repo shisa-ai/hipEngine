@@ -10044,6 +10044,16 @@ def test_hidden_bisect_summary_embeds_batch_decode_execution_trace() -> None:
     assert "first_mismatch_over_focus_atol" not in bad_focus_pass_summary["decode_linear_states"]
 
 
+def test_gguf_and_int8_diagnostic_payload_json_reject_nonfinite() -> None:
+    with pytest.raises(ValueError, match="Out of range float values"):
+        gguf_diagnostic._payload_json({"bad": float("nan")})
+    with pytest.raises(ValueError, match="Out of range float values"):
+        int8_diagnostic._payload_json({"bad": float("-inf")})
+
+    assert json.loads(gguf_diagnostic._payload_json({"ok": 1.0})) == {"ok": 1.0}
+    assert json.loads(int8_diagnostic._payload_json({"ok": 1.0})) == {"ok": 1.0}
+
+
 def test_gguf_cN_diagnostic_template_records_blocked_c2_command(tmp_path: Path) -> None:
     output = tmp_path / "gguf-c2.json"
     args = build_gguf_diagnostic_parser().parse_args(
