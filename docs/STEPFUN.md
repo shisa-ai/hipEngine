@@ -611,7 +611,9 @@ layer loop is wired.
   resource-planning progress: `StepFunShortContextDecodePlanner.text_decode_resource_plan()`
   ties the full 754-slot text plan to `102,499,149,312` resident-weight bytes
   and a 512-token BF16 KV estimate of `94,371,840` bytes (`0.0879 GiB`) across
-  90 K/V buffers for backend `hip_gfx1151`. Generation snapshots remain open.
+  90 K/V buffers for backend `hip_gfx1151`; the load-smoke JSON now embeds that
+  resource-plan dictionary when KV allocation is requested. Generation snapshots
+  remain open.
 - [x] If the model does not fit, keep the failure artifact and decide between
   offload/tiering, lower context/KV footprint, or slice-only correctness. No
   current fit failure is claimed from VIS_VRAM/`hipMemGetInfo` alone; decision

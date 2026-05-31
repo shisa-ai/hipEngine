@@ -117,6 +117,26 @@ def test_stepfun_text_decode_resource_plan_estimates_weight_and_kv_bytes() -> No
         page_size=512,
     )
     assert plan.total_nbytes == plan.resident_weight_nbytes + plan.kv_nbytes
+    payload = plan.to_dict()
+    assert payload["backend"] == "hip_gfx1151"
+    assert payload["slot_count"] == 754
+    assert payload["slot_paths"][:4] == [
+        "root.token_embedding",
+        "root.rope_freqs",
+        "root.output_norm",
+        "root.lm_head",
+    ]
+    assert payload["resident_weight_nbytes"] == 102_499_149_312
+    assert payload["context_pages"] == 1
+    assert payload["page_size"] == 512
+    assert payload["kv_buffer_count"] == 90
+    assert payload["kv_layer_nbytes"][0] == {
+        "layer": 0,
+        "key_nbytes": 1_048_576,
+        "value_nbytes": 1_048_576,
+    }
+    assert payload["kv_nbytes"] == 94_371_840
+    assert payload["total_nbytes"] == plan.total_nbytes
 
     with pytest.raises(ValueError, match="context_pages"):
         planner.text_decode_resource_plan(context_pages=0, page_size=512)

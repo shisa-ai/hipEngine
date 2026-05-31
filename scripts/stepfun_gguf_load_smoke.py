@@ -23,6 +23,7 @@ from hipengine.loading.stepfun_gguf_materialize import (
     plan_stepfun_gguf_materialization,
 )
 from hipengine.runtime.stepfun_gguf_runner import (
+    StepFunTextDecodeResourcePlan,
     stepfun_kv_cache_layer_nbytes,
     stepfun_kv_cache_nbytes as runtime_stepfun_kv_cache_nbytes,
 )
@@ -145,6 +146,14 @@ def main(argv: list[str] | None = None) -> int:
     selected_slots = None if args.selected_slot is None else tuple(args.selected_slot)
     weights = None
     kv_buffers: list[DeviceBuffer] = []
+    text_decode_resource_plan = None
+    if args.kv_context_pages:
+        text_decode_resource_plan = StepFunTextDecodeResourcePlan.from_model_map(
+            model_map,
+            backend="hip_gfx1151",
+            context_pages=args.kv_context_pages,
+            page_size=args.kv_page_size,
+        )
     kv_nbytes = _stepfun_kv_cache_nbytes(
         model_map.config,
         context_pages=args.kv_context_pages,
@@ -216,6 +225,9 @@ def main(argv: list[str] | None = None) -> int:
         "kv_buffer_count": 0 if not args.kv_context_pages else model_map.config.block_count * 2,
         "kv_nbytes": kv_nbytes,
         "kv_gib": kv_nbytes / 2**30,
+        "text_decode_resource_plan": None
+        if text_decode_resource_plan is None
+        else text_decode_resource_plan.to_dict(),
         "boot_config_path": str(BOOT_CONFIG),
         "boot_config_text": BOOT_CONFIG.read_text() if BOOT_CONFIG.exists() else None,
         "snapshots": snapshots,

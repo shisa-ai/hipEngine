@@ -173,6 +173,30 @@ class StepFunTextDecodeResourcePlan:
     page_size: int
     backend: str
 
+    @classmethod
+    def from_model_map(
+        cls,
+        model_map: StepFunGGUFModelMap,
+        *,
+        backend: str,
+        context_pages: int,
+        page_size: int,
+    ) -> "StepFunTextDecodeResourcePlan":
+        slots = stepfun_text_decode_slot_paths(model_map)
+        resident_nbytes = sum(stepfun_slot_tensor(model_map, slot).nbytes for slot in slots)
+        return cls(
+            slot_paths=slots,
+            resident_weight_nbytes=int(resident_nbytes),
+            kv_layer_nbytes=stepfun_kv_cache_layer_nbytes(
+                model_map.config,
+                context_pages=context_pages,
+                page_size=page_size,
+            ),
+            context_pages=int(context_pages),
+            page_size=int(page_size),
+            backend=backend,
+        )
+
     @property
     def slot_count(self) -> int:
         return len(self.slot_paths)
@@ -196,6 +220,26 @@ class StepFunTextDecodeResourcePlan:
     @property
     def total_gib(self) -> float:
         return self.total_nbytes / 2**30
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "backend": self.backend,
+            "slot_count": self.slot_count,
+            "slot_paths": list(self.slot_paths),
+            "resident_weight_nbytes": self.resident_weight_nbytes,
+            "resident_weight_gib": self.resident_weight_gib,
+            "context_pages": self.context_pages,
+            "page_size": self.page_size,
+            "kv_buffer_count": len(self.kv_layer_nbytes) * 2,
+            "kv_layer_nbytes": [
+                {"layer": idx, "key_nbytes": key, "value_nbytes": value}
+                for idx, (key, value) in enumerate(self.kv_layer_nbytes)
+            ],
+            "kv_nbytes": self.kv_nbytes,
+            "kv_gib": self.kv_gib,
+            "total_nbytes": self.total_nbytes,
+            "total_gib": self.total_gib,
+        }
 
 
 @dataclass(frozen=True)
@@ -279,19 +323,11 @@ class StepFunShortContextDecodePlanner:
         """
 
         page = self.max_context if page_size is None else int(page_size)
-        slots = stepfun_text_decode_slot_paths(self.model_map)
-        resident_nbytes = sum(stepfun_slot_tensor(self.model_map, slot).nbytes for slot in slots)
-        return StepFunTextDecodeResourcePlan(
-            slot_paths=slots,
-            resident_weight_nbytes=int(resident_nbytes),
-            kv_layer_nbytes=stepfun_kv_cache_layer_nbytes(
-                self.model_map.config,
-                context_pages=context_pages,
-                page_size=page,
-            ),
-            context_pages=int(context_pages),
-            page_size=page,
+        return StepFunTextDecodeResourcePlan.from_model_map(
+            self.model_map,
             backend=self.backend,
+            context_pages=context_pages,
+            page_size=page,
         )
 
     def resolve_quant_dispatch_keys(self) -> Mapping[str, KernelKey]:

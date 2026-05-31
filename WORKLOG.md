@@ -27481,3 +27481,17 @@ python3 -m pytest -q tests/test_stepfun_decode_planner.py -q
 ```
 
 Result: `5 passed`.
+
+## 2026-05-31 — StepFun load-smoke resource-plan JSON
+
+Added `StepFunTextDecodeResourcePlan.from_model_map()` and `to_dict()` so the text-only resident-weight/KV estimate can be serialized into diagnostic artifacts. `scripts/stepfun_gguf_load_smoke.py` now includes `text_decode_resource_plan` in its JSON output when `--kv-context-pages` is requested, making future P12 full-load/KV smoke artifacts self-describing (slot list, resident bytes, KV layer bytes, total bytes, backend).
+
+Extended `tests/test_stepfun_decode_planner.py` to validate the serialized schema for the real Q3_K_L split metadata, including root slot ordering, 754 slot count, `102,499,149,312` resident-weight bytes, 90 KV buffers, and the first layer's K/V byte counts.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_decode_planner.py -q
+```
+
+Result: `5 passed`.
