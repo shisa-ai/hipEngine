@@ -1796,9 +1796,10 @@ roll-up/status view.
       `test_resident_scheduler_decode_bucket_key_uses_workload_axes`,
       `test_qwen35_retained_records_decode_graph_bucket_metadata`,
       `test_qwen35_retained_graph_replay_stats_blockers_require_hit_evidence`,
+      `test_qwen35_retained_graph_replay_profiler_evidence_blockers_require_graph_duration`,
       `test_qwen35_retained_request_observability_blockers_cover_row_evidence`,
       `test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates`, and
-      `test_qwen35_batch_serial_shape_key_payloads_include_workload_axes`), positive profiler `graph_replay` expected-kernel/duration/category/share evidence whenever replay hits are positive, and per-bucket histogram observation counts covering both replay hits and profiler kernel-duration evidence before a c>N row can be promoted; `/metrics` exposes a
+      `test_qwen35_batch_serial_shape_key_payloads_include_workload_axes`), positive profiler `graph_replay` expected-kernel/duration/category/share evidence whenever replay hits are positive, and per-bucket histogram observation counts whose totals and bucket labels cover both replay hits and profiler kernel-duration evidence before a c>N row can be promoted; `/metrics` exposes a
       hit/miss-derived replay-hit-rate gauge plus labeled miss-reason and known kernel-time-bucket counters for live runs.
 - [ ] **P3 remove residual serial loops.** Remove full-attention per-row
       fallback, per-row metadata allocation, per-row LM-head launches, and

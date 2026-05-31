@@ -364,6 +364,18 @@ def _graph_bucket_evidence_blockers(scheduler_metadata: Mapping[str, Any]) -> li
     return blockers
 
 
+def _graph_kernel_time_histogram_bucket_ns(duration_ns: int) -> str:
+    if duration_ns <= 10_000:
+        return GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS[0]
+    if duration_ns <= 100_000:
+        return GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS[1]
+    if duration_ns <= 1_000_000:
+        return GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS[2]
+    if duration_ns <= 10_000_000:
+        return GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS[3]
+    return GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS[4]
+
+
 def _graph_replay_profiler_evidence_blockers(
     scheduler_metadata: Mapping[str, Any], profiler: Mapping[str, Any]
 ) -> list[str]:
@@ -404,6 +416,41 @@ def _graph_replay_profiler_evidence_blockers(
             blockers.append(
                 "profiler.kernel_durations_ns must include a positive graph/replay duration when graph_bucket_stats.hits is positive"
             )
+        histogram = graph_stats.get("kernel_time_histogram_ns") if isinstance(graph_stats, Mapping) else None
+        if isinstance(histogram, Mapping):
+            profiler_integer_duration_count = 0
+            expected_bucket_counts: dict[str, int] = {}
+            for kernel_name, duration_ns in kernel_durations.items():
+                if (
+                    not isinstance(kernel_name, str)
+                    or not kernel_name
+                    or _has_disallowed_profiler_kernel_name_fragment(kernel_name)
+                    or not _is_finite_positive_number(duration_ns)
+                    or not float(duration_ns).is_integer()
+                ):
+                    continue
+                profiler_integer_duration_count += 1
+                bucket = _graph_kernel_time_histogram_bucket_ns(int(duration_ns))
+                expected_bucket_counts[bucket] = expected_bucket_counts.get(bucket, 0) + 1
+            histogram_total = 0
+            histogram_counts_valid = True
+            for count in histogram.values():
+                if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+                    histogram_counts_valid = False
+                    break
+                histogram_total += int(count)
+            if histogram_counts_valid:
+                if profiler_integer_duration_count > 0 and histogram_total < profiler_integer_duration_count:
+                    blockers.append(
+                        "execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns observation count must cover profiler.kernel_durations_ns"
+                    )
+                for bucket, expected_count in sorted(expected_bucket_counts.items()):
+                    observed_count = histogram.get(bucket, 0)
+                    if isinstance(observed_count, bool) or not isinstance(observed_count, int) or observed_count < expected_count:
+                        blockers.append(
+                            "execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns bucket counts must cover profiler.kernel_durations_ns"
+                        )
+                        break
     return blockers
 
 

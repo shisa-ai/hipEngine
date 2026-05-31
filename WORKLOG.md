@@ -53722,3 +53722,23 @@ HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts
 ```
 
 Result: focused GGUF c-sweep drift-guard test PASS; docs diff check PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed queue items still cite concrete tests/code, no item was marked complete for partial/planning-only work, no retained c>N performance/scaling claim was added, native c>N generated-token equality claims were not changed, and scaling claims were not changed.
+
+## 2026-05-31 — CONCURRENCY graph histogram profiler coverage gate
+
+Mirrored the accepted-artifact graph histogram/profiler coverage rule into retained-bench promotion blockers. `_graph_replay_profiler_evidence_blockers(...)` now counts positive integer `profiler.kernel_durations_ns` entries, maps them to the fixed graph kernel-time histogram buckets, and rejects scheduler metadata whose `graph_bucket_stats.kernel_time_histogram_ns` total or per-bucket counts do not cover those profiler durations. `test_qwen35_retained_graph_replay_profiler_evidence_blockers_require_graph_duration` now covers both undercounted totals and wrong-bucket counts, and `docs/CONCURRENCY.md` P2 progress cites the retained blocker. No graph replay performance claim was added; P2 remains open until real capture/replay plus profiler evidence is available.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_retained_bench.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_retained_graph_replay_profiler_evidence_blockers_require_graph_duration -q
+git diff --check
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+```
+
+Result: focused graph histogram/profiler coverage test PASS; docs diff check PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed queue items still cite concrete tests/code, no item was marked complete, no retained c>N performance/scaling claim was added, native c>N generated-token equality claims were not changed, and scaling claims were not changed.

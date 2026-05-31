@@ -15498,7 +15498,7 @@ def test_qwen35_retained_graph_replay_profiler_evidence_blockers_require_graph_d
             "misses": 1,
             "replay_hit_rate": 0.5,
             "miss_reasons": {"cache_absent": 1},
-            "kernel_time_histogram_ns": {"le_10us": 1},
+            "kernel_time_histogram_ns": {"le_10us": 2},
         }
     }
     profiler = {
@@ -15536,6 +15536,16 @@ def test_qwen35_retained_graph_replay_profiler_evidence_blockers_require_graph_d
     assert "profiler.kernel_duration_category_shares.graph_replay must be positive when graph_bucket_stats.hits is positive" in blockers
     assert "profiler.expected_kernel_names must include a graph/replay kernel when graph_bucket_stats.hits is positive" in blockers
     assert "profiler.kernel_durations_ns must include a positive graph/replay duration when graph_bucket_stats.hits is positive" in blockers
+
+    undercovered_profiler_histogram = json.loads(json.dumps(scheduler_metadata))
+    undercovered_profiler_histogram["graph_bucket_stats"]["kernel_time_histogram_ns"] = {"le_10us": 1}
+    histogram_blockers = retained_bench._graph_replay_profiler_evidence_blockers(undercovered_profiler_histogram, profiler)
+    assert "execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns observation count must cover profiler.kernel_durations_ns" in histogram_blockers
+
+    wrong_bucket_profiler_histogram = json.loads(json.dumps(scheduler_metadata))
+    wrong_bucket_profiler_histogram["graph_bucket_stats"]["kernel_time_histogram_ns"] = {"le_10us": 1, "le_100us": 1}
+    bucket_blockers = retained_bench._graph_replay_profiler_evidence_blockers(wrong_bucket_profiler_histogram, profiler)
+    assert "execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns bucket counts must cover profiler.kernel_durations_ns" in bucket_blockers
 
 
 def test_qwen35_retained_payload_blocks_acceptance_without_graph_histogram_evidence(monkeypatch) -> None:
