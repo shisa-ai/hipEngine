@@ -116,11 +116,17 @@ What is still not green:
   The matching L8 native-output probe remains red at the old row-0 token idx-13
   boundary and first hidden failure step 6 / row 1
   (`/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-native-out-perrow-full-atol4e-3-focus1269.json`),
-  so the current C2.3 blocker is native batched linear-output projection/post-
-  attention amplification plus remaining native projection coverage, not paged KV,
-  context softmax, row setup, grouped-compact MoE, or the segmented state update
-  itself under selected projections. C2.3/C2.4/C2.5 remain the correctness
-  priority.
+  but forcing the batch-GEMV output fallback clears that selected-projection/
+  native-state/per-row-full probe
+  (`/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json`).
+  With native projections restored and the same batch-GEMV output fallback, tokens
+  stay green but hidden still fails at step 11 with first layer-0 stage drift at
+  `qkv`
+  (`/tmp/hipengine-hidden-bisect-L8-512-16-c2-native-proj-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json`),
+  so the current C2.3 blockers are the fused native output kernel plus remaining
+  native QKV/Z/A/B projection parity, not paged KV, context softmax, row setup,
+  grouped-compact MoE, or the segmented state update itself under selected
+  projections. C2.3/C2.4/C2.5 remain the correctness priority.
 - Long-context c>N still uses a per-row split-K fallback label; no long-context
   native c>N claim is allowed until the split-K reducer is row-aware.
 - INT8 c>N parity, runtime projection dispatch evidence, native LM-head/sampler,
@@ -1242,8 +1248,9 @@ roll-up/status view.
       `/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-selected-c1-state-batch-gemv-out-atol4e-3-focus1269.json`
       bypasses the row>1 AWQ prefill output kernel and reduces layer-0
       `out_proj` drift to one bit (`bit_mismatch=1`, `max_abs=2.384185791015625e-07`),
-      but still eventually goes hidden red, so token-1 output projection is still
-      required for the non-retained green diagnostic. The all-selected-c1 control
+      but that older selected-c1-state probe still eventually goes hidden red and
+      is superseded by the refreshed native-state output audit below. The
+      all-selected-c1 control
       at `/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-all-selected-c1-atol4e-3-focus1269.json`
       forces selected-c1 MoE in addition to selected-c1 projection/state/output
       and regresses to hidden red (`status=mismatch_found`, first hidden mismatch
@@ -1272,13 +1279,24 @@ roll-up/status view.
       output + per-row-full at
       `/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-native-out-perrow-full-atol4e-3-focus1269.json`
       still fails at the old row-0 token idx-13 boundary with first hidden failure
-      at decode step 6 / row 1 (`max_abs=0.01242828369140625`). This shifts the
-      current C2.3 target to native batched linear-output projection/post-attention
-      amplification plus remaining native projection coverage; raw `recurrent_out`
-      stage summaries from segmented state are not equivalent to token-1 decode
+      at decode step 6 / row 1 (`max_abs=0.01242828369140625`). The refreshed
+      batch-GEMV output fallback probe
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json`
+      clears that selected-projection/native-state/per-row-full L8 gate
+      (`status=eq_ok`, hidden/token green), proving the fused native batch output
+      kernel is the red branch for that controlled path. Restoring native
+      QKV/Z/A/B projections while keeping batch-GEMV output and per-row full
+      attention at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-native-proj-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json`
+      leaves tokens green but hidden-only red (`status=mismatch_found`, first
+      hidden failure step 11 / row 0 `max_abs=0.010463714599609375`), with the
+      first layer-0 linear-stage bit drift at `qkv` (`max_abs=0.0078125`, flat
+      index 2274). This shifts the current C2.3 target to native batched output
+      fallback/retention plus native projection parity; raw `recurrent_out` stage
+      summaries from segmented state are not equivalent to token-1 decode
       post-gate `recurrent_out` and must not be used as a closure/blocker signal.
-      The next target is retained parity for native batched output projection and
-      native projection coverage; do not change
+      The next target is retained parity for native QKV/Z/A/B projection and a
+      non-diagnostic batch-GEMV output fallback decision; do not change
       paged-KV writer code yet. Do not re-open
       context softmax math, row setup, native linear segment metadata,
       output trace/copy semantics, or grouped MoE output yet.

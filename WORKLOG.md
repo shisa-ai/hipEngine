@@ -49147,3 +49147,46 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: targeted selected-output routing test PASS; artifact assertions PASS; verify count remains `12`; full guard PASS with c=2/c=8 primitive A/A fields zero; diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, no benchmark rollup files changed, and C2.3 remains open pending native output/projection parity plus generated-token equality.
+
+## 2026-05-31 — CONCURRENCY C2.3 batch-GEMV output isolation
+
+Ran the next C2.3 L8/512/16 c=2 hidden-bisect pair after the selected-output source fix. With selected-c1 QKV/Z/A/B projections, native segmented state, per-row full attention, and `--batch-decode-linear-output-path batch_gemv`, `/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json` is `status=eq_ok` with hidden/token gates green. The matched native-output artifact from the prior iteration remains red at row-0 token idx 13 and first hidden failure step 6 / row 1, so the fused row>1 native output projection kernel is the red branch for that controlled path.
+
+Restoring native QKV/Z/A/B projections while keeping batch-GEMV output and per-row full attention at `/tmp/hipengine-hidden-bisect-L8-512-16-c2-native-proj-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json` keeps generated tokens green but remains hidden-only red (`status=mismatch_found`): first hidden failure is decode step 11 / generated index 12 / row 0 (`max_abs=0.010463714599609375`), and the first layer-0 linear-stage bit drift is `qkv` (`max_abs=0.0078125`, flat index 2274). This keeps C2.3 focused on native QKV/Z/A/B projection parity plus deciding whether batch-GEMV output can become the non-diagnostic correctness fallback; it does not close C2.3 and does not make a retained c>N performance/scaling claim.
+
+Diagnostic commands:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --batch-decode-linear-projection-path selected_c1 --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-native-proj-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json
+```
+
+Validation:
+
+```bash
+python3 - <<'PY'
+import json, pathlib
+selected = json.loads(pathlib.Path('/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json').read_text())
+native = json.loads(pathlib.Path('/tmp/hipengine-hidden-bisect-L8-512-16-c2-native-proj-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json').read_text())
+assert selected['status'] == 'eq_ok'
+assert selected['correctness']['hidden_passed'] is True and selected['correctness']['token_passed'] is True
+assert native['status'] == 'mismatch_found'
+assert native['correctness']['token_passed'] is True
+fh = native['correctness']['first_hidden_mismatch']
+assert fh['decode_step'] == 11 and fh['row'] == 0
+assert abs(fh['max_abs'] - 0.010463714599609375) == 0.0
+stage = native['correctness']['decode_linear_stage_bit_drift_summary']['first_bit_drift']
+assert stage['stage'] == 'qkv'
+assert abs(stage['max_abs'] - 0.0078125) == 0.0
+PY
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: artifact assertions PASS; verify count remains `12`; full guard PASS with c=2/c=8 primitive A/A fields zero; diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, no benchmark rollup files changed, and C2.3 remains open pending native projection parity plus a non-diagnostic batch-GEMV output fallback decision.
