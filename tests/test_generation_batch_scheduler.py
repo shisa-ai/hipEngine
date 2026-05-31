@@ -7039,6 +7039,14 @@ def test_batch_c_sweep_can_plan_gguf_blocked_diagnostics(tmp_path: Path, monkeyp
     with pytest.raises(ValueError, match=r"commands\[\]\.argv GGUF --quant must be one of the template quants"):
         c_sweep.validate_sweep_summary(tampered_quant)
 
+    for flag in ("--rows", "--quant"):
+        tampered = json.loads(json.dumps(summary))
+        argv = tampered["commands"][gguf_entry_index]["argv"]
+        argv.extend([flag, argv[argv.index(flag) + 1]])
+        tampered["commands"][gguf_entry_index]["command"] = shlex.join(argv)
+        with pytest.raises(ValueError, match=r"commands\[\]\.argv must not repeat GGUF diagnostic flags"):
+            c_sweep.validate_sweep_summary(tampered)
+
     gguf_entry_indices = [
         index for index, entry in enumerate(summary["commands"]) if entry["category"] == "gguf_native_diagnostic"
     ]

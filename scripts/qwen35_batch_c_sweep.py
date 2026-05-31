@@ -236,8 +236,14 @@ _SWEEP_COMMAND_STATUS_LABELS = RETAINED_ARTIFACT_SWEEP_COMMAND_STATUS_LABELS
     _FAILED_COMMAND_STATUS,
 ) = _SWEEP_COMMAND_STATUS_LABELS
 _INT8_DIAGNOSTIC_UNIQUE_FLAGS = ("--rows", "--future-json", "--primitive-cpu-json", "--primitive-hip-json")
+_GGUF_DIAGNOSTIC_UNIQUE_FLAGS = ("--rows", "--quant")
 _SWEEP_COMMAND_KNOWN_FLAGS = tuple(
-    dict.fromkeys(_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS + _PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS + _INT8_DIAGNOSTIC_UNIQUE_FLAGS)
+    dict.fromkeys(
+        _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS
+        + _PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS
+        + _INT8_DIAGNOSTIC_UNIQUE_FLAGS
+        + _GGUF_DIAGNOSTIC_UNIQUE_FLAGS
+    )
 )
 _GGUF_DIAGNOSTIC_FIXTURE = "tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json"
 _GGUF_DIAGNOSTIC_QUANTS = ("gguf_q4_k_m", "gguf_q5_k_m", "gguf_q6_k", "gguf_q8_0")
@@ -2351,6 +2357,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 break
             if command_category == _INT8_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY and _duplicate_flags(argv, _INT8_DIAGNOSTIC_UNIQUE_FLAGS):
                 errors.append("commands[].argv must not repeat INT8 diagnostic flags")
+                break
+            if command_category == _GGUF_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY and _duplicate_flags(argv, _GGUF_DIAGNOSTIC_UNIQUE_FLAGS):
+                errors.append("commands[].argv must not repeat GGUF diagnostic flags")
                 break
             projection_dispatch_arg = _argv_value(argv, "--projection-dispatch-artifact")
             projection_dispatch_flag_present = any(
