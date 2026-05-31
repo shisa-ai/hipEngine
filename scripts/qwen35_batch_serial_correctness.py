@@ -31,6 +31,10 @@ DEFAULT_MODEL = (
 DEFAULT_FIXTURE = "fixtures/qwen35_paro/parent_512_32_seed1234.json"
 
 
+def _payload_json(payload: Any) -> str:
+    return json.dumps(payload, indent=2, allow_nan=False)
+
+
 def _load_prompt_slices(path: Path, *, prompt_length: int, batch_size: int) -> list[list[int]]:
     fixture = json.loads(path.read_text())
     tokens = [int(token) for token in fixture["prompt_ids"]]
@@ -352,7 +356,7 @@ def main(argv: list[str] | None = None) -> int:
             else "Direct mode drives physical slots without scheduler ownership.",
         ],
     }
-    text = json.dumps(payload, indent=2)
+    text = _payload_json(payload)
     print(text)
     if args.json is not None:
         args.json.write_text(text + "\n")

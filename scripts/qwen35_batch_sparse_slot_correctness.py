@@ -29,6 +29,10 @@ from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen
 from scripts.qwen35_batch_retained_bench import DEFAULT_FIXTURE, DEFAULT_MODEL, _compiler_version, _load_prompt_slices
 
 
+def _payload_json(payload: Any) -> str:
+    return json.dumps(payload, indent=2, allow_nan=False)
+
+
 def _command(argv: Sequence[str] | None) -> str:
     parts = ["python3", "scripts/qwen35_batch_sparse_slot_correctness.py"]
     parts.extend(sys.argv[1:] if argv is None else list(argv))
@@ -181,7 +185,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
     }
     if args.json is not None:
         args.json.parent.mkdir(parents=True, exist_ok=True)
-        args.json.write_text(json.dumps(payload, indent=2) + "\n")
+        args.json.write_text(_payload_json(payload) + "\n")
     return payload
 
 
@@ -202,7 +206,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     payload = run(args, argv)
-    print(json.dumps(payload, indent=2))
+    print(_payload_json(payload))
     return 0 if payload["status"] == "eq_ok" else 1
 
 

@@ -55,8 +55,11 @@ from scripts import qwen35_batch_c_sweep as c_sweep
 from scripts import qwen35_batch_correctness as batch_correctness
 from scripts import qwen35_batch_gguf_diagnostic as gguf_diagnostic
 from scripts import qwen35_batch_int8_diagnostic as int8_diagnostic
+from scripts import qwen35_batch_packed_prefill_correctness as packed_prefill_correctness
 from scripts import qwen35_batch_retained_bench as retained_bench
 from scripts import qwen35_batch_serial_bench as serial_bench
+from scripts import qwen35_batch_serial_correctness as serial_correctness
+from scripts import qwen35_batch_sparse_slot_correctness as sparse_slot_correctness
 from scripts import qwen35_paro_bench as paro_bench
 from scripts.qwen35_batch_artifact_schema import (
     DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS,
@@ -10052,6 +10055,18 @@ def test_gguf_and_int8_diagnostic_payload_json_reject_nonfinite() -> None:
 
     assert json.loads(gguf_diagnostic._payload_json({"ok": 1.0})) == {"ok": 1.0}
     assert json.loads(int8_diagnostic._payload_json({"ok": 1.0})) == {"ok": 1.0}
+
+
+def test_correctness_smoke_payload_json_rejects_nonfinite() -> None:
+    helpers = (
+        serial_correctness._payload_json,
+        packed_prefill_correctness._payload_json,
+        sparse_slot_correctness._payload_json,
+    )
+    for payload_json in helpers:
+        with pytest.raises(ValueError, match="Out of range float values"):
+            payload_json({"bad": float("inf")})
+        assert json.loads(payload_json({"ok": 1.0})) == {"ok": 1.0}
 
 
 def test_gguf_cN_diagnostic_template_records_blocked_c2_command(tmp_path: Path) -> None:
