@@ -14394,6 +14394,8 @@ def test_qwen35_retained_memory_evidence_blockers_cover_required_fields() -> Non
         "dynamic_pool": {
             "enabled": True,
             "evidence": "pool counters captured",
+            "grow_events": 0,
+            "shrink_events": 0,
             "pool_counters": {
                 "current_bytes": 8192,
                 "high_water_observed_bytes": 8192,
@@ -14418,6 +14420,8 @@ def test_qwen35_retained_memory_evidence_blockers_cover_required_fields() -> Non
     incomplete_memory["allocator_memory_stats"]["active_allocations"] = -1
     incomplete_memory["dynamic_pool"]["enabled"] = "true"
     incomplete_memory["dynamic_pool"]["evidence"] = " "
+    incomplete_memory["dynamic_pool"]["grow_events"] = -1
+    incomplete_memory["dynamic_pool"]["shrink_events"] = True
     incomplete_memory["dynamic_pool"]["pool_counters"]["free_pages"] = -1
     incomplete_memory["dynamic_pool"]["pool_counters"]["high_water_observed_bytes"] = 4096
     incomplete_memory["stable_block_id"] = {"passed": False, "audit": ""}
@@ -14433,6 +14437,8 @@ def test_qwen35_retained_memory_evidence_blockers_cover_required_fields() -> Non
     assert "memory.allocator_memory_stats.active_allocations is not a non-negative int" in blockers
     assert "memory.dynamic_pool.enabled is not bool" in blockers
     assert "memory.dynamic_pool.evidence is missing" in blockers
+    assert "memory.dynamic_pool.grow_events is not a non-negative int" in blockers
+    assert "memory.dynamic_pool.shrink_events is not a non-negative int" in blockers
     assert "memory.dynamic_pool.pool_counters.free_pages is not a non-negative int" in blockers
     assert "memory.dynamic_pool.pool_counters.high_water_observed_bytes is below current_bytes" in blockers
     assert "memory.stable_block_id.passed is not true" in blockers
@@ -14456,6 +14462,12 @@ def test_qwen35_retained_memory_evidence_blockers_cover_required_fields() -> Non
     active_above_allocator_peak["allocator_memory_stats"]["active_allocations"] = 3
     assert "memory.allocator_memory_stats.active_allocations is above peak_allocations" in retained_bench._memory_evidence_blockers(
         active_above_allocator_peak
+    )
+
+    mismatched_pool_events = json.loads(json.dumps(complete_memory))
+    mismatched_pool_events["dynamic_pool"]["grow_events"] = 1
+    assert "memory.dynamic_pool.grow_events does not match pool_counters.grow_events" in retained_bench._memory_evidence_blockers(
+        mismatched_pool_events
     )
 
     disabled_with_savings = json.loads(json.dumps(complete_memory))

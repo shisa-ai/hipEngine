@@ -2613,6 +2613,14 @@ def _memory_evidence_blockers(memory: Mapping[str, Any]) -> list[str]:
                 and float(high_water_bytes) < float(current_bytes)
             ):
                 blockers.append("memory.dynamic_pool.pool_counters.high_water_observed_bytes is below current_bytes")
+        for field in ("grow_events", "shrink_events"):
+            value = dynamic_pool.get(field)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                blockers.append(f"memory.dynamic_pool.{field} is not a non-negative int")
+            elif isinstance(pool_counters, Mapping):
+                counter_value = pool_counters.get(field)
+                if isinstance(counter_value, int) and not isinstance(counter_value, bool) and counter_value >= 0 and value != counter_value:
+                    blockers.append(f"memory.dynamic_pool.{field} does not match pool_counters.{field}")
     stable_block_id = memory.get("stable_block_id")
     if not isinstance(stable_block_id, Mapping):
         blockers.append("memory.stable_block_id evidence is missing")
