@@ -376,6 +376,9 @@ def build_sweep_commands(args: argparse.Namespace) -> tuple[SweepCommand, ...]:
         )
         if getattr(args, "include_int8", False):
             int8_json = output_dir / f"int8-native-diagnostic-c{c}.json"
+            int8_future_json = output_dir / f"int8-native-retained-future-c{c}.json"
+            int8_primitive_cpu_json = output_dir / f"int8-primitive-cpu-c{c}.json"
+            int8_primitive_hip_json = output_dir / f"int8-primitive-hip-c{c}.json"
             commands.append(
                 SweepCommand(
                     category=_INT8_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY,
@@ -398,6 +401,12 @@ def build_sweep_commands(args: argparse.Namespace) -> tuple[SweepCommand, ...]:
                         str(args.warmup_decode_tokens),
                         "--max-layers",
                         str(args.max_layers),
+                        "--future-json",
+                        str(int8_future_json),
+                        "--primitive-cpu-json",
+                        str(int8_primitive_cpu_json),
+                        "--primitive-hip-json",
+                        str(int8_primitive_hip_json),
                         "--json",
                         str(int8_json),
                     ),
@@ -2391,6 +2400,20 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 if expected_artifact_name is not None and artifact_abs != (output_dir_abs / expected_artifact_name).resolve():
                     errors.append("commands[].artifact_path must match category/batch-size filename")
                     break
+                if category == _INT8_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY:
+                    expected_int8_paths = {
+                        "--future-json": output_dir_path / f"int8-native-retained-future-c{batch_size}.json",
+                        "--primitive-cpu-json": output_dir_path / f"int8-primitive-cpu-c{batch_size}.json",
+                        "--primitive-hip-json": output_dir_path / f"int8-primitive-hip-c{batch_size}.json",
+                    }
+                    int8_path_error = False
+                    for flag, expected_path in expected_int8_paths.items():
+                        if _argv_value(argv, flag) != str(expected_path):
+                            errors.append(f"commands[].argv INT8 {flag} must match the c-specific output_dir artifact path")
+                            int8_path_error = True
+                            break
+                    if int8_path_error:
+                        break
             declared_batch_size: int | None = None
             batch_arg_error = False
             for batch_flag in ("--batch-size", "--rows"):

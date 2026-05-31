@@ -1535,7 +1535,10 @@ roll-up/status view.
       the CPU-reference and HIP-required primitive layer-accuracy commands from
       `scripts/qwen35_kv_int8_accuracy.py` for prompt/context-boundary
       `512,513`, so C3.1 handoff artifacts name both the generated-token gate
-      and the lower-level INT8 KV accuracy gate before promotion. The future
+      and the lower-level INT8 KV accuracy gate before promotion; c-sweep
+      `--include-int8` rows now bind c-specific future-retained, CPU primitive,
+      and HIP primitive JSON paths and reject stale path labels in sweep
+      summaries. The future
       retained-bench command now carries `--int8-kv-primitive-cpu-json` and
       `--int8-kv-primitive-hip-json`, `scripts/qwen35_kv_int8_accuracy.py`
       self-describes written JSON paths, and accepted c>N artifact schema

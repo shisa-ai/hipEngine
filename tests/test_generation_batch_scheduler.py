@@ -6921,6 +6921,9 @@ def test_batch_c_sweep_can_plan_int8_blocked_diagnostics(tmp_path: Path) -> None
     assert "scripts/qwen35_batch_int8_diagnostic.py" in int8.command
     assert "--rows 2" in int8.command
     assert int8.artifact_path.name == "int8-native-diagnostic-c2.json"
+    assert int8.argv[int8.argv.index("--future-json") + 1].endswith("/int8-native-retained-future-c2.json")
+    assert int8.argv[int8.argv.index("--primitive-cpu-json") + 1].endswith("/int8-primitive-cpu-c2.json")
+    assert int8.argv[int8.argv.index("--primitive-hip-json") + 1].endswith("/int8-primitive-hip-c2.json")
 
     summary = run_sweep(args)
 
@@ -6938,6 +6941,21 @@ def test_batch_c_sweep_can_plan_int8_blocked_diagnostics(tmp_path: Path) -> None
     }
     assert summary["retained_precondition_counts"] == {}
     assert summary["skipped_preconditions"] == []
+
+    int8_entry_index = next(
+        index for index, entry in enumerate(summary["commands"]) if entry["category"] == "int8_native_diagnostic"
+    )
+    for flag, stale_name in (
+        ("--future-json", "int8-native-retained-future-stale.json"),
+        ("--primitive-cpu-json", "int8-primitive-cpu-stale.json"),
+        ("--primitive-hip-json", "int8-primitive-hip-stale.json"),
+    ):
+        tampered = json.loads(json.dumps(summary))
+        argv = tampered["commands"][int8_entry_index]["argv"]
+        argv[argv.index(flag) + 1] = str(Path(tampered["output_dir"]) / stale_name)
+        tampered["commands"][int8_entry_index]["command"] = shlex.join(argv)
+        with pytest.raises(ValueError, match=rf"commands\[\]\.argv INT8 {flag} must match the c-specific output_dir artifact path"):
+            c_sweep.validate_sweep_summary(tampered)
 
 
 def test_batch_c_sweep_can_plan_gguf_blocked_diagnostics(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
