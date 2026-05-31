@@ -54480,3 +54480,23 @@ HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts
 ```
 
 Result: docs diff check PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=8 primitive JSON passes with `rows=8`, `context_lens=[1,2,3,4,1,2,3,4]`, `append_*_mismatch=0`, `append_batch_aa_*_mismatch=0`, `attn_batch_vs_c1_max_abs=0.0`, `attn_batch_aa_max_abs=0.0`, `device.env.HIP_VISIBLE_DEVICES=1`, and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: the open C2.5 item remains unchecked and explicitly says generated-token equality is still missing, no retained c>N performance/scaling claim was added, completed items were not changed, and scaling claims were not changed.
+
+## 2026-05-31 — CONCURRENCY C2.5 c=4+c=8 primitive artifact fields
+
+Refreshed the c=4 primitive GPU correctness artifact on GPU1 and refined the open C2.5 progress text so both c=4 and c=8 primitive artifacts carry field-level evidence. `/tmp/hipengine-multiloop-c4-correctness.json` now has `rows=4`, `context_lens=[1,2,3,4]`, zero append/A-A mismatches, zero batch-vs-c1 attention error, zero attention A/A error, and GPU1/XTX device provenance; `/tmp/hipengine-multiloop-c8-correctness.json` remains recorded with the matching c=8 fields. The retained/equality requirement stays open: this is primitive KV/attention evidence only, not generated-token equality vs independent c=1 and not a performance/scaling claim.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 4 --json /tmp/hipengine-multiloop-c4-correctness.json
+git diff --check
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+```
+
+Result: c=4 primitive JSON PASS (`rows=4`, `context_lens=[1,2,3,4]`, `append_*_mismatch=0`, `append_batch_aa_*_mismatch=0`, `attn_batch_vs_c1_max_abs=0.0`, `attn_batch_aa_max_abs=0.0`, `device.env.HIP_VISIBLE_DEVICES=1`, `device_name=AMD Radeon RX 7900 XTX`); docs diff check PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1` with c=2/c=8 primitive JSONs also passing on GPU1/XTX. Prompt-verifier self-check passes: the open C2.5 item remains unchecked and explicitly says generated-token equality is still missing, no retained c>N performance/scaling claim was added, completed items were not changed, and scaling claims were not changed.
