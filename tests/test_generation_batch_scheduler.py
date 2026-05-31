@@ -11450,6 +11450,11 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
     with pytest.raises(ValueError, match=r"execution.completed\[0\].finish_reason must be a non-empty string"):
         validate_cn_diagnostic_artifact_payload(missing_finish_reason_claim)
 
+    blank_finish_reason_claim = json.loads(json.dumps(payload))
+    blank_finish_reason_claim["execution"]["completed"][0]["finish_reason"] = " "
+    with pytest.raises(ValueError, match=r"execution.completed\[0\].finish_reason must be a non-empty string"):
+        validate_cn_diagnostic_artifact_payload(blank_finish_reason_claim)
+
     mismatched_completed_prompt_claim = json.loads(json.dumps(payload))
     mismatched_completed_prompt_claim["execution"]["completed"][1]["prompt_tokens"].pop()
     with pytest.raises(ValueError, match=r"execution.completed\[1\].prompt_tokens length must match workload.prompt_lengths"):

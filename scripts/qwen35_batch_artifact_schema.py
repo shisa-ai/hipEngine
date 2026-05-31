@@ -2829,7 +2829,7 @@ def _validate_claimed_execution_completed_tokens(
         if row.get("finished") is not True:
             errors.append(f"execution.completed[{index}].finished must be true when generated_token_equality.passed is true")
         finish_reason = row.get("finish_reason")
-        if not isinstance(finish_reason, str) or not finish_reason:
+        if not isinstance(finish_reason, str) or not finish_reason.strip():
             errors.append(f"execution.completed[{index}].finish_reason must be a non-empty string when generated_token_equality.passed is true")
         if "prompt_tokens" not in row and has_any_completed_prompt_tokens:
             errors.append(f"execution.completed[{index}].prompt_tokens must be present when any completed prompt metadata is present and generated_token_equality.passed is true")
