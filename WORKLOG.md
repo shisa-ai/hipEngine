@@ -24167,3 +24167,63 @@ classifier or persistent history source, or (2) prove verifier graph auto is saf
 enough to default for native B+1 branch-copy chain rows.  Avoid more drafter
 QKV/graph/B/p_min churn for this exact D64 lane unless new profiler evidence
 shows a different bottleneck.
+
+## 2026-05-31 — DFlash multiloop iter9 graph-aware route
+
+Active loop: `dflash-27b-w7900/run-20260531-102747`.  Iteration 9 tested whether
+verifier graph changes per-prompt chain economics enough that the old no-graph
+profile manifest is stale.
+
+First, ran all-chain with verifier graph:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --verifier-graph auto --full-attn-chain-mode batched --canonical-commit-mode branch_copy --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/multiloop-dflash-27b-w7900-allchain-vgraph-iter9.json
+```
+
+Result: exact `9/9`, all-chain verifier graph `35.88 tok/s`, AR `32.45 tok/s`,
+`1.1055x` AR.  Graph capture made quicksort (`1.066x`) and short GSM8K
+(`1.116x`) profitable chain routes; function-continuation (`0.920x`) and
+sort-third (`0.748x`) remained AR fallbacks.
+
+Regenerated the manifest from that graph-aware row:
+
+```bash
+PYTHONPATH=. python3 scripts/dflash_build_profile_route_manifest.py --input /tmp/multiloop-dflash-27b-w7900-allchain-vgraph-iter9.json --output /tmp/multiloop-dflash-27b-w7900-profile-route-vgraph-aware-iter9-manifest.json --min-chain-speedup 1.0 --default-route ar
+```
+
+Result: `chain_routes=7`, adding `code:quicksort_prefix` and
+`math:short_gsm8k_style` to the previous five chain winners.
+
+Final graph-aware profile-route verifier-graph run:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --verifier-graph auto --full-attn-chain-mode batched --canonical-commit-mode branch_copy --profile-route-manifest /tmp/multiloop-dflash-27b-w7900-profile-route-vgraph-aware-iter9-manifest.json --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/multiloop-dflash-27b-w7900.json
+```
+
+Result: exact `9/9`, DFlash/spec `37.55 tok/s`, AR `32.34 tok/s`, `1.1612x`
+AR.  This improves the prior verifier-graph profile route `1.1370x -> 1.1612x`
+(+2.1% relative speedup, +2.0% spec tok/s) and keeps graph validation passing
+on all chain-routed rows.  It remains diagnostic/non-default because routing is
+profile-history/oracle-like and `--verifier-graph auto` is opt-in.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/dflash_chain_e2e_bench.py scripts/dflash_build_profile_route_manifest.py hipengine/runtime/qwen35_paro.py
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_paro_awq_gemv_multi_row_decode.py tests/test_dflash_profile_route_manifest.py tests/test_dflash_draft_confidence.py tests/test_speculative_benchmark.py
+python3 -m json.tool benchmarks/results/2026-05-31-hipengine-dflash-27b-graph-aware-profile-route.json >/tmp/hipengine-dflash-27b-graph-aware-route-artifact-check.json
+```
+
+Result: targeted pytest `17 passed`; artifact JSON valid.
+
+Retained artifact:
+- `benchmarks/results/2026-05-31-hipengine-dflash-27b-graph-aware-profile-route.json`
+
+Docs/rollup updated:
+- `docs/DFLASH.md` profile-route table now includes graph-aware routing.
+- `benchmarks/README.md` and `benchmarks/CHANGELOG.md` retained diagnostic row.
+
+Next multiloop focus: make graph-aware route generation deployable (history store
+or classifier), or harden/default verifier graph for native B+1 branch-copy rows.
+Function-continuation and sort-third remain poor DFlash candidates even with
+verifier graph.
