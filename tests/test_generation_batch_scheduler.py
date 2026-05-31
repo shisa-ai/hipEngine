@@ -11389,6 +11389,16 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
     with pytest.raises(ValueError, match=r"execution.completed\[1\].generated_tokens must match correctness.generated_token_equality.batch_sequences suffix"):
         validate_cn_diagnostic_artifact_payload(mismatched_completed_claim)
 
+    duplicate_completed_claim = json.loads(json.dumps(payload))
+    duplicate_completed_claim["execution"]["completed"][1]["request_id"] = 0
+    with pytest.raises(ValueError, match="execution.completed request_id values must be unique"):
+        validate_cn_diagnostic_artifact_payload(duplicate_completed_claim)
+
+    partial_completed_claim = json.loads(json.dumps(payload))
+    partial_completed_claim["execution"]["completed"].pop()
+    with pytest.raises(ValueError, match="execution.completed length must match workload.concurrency"):
+        validate_cn_diagnostic_artifact_payload(partial_completed_claim)
+
     missing_shape_claim = json.loads(json.dumps(payload))
     missing_shape_claim["workload"].pop("concurrency")
     missing_shape_claim["workload"].pop("warmup_decode_tokens")

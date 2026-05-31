@@ -2750,6 +2750,9 @@ def _validate_claimed_execution_completed_tokens(
     if not isinstance(completed, list):
         errors.append("execution.completed must be a list when generated_token_equality.passed is true")
         return
+    if concurrency is not None and len(completed) != concurrency:
+        errors.append("execution.completed length must match workload.concurrency when generated_token_equality.passed is true")
+    seen_request_ids: set[int] = set()
     for index, row in enumerate(completed):
         if not isinstance(row, Mapping):
             errors.append(f"execution.completed[{index}] must be an object when generated_token_equality.passed is true")
@@ -2761,6 +2764,10 @@ def _validate_claimed_execution_completed_tokens(
         if concurrency is not None and (request_id < 0 or request_id >= concurrency):
             errors.append(f"execution.completed[{index}].request_id must be in workload.concurrency range when generated_token_equality.passed is true")
             continue
+        if request_id in seen_request_ids:
+            errors.append("execution.completed request_id values must be unique when generated_token_equality.passed is true")
+        else:
+            seen_request_ids.add(request_id)
         token_ids = _extract_claimed_generated_token_ids(
             row.get("generated_tokens"),
             f"execution.completed[{index}].generated_tokens",
@@ -2779,6 +2786,10 @@ def _validate_claimed_execution_completed_tokens(
             expected_suffix = batch_sequences[request_id][-gen_tokens_per_request:]
             if token_ids != expected_suffix:
                 errors.append(f"execution.completed[{index}].generated_tokens must match correctness.generated_token_equality.batch_sequences suffix when generated_token_equality.passed is true")
+    if concurrency is not None:
+        missing_request_ids = [str(request_id) for request_id in range(concurrency) if request_id not in seen_request_ids]
+        if missing_request_ids:
+            errors.append("execution.completed must include every request_id when generated_token_equality.passed is true")
 
 
 def _extract_claimed_generated_token_ids(row: Any, label: str, errors: list[str]) -> list[int] | None:
