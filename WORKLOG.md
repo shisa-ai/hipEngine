@@ -27383,3 +27383,17 @@ python3 -m pytest -q tests/test_stepfun_resident_session.py
 ```
 
 Result: `16 passed`.
+
+## 2026-05-30 — StepFun resident attention prefill probe
+
+Added `StepFunResidentSession.attention_prefill_probe_bf16()`, a correctness-only attention bridge for one Step layer. The probe launches resident GGUF Q/K/V/gate projections from BF16-normalized activations, applies host Q/K RMSNorm, Step RoPE, causal GQA prefill, and head-wise attention gating, BF16-rounds the gated attention rows, then launches the resident `attn_output` projection. This validates the real layer-0 attention projection/output chain while native attention/KV-cache execution remains to be wired.
+
+Extended `tests/test_stepfun_resident_session.py` with a real layer-0 attention prefill/output test. The test materializes `attn_norm`, Q/K norm weights, Q/K/V/gate, and `attn_output`, builds a matched CPU reference over the same BF16 boundaries and Step RoPE/GQA semantics, compares the resident probe output, and checks allocation cleanup.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_resident_session.py -q
+```
+
+Result: `17 passed`.

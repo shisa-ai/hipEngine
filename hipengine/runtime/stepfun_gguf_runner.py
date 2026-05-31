@@ -18,7 +18,11 @@ from hipengine.core.memory import (
 )
 from hipengine.kernels.registry import KernelKey, resolve
 from hipengine.loading.gguf import GGUFSplitModelInfo, scan_gguf_splits
-from hipengine.loading.stepfun_gguf import StepFunGGUFModelMap, build_stepfun_gguf_tensor_map
+from hipengine.loading.stepfun_gguf import (
+    SLIDING_ATTENTION,
+    StepFunGGUFModelMap,
+    build_stepfun_gguf_tensor_map,
+)
 from hipengine.loading.stepfun_gguf_materialize import (
     StepFunGGUFResidentWeights,
     materialize_stepfun_gguf_weights,
@@ -636,6 +640,130 @@ class StepFunResidentSession:
                 stream=stream,
             ),
         }
+
+    def attention_prefill_probe_bf16(
+        self,
+        layer_id: int,
+        x_bf16_bits,
+        *,
+        output_dtype: str = GGUF_OUTPUT_F32,
+        positions=None,
+        runtime: HipRuntime | None = None,
+        stream: int = 0,
+    ):
+        """Correctness probe for one resident Step attention prefill block.
+
+        Q/K/V/gate and output projections run through resident GGUF weights.
+        Q/K norms, RoPE, causal GQA attention, and head-wise gating happen on
+        the host until native Step attention/KV-cache execution is wired.
+        """
+
+        import numpy as np
+        from hipengine.kernels.cpu_reference.ops import (
+            step_apply_rope,
+            step_gqa_attention_prefill,
+            step_headwise_attention_gate,
+            step_rmsnorm,
+        )
+        from hipengine.loading.materialize import float_array_to_bf16_bits
+        from hipengine.quant.gguf import bf16_to_float32
+
+        self._validate_layer_id(layer_id)
+        layer = self.model_map.layer(layer_id)
+        required = (
+            "attn_norm",
+            "attn_q_norm",
+            "attn_k_norm",
+            "attn_q",
+            "attn_k",
+            "attn_v",
+            "attn_gate",
+            "attn_output",
+        )
+        if any(slot not in layer.tensors for slot in required):
+            raise RuntimeError(f"layer {layer_id} does not expose all Step attention weights")
+        runtime = runtime or get_hip_runtime()
+        x = np.ascontiguousarray(x_bf16_bits, dtype=np.uint16)
+        if x.ndim != 2:
+            raise ValueError("x_bf16_bits must have shape [rows, hidden_size]")
+        rows = int(x.shape[0])
+        hidden_size = int(self.model_map.config.hidden_size)
+        if rows <= 0:
+            raise ValueError("x_bf16_bits must have at least one row")
+        if int(x.shape[1]) != hidden_size:
+            raise ValueError(f"x_bf16_bits.shape[1]={x.shape[1]} does not match hidden_size={hidden_size}")
+        if positions is None:
+            pos = np.arange(rows, dtype=np.int64)
+        else:
+            pos = np.ascontiguousarray(positions, dtype=np.int64).reshape(-1)
+            if pos.shape != (rows,):
+                raise ValueError("positions must have one entry per x row")
+        head_dim = int(self.model_map.config.head_dim)
+        value_dim = int(self.model_map.config.value_dim)
+        if value_dim != head_dim:
+            raise RuntimeError("StepFun attention prefill probe currently requires value_dim == head_dim")
+        query_heads = int(self.model_map.config.head_counts[layer_id])
+        kv_heads = int(self.model_map.config.kv_head_counts[layer_id])
+
+        hidden = bf16_to_float32(x)
+        attn_norm_weight = self._copy_resident_f32_weight(f"layers.{layer_id}.attn_norm", runtime=runtime)
+        normed_bits = float_array_to_bf16_bits(
+            step_rmsnorm(hidden, attn_norm_weight, eps=self.model_map.config.rms_norm_eps)
+        )
+        projections = self.project_attention_inputs_bf16(
+            layer_id,
+            normed_bits,
+            output_dtype=GGUF_OUTPUT_F32,
+            runtime=runtime,
+            stream=stream,
+        )
+        q = np.asarray(projections["q"], dtype=np.float32).reshape(rows, query_heads, head_dim)
+        k = np.asarray(projections["k"], dtype=np.float32).reshape(rows, kv_heads, head_dim)
+        v = np.asarray(projections["v"], dtype=np.float32).reshape(rows, kv_heads, value_dim)
+        gate_logits = np.asarray(projections["gate"], dtype=np.float32)
+        if gate_logits.shape != (rows, query_heads):
+            raise ValueError(f"attn_gate output shape {gate_logits.shape} does not match {(rows, query_heads)}")
+
+        q_norm_weight = self._copy_resident_f32_weight(f"layers.{layer_id}.attn_q_norm", runtime=runtime)
+        k_norm_weight = self._copy_resident_f32_weight(f"layers.{layer_id}.attn_k_norm", runtime=runtime)
+        q = step_rmsnorm(q, q_norm_weight, eps=self.model_map.config.rms_norm_eps)
+        k = step_rmsnorm(k, k_norm_weight, eps=self.model_map.config.rms_norm_eps)
+        if layer.attention_type == SLIDING_ATTENTION:
+            partial_factor = 1.0
+            theta = self.model_map.config.rope_freq_base_swa
+            llama3_scaling = False
+            sliding_window = self.model_map.config.sliding_window
+        else:
+            partial_factor = 0.5
+            theta = self.model_map.config.rope_freq_base
+            llama3_scaling = True
+            sliding_window = None
+        q_rope = step_apply_rope(
+            q,
+            pos,
+            head_dim=head_dim,
+            partial_factor=partial_factor,
+            theta=theta,
+            llama3_scaling=llama3_scaling,
+        )
+        k_rope = step_apply_rope(
+            k,
+            pos,
+            head_dim=head_dim,
+            partial_factor=partial_factor,
+            theta=theta,
+            llama3_scaling=llama3_scaling,
+        )
+        attention = step_gqa_attention_prefill(q_rope, k_rope, v, sliding_window=sliding_window)
+        gated = step_headwise_attention_gate(attention, gate_logits)
+        gated_bits = float_array_to_bf16_bits(gated.reshape(rows, query_heads * head_dim))
+        return self.linear_slot_bf16(
+            f"layers.{layer_id}.attn_output",
+            gated_bits,
+            output_dtype=output_dtype,
+            runtime=runtime,
+            stream=stream,
+        )
 
     def project_dense_mlp_inputs_bf16(
         self,
