@@ -236,7 +236,9 @@ _SWEEP_COMMAND_STATUS_LABELS = RETAINED_ARTIFACT_SWEEP_COMMAND_STATUS_LABELS
     _FAILED_COMMAND_STATUS,
 ) = _SWEEP_COMMAND_STATUS_LABELS
 _INT8_DIAGNOSTIC_UNIQUE_FLAGS = ("--rows", "--future-json", "--primitive-cpu-json", "--primitive-hip-json")
-_GGUF_DIAGNOSTIC_UNIQUE_FLAGS = ("--rows", "--quant")
+_GGUF_DIAGNOSTIC_BACKEND = "hip_gfx1100"
+_GGUF_DIAGNOSTIC_MAX_NEW_TOKENS = 4
+_GGUF_DIAGNOSTIC_UNIQUE_FLAGS = ("--rows", "--backend", "--quant", "--max-new-tokens")
 _SWEEP_COMMAND_KNOWN_FLAGS = tuple(
     dict.fromkeys(
         _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS
@@ -436,8 +438,12 @@ def build_sweep_commands(args: argparse.Namespace) -> tuple[SweepCommand, ...]:
                             _GGUF_DIAGNOSTIC_FIXTURE,
                             "--rows",
                             str(c),
+                            "--backend",
+                            _GGUF_DIAGNOSTIC_BACKEND,
                             "--quant",
                             quant,
+                            "--max-new-tokens",
+                            str(_GGUF_DIAGNOSTIC_MAX_NEW_TOKENS),
                             "--json",
                             str(gguf_json),
                         ),
@@ -2348,8 +2354,14 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 if _argv_value(argv, "--fixture") != _GGUF_DIAGNOSTIC_FIXTURE:
                     errors.append("commands[].argv GGUF --fixture must match the template fixture")
                     break
+                if _argv_value(argv, "--backend") != _GGUF_DIAGNOSTIC_BACKEND:
+                    errors.append("commands[].argv GGUF --backend must match the template backend")
+                    break
                 if _argv_value(argv, "--quant") not in _GGUF_DIAGNOSTIC_QUANTS:
                     errors.append("commands[].argv GGUF --quant must be one of the template quants")
+                    break
+                if _argv_value(argv, "--max-new-tokens") != str(_GGUF_DIAGNOSTIC_MAX_NEW_TOKENS):
+                    errors.append("commands[].argv GGUF --max-new-tokens must match the template decode length")
                     break
             duplicated_retained_flags = _duplicate_flags(argv, _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS)
             if duplicated_retained_flags:

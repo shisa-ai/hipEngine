@@ -7002,6 +7002,8 @@ def test_batch_c_sweep_can_plan_gguf_blocked_diagnostics(tmp_path: Path, monkeyp
     assert all(item.argv[:2] == ("env", "HIP_VISIBLE_DEVICES=1") for item in gguf_planned)
     assert all(c_sweep._strip_command_env_prefix(item.argv)[1] == RETAINED_ARTIFACT_GGUF_DIAGNOSTIC_SCRIPT for item in gguf_planned)
     assert all("--rows 2" in item.command for item in gguf_planned)
+    assert all("--backend hip_gfx1100" in item.command for item in gguf_planned)
+    assert all("--max-new-tokens 4" in item.command for item in gguf_planned)
 
     summary = run_sweep(args)
 
@@ -7032,6 +7034,13 @@ def test_batch_c_sweep_can_plan_gguf_blocked_diagnostics(tmp_path: Path, monkeyp
     with pytest.raises(ValueError, match=r"commands\[\]\.argv GGUF --fixture must match the template fixture"):
         c_sweep.validate_sweep_summary(tampered_fixture)
 
+    tampered_backend = json.loads(json.dumps(summary))
+    backend_argv = tampered_backend["commands"][gguf_entry_index]["argv"]
+    backend_argv[backend_argv.index("--backend") + 1] = "cpu_reference"
+    tampered_backend["commands"][gguf_entry_index]["command"] = shlex.join(backend_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv GGUF --backend must match the template backend"):
+        c_sweep.validate_sweep_summary(tampered_backend)
+
     tampered_quant = json.loads(json.dumps(summary))
     quant_argv = tampered_quant["commands"][gguf_entry_index]["argv"]
     quant_argv[quant_argv.index("--quant") + 1] = "gguf_q2_bad"
@@ -7039,7 +7048,14 @@ def test_batch_c_sweep_can_plan_gguf_blocked_diagnostics(tmp_path: Path, monkeyp
     with pytest.raises(ValueError, match=r"commands\[\]\.argv GGUF --quant must be one of the template quants"):
         c_sweep.validate_sweep_summary(tampered_quant)
 
-    for flag in ("--rows", "--quant"):
+    tampered_max_new_tokens = json.loads(json.dumps(summary))
+    max_new_tokens_argv = tampered_max_new_tokens["commands"][gguf_entry_index]["argv"]
+    max_new_tokens_argv[max_new_tokens_argv.index("--max-new-tokens") + 1] = "8"
+    tampered_max_new_tokens["commands"][gguf_entry_index]["command"] = shlex.join(max_new_tokens_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv GGUF --max-new-tokens must match the template decode length"):
+        c_sweep.validate_sweep_summary(tampered_max_new_tokens)
+
+    for flag in ("--rows", "--backend", "--quant", "--max-new-tokens"):
         tampered = json.loads(json.dumps(summary))
         argv = tampered["commands"][gguf_entry_index]["argv"]
         argv.extend([flag, argv[argv.index(flag) + 1]])

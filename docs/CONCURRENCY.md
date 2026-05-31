@@ -1602,10 +1602,10 @@ roll-up/status view.
       for GPU1/XTX re-baseline runs. The c-sweep planner now has
       `--include-gguf`, which adds blocked GGUF c>N diagnostic commands for
       Q4_K_M/Q5_K_M/Q6_K/Q8_0 at c>1 while preserving the visible HIP device env
-      and rejects stale GGUF fixture, duplicate GGUF diagnostic flags,
-      duplicate/unsupported quant order, artifact filename metadata, or
-      summaries where GGUF diagnostic rows no longer agree with
-      `options.include_gguf`;
+      and rejects stale GGUF fixture/backend/decode-length labels, duplicate
+      GGUF diagnostic flags, duplicate/unsupported quant order, artifact
+      filename metadata, or summaries where GGUF diagnostic rows no longer
+      agree with `options.include_gguf`;
       covered by `test_gguf_cN_diagnostic_template_records_blocked_c2_command`
       and `test_batch_c_sweep_can_plan_gguf_blocked_diagnostics` in
       `pytest -q tests/test_generation_batch_scheduler.py -q`.
