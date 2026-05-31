@@ -331,6 +331,25 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
     finally:
         device_upload.free(runtime=fake_runtime)
     assert fake_runtime.freed == [buffer.ptr for buffer in reversed(tuple(device_upload.buffers.values()))]
+    combined_runtime = _FakeHipRuntime()
+    decode_inputs = run_plan.upload_decode_inputs(runtime=combined_runtime)
+    try:
+        assert decode_inputs.buffer_count == 6
+        assert decode_inputs.total_nbytes == len(input_ids_payload) + host_payloads["total_nbytes"]
+        assert combined_runtime.copies[decode_inputs.input_ids.buffer.ptr] == input_ids_payload
+        for name, buffer in decode_inputs.span_inputs.buffers.items():
+            assert combined_runtime.copies[buffer.ptr] == host_payload_bytes[name]
+        combined_payload = decode_inputs.to_dict()
+        assert combined_payload["buffer_count"] == 6
+        assert combined_payload["total_nbytes"] == len(input_ids_payload) + host_payloads["total_nbytes"]
+        assert combined_payload["input_ids"]["token_count"] == run_plan.prompt_length
+        assert combined_payload["span_inputs"]["buffer_count"] == 5
+    finally:
+        decode_inputs.free(runtime=combined_runtime)
+    assert combined_runtime.freed == [
+        *[buffer.ptr for buffer in reversed(tuple(decode_inputs.span_inputs.buffers.values()))],
+        decode_inputs.input_ids.buffer.ptr,
+    ]
     assert payload["stop_token_ids"] == [1, 2, 128007]
     assert payload["kv_dispatch_keys"]["decode_attention"] == {
         "backend": "hip_gfx1151",
@@ -369,6 +388,33 @@ def test_stepfun_kv_decode_run_plan_frees_partial_uploads_after_copy_failure() -
     assert len(allocated_ptrs) == 2
     assert fake_runtime.freed == [allocated_ptrs[1], allocated_ptrs[0]]
     assert fake_runtime.copies == {allocated_ptrs[0]: run_plan.span_input_host_payload_bytes["prompt_base_offsets"]}
+
+
+def test_stepfun_kv_decode_run_plan_frees_combined_uploads_after_span_copy_failure() -> None:
+    planner = StepFunShortContextDecodePlanner.from_gguf_paths(
+        _stepfun_gguf_paths(),
+        max_context=512,
+        max_new_tokens=1,
+    )
+    run_plan = planner.plan_kv_decode_chat(
+        [{"role": "user", "content": "hello"}],
+        reasoning_effort="low",
+        context_pages=1,
+        page_size=512,
+    )
+    fake_runtime = _FakeHipRuntime(fail_on_copy_index=3)
+
+    with pytest.raises(RuntimeError, match="simulated host-to-device copy failure"):
+        run_plan.upload_decode_inputs(runtime=fake_runtime)
+
+    allocated_ptrs = tuple(fake_runtime.allocations)
+    assert fake_runtime.copy_count == 3
+    assert len(allocated_ptrs) == 3
+    assert fake_runtime.freed == [allocated_ptrs[2], allocated_ptrs[1], allocated_ptrs[0]]
+    assert fake_runtime.copies == {
+        allocated_ptrs[0]: run_plan.input_ids_payload_bytes,
+        allocated_ptrs[1]: run_plan.span_input_host_payload_bytes["prompt_base_offsets"],
+    }
 
 
 def test_stepfun_kv_decode_run_plan_rejects_resource_span_too_small() -> None:

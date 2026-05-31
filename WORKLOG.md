@@ -28512,3 +28512,19 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted decode-planner tests passed (`10 passed`), source-artifact verification passed, and the full StepFun guard passed (`109 passed` plus CPU-reference fixture checks).
+
+## 2026-05-31 — StepFun KV combined input upload bundle recorded
+
+Added `StepFunKVDecodeRunPlan.upload_decode_inputs()`, which stages the input-token payload and all planned KV span-input payloads together before any StepFun KV kernels are launched. The helper returns `StepFunKVDecodeDeviceInputs` with combined buffer count/byte metadata and frees span buffers before the input-token buffer. Fake-HIP tests verify successful combined upload byte-for-byte and simulate a span-input copy failure after the input-token upload to confirm reverse-order cleanup across both upload phases. This is still pre-runner upload evidence: no StepFun KV write/attention kernels are launched, and `oracle_parity=false`, `kv_backed_decode_ready=false`, and `e2e_inference_ready=false` remain unchanged.
+
+Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json` after the docs update so source-artifact verification stays current, updated decode-planner coverage, and clarified `docs/STEPFUN.md`.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_decode_planner.py -q
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty --output /tmp/stepfun-source-verify.json
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted decode-planner tests passed (`11 passed`), source-artifact verification passed, and the full StepFun guard passed (`110 passed` plus CPU-reference fixture checks).

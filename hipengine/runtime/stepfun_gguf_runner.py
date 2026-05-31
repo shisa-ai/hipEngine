@@ -237,6 +237,34 @@ class StepFunKVSpanInputDeviceUpload:
 
 
 @dataclass(frozen=True)
+class StepFunKVDecodeDeviceInputs:
+    """Owned device buffers for metadata-only StepFun KV decode inputs."""
+
+    input_ids: StepFunInputIDDeviceUpload
+    span_inputs: StepFunKVSpanInputDeviceUpload
+
+    @property
+    def buffer_count(self) -> int:
+        return 1 + self.span_inputs.buffer_count
+
+    @property
+    def total_nbytes(self) -> int:
+        return self.input_ids.buffer.nbytes + self.span_inputs.total_nbytes
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "buffer_count": self.buffer_count,
+            "total_nbytes": self.total_nbytes,
+            "input_ids": self.input_ids.to_dict(),
+            "span_inputs": self.span_inputs.to_dict(),
+        }
+
+    def free(self, *, runtime: HipRuntime | None = None) -> None:
+        self.span_inputs.free(runtime=runtime)
+        self.input_ids.free(runtime=runtime)
+
+
+@dataclass(frozen=True)
 class StepFunKVDecodeKernelPlan:
     """Registry-key plan for the StepFun BF16 KV-backed decode path."""
 
@@ -754,6 +782,26 @@ class StepFunKVDecodeRunPlan:
             buffers=buffers,
             payload_sha256=payload_sha256,
             total_nbytes=sum(len(payload) for payload in payloads.values()),
+        )
+
+    def upload_decode_inputs(
+        self,
+        *,
+        runtime: HipRuntime | None = None,
+    ) -> StepFunKVDecodeDeviceInputs:
+        """Allocate/copy all planned pre-runner KV decode inputs."""
+
+        input_upload: StepFunInputIDDeviceUpload | None = None
+        try:
+            input_upload = self.upload_input_ids_payload(runtime=runtime)
+            span_upload = self.upload_span_input_payloads(runtime=runtime)
+        except Exception:
+            if input_upload is not None:
+                input_upload.free(runtime=runtime)
+            raise
+        return StepFunKVDecodeDeviceInputs(
+            input_ids=input_upload,
+            span_inputs=span_upload,
         )
 
     @property
@@ -2172,6 +2220,7 @@ __all__ = [
     "StepFunDecodePlan",
     "StepFunInputIDDeviceUpload",
     "StepFunKVCacheAllocation",
+    "StepFunKVDecodeDeviceInputs",
     "StepFunKVDecodeKernelPlan",
     "StepFunKVDecodeRunPlan",
     "StepFunKVSpanInputDeviceUpload",
