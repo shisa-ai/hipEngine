@@ -24,6 +24,7 @@ DEFAULT_KV_POOL_INITIAL_PAGES = 128
 DEFAULT_KV_POOL_LOW_WATER_PAGES = 128
 DEFAULT_KV_POOL_CHUNK_PAGES = 128
 DEFAULT_KV_POOL_IDLE_GRACE_SECONDS = 30.0
+DEFAULT_MAX_PREFILL_CHUNK_TOKENS = 256
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +32,8 @@ class EngineLoopConfig:
     """CLI/env-resolved knobs for the C4 scheduler-owned engine loop."""
 
     prefill_decode_policy: str = "protect_decode"
+    max_active_requests: int | None = None
+    max_prefill_chunk_tokens: int = DEFAULT_MAX_PREFILL_CHUNK_TOKENS
     kv_pool_initial_pages: int = DEFAULT_KV_POOL_INITIAL_PAGES
     kv_pool_low_water_pages: int = DEFAULT_KV_POOL_LOW_WATER_PAGES
     kv_pool_high_water_pages: int | None = None
@@ -41,6 +44,10 @@ class EngineLoopConfig:
     def __post_init__(self) -> None:
         if self.prefill_decode_policy not in PREFILL_DECODE_POLICIES:
             raise ValueError(f"prefill_decode_policy must be one of {PREFILL_DECODE_POLICIES!r}")
+        if self.max_active_requests is not None and self.max_active_requests <= 0:
+            raise ValueError("max_active_requests must be positive when set")
+        if self.max_prefill_chunk_tokens <= 0:
+            raise ValueError("max_prefill_chunk_tokens must be positive")
         if self.kv_pool_initial_pages <= 0:
             raise ValueError("kv_pool_initial_pages must be positive")
         if self.kv_pool_low_water_pages <= 0:
@@ -209,6 +216,22 @@ def add_engine_loop_config_args(
         help="Prefill/decode scheduler policy (env HIPENGINE_PREFILL_DECODE_POLICY; default: protect_decode)",
     )
     parser.add_argument(
+        "--max-active-requests",
+        type=_positive_int_arg,
+        default=_env_optional_positive_int(env, "HIPENGINE_MAX_ACTIVE_REQUESTS"),
+        help="Optional active resident request cap (env HIPENGINE_MAX_ACTIVE_REQUESTS; default: unset)",
+    )
+    parser.add_argument(
+        "--max-prefill-chunk-tokens",
+        type=_positive_int_arg,
+        default=_env_positive_int(
+            env,
+            "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS",
+            DEFAULT_MAX_PREFILL_CHUNK_TOKENS,
+        ),
+        help="Maximum prefill chunk tokens per loop tick (env HIPENGINE_MAX_PREFILL_CHUNK_TOKENS; default: 256)",
+    )
+    parser.add_argument(
         "--kv-pool-initial-pages",
         type=_positive_int_arg,
         default=_env_positive_int(env, "HIPENGINE_KV_POOL_INITIAL_PAGES", DEFAULT_KV_POOL_INITIAL_PAGES),
@@ -255,6 +278,12 @@ def engine_loop_config_from_args(args: object) -> EngineLoopConfig:
 
     return EngineLoopConfig(
         prefill_decode_policy=str(getattr(args, "prefill_decode_policy")),
+        max_active_requests=(
+            None
+            if getattr(args, "max_active_requests") is None
+            else int(getattr(args, "max_active_requests"))
+        ),
+        max_prefill_chunk_tokens=int(getattr(args, "max_prefill_chunk_tokens")),
         kv_pool_initial_pages=int(getattr(args, "kv_pool_initial_pages")),
         kv_pool_low_water_pages=int(getattr(args, "kv_pool_low_water_pages")),
         kv_pool_high_water_pages=(
@@ -330,28 +359,59 @@ class ResidentEngineLoop:
         self,
         runner: EngineLoopRunner,
         *,
-        capacity: int,
-        prefill_chunk_size: int = 256,
+        capacity: int | None = None,
+        prefill_chunk_size: int | None = None,
         context_bucket_size: int = 256,
         prefill_decode_policy: str = "protect_decode",
         max_pending_requests: int | None = None,
         config: EngineLoopConfig | None = None,
     ) -> None:
-        if prefill_chunk_size <= 0:
+        if prefill_chunk_size is not None and prefill_chunk_size <= 0:
             raise ValueError("prefill_chunk_size must be positive")
-        if config is not None and (prefill_decode_policy != "protect_decode" or max_pending_requests is not None):
-            raise ValueError("pass either config or direct engine-loop overrides, not both")
-        resolved_config = config or EngineLoopConfig(
-            prefill_decode_policy=prefill_decode_policy,
-            max_pending_requests=max_pending_requests,
+        direct_override_with_config = (
+            prefill_decode_policy != "protect_decode"
+            or max_pending_requests is not None
+            or prefill_chunk_size is not None
         )
+        if config is not None and direct_override_with_config:
+            raise ValueError("pass either config or direct engine-loop overrides, not both")
+        if config is None:
+            if capacity is None:
+                raise ValueError("capacity is required")
+            resolved_config = EngineLoopConfig(
+                prefill_decode_policy=prefill_decode_policy,
+                max_active_requests=int(capacity),
+                max_prefill_chunk_tokens=(
+                    DEFAULT_MAX_PREFILL_CHUNK_TOKENS
+                    if prefill_chunk_size is None
+                    else int(prefill_chunk_size)
+                ),
+                max_pending_requests=max_pending_requests,
+            )
+            resolved_capacity = resolved_config.max_active_requests
+        else:
+            resolved_config = config
+            if capacity is None:
+                if resolved_config.max_active_requests is None:
+                    raise ValueError("capacity or config.max_active_requests is required")
+                resolved_capacity = resolved_config.max_active_requests
+            else:
+                resolved_capacity = int(capacity)
+                if resolved_capacity <= 0:
+                    raise ValueError("capacity must be positive")
+                if (
+                    resolved_config.max_active_requests is not None
+                    and resolved_config.max_active_requests != resolved_capacity
+                ):
+                    raise ValueError("capacity conflicts with config.max_active_requests")
+        assert resolved_capacity is not None
         self.runner = runner
-        self.prefill_chunk_size = int(prefill_chunk_size)
+        self.prefill_chunk_size = int(resolved_config.max_prefill_chunk_tokens)
         self.config = resolved_config
         self.prefill_decode_policy = resolved_config.prefill_decode_policy
         self._last_work_kind: WorkKind | None = None
         self.scheduler = ResidentBatchScheduler(
-            capacity=capacity,
+            capacity=resolved_capacity,
             context_bucket_size=context_bucket_size,
             max_pending_requests=resolved_config.max_pending_requests,
         )

@@ -10499,6 +10499,8 @@ def test_engine_loop_cli_env_defaults_match_docs() -> None:
 
     assert config == EngineLoopConfig()
     assert config.prefill_decode_policy == "protect_decode"
+    assert config.max_active_requests is None
+    assert config.max_prefill_chunk_tokens == 256
     assert config.kv_pool_initial_pages == 128
     assert config.kv_pool_low_water_pages == 128
     assert config.kv_pool_high_water_pages is None
@@ -10509,6 +10511,8 @@ def test_engine_loop_cli_env_defaults_match_docs() -> None:
     docs = Path("docs/ENVS.md").read_text()
     for text in [
         "HIPENGINE_PREFILL_DECODE_POLICY",
+        "HIPENGINE_MAX_ACTIVE_REQUESTS",
+        "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS",
         "HIPENGINE_KV_POOL_INITIAL_PAGES",
         "HIPENGINE_KV_POOL_LOW_WATER_PAGES",
         "HIPENGINE_KV_POOL_HIGH_WATER_PAGES",
@@ -10517,6 +10521,7 @@ def test_engine_loop_cli_env_defaults_match_docs() -> None:
         "HIPENGINE_MAX_PENDING_REQUESTS",
         "protect_decode",
         "128",
+        "256",
         "30.0",
     ]:
         assert text in docs
@@ -10525,6 +10530,8 @@ def test_engine_loop_cli_env_defaults_match_docs() -> None:
 def test_engine_loop_cli_env_overrides() -> None:
     env = {
         "HIPENGINE_PREFILL_DECODE_POLICY": "fair",
+        "HIPENGINE_MAX_ACTIVE_REQUESTS": "3",
+        "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS": "7",
         "HIPENGINE_KV_POOL_INITIAL_PAGES": "16",
         "HIPENGINE_KV_POOL_LOW_WATER_PAGES": "8",
         "HIPENGINE_KV_POOL_HIGH_WATER_PAGES": "64",
@@ -10535,6 +10542,8 @@ def test_engine_loop_cli_env_overrides() -> None:
     env_config = engine_loop_config_from_env(env)
     assert env_config == EngineLoopConfig(
         prefill_decode_policy="fair",
+        max_active_requests=3,
+        max_prefill_chunk_tokens=7,
         kv_pool_initial_pages=16,
         kv_pool_low_water_pages=8,
         kv_pool_high_water_pages=64,
@@ -10550,6 +10559,10 @@ def test_engine_loop_cli_env_overrides() -> None:
             [
                 "--prefill-decode-policy",
                 "protect_ttft",
+                "--max-active-requests",
+                "5",
+                "--max-prefill-chunk-tokens",
+                "11",
                 "--kv-pool-initial-pages",
                 "32",
                 "--kv-pool-low-water-pages",
@@ -10566,6 +10579,8 @@ def test_engine_loop_cli_env_overrides() -> None:
         )
     )
     assert cli_config.prefill_decode_policy == "protect_ttft"
+    assert cli_config.max_active_requests == 5
+    assert cli_config.max_prefill_chunk_tokens == 11
     assert cli_config.kv_pool_initial_pages == 32
     assert cli_config.kv_pool_low_water_pages == 16
     assert cli_config.kv_pool_high_water_pages == 96
@@ -10573,6 +10588,10 @@ def test_engine_loop_cli_env_overrides() -> None:
     assert cli_config.kv_pool_idle_grace_seconds == 2.5
     assert cli_config.max_pending_requests == 9
 
+    with pytest.raises(ValueError, match="max_active_requests"):
+        EngineLoopConfig(max_active_requests=0)
+    with pytest.raises(ValueError, match="max_prefill_chunk_tokens"):
+        EngineLoopConfig(max_prefill_chunk_tokens=0)
     with pytest.raises(ValueError, match="max_pending_requests"):
         EngineLoopConfig(max_pending_requests=0)
 
@@ -10892,12 +10911,23 @@ def test_resident_engine_loop_prefill_decode_policies() -> None:
 
     configured_loop = ResidentEngineLoop(
         _FakeSerialBridgeRunner(),
-        capacity=1,
-        config=EngineLoopConfig(max_pending_requests=1),
+        config=EngineLoopConfig(max_active_requests=1, max_pending_requests=1),
     )
     configured_loop.submit([30], max_new_tokens=1)
     with pytest.raises(ValueError, match="pending request queue is full"):
         configured_loop.submit([40], max_new_tokens=1)
+
+    chunk_runner = _FakeSerialBridgeRunner()
+    chunk_loop = ResidentEngineLoop(
+        chunk_runner,
+        config=EngineLoopConfig(max_active_requests=1, max_prefill_chunk_tokens=2),
+    )
+    chunk_loop.submit([30, 31, 32], max_new_tokens=1)
+    chunk_loop.submit([40], max_new_tokens=1)
+    chunk_loop.poll(max_ticks=1)
+    assert chunk_loop.active_count == 1
+    assert chunk_loop.pending_count == 1
+    assert chunk_runner.prefills[0].token_rows == ((30, 31),)
 
     with pytest.raises(ValueError, match="prefill_decode_policy"):
         ResidentEngineLoop(_FakeSerialBridgeRunner(), capacity=1, prefill_decode_policy="unknown")
@@ -10907,6 +10937,19 @@ def test_resident_engine_loop_prefill_decode_policies() -> None:
             capacity=1,
             config=EngineLoopConfig(),
             max_pending_requests=1,
+        )
+    with pytest.raises(ValueError, match="direct engine-loop overrides"):
+        ResidentEngineLoop(
+            _FakeSerialBridgeRunner(),
+            capacity=1,
+            config=EngineLoopConfig(),
+            prefill_chunk_size=1,
+        )
+    with pytest.raises(ValueError, match="capacity conflicts"):
+        ResidentEngineLoop(
+            _FakeSerialBridgeRunner(),
+            capacity=2,
+            config=EngineLoopConfig(max_active_requests=1),
         )
 
 

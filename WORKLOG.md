@@ -53442,3 +53442,23 @@ HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts
 ```
 
 Result: focused engine-loop pending-queue knob tests PASS; docs diff check PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: no completed queue item was marked done, no retained c>N performance/scaling claim was added, and the change only exposes bounded-queue host scheduler backpressure through the engine-loop config/CLI/env path.
+
+## 2026-05-31 — CONCURRENCY backpressure/fairness packet closed
+
+Closed the backpressure/fairness checklist packet after wiring the remaining host-scheduler knobs through the engine-loop config path. `EngineLoopConfig` now carries `max_active_requests` and `max_prefill_chunk_tokens` in addition to `max_pending_requests`; `add_engine_loop_config_args(...)` exposes `HIPENGINE_MAX_ACTIVE_REQUESTS` / `--max-active-requests` and `HIPENGINE_MAX_PREFILL_CHUNK_TOKENS` / `--max-prefill-chunk-tokens`; `ResidentEngineLoop` can derive scheduler capacity from `config.max_active_requests` and uses `config.max_prefill_chunk_tokens` for chunked prefill ticks. `docs/ENVS.md` documents the knobs and `docs/CONCURRENCY.md` marks the backpressure/fairness packet complete with code/test evidence. This is host-scheduler policy plumbing only; no retained c>N performance/scaling claim was added.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine/generation/engine_loop.py tests/test_generation_batch_scheduler.py && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py::test_engine_loop_cli_env_defaults_match_docs tests/test_generation_batch_scheduler.py::test_engine_loop_cli_env_overrides tests/test_generation_batch_scheduler.py::test_resident_engine_loop_prefill_decode_policies tests/test_generation_batch_scheduler.py::test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_together tests/test_generation_batch_scheduler.py::test_resident_batch_scheduler_enforces_pending_queue_limit -q
+git diff --check
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+```
+
+Result: focused engine-loop backpressure/fairness tests PASS; docs diff check PASS; verify count remains `12` because the closed packet is outside the counted bite-sized queue window; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: the completed packet has concrete code/test evidence, no retained c>N performance/scaling claim was added, and native c>N generated-token equality claims were not changed.

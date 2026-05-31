@@ -263,9 +263,12 @@ requests' decode steps without races.
 | `protect_ttft` | Prefill wins for any newly admitted request until its first decode token. | — |
 | `fair` | Round-robin between prefill and decode. Token-equivalent budgets are a later latency/metrics refinement. | — |
 
-Knob: `HIPENGINE_PREFILL_DECODE_POLICY` / `--prefill-decode-policy`. Default
-`protect_decode` (vLLM-equivalent default; minimizes inter-token-latency
-regressions for active requests).
+Knobs: `HIPENGINE_PREFILL_DECODE_POLICY` / `--prefill-decode-policy`
+(default `protect_decode`, vLLM-equivalent default that minimizes
+inter-token-latency regressions for active requests),
+`HIPENGINE_MAX_ACTIVE_REQUESTS` / `--max-active-requests`,
+`HIPENGINE_MAX_PENDING_REQUESTS` / `--max-pending-requests`, and
+`HIPENGINE_MAX_PREFILL_CHUNK_TOKENS` / `--max-prefill-chunk-tokens`.
 
 ## Dynamic KV pool
 
@@ -2228,19 +2231,25 @@ Establish these before optimizing anything:
   - avoid host-device copies for metadata that can be updated on device;
   - keep JIT builds out of profiler runs with `require_cached`;
   - track peak allocator/KV/workspace bytes in artifacts.
-- [ ] Backpressure and fairness policies once the scheduler is continuous:
-  - max active requests, max queued requests, max prefill chunk tokens;
-    progress: `ResidentBatchScheduler(max_pending_requests=...)` now enforces
-    a bounded pending queue, `ResidentEngineLoop` wires it through
-    `EngineLoopConfig` / `HIPENGINE_MAX_PENDING_REQUESTS` /
-    `--max-pending-requests`, and excess submissions are rejected before
-    admission; covered by `test_resident_batch_scheduler_enforces_pending_queue_limit`,
-    `test_engine_loop_cli_env_defaults_match_docs`, and
-    `test_engine_loop_cli_env_overrides`.
-  - prefill-vs-decode policy to protect decode latency (default
-    `protect_decode`, see §Engine-loop contract);
-  - sampling-parameter grouping without starving incompatible requests
-    once the per-row sampler is live.
+- [x] Backpressure and fairness policies once the scheduler is continuous:
+  - max active requests, max queued requests, max prefill chunk tokens are
+    represented by `EngineLoopConfig.max_active_requests`,
+    `max_pending_requests`, and `max_prefill_chunk_tokens`, exposed as
+    `HIPENGINE_MAX_ACTIVE_REQUESTS`, `HIPENGINE_MAX_PENDING_REQUESTS`,
+    `HIPENGINE_MAX_PREFILL_CHUNK_TOKENS` plus matching CLI flags, and wired
+    through `ResidentEngineLoop` / `ResidentBatchScheduler`; excess queued
+    submissions are rejected before admission.
+  - prefill-vs-decode policy protects decode latency by default
+    (`protect_decode`; see §Engine-loop contract) with `protect_ttft` and
+    `fair` alternatives.
+  - per-row sampling params (`PerRowSamplingParams` / `SamplerParamsBlock`)
+    let incompatible temperature/top-k/top-p/repetition/stop-token rows stay in
+    one decode launch instead of starving behind compatibility groups.
+    Evidence: `test_resident_batch_scheduler_enforces_pending_queue_limit`,
+    `test_engine_loop_cli_env_defaults_match_docs`,
+    `test_engine_loop_cli_env_overrides`,
+    `test_resident_engine_loop_prefill_decode_policies`, and
+    `test_resident_scheduler_per_row_sampler_block_keeps_incompatible_rows_together`.
 - [x] Profiler summaries for accepted rows: expected kernel names,
       duration/share for attention, MoE, projection, sampling, graph
       replay, and any CPU-side bottleneck. Evidence: accepted-artifact schema
