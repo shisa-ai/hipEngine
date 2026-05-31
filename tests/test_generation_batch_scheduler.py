@@ -3310,6 +3310,8 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
             "reference_artifact_path": str(output_dir / "native-baseline-c1.json"),
             "reference_status": "loaded",
             "reference_reason": None,
+            "benchmark_model": "/tmp/model",
+            "benchmark_fixture": None,
             "workload_concurrency": 1,
             "prompt_tokens_per_request": 16,
             "gen_tokens_per_request": 2,
@@ -3322,6 +3324,8 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
             "reference_artifact_path": str(output_dir / "serial-bridge-c2.json"),
             "reference_status": "loaded",
             "reference_reason": None,
+            "benchmark_model": "/tmp/model",
+            "benchmark_fixture": "/tmp/fixture.json",
             "workload_concurrency": 2,
             "prompt_tokens_per_request": 16,
             "gen_tokens_per_request": 2,
@@ -4248,6 +4252,12 @@ def test_batch_c_sweep_scaling_reference_rejects_mismatched_input_labels(
         kind="c1_baseline",
         expected_concurrency=1,
     )
+    serial_matched = c_sweep._scaling_reference_precondition(
+        native,
+        flag="--serial-bridge-json",
+        kind="serial_bridge",
+        expected_concurrency=2,
+    )
     c1_payload["commands"]["benchmark"] = f"python3 scripts/qwen35_paro_bench.py --model /tmp/other-model --json {c1_path}"
     c1_path.write_text(json.dumps(c1_payload))
     c1_mismatched_model = c_sweep._scaling_reference_precondition(
@@ -4269,6 +4279,11 @@ def test_batch_c_sweep_scaling_reference_rejects_mismatched_input_labels(
 
     assert c1_matched["passed"] is True
     assert c1_matched["reason"] is None
+    assert c1_matched["benchmark_model"] == "/tmp/model"
+    assert c1_matched["benchmark_fixture"] is None
+    assert serial_matched["passed"] is True
+    assert serial_matched["benchmark_model"] == "/tmp/model"
+    assert serial_matched["benchmark_fixture"] == "/tmp/fixture.json"
     assert c1_mismatched_model["passed"] is False
     assert c1_mismatched_model["reason"] == "commands.benchmark --model does not match retained model"
     assert serial_mismatched_fixture["passed"] is False
@@ -5817,6 +5832,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_scaling_precondition_missing_artifact["commands"][-1]["preconditions"][2].pop("reference_artifact_path")
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.reference_artifact_path must match scaling reference artifact_path when passed"):
         c_sweep.validate_sweep_summary(tampered_scaling_precondition_missing_artifact)
+    tampered_scaling_precondition_model = json.loads(json.dumps(persisted))
+    tampered_scaling_precondition_model["commands"][-1]["preconditions"][1]["benchmark_model"] = "/tmp/other-model"
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.benchmark_model must match retained command model when present"):
+        c_sweep.validate_sweep_summary(tampered_scaling_precondition_model)
+    tampered_scaling_precondition_fixture = json.loads(json.dumps(persisted))
+    tampered_scaling_precondition_fixture["commands"][-1]["preconditions"][2]["benchmark_fixture"] = "/tmp/other-fixture.json"
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.benchmark_fixture must match retained command fixture when present"):
+        c_sweep.validate_sweep_summary(tampered_scaling_precondition_fixture)
     tampered_scaling_precondition_concurrency = json.loads(json.dumps(persisted))
     tampered_scaling_precondition_concurrency["commands"][-1]["preconditions"][1]["workload_concurrency"] = 2
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.workload_concurrency must be a typed int matching retained scaling gate"):
@@ -6417,6 +6440,8 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         "reference_artifact_path": str(output_dir / "native-baseline-c1.json"),
         "reference_status": "loaded",
         "reference_reason": None,
+        "benchmark_model": None,
+        "benchmark_fixture": None,
         "workload_concurrency": 1,
         "prompt_tokens_per_request": 16,
         "gen_tokens_per_request": 2,
@@ -6431,6 +6456,8 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         "reference_artifact_path": str(output_dir / "serial-bridge-c2.json"),
         "reference_status": "blocked",
         "reference_reason": None,
+        "benchmark_model": None,
+        "benchmark_fixture": None,
         "workload_concurrency": 2,
         "prompt_tokens_per_request": 16,
         "gen_tokens_per_request": 2,

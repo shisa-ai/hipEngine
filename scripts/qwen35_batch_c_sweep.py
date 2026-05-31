@@ -1221,6 +1221,8 @@ def _scaling_reference_precondition(
     prompt_tokens: int | None = None
     gen_tokens: int | None = None
     source_artifact_path: str | None = None
+    benchmark_model: str | None = None
+    benchmark_fixture: str | None = None
     if not isinstance(payload, dict):
         reasons.append("scaling reference artifact root is not an object")
     else:
@@ -1239,6 +1241,11 @@ def _scaling_reference_precondition(
             for key, value in reference_device_env.items():
                 if retained_device_env.get(key) != value:
                     reasons.append(f"hardware.visible_device.env.{key} does not match retained command env")
+        commands = payload.get("commands")
+        benchmark_command = commands.get("benchmark") if isinstance(commands, Mapping) else payload.get("command")
+        if isinstance(benchmark_command, str):
+            benchmark_model = _command_text_arg(benchmark_command, "--model")
+            benchmark_fixture = _command_text_arg(benchmark_command, "--fixture")
         reference_command_env, reference_command_env_reasons = _scaling_reference_command_env_assignments(
             payload,
             required_env=retained_device_env,
@@ -1311,6 +1318,8 @@ def _scaling_reference_precondition(
         "reference_artifact_path": source_artifact_path,
         "reference_status": status,
         "reference_reason": reference_reason,
+        "benchmark_model": benchmark_model,
+        "benchmark_fixture": benchmark_fixture,
         "workload_concurrency": concurrency,
         "prompt_tokens_per_request": prompt_tokens,
         "gen_tokens_per_request": gen_tokens,
@@ -2119,6 +2128,8 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         "reference_artifact_path",
         "reference_status",
         "reference_reason",
+        "benchmark_model",
+        "benchmark_fixture",
         "workload_concurrency",
         "prompt_tokens_per_request",
         "gen_tokens_per_request",
@@ -2188,6 +2199,8 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         "reference_artifact_path",
         "reference_status",
         "reference_reason",
+        "benchmark_model",
+        "benchmark_fixture",
         "workload_concurrency",
         "prompt_tokens_per_request",
         "gen_tokens_per_request",
@@ -2748,6 +2761,27 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         or reference_artifact_path != scaling_precondition.get("artifact_path")
                     ):
                         errors.append("commands[].preconditions[].reference_artifact_path must match scaling reference artifact_path when passed")
+                        scaling_precondition_error = True
+                        break
+                    benchmark_model = scaling_precondition.get("benchmark_model")
+                    benchmark_fixture = scaling_precondition.get("benchmark_fixture")
+                    if any(
+                        value is not None and (not isinstance(value, str) or not value.strip())
+                        for value in (benchmark_model, benchmark_fixture)
+                    ):
+                        errors.append("commands[].preconditions[].benchmark input labels must be null or non-empty strings when passed")
+                        scaling_precondition_error = True
+                        break
+                    if benchmark_model is not None and benchmark_model != _argv_value(argv, "--model"):
+                        errors.append("commands[].preconditions[].benchmark_model must match retained command model when present")
+                        scaling_precondition_error = True
+                        break
+                    if (
+                        benchmark_fixture is not None
+                        and scaling_precondition.get("kind") == _RETAINED_PRECONDITION_KINDS[2]
+                        and benchmark_fixture != _argv_value(argv, "--fixture")
+                    ):
+                        errors.append("commands[].preconditions[].benchmark_fixture must match retained command fixture when present")
                         scaling_precondition_error = True
                         break
                     gen_tokens_per_request = scaling_precondition.get("gen_tokens_per_request")

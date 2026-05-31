@@ -53024,3 +53024,23 @@ git diff --check
 ```
 
 Result: focused c-sweep/retained scaling-reference input-label tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed items were not changed, no retained c>N performance/scaling claim was added, and c-sweep/retained preflight now rejects stale/missing baseline model or fixture labels before a future promotion.
+
+## 2026-05-31 — CONCURRENCY c-sweep scaling precondition input evidence
+
+Added persisted scaling-reference input evidence to c-sweep retained-row preconditions: `scripts/qwen35_batch_c_sweep.py` now records `benchmark_model` / `benchmark_fixture` parsed from c=1 and serial scaling-reference benchmark commands when those command labels exist, includes the fields in the c-sweep condition schema, and validates any non-null persisted values against the retained row's `--model` / serial `--fixture`. Legacy references without command labels remain loadable with null evidence, but stale/spoofed persisted labels are rejected before a summary can support a retained scaling claim. This is evidence/schema hardening only; no queue item was closed and no retained c>N performance/scaling claim was added.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 -m compileall -q scripts/qwen35_batch_c_sweep.py scripts/qwen35_batch_retained_bench.py tests/test_generation_batch_scheduler.py && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py::test_batch_c_sweep_scaling_reference_rejects_mismatched_input_labels tests/test_generation_batch_scheduler.py::test_batch_c_sweep_no_stop_counts_failed_and_skipped_rows tests/test_generation_batch_scheduler.py::test_batch_c_sweep_runs_retained_when_all_references_are_usable -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+git diff --check
+```
+
+Result: focused c-sweep scaling precondition evidence tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed items were not changed, no retained c>N performance/scaling claim was added, native c>N correctness artifacts still show equality vs c=1/NumPy primitive gates, and scaling precondition records now carry and validate available model/fixture labels before they can support future retained scaling evidence.
