@@ -595,7 +595,8 @@ reporting.
   emits a tiny top-level readiness/blocker digest for scheduler polling, `--readiness-summary-sha-only`
   emits just that readiness-summary digest for drift polling, `--status-refresh-command-only`
   / `--status-refresh-command-sha-only` emit the consolidated status refresh command or digest,
-  `--oracle-helper-command-only` emits just the oracle JSON refresh command,
+  `--kv-resource-command-only` / `--kv-resource-command-sha-only` emit the KV resource
+  refresh command or digest, `--oracle-helper-command-only` emits just the oracle JSON refresh command,
   `--oracle-helper-command-sha-only` emits its digest, `--summary-only`
   emits just the handoff block for fast continuation checks, while `--blocker-work-queue-only`
   emits only the ordered queue (with a handoff-level queue count/schema version/SHA-256,

@@ -92,6 +92,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--kv-resource-command-only",
+        action="store_true",
+        help=(
+            "Emit only next_action_commands.kv_backed_decode_not_wired.resource_plan_refresh_command "
+            "for KV resource dry-run refresh. Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--kv-resource-command-sha-only",
+        action="store_true",
+        help=(
+            "Emit only next_action_commands.kv_backed_decode_not_wired.resource_plan_refresh_command_sha256 "
+            "for KV resource command drift polling. Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--status-refresh-command-sha-only",
         action="store_true",
         help=(
@@ -1130,6 +1146,12 @@ def _handoff_summary(
             "status_refresh_command_sha_only": (
                 "next_action_commands.oracle_parity_blocked.status_refresh_command_sha256"
             ),
+            "kv_resource_command_only": (
+                "next_action_commands.kv_backed_decode_not_wired.resource_plan_refresh_command"
+            ),
+            "kv_resource_command_sha_only": (
+                "next_action_commands.kv_backed_decode_not_wired.resource_plan_refresh_command_sha256"
+            ),
             "oracle_helper_command_only": (
                 "next_action_commands.oracle_parity_blocked.oracle_helper_refresh_command"
             ),
@@ -1464,6 +1486,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.status_refresh_command_only:
         result = status["next_action_commands"]["oracle_parity_blocked"].get(
             "status_refresh_command"
+        )
+    elif args.kv_resource_command_sha_only:
+        result = status["next_action_commands"]["kv_backed_decode_not_wired"].get(
+            "resource_plan_refresh_command_sha256"
+        )
+    elif args.kv_resource_command_only:
+        result = status["next_action_commands"]["kv_backed_decode_not_wired"].get(
+            "resource_plan_refresh_command"
         )
     elif args.readiness_summary_sha_only:
         result = status["readiness_summary_sha256"]
