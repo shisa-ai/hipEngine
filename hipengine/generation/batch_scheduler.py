@@ -497,13 +497,17 @@ class ResidentBatchScheduler:
         context_bucket_size: int = 256,
         clock: Callable[[], float] | None = None,
         reclaim_callback: Callable[[CompletedRequest], None] | None = None,
+        max_pending_requests: int | None = None,
     ) -> None:
         if capacity <= 0:
             raise ValueError("capacity must be positive")
         if context_bucket_size <= 0:
             raise ValueError("context_bucket_size must be positive")
+        if max_pending_requests is not None and max_pending_requests <= 0:
+            raise ValueError("max_pending_requests must be positive when set")
         self.capacity = int(capacity)
         self.context_bucket_size = int(context_bucket_size)
+        self.max_pending_requests = None if max_pending_requests is None else int(max_pending_requests)
         self.active_batch = ActiveBatch(self.capacity)
         self.graph_buckets = GraphBucketCache()
         self._pending: deque[RequestState] = deque()
@@ -534,6 +538,8 @@ class ResidentBatchScheduler:
         request_id: int | None = None,
         sampling: PerRowSamplingParams | None = None,
     ) -> int:
+        if self.max_pending_requests is not None and len(self._pending) >= self.max_pending_requests:
+            raise ValueError(f"pending request queue is full (max_pending_requests={self.max_pending_requests})")
         rid = self._allocate_request_id() if request_id is None else int(request_id)
         if rid in self.active_batch.requests or any(req.request_id == rid for req in self._pending) or rid in self._completed:
             raise ValueError(f"request_id {rid} already exists")

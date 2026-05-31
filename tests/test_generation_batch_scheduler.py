@@ -11372,6 +11372,33 @@ def test_resident_batch_scheduler_rejects_duplicate_ids_and_invalid_chunks() -> 
         scheduler.next_prefill_work(chunk_size=0)
 
 
+def test_resident_batch_scheduler_enforces_pending_queue_limit() -> None:
+    with pytest.raises(ValueError, match="max_pending_requests"):
+        ResidentBatchScheduler(capacity=1, max_pending_requests=0)
+
+    scheduler = ResidentBatchScheduler(capacity=1, max_pending_requests=1)
+    r0 = scheduler.submit([1], max_new_tokens=1, request_id=10)
+    assert scheduler.pending_count == 1
+    with pytest.raises(ValueError, match="pending request queue is full"):
+        scheduler.submit([2], max_new_tokens=1, request_id=11)
+    assert scheduler.pending_count == 1
+
+    assert scheduler.admit_pending() == (r0,)
+    r1 = scheduler.submit([3], max_new_tokens=1, request_id=12)
+    assert scheduler.pending_count == 1
+    with pytest.raises(ValueError, match="max_pending_requests=1"):
+        scheduler.submit([4], max_new_tokens=1, request_id=13)
+    assert scheduler.pending_count == 1
+
+    canceled = scheduler.cancel(r1, reason="timeout")
+    assert canceled is not None
+    assert canceled.finish_reason == "timeout"
+    assert scheduler.pending_count == 0
+    r2 = scheduler.submit([5], max_new_tokens=1, request_id=14)
+    assert r2 == 14
+    assert scheduler.pending_count == 1
+
+
 def test_qwen35_batch_serial_bench_helpers_summarize_and_slice(tmp_path) -> None:
     fixture = tmp_path / "fixture.json"
     fixture.write_text(json.dumps({"prompt_ids": list(range(12))}))
