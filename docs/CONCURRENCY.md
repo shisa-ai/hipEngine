@@ -2131,12 +2131,20 @@ endpoint live; retained c>N rows include all gates above.
 - [ ] Per-bucket graph-cache observability
       (entries, hits, misses, miss reason, kernel-time histogram). Progress:
       `GraphBucketCache.stats.to_json_dict()` now includes miss-reason counts
-      and typed-integer kernel-time histogram buckets, retained/serial scripts emit that
-      shape, retained bench validates decode shape-key axes (including context-bucket coverage for the workload prompt length) and merges integer profiler kernel durations into the histogram, blocking promotion when shape keys are invalid, hit/miss/replay-rate stats are invalid, no known-bucket observations remain, or unknown buckets appear, and accepted-artifact schema shares the runtime bucket taxonomy and requires context-bucket workload coverage plus per-bucket known-bucket histogram observations that cover profiler kernel-duration evidence
-      for accepted rows, and `/metrics` exports labeled miss-reason counters plus
-      zero-filled counters for every known kernel-time bucket while filtering
-      unknown bucket labels; the item remains open until real replay profiler
-      evidence populates kernel-time buckets.
+      and zero-filled, fixed-key `GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS` histogram
+      buckets; retained/serial scripts emit that shape; retained bench validates
+      decode shape-key axes (including context-bucket coverage for the workload
+      prompt length), merges integer profiler kernel durations into the fixed
+      histogram schema, and blocks promotion when shape keys are invalid,
+      hit/miss/replay-rate stats are invalid, fixed histogram buckets are missing,
+      no known-bucket observations remain, or unknown buckets appear.
+      Accepted-artifact schema shares the runtime bucket taxonomy and requires
+      context-bucket workload coverage plus fixed-bucket histogram observations
+      that cover profiler kernel-duration evidence for accepted rows, and
+      `/metrics` exports labeled miss-reason counters plus zero-filled counters
+      for every known kernel-time bucket while filtering unknown bucket labels;
+      the item remains open until real replay profiler evidence populates
+      kernel-time buckets.
 - [x] Retained-row gates 4 (admission/completion timestamps + p50/p95) and
       6/7/8 (dynamic pool + stable block id + prefix sharing artifact)
       enforced by the bench harness.
@@ -2183,11 +2191,12 @@ Establish these before optimizing anything:
       length)`, with an uncaptured fallback for rare shapes.
 - [x] Add graph-bucket cache hit/miss and replay statistics to artifacts.
       Evidence: `GraphBucketStats.to_json_dict()` serializes `entries`,
-      `hits`, `misses`, `replay_hit_rate`, `miss_reasons`, and typed-integer
-      `kernel_time_histogram_ns`; `scripts/qwen35_batch_retained_bench.py` and
-      serial diagnostics emit `decode_shape_key` / `graph_bucket_stats`, and the retained bench merges profiler kernel durations into that histogram;
-      accepted-artifact schema requires those fields and non-empty known-bucket histogram
-      observations for accepted rows using the runtime bucket taxonomy; `/metrics` exports graph-bucket counters and filters kernel-time buckets to that taxonomy;
+      `hits`, `misses`, `replay_hit_rate`, `miss_reasons`, and zero-filled
+      fixed-bucket `kernel_time_histogram_ns`; `scripts/qwen35_batch_retained_bench.py`
+      and serial diagnostics emit `decode_shape_key` / `graph_bucket_stats`, and the retained bench merges profiler kernel durations into that fixed-bucket histogram;
+      accepted-artifact schema requires those fields, the complete fixed bucket
+      key set, and non-empty known-bucket histogram observations for accepted rows
+      using the runtime bucket taxonomy; `/metrics` exports graph-bucket counters and filters kernel-time buckets to that taxonomy;
       covered by
       `test_graph_bucket_cache_clear_resets_entries_and_counters`,
       `test_qwen35_retained_records_decode_graph_bucket_metadata`,
