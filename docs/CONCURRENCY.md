@@ -1445,7 +1445,11 @@ roll-up/status view.
       `append_*_mismatch=0`, `append_batch_aa_*_mismatch=0`,
       `attn_batch_vs_c1_max_abs=0.0`, `attn_batch_aa_max_abs=0.0`,
       `device.env.HIP_VISIBLE_DEVICES=1`, `device_name=AMD Radeon RX 7900 XTX`,
-      and `passed=true`. The primitive script also re-runs
+      and `passed=true`; exact commands:
+      `HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 4 --json /tmp/hipengine-multiloop-c4-correctness.json`
+      and
+      `HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json`.
+      The primitive script also re-runs
       the batched KV append and batched full-attention context kernels on the
       same inputs and emits A/A determinism fields (`append_batch_aa_*` and
       `attn_batch_aa_max_abs`) that must be zero for `passed=true`; retained
