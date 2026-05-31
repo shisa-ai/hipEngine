@@ -457,6 +457,22 @@ class StepFunKVDecodeRunPlan:
         return self.decode_plan.input_ids
 
     @property
+    def input_ids_dtype(self) -> str:
+        return "int32"
+
+    @property
+    def input_ids_payload_bytes(self) -> bytes:
+        return _pack_integer_payload(self.input_ids_dtype, self.input_ids)
+
+    @property
+    def input_ids_nbytes(self) -> int:
+        return len(self.input_ids_payload_bytes)
+
+    @property
+    def input_ids_sha256(self) -> str:
+        return hashlib.sha256(self.input_ids_payload_bytes).hexdigest()
+
+    @property
     def rendered_prompt_nchars(self) -> int:
         return len(self.decode_plan.rendered_prompt)
 
@@ -708,7 +724,11 @@ class StepFunKVDecodeRunPlan:
         return {
             "prompt_length": self.prompt_length,
             "input_ids": list(self.input_ids),
+            "input_ids_dtype": self.input_ids_dtype,
+            "input_ids_nbytes": self.input_ids_nbytes,
+            "input_ids_sha256": self.input_ids_sha256,
             "input_id_count": len(self.input_ids),
+            "input_id_preview": list(self.input_ids[:8]),
             "rendered_prompt_nchars": self.rendered_prompt_nchars,
             "rendered_prompt_sha256": self.rendered_prompt_sha256,
             "max_new_tokens": self.decode_plan.max_new_tokens,

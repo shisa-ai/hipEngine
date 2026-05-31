@@ -33,6 +33,16 @@
       "total_span_input_nbytes": 16
     },
     "input_id_count": 23,
+    "input_id_preview": [
+      0,
+      128006,
+      27824,
+      201,
+      77666,
+      288,
+      28,
+      3157
+    ],
     "input_ids": [
       0,
       128006,
@@ -58,6 +68,9 @@
       128798,
       201
     ],
+    "input_ids_dtype": "int32",
+    "input_ids_nbytes": 92,
+    "input_ids_sha256": "a55394363b6fabbc3f7be06c4ebba992f706c9bc6cc64aac0c79ca9f573945ca",
     "kv_decode_launch_operation_count": 135,
     "kv_decode_launch_per_layer_order": [
       "prompt_kv_write",

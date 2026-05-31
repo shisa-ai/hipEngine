@@ -113,6 +113,14 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
 
     assert run_plan.prompt_length == run_plan.decode_plan.prompt_length > 0
     assert run_plan.input_ids == run_plan.decode_plan.input_ids
+    input_ids_payload = struct.pack(
+        "<" + "i" * run_plan.prompt_length,
+        *run_plan.input_ids,
+    )
+    assert run_plan.input_ids_dtype == "int32"
+    assert run_plan.input_ids_payload_bytes == input_ids_payload
+    assert run_plan.input_ids_nbytes == run_plan.prompt_length * 4
+    assert run_plan.input_ids_sha256 == hashlib.sha256(input_ids_payload).hexdigest()
     assert run_plan.rendered_prompt_nchars == len(run_plan.decode_plan.rendered_prompt)
     assert run_plan.rendered_prompt_sha256 == hashlib.sha256(
         run_plan.decode_plan.rendered_prompt.encode("utf-8")
@@ -134,7 +142,11 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
     payload = run_plan.to_dict()
     assert payload["prompt_length"] == run_plan.prompt_length
     assert payload["input_ids"] == list(run_plan.decode_plan.input_ids)
+    assert payload["input_ids_dtype"] == "int32"
+    assert payload["input_ids_nbytes"] == run_plan.prompt_length * 4
+    assert payload["input_ids_sha256"] == hashlib.sha256(input_ids_payload).hexdigest()
     assert payload["input_id_count"] == run_plan.prompt_length
+    assert payload["input_id_preview"] == list(run_plan.decode_plan.input_ids[:8])
     assert payload["rendered_prompt_nchars"] == len(run_plan.decode_plan.rendered_prompt)
     assert payload["rendered_prompt_sha256"] == hashlib.sha256(
         run_plan.decode_plan.rendered_prompt.encode("utf-8")

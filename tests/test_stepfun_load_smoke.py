@@ -104,6 +104,11 @@ def test_stepfun_load_smoke_dry_run_plan_emits_resource_json(capsys: pytest.Capt
     assert run_plan["input_id_count"] == run_plan["prompt_length"]
     assert len(run_plan["input_ids"]) == run_plan["input_id_count"]
     assert all(isinstance(token_id, int) for token_id in run_plan["input_ids"])
+    assert run_plan["input_ids_dtype"] == "int32"
+    assert run_plan["input_ids_nbytes"] == run_plan["prompt_length"] * 4
+    assert len(run_plan["input_ids_sha256"]) == 64
+    assert int(run_plan["input_ids_sha256"], 16) >= 0
+    assert run_plan["input_id_preview"] == run_plan["input_ids"][:8]
     assert run_plan["rendered_prompt_nchars"] > 0
     assert len(run_plan["rendered_prompt_sha256"]) == 64
     assert int(run_plan["rendered_prompt_sha256"], 16) >= 0

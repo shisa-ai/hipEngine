@@ -240,7 +240,11 @@ def _write_resource_artifact(path: Path) -> None:
                         "total_span_input_nbytes": 16,
                     },
                     "input_id_count": 23,
+                    "input_id_preview": list(range(100, 108)),
                     "input_ids": list(range(100, 123)),
+                    "input_ids_dtype": "int32",
+                    "input_ids_nbytes": 92,
+                    "input_ids_sha256": "f" * 64,
                     "kv_decode_launch_operation_count": 135,
                     "kv_decode_launch_per_layer_order": [
                         "prompt_kv_write",
@@ -573,7 +577,11 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert kv_dispatch["launch_schedule"]["streaming_runner_ready"] is False
     assert kv_dispatch["run_plan"]["prompt_length"] == 23
     assert kv_dispatch["run_plan"]["input_id_count"] == 23
+    assert kv_dispatch["run_plan"]["input_id_preview"] == list(range(100, 108))
     assert kv_dispatch["run_plan"]["input_ids"] == list(range(100, 123))
+    assert kv_dispatch["run_plan"]["input_ids_dtype"] == "int32"
+    assert kv_dispatch["run_plan"]["input_ids_nbytes"] == 92
+    assert kv_dispatch["run_plan"]["input_ids_sha256"] == "f" * 64
     assert kv_dispatch["run_plan"]["rendered_prompt_nchars"] == 123
     assert kv_dispatch["run_plan"]["rendered_prompt_sha256"] == "0" * 64
     assert kv_dispatch["run_plan"]["attention_block_size"] == 256
@@ -650,6 +658,8 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "run_plan_context_fits_resource_plan": True,
         "run_plan_decode_span_base_offsets_len": 2,
         "run_plan_input_id_count": 23,
+        "run_plan_input_ids_nbytes": 92,
+        "run_plan_input_ids_sha256": "f" * 64,
         "run_plan_prompt_fits_resource_plan": True,
         "run_plan_prompt_span_base_offsets_len": 46,
         "run_plan_rendered_prompt_sha256": "0" * 64,
