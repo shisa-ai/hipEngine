@@ -15100,6 +15100,13 @@ def test_qwen35_retained_graph_histogram_blockers_reject_unknown_buckets() -> No
     assert "execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns observation count must cover graph_bucket_stats.hits" in short_histogram
     assert any("kernel_time_histogram_ns must include exactly the fixed buckets" in blocker for blocker in short_histogram)
 
+    complete_zero_histogram = {bucket: 0 for bucket in GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS}
+    complete_zero = retained_bench._graph_kernel_time_histogram_blockers(
+        {"graph_bucket_stats": {"hits": 0, "kernel_time_histogram_ns": complete_zero_histogram}}
+    )
+    assert "execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns has no observations" in complete_zero
+    assert not any("kernel_time_histogram_ns must include exactly the fixed buckets" in blocker for blocker in complete_zero)
+
     bool_count_histogram = {bucket: 0 for bucket in GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS}
     bool_count_histogram["le_10us"] = True
     bool_count = retained_bench._graph_kernel_time_histogram_blockers(
@@ -17401,6 +17408,13 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     zero_graph_bucket_histogram["execution"]["scheduler_metadata"]["graph_bucket_stats"]["kernel_time_histogram_ns"] = {"le_10us": 0}
     with pytest.raises(ValueError, match="kernel_time_histogram_ns must contain at least one observation"):
         validate_cn_diagnostic_artifact_payload(zero_graph_bucket_histogram)
+
+    fixed_zero_graph_bucket_histogram = json.loads(json.dumps(accepted))
+    fixed_zero_graph_bucket_histogram["execution"]["scheduler_metadata"]["graph_bucket_stats"]["kernel_time_histogram_ns"] = {
+        bucket: 0 for bucket in GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS
+    }
+    with pytest.raises(ValueError, match="kernel_time_histogram_ns must contain at least one observation"):
+        validate_cn_diagnostic_artifact_payload(fixed_zero_graph_bucket_histogram)
 
     undercovered_profiler_histogram = json.loads(json.dumps(accepted))
     undercovered_profiler_histogram["execution"]["scheduler_metadata"]["graph_bucket_stats"]["kernel_time_histogram_ns"] = {"le_10us": 1}
