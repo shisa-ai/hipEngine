@@ -12938,7 +12938,13 @@ def test_qwen35_retained_attaches_profiler_graph_kernel_time_histogram() -> None
 
     retained_bench._attach_profiler_graph_kernel_time_histogram(scheduler_metadata, profiler)
 
-    assert scheduler_metadata["graph_bucket_stats"]["kernel_time_histogram_ns"] == {"le_10us": 2, "le_100us": 1}
+    assert scheduler_metadata["graph_bucket_stats"]["kernel_time_histogram_ns"] == {
+        "le_10us": 2,
+        "le_100us": 1,
+        "le_1ms": 0,
+        "le_10ms": 0,
+        "gt_10ms": 0,
+    }
 
 
 def test_qwen35_retained_profiler_reference_loads_captured_summary(tmp_path: Path) -> None:

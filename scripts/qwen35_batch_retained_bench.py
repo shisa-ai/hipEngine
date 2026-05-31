@@ -197,7 +197,11 @@ def _attach_profiler_graph_kernel_time_histogram(scheduler_metadata: dict[str, A
         if isinstance(current_count, bool) or not isinstance(current_count, int) or current_count < 0:
             current_count = 0
         merged_histogram[bucket] = int(current_count) + int(count)
-    updated_stats["kernel_time_histogram_ns"] = merged_histogram
+    fixed_histogram: dict[str, int] = {}
+    for bucket in GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS:
+        count = merged_histogram.get(bucket, 0)
+        fixed_histogram[bucket] = int(count) if isinstance(count, int) and not isinstance(count, bool) and count >= 0 else 0
+    updated_stats["kernel_time_histogram_ns"] = fixed_histogram
     scheduler_metadata["graph_bucket_stats"] = updated_stats
 
 
