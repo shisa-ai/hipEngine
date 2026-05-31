@@ -17,6 +17,10 @@ from pathlib import Path
 from typing import Any, Sequence
 
 
+def _payload_json(payload: Any) -> str:
+    return json.dumps(payload, indent=2, sort_keys=True, allow_nan=False)
+
+
 def _load_json(path: Path) -> dict[str, Any]:
     payload = json.loads(path.read_text())
     if not isinstance(payload, dict):
@@ -678,7 +682,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if json_path is not None:
         path = Path(json_path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+        path.write_text(_payload_json(payload) + "\n")
     return payload
 
 
@@ -746,7 +750,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
     if args.json is None:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        print(_payload_json(payload))
 
 
 if __name__ == "__main__":

@@ -1469,9 +1469,9 @@ roll-up/status view.
       planner also prefixes planned/executed subprocess argv with the visible HIP
       device env, so summary JSON records the actual GPU1 selection instead of
       relying on inherited shell state; retained-bench, c-sweep, primitive
-      correctness, INT8/GGUF diagnostic templates, serial/packed/sparse
-      correctness smokes, and serial-bridge baseline JSON serializers now reject
-      non-finite values instead of emitting `NaN`/`Infinity`; c-sweep, retained-bench, and
+      correctness, hidden-artifact comparison, INT8/GGUF diagnostic templates,
+      serial/packed/sparse correctness smokes, and serial-bridge baseline JSON
+      serializers now reject non-finite values instead of emitting `NaN`/`Infinity`; c-sweep, retained-bench, and
       accepted-artifact gates reject profiler/correctness command labels that
       drop or change that env prefix. This does not close C2.5 because
       generated-token equality vs independent c=1 for c=4/c=8 is still missing.

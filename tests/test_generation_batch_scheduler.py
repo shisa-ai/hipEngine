@@ -10069,6 +10069,13 @@ def test_correctness_smoke_payload_json_rejects_nonfinite() -> None:
         assert json.loads(payload_json({"ok": 1.0})) == {"ok": 1.0}
 
 
+def test_hidden_artifact_compare_payload_json_rejects_nonfinite() -> None:
+    with pytest.raises(ValueError, match="Out of range float values"):
+        hidden_artifact_compare._payload_json({"bad": float("nan")})
+
+    assert json.loads(hidden_artifact_compare._payload_json({"ok": 1.0})) == {"ok": 1.0}
+
+
 def test_gguf_cN_diagnostic_template_records_blocked_c2_command(tmp_path: Path) -> None:
     output = tmp_path / "gguf-c2.json"
     args = build_gguf_diagnostic_parser().parse_args(
