@@ -16926,6 +16926,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="stable_block_id.audit must be a non-empty string"):
         validate_cn_diagnostic_artifact_payload(empty_stable_block_audit)
 
+    blank_stable_block_audit = json.loads(json.dumps(accepted))
+    blank_stable_block_audit["memory"]["stable_block_id"]["audit"] = "  "
+    with pytest.raises(ValueError, match="stable_block_id.audit must be a non-empty string"):
+        validate_cn_diagnostic_artifact_payload(blank_stable_block_audit)
+
     nonfinite_pool_counter = json.loads(json.dumps(accepted))
     nonfinite_pool_counter["memory"]["dynamic_pool"]["pool_counters"]["current_bytes"] = float("inf")
     with pytest.raises(ValueError, match="pool_counters.current_bytes must be finite non-negative numeric"):

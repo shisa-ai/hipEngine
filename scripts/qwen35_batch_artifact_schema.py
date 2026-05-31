@@ -1201,7 +1201,8 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
     if isinstance(stable_block_id, Mapping):
         if stable_block_id.get("passed") is not True:
             errors.append("memory.stable_block_id.passed must be true for accepted artifacts")
-        if not isinstance(stable_block_id.get("audit"), str) or not stable_block_id.get("audit"):
+        audit = stable_block_id.get("audit")
+        if not isinstance(audit, str) or not audit.strip():
             errors.append("memory.stable_block_id.audit must be a non-empty string for accepted artifacts")
     prefix_sharing = memory.get("prefix_sharing")
     if isinstance(prefix_sharing, Mapping):
