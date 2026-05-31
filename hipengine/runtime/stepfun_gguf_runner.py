@@ -516,6 +516,59 @@ class StepFunKVDecodeRunPlan:
         )
 
     @property
+    def span_input_upload_manifest(self) -> dict[str, object]:
+        prompt_inputs = self.prompt_span_inputs
+        decode_inputs = self.decode_span_inputs
+        entries = [
+            {
+                "name": "prompt_base_offsets",
+                "source": "prompt_span_inputs.base_offsets",
+                "kernel_args": ["prompt_kv_write.base_offsets"],
+                "dtype": prompt_inputs["base_offsets_dtype"],
+                "shape": [self.prompt_length, self.attention_block_table_len],
+                "nbytes": prompt_inputs["base_offsets_nbytes"],
+            },
+            {
+                "name": "prompt_live_counts",
+                "source": "prompt_span_inputs.live_counts",
+                "kernel_args": ["prompt_kv_write.live_counts"],
+                "dtype": prompt_inputs["live_counts_dtype"],
+                "shape": [self.prompt_length],
+                "nbytes": prompt_inputs["live_counts_nbytes"],
+            },
+            {
+                "name": "decode_base_offsets",
+                "source": "decode_span_inputs.base_offsets",
+                "kernel_args": ["decode_kv_write.base_offsets", "decode_attention.base_offsets"],
+                "dtype": decode_inputs["base_offsets_dtype"],
+                "shape": [self.attention_block_table_len],
+                "nbytes": decode_inputs["base_offsets_nbytes"],
+            },
+            {
+                "name": "decode_kv_write_position",
+                "source": "decode_span_inputs.kv_write_position",
+                "kernel_args": ["decode_kv_write.position"],
+                "dtype": decode_inputs["kv_write_position_dtype"],
+                "shape": [],
+                "nbytes": decode_inputs["kv_write_position_nbytes"],
+            },
+            {
+                "name": "decode_attention_live_counts",
+                "source": "decode_span_inputs.attention_live_counts",
+                "kernel_args": ["decode_attention.live_counts"],
+                "dtype": decode_inputs["attention_live_counts_dtype"],
+                "shape": [1],
+                "nbytes": decode_inputs["attention_live_counts_nbytes"],
+            },
+        ]
+        return {
+            "entries": entries,
+            "entry_count": len(entries),
+            "total_nbytes": sum(int(entry["nbytes"]) for entry in entries),
+            "note": "Host-side upload manifest for metadata-only StepFun KV decode planning.",
+        }
+
+    @property
     def prompt_fits_resource_plan(self) -> bool:
         return self.prompt_length <= self.max_prompt_rows
 
@@ -547,6 +600,7 @@ class StepFunKVDecodeRunPlan:
             "prompt_span_inputs": self.prompt_span_inputs,
             "decode_span_inputs": self.decode_span_inputs,
             "span_input_total_nbytes": self.span_input_total_nbytes,
+            "span_input_upload_manifest": self.span_input_upload_manifest,
             "prompt_fits_resource_plan": self.prompt_fits_resource_plan,
             "context_fits_resource_plan": self.context_fits_resource_plan,
             "stop_token_ids": list(self.decode_plan.stop_token_ids),

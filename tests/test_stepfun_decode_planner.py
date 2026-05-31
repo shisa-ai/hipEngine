@@ -157,6 +157,53 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
     assert payload["span_input_total_nbytes"] == (
         prompt_base_offsets_nbytes + prompt_live_counts_nbytes + 16
     )
+    assert payload["span_input_upload_manifest"] == {
+        "entries": [
+            {
+                "name": "prompt_base_offsets",
+                "source": "prompt_span_inputs.base_offsets",
+                "kernel_args": ["prompt_kv_write.base_offsets"],
+                "dtype": "int32",
+                "shape": [run_plan.prompt_length, 2],
+                "nbytes": prompt_base_offsets_nbytes,
+            },
+            {
+                "name": "prompt_live_counts",
+                "source": "prompt_span_inputs.live_counts",
+                "kernel_args": ["prompt_kv_write.live_counts"],
+                "dtype": "int64",
+                "shape": [run_plan.prompt_length],
+                "nbytes": prompt_live_counts_nbytes,
+            },
+            {
+                "name": "decode_base_offsets",
+                "source": "decode_span_inputs.base_offsets",
+                "kernel_args": ["decode_kv_write.base_offsets", "decode_attention.base_offsets"],
+                "dtype": "int32",
+                "shape": [2],
+                "nbytes": 8,
+            },
+            {
+                "name": "decode_kv_write_position",
+                "source": "decode_span_inputs.kv_write_position",
+                "kernel_args": ["decode_kv_write.position"],
+                "dtype": "int64",
+                "shape": [],
+                "nbytes": 8,
+            },
+            {
+                "name": "decode_attention_live_counts",
+                "source": "decode_span_inputs.attention_live_counts",
+                "kernel_args": ["decode_attention.live_counts"],
+                "dtype": "int64",
+                "shape": [1],
+                "nbytes": 8,
+            },
+        ],
+        "entry_count": 5,
+        "total_nbytes": prompt_base_offsets_nbytes + prompt_live_counts_nbytes + 24,
+        "note": "Host-side upload manifest for metadata-only StepFun KV decode planning.",
+    }
     assert payload["stop_token_ids"] == [1, 2, 128007]
     assert payload["kv_dispatch_keys"]["decode_attention"] == {
         "backend": "hip_gfx1151",

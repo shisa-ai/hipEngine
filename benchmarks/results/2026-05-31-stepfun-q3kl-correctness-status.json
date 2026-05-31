@@ -33,7 +33,7 @@
         "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
       },
       {
-        "line": 596,
+        "line": 597,
         "state": "partial",
         "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
       }
@@ -383,6 +383,73 @@
       "rendered_prompt_sha256": "6a7c9a3ac59b006a1ac8f658f10321602edc5e85a69d23a777e655717e95291c",
       "required_context_tokens": 24,
       "span_input_total_nbytes": 384,
+      "span_input_upload_manifest": {
+        "entries": [
+          {
+            "dtype": "int32",
+            "kernel_args": [
+              "prompt_kv_write.base_offsets"
+            ],
+            "name": "prompt_base_offsets",
+            "nbytes": 184,
+            "shape": [
+              23,
+              2
+            ],
+            "source": "prompt_span_inputs.base_offsets"
+          },
+          {
+            "dtype": "int64",
+            "kernel_args": [
+              "prompt_kv_write.live_counts"
+            ],
+            "name": "prompt_live_counts",
+            "nbytes": 184,
+            "shape": [
+              23
+            ],
+            "source": "prompt_span_inputs.live_counts"
+          },
+          {
+            "dtype": "int32",
+            "kernel_args": [
+              "decode_kv_write.base_offsets",
+              "decode_attention.base_offsets"
+            ],
+            "name": "decode_base_offsets",
+            "nbytes": 8,
+            "shape": [
+              2
+            ],
+            "source": "decode_span_inputs.base_offsets"
+          },
+          {
+            "dtype": "int64",
+            "kernel_args": [
+              "decode_kv_write.position"
+            ],
+            "name": "decode_kv_write_position",
+            "nbytes": 8,
+            "shape": [],
+            "source": "decode_span_inputs.kv_write_position"
+          },
+          {
+            "dtype": "int64",
+            "kernel_args": [
+              "decode_attention.live_counts"
+            ],
+            "name": "decode_attention_live_counts",
+            "nbytes": 8,
+            "shape": [
+              1
+            ],
+            "source": "decode_span_inputs.attention_live_counts"
+          }
+        ],
+        "entry_count": 5,
+        "note": "Host-side upload manifest for metadata-only StepFun KV decode planning.",
+        "total_nbytes": 392
+      },
       "stop_token_ids": [
         1,
         2,
@@ -565,7 +632,9 @@
         "run_plan_prompt_span_base_offsets_len": 46,
         "run_plan_rendered_prompt_sha256": "6a7c9a3ac59b006a1ac8f658f10321602edc5e85a69d23a777e655717e95291c",
         "run_plan_span_input_total_nbytes": 384,
-        "run_plan_streaming_ready": false
+        "run_plan_streaming_ready": false,
+        "run_plan_upload_manifest_entry_count": 5,
+        "run_plan_upload_manifest_total_nbytes": 392
       },
       "dispatch_ready": true,
       "ready": false,
@@ -584,8 +653,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "8edc8c5a23b4f471f793628ddc2a39598e9d48e62a5732203254eb6f118b81d1",
-      "size_bytes": 51503
+      "sha256": "c6f84e6dd1bd495eecb37871009ea9c2cf67192ce4a3620e07801b1f17ebadcd",
+      "size_bytes": 51591
     },
     "oracle": {
       "exists": true,
@@ -602,8 +671,8 @@
     "text_resource": {
       "exists": true,
       "path": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
-      "sha256": "c25bfeb1f8b8ec9165a47b16a55b6762fec8deb116628e2ec64fed63502b6953",
-      "size_bytes": 36471
+      "sha256": "eb7193b87668521981d2584a14aabd5c0f62f60aad12d603f1a86f2187aabab3",
+      "size_bytes": 38232
     }
   },
   "status": "blocked",

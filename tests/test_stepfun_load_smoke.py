@@ -143,6 +143,25 @@ def test_stepfun_load_smoke_dry_run_plan_emits_resource_json(capsys: pytest.Capt
         "total_span_input_nbytes": 16,
     }
     assert run_plan["span_input_total_nbytes"] == run_plan["prompt_length"] * 16 + 16
+    upload_manifest = run_plan["span_input_upload_manifest"]
+    assert upload_manifest["entry_count"] == 5
+    assert upload_manifest["total_nbytes"] == run_plan["prompt_length"] * 16 + 24
+    assert upload_manifest["entries"][0] == {
+        "name": "prompt_base_offsets",
+        "source": "prompt_span_inputs.base_offsets",
+        "kernel_args": ["prompt_kv_write.base_offsets"],
+        "dtype": "int32",
+        "shape": [run_plan["prompt_length"], 2],
+        "nbytes": run_plan["prompt_length"] * 8,
+    }
+    assert upload_manifest["entries"][3] == {
+        "name": "decode_kv_write_position",
+        "source": "decode_span_inputs.kv_write_position",
+        "kernel_args": ["decode_kv_write.position"],
+        "dtype": "int64",
+        "shape": [],
+        "nbytes": 8,
+    }
     assert run_plan["prompt_fits_resource_plan"] is True
     assert run_plan["context_fits_resource_plan"] is True
     assert run_plan["stop_token_ids"] == [1, 2, 128007]

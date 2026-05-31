@@ -28349,3 +28349,36 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted decode-planner/load-smoke/status tests passed (`16 passed`), artifact schema and source-artifact verification passed, and the full StepFun guard passed (`108 passed` plus CPU-reference fixture checks).
+
+## 2026-05-31 — StepFun KV span upload manifest recorded
+
+Extended the metadata-only `StepFunKVDecodeRunPlan` with `span_input_upload_manifest`, a host-side manifest for the small tensors/scalars that future streaming-runner wiring must upload before StepFun prompt/decode KV kernels launch. The manifest lists five inputs (`prompt_base_offsets`, `prompt_live_counts`, `decode_base_offsets`, `decode_kv_write_position`, and `decode_attention_live_counts`) with source fields, target kernel arguments, dtype, shape, and byte count, plus a total upload byte count. Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json` and `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`; the consolidated status carries manifest entry count and total upload bytes into the KV-backed decode readiness gate. This remains metadata-only evidence: no KV kernels are launched, and `oracle_parity=false`, `kv_backed_decode_ready=false`, and `e2e_inference_ready=false` remain unchanged.
+
+Updated decode-planner/load-smoke/status tests and clarified `docs/STEPFUN.md` so the P11 status notes the host upload manifest.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_decode_planner.py tests/test_stepfun_load_smoke.py tests/test_stepfun_correctness_status.py -q
+python3 - <<'PY'
+import json
+r=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json'))
+run=r['kv_decode_run_plan']
+manifest=run['span_input_upload_manifest']
+assert manifest['entry_count'] == 5
+assert manifest['entries'][0]['source'] == 'prompt_span_inputs.base_offsets'
+assert manifest['entries'][2]['kernel_args'] == ['decode_kv_write.base_offsets', 'decode_attention.base_offsets']
+assert manifest['entries'][3]['shape'] == []
+assert manifest['total_nbytes'] == run['prompt_span_inputs']['total_span_input_nbytes'] + run['decode_span_inputs']['total_span_input_nbytes'] + run['decode_span_inputs']['kv_write_position_nbytes']
+s=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+e=s['readiness_gates']['kv_backed_decode']['current_evidence']
+assert e['run_plan_upload_manifest_entry_count'] == 5
+assert e['run_plan_upload_manifest_total_nbytes'] == manifest['total_nbytes']
+assert s['kv_backed_decode_ready'] is False
+print('stepfun kv upload manifest artifacts ok')
+PY
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty --output /tmp/stepfun-source-verify.json
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted decode-planner/load-smoke/status tests passed (`16 passed`), artifact schema and source-artifact verification passed, and the full StepFun guard passed (`108 passed` plus CPU-reference fixture checks).

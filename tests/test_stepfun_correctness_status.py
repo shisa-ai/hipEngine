@@ -293,6 +293,56 @@ def _write_resource_artifact(path: Path) -> None:
                     "rendered_prompt_sha256": "0" * 64,
                     "required_context_tokens": 24,
                     "span_input_total_nbytes": 384,
+                    "span_input_upload_manifest": {
+                        "entries": [
+                            {
+                                "dtype": "int32",
+                                "kernel_args": ["prompt_kv_write.base_offsets"],
+                                "name": "prompt_base_offsets",
+                                "nbytes": 184,
+                                "shape": [23, 2],
+                                "source": "prompt_span_inputs.base_offsets",
+                            },
+                            {
+                                "dtype": "int64",
+                                "kernel_args": ["prompt_kv_write.live_counts"],
+                                "name": "prompt_live_counts",
+                                "nbytes": 184,
+                                "shape": [23],
+                                "source": "prompt_span_inputs.live_counts",
+                            },
+                            {
+                                "dtype": "int32",
+                                "kernel_args": [
+                                    "decode_kv_write.base_offsets",
+                                    "decode_attention.base_offsets",
+                                ],
+                                "name": "decode_base_offsets",
+                                "nbytes": 8,
+                                "shape": [2],
+                                "source": "decode_span_inputs.base_offsets",
+                            },
+                            {
+                                "dtype": "int64",
+                                "kernel_args": ["decode_kv_write.position"],
+                                "name": "decode_kv_write_position",
+                                "nbytes": 8,
+                                "shape": [],
+                                "source": "decode_span_inputs.kv_write_position",
+                            },
+                            {
+                                "dtype": "int64",
+                                "kernel_args": ["decode_attention.live_counts"],
+                                "name": "decode_attention_live_counts",
+                                "nbytes": 8,
+                                "shape": [1],
+                                "source": "decode_span_inputs.attention_live_counts",
+                            },
+                        ],
+                        "entry_count": 5,
+                        "note": "Host-side upload manifest for metadata-only StepFun KV decode planning.",
+                        "total_nbytes": 392,
+                    },
                     "stop_token_ids": [1, 2, 128007],
                     "streaming_runner_ready": False,
                 },
@@ -482,6 +532,18 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert kv_dispatch["run_plan"]["decode_span_inputs"]["attention_live_counts_nbytes"] == 8
     assert kv_dispatch["run_plan"]["decode_span_inputs"]["total_span_input_nbytes"] == 16
     assert kv_dispatch["run_plan"]["span_input_total_nbytes"] == 384
+    upload_manifest = kv_dispatch["run_plan"]["span_input_upload_manifest"]
+    assert upload_manifest["entry_count"] == 5
+    assert upload_manifest["total_nbytes"] == 392
+    assert upload_manifest["entries"][0] == {
+        "dtype": "int32",
+        "kernel_args": ["prompt_kv_write.base_offsets"],
+        "name": "prompt_base_offsets",
+        "nbytes": 184,
+        "shape": [23, 2],
+        "source": "prompt_span_inputs.base_offsets",
+    }
+    assert upload_manifest["entries"][3]["source"] == "decode_span_inputs.kv_write_position"
     assert kv_dispatch["run_plan"]["prompt_positions"] == list(range(23))
     assert kv_dispatch["run_plan"]["decode_position"] == 23
     assert kv_dispatch["run_plan"]["decode_live_count"] == 23
@@ -530,6 +592,8 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "run_plan_rendered_prompt_sha256": "0" * 64,
         "run_plan_span_input_total_nbytes": 384,
         "run_plan_streaming_ready": False,
+        "run_plan_upload_manifest_entry_count": 5,
+        "run_plan_upload_manifest_total_nbytes": 392,
     }
     assert gates["e2e_inference"]["ready"] is False
     assert gates["e2e_inference"]["blocked_by"] == ["oracle_parity", "kv_backed_decode"]

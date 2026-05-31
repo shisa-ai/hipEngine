@@ -470,6 +470,16 @@ def _readiness_gates(
                 "run_plan_span_input_total_nbytes": dict(
                     kv_decode_dispatch_progress.get("run_plan", {})
                 ).get("span_input_total_nbytes"),
+                "run_plan_upload_manifest_total_nbytes": dict(
+                    dict(kv_decode_dispatch_progress.get("run_plan", {})).get(
+                        "span_input_upload_manifest", {}
+                    )
+                ).get("total_nbytes"),
+                "run_plan_upload_manifest_entry_count": dict(
+                    dict(kv_decode_dispatch_progress.get("run_plan", {})).get(
+                        "span_input_upload_manifest", {}
+                    )
+                ).get("entry_count"),
                 "run_plan_streaming_ready": dict(
                     kv_decode_dispatch_progress.get("run_plan", {})
                 ).get("streaming_runner_ready"),
