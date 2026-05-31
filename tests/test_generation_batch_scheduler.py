@@ -13392,6 +13392,19 @@ def test_qwen35_retained_artifact_paths_reject_symlink_escapes(
             require_cached_build=True,
         )
     ) == ["compiler_version_file must be a repo-relative path under benchmarks/results"]
+    command_args = argparse.Namespace(model="/tmp/model", fixture="/tmp/fixture.json")
+    assert retained_bench._retained_command_provenance_blockers(
+        command_args,
+        ["--model", "/tmp/model", "--fixture", "/tmp/fixture.json"],
+    ) == []
+    assert retained_bench._retained_command_provenance_blockers(command_args, ["--batch-size", "2"]) == [
+        "commands.benchmark must include --model for retained promotion",
+        "commands.benchmark must include --fixture for retained promotion",
+    ]
+    assert retained_bench._retained_command_provenance_blockers(
+        command_args,
+        ["--model", "/tmp/other", "--fixture", "/tmp/fixture.json"],
+    ) == ["commands.benchmark --model must match retained model"]
     assert retained_bench._retained_output_artifact_blockers("benchmarks/results/source.txt") == [
         "artifact_path must point to a .json artifact"
     ]

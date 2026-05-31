@@ -52892,3 +52892,25 @@ git diff --check
 ```
 
 Result: focused retained compiler-version path blocker tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed items were not changed, no retained c>N performance/scaling claim was added, and retained preflight now rejects local/non-rollup compiler-version provenance before promotion.
+
+## 2026-05-31 — CONCURRENCY retained command provenance blockers
+
+Tightened retained benchmark-command provenance preflight: `scripts/qwen35_batch_retained_bench.py` now rejects retained promotion unless the recorded benchmark command explicitly includes `--model` and `--fixture` values that match the retained run. This mirrors the accepted-artifact command evidence gate before promotion, so retained performance claims cannot rely on implicit defaults or stale command metadata for model/fixture provenance. This is evidence hardening only; no queue item was closed and no retained c>N performance/scaling claim was added.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 -m compileall -q scripts/qwen35_batch_retained_bench.py tests/test_generation_batch_scheduler.py && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_retained_artifact_paths_reject_symlink_escapes tests/test_generation_batch_scheduler.py::test_qwen35_retained_payload_blocks_acceptance_without_memory_evidence tests/test_generation_batch_scheduler.py::test_qwen35_retained_payload_blocks_acceptance_without_graph_histogram_evidence -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue))
+print(count)
+assert count == 12
+PY
+HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+git diff --check
+```
+
+Result: focused retained command provenance blocker tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed items were not changed, no retained c>N performance/scaling claim was added, and retained preflight now rejects missing/stale model or fixture command provenance before promotion.

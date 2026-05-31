@@ -976,6 +976,19 @@ def _cached_build_provenance_blockers(args: argparse.Namespace) -> list[str]:
     return blockers
 
 
+def _retained_command_provenance_blockers(args: argparse.Namespace, argv: Sequence[str] | None) -> list[str]:
+    command = _command(argv)
+    blockers: list[str] = []
+    for field, flag in (("model", "--model"), ("fixture", "--fixture")):
+        command_value = _command_arg_value(command, flag)
+        expected_value = str(getattr(args, field, ""))
+        if not command_value:
+            blockers.append(f"commands.benchmark must include {flag} for retained promotion")
+        elif expected_value and command_value != expected_value:
+            blockers.append(f"commands.benchmark {flag} must match retained {field}")
+    return blockers
+
+
 def _synthesized_profiler_total_kernel_duration(profiler: Mapping[str, Any]) -> float | None:
     kernel_durations = profiler.get("kernel_durations_ns")
     if not isinstance(kernel_durations, Mapping):
@@ -3584,6 +3597,7 @@ def _build_payload(
         getattr(args, "profiler_json", None),
     )
     cached_build_blockers = _cached_build_provenance_blockers(args)
+    command_provenance_blockers = _retained_command_provenance_blockers(args, argv)
     batch_execution = dict(bench["batch_execution"])
     throughput_claim_eligible = bool(batch_execution.get("throughput_claim_eligible"))
     native_caware_decode = bool(batch_execution.get("native_caware_decode"))
@@ -3658,6 +3672,7 @@ def _build_payload(
         and not scaling_path_blockers
         and not profiler_path_blockers
         and not cached_build_blockers
+        and not command_provenance_blockers
         and primitive_passed
         and protocol_shape
         and scaling_complete
@@ -3688,6 +3703,7 @@ def _build_payload(
     blocked_reasons.extend(scaling_path_blockers)
     blocked_reasons.extend(profiler_path_blockers)
     blocked_reasons.extend(cached_build_blockers)
+    blocked_reasons.extend(command_provenance_blockers)
     if not primitive_passed:
         blocked_reasons.append(f"primitive c>N correctness gate did not pass: {primitive_correctness.get('reason')}")
     if args.prompt_length < 512 or args.decode_tokens < 128:
