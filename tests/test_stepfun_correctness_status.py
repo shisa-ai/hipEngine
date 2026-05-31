@@ -217,9 +217,21 @@ def _write_resource_artifact(path: Path) -> None:
                     },
                 },
                 "kv_decode_run_plan": {
+                    "attention_block_size": 256,
+                    "attention_block_table_len": 2,
                     "context_fits_resource_plan": True,
                     "decode_live_count": 23,
                     "decode_position": 23,
+                    "decode_span_inputs": {
+                        "attention_live_counts": [23],
+                        "attention_live_counts_len": 1,
+                        "base_offsets": [0, 1],
+                        "base_offsets_len": 2,
+                        "block_size": 256,
+                        "block_table_len": 2,
+                        "kv_write_position": 23,
+                        "max_live_count": 23,
+                    },
                     "input_id_count": 23,
                     "input_ids": list(range(100, 123)),
                     "kv_decode_launch_operation_count": 135,
@@ -254,6 +266,17 @@ def _write_resource_artifact(path: Path) -> None:
                     "prompt_fits_resource_plan": True,
                     "prompt_length": 23,
                     "prompt_positions": list(range(23)),
+                    "prompt_span_inputs": {
+                        "base_offsets": [value for _ in range(23) for value in (0, 1)],
+                        "base_offsets_len": 46,
+                        "block_size": 256,
+                        "block_table_len_per_row": 2,
+                        "live_counts": list(range(23)),
+                        "live_counts_len": 23,
+                        "max_live_count": 22,
+                        "position_tensor_role": "prompt_row_positions",
+                        "rows": 23,
+                    },
                     "rendered_prompt_nchars": 123,
                     "rendered_prompt_sha256": "0" * 64,
                     "required_context_tokens": 24,
@@ -433,6 +456,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert kv_dispatch["run_plan"]["input_ids"] == list(range(100, 123))
     assert kv_dispatch["run_plan"]["rendered_prompt_nchars"] == 123
     assert kv_dispatch["run_plan"]["rendered_prompt_sha256"] == "0" * 64
+    assert kv_dispatch["run_plan"]["attention_block_size"] == 256
+    assert kv_dispatch["run_plan"]["attention_block_table_len"] == 2
+    assert kv_dispatch["run_plan"]["prompt_span_inputs"]["base_offsets_len"] == 46
+    assert kv_dispatch["run_plan"]["prompt_span_inputs"]["live_counts"] == list(range(23))
+    assert kv_dispatch["run_plan"]["decode_span_inputs"]["base_offsets"] == [0, 1]
+    assert kv_dispatch["run_plan"]["decode_span_inputs"]["kv_write_position"] == 23
     assert kv_dispatch["run_plan"]["prompt_positions"] == list(range(23))
     assert kv_dispatch["run_plan"]["decode_position"] == 23
     assert kv_dispatch["run_plan"]["decode_live_count"] == 23
@@ -474,8 +503,10 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "prompt_span_shape_compatible": True,
         "resident_prompt_smoke": "host_composed_layer_prefix",
         "run_plan_context_fits_resource_plan": True,
+        "run_plan_decode_span_base_offsets_len": 2,
         "run_plan_input_id_count": 23,
         "run_plan_prompt_fits_resource_plan": True,
+        "run_plan_prompt_span_base_offsets_len": 46,
         "run_plan_rendered_prompt_sha256": "0" * 64,
         "run_plan_streaming_ready": False,
     }

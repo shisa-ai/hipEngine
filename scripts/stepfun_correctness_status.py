@@ -457,6 +457,16 @@ def _readiness_gates(
                 "run_plan_rendered_prompt_sha256": dict(
                     kv_decode_dispatch_progress.get("run_plan", {})
                 ).get("rendered_prompt_sha256"),
+                "run_plan_prompt_span_base_offsets_len": dict(
+                    dict(kv_decode_dispatch_progress.get("run_plan", {})).get(
+                        "prompt_span_inputs", {}
+                    )
+                ).get("base_offsets_len"),
+                "run_plan_decode_span_base_offsets_len": dict(
+                    dict(kv_decode_dispatch_progress.get("run_plan", {})).get(
+                        "decode_span_inputs", {}
+                    )
+                ).get("base_offsets_len"),
                 "run_plan_streaming_ready": dict(
                     kv_decode_dispatch_progress.get("run_plan", {})
                 ).get("streaming_runner_ready"),

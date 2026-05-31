@@ -114,6 +114,22 @@ def test_stepfun_load_smoke_dry_run_plan_emits_resource_json(capsys: pytest.Capt
     assert run_plan["prompt_positions"] == list(range(run_plan["prompt_length"]))
     assert run_plan["decode_position"] == run_plan["prompt_length"]
     assert run_plan["decode_live_count"] == run_plan["prompt_length"]
+    assert run_plan["attention_block_size"] == 256
+    assert run_plan["attention_block_table_len"] == 2
+    assert run_plan["prompt_span_inputs"]["rows"] == run_plan["prompt_length"]
+    assert run_plan["prompt_span_inputs"]["base_offsets_len"] == run_plan["prompt_length"] * 2
+    assert run_plan["prompt_span_inputs"]["live_counts"] == run_plan["prompt_positions"]
+    assert run_plan["prompt_span_inputs"]["position_tensor_role"] == "prompt_row_positions"
+    assert run_plan["decode_span_inputs"] == {
+        "block_size": 256,
+        "block_table_len": 2,
+        "base_offsets": [0, 1],
+        "base_offsets_len": 2,
+        "kv_write_position": run_plan["prompt_length"],
+        "attention_live_counts": [run_plan["prompt_length"]],
+        "attention_live_counts_len": 1,
+        "max_live_count": run_plan["prompt_length"],
+    }
     assert run_plan["prompt_fits_resource_plan"] is True
     assert run_plan["context_fits_resource_plan"] is True
     assert run_plan["stop_token_ids"] == [1, 2, 128007]

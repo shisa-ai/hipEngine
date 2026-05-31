@@ -447,6 +447,50 @@ class StepFunKVDecodeRunPlan:
         return self.resource_plan.kv_decode_kernel_plan.max_prompt_rows
 
     @property
+    def attention_block_size(self) -> int:
+        return self.resource_plan.kv_decode_kernel_plan.attention_block_size
+
+    @property
+    def attention_block_table_len(self) -> int:
+        return self.resource_plan.kv_decode_kernel_plan.attention_block_table_len
+
+    @property
+    def prompt_span_base_offsets(self) -> tuple[int, ...]:
+        row_block_table = tuple(range(self.attention_block_table_len))
+        return tuple(value for _ in self.prompt_positions for value in row_block_table)
+
+    @property
+    def decode_span_base_offsets(self) -> tuple[int, ...]:
+        return tuple(range(self.attention_block_table_len))
+
+    @property
+    def prompt_span_inputs(self) -> dict[str, object]:
+        return {
+            "rows": self.prompt_length,
+            "block_size": self.attention_block_size,
+            "block_table_len_per_row": self.attention_block_table_len,
+            "base_offsets": list(self.prompt_span_base_offsets),
+            "base_offsets_len": len(self.prompt_span_base_offsets),
+            "live_counts": list(self.prompt_positions),
+            "live_counts_len": self.prompt_length,
+            "position_tensor_role": "prompt_row_positions",
+            "max_live_count": max(self.prompt_positions) if self.prompt_positions else 0,
+        }
+
+    @property
+    def decode_span_inputs(self) -> dict[str, object]:
+        return {
+            "block_size": self.attention_block_size,
+            "block_table_len": self.attention_block_table_len,
+            "base_offsets": list(self.decode_span_base_offsets),
+            "base_offsets_len": len(self.decode_span_base_offsets),
+            "kv_write_position": self.decode_position,
+            "attention_live_counts": [self.decode_live_count],
+            "attention_live_counts_len": 1,
+            "max_live_count": self.decode_live_count,
+        }
+
+    @property
     def prompt_fits_resource_plan(self) -> bool:
         return self.prompt_length <= self.max_prompt_rows
 
@@ -470,9 +514,13 @@ class StepFunKVDecodeRunPlan:
             "required_context_tokens": self.required_context_tokens,
             "max_context": self.resource_plan.kv_decode_kernel_plan.max_context,
             "max_prompt_rows": self.max_prompt_rows,
+            "attention_block_size": self.attention_block_size,
+            "attention_block_table_len": self.attention_block_table_len,
             "prompt_positions": list(self.prompt_positions),
             "decode_position": self.decode_position,
             "decode_live_count": self.decode_live_count,
+            "prompt_span_inputs": self.prompt_span_inputs,
+            "decode_span_inputs": self.decode_span_inputs,
             "prompt_fits_resource_plan": self.prompt_fits_resource_plan,
             "context_fits_resource_plan": self.context_fits_resource_plan,
             "stop_token_ids": list(self.decode_plan.stop_token_ids),

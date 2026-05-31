@@ -545,9 +545,10 @@ reporting.
   capacity 511 tokens, and prompt KV writes requiring per-row position/live-count
   metadata with `base_offsets_len_formula="rows * 2"` up to 511 prompt rows).
   `StepFunShortContextDecodePlanner.plan_kv_decode_chat()` now binds the rendered
-  prompt to that resource plan by recording prompt positions, decode live count,
-  decode position, stop-token IDs, KV dispatch keys, and the planned launch-order
-  operation count; this is dispatch/span/run-plan readiness evidence only, not a
+  prompt to that resource plan by recording token IDs, rendered-prompt SHA-256,
+  prompt positions, explicit prompt/decode span inputs (`base_offsets`/live-count
+  arrays), decode live count, decode position, stop-token IDs, KV dispatch keys,
+  and the planned launch-order operation count; this is dispatch/span/run-plan readiness evidence only, not a
   completed streaming runner. The
   dense-MLP input bundle launches layer-0 `ffn_gate`/`ffn_up` projections vs CPU references,
   and a dense-MLP correctness probe composes gate/up, host SwiGLU BF16 rounding,

@@ -33,7 +33,7 @@
         "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
       },
       {
-        "line": 595,
+        "line": 596,
         "state": "partial",
         "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
       }
@@ -182,9 +182,26 @@
     },
     "resource_status": "planned",
     "run_plan": {
+      "attention_block_size": 256,
+      "attention_block_table_len": 2,
       "context_fits_resource_plan": true,
       "decode_live_count": 23,
       "decode_position": 23,
+      "decode_span_inputs": {
+        "attention_live_counts": [
+          23
+        ],
+        "attention_live_counts_len": 1,
+        "base_offsets": [
+          0,
+          1
+        ],
+        "base_offsets_len": 2,
+        "block_size": 256,
+        "block_table_len": 2,
+        "kv_write_position": 23,
+        "max_live_count": 23
+      },
       "input_id_count": 23,
       "input_ids": [
         0,
@@ -268,6 +285,88 @@
         21,
         22
       ],
+      "prompt_span_inputs": {
+        "base_offsets": [
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          1
+        ],
+        "base_offsets_len": 46,
+        "block_size": 256,
+        "block_table_len_per_row": 2,
+        "live_counts": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22
+        ],
+        "live_counts_len": 23,
+        "max_live_count": 22,
+        "position_tensor_role": "prompt_row_positions",
+        "rows": 23
+      },
       "rendered_prompt_nchars": 130,
       "rendered_prompt_sha256": "6a7c9a3ac59b006a1ac8f658f10321602edc5e85a69d23a777e655717e95291c",
       "required_context_tokens": 24,
@@ -447,8 +546,10 @@
         "prompt_span_shape_compatible": true,
         "resident_prompt_smoke": "host_composed_layer_prefix",
         "run_plan_context_fits_resource_plan": true,
+        "run_plan_decode_span_base_offsets_len": 2,
         "run_plan_input_id_count": 23,
         "run_plan_prompt_fits_resource_plan": true,
+        "run_plan_prompt_span_base_offsets_len": 46,
         "run_plan_rendered_prompt_sha256": "6a7c9a3ac59b006a1ac8f658f10321602edc5e85a69d23a777e655717e95291c",
         "run_plan_streaming_ready": false
       },
@@ -469,8 +570,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "bf4403c1251d9a71dc24b404042035f04811b5eaa3fd90eafb776b374896d8ce",
-      "size_bytes": 51359
+      "sha256": "a64f995839c67ef18d29cf2372bbf4050e22c88edda1be2f079cb12b306210d6",
+      "size_bytes": 51468
     },
     "oracle": {
       "exists": true,
@@ -487,8 +588,8 @@
     "text_resource": {
       "exists": true,
       "path": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
-      "sha256": "bf0839463b7cc2d83c14f5b310066e5c4d0f08168cb442e20b83f44b92795c97",
-      "size_bytes": 34507
+      "sha256": "98d4aaa5460873e2286d2dbf6ab940b9f476ea5181e19f5da36af9232d54f1f5",
+      "size_bytes": 35985
     }
   },
   "status": "blocked",

@@ -93,6 +93,12 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
     assert run_plan.decode_live_count == run_plan.prompt_length
     assert run_plan.required_context_tokens == run_plan.prompt_length + 1
     assert run_plan.max_prompt_rows == 511
+    assert run_plan.attention_block_size == 256
+    assert run_plan.attention_block_table_len == 2
+    assert run_plan.prompt_span_base_offsets == tuple(
+        value for _ in range(run_plan.prompt_length) for value in (0, 1)
+    )
+    assert run_plan.decode_span_base_offsets == (0, 1)
     assert run_plan.prompt_fits_resource_plan is True
     assert run_plan.context_fits_resource_plan is True
     assert run_plan.streaming_runner_ready is False
@@ -110,6 +116,29 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
     assert payload["required_context_tokens"] == run_plan.required_context_tokens
     assert payload["max_context"] == 512
     assert payload["max_prompt_rows"] == 511
+    assert payload["attention_block_size"] == 256
+    assert payload["attention_block_table_len"] == 2
+    assert payload["prompt_span_inputs"] == {
+        "rows": run_plan.prompt_length,
+        "block_size": 256,
+        "block_table_len_per_row": 2,
+        "base_offsets": [value for _ in range(run_plan.prompt_length) for value in (0, 1)],
+        "base_offsets_len": run_plan.prompt_length * 2,
+        "live_counts": list(range(run_plan.prompt_length)),
+        "live_counts_len": run_plan.prompt_length,
+        "position_tensor_role": "prompt_row_positions",
+        "max_live_count": run_plan.prompt_length - 1,
+    }
+    assert payload["decode_span_inputs"] == {
+        "block_size": 256,
+        "block_table_len": 2,
+        "base_offsets": [0, 1],
+        "base_offsets_len": 2,
+        "kv_write_position": run_plan.prompt_length,
+        "attention_live_counts": [run_plan.prompt_length],
+        "attention_live_counts_len": 1,
+        "max_live_count": run_plan.prompt_length,
+    }
     assert payload["stop_token_ids"] == [1, 2, 128007]
     assert payload["kv_dispatch_keys"]["decode_attention"] == {
         "backend": "hip_gfx1151",
