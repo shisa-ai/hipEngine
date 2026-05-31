@@ -24270,3 +24270,46 @@ Docs/rollup updated:
 Next multiloop focus: verify whether this bulk-direct stack remains exact beyond
 D64 (e.g. D128/D160) before considering any broader default.  Do not promote
 bulk_direct from this single gate.
+
+## 2026-05-31 — DFlash multiloop iter14 budget-prefix stack
+
+Active loop: `dflash-27b-w7900/run-20260531-102747`.  Iteration 14 tested
+whether the current graph-aware 7-chain / 2-AR route benefits from running only
+the root+B drafter query prefix instead of the full z-lab block query.
+
+Command:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --verifier-graph auto --full-attn-chain-mode batched --canonical-commit-mode bulk_direct --profile-route-manifest /tmp/multiloop-dflash-27b-w7900-profile-route-vgraph-aware-iter9-manifest.json --drafter-query-mode budget_prefix --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/multiloop-dflash-27b-w7900.json
+```
+
+Result: exact `9/9`, DFlash/spec `38.65 tok/s`, AR `32.67 tok/s`, `1.1832x`
+AR.  This nudges the graph-aware bulk-direct route from `1.1765x -> 1.1832x`
+and `38.22 -> 38.65 tok/s` (+1.1% spec tok/s).  Budget-prefix is active on
+chain-routed rows and remains exact for this gate.
+
+This is **not defaulted**.  The stack is still profile-history routing + opt-in
+verifier graph + `bulk_direct` + `budget_prefix`; exactness and proposal quality
+are only established for this D64 gate, and `budget_prefix` can differ from the
+z-lab block-query contract.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/dflash_chain_e2e_bench.py scripts/dflash_build_profile_route_manifest.py hipengine/runtime/qwen35_paro.py
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_paro_awq_gemv_multi_row_decode.py tests/test_dflash_profile_route_manifest.py tests/test_dflash_draft_confidence.py tests/test_speculative_benchmark.py
+python3 -m json.tool benchmarks/results/2026-05-31-hipengine-dflash-27b-graph-aware-route-budget-prefix.json >/tmp/hipengine-dflash-27b-budget-prefix-artifact-check.json
+```
+
+Result: targeted pytest `17 passed`; artifact JSON valid.
+
+Retained artifact:
+- `benchmarks/results/2026-05-31-hipengine-dflash-27b-graph-aware-route-budget-prefix.json`
+
+Docs/rollup updated:
+- `docs/DFLASH.md` table now includes budget-prefix drafter query.
+- `benchmarks/README.md` and `benchmarks/CHANGELOG.md` retained diagnostic row.
+
+Next multiloop focus: generalization/safety gates.  Check the current best stack
+on longer decode horizons (D128/D160) and/or build a deployable route-history
+mechanism; do not default from this D64-only evidence.
