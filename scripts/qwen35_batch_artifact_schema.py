@@ -2768,6 +2768,11 @@ def _validate_claimed_execution_completed_tokens(
             errors.append("execution.completed request_id values must be unique when generated_token_equality.passed is true")
         else:
             seen_request_ids.add(request_id)
+        if row.get("finished") is not True:
+            errors.append(f"execution.completed[{index}].finished must be true when generated_token_equality.passed is true")
+        finish_reason = row.get("finish_reason")
+        if not isinstance(finish_reason, str) or not finish_reason:
+            errors.append(f"execution.completed[{index}].finish_reason must be a non-empty string when generated_token_equality.passed is true")
         token_ids = _extract_claimed_generated_token_ids(
             row.get("generated_tokens"),
             f"execution.completed[{index}].generated_tokens",

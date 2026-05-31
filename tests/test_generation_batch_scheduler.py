@@ -11328,8 +11328,8 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
             "seed_tokens": {"0": {"token_id": 10}, "1": {"token_id": 20}},
             "generated_tokens": {"0": [{"token_id": 11}, {"token_id": 12}], "1": [{"token_id": 21}, {"token_id": 22}]},
             "completed": [
-                {"request_id": 0, "generated_tokens": [11, 12]},
-                {"request_id": 1, "generated_tokens": [21, 22]},
+                {"request_id": 0, "generated_tokens": [11, 12], "finished": True, "finish_reason": "length"},
+                {"request_id": 1, "generated_tokens": [21, 22], "finished": True, "finish_reason": "length"},
             ],
             "batch_execution": {
                 "native_compact_prefill": True,
@@ -11398,6 +11398,16 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
     partial_completed_claim["execution"]["completed"].pop()
     with pytest.raises(ValueError, match="execution.completed length must match workload.concurrency"):
         validate_cn_diagnostic_artifact_payload(partial_completed_claim)
+
+    unfinished_completed_claim = json.loads(json.dumps(payload))
+    unfinished_completed_claim["execution"]["completed"][0]["finished"] = False
+    with pytest.raises(ValueError, match=r"execution.completed\[0\].finished must be true"):
+        validate_cn_diagnostic_artifact_payload(unfinished_completed_claim)
+
+    missing_finish_reason_claim = json.loads(json.dumps(payload))
+    missing_finish_reason_claim["execution"]["completed"][0].pop("finish_reason")
+    with pytest.raises(ValueError, match=r"execution.completed\[0\].finish_reason must be a non-empty string"):
+        validate_cn_diagnostic_artifact_payload(missing_finish_reason_claim)
 
     missing_shape_claim = json.loads(json.dumps(payload))
     missing_shape_claim["workload"].pop("concurrency")
