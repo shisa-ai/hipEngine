@@ -1450,9 +1450,10 @@ roll-up/status view.
       and
       `HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json`;
       combined c-sweep dry-run coverage locks the env-prefixed primitive
-      `primitive-c1/c2/c4/c8.json` `--rows`/`--seed 1234`/`--json` command
-      labels and rejects stale primitive artifact-path/argv `--json`, `--rows`,
-      or `--seed` labels in `test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics`.
+      `primitive-c1/c2/c4/c8.json` command text, argv, `--rows`,
+      `--seed 1234`, and `--json` labels and rejects stale primitive command
+      text/argv, artifact-path/argv `--json`, `--rows`, or `--seed` labels in
+      `test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics`.
       The primitive script also re-runs
       the batched KV append and batched full-attention context kernels on the
       same inputs and emits A/A determinism fields (`append_batch_aa_*` and
