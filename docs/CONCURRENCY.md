@@ -1452,7 +1452,7 @@ roll-up/status view.
       combined c-sweep dry-run coverage locks the env-prefixed primitive
       `primitive-c1/c2/c4/c8.json` command text, argv, `HIP_VISIBLE_DEVICES=1`,
       script/category, `--rows`, `--seed 1234`, and `--json` labels and rejects
-      missing/blank/stale primitive command text/argv, wrong device env,
+      missing/empty/blank/stale primitive command text/argv, wrong device env,
       wrong-script/category, duplicate `--rows`/`--seed`/`--json` labels,
       blank inline/missing `--json`, blank inline/missing/non-integer
       `--rows`/`--seed` values,

@@ -7320,6 +7320,17 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.command must be a non-empty string"):
             c_sweep.validate_sweep_summary(tampered_missing_command_text)
 
+        for bad_argv in ([], [""]):
+            tampered_bad_argv = json.loads(json.dumps(summary))
+            tampered_bad_argv["commands"][index]["argv"] = bad_argv
+            with pytest.raises(ValueError, match=r"commands\[\]\.argv must be a non-empty string list"):
+                c_sweep.validate_sweep_summary(tampered_bad_argv)
+
+        tampered_missing_argv = json.loads(json.dumps(summary))
+        del tampered_missing_argv["commands"][index]["argv"]
+        with pytest.raises(ValueError, match=r"commands\[\]\.argv must be a non-empty string list"):
+            c_sweep.validate_sweep_summary(tampered_missing_argv)
+
         tampered_script = json.loads(json.dumps(summary))
         script_entry = tampered_script["commands"][index]
         script_argv = script_entry["argv"]
