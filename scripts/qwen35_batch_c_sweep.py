@@ -1129,6 +1129,7 @@ def _scaling_reference_command_env_assignments(
     required_env: Mapping[str, str] | None = None,
     require_command_label: bool = False,
     expected_command_script: str | None = None,
+    expected_inputs: Mapping[str, str] | None = None,
 ) -> tuple[dict[str, str], list[str]]:
     commands = payload.get("commands")
     command = commands.get("benchmark") if isinstance(commands, Mapping) else payload.get("command")
@@ -1155,6 +1156,15 @@ def _scaling_reference_command_env_assignments(
         launch = _strip_command_env_prefix(argv)
         if len(launch) < 2 or not _is_python_executable(launch[0]) or launch[1] != expected_command_script:
             reasons.append(f"commands.benchmark must launch {expected_command_script}")
+    for label, flag in (("model", "--model"), ("fixture", "--fixture")):
+        expected_value = (expected_inputs or {}).get(label)
+        if not expected_value:
+            continue
+        command_value = _command_text_arg(command, flag)
+        if command_value is None:
+            reasons.append(f"commands.benchmark must include {flag} matching retained {label}")
+        elif command_value != expected_value:
+            reasons.append(f"commands.benchmark {flag} does not match retained {label}")
     return assignments, reasons
 
 
@@ -1164,6 +1174,15 @@ def _scaling_reference_expected_command_script(kind: str) -> str | None:
     if kind == _RETAINED_PRECONDITION_KINDS[2]:
         return _SERIAL_BRIDGE_SCRIPT
     return None
+
+
+def _scaling_reference_expected_inputs(command: SweepCommand, kind: str) -> dict[str, str]:
+    expected_model = _command_arg_value(command, "--model")
+    expected_fixture = _command_arg_value(command, "--fixture")
+    result = {"model": expected_model} if expected_model else {}
+    if kind != _RETAINED_PRECONDITION_KINDS[1] and expected_fixture:
+        result["fixture"] = expected_fixture
+    return result
 
 
 def _scaling_reference_precondition(
@@ -1225,6 +1244,7 @@ def _scaling_reference_precondition(
             required_env=retained_device_env,
             require_command_label=bool(reference_device_env),
             expected_command_script=_scaling_reference_expected_command_script(kind),
+            expected_inputs=_scaling_reference_expected_inputs(command, kind),
         )
         reasons.extend(reference_command_env_reasons)
         if reference_command_env:

@@ -1415,24 +1415,22 @@ def _build_scaling_comparison(
     native_decode_tok_s_aggregate: float | None,
     native_decode_tok_s_per_request: float | None,
 ) -> dict[str, Any]:
-    expected_inputs = {
-        key: value
-        for key, value in {
-            "model": str(getattr(args, "model", "")),
-            "fixture": str(getattr(args, "fixture", "")),
-        }.items()
-        if value
-    }
+    expected_model = str(getattr(args, "model", ""))
+    expected_fixture = str(getattr(args, "fixture", ""))
+    c1_expected_inputs = {"model": expected_model} if expected_model else {}
+    serial_expected_inputs = dict(c1_expected_inputs)
+    if expected_fixture:
+        serial_expected_inputs["fixture"] = expected_fixture
     c1 = _scaling_reference(
         getattr(args, "c1_baseline_json", None),
         default_workload_concurrency=1,
         expected_command_script=_LEGACY_NATIVE_BENCH_SCRIPT,
-        expected_inputs=expected_inputs,
+        expected_inputs=c1_expected_inputs,
     )
     serial = _scaling_reference(
         getattr(args, "serial_bridge_json", None),
         expected_command_script=_SERIAL_BRIDGE_SCRIPT,
-        expected_inputs=expected_inputs,
+        expected_inputs=serial_expected_inputs,
     )
     prompt_tokens_per_request = getattr(args, "prompt_length", None)
     if isinstance(prompt_tokens_per_request, bool) or not isinstance(prompt_tokens_per_request, int):

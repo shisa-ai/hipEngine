@@ -4192,6 +4192,89 @@ def test_batch_c_sweep_scaling_reference_requires_artifact_path(tmp_path: Path) 
     assert mismatched_artifact_path["reason"] == "artifact_path does not match scaling reference artifact path"
 
 
+def test_batch_c_sweep_scaling_reference_rejects_mismatched_input_labels(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HIP_VISIBLE_DEVICES", raising=False)
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    c1_path = output_dir / "native-baseline-c1.json"
+    serial_path = output_dir / "serial-bridge-c2.json"
+    c1_payload = {
+        "artifact_path": str(c1_path),
+        "schema": 1,
+        "status": "loaded",
+        "commands": {"benchmark": f"python3 scripts/qwen35_paro_bench.py --model /tmp/model --json {c1_path}"},
+        "workload": {"concurrency": 1, "prompt_tokens_per_request": 16, "gen_tokens_per_request": 2},
+        "measurements": {"decode_tok_s_aggregate": 10.0, "decode_tok_s_per_request": 10.0},
+    }
+    serial_payload = {
+        "artifact_path": str(serial_path),
+        "schema": 2,
+        "status": "blocked",
+        "commands": {
+            "benchmark": (
+                f"python3 scripts/qwen35_batch_serial_bench.py --model /tmp/model "
+                f"--fixture /tmp/fixture.json --json {serial_path}"
+            )
+        },
+        "workload": {"concurrency": 2, "prompt_tokens_per_request": 16, "gen_tokens_per_request": 2},
+        "measurements": {"decode_tok_s_aggregate": 20.0, "decode_tok_s_per_request": 10.0},
+    }
+    c1_path.write_text(json.dumps(c1_payload))
+    serial_path.write_text(json.dumps(serial_payload))
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    c1_matched = c_sweep._scaling_reference_precondition(
+        native,
+        flag="--c1-baseline-json",
+        kind="c1_baseline",
+        expected_concurrency=1,
+    )
+    c1_payload["commands"]["benchmark"] = f"python3 scripts/qwen35_paro_bench.py --model /tmp/other-model --json {c1_path}"
+    c1_path.write_text(json.dumps(c1_payload))
+    c1_mismatched_model = c_sweep._scaling_reference_precondition(
+        native,
+        flag="--c1-baseline-json",
+        kind="c1_baseline",
+        expected_concurrency=1,
+    )
+    serial_payload["commands"]["benchmark"] = (
+        f"python3 scripts/qwen35_batch_serial_bench.py --model /tmp/model --fixture /tmp/other-fixture.json --json {serial_path}"
+    )
+    serial_path.write_text(json.dumps(serial_payload))
+    serial_mismatched_fixture = c_sweep._scaling_reference_precondition(
+        native,
+        flag="--serial-bridge-json",
+        kind="serial_bridge",
+        expected_concurrency=2,
+    )
+
+    assert c1_matched["passed"] is True
+    assert c1_matched["reason"] is None
+    assert c1_mismatched_model["passed"] is False
+    assert c1_mismatched_model["reason"] == "commands.benchmark --model does not match retained model"
+    assert serial_mismatched_fixture["passed"] is False
+    assert serial_mismatched_fixture["reason"] == "commands.benchmark --fixture does not match retained fixture"
+
+
 def test_batch_c_sweep_scaling_reference_rejects_mismatched_visible_device_env(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -4315,7 +4398,10 @@ def test_batch_c_sweep_scaling_reference_requires_software_for_device_stamped_ar
                     "visible_device": {"env": {"HIP_VISIBLE_DEVICES": "1"}, "device_name": "AMD Radeon RX 7900 XTX"},
                 },
                 "commands": {
-                    "benchmark": f"env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_serial_bench.py --json {reference_path}"
+                    "benchmark": (
+                        f"env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_serial_bench.py "
+                        f"--model /tmp/model --fixture /tmp/fixture.json --json {reference_path}"
+                    )
                 },
                 "workload": {"concurrency": 2, "prompt_tokens_per_request": 16, "gen_tokens_per_request": 2},
                 "measurements": {"decode_tok_s_aggregate": 20.0, "decode_tok_s_per_request": 10.0},
@@ -4366,7 +4452,10 @@ def test_batch_c_sweep_scaling_reference_requires_visible_device_env_for_command
                 "schema": 2,
                 "status": "blocked",
                 "commands": {
-                    "benchmark": f"env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_serial_bench.py --json {reference_path}"
+                    "benchmark": (
+                        f"env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_serial_bench.py "
+                        f"--model /tmp/model --fixture /tmp/fixture.json --json {reference_path}"
+                    )
                 },
                 "workload": {"concurrency": 2, "prompt_tokens_per_request": 16, "gen_tokens_per_request": 2},
                 "measurements": {"decode_tok_s_aggregate": 20.0, "decode_tok_s_per_request": 10.0},

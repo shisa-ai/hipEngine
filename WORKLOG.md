@@ -53002,3 +53002,25 @@ git diff --check
 ```
 
 Result: focused scaling-reference input-label tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed items were not changed, no retained c>N performance/scaling claim was added, and retained scaling references now reject stale/missing benchmark model or fixture labels before supporting a future promotion.
+
+## 2026-05-31 — CONCURRENCY c-sweep scaling reference input-label preflight
+
+Mirrored retained-bench scaling-reference input provenance in the c-sweep pre-run gate: `scripts/qwen35_batch_c_sweep.py` now rejects retained rows before execution when c=1/serial baseline benchmark labels omit or change the retained `--model`, and serial-bridge baselines also must match retained `--fixture`. The retained-bench comparison was also refined so the legacy c=1 baseline, which does not accept `--fixture`, is model-bound while the serial bridge remains model+fixture-bound. This is evidence hardening only; no queue item was closed and no retained c>N performance/scaling claim was added.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 -m compileall -q scripts/qwen35_batch_c_sweep.py scripts/qwen35_batch_retained_bench.py tests/test_generation_batch_scheduler.py && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py::test_batch_c_sweep_scaling_reference_rejects_mismatched_input_labels tests/test_generation_batch_scheduler.py::test_batch_c_sweep_scaling_reference_requires_software_for_device_stamped_artifact tests/test_generation_batch_scheduler.py::test_batch_c_sweep_scaling_reference_requires_visible_device_env_for_command_labeled_artifact tests/test_generation_batch_scheduler.py::test_qwen35_retained_scaling_reference_rejects_mismatched_input_labels tests/test_generation_batch_scheduler.py::test_qwen35_retained_scaling_comparison_uses_c1_and_serial_artifacts -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue))
+print(count)
+assert count == 12
+PY
+HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+git diff --check
+```
+
+Result: focused c-sweep/retained scaling-reference input-label tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed items were not changed, no retained c>N performance/scaling claim was added, and c-sweep/retained preflight now rejects stale/missing baseline model or fixture labels before a future promotion.
