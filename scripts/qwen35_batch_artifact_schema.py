@@ -3593,6 +3593,19 @@ def _valid_request_observability(row: Any, errors: list[str]) -> bool:
         if field in row and (not isinstance(row.get(field), int) or isinstance(row.get(field), bool) or row.get(field) < 0):
             errors.append(f"observability.per_request.*.{field} must be a non-negative int for accepted artifacts")
             ok = False
+    kv_pages_owned = row.get("kv_pages_owned")
+    kv_pages_peak = row.get("kv_pages_peak")
+    if (
+        isinstance(kv_pages_owned, int)
+        and not isinstance(kv_pages_owned, bool)
+        and kv_pages_owned >= 0
+        and isinstance(kv_pages_peak, int)
+        and not isinstance(kv_pages_peak, bool)
+        and kv_pages_peak >= 0
+        and kv_pages_peak < kv_pages_owned
+    ):
+        errors.append("observability.per_request.*.kv_pages_peak must be >= kv_pages_owned for accepted artifacts")
+        ok = False
     if "bucket_key" in row and row.get("bucket_key") is not None and (not isinstance(row.get("bucket_key"), str) or not row.get("bucket_key").strip()):
         errors.append("observability.per_request.*.bucket_key must be a non-empty string or null for accepted artifacts")
         ok = False
