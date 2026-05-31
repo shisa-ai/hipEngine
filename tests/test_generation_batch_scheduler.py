@@ -7310,6 +7310,16 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.command must match shlex\.join\(commands\[\]\.argv\)"):
             c_sweep.validate_sweep_summary(tampered_command_text)
 
+        tampered_blank_command_text = json.loads(json.dumps(summary))
+        tampered_blank_command_text["commands"][index]["command"] = "   "
+        with pytest.raises(ValueError, match=r"commands\[\]\.command must be a non-empty string"):
+            c_sweep.validate_sweep_summary(tampered_blank_command_text)
+
+        tampered_missing_command_text = json.loads(json.dumps(summary))
+        del tampered_missing_command_text["commands"][index]["command"]
+        with pytest.raises(ValueError, match=r"commands\[\]\.command must be a non-empty string"):
+            c_sweep.validate_sweep_summary(tampered_missing_command_text)
+
         tampered_script = json.loads(json.dumps(summary))
         script_entry = tampered_script["commands"][index]
         script_argv = script_entry["argv"]
