@@ -15741,6 +15741,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="execution.seed_tokens.0 must match correctness.generated_token_equality.batch_sequences first token"):
         validate_cn_diagnostic_artifact_payload(mismatched_execution_seed_tokens)
 
+    stale_execution_seed_token_keys = json.loads(json.dumps(accepted))
+    stale_execution_seed_token_keys["execution"]["seed_tokens"] = {"0": {"token_id": 0}, "2": {"token_id": 999}}
+    with pytest.raises(ValueError, match="execution.seed_tokens keys must match workload.concurrency row ids"):
+        validate_cn_diagnostic_artifact_payload(stale_execution_seed_token_keys)
+
     missing_execution_generated_tokens = json.loads(json.dumps(accepted))
     missing_execution_generated_tokens["execution"].pop("generated_tokens")
     with pytest.raises(ValueError, match="execution.generated_tokens must be an object"):
@@ -15750,6 +15755,14 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     mismatched_execution_generated_tokens["execution"]["generated_tokens"]["0"][0]["token_id"] = 999
     with pytest.raises(ValueError, match="execution.generated_tokens.0 must match correctness.generated_token_equality.batch_sequences suffix"):
         validate_cn_diagnostic_artifact_payload(mismatched_execution_generated_tokens)
+
+    stale_execution_generated_token_keys = json.loads(json.dumps(accepted))
+    stale_execution_generated_token_keys["execution"]["generated_tokens"] = {
+        "0": list(stale_execution_generated_token_keys["execution"]["generated_tokens"]["0"]),
+        "2": list(stale_execution_generated_token_keys["execution"]["generated_tokens"]["1"]),
+    }
+    with pytest.raises(ValueError, match="execution.generated_tokens keys must match workload.concurrency row ids"):
+        validate_cn_diagnostic_artifact_payload(stale_execution_generated_token_keys)
 
     missing_completed_requests = json.loads(json.dumps(accepted))
     missing_completed_requests["execution"].pop("completed")

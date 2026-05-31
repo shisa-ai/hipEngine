@@ -3145,6 +3145,9 @@ def _validate_execution_seed_tokens(
         errors.append("execution.seed_tokens length must match workload.concurrency for accepted artifacts")
     if concurrency is None:
         return
+    expected_row_keys = {str(row_index) for row_index in range(concurrency)}
+    if set(seed_tokens.keys()) != expected_row_keys:
+        errors.append("execution.seed_tokens keys must match workload.concurrency row ids for accepted artifacts")
     for row_index in range(concurrency):
         row_key = str(row_index)
         token_id = _extract_token_id(seed_tokens.get(row_key), f"execution.seed_tokens.{row_key}", errors)
@@ -3172,6 +3175,9 @@ def _validate_execution_generated_tokens(
         errors.append("execution.generated_tokens length must match workload.concurrency for accepted artifacts")
     if concurrency is None:
         return
+    expected_row_keys = {str(row_index) for row_index in range(concurrency)}
+    if set(generated_tokens.keys()) != expected_row_keys:
+        errors.append("execution.generated_tokens keys must match workload.concurrency row ids for accepted artifacts")
     for row_index in range(concurrency):
         row_key = str(row_index)
         row = generated_tokens.get(row_key)
