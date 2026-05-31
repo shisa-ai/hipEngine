@@ -1,9 +1,41 @@
 {
+  "all_resident_weight_nbytes": 3910240384,
   "backend": "hip_gfx1151",
-  "command": "python3 scripts/stepfun_layer_prefix_smoke.py --layer-count 4 --message \"hello\" --pretty",
-  "elapsed_s": 2.878072208026424,
+  "chunk_records": [
+    {
+      "end_layer_exclusive": 1,
+      "layer_weight_nbytes": 113687552,
+      "peak_with_roots_nbytes": 1235614720,
+      "slot_count": 12,
+      "start_layer": 0
+    },
+    {
+      "end_layer_exclusive": 2,
+      "layer_weight_nbytes": 132487168,
+      "peak_with_roots_nbytes": 1254414336,
+      "slot_count": 12,
+      "start_layer": 1
+    },
+    {
+      "end_layer_exclusive": 3,
+      "layer_weight_nbytes": 132487168,
+      "peak_with_roots_nbytes": 1254414336,
+      "slot_count": 12,
+      "start_layer": 2
+    },
+    {
+      "end_layer_exclusive": 4,
+      "layer_weight_nbytes": 2409651328,
+      "peak_with_roots_nbytes": 3531578496,
+      "slot_count": 17,
+      "start_layer": 3
+    }
+  ],
+  "command": "python3 scripts/stepfun_layer_prefix_smoke.py --layer-count 4 --message \"hello\" --max-resident-weight-gib 4 --stream-chunk-layers 1 --output benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-prompt-smoke.json --pretty",
+  "elapsed_s": 3.8258157218806446,
+  "execution_mode": "chunked",
   "hip_free_after_free_gib": 119.85709762573242,
-  "hip_free_after_load_gib": 116.18153762817383,
+  "hip_free_after_load_gib": 119.85709762573242,
   "hip_free_before_gib": 119.99605941772461,
   "hip_mem_get_info_note": "hipMemGetInfo total/free are known to be contradictory under the configured Strix Halo GTT setup; use hipEngine allocation stats and relative before/load/free readings as diagnostic only.",
   "hip_total_gib": 62.540937423706055,
@@ -44,18 +76,18 @@
   "memory_stats_after_free": {
     "active_allocations": 0,
     "current_allocated_bytes": 0,
-    "peak_allocated_bytes": 3912220224,
-    "peak_allocations": 59,
+    "peak_allocated_bytes": 3533558336,
+    "peak_allocations": 23,
     "total_allocated_bytes": 3936555256,
     "total_freed_bytes": 3936555256
   },
   "memory_stats_before_free": {
-    "active_allocations": 56,
-    "current_allocated_bytes": 3910240384,
-    "peak_allocated_bytes": 3912220224,
-    "peak_allocations": 59,
+    "active_allocations": 3,
+    "current_allocated_bytes": 1121927168,
+    "peak_allocated_bytes": 3533558336,
+    "peak_allocations": 23,
     "total_allocated_bytes": 3936555256,
-    "total_freed_bytes": 26314872
+    "total_freed_bytes": 2814628088
   },
   "model": "Step-3.7-flash-Q3_K_L",
   "next_token_id": 104939,
@@ -67,9 +99,10 @@
     "/data/models/gguf/Step-3.7-flash-Q3_K_L-00002-of-00003.gguf",
     "/data/models/gguf/Step-3.7-flash-Q3_K_L-00003-of-00003.gguf"
   ],
+  "peak_resident_weight_nbytes": 3531578496,
   "prompt": "<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n",
   "prompt_length": 23,
-  "resident_weight_nbytes": 3910240384,
+  "resident_weight_nbytes": 3531578496,
   "sampled_logits": {
     "0": 1.1836254596710205,
     "1": -0.39549505710601807,
@@ -142,5 +175,6 @@
   ],
   "split_count": 3,
   "status": "partial_prompt_smoke",
+  "stream_chunk_layers": 1,
   "tensor_count": 754
 }

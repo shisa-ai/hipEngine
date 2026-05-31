@@ -124,20 +124,6 @@ def test_stepfun_layer_prefix_smoke_budget_guard_blocks_before_hip(
 ) -> None:
     root = _stepfun_gguf_dir()
 
-    with pytest.raises(ValueError, match="metadata-only"):
-        main(
-            [
-                "--model-dir",
-                str(root),
-                "--layer-count",
-                "1",
-                "--message",
-                "hello",
-                "--stream-chunk-layers",
-                "1",
-            ]
-        )
-
     with pytest.raises(MemoryError, match="max-resident-weight-gib"):
         main(
             [
@@ -158,7 +144,9 @@ def test_stepfun_layer_prefix_smoke_budget_guard_blocks_before_hip(
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
-def test_stepfun_layer_prefix_smoke_outputs_partial_prompt_json(capsys: pytest.CaptureFixture[str]) -> None:
+def test_stepfun_layer_prefix_smoke_outputs_chunked_partial_prompt_json(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     root = _stepfun_gguf_dir()
 
     rc = main(
@@ -169,8 +157,10 @@ def test_stepfun_layer_prefix_smoke_outputs_partial_prompt_json(capsys: pytest.C
             "1",
             "--message",
             "hello",
+            "--stream-chunk-layers",
+            "1",
             "--max-resident-weight-gib",
-            "200",
+            "4",
             "--pretty",
         ]
     )
@@ -180,6 +170,8 @@ def test_stepfun_layer_prefix_smoke_outputs_partial_prompt_json(capsys: pytest.C
     assert output.err == ""
     payload = json.loads(output.out)
     assert payload["status"] == "partial_prompt_smoke"
+    assert payload["execution_mode"] == "chunked"
+    assert payload["stream_chunk_layers"] == 1
     assert payload["layer_count"] == 1
     assert payload["scope"] == "layers_0_0_prefix_only_layers_1_44_skipped"
     assert payload["selected_slot_count"] == 15
@@ -194,5 +186,17 @@ def test_stepfun_layer_prefix_smoke_outputs_partial_prompt_json(capsys: pytest.C
     assert payload["logits_shape"] == [1, 128896]
     assert set(payload["sampled_logits"]) == {"0", "1", "128007", "128895"}
     assert payload["resident_weight_nbytes"] > 0
+    assert payload["peak_resident_weight_nbytes"] == payload["resident_weight_nbytes"]
+    assert payload["all_resident_weight_nbytes"] == payload["resident_weight_nbytes"]
+    assert payload["chunk_records"] == [
+        {
+            "start_layer": 0,
+            "end_layer_exclusive": 1,
+            "slot_count": 12,
+            "layer_weight_nbytes": 113_687_552,
+            "peak_with_roots_nbytes": 1_235_614_720,
+        }
+    ]
+    assert payload["memory_stats_before_free"]["active_allocations"] == 3
     assert payload["memory_stats_after_free"]["active_allocations"] == 0
     assert payload["memory_stats_after_free"]["current_allocated_bytes"] == 0

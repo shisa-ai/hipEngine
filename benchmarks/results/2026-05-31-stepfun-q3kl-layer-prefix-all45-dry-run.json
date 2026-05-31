@@ -1145,7 +1145,7 @@
       "slot_count": 17,
       "start_layer": 3
     },
-    "note": "Metadata-only estimate for a future streaming runner that keeps root tensors resident and loads a fixed-size layer chunk at a time; the current prompt smoke does not implement chunked execution.",
+    "note": "Metadata-only estimate for keeping root tensors resident and loading a fixed-size layer chunk at a time; non-dry-run prefix smokes can execute this path for small prefixes.",
     "peak_resident_weight_nbytes": 3531578496,
     "root_resident_weight_nbytes": 1121927168,
     "root_slots": [

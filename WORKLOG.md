@@ -27613,3 +27613,17 @@ python3 -m pytest -q tests/test_stepfun_layer_prefix_smoke.py -q
 ```
 
 Result: `4 passed`.
+
+## 2026-05-31 — StepFun chunked prefix execution smoke
+
+Extended `scripts/stepfun_layer_prefix_smoke.py` so `--stream-chunk-layers` is no longer dry-run only: non-dry-run smokes now keep root text tensors resident, load a layer chunk, execute that chunk with `StepFunResidentSession.layer_prefill_probe_bf16()`, BF16-round the hidden state, free the chunk, and continue. The memory budget guard now checks the estimated peak resident bytes for chunked mode instead of the all-resident prefix total.
+
+Updated `tests/test_stepfun_layer_prefix_smoke.py` so the HIP prompt smoke exercises `--stream-chunk-layers 1`, confirming the chunked layer-0 path emits `execution_mode=chunked`, expected chunk records, sampled logits, and zero active/current allocations after free.
+
+Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-prompt-smoke.json` using the chunked layers 0-3 path:
+
+```bash
+python3 scripts/stepfun_layer_prefix_smoke.py --layer-count 4 --message hello --max-resident-weight-gib 4 --stream-chunk-layers 1 --output benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-prompt-smoke.json --pretty
+```
+
+Artifact summary: `execution_mode=chunked`, 4 layer chunks, peak resident weight bytes `3,531,578,496`, prompt length 23, `next_token_id=104939`, and zero active/current allocations after free. This is still partial prefix evidence only: all-45-layer chunked execution and oracle parity remain open.

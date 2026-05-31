@@ -647,8 +647,11 @@ layer loop is wired.
   dependencies. Partial prompt artifact
   `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-prompt-smoke.json`
   is produced by `python3 scripts/stepfun_layer_prefix_smoke.py --layer-count 4
-  --message hello --pretty` and runs the resident text-only chat prompt through
-  the layers 0-3 prefix bridge with no vision/projector/MTP slots. The same
+  --message hello --max-resident-weight-gib 4 --stream-chunk-layers 1 --output
+  benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-prompt-smoke.json
+  --pretty` and runs the resident text-only chat prompt through the layers 0-3
+  prefix bridge with root tensors kept resident and each layer loaded/freed as a
+  one-layer chunk; it uses no vision/projector/MTP slots. The same
   script's `--dry-run-plan --layer-count 45` mode now plans the all-layer text
   prefix slot/resource shape without initializing HIP, and `--output` writes the
   JSON artifact directly;
@@ -657,8 +660,9 @@ layer loop is wired.
   The same artifact now includes a metadata-only `--stream-chunk-layers 1`
   estimate: keep root text tensors resident (`1,121,927,168` bytes) and stream
   one layer at a time, with a max root+layer peak of `3,531,578,496` bytes
-  (`3.29 GiB`) at layer 3. This is planning only; chunked execution is not
-  implemented yet. Non-dry-run prefix smokes now
+  (`3.29 GiB`) at layer 3. Non-dry-run prefix smokes can now execute that
+  chunked path for small prefixes; all-45-layer chunked execution and parity are
+  still open. Non-dry-run prefix smokes also
   support `--max-resident-weight-gib` so accidental all-layer HIP allocation
   attempts fail before runtime initialization unless an explicit memory budget is
   supplied. Full prompt execution remains open until the KV-backed runner or
@@ -673,8 +677,8 @@ memory stats, and torch-free imports; `python3 -m pytest -q tests/test_stepfun_l
 validates metadata-only dry-run load-smoke JSON; `python3 -m pytest -q
 tests/test_stepfun_layer_prefix_smoke.py` validates the reusable partial prompt
 smoke script, native output-file writing, memory-budget guard, all-layer dry-run
-prefix planning, and root-plus-one-layer streaming memory estimates. This is
-still not a throughput benchmark.
+prefix planning, root-plus-one-layer streaming memory estimates, and a chunked
+layer-0 prompt execution. This is still not a throughput benchmark.
 
 ### P13 — Benchmark and rollup only after correctness
 
