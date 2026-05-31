@@ -13,8 +13,10 @@
     },
     {
       "artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json",
-      "detail": "Current all-layer prompt smoke is host-composed prefill/logits; final KV-backed one-token decode runner remains open.",
-      "kind": "kv_backed_decode_not_wired"
+      "detail": "KV dispatch registry keys are recorded as ready in the text resource plan; current all-layer prompt smoke is still host-composed prefill/logits, so the final KV-backed one-token decode runner remains open.",
+      "kind": "kv_backed_decode_not_wired",
+      "kv_decode_dispatch_ready": true,
+      "resource_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json"
     }
   ],
   "docs_checklist": {
@@ -27,7 +29,7 @@
         "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
       },
       {
-        "line": 567,
+        "line": 578,
         "state": "partial",
         "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
       }
@@ -35,6 +37,42 @@
   },
   "e2e_inference_ready": false,
   "kv_backed_decode_ready": false,
+  "kv_decode_dispatch_progress": {
+    "all_registered": true,
+    "backend": "hip_gfx1151",
+    "decode_attention_kind": "splitk_gate_f32",
+    "dispatch_keys": {
+      "decode_attention": {
+        "backend": "hip_gfx1151",
+        "layer": "paged_attn_decode",
+        "quant": "gguf_step35",
+        "variant": "bf16_split_k_gate_f32_spans"
+      },
+      "decode_kv_write": {
+        "backend": "hip_gfx1151",
+        "layer": "paged_kv_write",
+        "quant": "gguf_step35",
+        "variant": "mixed_bf16_spans"
+      },
+      "prompt_kv_write": {
+        "backend": "hip_gfx1151",
+        "layer": "paged_kv_write",
+        "quant": "gguf_step35",
+        "variant": "mixed_bf16_prompt_spans"
+      }
+    },
+    "kv_storage_dtype": "bf16",
+    "model_quant": "gguf_step35",
+    "note": "Derived from the text resource dry-run artifact. Registry dispatch readiness does not mean the streaming KV-backed runner or oracle parity is complete.",
+    "registered": {
+      "decode_attention": true,
+      "decode_kv_write": true,
+      "prompt_kv_write": true
+    },
+    "resource_status": "planned",
+    "source": "resource_artifact.text_decode_resource_plan.kv_decode_kernel_plan"
+  },
+  "kv_decode_dispatch_ready": true,
   "linear_projection_progress": {
     "attention": {
       "all_selected_layers_complete": true,
@@ -92,5 +130,6 @@
   "oracle_stdout_len": 0,
   "prompt_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json",
   "status": "blocked",
-  "step35_supported_by_local_llama_cpp": null
+  "step35_supported_by_local_llama_cpp": null,
+  "text_resource_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json"
 }

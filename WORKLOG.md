@@ -27892,3 +27892,28 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted StepFun planner/load-smoke tests passed (`7 passed`), KV dispatch tests passed (`3 passed`), and the full StepFun guard passed (`102 passed` plus CPU-reference fixture checks).
+
+## 2026-05-31 — StepFun status records KV dispatch readiness
+
+Extended the consolidated StepFun Q3_K_L correctness-status helper with `--resource-artifact` and `kv_decode_dispatch_progress`, sourced from `benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json`. The regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json` now records `kv_decode_dispatch_ready=true` for the `gguf_step35` BF16 prompt KV write, decode KV write, and gated paged-attention decode registry keys, while preserving `kv_backed_decode_ready=false`, `oracle_parity=false`, and `e2e_inference_ready=false`.
+
+Updated `tests/test_stepfun_correctness_status.py` to exercise the resource artifact input, machine-readable dispatch-key summary, and KV blocker metadata. Clarified `docs/STEPFUN.md` so the P11 status paragraph distinguishes dispatch readiness from the still-unwired streaming KV-backed decode runner.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 - <<'PY'
+import json
+p=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+assert p['kv_decode_dispatch_ready'] is True
+assert p['kv_decode_dispatch_progress']['all_registered'] is True
+assert p['kv_backed_decode_ready'] is False
+assert p['e2e_inference_ready'] is False
+assert p['docs_checklist']['open_or_partial_count_p0_p12'] == 2
+print('correctness status kv dispatch progress ok')
+PY
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted status tests passed (`3 passed`), the artifact schema check printed `correctness status kv dispatch progress ok`, and the full StepFun guard passed (`102 passed` plus CPU-reference fixture checks).

@@ -15,6 +15,9 @@ DEFAULT_PROMPT_ARTIFACT = Path(
 DEFAULT_ORACLE_ARTIFACT = Path(
     "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json"
 )
+DEFAULT_RESOURCE_ARTIFACT = Path(
+    "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json"
+)
 DEFAULT_DOCS_PATH = Path("docs/STEPFUN.md")
 
 
@@ -22,6 +25,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prompt-artifact", type=Path, default=DEFAULT_PROMPT_ARTIFACT)
     parser.add_argument("--oracle-artifact", type=Path, default=DEFAULT_ORACLE_ARTIFACT)
+    parser.add_argument("--resource-artifact", type=Path, default=DEFAULT_RESOURCE_ARTIFACT)
     parser.add_argument("--docs", type=Path, default=DEFAULT_DOCS_PATH)
     parser.add_argument("--output", type=Path, default=None, help="Write JSON output to this path instead of stdout.")
     parser.add_argument(
@@ -160,13 +164,38 @@ def _linear_projection_progress(prompt: dict[str, object]) -> dict[str, object]:
     }
 
 
+def _kv_decode_dispatch_progress(resource: dict[str, object]) -> dict[str, object]:
+    """Summarize KV dispatch coverage from the text resource artifact."""
+
+    plan = dict(resource.get("text_decode_resource_plan", {}))
+    kv_plan = dict(plan.get("kv_decode_kernel_plan", {}))
+    registered = dict(kv_plan.get("registered", {}))
+    return {
+        "source": "resource_artifact.text_decode_resource_plan.kv_decode_kernel_plan",
+        "resource_status": resource.get("status"),
+        "backend": kv_plan.get("backend") or plan.get("backend"),
+        "model_quant": kv_plan.get("model_quant"),
+        "kv_storage_dtype": kv_plan.get("kv_storage_dtype"),
+        "decode_attention_kind": kv_plan.get("decode_attention_kind"),
+        "dispatch_keys": dict(kv_plan.get("dispatch_keys", {})),
+        "registered": registered,
+        "all_registered": kv_plan.get("all_registered") is True and all(bool(v) for v in registered.values()),
+        "note": (
+            "Derived from the text resource dry-run artifact. Registry dispatch readiness "
+            "does not mean the streaming KV-backed runner or oracle parity is complete."
+        ),
+    }
+
+
 def build_status(
     prompt_artifact: Path,
     oracle_artifact: Path,
     docs_path: Path = DEFAULT_DOCS_PATH,
+    resource_artifact: Path = DEFAULT_RESOURCE_ARTIFACT,
 ) -> dict[str, object]:
     prompt = _load(prompt_artifact)
     oracle = _load(oracle_artifact)
+    resource = _load(resource_artifact)
     docs_status = _docs_checklist_status(docs_path)
     all_layer_prompt_smoke = (
         prompt.get("status") == "partial_prompt_smoke"
@@ -182,6 +211,8 @@ def build_status(
         and oracle.get("returncode") == 0
         and oracle.get("text_matches_expected_exact") is True
     )
+    kv_decode_dispatch_progress = _kv_decode_dispatch_progress(resource)
+    kv_decode_dispatch_ready = kv_decode_dispatch_progress["all_registered"] is True
     blockers: list[dict[str, object]] = []
     if not oracle_parity:
         blockers.append(
@@ -197,10 +228,13 @@ def build_status(
         {
             "kind": "kv_backed_decode_not_wired",
             "detail": (
-                "Current all-layer prompt smoke is host-composed prefill/logits; "
+                "KV dispatch registry keys are recorded as ready in the text resource plan; "
+                "current all-layer prompt smoke is still host-composed prefill/logits, so the "
                 "final KV-backed one-token decode runner remains open."
             ),
             "artifact": str(prompt_artifact),
+            "resource_artifact": str(resource_artifact),
+            "kv_decode_dispatch_ready": kv_decode_dispatch_ready,
         }
     )
     next_actions = [
@@ -225,6 +259,7 @@ def build_status(
         "backend": prompt.get("backend", "hip_gfx1151"),
         "prompt_artifact": str(prompt_artifact),
         "oracle_artifact": str(oracle_artifact),
+        "text_resource_artifact": str(resource_artifact),
         "all_layer_prompt_smoke": all_layer_prompt_smoke,
         "all_layer_prompt_next_token_id": prompt.get("next_token_id"),
         "all_layer_prompt_next_token_text": prompt.get("next_token_text"),
@@ -238,6 +273,8 @@ def build_status(
         "oracle_blocker_kind": oracle.get("oracle_blocker_kind"),
         "step35_supported_by_local_llama_cpp": oracle.get("step35_supported"),
         "linear_projection_progress": _linear_projection_progress(prompt),
+        "kv_decode_dispatch_progress": kv_decode_dispatch_progress,
+        "kv_decode_dispatch_ready": kv_decode_dispatch_ready,
         "kv_backed_decode_ready": False,
         "e2e_inference_ready": False,
         "blockers": blockers,
@@ -261,7 +298,12 @@ def _emit_json(result: dict[str, object], *, pretty: bool, output: Path | None) 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
-    status = build_status(args.prompt_artifact, args.oracle_artifact, args.docs)
+    status = build_status(
+        args.prompt_artifact,
+        args.oracle_artifact,
+        args.docs,
+        resource_artifact=args.resource_artifact,
+    )
     _emit_json(
         status,
         pretty=args.pretty,

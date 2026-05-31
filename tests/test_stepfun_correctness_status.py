@@ -86,6 +86,51 @@ def _write_oracle_artifact(path: Path) -> None:
     )
 
 
+def _write_resource_artifact(path: Path) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "status": "dry_run_plan",
+                "text_decode_resource_plan": {
+                    "backend": "hip_gfx1151",
+                    "kv_decode_kernel_plan": {
+                        "all_registered": True,
+                        "backend": "hip_gfx1151",
+                        "decode_attention_kind": "splitk_gate_f32",
+                        "dispatch_keys": {
+                            "decode_attention": {
+                                "backend": "hip_gfx1151",
+                                "layer": "paged_attn_decode",
+                                "quant": "gguf_step35",
+                                "variant": "bf16_split_k_gate_f32_spans",
+                            },
+                            "decode_kv_write": {
+                                "backend": "hip_gfx1151",
+                                "layer": "paged_kv_write",
+                                "quant": "gguf_step35",
+                                "variant": "mixed_bf16_spans",
+                            },
+                            "prompt_kv_write": {
+                                "backend": "hip_gfx1151",
+                                "layer": "paged_kv_write",
+                                "quant": "gguf_step35",
+                                "variant": "mixed_bf16_prompt_spans",
+                            },
+                        },
+                        "kv_storage_dtype": "bf16",
+                        "model_quant": "gguf_step35",
+                        "registered": {
+                            "decode_attention": True,
+                            "decode_kv_write": True,
+                            "prompt_kv_write": True,
+                        },
+                    },
+                },
+            }
+        )
+    )
+
+
 def _write_docs(path: Path) -> None:
     path.write_text(
         "# StepFun\n\n"
@@ -102,11 +147,13 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     prompt = tmp_path / "prompt.json"
     oracle = tmp_path / "oracle.json"
     docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
     _write_prompt_artifact(prompt)
     _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
     _write_docs(docs)
 
-    status = build_status(prompt, oracle, docs)
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
 
     assert status["status"] == "blocked"
     assert status["all_layer_prompt_smoke"] is True
@@ -140,12 +187,36 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert projections["moe_expert"]["complete_layer_count"] == 42
     assert projections["moe_shared_expert"]["slot_count"] == 126
     assert projections["moe_shared_expert"]["complete_layer_count"] == 42
+    assert status["text_resource_artifact"] == str(resource)
+    kv_dispatch = status["kv_decode_dispatch_progress"]
+    assert kv_dispatch["source"] == "resource_artifact.text_decode_resource_plan.kv_decode_kernel_plan"
+    assert kv_dispatch["resource_status"] == "dry_run_plan"
+    assert kv_dispatch["backend"] == "hip_gfx1151"
+    assert kv_dispatch["model_quant"] == "gguf_step35"
+    assert kv_dispatch["kv_storage_dtype"] == "bf16"
+    assert kv_dispatch["decode_attention_kind"] == "splitk_gate_f32"
+    assert kv_dispatch["all_registered"] is True
+    assert kv_dispatch["registered"] == {
+        "decode_attention": True,
+        "decode_kv_write": True,
+        "prompt_kv_write": True,
+    }
+    assert kv_dispatch["dispatch_keys"]["prompt_kv_write"] == {
+        "backend": "hip_gfx1151",
+        "layer": "paged_kv_write",
+        "quant": "gguf_step35",
+        "variant": "mixed_bf16_prompt_spans",
+    }
+    assert status["kv_decode_dispatch_ready"] is True
     assert status["kv_backed_decode_ready"] is False
     assert status["e2e_inference_ready"] is False
     assert {blocker["kind"] for blocker in status["blockers"]} == {
         "oracle_parity_blocked",
         "kv_backed_decode_not_wired",
     }
+    kv_blocker = next(blocker for blocker in status["blockers"] if blocker["kind"] == "kv_backed_decode_not_wired")
+    assert kv_blocker["resource_artifact"] == str(resource)
+    assert kv_blocker["kv_decode_dispatch_ready"] is True
     assert {action["blocker_kind"] for action in status["next_actions"]} == {
         "oracle_parity_blocked",
         "kv_backed_decode_not_wired",
@@ -161,9 +232,11 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
     prompt = tmp_path / "prompt.json"
     oracle = tmp_path / "oracle.json"
     docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
     output = tmp_path / "status.json"
     _write_prompt_artifact(prompt)
     _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
     _write_docs(docs)
 
     rc = main(
@@ -172,6 +245,8 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
             str(prompt),
             "--oracle-artifact",
             str(oracle),
+            "--resource-artifact",
+            str(resource),
             "--docs",
             str(docs),
             "--output",
@@ -189,6 +264,7 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
     assert payload["all_layer_prompt_smoke"] is True
     assert payload["e2e_inference_ready"] is False
     assert payload["linear_projection_progress"]["resident_linear_projection_slot_count"] == 487
+    assert payload["kv_decode_dispatch_ready"] is True
     assert len(payload["next_actions"]) == 2
     assert payload["docs_checklist"]["open_or_partial_count_p0_p12"] == 2
 
@@ -200,8 +276,10 @@ def test_stepfun_correctness_status_fail_on_blocked_returns_nonzero(
     prompt = tmp_path / "prompt.json"
     oracle = tmp_path / "oracle.json"
     docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
     _write_prompt_artifact(prompt)
     _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
     _write_docs(docs)
 
     rc = main(
@@ -210,6 +288,8 @@ def test_stepfun_correctness_status_fail_on_blocked_returns_nonzero(
             str(prompt),
             "--oracle-artifact",
             str(oracle),
+            "--resource-artifact",
+            str(resource),
             "--docs",
             str(docs),
             "--fail-on-blocked",
