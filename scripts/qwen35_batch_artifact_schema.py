@@ -2711,10 +2711,13 @@ def _validate_claimed_execution_generated_tokens(
         errors.append("execution.generated_tokens length must match workload.concurrency when generated_token_equality.passed is true")
     if concurrency is None:
         return
+    has_any_generated_row = any(generated_tokens.get(str(row_index)) != [] for row_index in range(concurrency))
     for row_index in range(concurrency):
         row_key = str(row_index)
         row = generated_tokens.get(row_key)
         if row == []:
+            if has_any_generated_row:
+                errors.append(f"execution.generated_tokens.{row_key} must be non-empty when any generated-token metadata is present and generated_token_equality.passed is true")
             continue
         token_ids = _extract_claimed_generated_token_ids(
             row,

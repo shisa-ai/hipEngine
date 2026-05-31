@@ -11384,6 +11384,15 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
     with pytest.raises(ValueError, match="execution.generated_tokens.0 must match correctness.generated_token_equality.batch_sequences suffix"):
         validate_cn_diagnostic_artifact_payload(mismatched_generated_claim)
 
+    partial_generated_claim = json.loads(json.dumps(payload))
+    partial_generated_claim["execution"]["generated_tokens"]["1"] = []
+    with pytest.raises(ValueError, match="execution.generated_tokens.1 must be non-empty when any generated-token metadata is present"):
+        validate_cn_diagnostic_artifact_payload(partial_generated_claim)
+
+    all_empty_generated_claim = json.loads(json.dumps(payload))
+    all_empty_generated_claim["execution"]["generated_tokens"] = {"0": [], "1": []}
+    validate_cn_diagnostic_artifact_payload(all_empty_generated_claim)
+
     mismatched_completed_claim = json.loads(json.dumps(payload))
     mismatched_completed_claim["execution"]["completed"][1]["generated_tokens"][0] = 99
     with pytest.raises(ValueError, match=r"execution.completed\[1\].generated_tokens must match correctness.generated_token_equality.batch_sequences suffix"):
