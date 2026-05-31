@@ -84,6 +84,25 @@ class StepFunRootOnlyLogitsProbe:
 
 
 @dataclass(frozen=True)
+class StepFunOneLayerLogitsProbe:
+    """Prompt embedding plus one resident layer and final logits smoke result."""
+
+    prompt: "StepFunPromptEmbedding"
+    layer_hidden: object
+    logits: object
+
+    @property
+    def next_token_id(self) -> int:
+        import numpy as np
+
+        return int(np.argmax(self.logits[-1]))
+
+    @property
+    def next_token_logit(self) -> float:
+        return float(self.logits[-1, self.next_token_id])
+
+
+@dataclass(frozen=True)
 class StepFunPromptEmbedding:
     """Rendered/tokenized Step prompt plus resident BF16 embedding rows."""
 
@@ -423,6 +442,45 @@ class StepFunResidentSession:
             stream=stream,
         )
         return StepFunRootOnlyLogitsProbe(prompt=prompt, logits=logits)
+
+    def first_layer_prompt_logits_probe_bf16(
+        self,
+        messages: Sequence[Mapping[str, object]],
+        *,
+        reasoning_effort: str | None = "low",
+        add_generation_prompt: bool = True,
+        runtime: HipRuntime | None = None,
+        stream: int = 0,
+    ) -> StepFunOneLayerLogitsProbe:
+        """Run tokenizer -> embeddings -> layer 0 prefill -> final logits.
+
+        This is a correctness smoke for orchestration only. It deliberately
+        skips layers 1-44, so its logits are not next-token parity evidence.
+        """
+
+        import numpy as np
+        from hipengine.loading.materialize import float_array_to_bf16_bits
+
+        prompt = self.embed_chat_prompt_bf16(
+            messages,
+            reasoning_effort=reasoning_effort,
+            add_generation_prompt=add_generation_prompt,
+            runtime=runtime,
+            stream=stream,
+        )
+        layer_hidden = self.layer_prefill_probe_bf16(
+            0,
+            prompt.embeddings_bf16,
+            runtime=runtime,
+            stream=stream,
+        )
+        last_hidden_bits = float_array_to_bf16_bits(np.asarray(layer_hidden[-1:], dtype=np.float32))
+        logits = self.final_logits_probe_bf16(last_hidden_bits, runtime=runtime, stream=stream)
+        return StepFunOneLayerLogitsProbe(
+            prompt=prompt,
+            layer_hidden=layer_hidden,
+            logits=logits,
+        )
 
     def linear_slot_bf16(
         self,
@@ -1072,6 +1130,7 @@ __all__ = [
     "StepFunDecodePlan",
     "StepFunKVCacheAllocation",
     "StepFunMoERouterResult",
+    "StepFunOneLayerLogitsProbe",
     "StepFunPromptEmbedding",
     "StepFunResidentSession",
     "StepFunRootOnlyLogitsProbe",

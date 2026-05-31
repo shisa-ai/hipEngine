@@ -1108,6 +1108,83 @@ def test_stepfun_resident_session_root_only_prompt_logits_probe_matches_cpu_rows
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_stepfun_resident_session_first_layer_prompt_logits_probe_matches_cpu_rows() -> None:
+    paths = _stepfun_gguf_paths()
+    info = scan_gguf_splits(paths)
+    model_map = build_stepfun_gguf_tensor_map(info)
+    root_tensors = {
+        "token": model_map.root("token_embedding"),
+        "norm": model_map.root("output_norm"),
+        "head": model_map.root("lm_head"),
+    }
+    layer = model_map.layer(0)
+    layer_slots = (
+        "attn_norm",
+        "attn_q_norm",
+        "attn_k_norm",
+        "attn_q",
+        "attn_k",
+        "attn_v",
+        "attn_gate",
+        "attn_output",
+        "ffn_norm",
+        "ffn_gate",
+        "ffn_up",
+        "ffn_down",
+    )
+    layer_tensors = {slot: layer.tensor(slot) for slot in layer_slots}
+    selected_slots = (
+        "root.token_embedding",
+        "root.output_norm",
+        "root.lm_head",
+        *(f"layers.0.{slot}" for slot in layer_slots),
+    )
+    token_raw = GGUFReader(root_tensors["token"].source_path).tensor_data(root_tensors["token"].name)
+    norm_weight = GGUFReader(root_tensors["norm"].source_path).tensor_data(root_tensors["norm"].name)
+    head_raw = GGUFReader(root_tensors["head"].source_path).tensor_data(root_tensors["head"].name)
+    runtime = get_hip_runtime()
+    reset_memory_stats()
+    session = StepFunResidentSession.from_gguf_paths(
+        paths,
+        selected_slots=selected_slots,
+        runtime=runtime,
+    )
+    try:
+        probe = session.first_layer_prompt_logits_probe_bf16(
+            [{"role": "user", "content": "hello"}],
+            reasoning_effort="low",
+            runtime=runtime,
+        )
+        assert probe.prompt.rendered_prompt.endswith("<|im_start|>assistant\n<think>\n")
+        assert probe.prompt.prompt_length > 0
+        assert probe.layer_hidden.shape == (probe.prompt.prompt_length, model_map.config.hidden_size)
+        assert probe.logits.shape == (1, model_map.config.vocab_size)
+        prompt_ids = np.asarray(probe.prompt.input_ids, dtype=np.int64)
+        expected_prompt_bits = float_array_to_bf16_bits(gguf_q8_0_embedding(prompt_ids, token_raw))
+        np.testing.assert_array_equal(probe.prompt.embeddings_bf16, expected_prompt_bits)
+        last_hidden_bits = float_array_to_bf16_bits(np.asarray(probe.layer_hidden[-1:], dtype=np.float32))
+        normed_bits = float_array_to_bf16_bits(
+            step_rmsnorm(bf16_to_float32(last_hidden_bits), norm_weight, eps=model_map.config.rms_norm_eps)
+        )
+        rows = np.asarray([0, 1, 128007, model_map.config.vocab_size - 1], dtype=np.int64)
+        expected_rows = gguf_q8_0_gemv(bf16_to_float32(normed_bits), head_raw[rows])
+        np.testing.assert_allclose(probe.logits[:, rows], expected_rows, rtol=2.0e-3, atol=2.0e-3)
+        assert probe.next_token_id == int(np.argmax(probe.logits[-1]))
+        assert probe.next_token_logit == float(np.max(probe.logits[-1]))
+        expected_nbytes = sum(tensor.nbytes for tensor in root_tensors.values()) + sum(
+            tensor.nbytes for tensor in layer_tensors.values()
+        )
+        assert session.weights.allocated_nbytes == expected_nbytes
+        assert memory_stats()["current_allocated_bytes"] == expected_nbytes
+        assert memory_stats()["active_allocations"] == len(selected_slots)
+    finally:
+        session.free(runtime=runtime)
+
+    assert memory_stats()["current_allocated_bytes"] == 0
+    assert memory_stats()["active_allocations"] == 0
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 def test_stepfun_resident_session_requires_resident_embedding_weight() -> None:
     runtime = get_hip_runtime()
     session = StepFunResidentSession.from_gguf_paths(

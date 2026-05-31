@@ -27425,3 +27425,17 @@ python3 -m pytest -q tests/test_stepfun_resident_session.py -q
 ```
 
 Result: `19 passed`.
+
+## 2026-05-30 — StepFun first-layer prompt logits smoke
+
+Added `StepFunOneLayerLogitsProbe` and `StepFunResidentSession.first_layer_prompt_logits_probe_bf16()`. The helper renders/tokenizes a Step chat prompt, launches resident Q8_0 token embeddings, runs the resident layer-0 prefill bridge across the prompt rows, BF16-rounds the last layer output, and runs final RMSNorm + resident Q8_0 `lm_head` logits. It explicitly skips layers 1-44, so it is not llama.cpp next-token parity.
+
+Extended `tests/test_stepfun_resident_session.py` with a real first-layer prompt logits smoke. The test materializes root embedding/output tensors plus all layer-0 attention and dense-MLP tensors, verifies prompt embedding rows against CPU GGUF references, checks sampled final-vocab logits against CPU output-norm/lm-head references, and verifies allocation cleanup.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_resident_session.py -q
+```
+
+Result: `20 passed`.

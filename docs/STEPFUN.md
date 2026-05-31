@@ -506,8 +506,10 @@ reporting.
   `attn_output` vs CPU reference, a layer-0 dense-layer prefill probe composes
   attention residual, `ffn_norm`, dense SwiGLU MLP, and final residual vs CPU
   reference, and the same layer wrapper is exercised on a layer-3 sliding/MoE
-  block by composing the attention and MoE probes through `ffn_norm`, the dense-MLP input
-  bundle launches layer-0 `ffn_gate`/`ffn_up` projections vs CPU references,
+  block by composing the attention and MoE probes through `ffn_norm`, and a
+  first-layer prompt logits smoke binds chat rendering, embeddings, layer-0
+  prefill, and final `lm_head` rows while explicitly skipping layers 1-44. The
+  dense-MLP input bundle launches layer-0 `ffn_gate`/`ffn_up` projections vs CPU references,
   and a dense-MLP correctness probe composes gate/up, host SwiGLU BF16 rounding,
   and resident `ffn_down` vs CPU reference. The resident session also owns a
   BF16 KV-cache allocation/free helper, a layer-3 MoE router probe that
@@ -558,7 +560,9 @@ bundle (selected gate/up plus shared gate/up), the MoE correctness probe
 (router + selected/shared MLP chain with BF16 intermediates), the final-logits
 probe (output RMSNorm + resident Q8_0 `lm_head` projection for sampled vocab
 rows), the root-only prompt logits smoke (chat prompt -> embedding -> final root
-logits), resident KV-cache allocation/free, resident memory cleanup
+logits), the first-layer prompt logits smoke (chat prompt -> embedding -> layer-0
+prefill -> final root logits, with layers 1-44 skipped), resident KV-cache
+allocation/free, resident memory cleanup
 (two/three/four active weight allocations before session free, zero after), and
 no torch import. Full next-token/logit parity remains open until the streaming
 layer loop is wired.
