@@ -3599,8 +3599,8 @@ def _valid_request_observability(row: Any, errors: list[str]) -> bool:
     if "admission_blocked_reason" in row and row.get("admission_blocked_reason") is not None and not isinstance(row.get("admission_blocked_reason"), str):
         errors.append("observability.per_request.*.admission_blocked_reason must be a string or null for accepted artifacts")
         ok = False
-    if "finish_reason" in row and not isinstance(row.get("finish_reason"), str):
-        errors.append("observability.per_request.*.finish_reason must be a string for accepted artifacts")
+    if "finish_reason" in row and (not isinstance(row.get("finish_reason"), str) or not row.get("finish_reason").strip()):
+        errors.append("observability.per_request.*.finish_reason must be a non-empty string for accepted artifacts")
         ok = False
     return ok
 
