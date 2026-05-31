@@ -539,8 +539,11 @@ reporting.
   registry quant axis `gguf_step35`: prompt KV writes use
   `paged_kv_write/mixed_bf16_prompt_spans`, decode KV writes use
   `paged_kv_write/mixed_bf16_spans`, and gated decode attention uses the generic
-  `paged_attn_decode/bf16_split_k_gate_f32_spans` route on `hip_gfx1151`; this
-  is dispatch-readiness evidence only, not a completed streaming runner. The
+  `paged_attn_decode/bf16_split_k_gate_f32_spans` route on `hip_gfx1151`. The plan
+  also records the parent paged-attention span geometry for the 512-token bring-up
+  window (`attention_block_size=256`, `attention_block_table_len=2`, capacity 512
+  tokens, `span_shape_compatible=true`); this is dispatch/span-readiness evidence
+  only, not a completed streaming runner. The
   dense-MLP input bundle launches layer-0 `ffn_gate`/`ffn_up` projections vs CPU references,
   and a dense-MLP correctness probe composes gate/up, host SwiGLU BF16 rounding,
   and resident `ffn_down` vs CPU reference. The resident session also owns a
@@ -565,7 +568,8 @@ reporting.
   coverage from the all-layer prompt artifact (`487` resident projection slots plus
   `42` host-reference router projection slots across all 45 layers), records
   `kv_decode_dispatch_ready=true` from the text resource plan's `gguf_step35`
-  BF16 KV write/decode registry keys, lists next actions for the StepFun-capable
+  BF16 KV write/decode registry keys plus 256-token paged-attention span geometry,
+  lists next actions for the StepFun-capable
   oracle and KV-backed decode blockers, and supports `--fail-on-blocked` for
   CI/handoff checks.
   This checklist item is partial rather than complete because the current runner

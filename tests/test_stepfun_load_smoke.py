@@ -63,6 +63,11 @@ def test_stepfun_load_smoke_dry_run_plan_emits_resource_json(capsys: pytest.Capt
     assert kv_plan["model_quant"] == "gguf_step35"
     assert kv_plan["kv_storage_dtype"] == "bf16"
     assert kv_plan["decode_attention_kind"] == "splitk_gate_f32"
+    assert kv_plan["max_context"] == 512
+    assert kv_plan["attention_block_size"] == 256
+    assert kv_plan["attention_block_table_len"] == 2
+    assert kv_plan["attention_capacity_tokens"] == 512
+    assert kv_plan["span_shape_compatible"] is True
     assert kv_plan["all_registered"] is True
     assert kv_plan["dispatch_keys"]["decode_attention"] == {
         "backend": "hip_gfx1151",

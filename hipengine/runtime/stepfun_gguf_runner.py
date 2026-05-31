@@ -45,6 +45,7 @@ from hipengine.tokenization import StepFunGGUFTokenizer
 DEFAULT_STEPFUN_SHORT_CONTEXT = 512
 DEFAULT_STEPFUN_MAX_NEW_TOKENS = 1
 STEPFUN_GGUF_KERNEL_QUANT = "gguf_step35"
+STEPFUN_KV_ATTENTION_BLOCK_SIZE = 256
 BF16_BYTES = 2
 
 
@@ -184,10 +185,21 @@ class StepFunKVDecodeKernelPlan:
     dispatch_keys: Mapping[str, KernelKey]
     registered: Mapping[str, bool]
     decode_attention_kind: str
+    max_context: int
+    attention_block_size: int
+    attention_block_table_len: int
 
     @property
     def all_registered(self) -> bool:
         return all(bool(value) for value in self.registered.values())
+
+    @property
+    def attention_capacity_tokens(self) -> int:
+        return self.attention_block_size * self.attention_block_table_len
+
+    @property
+    def span_shape_compatible(self) -> bool:
+        return self.attention_capacity_tokens >= self.max_context
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -195,6 +207,11 @@ class StepFunKVDecodeKernelPlan:
             "model_quant": self.model_quant,
             "kv_storage_dtype": self.kv_storage_dtype,
             "decode_attention_kind": self.decode_attention_kind,
+            "max_context": self.max_context,
+            "attention_block_size": self.attention_block_size,
+            "attention_block_table_len": self.attention_block_table_len,
+            "attention_capacity_tokens": self.attention_capacity_tokens,
+            "span_shape_compatible": self.span_shape_compatible,
             "dispatch_keys": {
                 name: _kernel_key_to_dict(key) for name, key in self.dispatch_keys.items()
             },
@@ -241,7 +258,10 @@ class StepFunTextDecodeResourcePlan:
             context_pages=int(context_pages),
             page_size=int(page_size),
             backend=backend,
-            kv_decode_kernel_plan=stepfun_kv_decode_kernel_plan(backend=backend),
+            kv_decode_kernel_plan=stepfun_kv_decode_kernel_plan(
+                backend=backend,
+                max_context=int(context_pages) * int(page_size),
+            ),
         )
 
     @property
@@ -394,7 +414,10 @@ class StepFunShortContextDecodePlanner:
     def resolve_kv_dispatch_keys(self) -> Mapping[str, KernelKey]:
         """Return BF16 KV write/decode dispatch keys for this model."""
 
-        return stepfun_kv_decode_kernel_plan(backend=self.backend).dispatch_keys
+        return stepfun_kv_decode_kernel_plan(
+            backend=self.backend,
+            max_context=self.max_context,
+        ).dispatch_keys
 
     def _validate_short_context(self, input_ids: tuple[int, ...]) -> None:
         if len(input_ids) + self.max_new_tokens > self.max_context:
@@ -1349,11 +1372,24 @@ def stepfun_kv_cache_nbytes(
     )
 
 
-def stepfun_kv_decode_kernel_plan(*, backend: str = "hip_gfx1151") -> StepFunKVDecodeKernelPlan:
+def stepfun_kv_decode_kernel_plan(
+    *,
+    backend: str = "hip_gfx1151",
+    max_context: int = DEFAULT_STEPFUN_SHORT_CONTEXT,
+    attention_block_size: int = STEPFUN_KV_ATTENTION_BLOCK_SIZE,
+) -> StepFunKVDecodeKernelPlan:
     """Return registered BF16 KV dispatch keys planned for StepFun decode."""
 
+    if max_context <= 0:
+        raise ValueError("max_context must be positive")
+    if attention_block_size <= 0:
+        raise ValueError("attention_block_size must be positive")
+    attention_block_table_len = _ceil_div(int(max_context), int(attention_block_size))
     _register_backend_plugin(backend)
-    spans = _planning_bf16_kv_spans()
+    spans = _planning_bf16_kv_spans(
+        block_table_len=attention_block_table_len,
+        max_live_count=max(0, int(max_context) - 1),
+    )
     dispatch_keys = {
         "prompt_kv_write": plan_paged_kv_write(
             spans,
@@ -1381,6 +1417,9 @@ def stepfun_kv_decode_kernel_plan(*, backend: str = "hip_gfx1151") -> StepFunKVD
         dispatch_keys=dispatch_keys,
         registered=registered,
         decode_attention_kind=PagedAttnDecodeKind.SPLITK_GATE_F32.value,
+        max_context=int(max_context),
+        attention_block_size=int(attention_block_size),
+        attention_block_table_len=attention_block_table_len,
     )
     if not plan.all_registered:
         missing = {name: key for name, key in dispatch_keys.items() if not registered[name]}
@@ -1389,19 +1428,27 @@ def stepfun_kv_decode_kernel_plan(*, backend: str = "hip_gfx1151") -> StepFunKVD
     return plan
 
 
-def _planning_bf16_kv_spans() -> KVLiveSpans:
+def _planning_bf16_kv_spans(*, block_table_len: int, max_live_count: int) -> KVLiveSpans:
     """Construct no-allocation span metadata for registry-key planning."""
 
+    if block_table_len <= 0:
+        raise ValueError("block_table_len must be positive")
+    if max_live_count < 0:
+        raise ValueError("max_live_count must be non-negative")
     device = Device("hip", 0)
-    block_table = Tensor.from_handle(0, (1,), DType.INT32, device)
+    block_table = Tensor.from_handle(0, (int(block_table_len),), DType.INT32, device)
     live_counts = Tensor.from_handle(0, (1,), DType.INT64, device)
     return KVLiveSpans.paged_uniform(
         block_table=block_table,
         live_counts=live_counts,
-        max_live_count=1,
+        max_live_count=int(max_live_count),
         storage_dtype=DType.BF16,
         span_role="decode",
     )
+
+
+def _ceil_div(value: int, divisor: int) -> int:
+    return (int(value) + int(divisor) - 1) // int(divisor)
 
 
 def _can_resolve_kernel_key(key: KernelKey) -> bool:
@@ -1549,6 +1596,7 @@ __all__ = [
     "DEFAULT_STEPFUN_MAX_NEW_TOKENS",
     "DEFAULT_STEPFUN_SHORT_CONTEXT",
     "STEPFUN_GGUF_KERNEL_QUANT",
+    "STEPFUN_KV_ATTENTION_BLOCK_SIZE",
     "StepFunDecodePlan",
     "StepFunKVCacheAllocation",
     "StepFunKVDecodeKernelPlan",

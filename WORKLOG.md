@@ -27917,3 +27917,31 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted status tests passed (`3 passed`), the artifact schema check printed `correctness status kv dispatch progress ok`, and the full StepFun guard passed (`102 passed` plus CPU-reference fixture checks).
+
+## 2026-05-31 — StepFun KV span geometry recorded
+
+Extended the StepFun GGUF KV decode kernel plan with the parent paged-attention span geometry needed for the 512-token c=1 bring-up window. The plan now records `max_context=512`, `attention_block_size=256`, `attention_block_table_len=2`, `attention_capacity_tokens=512`, and `span_shape_compatible=true` alongside the existing `gguf_step35` BF16 prompt-KV-write, decode-KV-write, and gated attention dispatch keys. This documents shape readiness for the planned KV path only; the streaming KV-backed runner, llama.cpp/CPU oracle parity, and end-to-end inference readiness remain false.
+
+Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json` and `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, updated the status helper to surface the span fields, and added planner/load-smoke/status tests for the machine-readable geometry.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_decode_planner.py tests/test_stepfun_load_smoke.py tests/test_stepfun_correctness_status.py -q
+python3 - <<'PY'
+import json
+r=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json'))
+kp=r['text_decode_resource_plan']['kv_decode_kernel_plan']
+assert kp['attention_block_size'] == 256
+assert kp['attention_block_table_len'] == 2
+assert kp['attention_capacity_tokens'] == 512
+assert kp['span_shape_compatible'] is True
+s=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+assert s['kv_decode_dispatch_progress']['span_shape_compatible'] is True
+assert s['kv_backed_decode_ready'] is False
+print('stepfun kv span geometry artifacts ok')
+PY
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted planner/load-smoke/status tests passed (`11 passed`), artifact schema check printed `stepfun kv span geometry artifacts ok`, and the full StepFun guard passed (`103 passed` plus CPU-reference fixture checks).

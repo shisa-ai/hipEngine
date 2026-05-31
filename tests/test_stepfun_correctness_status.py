@@ -95,8 +95,13 @@ def _write_resource_artifact(path: Path) -> None:
                     "backend": "hip_gfx1151",
                     "kv_decode_kernel_plan": {
                         "all_registered": True,
+                        "attention_block_size": 256,
+                        "attention_block_table_len": 2,
+                        "attention_capacity_tokens": 512,
                         "backend": "hip_gfx1151",
                         "decode_attention_kind": "splitk_gate_f32",
+                        "max_context": 512,
+                        "span_shape_compatible": True,
                         "dispatch_keys": {
                             "decode_attention": {
                                 "backend": "hip_gfx1151",
@@ -195,6 +200,11 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert kv_dispatch["model_quant"] == "gguf_step35"
     assert kv_dispatch["kv_storage_dtype"] == "bf16"
     assert kv_dispatch["decode_attention_kind"] == "splitk_gate_f32"
+    assert kv_dispatch["max_context"] == 512
+    assert kv_dispatch["attention_block_size"] == 256
+    assert kv_dispatch["attention_block_table_len"] == 2
+    assert kv_dispatch["attention_capacity_tokens"] == 512
+    assert kv_dispatch["span_shape_compatible"] is True
     assert kv_dispatch["all_registered"] is True
     assert kv_dispatch["registered"] == {
         "decode_attention": True,

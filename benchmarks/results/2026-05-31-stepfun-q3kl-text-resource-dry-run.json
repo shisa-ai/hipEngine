@@ -36,6 +36,9 @@
     "kv_buffer_count": 90,
     "kv_decode_kernel_plan": {
       "all_registered": true,
+      "attention_block_size": 256,
+      "attention_block_table_len": 2,
+      "attention_capacity_tokens": 512,
       "backend": "hip_gfx1151",
       "decode_attention_kind": "splitk_gate_f32",
       "dispatch_keys": {
@@ -59,13 +62,15 @@
         }
       },
       "kv_storage_dtype": "bf16",
+      "max_context": 512,
       "model_quant": "gguf_step35",
       "note": "These are registry-key checks for the planned StepFun BF16 KV write/decode path. They do not claim that the streaming runner or oracle parity is complete.",
       "registered": {
         "decode_attention": true,
         "decode_kv_write": true,
         "prompt_kv_write": true
-      }
+      },
+      "span_shape_compatible": true
     },
     "kv_gib": 0.087890625,
     "kv_layer_nbytes": [

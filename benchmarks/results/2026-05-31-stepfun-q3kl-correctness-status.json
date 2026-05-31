@@ -39,6 +39,9 @@
   "kv_backed_decode_ready": false,
   "kv_decode_dispatch_progress": {
     "all_registered": true,
+    "attention_block_size": 256,
+    "attention_block_table_len": 2,
+    "attention_capacity_tokens": 512,
     "backend": "hip_gfx1151",
     "decode_attention_kind": "splitk_gate_f32",
     "dispatch_keys": {
@@ -62,6 +65,7 @@
       }
     },
     "kv_storage_dtype": "bf16",
+    "max_context": 512,
     "model_quant": "gguf_step35",
     "note": "Derived from the text resource dry-run artifact. Registry dispatch readiness does not mean the streaming KV-backed runner or oracle parity is complete.",
     "registered": {
@@ -70,7 +74,8 @@
       "prompt_kv_write": true
     },
     "resource_status": "planned",
-    "source": "resource_artifact.text_decode_resource_plan.kv_decode_kernel_plan"
+    "source": "resource_artifact.text_decode_resource_plan.kv_decode_kernel_plan",
+    "span_shape_compatible": true
   },
   "kv_decode_dispatch_ready": true,
   "linear_projection_progress": {
