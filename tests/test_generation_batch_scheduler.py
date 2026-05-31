@@ -11310,6 +11310,7 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
             "native_compact_prefill": True,
             "native_caware_decode": False,
             "concurrency": 2,
+            "prompt_lengths": [2, 3],
             "warmup_decode_tokens": 0,
             "gen_tokens_per_request": 2,
         },
@@ -11328,8 +11329,8 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
             "seed_tokens": {"0": {"token_id": 10}, "1": {"token_id": 20}},
             "generated_tokens": {"0": [{"token_id": 11}, {"token_id": 12}], "1": [{"token_id": 21}, {"token_id": 22}]},
             "completed": [
-                {"request_id": 0, "generated_tokens": [11, 12], "finished": True, "finish_reason": "length"},
-                {"request_id": 1, "generated_tokens": [21, 22], "finished": True, "finish_reason": "length"},
+                {"request_id": 0, "prompt_tokens": [100, 101], "generated_tokens": [11, 12], "finished": True, "finish_reason": "length"},
+                {"request_id": 1, "prompt_tokens": [200, 201, 202], "generated_tokens": [21, 22], "finished": True, "finish_reason": "length"},
             ],
             "batch_execution": {
                 "native_compact_prefill": True,
@@ -11426,6 +11427,11 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
     missing_finish_reason_claim["execution"]["completed"][0].pop("finish_reason")
     with pytest.raises(ValueError, match=r"execution.completed\[0\].finish_reason must be a non-empty string"):
         validate_cn_diagnostic_artifact_payload(missing_finish_reason_claim)
+
+    mismatched_completed_prompt_claim = json.loads(json.dumps(payload))
+    mismatched_completed_prompt_claim["execution"]["completed"][1]["prompt_tokens"].pop()
+    with pytest.raises(ValueError, match=r"execution.completed\[1\].prompt_tokens length must match workload.prompt_lengths"):
+        validate_cn_diagnostic_artifact_payload(mismatched_completed_prompt_claim)
 
     missing_shape_claim = json.loads(json.dumps(payload))
     missing_shape_claim["workload"].pop("concurrency")
