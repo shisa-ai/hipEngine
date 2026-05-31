@@ -11,6 +11,7 @@ correctness/protocol gates in ``docs/BENCHMARK.md`` pass.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import json
 import math
 import os
@@ -136,11 +137,42 @@ def _software_context() -> dict[str, Any]:
     }
 
 
+def _visible_hip_device_context() -> dict[str, Any]:
+    env_keys = ("HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES", "GPU_DEVICE_ORDINAL")
+    context: dict[str, Any] = {"env": {key: os.environ.get(key) for key in env_keys if os.environ.get(key) is not None}}
+    try:
+        hip = ctypes.CDLL("libamdhip64.so")
+        count = ctypes.c_int()
+        count_error = int(hip.hipGetDeviceCount(ctypes.byref(count)))
+        context["hipGetDeviceCount_error"] = count_error
+        context["visible_device_count"] = int(count.value)
+        if count_error != 0 or count.value <= 0:
+            return context
+        device = ctypes.c_int()
+        device_error = int(hip.hipGetDevice(ctypes.byref(device)))
+        context["hipGetDevice_error"] = device_error
+        context["current_device"] = int(device.value)
+        if device_error != 0:
+            return context
+        name = ctypes.create_string_buffer(256)
+        name_error = int(hip.hipDeviceGetName(name, len(name), device))
+        context["hipDeviceGetName_error"] = name_error
+        if name_error == 0:
+            context["device_name"] = name.value.decode("utf-8", errors="replace")
+    except Exception as exc:  # pragma: no cover - best-effort benchmark provenance.
+        context["error"] = f"{type(exc).__name__}: {exc}"
+    return context
+
+
 def _hardware_context() -> dict[str, Any]:
+    visible_device = _visible_hip_device_context()
+    visible_device_name = visible_device.get("device_name")
+    gpu_name = visible_device_name if isinstance(visible_device_name, str) and visible_device_name else "AMD Radeon Pro W7900"
     return {
-        "gpu": "AMD Radeon Pro W7900",
+        "gpu": gpu_name,
         "arch": "gfx1100",
-        "default_hardware": True,
+        "default_hardware": gpu_name == "AMD Radeon Pro W7900",
+        "visible_device": visible_device,
         "rocminfo": _run_capture(["bash", "-lc", "rocminfo | grep -E 'Name:|gfx' | head -4"], timeout=10.0),
         "rocm_smi": _run_capture(["rocm-smi", "--showmeminfo", "vram", "--showuse", "--showtemp"], timeout=10.0),
     }

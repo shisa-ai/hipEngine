@@ -1453,9 +1453,10 @@ roll-up/status view.
       context resolved from the visible HIP device). Retained-bench command
       labels also preserve `HIP_VISIBLE_DEVICES=1` as an `env` prefix for the
       benchmark, primitive correctness reference, and profiled command, and the
-      serial-bridge baseline benchmark label preserves the same prefix; schema
-      and c-sweep launch validators accept that prefix while still requiring the
-      retained benchmark script after it. Accepted artifact validation now also
+      serial-bridge baseline benchmark label plus hardware metadata preserve the
+      same visible GPU1/XTX provenance; schema and c-sweep launch validators
+      accept that prefix while still requiring the retained benchmark script
+      after it. Accepted artifact validation now also
       requires those command prefixes whenever retained hardware/primitive device
       metadata stamps `HIP_VISIBLE_DEVICES`, so GPU1 re-baseline JSON cannot
       strip the device-selection env from reproducibility commands. The c-sweep
