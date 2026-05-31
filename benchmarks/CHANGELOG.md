@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-05-31
 
+- [diagnostic retained] hipEngine / DFlash 27B zero-probe profile route + verifier graph / Qwen3.6-27B-PARO dense + z-lab DFlash / W7900/gfx1100 B=4 D64 9-prompt branch-copy: exact `9/9`; profile route `1.061x -> 1.137x` AR (`34.63 -> 36.81 tok/s`, +6.3% spec tok/s) by adding opt-in `--verifier-graph auto`, with chain-row graph validation passing; clears the numeric `>1.10x` gate but remains diagnostic/non-default because the route needs prior prompt history and verifier graph is still opt-in; artifact `benchmarks/results/2026-05-31-hipengine-dflash-27b-profile-route-verifier-graph.json`.
 - [diagnostic retained] hipEngine / DFlash 27B zero-probe profile route / Qwen3.6-27B-PARO dense + z-lab DFlash / W7900/gfx1100 B=4 D64 9-prompt branch-copy: exact `9/9`; multiloop all-chain baseline `0.975x -> 1.061x` AR (`31.75 -> 34.63 tok/s`, +9.1% spec tok/s) by routing five prior exact chain winners to DFlash and four losers to AR with a profile-history manifest; below the `>1.10x` promotion gate and not a deployable classifier; artifact `benchmarks/results/2026-05-31-hipengine-dflash-27b-profile-route-multiloop.json`.
 
 ## 2026-05-26

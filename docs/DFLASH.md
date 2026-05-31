@@ -321,20 +321,23 @@ losers: `code:class_continuation`, `code:json_yaml_continuation`,
 `instruct:simple_qa_qwen_static_chat` route to DFlash chain; quicksort,
 function-continuation, sort-third, and the short GSM8K-style prompt route to AR.
 
-| Metric | all-chain `multi_row_decode` | profile route |
-| --- | ---: | ---: |
-| exact rows | 9/9 | 9/9 |
-| AR decode | 32.57 tok/s | 32.65 tok/s |
-| DFlash/spec decode | 31.75 tok/s | 34.63 tok/s |
-| vs AR | 0.975x | 1.061x |
-| route mix | 9 chain / 0 AR | 5 chain / 4 AR |
+| Metric | all-chain `multi_row_decode` | profile route | profile route + verifier graph |
+| --- | ---: | ---: | ---: |
+| exact rows | 9/9 | 9/9 | 9/9 |
+| AR decode | 32.57 tok/s | 32.65 tok/s | 32.38 tok/s |
+| DFlash/spec decode | 31.75 tok/s | 34.63 tok/s | 36.81 tok/s |
+| vs AR | 0.975x | 1.061x | 1.137x |
+| route mix | 9 chain / 0 AR | 5 chain / 4 AR | 5 chain / 4 AR |
 
-This is the first retained 27B dense DFlash row above AR after the exact
-multi-row-decode verifier work, but it remains a **diagnostic profile-history
-route**, not a promoted default: it is below the formal `>1.10x` gate and relies
-on prior prompt history rather than a deployable online classifier.  Retained
-artifact:
-[`2026-05-31-hipengine-dflash-27b-profile-route-multiloop.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-profile-route-multiloop.json).
+Verifier HIP graph capture (`--verifier-graph auto`) on the same route was the
+first multiloop result to clear the numeric `>1.10x` gate: exact `9/9`,
+`36.81 tok/s`, `1.137x` AR.  Chain rows report graph validation success with
+`captured_validated_miss`/`replayed` statuses.  This remains a **diagnostic
+profile-history route**, not a promoted default: the route depends on prior
+prompt history rather than a deployable online classifier, and verifier graph
+capture is still opt-in.  Retained artifacts:
+[`2026-05-31-hipengine-dflash-27b-profile-route-multiloop.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-profile-route-multiloop.json) and
+[`2026-05-31-hipengine-dflash-27b-profile-route-verifier-graph.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-profile-route-verifier-graph.json).
 
 ### 2026-05-26 W7900 27B multi-row-decode default
 

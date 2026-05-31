@@ -1,0 +1,624 @@
+{
+  "commands": {
+    "guard": "python parse exact gate + py_compile + HIP_VISIBLE_DEVICES=0 ... pytest -q tests/test_paro_awq_gemv_multi_row_decode.py tests/test_dflash_profile_route_manifest.py tests/test_dflash_draft_confidence.py tests/test_speculative_benchmark.py",
+    "profile_route_verifier_graph": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --verifier-graph auto --full-attn-chain-mode batched --canonical-commit-mode branch_copy --profile-route-manifest /tmp/multiloop-dflash-27b-w7900-profile-route-iter2-manifest.json --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/multiloop-dflash-27b-w7900.json"
+  },
+  "correctness_gate": {
+    "oracle": "same-session greedy AR equality plus finite logits from dflash_chain_e2e_bench",
+    "previous_profile_route_exact": true,
+    "verifier_graph_profile_route_exact": true,
+    "verifier_graph_validation_passed": true
+  },
+  "decision": {
+    "accepted": true,
+    "defaulted": false,
+    "reason": "Keep as multiloop best diagnostic. It exceeds the numeric >1.10 speed gate exactly, but remains non-default because the route manifest is profile-history/oracle-like and verifier graph auto is still an opt-in prototype."
+  },
+  "deltas": {
+    "verifier_graph_vs_ar_percent": 13.703789015768763,
+    "verifier_graph_vs_profile_route_spec_tok_s_percent": 6.29579881650093,
+    "verifier_graph_vs_profile_route_speedup_relative_percent": 7.200859326235354
+  },
+  "hardware": {
+    "arch": "gfx1100",
+    "backend": "hip_gfx1100",
+    "gpu": "AMD Radeon Pro W7900",
+    "selection": "HIP_VISIBLE_DEVICES=0"
+  },
+  "manifest": {
+    "default": "ar",
+    "description": "Zero-probe DFlash profile/history route generated from exact same-session bench rows.",
+    "generated_at": "2026-05-31T10:33:57.669936+00:00",
+    "min_chain_speedup": 1.0,
+    "routes": {
+      "code:class_continuation": "chain",
+      "code:humaneval_add": "chain",
+      "code:json_yaml_continuation": "chain",
+      "instruct:simple_qa_no_template": "chain",
+      "instruct:simple_qa_qwen_static_chat": "chain"
+    },
+    "row_evidence": [
+      {
+        "benchmark_group": "code_promotion",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "code:quicksort_prefix",
+        "route": "ar",
+        "speedup_vs_ar": 0.9716362408958139
+      },
+      {
+        "benchmark_group": "code_promotion",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "code:function_continuation",
+        "route": "ar",
+        "speedup_vs_ar": 0.7842382851729205
+      },
+      {
+        "benchmark_group": "code_promotion",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "code:class_continuation",
+        "route": "chain",
+        "speedup_vs_ar": 1.1777817346649235
+      },
+      {
+        "benchmark_group": "code_promotion",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "code:json_yaml_continuation",
+        "route": "chain",
+        "speedup_vs_ar": 1.025240346267412
+      },
+      {
+        "benchmark_group": "code_promotion",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "code:humaneval_add",
+        "route": "chain",
+        "speedup_vs_ar": 1.2277510988191724
+      },
+      {
+        "benchmark_group": "code_promotion",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "code:humaneval_sort_third",
+        "route": "ar",
+        "speedup_vs_ar": 0.657187767486857
+      },
+      {
+        "benchmark_group": "robustness",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "math:short_gsm8k_style",
+        "route": "ar",
+        "speedup_vs_ar": 0.9735602528641071
+      },
+      {
+        "benchmark_group": "robustness",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "instruct:simple_qa_no_template",
+        "route": "chain",
+        "speedup_vs_ar": 1.2021077843064507
+      },
+      {
+        "benchmark_group": "robustness",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "instruct:simple_qa_qwen_static_chat",
+        "route": "chain",
+        "speedup_vs_ar": 1.1011176665662221
+      }
+    ],
+    "source_artifact": "/tmp/multiloop-dflash-27b-w7900-baseline-source-iter2.json",
+    "summary": {
+      "chain_routes": 5,
+      "default_route": "ar",
+      "rows_seen": 9,
+      "rows_with_prompt_id": 9,
+      "skipped_rows": 0
+    }
+  },
+  "measurements": {
+    "previous_profile_route_no_verifier_graph": {
+      "acceptance": {
+        "accept_histogram": {
+          "0": 7,
+          "1": 6,
+          "2": 7,
+          "3": 6,
+          "4": 51
+        },
+        "accepted_output_tokens": 242,
+        "avg_accept_length": 3.142857142857143,
+        "exact_rate_0_to_n": {
+          "0": 0.09090909090909091,
+          "1": 0.07792207792207792,
+          "10": 0.0,
+          "2": 0.09090909090909091,
+          "3": 0.07792207792207792,
+          "4": 0.6623376623376623,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "ge_rate_1_to_n": {
+          "1": 0.9090909090909091,
+          "10": 0.0,
+          "2": 0.8311688311688312,
+          "3": 0.7402597402597403,
+          "4": 0.6623376623376623,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "multi_token_acceptance_rate": 0.8311688311688312,
+        "steps": 77
+      },
+      "all_correctness_passed": true,
+      "all_exact_match_ar": true,
+      "ar_decode_tok_s": 32.65169583914418,
+      "decode_tokens": 576,
+      "routes": {
+        "code:class_continuation": "spec",
+        "code:function_continuation": "spec",
+        "code:humaneval_add": "spec",
+        "code:humaneval_sort_third": "spec",
+        "code:json_yaml_continuation": "spec",
+        "code:quicksort_prefix": "spec",
+        "instruct:simple_qa_no_template": "spec",
+        "instruct:simple_qa_qwen_static_chat": "spec",
+        "math:short_gsm8k_style": "spec"
+      },
+      "row_speedups": [
+        {
+          "ar_decode_tok_s": 32.8656737441351,
+          "draft_seconds": 0.0,
+          "exact_match_ar": true,
+          "prompt_id": "code:quicksort_prefix",
+          "route": "spec",
+          "spec_decode_tok_s": 32.54533753547081,
+          "speedup_vs_ar": 0.9902531677531345,
+          "target_verify_rows_per_output_token": 1.0,
+          "target_verify_seconds": 1.9664875169983134
+        },
+        {
+          "ar_decode_tok_s": 32.83909026382624,
+          "draft_seconds": 0.0,
+          "exact_match_ar": true,
+          "prompt_id": "code:function_continuation",
+          "route": "spec",
+          "spec_decode_tok_s": 32.54879444807016,
+          "speedup_vs_ar": 0.9911600530519002,
+          "target_verify_rows_per_output_token": 1.0,
+          "target_verify_seconds": 1.9662786620901898
+        },
+        {
+          "ar_decode_tok_s": 32.79824252658302,
+          "draft_seconds": 0.306158903054893,
+          "exact_match_ar": true,
+          "prompt_id": "code:class_continuation",
+          "route": "spec",
+          "spec_decode_tok_s": 37.79155882910705,
+          "speedup_vs_ar": 1.1522434105570427,
+          "target_verify_rows_per_output_token": 1.1875,
+          "target_verify_seconds": 1.3841475929366425
+        },
+        {
+          "ar_decode_tok_s": 32.50007524481502,
+          "draft_seconds": 0.34359062067233026,
+          "exact_match_ar": true,
+          "prompt_id": "code:json_yaml_continuation",
+          "route": "spec",
+          "spec_decode_tok_s": 33.126993451179246,
+          "speedup_vs_ar": 1.0192897463049486,
+          "target_verify_rows_per_output_token": 1.328125,
+          "target_verify_seconds": 1.5844292204128578
+        },
+        {
+          "ar_decode_tok_s": 32.65208292934232,
+          "draft_seconds": 0.2835215200902894,
+          "exact_match_ar": true,
+          "prompt_id": "code:humaneval_add",
+          "route": "spec",
+          "spec_decode_tok_s": 41.0843598985983,
+          "speedup_vs_ar": 1.2582462193148003,
+          "target_verify_rows_per_output_token": 1.09375,
+          "target_verify_seconds": 1.2710642209276557
+        },
+        {
+          "ar_decode_tok_s": 32.26548012889079,
+          "draft_seconds": 0.0,
+          "exact_match_ar": true,
+          "prompt_id": "code:humaneval_sort_third",
+          "route": "spec",
+          "spec_decode_tok_s": 32.36991947348429,
+          "speedup_vs_ar": 1.0032368755765075,
+          "target_verify_rows_per_output_token": 1.0,
+          "target_verify_seconds": 1.977144245058298
+        },
+        {
+          "ar_decode_tok_s": 32.73186984804675,
+          "draft_seconds": 0.0,
+          "exact_match_ar": true,
+          "prompt_id": "math:short_gsm8k_style",
+          "route": "spec",
+          "spec_decode_tok_s": 32.355043591411835,
+          "speedup_vs_ar": 0.9884874815162018,
+          "target_verify_rows_per_output_token": 1.0,
+          "target_verify_seconds": 1.9780532768927515
+        },
+        {
+          "ar_decode_tok_s": 32.62498038737183,
+          "draft_seconds": 0.2996301631210372,
+          "exact_match_ar": true,
+          "prompt_id": "instruct:simple_qa_no_template",
+          "route": "spec",
+          "spec_decode_tok_s": 36.55782720029755,
+          "speedup_vs_ar": 1.1205471012159753,
+          "target_verify_rows_per_output_token": 1.171875,
+          "target_verify_seconds": 1.447377605130896
+        },
+        {
+          "ar_decode_tok_s": 32.59652672262886,
+          "draft_seconds": 0.3192455895477906,
+          "exact_match_ar": true,
+          "prompt_id": "instruct:simple_qa_qwen_static_chat",
+          "route": "spec",
+          "spec_decode_tok_s": 35.359369867006194,
+          "speedup_vs_ar": 1.084758820100282,
+          "target_verify_rows_per_output_token": 1.25,
+          "target_verify_seconds": 1.4869547669077292
+        }
+      ],
+      "rows": 9,
+      "spec_decode_tok_s": 34.632385953202075,
+      "speedup_vs_ar": 1.0606611712854241,
+      "summed_phase_seconds": {
+        "commit": 0.012267893180251122,
+        "draft": 1.5521467964863405,
+        "target_verify": 15.061937107355334
+      },
+      "target_verify_rows_per_output_token": 1.1145833333333333
+    },
+    "profile_route_verifier_graph_auto": {
+      "acceptance": {
+        "accept_histogram": {
+          "0": 7,
+          "1": 6,
+          "2": 7,
+          "3": 6,
+          "4": 51
+        },
+        "accepted_output_tokens": 242,
+        "avg_accept_length": 3.142857142857143,
+        "exact_rate_0_to_n": {
+          "0": 0.09090909090909091,
+          "1": 0.07792207792207792,
+          "10": 0.0,
+          "2": 0.09090909090909091,
+          "3": 0.07792207792207792,
+          "4": 0.6623376623376623,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "ge_rate_1_to_n": {
+          "1": 0.9090909090909091,
+          "10": 0.0,
+          "2": 0.8311688311688312,
+          "3": 0.7402597402597403,
+          "4": 0.6623376623376623,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "multi_token_acceptance_rate": 0.8311688311688312,
+        "steps": 77
+      },
+      "all_correctness_passed": true,
+      "all_exact_match_ar": true,
+      "ar_decode_tok_s": 32.37602864145935,
+      "decode_tokens": 576,
+      "row_speedups": [
+        {
+          "ar_decode_tok_s": 32.473207271799836,
+          "draft_seconds": 0.0,
+          "exact_match_ar": true,
+          "prompt_id": "code:quicksort_prefix",
+          "route": "spec",
+          "spec_decode_tok_s": 32.21951269950053,
+          "speedup_vs_ar": 0.9921875726602583,
+          "target_verify_rows_per_output_token": 1.0,
+          "target_verify_seconds": 1.9863739280262962,
+          "verifier_graph": {
+            "last": null,
+            "mode": "off",
+            "status_counts": {},
+            "validation_passed": null
+          }
+        },
+        {
+          "ar_decode_tok_s": 32.4993927710372,
+          "draft_seconds": 0.0,
+          "exact_match_ar": true,
+          "prompt_id": "code:function_continuation",
+          "route": "spec",
+          "spec_decode_tok_s": 32.46149756381343,
+          "speedup_vs_ar": 0.998833971837851,
+          "target_verify_rows_per_output_token": 1.0,
+          "target_verify_seconds": 1.9715664649847895,
+          "verifier_graph": {
+            "last": null,
+            "mode": "off",
+            "status_counts": {},
+            "validation_passed": null
+          }
+        },
+        {
+          "ar_decode_tok_s": 32.26716409913721,
+          "draft_seconds": 0.31238856085110456,
+          "exact_match_ar": true,
+          "prompt_id": "code:class_continuation",
+          "route": "spec",
+          "spec_decode_tok_s": 42.25590512721347,
+          "speedup_vs_ar": 1.3095636479669233,
+          "target_verify_rows_per_output_token": 1.1875,
+          "target_verify_seconds": 1.1994844428263605,
+          "verifier_graph": {
+            "last": {
+              "bucket_key": {
+                "base_slot": 2,
+                "capture_width": 25600,
+                "chain_attn_mode": "batched",
+                "linear_attn_mode": "chain_tloop",
+                "rows": 5
+              },
+              "chain_attn_mode": "batched",
+              "linear_attn_fallback": false,
+              "linear_attn_mode": "chain_tloop",
+              "mode": "auto",
+              "replay_count": 15,
+              "replayed": true,
+              "status": "replayed",
+              "validation_passed": true
+            },
+            "mode": "auto",
+            "status_counts": {
+              "captured_validated_miss": 1,
+              "replayed": 14
+            },
+            "validation_passed": true
+          }
+        },
+        {
+          "ar_decode_tok_s": 32.41675513598443,
+          "draft_seconds": 0.3549984567798674,
+          "exact_match_ar": true,
+          "prompt_id": "code:json_yaml_continuation",
+          "route": "spec",
+          "spec_decode_tok_s": 38.5604451450785,
+          "speedup_vs_ar": 1.1895220537441833,
+          "target_verify_rows_per_output_token": 1.328125,
+          "target_verify_seconds": 1.3014606861397624,
+          "verifier_graph": {
+            "last": {
+              "bucket_key": {
+                "base_slot": 2,
+                "capture_width": 25600,
+                "chain_attn_mode": "batched",
+                "linear_attn_mode": "chain_tloop",
+                "rows": 5
+              },
+              "chain_attn_mode": "batched",
+              "linear_attn_fallback": false,
+              "linear_attn_mode": "chain_tloop",
+              "mode": "auto",
+              "replay_count": 17,
+              "replayed": true,
+              "status": "replayed",
+              "validation_passed": true
+            },
+            "mode": "auto",
+            "status_counts": {
+              "captured_validated_miss": 1,
+              "replayed": 16
+            },
+            "validation_passed": true
+          }
+        },
+        {
+          "ar_decode_tok_s": 32.253727853423044,
+          "draft_seconds": 0.28993954602628946,
+          "exact_match_ar": true,
+          "prompt_id": "code:humaneval_add",
+          "route": "spec",
+          "spec_decode_tok_s": 44.85301768619411,
+          "speedup_vs_ar": 1.3906304998302366,
+          "target_verify_rows_per_output_token": 1.09375,
+          "target_verify_seconds": 1.1341534588718787,
+          "verifier_graph": {
+            "last": {
+              "bucket_key": {
+                "base_slot": 2,
+                "capture_width": 25600,
+                "chain_attn_mode": "batched",
+                "linear_attn_mode": "tree_tloop",
+                "rows": 5
+              },
+              "chain_attn_mode": "batched",
+              "linear_attn_fallback": false,
+              "linear_attn_mode": "tree_tloop",
+              "mode": "auto",
+              "replay_count": 1,
+              "replayed": true,
+              "status": "captured_validated_miss",
+              "validation_passed": true
+            },
+            "mode": "auto",
+            "status_counts": {
+              "captured_validated_miss": 2,
+              "replayed": 12
+            },
+            "validation_passed": true
+          }
+        },
+        {
+          "ar_decode_tok_s": 32.255239158586626,
+          "draft_seconds": 0.0,
+          "exact_match_ar": true,
+          "prompt_id": "code:humaneval_sort_third",
+          "route": "spec",
+          "spec_decode_tok_s": 31.946744648232098,
+          "speedup_vs_ar": 0.9904358324910326,
+          "target_verify_rows_per_output_token": 1.0,
+          "target_verify_seconds": 2.003334008040838,
+          "verifier_graph": {
+            "last": null,
+            "mode": "off",
+            "status_counts": {},
+            "validation_passed": null
+          }
+        },
+        {
+          "ar_decode_tok_s": 32.23648717514539,
+          "draft_seconds": 0.0,
+          "exact_match_ar": true,
+          "prompt_id": "math:short_gsm8k_style",
+          "route": "spec",
+          "spec_decode_tok_s": 32.262490526795695,
+          "speedup_vs_ar": 1.000806643463012,
+          "target_verify_rows_per_output_token": 1.0,
+          "target_verify_seconds": 1.9837278199847788,
+          "verifier_graph": {
+            "last": null,
+            "mode": "off",
+            "status_counts": {},
+            "validation_passed": null
+          }
+        },
+        {
+          "ar_decode_tok_s": 32.456270296975575,
+          "draft_seconds": 0.3070258619263768,
+          "exact_match_ar": true,
+          "prompt_id": "instruct:simple_qa_no_template",
+          "route": "spec",
+          "spec_decode_tok_s": 43.04083258933269,
+          "speedup_vs_ar": 1.3261176406132973,
+          "target_verify_rows_per_output_token": 1.171875,
+          "target_verify_seconds": 1.1771272640908137,
+          "verifier_graph": {
+            "last": {
+              "bucket_key": {
+                "base_slot": 2,
+                "capture_width": 25600,
+                "chain_attn_mode": "batched",
+                "linear_attn_mode": "tree_tloop",
+                "rows": 5
+              },
+              "chain_attn_mode": "batched",
+              "linear_attn_fallback": false,
+              "linear_attn_mode": "tree_tloop",
+              "mode": "auto",
+              "replay_count": 1,
+              "replayed": true,
+              "status": "captured_validated_miss",
+              "validation_passed": true
+            },
+            "mode": "auto",
+            "status_counts": {
+              "captured_validated_miss": 2,
+              "replayed": 13
+            },
+            "validation_passed": true
+          }
+        },
+        {
+          "ar_decode_tok_s": 32.52963538993559,
+          "draft_seconds": 0.3254356120014563,
+          "exact_match_ar": true,
+          "prompt_id": "instruct:simple_qa_qwen_static_chat",
+          "route": "spec",
+          "spec_decode_tok_s": 39.663220439635296,
+          "speedup_vs_ar": 1.2192949587103818,
+          "target_verify_rows_per_output_token": 1.25,
+          "target_verify_seconds": 1.28441995033063,
+          "verifier_graph": {
+            "last": {
+              "bucket_key": {
+                "base_slot": 2,
+                "capture_width": 25600,
+                "chain_attn_mode": "batched",
+                "linear_attn_mode": "tree_tloop",
+                "rows": 5
+              },
+              "chain_attn_mode": "batched",
+              "linear_attn_fallback": false,
+              "linear_attn_mode": "tree_tloop",
+              "mode": "auto",
+              "replay_count": 1,
+              "replayed": true,
+              "status": "captured_validated_miss",
+              "validation_passed": true
+            },
+            "mode": "auto",
+            "status_counts": {
+              "captured_validated_miss": 2,
+              "replayed": 14
+            },
+            "validation_passed": true
+          }
+        }
+      ],
+      "rows": 9,
+      "spec_decode_tok_s": 36.81277129816981,
+      "speedup_vs_ar": 1.1370378901576876,
+      "summed_phase_seconds": {
+        "commit": 0.010564674506895244,
+        "draft": 1.5897880375850946,
+        "target_verify": 14.041648023296148
+      },
+      "target_verify_rows_per_output_token": 1.1145833333333333
+    }
+  },
+  "models": {
+    "drafter_name": "z-lab/Qwen3.6-27B-DFlash",
+    "drafter_path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106",
+    "drafter_revision": "0919688658996800f86b895034249700e9481106",
+    "target_name": "z-lab/Qwen3.6-27B-PARO",
+    "target_path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207",
+    "target_revision": "84f86409151d4f2ec86dc0b6a096d5f6daa7f207"
+  },
+  "performance_claim": false,
+  "run_tag": "dflash-27b-w7900-profile-route-verifier-graph",
+  "schema_version": 1,
+  "status": "diagnostic",
+  "summary": "Profile-history routing plus verifier HIP graph capture on W7900 27B B=4/D64 exact suite reaches 1.137x AR, clearing the numeric >1.10 gate but remaining diagnostic because routing depends on prior prompt history and verifier graph is still opt-in.",
+  "timestamp": "2026-05-31T11:07:17.649852+00:00",
+  "validation": [
+    "Full profile-route + verifier-graph run exact 9/9; all_correctness_passed=true",
+    "All chain-row verifier_graph summaries report validation_passed=true with captured_validated_miss/replayed statuses",
+    "python3 -m py_compile scripts/dflash_chain_e2e_bench.py scripts/dflash_build_profile_route_manifest.py hipengine/runtime/qwen35_paro.py",
+    "HIP_VISIBLE_DEVICES=0 ... pytest -q tests/test_paro_awq_gemv_multi_row_decode.py tests/test_dflash_profile_route_manifest.py tests/test_dflash_draft_confidence.py tests/test_speculative_benchmark.py -> 17 passed"
+  ],
+  "workload": {
+    "canonical_commit_mode": "branch_copy",
+    "decode_tokens": 64,
+    "draft_budget": 4,
+    "full_attn_chain_mode": "batched",
+    "prompt_suite": "fixtures/dflash/stable_prompts.jsonl",
+    "route_policy": "profile history manifest generated from exact same-session all-chain rows with min-chain-speedup=1.0 and default-route=ar",
+    "shape": "DFlash route B=4 D64 9-prompt stable suite",
+    "verifier_graph": "auto",
+    "verifier_mode": "native_bulk_bplus1"
+  }
+}

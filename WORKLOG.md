@@ -24121,3 +24121,49 @@ prompts, next likely levers are (1) reduce drafter overhead on the five chain
 routes, especially graph/capture or query work, and (2) re-profile the chain
 verify window with `multi_row_decode` to see whether any remaining W4/down or
 host launch cost can be removed without changing exactness.
+
+## 2026-05-31 — DFlash multiloop iter7 verifier graph win
+
+Active loop: `dflash-27b-w7900/run-20260531-102747`.  After four config
+failures (`drafter-graph cross_bucket` was exact but only +0.28% / variance,
+`drafter-fusion qkv` regressed to `1.054x`, `draft-top-k 2 + p_min 0.20` lowered
+spec tok/s despite reducing rows/output, and B=3 regressed to `1.030x`), iter7
+switched from drafter/verifier-row knobs to target verifier launch overhead.
+
+Command:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --verifier-graph auto --full-attn-chain-mode batched --canonical-commit-mode branch_copy --profile-route-manifest /tmp/multiloop-dflash-27b-w7900-profile-route-iter2-manifest.json --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/multiloop-dflash-27b-w7900.json
+```
+
+Result: exact `9/9`, DFlash/spec `36.81 tok/s`, AR `32.38 tok/s`, `1.1370x`
+AR.  This improves the retained profile-route row `1.0607x -> 1.1370x` (+7.2%
+relative speedup, +6.3% spec tok/s).  Chain rows report verifier graph
+`validation_passed=true` with `captured_validated_miss` / `replayed` statuses.
+
+This clears the numeric `>1.10x` gate, but it is still retained as diagnostic /
+non-default: the route manifest is profile-history/oracle-like (not a deployable
+online classifier yet), and `--verifier-graph auto` remains an opt-in prototype.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/dflash_chain_e2e_bench.py scripts/dflash_build_profile_route_manifest.py hipengine/runtime/qwen35_paro.py
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_paro_awq_gemv_multi_row_decode.py tests/test_dflash_profile_route_manifest.py tests/test_dflash_draft_confidence.py tests/test_speculative_benchmark.py
+python3 -m json.tool benchmarks/results/2026-05-31-hipengine-dflash-27b-profile-route-verifier-graph.json >/tmp/hipengine-dflash-27b-profile-route-graph-artifact-check.json
+```
+
+Result: targeted pytest `17 passed`; artifact JSON valid.
+
+Retained artifact:
+- `benchmarks/results/2026-05-31-hipengine-dflash-27b-profile-route-verifier-graph.json`
+
+Docs/rollup updated:
+- `docs/DFLASH.md` profile-route table now includes verifier graph.
+- `benchmarks/README.md` and `benchmarks/CHANGELOG.md` retained diagnostic row.
+
+Next multiloop focus: either (1) turn profile/history routing into a real
+classifier or persistent history source, or (2) prove verifier graph auto is safe
+enough to default for native B+1 branch-copy chain rows.  Avoid more drafter
+QKV/graph/B/p_min churn for this exact D64 lane unless new profiler evidence
+shows a different bottleneck.
