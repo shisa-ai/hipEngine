@@ -1460,10 +1460,10 @@ roll-up/status view.
       strip the device-selection env from reproducibility commands. The c-sweep
       planner also prefixes planned/executed subprocess argv with the visible HIP
       device env, so summary JSON records the actual GPU1 selection instead of
-      relying on inherited shell state; c-sweep and retained-bench profiler
-      provenance gates reject profiler artifacts whose profiled command drops or
-      changes that env prefix. This does not close C2.5 because generated-token
-      equality vs independent c=1 for c=4/c=8 is still missing.
+      relying on inherited shell state; c-sweep, retained-bench, and
+      accepted-artifact gates reject profiler artifacts whose profiled command
+      drops or changes that env prefix. This does not close C2.5 because
+      generated-token equality vs independent c=1 for c=4/c=8 is still missing.
 - [x] **C2.6 slot-validation and long-context fallback guards.** Add CPU
       structural tests for invalid slot orders/duplicates/out-of-range ids,
       INT8 KV rejection, and the current `max_context >= 1024` per-row split-K

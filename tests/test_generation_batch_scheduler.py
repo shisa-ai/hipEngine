@@ -14465,6 +14465,17 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="commands.profiler must include HIP_VISIBLE_DEVICES=1"):
         validate_cn_diagnostic_artifact_payload(missing_profiler_device_env)
 
+    mismatched_profiler_command_env = json.loads(json.dumps(accepted))
+    mismatched_profiler_command_env["commands"]["benchmark"] = (
+        "env HIP_VISIBLE_DEVICES=1 " + mismatched_profiler_command_env["commands"]["benchmark"]
+    )
+    mismatched_profiler_command_env["commands"]["profiler"] = mismatched_profiler_command_env["commands"]["profiler"].replace(
+        "-- python3",
+        "-- env HIP_VISIBLE_DEVICES=2 python3",
+    )
+    with pytest.raises(ValueError, match="commands.profiler device env prefix must match commands.benchmark"):
+        validate_cn_diagnostic_artifact_payload(mismatched_profiler_command_env)
+
     mismatched_hardware_primitive_env = json.loads(json.dumps(gpu1_accepted))
     mismatched_hardware_primitive_env["hardware"]["visible_device"]["env"]["HIP_VISIBLE_DEVICES"] = "0"
     with pytest.raises(ValueError, match="hardware.visible_device.env.HIP_VISIBLE_DEVICES must match primitive device env"):

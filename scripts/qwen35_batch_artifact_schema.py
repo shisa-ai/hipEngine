@@ -174,6 +174,7 @@ _CORRECTNESS_SEED_RE = re.compile(r"(?:^|\s)--seed(?:=|\s+)(\d+)(?=\s|$)")
 _PRIMITIVE_CORRECTNESS_SCRIPT = RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_SCRIPT
 _RETAINED_BENCH_SCRIPT = RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT
 _RETAINED_BENCH_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS
+_COMMAND_ENV_KEYS = ("HIP_VISIBLE_DEVICES",)
 _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS
 _INT8_PRIMITIVE_GATE_FLAGS = RETAINED_ARTIFACT_INT8_PRIMITIVE_GATE_FLAGS
 _CORRECTNESS_REFERENCE_UNIQUE_FLAGS = RETAINED_ARTIFACT_CORRECTNESS_REFERENCE_UNIQUE_FLAGS
@@ -318,6 +319,26 @@ def _strip_command_env_prefix(argv: Sequence[str]) -> list[str]:
     if idx == 0:
         return list(argv)
     return list(argv[idx:])
+
+
+def _command_device_env_assignments(argv: Sequence[str]) -> dict[str, str]:
+    idx = 0
+    if argv and Path(argv[0]).name == "env":
+        idx = 1
+    assignments: dict[str, str] = {}
+    while idx < len(argv) and _is_env_assignment_token(argv[idx]):
+        key, _sep, value = argv[idx].partition("=")
+        if key in _COMMAND_ENV_KEYS:
+            assignments[key] = value
+        idx += 1
+    return assignments
+
+
+def _retained_bench_command_device_env(command: str) -> dict[str, str]:
+    try:
+        return _command_device_env_assignments(shlex.split(command))
+    except ValueError:
+        return {}
 
 
 def _validate_retained_bench_command_target(command: str, *, field: str, errors: list[str]) -> None:
@@ -1797,7 +1818,9 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             errors=errors,
         )
     benchmark_command = commands.get("benchmark")
+    benchmark_device_env: dict[str, str] = {}
     if isinstance(benchmark_command, str):
+        benchmark_device_env = _retained_bench_command_device_env(benchmark_command)
         if _RETAINED_BENCH_SCRIPT not in benchmark_command:
             errors.append("commands.benchmark must reference scripts/qwen35_batch_retained_bench.py for accepted artifacts")
         else:
@@ -1926,6 +1949,8 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
                 errors=errors,
             )
             _validate_retained_benchmark_reference_paths(profiler_profiled_benchmark_command, field="profiler", payload=payload, errors=errors)
+            if _command_device_env_assignments(profiled_command_argv) != benchmark_device_env:
+                errors.append("commands.profiler device env prefix must match commands.benchmark for accepted artifacts")
             _validate_command_device_selection_env(
                 profiler_command,
                 field="profiler",
