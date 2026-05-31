@@ -588,7 +588,8 @@ reporting.
   decode loop, kernel trace, and KV-backed next-token artifact), and includes a compact
   `handoff_summary` with open blockers, blocked gates, ready signals, an oracle parity gap report,
   combined upload-plan order/bytes/consistency checks, a KV-backed decode gap report that separates
-  validated preconditions from missing streaming-runner evidence, next-command coverage that names the first missing oracle/KV
+  validated preconditions from missing streaming-runner evidence and cross-links the first
+  source-level streaming blocker, next-command coverage that names the first missing oracle/KV
   evidence items, and the no-performance/no-e2e-claim policy.
   `scripts/stepfun_correctness_status.py --summary-only` emits just that
   handoff block for fast continuation checks. It lists next actions for the

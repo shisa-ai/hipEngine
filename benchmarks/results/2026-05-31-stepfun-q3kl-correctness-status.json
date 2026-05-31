@@ -47,7 +47,7 @@
         "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
       },
       {
-        "line": 604,
+        "line": 605,
         "state": "partial",
         "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
       }
@@ -67,6 +67,7 @@
     },
     "kv_backed_decode_gap_report": {
       "first_missing_evidence": "streaming_runner_ready_flags",
+      "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
       "missing_evidence": [
         "streaming_runner_ready_flags",
         "kv_kernel_launch_trace",
@@ -77,6 +78,7 @@
       "operation_count": 135,
       "precondition_count": 5,
       "status": "blocked",
+      "streaming_runner_blocker_count": 3,
       "upload_total_nbytes": 484,
       "validated_precondition_count": 5
     },
@@ -150,6 +152,7 @@
   "kv_backed_decode_gap_report": {
     "first_missing_evidence": "streaming_runner_ready_flags",
     "first_missing_precondition": null,
+    "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
     "missing_evidence": [
       "streaming_runner_ready_flags",
       "kv_kernel_launch_trace",
@@ -191,8 +194,29 @@
     "remaining_evidence": [
       {
         "current": {
+          "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
+          "launch_schedule_streaming_runner_blocker_count": 3,
           "launch_schedule_streaming_runner_ready": false,
-          "run_plan_streaming_runner_ready": false
+          "run_plan_streaming_runner_blocker_count": 3,
+          "run_plan_streaming_runner_ready": false,
+          "streaming_runner_blocker_count": 3,
+          "streaming_runner_blockers": [
+            {
+              "name": "streaming_decode_loop_not_wired",
+              "ready": false,
+              "required_evidence": "A StepFunResidentSession decode loop must launch prompt KV writes, one-token decode KV writes, and gated paged attention from resident buffers."
+            },
+            {
+              "name": "kv_kernel_trace_artifact_missing",
+              "ready": false,
+              "required_evidence": "A retained rocprofv3 or equivalent trace must show the prompt KV write, decode KV write, and gated decode-attention kernels for the canonical prompt."
+            },
+            {
+              "name": "kv_backed_next_token_artifact_missing",
+              "ready": false,
+              "required_evidence": "A KV-backed one-token decode artifact must record the generated token/logit path without host-composed layer-prefix outputs."
+            }
+          ]
         },
         "name": "streaming_runner_ready_flags",
         "ready": false,
@@ -213,6 +237,24 @@
     ],
     "source": "kv_decode_dispatch_progress",
     "status": "blocked",
+    "streaming_runner_blocker_count": 3,
+    "streaming_runner_blockers": [
+      {
+        "name": "streaming_decode_loop_not_wired",
+        "ready": false,
+        "required_evidence": "A StepFunResidentSession decode loop must launch prompt KV writes, one-token decode KV writes, and gated paged attention from resident buffers."
+      },
+      {
+        "name": "kv_kernel_trace_artifact_missing",
+        "ready": false,
+        "required_evidence": "A retained rocprofv3 or equivalent trace must show the prompt KV write, decode KV write, and gated decode-attention kernels for the canonical prompt."
+      },
+      {
+        "name": "kv_backed_next_token_artifact_missing",
+        "ready": false,
+        "required_evidence": "A KV-backed one-token decode artifact must record the generated token/logit path without host-composed layer-prefix outputs."
+      }
+    ],
     "upload_entry_count": 6,
     "upload_total_nbytes": 484,
     "validated_precondition_count": 5,
@@ -1129,6 +1171,7 @@
       "gap_report": {
         "first_missing_evidence": "streaming_runner_ready_flags",
         "first_missing_precondition": null,
+        "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
         "missing_evidence": [
           "streaming_runner_ready_flags",
           "kv_kernel_launch_trace",
@@ -1170,8 +1213,29 @@
         "remaining_evidence": [
           {
             "current": {
+              "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
+              "launch_schedule_streaming_runner_blocker_count": 3,
               "launch_schedule_streaming_runner_ready": false,
-              "run_plan_streaming_runner_ready": false
+              "run_plan_streaming_runner_blocker_count": 3,
+              "run_plan_streaming_runner_ready": false,
+              "streaming_runner_blocker_count": 3,
+              "streaming_runner_blockers": [
+                {
+                  "name": "streaming_decode_loop_not_wired",
+                  "ready": false,
+                  "required_evidence": "A StepFunResidentSession decode loop must launch prompt KV writes, one-token decode KV writes, and gated paged attention from resident buffers."
+                },
+                {
+                  "name": "kv_kernel_trace_artifact_missing",
+                  "ready": false,
+                  "required_evidence": "A retained rocprofv3 or equivalent trace must show the prompt KV write, decode KV write, and gated decode-attention kernels for the canonical prompt."
+                },
+                {
+                  "name": "kv_backed_next_token_artifact_missing",
+                  "ready": false,
+                  "required_evidence": "A KV-backed one-token decode artifact must record the generated token/logit path without host-composed layer-prefix outputs."
+                }
+              ]
             },
             "name": "streaming_runner_ready_flags",
             "ready": false,
@@ -1192,6 +1256,24 @@
         ],
         "source": "kv_decode_dispatch_progress",
         "status": "blocked",
+        "streaming_runner_blocker_count": 3,
+        "streaming_runner_blockers": [
+          {
+            "name": "streaming_decode_loop_not_wired",
+            "ready": false,
+            "required_evidence": "A StepFunResidentSession decode loop must launch prompt KV writes, one-token decode KV writes, and gated paged attention from resident buffers."
+          },
+          {
+            "name": "kv_kernel_trace_artifact_missing",
+            "ready": false,
+            "required_evidence": "A retained rocprofv3 or equivalent trace must show the prompt KV write, decode KV write, and gated decode-attention kernels for the canonical prompt."
+          },
+          {
+            "name": "kv_backed_next_token_artifact_missing",
+            "ready": false,
+            "required_evidence": "A KV-backed one-token decode artifact must record the generated token/logit path without host-composed layer-prefix outputs."
+          }
+        ],
         "upload_entry_count": 6,
         "upload_total_nbytes": 484,
         "validated_precondition_count": 5,
@@ -1301,8 +1383,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "6119a38ec51cd0d41fddc7bce8173a550ac40bd417ea314a692c81abb0c975e9",
-      "size_bytes": 52395
+      "sha256": "a657b2e21c2edccea946e5f1d7e6affc9af59db7ed62b4968f9941002610cb80",
+      "size_bytes": 52454
     },
     "oracle": {
       "exists": true,

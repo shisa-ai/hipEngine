@@ -7,6 +7,27 @@ from pathlib import Path
 from scripts.stepfun_correctness_status import build_status, main
 
 
+def _streaming_runner_blockers() -> list[dict[str, object]]:
+    return [
+        {
+            "name": "streaming_decode_loop_not_wired",
+            "ready": False,
+            "required_evidence": "resident decode loop must launch KV writes and gated attention",
+        },
+        {
+            "name": "kv_kernel_trace_artifact_missing",
+            "ready": False,
+            "required_evidence": "retained trace must show KV write and attention kernels",
+        },
+        {
+            "name": "kv_backed_next_token_artifact_missing",
+            "ready": False,
+            "required_evidence": "KV-backed next-token artifact must be retained",
+        },
+    ]
+
+
+
 def _write_prompt_artifact(path: Path) -> None:
     selected_slots = ["root.token_embedding", "root.output_norm", "root.lm_head"]
     dense_slots = (
@@ -156,6 +177,9 @@ def _write_resource_artifact(path: Path) -> None:
                             },
                         ],
                         "streaming_runner_ready": False,
+                        "streaming_runner_blocker_count": 3,
+                        "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
+                        "streaming_runner_blockers": _streaming_runner_blockers(),
                     },
                     "kv_decode_kernel_plan": {
                         "all_registered": True,
@@ -494,6 +518,9 @@ def _write_resource_artifact(path: Path) -> None:
                     },
                     "stop_token_ids": [1, 2, 128007],
                     "streaming_runner_ready": False,
+                    "streaming_runner_blocker_count": 3,
+                    "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
+                    "streaming_runner_blockers": _streaming_runner_blockers(),
                 },
             }
         )
@@ -806,11 +833,19 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert gap_report["first_missing_evidence"] == "streaming_runner_ready_flags"
     assert gap_report["missing_evidence_count"] == 3
     assert gap_report["operation_count"] == 135
+    assert gap_report["streaming_runner_blocker_count"] == 3
+    assert gap_report["first_streaming_runner_blocker"] == "streaming_decode_loop_not_wired"
+    assert gap_report["streaming_runner_blockers"] == _streaming_runner_blockers()
     assert gap_report["upload_entry_count"] == 6
     assert gap_report["upload_total_nbytes"] == 484
     assert gap_report["remaining_evidence"][0]["current"] == {
+        "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
+        "launch_schedule_streaming_runner_blocker_count": 3,
         "launch_schedule_streaming_runner_ready": False,
+        "run_plan_streaming_runner_blocker_count": 3,
         "run_plan_streaming_runner_ready": False,
+        "streaming_runner_blocker_count": 3,
+        "streaming_runner_blockers": _streaming_runner_blockers(),
     }
     assert gates["e2e_inference"]["ready"] is False
     assert gates["e2e_inference"]["blocked_by"] == ["oracle_parity", "kv_backed_decode"]
@@ -881,7 +916,9 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "missing_precondition_count": 0,
         "operation_count": 135,
         "precondition_count": 5,
+        "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
         "status": "blocked",
+        "streaming_runner_blocker_count": 3,
         "upload_total_nbytes": 484,
         "validated_precondition_count": 5,
     }
@@ -1215,7 +1252,9 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "missing_precondition_count": 0,
         "operation_count": 135,
         "precondition_count": 5,
+        "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
         "status": "blocked",
+        "streaming_runner_blocker_count": 3,
         "upload_total_nbytes": 484,
         "validated_precondition_count": 5,
     }

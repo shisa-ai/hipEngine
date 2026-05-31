@@ -441,6 +441,19 @@ def _kv_backed_decode_gap_report(
     launch_schedule = dict(kv_decode_dispatch_progress.get("launch_schedule", {}))
     run_plan = dict(kv_decode_dispatch_progress.get("run_plan", {}))
     decode_input_upload_plan = dict(run_plan.get("decode_input_upload_plan", {}))
+    launch_schedule_streaming_runner_blockers = list(
+        launch_schedule.get("streaming_runner_blockers", [])
+    )
+    run_plan_streaming_runner_blockers = list(run_plan.get("streaming_runner_blockers", []))
+    streaming_runner_blockers = (
+        run_plan_streaming_runner_blockers or launch_schedule_streaming_runner_blockers
+    )
+    first_streaming_runner_blocker = run_plan.get(
+        "first_streaming_runner_blocker"
+    ) or launch_schedule.get("first_streaming_runner_blocker")
+    streaming_runner_blocker_count = run_plan.get(
+        "streaming_runner_blocker_count"
+    ) or launch_schedule.get("streaming_runner_blocker_count")
     preconditions = [
         {
             "name": "dispatch_keys_registered",
@@ -486,6 +499,15 @@ def _kv_backed_decode_gap_report(
                     "streaming_runner_ready"
                 ),
                 "run_plan_streaming_runner_ready": run_plan.get("streaming_runner_ready"),
+                "streaming_runner_blocker_count": streaming_runner_blocker_count,
+                "first_streaming_runner_blocker": first_streaming_runner_blocker,
+                "streaming_runner_blockers": streaming_runner_blockers,
+                "launch_schedule_streaming_runner_blocker_count": launch_schedule.get(
+                    "streaming_runner_blocker_count"
+                ),
+                "run_plan_streaming_runner_blocker_count": run_plan.get(
+                    "streaming_runner_blocker_count"
+                ),
             },
         },
         {
@@ -530,6 +552,9 @@ def _kv_backed_decode_gap_report(
         "preconditions": preconditions,
         "remaining_evidence": remaining_evidence,
         "operation_count": launch_schedule.get("operation_count"),
+        "streaming_runner_blocker_count": streaming_runner_blocker_count,
+        "first_streaming_runner_blocker": first_streaming_runner_blocker,
+        "streaming_runner_blockers": streaming_runner_blockers,
         "upload_entry_count": decode_input_upload_plan.get("entry_count"),
         "upload_total_nbytes": decode_input_upload_plan.get("total_nbytes"),
         "note": (
@@ -865,6 +890,12 @@ def _handoff_summary(
             "first_missing_evidence": kv_backed_decode_gap_report.get("first_missing_evidence"),
             "missing_evidence": list(kv_backed_decode_gap_report.get("missing_evidence", [])),
             "operation_count": kv_backed_decode_gap_report.get("operation_count"),
+            "streaming_runner_blocker_count": kv_backed_decode_gap_report.get(
+                "streaming_runner_blocker_count"
+            ),
+            "first_streaming_runner_blocker": kv_backed_decode_gap_report.get(
+                "first_streaming_runner_blocker"
+            ),
             "upload_total_nbytes": kv_backed_decode_gap_report.get("upload_total_nbytes"),
         },
         "blocked_signals": {
