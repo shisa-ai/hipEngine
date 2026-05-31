@@ -7640,6 +7640,7 @@ def test_hidden_bisect_linear_stage_summary_rolls_up_first_bit_drift() -> None:
             "under_atol_drift_stage_count": 1,
             "over_atol_drift_stages": [],
             "over_atol_drift_stage_count": 0,
+            "first_over_atol_drift": None,
         }
     ]
 
@@ -7729,6 +7730,7 @@ def test_hidden_bisect_projection_bit_drift_rollup_reports_first_over_atol_drift
             "under_atol_drift_stage_count": 1,
             "over_atol_drift_stages": ["z"],
             "over_atol_drift_stage_count": 1,
+            "first_over_atol_drift": rollup["first_over_atol_drift"],
         }
     ]
     assert rollup["first_over_atol_layer_limit"] == rollup["layer_limits"][0]

@@ -2858,6 +2858,7 @@ def _decode_linear_projection_bit_drift_rollup(layer_summaries: Sequence[dict[st
         trace = summary.get("decode_linear_stages")
         stage_has_bit_drift = {stage: False for stage in DECODE_LINEAR_PROJECTION_BIT_EXACT_STAGES}
         stage_has_over_atol_drift = {stage: False for stage in DECODE_LINEAR_PROJECTION_BIT_EXACT_STAGES}
+        limit_first_over_atol_drift: dict[str, Any] | None = None
         if isinstance(trace, dict):
             for step_summary in trace.get("steps", []):
                 for layer in step_summary.get("layers", []):
@@ -2878,6 +2879,29 @@ def _decode_linear_projection_bit_drift_rollup(layer_summaries: Sequence[dict[st
                             )
                             if elements_over_atol > 0:
                                 stage_has_over_atol_drift[stage] = True
+                                if limit_first_over_atol_drift is None:
+                                    max_abs_flat_index = comparison.get("max_abs_flat_index")
+                                    limit_first_over_atol_drift = {
+                                        "layer_limit": int(summary.get("layer_limit", 0)),
+                                        "decode_step": int(step_summary.get("decode_step", 0)),
+                                        "generated_index": int(
+                                            step_summary.get(
+                                                "generated_index", int(step_summary.get("decode_step", 0)) + 1
+                                            )
+                                        ),
+                                        "layer_index": int(layer.get("layer_index", -1)),
+                                        "stage": stage,
+                                        "row": int(row_summary.get("row", -1)),
+                                        "comparison_kind": str(row_summary.get("comparison_kind", "unknown")),
+                                        "passed_under_atol": bool(row_summary.get("passed", False)),
+                                        "bit_mismatch": bit_mismatch,
+                                        "max_abs": float(comparison.get("max_abs", 0.0)),
+                                        "max_abs_flat_index": None
+                                        if max_abs_flat_index is None
+                                        else int(max_abs_flat_index),
+                                        "max_abs_index": comparison.get("max_abs_index", []),
+                                        "elements_over_atol": elements_over_atol,
+                                    }
         limit_drift_stages = [
             stage for stage in DECODE_LINEAR_PROJECTION_BIT_EXACT_STAGES if stage_has_bit_drift[stage]
         ]
@@ -2896,6 +2920,7 @@ def _decode_linear_projection_bit_drift_rollup(layer_summaries: Sequence[dict[st
                 "under_atol_drift_stage_count": len(limit_under_atol_stages),
                 "over_atol_drift_stages": limit_over_atol_stages,
                 "over_atol_drift_stage_count": len(limit_over_atol_stages),
+                "first_over_atol_drift": limit_first_over_atol_drift,
             }
         )
     first_over_atol_layer_limit = next(

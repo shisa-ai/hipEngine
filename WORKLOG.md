@@ -49842,3 +49842,43 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: targeted tests PASS; L1/L2 artifact assertions PASS; verify count remains `12`; full guard PASS with c=2/c=8 primitive correctness and A/A fields zero; benchmark rollup files unchanged. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and this is diagnostic C2.3 evidence only.
+
+## 2026-05-31 — CONCURRENCY C2.3 first over-atol drift per limit
+
+Extended hidden-bisect `decode_linear_projection_bit_drift_summary.layer_limits[*]` with a per-limit `first_over_atol_drift` record. This keeps the compact `first_over_atol_layer_limit` entry self-contained: each limit now carries stage counts and the first over-tolerance QKV/Z record for that limit.
+
+Regenerated `/tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-batch-gemv-qkvz-selected-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json`. The artifact remains `status=eq_ok` (hidden/token green). `layer_limit=1` still reports only under-atol QKV/Z drift with `first_over_atol_drift=null`; `layer_limit=2` reports QKV/Z over-atol drift with `first_over_atol_drift` matching the global first over-atol QKV record (layer index 1 / step 0 / row 0).
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_linear_stage_summary_rolls_up_first_bit_drift tests/test_generation_batch_scheduler.py::test_hidden_bisect_projection_bit_drift_rollup_reports_first_over_atol_drift -q
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 1,2 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --batch-decode-linear-projection-path batch_gemv_selected_ab --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-batch-gemv-qkvz-selected-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json
+python3 - <<'PY'
+import json, pathlib
+path = pathlib.Path('/tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-batch-gemv-qkvz-selected-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json')
+payload = json.loads(path.read_text())
+assert payload['status'] == 'eq_ok'
+assert payload['correctness']['hidden_passed'] is True
+assert payload['correctness']['token_passed'] is True
+projection = payload['correctness']['decode_linear_projection_bit_drift_summary']
+assert projection['first_over_atol_layer_limit'] == projection['layer_limits'][1]
+assert projection['layer_limits'][0]['first_over_atol_drift'] is None
+assert projection['layer_limits'][1]['first_over_atol_drift'] == projection['first_over_atol_drift']
+assert projection['layer_limits'][1]['first_over_atol_drift']['stage'] == 'qkv'
+assert projection['layer_limits'][1]['first_over_atol_drift']['layer_index'] == 1
+assert projection['layer_limits'][1]['first_over_atol_drift']['passed_under_atol'] is False
+PY
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \[(?: |~)\]', queue))
+print(count)
+assert count == 12
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: targeted tests PASS; L1/L2 artifact assertions PASS; verify count remains `12`; full guard PASS with c=2/c=8 primitive correctness and A/A fields zero; benchmark rollup files unchanged. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and this is diagnostic C2.3 evidence only.
