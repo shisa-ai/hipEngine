@@ -7287,6 +7287,16 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.command must match shlex\.join\(commands\[\]\.argv\)"):
             c_sweep.validate_sweep_summary(tampered_command_text)
 
+        tampered_script = json.loads(json.dumps(summary))
+        script_entry = tampered_script["commands"][index]
+        script_argv = script_entry["argv"]
+        script_argv[script_argv.index(RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_SCRIPT)] = (
+            RETAINED_ARTIFACT_SERIAL_BRIDGE_SCRIPT
+        )
+        script_entry["command"] = shlex.join(script_argv)
+        with pytest.raises(ValueError, match=r"commands\[\]\.category must match commands\[\]\.argv script"):
+            c_sweep.validate_sweep_summary(tampered_script)
+
         for tamper_argv_json in (False, True):
             tampered_artifact_link = json.loads(json.dumps(summary))
             entry = tampered_artifact_link["commands"][index]
