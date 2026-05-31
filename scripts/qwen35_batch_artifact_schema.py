@@ -1005,7 +1005,7 @@ def validate_cn_diagnostic_artifact_payload(payload: Mapping[str, Any]) -> None:
     correctness = _mapping_at(payload, "correctness", errors)
     if not isinstance(correctness.get("passed"), bool):
         errors.append("correctness.passed must be a bool")
-    _validate_claimed_generated_token_equality(correctness, workload, errors)
+    _validate_claimed_generated_token_equality(payload, correctness, workload, errors)
 
     execution = _mapping_at(payload, "execution", errors)
     batch_execution = execution.get("batch_execution")
@@ -2568,6 +2568,7 @@ def _validate_int8_kv_primitive_layer_accuracy_gates(
 
 
 def _validate_claimed_generated_token_equality(
+    payload: Mapping[str, Any],
     correctness: Mapping[str, Any],
     workload: Mapping[str, Any],
     errors: list[str],
@@ -2629,11 +2630,70 @@ def _validate_claimed_generated_token_equality(
                 errors.append(f"{label}[{index}] must contain only non-negative token ids when passed is true")
     if isinstance(batch_sequences, list) and isinstance(c1_sequences, list) and batch_sequences != c1_sequences:
         errors.append("correctness.generated_token_equality.batch_sequences must equal c1_sequences when passed is true")
+    _validate_claimed_execution_seed_tokens(
+        payload,
+        batch_sequences,
+        int(concurrency) if concurrency_valid else None,
+        errors,
+    )
     mismatches = equality.get("mismatches")
     if not isinstance(mismatches, list):
         errors.append("correctness.generated_token_equality.mismatches must be a list when passed is true")
     elif mismatches:
         errors.append("correctness.generated_token_equality.mismatches must be empty when passed is true")
+
+
+def _validate_claimed_execution_seed_tokens(
+    payload: Mapping[str, Any],
+    batch_sequences: Any,
+    concurrency: int | None,
+    errors: list[str],
+) -> None:
+    execution = payload.get("execution")
+    seed_tokens = execution.get("seed_tokens") if isinstance(execution, Mapping) else None
+    if seed_tokens is None:
+        return
+    if not isinstance(seed_tokens, Mapping):
+        errors.append("execution.seed_tokens must be an object when generated_token_equality.passed is true")
+        return
+    if concurrency is not None and len(seed_tokens) != concurrency:
+        errors.append("execution.seed_tokens length must match workload.concurrency when generated_token_equality.passed is true")
+    if concurrency is None:
+        return
+    for row_index in range(concurrency):
+        row_key = str(row_index)
+        token_id = _extract_claimed_token_id(
+            seed_tokens.get(row_key),
+            f"execution.seed_tokens.{row_key}",
+            errors,
+        )
+        if token_id is None:
+            continue
+        if (
+            isinstance(batch_sequences, list)
+            and row_index < len(batch_sequences)
+            and isinstance(batch_sequences[row_index], list)
+            and batch_sequences[row_index]
+            and token_id != batch_sequences[row_index][0]
+        ):
+            errors.append(f"execution.seed_tokens.{row_key} must match correctness.generated_token_equality.batch_sequences first token when generated_token_equality.passed is true")
+
+
+def _extract_claimed_token_id(item: Any, label: str, errors: list[str]) -> int | None:
+    if _is_valid_token_id(item):
+        return item
+    if isinstance(item, int) and not isinstance(item, bool):
+        errors.append(f"{label} must be a non-negative token id when generated_token_equality.passed is true")
+        return None
+    if isinstance(item, Mapping):
+        token_id = item.get("token_id")
+        if _is_valid_token_id(token_id):
+            return token_id
+        if isinstance(token_id, int) and not isinstance(token_id, bool):
+            errors.append(f"{label}.token_id must be non-negative when generated_token_equality.passed is true")
+            return None
+    errors.append(f"{label} must be a token id or object with token_id when generated_token_equality.passed is true")
+    return None
 
 
 def _validate_primitive_device_metadata(device: Any, errors: list[str]) -> None:

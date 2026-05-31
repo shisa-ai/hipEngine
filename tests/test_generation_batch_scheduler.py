@@ -11325,6 +11325,7 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
             },
         },
         "execution": {
+            "seed_tokens": {"0": {"token_id": 10}, "1": {"token_id": 20}},
             "batch_execution": {
                 "native_compact_prefill": True,
                 "native_caware_decode": False,
@@ -11367,6 +11368,11 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
     negative_token_claim["correctness"]["generated_token_equality"]["c1_sequences"][0][2] = -1
     with pytest.raises(ValueError, match="batch_sequences\\[0\\] must contain only non-negative token ids"):
         validate_cn_diagnostic_artifact_payload(negative_token_claim)
+
+    mismatched_seed_claim = json.loads(json.dumps(payload))
+    mismatched_seed_claim["execution"]["seed_tokens"]["1"]["token_id"] = 99
+    with pytest.raises(ValueError, match="execution.seed_tokens.1 must match correctness.generated_token_equality.batch_sequences first token"):
+        validate_cn_diagnostic_artifact_payload(mismatched_seed_claim)
 
     missing_shape_claim = json.loads(json.dumps(payload))
     missing_shape_claim["workload"].pop("concurrency")
