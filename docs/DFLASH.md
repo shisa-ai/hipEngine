@@ -305,6 +305,37 @@ unit test for the kernel arithmetic gate.
 Retained artifact:
 [`2026-05-26-hipengine-dflash-gpu1-multi-row-decode-profile-route.json`](../benchmarks/results/2026-05-26-hipengine-dflash-gpu1-multi-row-decode-profile-route.json).
 
+### 2026-05-31 W7900 27B zero-probe profile route
+
+The multiloop optimize pass first re-ran the exact B=4/D64 9-prompt W7900 lane
+with the `multi_row_decode` default, then generated a profile-history route from
+that exact same-session row:
+
+```bash
+PYTHONPATH=. python3 scripts/dflash_build_profile_route_manifest.py --input /tmp/multiloop-dflash-27b-w7900-baseline-source-iter2.json --output /tmp/multiloop-dflash-27b-w7900-profile-route-iter2-manifest.json --min-chain-speedup 1.0 --default-route ar
+```
+
+The manifest selects `chain` for five prompt IDs and `ar` for the four known
+losers: `code:class_continuation`, `code:json_yaml_continuation`,
+`code:humaneval_add`, `instruct:simple_qa_no_template`, and
+`instruct:simple_qa_qwen_static_chat` route to DFlash chain; quicksort,
+function-continuation, sort-third, and the short GSM8K-style prompt route to AR.
+
+| Metric | all-chain `multi_row_decode` | profile route |
+| --- | ---: | ---: |
+| exact rows | 9/9 | 9/9 |
+| AR decode | 32.57 tok/s | 32.65 tok/s |
+| DFlash/spec decode | 31.75 tok/s | 34.63 tok/s |
+| vs AR | 0.975x | 1.061x |
+| route mix | 9 chain / 0 AR | 5 chain / 4 AR |
+
+This is the first retained 27B dense DFlash row above AR after the exact
+multi-row-decode verifier work, but it remains a **diagnostic profile-history
+route**, not a promoted default: it is below the formal `>1.10x` gate and relies
+on prior prompt history rather than a deployable online classifier.  Retained
+artifact:
+[`2026-05-31-hipengine-dflash-27b-profile-route-multiloop.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-profile-route-multiloop.json).
+
 ### 2026-05-26 W7900 27B multi-row-decode default
 
 The real 27B dense lane was validated on GPU0/W7900 (`HIP_VISIBLE_DEVICES=0`)

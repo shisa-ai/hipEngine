@@ -24064,3 +24064,60 @@ Next: run the zero-probe route manifest on the new 27B default rows.  The new
 all-chain row is near break-even (`0.977x`) and has five prompt winners, so a
 profile route may now exceed AR more convincingly than the earlier `1.015x`
 oracle, though still likely below the `>1.10x` promotion gate.
+
+## 2026-05-31 — DFlash multiloop iter2 zero-probe profile route
+
+Active loop: `dflash-27b-w7900/run-20260531-102747`.  Iteration 2 tested the
+zero-probe/profile-history route now that the 27B all-chain baseline uses the
+exact `multi_row_decode` down-projection default.
+
+Baseline source was the exact multiloop baseline artifact copied to
+`/tmp/multiloop-dflash-27b-w7900-baseline-source-iter2.json`: exact `9/9`,
+DFlash `31.75 tok/s`, AR `32.57 tok/s`, `0.9747x` AR.
+
+Manifest generation:
+
+```bash
+PYTHONPATH=. python3 scripts/dflash_build_profile_route_manifest.py --input /tmp/multiloop-dflash-27b-w7900-baseline-source-iter2.json --output /tmp/multiloop-dflash-27b-w7900-profile-route-iter2-manifest.json --min-chain-speedup 1.0 --default-route ar
+```
+
+Result: `chain_routes=5`, `default_route=ar`, `rows_seen=9`.  Chain routes are
+`code:class_continuation`, `code:json_yaml_continuation`, `code:humaneval_add`,
+`instruct:simple_qa_no_template`, and `instruct:simple_qa_qwen_static_chat`.
+The remaining four prompts route to AR.
+
+Profile-route measurement:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --canonical-commit-mode branch_copy --profile-route-manifest /tmp/multiloop-dflash-27b-w7900-profile-route-iter2-manifest.json --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/multiloop-dflash-27b-w7900.json
+```
+
+Result: exact `9/9`, DFlash/spec `34.63 tok/s`, AR `32.65 tok/s`, `1.0607x`
+AR.  This is +8.8% relative vs the multiloop all-chain baseline and +6.1% vs
+AR, but still below the formal `>1.10x` promotion gate and depends on prior
+prompt history, so it is retained as diagnostic/profile-route evidence rather
+than a default/deployable classifier.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/dflash_chain_e2e_bench.py scripts/dflash_build_profile_route_manifest.py hipengine/runtime/qwen35_paro.py
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_paro_awq_gemv_multi_row_decode.py tests/test_dflash_profile_route_manifest.py tests/test_dflash_draft_confidence.py tests/test_speculative_benchmark.py
+python3 -m json.tool benchmarks/results/2026-05-31-hipengine-dflash-27b-profile-route-multiloop.json >/tmp/hipengine-dflash-27b-profile-route-artifact-check.json
+```
+
+Result: targeted pytest `17 passed`; artifact JSON valid.
+
+Retained artifact:
+- `benchmarks/results/2026-05-31-hipengine-dflash-27b-profile-route-multiloop.json`
+
+Docs/rollup updated:
+- `docs/DFLASH.md` W7900 27B zero-probe profile-route note.
+- `benchmarks/README.md` and `benchmarks/CHANGELOG.md` retained diagnostic row.
+
+Next multiloop focus: we still need about another 4% absolute vs AR to clear the
+`>1.10x` gate.  With profile routing exposing the verifier cost only on winning
+prompts, next likely levers are (1) reduce drafter overhead on the five chain
+routes, especially graph/capture or query work, and (2) re-profile the chain
+verify window with `multi_row_decode` to see whether any remaining W4/down or
+host launch cost can be removed without changing exactness.

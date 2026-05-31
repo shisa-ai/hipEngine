@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-05-31
+
+- [diagnostic retained] hipEngine / DFlash 27B zero-probe profile route / Qwen3.6-27B-PARO dense + z-lab DFlash / W7900/gfx1100 B=4 D64 9-prompt branch-copy: exact `9/9`; multiloop all-chain baseline `0.975x -> 1.061x` AR (`31.75 -> 34.63 tok/s`, +9.1% spec tok/s) by routing five prior exact chain winners to DFlash and four losers to AR with a profile-history manifest; below the `>1.10x` promotion gate and not a deployable classifier; artifact `benchmarks/results/2026-05-31-hipengine-dflash-27b-profile-route-multiloop.json`.
+
 ## 2026-05-26
 
 - [diagnostic retained] hipEngine / DFlash 27B multi-row-decode down-projection default / Qwen3.6-27B-PARO dense + z-lab DFlash / W7900/gfx1100 B=4 D64 9-prompt branch-copy: exact `9/9`; prior row-wise default `0.923x -> 0.977x` AR (`30.20 -> 31.74 tok/s`, +5.1% spec tok/s) by defaulting `HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH` to `multi_row_decode`, which shares W4 down-projection weights across verifier rows while preserving row-wise GEMV dequantization; summed target verify `15.75 -> 14.83 s` (-5.8%); artifact `benchmarks/results/2026-05-26-hipengine-dflash-27b-multi-row-decode-default.json`.
