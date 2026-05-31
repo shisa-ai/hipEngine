@@ -1354,10 +1354,12 @@ roll-up/status view.
       `/tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-projection-route-compare.json`
       now compares that A/B-selected route against the complementary
       selected-QKV/Z/native-A/B route. Both routes stay hidden/token green and
-      agree that the first over-tolerance projection limit is L2; the comparator
-      also shows the first over-tolerance record has the same location in both
-      routes (`layer_limit=2`, layer 1, step 0, row 0, QKV, flat index 857) with
-      only a one-bit-count difference (`3722` vs `3721`). They differ at L1:
+      agree that the first over-tolerance projection limit is L2. Its compact
+      classification is
+      `same_first_over_atol_location_with_record_and_drift_delta`: the first
+      over-tolerance record has the same location in both routes (`layer_limit=2`,
+      layer 1, step 0, row 0, QKV, flat index 857) with only a one-bit-count
+      difference (`3722` vs `3721`). They differ at L1:
       selected-QKV/Z/native-A/B has no QKV/Z drift while the A/B-selected route
       has under-tolerance QKV/Z drift. Together with the green selected-all
       projection control, this means both QKV/Z bit exactness and A/B exactness

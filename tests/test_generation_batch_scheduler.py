@@ -7818,6 +7818,12 @@ def test_hidden_bisect_projection_artifact_compare_spots_limit_drift_delta(tmp_p
     assert payload["comparison"]["labels_agree_on_first_over_atol_layer_limit"] is True
     assert payload["comparison"]["projection_over_atol_agreement"] is True
     assert payload["comparison"]["projection_drift_agreement"] is False
+    assert payload["comparison"]["route_difference_kinds"] == [
+        "drift_stages",
+        "first_over_atol_record",
+        "first_over_atol_bit_mismatch",
+    ]
+    assert payload["comparison"]["route_classification"] == "same_first_over_atol_location_with_record_and_drift_delta"
     assert payload["comparison"]["labels_agree_on_first_over_atol_drift_location"] is True
     assert payload["comparison"]["labels_agree_on_first_over_atol_drift_record"] is False
     assert payload["comparison"]["first_over_atol_bit_mismatch_by_label"] == {
@@ -7827,9 +7833,13 @@ def test_hidden_bisect_projection_artifact_compare_spots_limit_drift_delta(tmp_p
     assert payload["comparison"]["first_over_atol_bit_mismatch_delta"] == 1
     assert payload["comparison"]["first_diverging_layer_limit"] == 1
     layer_one = payload["comparison"]["layer_limits"][0]
+    assert layer_one["route_difference_kinds"] == ["drift_stages"]
+    assert layer_one["route_classification"] == "no_over_atol_with_drift_delta"
     assert layer_one["per_artifact"]["selected_ab"]["drift_stages"] == ["qkv", "z"]
     assert layer_one["per_artifact"]["selected_qkvz"]["drift_stages"] == []
     layer_two = payload["comparison"]["layer_limits"][1]
+    assert layer_two["route_difference_kinds"] == ["first_over_atol_record", "first_over_atol_bit_mismatch"]
+    assert layer_two["route_classification"] == "same_first_over_atol_location_with_record_delta"
     assert layer_two["per_artifact"]["selected_ab"]["first_over_atol_drift"]["bit_mismatch"] == 3721
     assert layer_two["first_over_atol_drift_locations_agree"] is True
     assert layer_two["first_over_atol_drift_records_agree"] is False

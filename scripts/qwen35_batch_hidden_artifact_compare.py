@@ -122,6 +122,61 @@ def _int_delta(values: Sequence[int | None]) -> int | None:
     return max(present) - min(present)
 
 
+def _projection_difference_kinds(
+    *,
+    drift_agrees: bool,
+    over_atol_agrees: bool,
+    first_over_layer_limit_agrees: bool | None = None,
+    first_over_location_agrees: bool | None = None,
+    first_over_record_agrees: bool | None = None,
+    first_over_bit_mismatch_delta: int | None = None,
+) -> list[str]:
+    kinds: list[str] = []
+    if not drift_agrees:
+        kinds.append("drift_stages")
+    if not over_atol_agrees:
+        kinds.append("over_atol_stages")
+    if first_over_layer_limit_agrees is False:
+        kinds.append("first_over_atol_layer_limit")
+    if first_over_location_agrees is False:
+        kinds.append("first_over_atol_location")
+    if first_over_record_agrees is False:
+        kinds.append("first_over_atol_record")
+    if first_over_bit_mismatch_delta not in (None, 0):
+        kinds.append("first_over_atol_bit_mismatch")
+    return kinds
+
+
+def _projection_route_classification(
+    difference_kinds: Sequence[str],
+    *,
+    has_first_over_atol_drift: bool,
+    over_atol_agrees: bool,
+    first_over_layer_limit_agrees: bool | None = None,
+    first_over_location_agrees: bool | None = None,
+    first_over_record_agrees: bool | None = None,
+) -> str:
+    if not difference_kinds:
+        return "projection_rollups_match"
+    if not over_atol_agrees:
+        return "over_atol_stage_delta"
+    if not has_first_over_atol_drift:
+        if "drift_stages" in difference_kinds:
+            return "no_over_atol_with_drift_delta"
+        return "no_over_atol_with_metadata_delta"
+    if first_over_layer_limit_agrees is False:
+        return "first_over_atol_layer_limit_delta"
+    if first_over_location_agrees is False:
+        return "first_over_atol_location_delta"
+    if first_over_record_agrees is False and "drift_stages" in difference_kinds:
+        return "same_first_over_atol_location_with_record_and_drift_delta"
+    if first_over_record_agrees is False:
+        return "same_first_over_atol_location_with_record_delta"
+    if "drift_stages" in difference_kinds:
+        return "same_first_over_atol_location_with_drift_delta"
+    return "same_first_over_atol_location_with_metadata_delta"
+
+
 def _projection_rollup(payload: dict[str, Any]) -> dict[str, Any]:
     correctness = payload.get("correctness", {})
     if not isinstance(correctness, dict):
@@ -218,17 +273,35 @@ def _limit_comparison(labels: Sequence[str], summaries: dict[str, dict[str, Any]
         over_atol_signatures[label] = tuple(over_atol_stages)
     drift_agrees = len(set(drift_signatures.values())) <= 1
     over_atol_agrees = len(set(over_atol_signatures.values())) <= 1
+    first_over_locations_agree = _records_agree(tuple(first_over_locations.values()))
+    first_over_records_agree = _records_agree(tuple(first_over_records.values()))
+    first_over_bit_mismatch_delta = _int_delta(tuple(first_over_bit_mismatches.values()))
+    difference_kinds = _projection_difference_kinds(
+        drift_agrees=drift_agrees,
+        over_atol_agrees=over_atol_agrees,
+        first_over_location_agrees=first_over_locations_agree,
+        first_over_record_agrees=first_over_records_agree,
+        first_over_bit_mismatch_delta=first_over_bit_mismatch_delta,
+    )
     return {
         "layer_limit": layer_limit,
         "per_artifact": per_artifact,
         "drift_agrees": drift_agrees,
         "over_atol_agrees": over_atol_agrees,
+        "route_difference_kinds": difference_kinds,
+        "route_classification": _projection_route_classification(
+            difference_kinds,
+            has_first_over_atol_drift=any(record is not None for record in first_over_records.values()),
+            over_atol_agrees=over_atol_agrees,
+            first_over_location_agrees=first_over_locations_agree,
+            first_over_record_agrees=first_over_records_agree,
+        ),
         "first_over_atol_drift_by_label": first_over_records,
         "first_over_atol_drift_location_by_label": first_over_locations,
-        "first_over_atol_drift_locations_agree": _records_agree(tuple(first_over_locations.values())),
-        "first_over_atol_drift_records_agree": _records_agree(tuple(first_over_records.values())),
+        "first_over_atol_drift_locations_agree": first_over_locations_agree,
+        "first_over_atol_drift_records_agree": first_over_records_agree,
         "first_over_atol_bit_mismatch_by_label": first_over_bit_mismatches,
-        "first_over_atol_bit_mismatch_delta": _int_delta(tuple(first_over_bit_mismatches.values())),
+        "first_over_atol_bit_mismatch_delta": first_over_bit_mismatch_delta,
     }
 
 
@@ -268,8 +341,20 @@ def compare_artifacts(artifacts: Sequence[tuple[str, Path, dict[str, Any]]]) -> 
     }
     first_over_locations = {label: _drift_location(record) for label, record in first_over_records.items()}
     first_over_bit_mismatches = {label: _drift_bit_mismatch(record) for label, record in first_over_records.items()}
+    first_over_location_agreement = _records_agree(tuple(first_over_locations.values()))
+    first_over_record_agreement = _records_agree(tuple(first_over_records.values()))
+    first_over_bit_mismatch_delta = _int_delta(tuple(first_over_bit_mismatches.values()))
+    first_over_layer_limit_agreement = len(set(first_over_values)) <= 1
     projection_drift_agreement = all(entry["drift_agrees"] for entry in per_limit)
     projection_over_atol_agreement = all(entry["over_atol_agrees"] for entry in per_limit)
+    route_difference_kinds = _projection_difference_kinds(
+        drift_agrees=projection_drift_agreement,
+        over_atol_agrees=projection_over_atol_agreement,
+        first_over_layer_limit_agrees=first_over_layer_limit_agreement,
+        first_over_location_agrees=first_over_location_agreement,
+        first_over_record_agrees=first_over_record_agreement,
+        first_over_bit_mismatch_delta=first_over_bit_mismatch_delta,
+    )
     return {
         "schema": 1,
         "mode": "qwen35_batch_hidden_artifact_compare",
@@ -280,14 +365,23 @@ def compare_artifacts(artifacts: Sequence[tuple[str, Path, dict[str, Any]]]) -> 
             "labels": labels,
             "common_layer_limits": common_limits,
             "all_layer_limits": all_limits,
+            "route_difference_kinds": route_difference_kinds,
+            "route_classification": _projection_route_classification(
+                route_difference_kinds,
+                has_first_over_atol_drift=any(record is not None for record in first_over_records.values()),
+                over_atol_agrees=projection_over_atol_agreement,
+                first_over_layer_limit_agrees=first_over_layer_limit_agreement,
+                first_over_location_agrees=first_over_location_agreement,
+                first_over_record_agrees=first_over_record_agreement,
+            ),
             "first_over_atol_layer_limits_by_label": first_over_by_label,
-            "labels_agree_on_first_over_atol_layer_limit": len(set(first_over_values)) <= 1,
+            "labels_agree_on_first_over_atol_layer_limit": first_over_layer_limit_agreement,
             "first_over_atol_drift_by_label": first_over_records,
             "first_over_atol_drift_location_by_label": first_over_locations,
-            "labels_agree_on_first_over_atol_drift_location": _records_agree(tuple(first_over_locations.values())),
-            "labels_agree_on_first_over_atol_drift_record": _records_agree(tuple(first_over_records.values())),
+            "labels_agree_on_first_over_atol_drift_location": first_over_location_agreement,
+            "labels_agree_on_first_over_atol_drift_record": first_over_record_agreement,
             "first_over_atol_bit_mismatch_by_label": first_over_bit_mismatches,
-            "first_over_atol_bit_mismatch_delta": _int_delta(tuple(first_over_bit_mismatches.values())),
+            "first_over_atol_bit_mismatch_delta": first_over_bit_mismatch_delta,
             "projection_drift_agreement": projection_drift_agreement,
             "projection_over_atol_agreement": projection_over_atol_agreement,
             "first_diverging_layer_limit": first_diverging,
