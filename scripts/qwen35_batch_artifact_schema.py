@@ -3241,7 +3241,7 @@ def _validate_execution_completed_tokens(
         if row.get("finished") is not True:
             errors.append(f"execution.completed[{index}].finished must be true for accepted artifacts")
         finish_reason = row.get("finish_reason")
-        if not isinstance(finish_reason, str) or not finish_reason:
+        if not isinstance(finish_reason, str) or not finish_reason.strip():
             errors.append(f"execution.completed[{index}].finish_reason must be a non-empty string for accepted artifacts")
         elif isinstance(per_request, Mapping):
             observed = per_request.get(str(request_id))

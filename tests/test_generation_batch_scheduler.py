@@ -15784,6 +15784,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match=r"execution.completed\[0\].prompt_tokens length must match workload.prompt_lengths"):
         validate_cn_diagnostic_artifact_payload(mismatched_completed_prompt_length)
 
+    blank_completion_finish_reason = json.loads(json.dumps(accepted))
+    blank_completion_finish_reason["execution"]["completed"][0]["finish_reason"] = " "
+    with pytest.raises(ValueError, match=r"execution.completed\[0\].finish_reason must be a non-empty string"):
+        validate_cn_diagnostic_artifact_payload(blank_completion_finish_reason)
+
     mismatched_completion_finish_reason = json.loads(json.dumps(accepted))
     mismatched_completion_finish_reason["execution"]["completed"][0]["finish_reason"] = "stop"
     with pytest.raises(ValueError, match="execution.completed request_id 0 finish_reason must match observability.per_request"):
