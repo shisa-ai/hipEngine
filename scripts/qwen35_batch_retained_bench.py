@@ -3567,6 +3567,10 @@ def _build_payload(
             getattr(args, "serial_bridge_json", None),
         ),
     ]
+    profiler_path_blockers = _retained_json_artifact_path_blockers(
+        "profiler_json",
+        getattr(args, "profiler_json", None),
+    )
     batch_execution = dict(bench["batch_execution"])
     throughput_claim_eligible = bool(batch_execution.get("throughput_claim_eligible"))
     native_caware_decode = bool(batch_execution.get("native_caware_decode"))
@@ -3639,6 +3643,7 @@ def _build_payload(
         and not output_artifact_blockers
         and not primitive_path_blockers
         and not scaling_path_blockers
+        and not profiler_path_blockers
         and primitive_passed
         and protocol_shape
         and scaling_complete
@@ -3667,6 +3672,7 @@ def _build_payload(
     blocked_reasons.extend(output_artifact_blockers)
     blocked_reasons.extend(primitive_path_blockers)
     blocked_reasons.extend(scaling_path_blockers)
+    blocked_reasons.extend(profiler_path_blockers)
     if not primitive_passed:
         blocked_reasons.append(f"primitive c>N correctness gate did not pass: {primitive_correctness.get('reason')}")
     if args.prompt_length < 512 or args.decode_tokens < 128:

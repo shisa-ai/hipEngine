@@ -13356,6 +13356,10 @@ def test_qwen35_retained_artifact_paths_reject_symlink_escapes(
         "serial_bridge_json",
         "benchmarks/results/serial-c2.json",
     ) == []
+    assert retained_bench._retained_json_artifact_path_blockers(
+        "profiler_json",
+        "benchmarks/results/profiler-c2.json",
+    ) == []
     assert not retained_bench._is_retained_artifact_path("/tmp/source.json")
     assert retained_bench._retained_output_artifact_blockers("/tmp/source.json") == [
         "artifact_path must be a repo-relative path under benchmarks/results"
@@ -13366,6 +13370,9 @@ def test_qwen35_retained_artifact_paths_reject_symlink_escapes(
     ]
     assert retained_bench._retained_json_artifact_path_blockers("primitive_correctness_json", None) == [
         "primitive_correctness_json must be provided under benchmarks/results"
+    ]
+    assert retained_bench._retained_json_artifact_path_blockers("profiler_json", None) == [
+        "profiler_json must be provided under benchmarks/results"
     ]
     assert retained_bench._retained_output_artifact_blockers("benchmarks/results/source.txt") == [
         "artifact_path must point to a .json artifact"
