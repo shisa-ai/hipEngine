@@ -332,6 +332,52 @@ class StepFunTextDecodeResourcePlan:
     def total_gib(self) -> float:
         return self.total_nbytes / 2**30
 
+    @property
+    def kv_decode_launch_schedule(self) -> dict[str, object]:
+        """Return the planned per-layer KV launch order for streaming decode."""
+
+        layer_count = len(self.kv_layer_nbytes)
+        per_layer_order = ["prompt_kv_write", "decode_kv_write", "decode_attention"]
+        return {
+            "source": "text_decode_resource_plan",
+            "layer_count": layer_count,
+            "operation_count": layer_count * len(per_layer_order),
+            "per_layer_order": per_layer_order,
+            "stages": [
+                {
+                    "name": "prompt_prefill_kv_write",
+                    "dispatch_key": "prompt_kv_write",
+                    "span_contract": "prompt_span",
+                    "layer_count": layer_count,
+                    "ready": self.kv_decode_kernel_plan.registered.get("prompt_kv_write") is True,
+                },
+                {
+                    "name": "one_token_decode_kv_write",
+                    "dispatch_key": "decode_kv_write",
+                    "span_contract": "decode_span",
+                    "layer_count": layer_count,
+                    "ready": self.kv_decode_kernel_plan.registered.get("decode_kv_write") is True,
+                },
+                {
+                    "name": "one_token_gated_attention_decode",
+                    "dispatch_key": "decode_attention",
+                    "span_contract": "decode_span",
+                    "layer_count": layer_count,
+                    "ready": self.kv_decode_kernel_plan.registered.get("decode_attention") is True,
+                },
+            ],
+            "first_layer_ops": [f"layers.0.{name}" for name in per_layer_order],
+            "last_layer_ops": [f"layers.{layer_count - 1}.{name}" for name in per_layer_order]
+            if layer_count
+            else [],
+            "all_stage_dispatch_ready": self.kv_decode_kernel_plan.all_registered,
+            "streaming_runner_ready": False,
+            "note": (
+                "Planned launch order for the future StepFun streaming KV-backed decode runner. "
+                "Current prompt smokes remain host-composed until streaming_runner_ready is true."
+            ),
+        }
+
     def to_dict(self) -> dict[str, object]:
         return {
             "backend": self.backend,
@@ -352,6 +398,7 @@ class StepFunTextDecodeResourcePlan:
             "total_nbytes": self.total_nbytes,
             "total_gib": self.total_gib,
             "kv_decode_kernel_plan": self.kv_decode_kernel_plan.to_dict(),
+            "kv_decode_launch_schedule": self.kv_decode_launch_schedule,
         }
 
 

@@ -570,9 +570,10 @@ reporting.
   `42` host-reference router projection slots across all 45 layers), records
   `kv_decode_dispatch_ready=true` from the text resource plan's `gguf_step35`
   BF16 KV write/decode registry keys plus decode/prompt 256-token paged-attention
-  span contracts, lists next actions for the StepFun-capable
-  oracle and KV-backed decode blockers, and supports `--fail-on-blocked` for
-  CI/handoff checks.
+  span contracts plus the planned per-layer KV launch schedule (45 layers ×
+  prompt KV write, decode KV write, gated attention = 135 planned operations),
+  lists next actions for the StepFun-capable oracle and KV-backed decode blockers,
+  and supports `--fail-on-blocked` for CI/handoff checks.
   This checklist item is partial rather than complete because the current runner
   is host-composed/chunked and does not yet implement the final KV-backed
   one-token decode path.

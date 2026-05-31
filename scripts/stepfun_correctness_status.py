@@ -262,6 +262,7 @@ def _kv_decode_dispatch_progress(resource: dict[str, object]) -> dict[str, objec
         "decode_span_shape_compatible": kv_plan.get("decode_span_shape_compatible") is True,
         "prompt_span_shape_compatible": kv_plan.get("prompt_span_shape_compatible") is True,
         "span_shape_compatible": kv_plan.get("span_shape_compatible") is True,
+        "launch_schedule": dict(plan.get("kv_decode_launch_schedule", {})),
         "dispatch_keys": dict(kv_plan.get("dispatch_keys", {})),
         "registered": registered,
         "all_registered": kv_plan.get("all_registered") is True and all(bool(v) for v in registered.values()),
@@ -380,6 +381,12 @@ def _readiness_gates(
                 "prompt_span_shape_compatible": kv_decode_dispatch_progress.get(
                     "prompt_span_shape_compatible"
                 ),
+                "launch_schedule_operation_count": dict(
+                    kv_decode_dispatch_progress.get("launch_schedule", {})
+                ).get("operation_count"),
+                "launch_schedule_streaming_ready": dict(
+                    kv_decode_dispatch_progress.get("launch_schedule", {})
+                ).get("streaming_runner_ready"),
                 "resident_prompt_smoke": "host_composed_layer_prefix",
             },
         },

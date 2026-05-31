@@ -33,7 +33,7 @@
         "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
       },
       {
-        "line": 583,
+        "line": 584,
         "state": "partial",
         "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
       }
@@ -78,6 +78,52 @@
       }
     },
     "kv_storage_dtype": "bf16",
+    "launch_schedule": {
+      "all_stage_dispatch_ready": true,
+      "first_layer_ops": [
+        "layers.0.prompt_kv_write",
+        "layers.0.decode_kv_write",
+        "layers.0.decode_attention"
+      ],
+      "last_layer_ops": [
+        "layers.44.prompt_kv_write",
+        "layers.44.decode_kv_write",
+        "layers.44.decode_attention"
+      ],
+      "layer_count": 45,
+      "note": "Planned launch order for the future StepFun streaming KV-backed decode runner. Current prompt smokes remain host-composed until streaming_runner_ready is true.",
+      "operation_count": 135,
+      "per_layer_order": [
+        "prompt_kv_write",
+        "decode_kv_write",
+        "decode_attention"
+      ],
+      "source": "text_decode_resource_plan",
+      "stages": [
+        {
+          "dispatch_key": "prompt_kv_write",
+          "layer_count": 45,
+          "name": "prompt_prefill_kv_write",
+          "ready": true,
+          "span_contract": "prompt_span"
+        },
+        {
+          "dispatch_key": "decode_kv_write",
+          "layer_count": 45,
+          "name": "one_token_decode_kv_write",
+          "ready": true,
+          "span_contract": "decode_span"
+        },
+        {
+          "dispatch_key": "decode_attention",
+          "layer_count": 45,
+          "name": "one_token_gated_attention_decode",
+          "ready": true,
+          "span_contract": "decode_span"
+        }
+      ],
+      "streaming_runner_ready": false
+    },
     "max_context": 512,
     "max_new_tokens": 1,
     "max_prompt_rows": 511,
@@ -261,6 +307,8 @@
       "current_evidence": {
         "decode_span_shape_compatible": true,
         "dispatch_ready": true,
+        "launch_schedule_operation_count": 135,
+        "launch_schedule_streaming_ready": false,
         "prompt_span_shape_compatible": true,
         "resident_prompt_smoke": "host_composed_layer_prefix"
       },
@@ -281,8 +329,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "1b02eb9c2ad1ed8561d7fb2459ab332b014564a018e8596791a8c3cbfab6e97c",
-      "size_bytes": 50282
+      "sha256": "d7eb75d58391c48e35166c53b10d210c81810db4cc7e9d99d444aafae1e8e5d1",
+      "size_bytes": 50420
     },
     "oracle": {
       "exists": true,
@@ -299,8 +347,8 @@
     "text_resource": {
       "exists": true,
       "path": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
-      "sha256": "3677953e6aa6b9957f0389598cde0e7f82c518fdaa6dd921ce527dd38bc70a69",
-      "size_bytes": 31029
+      "sha256": "96bf187402a95162a3dfe0bdd06a7bbdeeb6a93be56436f4e34c067e419dfc40",
+      "size_bytes": 32489
     }
   },
   "status": "blocked",

@@ -193,6 +193,50 @@ def test_stepfun_text_decode_resource_plan_estimates_weight_and_kv_bytes() -> No
         "quant": STEPFUN_GGUF_KERNEL_QUANT,
         "variant": "bf16_split_k_gate_f32_spans",
     }
+    launch_schedule = payload["kv_decode_launch_schedule"]
+    assert launch_schedule["source"] == "text_decode_resource_plan"
+    assert launch_schedule["layer_count"] == 45
+    assert launch_schedule["operation_count"] == 135
+    assert launch_schedule["per_layer_order"] == [
+        "prompt_kv_write",
+        "decode_kv_write",
+        "decode_attention",
+    ]
+    assert launch_schedule["first_layer_ops"] == [
+        "layers.0.prompt_kv_write",
+        "layers.0.decode_kv_write",
+        "layers.0.decode_attention",
+    ]
+    assert launch_schedule["last_layer_ops"] == [
+        "layers.44.prompt_kv_write",
+        "layers.44.decode_kv_write",
+        "layers.44.decode_attention",
+    ]
+    assert launch_schedule["stages"] == [
+        {
+            "name": "prompt_prefill_kv_write",
+            "dispatch_key": "prompt_kv_write",
+            "span_contract": "prompt_span",
+            "layer_count": 45,
+            "ready": True,
+        },
+        {
+            "name": "one_token_decode_kv_write",
+            "dispatch_key": "decode_kv_write",
+            "span_contract": "decode_span",
+            "layer_count": 45,
+            "ready": True,
+        },
+        {
+            "name": "one_token_gated_attention_decode",
+            "dispatch_key": "decode_attention",
+            "span_contract": "decode_span",
+            "layer_count": 45,
+            "ready": True,
+        },
+    ]
+    assert launch_schedule["all_stage_dispatch_ready"] is True
+    assert launch_schedule["streaming_runner_ready"] is False
 
     with pytest.raises(ValueError, match="context_pages"):
         planner.text_decode_resource_plan(context_pages=0, page_size=512)

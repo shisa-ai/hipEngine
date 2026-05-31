@@ -82,6 +82,23 @@ def test_stepfun_load_smoke_dry_run_plan_emits_resource_json(capsys: pytest.Capt
         "quant": "gguf_step35",
         "variant": "bf16_split_k_gate_f32_spans",
     }
+    launch_schedule = plan["kv_decode_launch_schedule"]
+    assert launch_schedule["layer_count"] == 45
+    assert launch_schedule["operation_count"] == 135
+    assert launch_schedule["per_layer_order"] == [
+        "prompt_kv_write",
+        "decode_kv_write",
+        "decode_attention",
+    ]
+    assert launch_schedule["all_stage_dispatch_ready"] is True
+    assert launch_schedule["streaming_runner_ready"] is False
+    assert launch_schedule["stages"][2] == {
+        "name": "one_token_gated_attention_decode",
+        "dispatch_key": "decode_attention",
+        "span_contract": "decode_span",
+        "layer_count": 45,
+        "ready": True,
+    }
     assert plan["slot_paths"][:4] == [
         "root.token_embedding",
         "root.rope_freqs",

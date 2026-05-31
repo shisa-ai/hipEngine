@@ -116,6 +116,47 @@ def _write_resource_artifact(path: Path) -> None:
                 "status": "dry_run_plan",
                 "text_decode_resource_plan": {
                     "backend": "hip_gfx1151",
+                    "kv_decode_launch_schedule": {
+                        "all_stage_dispatch_ready": True,
+                        "first_layer_ops": [
+                            "layers.0.prompt_kv_write",
+                            "layers.0.decode_kv_write",
+                            "layers.0.decode_attention",
+                        ],
+                        "last_layer_ops": [
+                            "layers.44.prompt_kv_write",
+                            "layers.44.decode_kv_write",
+                            "layers.44.decode_attention",
+                        ],
+                        "layer_count": 45,
+                        "operation_count": 135,
+                        "per_layer_order": ["prompt_kv_write", "decode_kv_write", "decode_attention"],
+                        "source": "text_decode_resource_plan",
+                        "stages": [
+                            {
+                                "dispatch_key": "prompt_kv_write",
+                                "layer_count": 45,
+                                "name": "prompt_prefill_kv_write",
+                                "ready": True,
+                                "span_contract": "prompt_span",
+                            },
+                            {
+                                "dispatch_key": "decode_kv_write",
+                                "layer_count": 45,
+                                "name": "one_token_decode_kv_write",
+                                "ready": True,
+                                "span_contract": "decode_span",
+                            },
+                            {
+                                "dispatch_key": "decode_attention",
+                                "layer_count": 45,
+                                "name": "one_token_gated_attention_decode",
+                                "ready": True,
+                                "span_contract": "decode_span",
+                            },
+                        ],
+                        "streaming_runner_ready": False,
+                    },
                     "kv_decode_kernel_plan": {
                         "all_registered": True,
                         "attention_block_size": 256,
@@ -318,6 +359,31 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert kv_dispatch["decode_span_shape_compatible"] is True
     assert kv_dispatch["prompt_span_shape_compatible"] is True
     assert kv_dispatch["span_shape_compatible"] is True
+    assert kv_dispatch["launch_schedule"]["layer_count"] == 45
+    assert kv_dispatch["launch_schedule"]["operation_count"] == 135
+    assert kv_dispatch["launch_schedule"]["per_layer_order"] == [
+        "prompt_kv_write",
+        "decode_kv_write",
+        "decode_attention",
+    ]
+    assert kv_dispatch["launch_schedule"]["first_layer_ops"] == [
+        "layers.0.prompt_kv_write",
+        "layers.0.decode_kv_write",
+        "layers.0.decode_attention",
+    ]
+    assert kv_dispatch["launch_schedule"]["last_layer_ops"] == [
+        "layers.44.prompt_kv_write",
+        "layers.44.decode_kv_write",
+        "layers.44.decode_attention",
+    ]
+    assert kv_dispatch["launch_schedule"]["stages"][0] == {
+        "dispatch_key": "prompt_kv_write",
+        "layer_count": 45,
+        "name": "prompt_prefill_kv_write",
+        "ready": True,
+        "span_contract": "prompt_span",
+    }
+    assert kv_dispatch["launch_schedule"]["streaming_runner_ready"] is False
     assert kv_dispatch["all_registered"] is True
     assert kv_dispatch["registered"] == {
         "decode_attention": True,
@@ -345,6 +411,8 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert gates["kv_backed_decode"]["current_evidence"] == {
         "decode_span_shape_compatible": True,
         "dispatch_ready": True,
+        "launch_schedule_operation_count": 135,
+        "launch_schedule_streaming_ready": False,
         "prompt_span_shape_compatible": True,
         "resident_prompt_smoke": "host_composed_layer_prefix",
     }

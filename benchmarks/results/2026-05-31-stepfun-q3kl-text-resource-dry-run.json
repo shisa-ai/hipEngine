@@ -93,6 +93,52 @@
       },
       "span_shape_compatible": true
     },
+    "kv_decode_launch_schedule": {
+      "all_stage_dispatch_ready": true,
+      "first_layer_ops": [
+        "layers.0.prompt_kv_write",
+        "layers.0.decode_kv_write",
+        "layers.0.decode_attention"
+      ],
+      "last_layer_ops": [
+        "layers.44.prompt_kv_write",
+        "layers.44.decode_kv_write",
+        "layers.44.decode_attention"
+      ],
+      "layer_count": 45,
+      "note": "Planned launch order for the future StepFun streaming KV-backed decode runner. Current prompt smokes remain host-composed until streaming_runner_ready is true.",
+      "operation_count": 135,
+      "per_layer_order": [
+        "prompt_kv_write",
+        "decode_kv_write",
+        "decode_attention"
+      ],
+      "source": "text_decode_resource_plan",
+      "stages": [
+        {
+          "dispatch_key": "prompt_kv_write",
+          "layer_count": 45,
+          "name": "prompt_prefill_kv_write",
+          "ready": true,
+          "span_contract": "prompt_span"
+        },
+        {
+          "dispatch_key": "decode_kv_write",
+          "layer_count": 45,
+          "name": "one_token_decode_kv_write",
+          "ready": true,
+          "span_contract": "decode_span"
+        },
+        {
+          "dispatch_key": "decode_attention",
+          "layer_count": 45,
+          "name": "one_token_gated_attention_decode",
+          "ready": true,
+          "span_contract": "decode_span"
+        }
+      ],
+      "streaming_runner_ready": false
+    },
     "kv_gib": 0.087890625,
     "kv_layer_nbytes": [
       {

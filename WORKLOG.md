@@ -28091,3 +28091,34 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted status tests passed (`3 passed`), command metadata schema check printed `stepfun next action commands ok`, and the full StepFun guard passed (`103 passed` plus CPU-reference fixture checks).
+
+## 2026-05-31 — StepFun KV launch schedule recorded
+
+Extended the StepFun Q3_K_L text-resource and correctness-status artifacts with a planned per-layer KV launch schedule for the future streaming decode runner. `StepFunTextDecodeResourcePlan.to_dict()` now records `kv_decode_launch_schedule` with 45 layers, per-layer order `prompt_kv_write -> decode_kv_write -> decode_attention`, 135 planned operations, first/last layer operation names, stage-to-dispatch-key mapping, and `streaming_runner_ready=false`. The consolidated correctness status now surfaces that schedule under `kv_decode_dispatch_progress.launch_schedule` and includes its operation count in the KV-backed decode readiness-gate evidence.
+
+Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json` and `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`. Updated `docs/STEPFUN.md` and planner/load-smoke/status tests. This is launch-schedule/status evidence only; `oracle_parity=false`, `kv_backed_decode_ready=false`, and `e2e_inference_ready=false` remain unchanged.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_decode_planner.py tests/test_stepfun_load_smoke.py tests/test_stepfun_correctness_status.py -q
+python3 - <<'PY'
+import json
+r=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json'))
+sched=r['text_decode_resource_plan']['kv_decode_launch_schedule']
+assert sched['layer_count'] == 45
+assert sched['operation_count'] == 135
+assert sched['per_layer_order'] == ['prompt_kv_write', 'decode_kv_write', 'decode_attention']
+assert sched['all_stage_dispatch_ready'] is True
+assert sched['streaming_runner_ready'] is False
+s=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+ks=s['kv_decode_dispatch_progress']['launch_schedule']
+assert ks['operation_count'] == 135
+assert s['readiness_gates']['kv_backed_decode']['current_evidence']['launch_schedule_operation_count'] == 135
+assert s['kv_backed_decode_ready'] is False
+print('stepfun kv launch schedule artifacts ok')
+PY
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted planner/load-smoke/status tests passed (`11 passed`), artifact schema check printed `stepfun kv launch schedule artifacts ok`, and the full StepFun guard passed (`103 passed` plus CPU-reference fixture checks).
