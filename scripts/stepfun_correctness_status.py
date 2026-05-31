@@ -272,6 +272,75 @@ def _kv_decode_dispatch_progress(resource: dict[str, object]) -> dict[str, objec
     }
 
 
+def _status_refresh_command(
+    *,
+    prompt_artifact: Path,
+    oracle_artifact: Path,
+    resource_artifact: Path,
+    docs_path: Path,
+    output_artifact: Path = Path("benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json"),
+) -> str:
+    return (
+        "python3 scripts/stepfun_correctness_status.py "
+        f"--prompt-artifact {prompt_artifact} "
+        f"--oracle-artifact {oracle_artifact} "
+        f"--resource-artifact {resource_artifact} "
+        f"--docs {docs_path} "
+        f"--output {output_artifact} --pretty"
+    )
+
+
+def _resource_plan_refresh_command(
+    *,
+    output_artifact: Path = DEFAULT_RESOURCE_ARTIFACT,
+) -> str:
+    return (
+        "python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan "
+        "--kv-context-pages 1 --kv-page-size 512 --pretty "
+        f"> {output_artifact}"
+    )
+
+
+def _next_action_commands(
+    *,
+    oracle_progress: dict[str, object],
+    prompt_artifact: Path,
+    oracle_artifact: Path,
+    resource_artifact: Path,
+    docs_path: Path,
+) -> dict[str, object]:
+    """Return copy/pasteable blocker reproduction and refresh commands."""
+
+    status_refresh = _status_refresh_command(
+        prompt_artifact=prompt_artifact,
+        oracle_artifact=oracle_artifact,
+        resource_artifact=resource_artifact,
+        docs_path=docs_path,
+    )
+    return {
+        "oracle_parity_blocked": {
+            "rerun_command_shell": oracle_progress.get("command_shell"),
+            "status_refresh_command": status_refresh,
+            "success_criteria": [
+                "oracle_progress.status is executed",
+                "oracle_parity is true",
+                "readiness_gates.oracle_parity.ready is true",
+            ],
+        },
+        "kv_backed_decode_not_wired": {
+            "resource_plan_refresh_command": _resource_plan_refresh_command(
+                output_artifact=resource_artifact
+            ),
+            "status_refresh_command": status_refresh,
+            "success_criteria": [
+                "kv_backed_decode_ready is true",
+                "readiness_gates.kv_backed_decode.ready is true",
+                "e2e_inference_ready is true only after oracle_parity is also true",
+            ],
+        },
+    }
+
+
 def _readiness_gates(
     *,
     oracle_parity: bool,
@@ -368,6 +437,13 @@ def build_status(
         oracle_progress=oracle_progress,
         kv_decode_dispatch_progress=kv_decode_dispatch_progress,
     )
+    next_action_commands = _next_action_commands(
+        oracle_progress=oracle_progress,
+        prompt_artifact=prompt_artifact,
+        oracle_artifact=oracle_artifact,
+        resource_artifact=resource_artifact,
+        docs_path=docs_path,
+    )
     blockers: list[dict[str, object]] = []
     if not oracle_parity:
         blockers.append(
@@ -446,6 +522,7 @@ def build_status(
         "readiness_gates": readiness_gates,
         "blockers": blockers,
         "next_actions": next_actions,
+        "next_action_commands": next_action_commands,
         "docs_checklist": docs_status,
         "note": (
             "Host-composed all-layer prompt smoke is present; true e2e inference still needs "

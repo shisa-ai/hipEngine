@@ -366,6 +366,23 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "oracle_parity_blocked",
         "kv_backed_decode_not_wired",
     }
+    commands = status["next_action_commands"]
+    oracle_commands = commands["oracle_parity_blocked"]
+    assert oracle_commands["rerun_command_shell"].startswith("/tmp/llama-cli")
+    assert f"--prompt-artifact {prompt}" in oracle_commands["status_refresh_command"]
+    assert f"--oracle-artifact {oracle}" in oracle_commands["status_refresh_command"]
+    assert oracle_commands["success_criteria"] == [
+        "oracle_progress.status is executed",
+        "oracle_parity is true",
+        "readiness_gates.oracle_parity.ready is true",
+    ]
+    kv_commands = commands["kv_backed_decode_not_wired"]
+    assert kv_commands["resource_plan_refresh_command"] == (
+        "python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan "
+        f"--kv-context-pages 1 --kv-page-size 512 --pretty > {resource}"
+    )
+    assert kv_commands["status_refresh_command"] == oracle_commands["status_refresh_command"]
+    assert kv_commands["success_criteria"][-1] == "e2e_inference_ready is true only after oracle_parity is also true"
     assert status["docs_checklist"]["open_or_partial_count_p0_p12"] == 2
     assert [item["state"] for item in status["docs_checklist"]["open_or_partial_items_p0_p12"]] == [
         "open",
@@ -422,6 +439,12 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
         "oracle_parity",
         "kv_backed_decode",
     ]
+    assert payload["next_action_commands"]["oracle_parity_blocked"]["rerun_command_shell"].startswith(
+        "/tmp/llama-cli"
+    )
+    assert payload["next_action_commands"]["kv_backed_decode_not_wired"][
+        "resource_plan_refresh_command"
+    ].endswith(f"> {resource}")
     assert len(payload["next_actions"]) == 2
     assert payload["docs_checklist"]["open_or_partial_count_p0_p12"] == 2
 

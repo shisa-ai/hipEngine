@@ -139,6 +139,26 @@
     "source": "prompt_artifact.selected_slots"
   },
   "model": "Step-3.7-flash-Q3_K_L",
+  "next_action_commands": {
+    "kv_backed_decode_not_wired": {
+      "resource_plan_refresh_command": "python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan --kv-context-pages 1 --kv-page-size 512 --pretty > benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
+      "status_refresh_command": "python3 scripts/stepfun_correctness_status.py --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --oracle-artifact benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json --resource-artifact benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json --docs docs/STEPFUN.md --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty",
+      "success_criteria": [
+        "kv_backed_decode_ready is true",
+        "readiness_gates.kv_backed_decode.ready is true",
+        "e2e_inference_ready is true only after oracle_parity is also true"
+      ]
+    },
+    "oracle_parity_blocked": {
+      "rerun_command_shell": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --prompt '<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n' --predict 1 --temp 0 --top-k 1 --top-p 1 --min-p 0 --repeat-penalty 1 --seed 0 --no-display-prompt --simple-io --device none --gpu-layers 0",
+      "status_refresh_command": "python3 scripts/stepfun_correctness_status.py --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --oracle-artifact benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json --resource-artifact benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json --docs docs/STEPFUN.md --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty",
+      "success_criteria": [
+        "oracle_progress.status is executed",
+        "oracle_parity is true",
+        "readiness_gates.oracle_parity.ready is true"
+      ]
+    }
+  },
   "next_actions": [
     {
       "action": "Build or locate a StepFun/step35-capable llama.cpp or CPU oracle, rerun scripts/stepfun_llamacpp_oracle.py --execute, and record exact token/logit comparison.",
@@ -261,8 +281,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "b547340b2aa394c60146971f275cb86049903b600ece247bd6e1ebce56802813",
-      "size_bytes": 50165
+      "sha256": "1b02eb9c2ad1ed8561d7fb2459ab332b014564a018e8596791a8c3cbfab6e97c",
+      "size_bytes": 50282
     },
     "oracle": {
       "exists": true,

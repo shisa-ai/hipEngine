@@ -28064,3 +28064,30 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted status tests passed (`3 passed`), artifact provenance check printed `stepfun source artifact provenance ok`, and the full StepFun guard passed (`103 passed` plus CPU-reference fixture checks).
+
+## 2026-05-31 — StepFun next-action commands recorded
+
+Extended the consolidated StepFun Q3_K_L correctness-status helper with `next_action_commands` so the two remaining blockers have copy/pasteable command metadata in addition to prose next actions. The regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json` now records the oracle rerun command shell from the llama.cpp artifact, a status refresh command using the exact prompt/oracle/resource/docs inputs, and a resource-plan refresh command for the KV-backed decode blocker. The success criteria remain explicit: oracle parity must become true, KV-backed decode readiness must become true, and end-to-end inference only becomes ready after both gates pass. This is blocker/status evidence only; `oracle_parity=false`, `kv_backed_decode_ready=false`, and `e2e_inference_ready=false` remain unchanged.
+
+Updated `tests/test_stepfun_correctness_status.py` to assert the command metadata and clarified the P11 status paragraph in `docs/STEPFUN.md`.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 - <<'PY'
+import json
+p=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+c=p['next_action_commands']
+assert c['oracle_parity_blocked']['rerun_command_shell']
+assert 'scripts/stepfun_correctness_status.py' in c['oracle_parity_blocked']['status_refresh_command']
+assert c['kv_backed_decode_not_wired']['resource_plan_refresh_command'].startswith('python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan')
+assert c['kv_backed_decode_not_wired']['status_refresh_command'] == c['oracle_parity_blocked']['status_refresh_command']
+assert p['oracle_parity'] is False
+assert p['kv_backed_decode_ready'] is False
+print('stepfun next action commands ok')
+PY
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted status tests passed (`3 passed`), command metadata schema check printed `stepfun next action commands ok`, and the full StepFun guard passed (`103 passed` plus CPU-reference fixture checks).
