@@ -76,6 +76,10 @@ KV_PREFIX_TAIL_WINDOW = 16
 KV_PREFIX_TOKEN_SAMPLE_WORDS = 8
 
 
+def _payload_json(payload: Any) -> str:
+    return json.dumps(payload, indent=2, allow_nan=False)
+
+
 @dataclass(frozen=True)
 class HiddenRun:
     seed_tokens: list[int]
@@ -5736,7 +5740,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
         ]
         if args.json is not None:
             args.json.parent.mkdir(parents=True, exist_ok=True)
-            args.json.write_text(json.dumps(payload, indent=2) + "\n")
+            args.json.write_text(_payload_json(payload) + "\n")
         return payload
 
     if repeat_runs > 1:
@@ -5749,7 +5753,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
         payload = _repeat_payload(args, argv, repeat_payloads)
         if args.json is not None:
             args.json.parent.mkdir(parents=True, exist_ok=True)
-            args.json.write_text(json.dumps(payload, indent=2) + "\n")
+            args.json.write_text(_payload_json(payload) + "\n")
         return payload
 
     os.environ.setdefault("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE", "1")
@@ -5866,7 +5870,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
     payload["layer_summaries"] = layer_summaries
     if args.json is not None:
         args.json.parent.mkdir(parents=True, exist_ok=True)
-        args.json.write_text(json.dumps(payload, indent=2) + "\n")
+        args.json.write_text(_payload_json(payload) + "\n")
     return payload
 
 
@@ -5874,7 +5878,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     payload = run(args, argv)
-    print(json.dumps(payload, indent=2))
+    print(_payload_json(payload))
     return 0 if payload["status"] in {"eq_ok", "mismatch_found", "planned"} else 1
 
 
