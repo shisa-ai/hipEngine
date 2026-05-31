@@ -27397,3 +27397,17 @@ python3 -m pytest -q tests/test_stepfun_resident_session.py -q
 ```
 
 Result: `17 passed`.
+
+## 2026-05-30 — StepFun resident dense layer prefill probe
+
+Added `StepFunResidentSession.layer_prefill_probe_bf16()`, a correctness-only layer bridge that composes the resident attention prefill probe, residual add, `ffn_norm`, and either dense or MoE MLP probe before the final residual. This is still host-composed and not the final fused/device-side streaming loop, but it moves the resident Step runner from isolated projections to an executable layer block.
+
+Extended `tests/test_stepfun_resident_session.py` with a real layer-0 dense prefill test. The test materializes attention norms/projections/output plus `ffn_norm` and dense `ffn_gate/up/down`, builds a CPU reference with the same BF16 rounding boundaries, compares the resident layer output, and checks allocation cleanup.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_resident_session.py -q
+```
+
+Result: `18 passed`.

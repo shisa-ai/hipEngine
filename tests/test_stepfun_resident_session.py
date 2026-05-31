@@ -370,6 +370,141 @@ def test_stepfun_resident_session_attention_prefill_probe_matches_cpu_reference(
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_stepfun_resident_session_layer_prefill_probe_matches_dense_cpu_reference() -> None:
+    paths = _stepfun_gguf_paths()
+    info = scan_gguf_splits(paths)
+    model_map = build_stepfun_gguf_tensor_map(info)
+    layer_id = 0
+    layer = model_map.layer(layer_id)
+    tensors = {
+        "attn_norm": layer.tensor("attn_norm"),
+        "q_norm": layer.tensor("attn_q_norm"),
+        "k_norm": layer.tensor("attn_k_norm"),
+        "q": layer.tensor("attn_q"),
+        "k": layer.tensor("attn_k"),
+        "v": layer.tensor("attn_v"),
+        "attn_gate": layer.tensor("attn_gate"),
+        "attn_output": layer.tensor("attn_output"),
+        "ffn_norm": layer.tensor("ffn_norm"),
+        "ffn_gate": layer.tensor("ffn_gate"),
+        "ffn_up": layer.tensor("ffn_up"),
+        "ffn_down": layer.tensor("ffn_down"),
+    }
+    assert layer.mlp_type == "dense_mlp"
+    x = ((np.arange(2 * 4096, dtype=np.float32).reshape(2, 4096) % 73) - 36) / 320.0
+    x_bits = float_array_to_bf16_bits(x)
+    hidden = bf16_to_float32(x_bits)
+    attn_norm = GGUFReader(tensors["attn_norm"].source_path).tensor_data(tensors["attn_norm"].name)
+    normed_bits = float_array_to_bf16_bits(
+        step_rmsnorm(hidden, attn_norm, eps=model_map.config.rms_norm_eps)
+    )
+    normed = bf16_to_float32(normed_bits)
+    rows = x_bits.shape[0]
+    head_dim = model_map.config.head_dim
+    q_heads = model_map.config.head_counts[layer_id]
+    kv_heads = model_map.config.kv_head_counts[layer_id]
+    q = gguf_q3_k_gemv(normed, GGUFReader(tensors["q"].source_path).tensor_data(tensors["q"].name))
+    k = gguf_q3_k_gemv(normed, GGUFReader(tensors["k"].source_path).tensor_data(tensors["k"].name))
+    v = gguf_q5_k_gemv(normed, GGUFReader(tensors["v"].source_path).tensor_data(tensors["v"].name))
+    attn_gate = gguf_q3_k_gemv(
+        normed,
+        GGUFReader(tensors["attn_gate"].source_path).tensor_data(tensors["attn_gate"].name),
+    )
+    q = q.reshape(rows, q_heads, head_dim)
+    k = k.reshape(rows, kv_heads, head_dim)
+    v = v.reshape(rows, kv_heads, model_map.config.value_dim)
+    q = step_rmsnorm(
+        q,
+        GGUFReader(tensors["q_norm"].source_path).tensor_data(tensors["q_norm"].name),
+        eps=model_map.config.rms_norm_eps,
+    )
+    k = step_rmsnorm(
+        k,
+        GGUFReader(tensors["k_norm"].source_path).tensor_data(tensors["k_norm"].name),
+        eps=model_map.config.rms_norm_eps,
+    )
+    positions = np.arange(rows, dtype=np.int64)
+    q_rope = step_apply_rope(
+        q,
+        positions,
+        head_dim=head_dim,
+        partial_factor=0.5,
+        theta=model_map.config.rope_freq_base,
+        llama3_scaling=True,
+    )
+    k_rope = step_apply_rope(
+        k,
+        positions,
+        head_dim=head_dim,
+        partial_factor=0.5,
+        theta=model_map.config.rope_freq_base,
+        llama3_scaling=True,
+    )
+    attn = step_gqa_attention_prefill(q_rope, k_rope, v)
+    gated = step_headwise_attention_gate(attn, attn_gate)
+    gated_bits = float_array_to_bf16_bits(gated.reshape(rows, q_heads * head_dim))
+    attn_out = gguf_q5_k_gemv(
+        bf16_to_float32(gated_bits),
+        GGUFReader(tensors["attn_output"].source_path).tensor_data(tensors["attn_output"].name),
+    )
+    attention_residual = (hidden + attn_out).astype(np.float32)
+    ffn_norm = GGUFReader(tensors["ffn_norm"].source_path).tensor_data(tensors["ffn_norm"].name)
+    ffn_norm_bits = float_array_to_bf16_bits(
+        step_rmsnorm(attention_residual, ffn_norm, eps=model_map.config.rms_norm_eps)
+    )
+    ffn_normed = bf16_to_float32(ffn_norm_bits)
+    gate = gguf_q3_k_gemv(
+        ffn_normed,
+        GGUFReader(tensors["ffn_gate"].source_path).tensor_data(tensors["ffn_gate"].name),
+    )
+    up = gguf_q3_k_gemv(
+        ffn_normed,
+        GGUFReader(tensors["ffn_up"].source_path).tensor_data(tensors["ffn_up"].name),
+    )
+    activated_gate = gate / (np.float32(1.0) + np.exp(-gate).astype(np.float32))
+    fused_bits = float_array_to_bf16_bits(activated_gate * up)
+    ffn = gguf_q5_k_gemv(
+        bf16_to_float32(fused_bits),
+        GGUFReader(tensors["ffn_down"].source_path).tensor_data(tensors["ffn_down"].name),
+    )
+    expected = (attention_residual + ffn).astype(np.float32)
+
+    runtime = get_hip_runtime()
+    reset_memory_stats()
+    session = StepFunResidentSession.from_gguf_paths(
+        paths,
+        selected_slots=(
+            "layers.0.attn_norm",
+            "layers.0.attn_q_norm",
+            "layers.0.attn_k_norm",
+            "layers.0.attn_q",
+            "layers.0.attn_k",
+            "layers.0.attn_v",
+            "layers.0.attn_gate",
+            "layers.0.attn_output",
+            "layers.0.ffn_norm",
+            "layers.0.ffn_gate",
+            "layers.0.ffn_up",
+            "layers.0.ffn_down",
+        ),
+        runtime=runtime,
+    )
+    try:
+        actual = session.layer_prefill_probe_bf16(layer_id, x_bits, runtime=runtime)
+        assert actual.shape == expected.shape == (rows, model_map.config.hidden_size)
+        np.testing.assert_allclose(actual, expected, rtol=5.0e-3, atol=1.0e-2)
+        expected_nbytes = sum(tensor.nbytes for tensor in tensors.values())
+        assert session.weights.allocated_nbytes == expected_nbytes
+        assert memory_stats()["current_allocated_bytes"] == expected_nbytes
+        assert memory_stats()["active_allocations"] == len(tensors)
+    finally:
+        session.free(runtime=runtime)
+
+    assert memory_stats()["current_allocated_bytes"] == 0
+    assert memory_stats()["active_allocations"] == 0
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 def test_stepfun_resident_session_projects_dense_mlp_inputs() -> None:
     paths = _stepfun_gguf_paths()
     info = scan_gguf_splits(paths)

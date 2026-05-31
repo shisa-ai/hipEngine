@@ -765,6 +765,64 @@ class StepFunResidentSession:
             stream=stream,
         )
 
+    def layer_prefill_probe_bf16(
+        self,
+        layer_id: int,
+        x_bf16_bits,
+        *,
+        positions=None,
+        runtime: HipRuntime | None = None,
+        stream: int = 0,
+    ):
+        """Correctness probe for one resident Step layer prefill block.
+
+        This composes the attention prefill probe, residual add, FFN RMSNorm,
+        and the dense or MoE MLP probe on host-visible arrays. It is a bridge
+        toward the streaming layer loop, not the final fused/device-side path.
+        """
+
+        import numpy as np
+        from hipengine.kernels.cpu_reference.ops import step_rmsnorm
+        from hipengine.loading.materialize import float_array_to_bf16_bits
+        from hipengine.quant.gguf import bf16_to_float32
+
+        self._validate_layer_id(layer_id)
+        runtime = runtime or get_hip_runtime()
+        x = np.ascontiguousarray(x_bf16_bits, dtype=np.uint16)
+        hidden = bf16_to_float32(x)
+        attention_out = self.attention_prefill_probe_bf16(
+            layer_id,
+            x,
+            positions=positions,
+            output_dtype=GGUF_OUTPUT_F32,
+            runtime=runtime,
+            stream=stream,
+        )
+        attention_residual = (hidden + np.asarray(attention_out, dtype=np.float32)).astype(np.float32)
+        ffn_norm_weight = self._copy_resident_f32_weight(f"layers.{layer_id}.ffn_norm", runtime=runtime)
+        ffn_norm_bits = float_array_to_bf16_bits(
+            step_rmsnorm(attention_residual, ffn_norm_weight, eps=self.model_map.config.rms_norm_eps)
+        )
+        layer = self.model_map.layer(layer_id)
+        if "ffn_gate" in layer.tensors:
+            ffn = self.dense_mlp_probe_bf16(
+                layer_id,
+                ffn_norm_bits,
+                output_dtype=GGUF_OUTPUT_F32,
+                runtime=runtime,
+                stream=stream,
+            )
+        elif "ffn_gate_inp" in layer.tensors:
+            ffn = self.moe_mlp_probe_bf16(
+                layer_id,
+                ffn_norm_bits,
+                runtime=runtime,
+                stream=stream,
+            )
+        else:
+            raise RuntimeError(f"layer {layer_id} does not expose a Step MLP path")
+        return (attention_residual + np.asarray(ffn, dtype=np.float32)).astype(np.float32)
+
     def project_dense_mlp_inputs_bf16(
         self,
         layer_id: int,
