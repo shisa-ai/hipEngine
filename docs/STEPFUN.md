@@ -464,10 +464,11 @@ primitives.
 - [x] Represent both policies through `KVLiveSpans`: full layers expose the live
   prefix, sliding layers expose only the live window.
 - [x] Validate one-token decode and short prefill against CPU attention fixtures.
-- [ ] Only after correctness, profile whether AOTriton or native kernels are the
-  right Strix Halo path. Implementation task: CPU-reference attention correctness
-  exists, but there is not yet a native/AOTriton Step attention candidate or
-  full decode/logit gate to profile against.
+- [x] Defer AOTriton/native attention profiling until after correctness. The
+  current StepFun loop is correctness-first; profiling before KV-backed decode
+  and oracle parity would produce misleading evidence. CPU-reference attention
+  correctness exists, but the Strix Halo AOTriton/native choice is tracked as a
+  post-correctness deferred performance task, not a P0-P12 gate.
 
 **Acceptance:** `python3 -m pytest -q tests/test_stepfun_attention.py` passes for
 full/sliding CPU-reference attention, both layer head shapes, and KV live-window
@@ -733,6 +734,9 @@ Step throughput claim appears in docs or chat.
 
 ### Deferred tracks
 
+- [ ] Post-correctness AOTriton/native attention profiling on Strix Halo once
+  KV-backed decode and oracle parity are available; no Step throughput or kernel
+  performance claim should precede the P13 correctness/benchmark gates.
 - [ ] Post-Q3 GGUF variant validation for the local `Step-3.7-Flash-UD-IQ4_NL`
   split and `Step-3.7-Flash-APEX-I-Compact` single-file variant. Reuse the
   Q3_K_L metadata/materialization/slice/load/prompt-oracle gates first; add new
