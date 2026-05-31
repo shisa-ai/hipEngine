@@ -382,6 +382,11 @@ def _summarize_samples(samples: Sequence[float]) -> dict[str, Any]:
     }
 
 
+def _request_id_sort_key(request_id: Any) -> tuple[int, int | str]:
+    text = str(request_id)
+    return (0, int(text)) if text.isdigit() else (1, text)
+
+
 def _all_finite(rows: Iterable[dict[str, Any]]) -> bool:
     return all(math.isfinite(float(row["logit"])) for row in rows)
 
@@ -3237,13 +3242,17 @@ def _build_payload(
         for request_id, row in per_request_observability.items()
         if isinstance(row, dict)
     }
-    request_latencies = [
-        float(row["completion_timestamp"]) - float(row["submitted_timestamp"])
-        for row in per_request_observability.values()
-        if isinstance(row, dict)
-        and row.get("completion_timestamp") is not None
-        and row.get("submitted_timestamp") is not None
-    ]
+    request_latencies: list[float] = []
+    for request_id in sorted(per_request_observability, key=_request_id_sort_key):
+        row = per_request_observability[request_id]
+        if not isinstance(row, dict):
+            continue
+        admitted_timestamp = row.get("admitted_timestamp")
+        completion_timestamp = row.get("completion_timestamp")
+        if _is_finite_nonnegative_number(admitted_timestamp) and _is_finite_nonnegative_number(completion_timestamp):
+            latency = float(completion_timestamp) - float(admitted_timestamp)
+            if latency > 0.0:
+                request_latencies.append(latency)
     latency_summary = _summarize_samples(request_latencies)
     payload = {
         "schema": 3,

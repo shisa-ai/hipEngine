@@ -13025,6 +13025,93 @@ def test_qwen35_retained_payload_mirrors_fallback_native_decode_label(monkeypatc
     assert "--rows 2" in payload["commands"]["correctness_reference"]
 
 
+def test_qwen35_retained_payload_orders_latency_samples_by_admission_row(monkeypatch) -> None:
+    monkeypatch.setattr(retained_bench, "_hardware_context", lambda: {"gpu": "test"})
+    monkeypatch.setattr(retained_bench, "_software_context", lambda: {"python": "test"})
+    args = argparse.Namespace(
+        batch_size=2,
+        prompt_length=512,
+        decode_tokens=128,
+        warmup_decode_tokens=0,
+        max_layers=40,
+        json=None,
+        model="/tmp/model",
+        kv_storage="bf16",
+        kv_scale_dtype="fp16",
+        kv_scale_granularity="per_token_head",
+    )
+    bench = {
+        "load_seconds": 0.1,
+        "prefill_seconds": 1.0,
+        "warmup_seconds": 0.0,
+        "decode_seconds": 2.0,
+        "warmup_step_seconds": [],
+        "decode_step_seconds": [0.25, 0.5],
+        "seed_tokens": {
+            "0": {"token_id": 10, "token_text": "a", "logit": 1.0},
+            "1": {"token_id": 20, "token_text": "b", "logit": 1.0},
+        },
+        "generated_tokens": {"0": [], "1": []},
+        "scheduler_metadata": {},
+        "batch_execution": {
+            "path": "scheduler_native_compact_batch",
+            "native_compact_prefill": True,
+            "native_caware_decode": False,
+            "throughput_claim_eligible": False,
+            "blockers": ["diagnostic"],
+        },
+        "completed": [],
+        "request_observability": {
+            "1": {
+                "queue_seconds": 0.1,
+                "prefill_seconds": 0.2,
+                "decode_seconds": 0.3,
+                "kv_pages_owned": 2,
+                "kv_pages_peak": 2,
+                "bucket_key": "decode:c=2:ctx=512:mask=11",
+                "admission_blocked_reason": None,
+                "finish_reason": "length",
+                "submitted_timestamp": 0.0,
+                "admitted_timestamp": 20.0,
+                "completion_timestamp": 22.5,
+            },
+            "0": {
+                "queue_seconds": 0.1,
+                "prefill_seconds": 0.2,
+                "decode_seconds": 0.3,
+                "kv_pages_owned": 2,
+                "kv_pages_peak": 2,
+                "bucket_key": "decode:c=2:ctx=512:mask=11",
+                "admission_blocked_reason": None,
+                "finish_reason": "length",
+                "submitted_timestamp": 0.0,
+                "admitted_timestamp": 10.0,
+                "completion_timestamp": 11.0,
+            },
+        },
+        "finite_logits": True,
+    }
+
+    correctness = {
+        "passed": True,
+        "skipped": False,
+        "batch_sequences": [[10, *([11] * 128)], [20, *([21] * 128)]],
+        "c1_sequences": [[10, *([11] * 128)], [20, *([21] * 128)]],
+        "mismatches": [],
+    }
+    payload = retained_bench._build_payload(
+        args,
+        ["--batch-size", "2"],
+        bench,
+        [512, 512],
+        correctness,
+    )
+
+    assert payload["observability"]["request_latency_seconds"]["samples"] == [1.0, 2.5]
+    assert payload["observability"]["request_latency_seconds"]["p50"] == 1.75
+    assert payload["observability"]["request_latency_seconds"]["p95"] == 2.5
+
+
 def test_qwen35_retained_artifact_paths_reject_symlink_escapes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
