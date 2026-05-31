@@ -25,6 +25,28 @@ def _stable_json_sha256(value: object) -> str:
 
 
 
+def _oracle_helper_command(prompt: Path, oracle: Path) -> str:
+    return (
+        "python3 scripts/stepfun_llamacpp_oracle.py "
+        f"--artifact {prompt} --llama-cli /tmp/llama-cli "
+        "--model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf "
+        "--n-predict 1 --timeout-s 60.0 --llama-arg=--device --llama-arg=none "
+        f"--llama-arg=--gpu-layers --llama-arg=0 --execute --pretty --output {oracle}"
+    )
+
+
+
+def _oracle_helper_fields(prompt: Path, oracle: Path) -> dict[str, object]:
+    command = _oracle_helper_command(prompt, oracle)
+    return {
+        "helper_command_kind": "oracle_helper_refresh_command",
+        "helper_command": command,
+        "helper_command_nchars": len(command),
+        "helper_command_sha256": hashlib.sha256(command.encode()).hexdigest(),
+    }
+
+
+
 def _streaming_runner_blockers() -> list[dict[str, object]]:
     return [
         {
@@ -885,6 +907,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
                 "rerun_command_shell",
                 "/tmp/llama-cli --model stepfun.gguf --predict 1 --temp 0",
             ),
+            **_oracle_helper_fields(prompt, oracle),
             "first_missing_evidence": "oracle_completed_successfully",
             "first_missing_precondition": "step35_not_rejected",
             "gap_report_status": "blocked",
@@ -1062,12 +1085,8 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     commands = status["next_action_commands"]
     oracle_commands = commands["oracle_parity_blocked"]
     assert oracle_commands["rerun_command_shell"].startswith("/tmp/llama-cli")
-    assert oracle_commands["oracle_helper_refresh_command"] == (
-        "python3 scripts/stepfun_llamacpp_oracle.py "
-        f"--artifact {prompt} --llama-cli /tmp/llama-cli "
-        "--model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf "
-        "--n-predict 1 --timeout-s 60.0 --llama-arg=--device --llama-arg=none "
-        f"--llama-arg=--gpu-layers --llama-arg=0 --execute --pretty --output {oracle}"
+    assert oracle_commands["oracle_helper_refresh_command"] == _oracle_helper_command(
+        prompt, oracle
     )
     assert f"--prompt-artifact {prompt}" in oracle_commands["status_refresh_command"]
     assert f"--oracle-artifact {oracle}" in oracle_commands["status_refresh_command"]
@@ -1476,6 +1495,7 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
                 "rerun_command_shell",
                 "/tmp/llama-cli --model stepfun.gguf --predict 1 --temp 0",
             ),
+            **_oracle_helper_fields(prompt, oracle),
             "first_missing_evidence": "oracle_completed_successfully",
             "first_missing_precondition": "step35_not_rejected",
             "gap_report_status": "blocked",
@@ -1638,6 +1658,7 @@ def test_stepfun_correctness_status_blocker_work_queue_only(capsys, tmp_path: Pa
                 "rerun_command_shell",
                 "/tmp/llama-cli --model stepfun.gguf --predict 1 --temp 0",
             ),
+            **_oracle_helper_fields(prompt, oracle),
             "first_missing_evidence": "oracle_completed_successfully",
             "first_missing_precondition": "step35_not_rejected",
             "gap_report_status": "blocked",
@@ -1839,6 +1860,7 @@ def test_stepfun_correctness_status_first_blocker_only(capsys, tmp_path: Path) -
             "rerun_command_shell",
             "/tmp/llama-cli --model stepfun.gguf --predict 1 --temp 0",
         ),
+        **_oracle_helper_fields(prompt, oracle),
         "first_missing_evidence": "oracle_completed_successfully",
         "first_missing_precondition": "step35_not_rejected",
         "gap_report_status": "blocked",

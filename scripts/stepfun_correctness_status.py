@@ -955,6 +955,11 @@ def _handoff_summary(
     blocker_work_queue: list[dict[str, object]] = []
     for queue_index, blocker_kind in enumerate(blocker_kinds):
         if blocker_kind == "oracle_parity_blocked":
+            oracle_action = dict(next_action_commands.get(blocker_kind, {}))
+            oracle_helper_command = oracle_action.get("oracle_helper_refresh_command")
+            oracle_helper_command_text = (
+                oracle_helper_command if isinstance(oracle_helper_command, str) else None
+            )
             blocker_work_queue.append(
                 {
                     "blocker_kind": blocker_kind,
@@ -965,9 +970,19 @@ def _handoff_summary(
                     "command_available": blocker_kind in next_action_commands,
                     **_primary_command_metadata(
                         "rerun_command_shell",
-                        dict(next_action_commands.get(blocker_kind, {})).get(
-                            "rerun_command_shell"
-                        ),
+                        oracle_action.get("rerun_command_shell"),
+                    ),
+                    "helper_command_kind": "oracle_helper_refresh_command",
+                    "helper_command": oracle_helper_command_text,
+                    "helper_command_nchars": (
+                        len(oracle_helper_command_text)
+                        if oracle_helper_command_text is not None
+                        else 0
+                    ),
+                    "helper_command_sha256": (
+                        hashlib.sha256(oracle_helper_command_text.encode()).hexdigest()
+                        if oracle_helper_command_text is not None
+                        else None
                     ),
                     "gap_report_status": oracle_gap_report.get("status"),
                     "current_status": oracle_gap_report.get("oracle_status"),

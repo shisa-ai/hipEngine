@@ -29561,3 +29561,38 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`21 passed`), source-artifact/oracle-helper command checks passed, and the full StepFun guard passed (`125 passed` plus CPU-reference fixture checks). Prompt-verifier evidence: status tests cover the new oracle helper refresh command, no `import torch` was added to `hipengine/`, the changed status helper adds no engine-wide backend or quant special-casing, and no StepFun performance claim was made.
+
+## 2026-05-31 — StepFun first-blocker helper command recorded
+
+Threaded the oracle helper refresh command into `handoff_summary.blocker_work_queue[0]` and `first_blocker_work_item`. Compact first-blocker consumers now receive the raw `llama-cli` primary command plus `helper_command_kind=oracle_helper_refresh_command`, the `scripts/stepfun_llamacpp_oracle.py --execute --pretty --output ...` helper command, and length/SHA-256 metadata for that helper command. This lets schedulers regenerate the canonical oracle JSON artifact without expanding `next_action_commands`. Current readiness is unchanged: `oracle_parity=false`, `kv_backed_decode_ready=false`, and `e2e_inference_ready=false`.
+
+Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, updated status tests, and clarified `docs/STEPFUN.md`. This is handoff metadata only; no StepFun KV write/attention kernels are launched and no performance/e2e claim is made.
+
+Validation:
+
+```bash
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_correctness_status.py --first-blocker-only --pretty --output /tmp/stepfun-first-blocker.json
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty --output /tmp/stepfun-source-verify.json
+python3 - <<'PY'
+import hashlib, json
+v=json.load(open('/tmp/stepfun-source-verify.json'))
+assert v['status'] == 'match'
+assert v['all_match'] is True
+s=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+first=json.load(open('/tmp/stepfun-first-blocker.json'))
+assert first == s['handoff_summary']['first_blocker_work_item']
+helper=first['helper_command']
+assert first['helper_command_kind'] == 'oracle_helper_refresh_command'
+assert helper == s['next_action_commands']['oracle_parity_blocked']['oracle_helper_refresh_command']
+assert first['helper_command_nchars'] == len(helper)
+assert first['helper_command_sha256'] == hashlib.sha256(helper.encode()).hexdigest()
+assert 'scripts/stepfun_llamacpp_oracle.py' in helper
+assert '--execute --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json' in helper
+print('stepfun first blocker helper command artifact ok')
+PY
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`21 passed`), source-artifact/first-blocker helper command checks passed, and the full StepFun guard passed (`125 passed` plus CPU-reference fixture checks). Prompt-verifier evidence: status tests cover the new compact first-blocker helper command fields, no `import torch` was added to `hipengine/`, the changed status helper adds no engine-wide backend or quant special-casing, and no StepFun performance claim was made.

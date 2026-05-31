@@ -49,7 +49,7 @@
         "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
       },
       {
-        "line": 616,
+        "line": 617,
         "state": "partial",
         "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
       }
@@ -78,6 +78,10 @@
         "first_missing_precondition": null,
         "gap_report_status": "blocked",
         "gate": "oracle_parity",
+        "helper_command": "python3 scripts/stepfun_llamacpp_oracle.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --llama-cli /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --n-predict 1 --timeout-s 60.0 --llama-arg=--device --llama-arg=none --llama-arg=--gpu-layers --llama-arg=0 --execute --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
+        "helper_command_kind": "oracle_helper_refresh_command",
+        "helper_command_nchars": 478,
+        "helper_command_sha256": "c535c06e68d7f2785e2312abcd6be19fb752fd5754a37e02f698e57405cdfa74",
         "is_first": true,
         "oracle_blocker_kind": "llama_cpp_oracle_timeout",
         "primary_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --prompt '<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n' --predict 1 --temp 0 --top-k 1 --top-p 1 --min-p 0 --repeat-penalty 1 --seed 0 --no-display-prompt --simple-io --device none --gpu-layers 0",
@@ -111,12 +115,12 @@
       "count": 2,
       "first_blocker_kind": "oracle_parity_blocked",
       "first_work_item_schema_version": 1,
-      "first_work_item_sha256": "5d0526bbf1097b8bcf2bc5a01337736c1979f8cb64666b7dca88dd896cf3035f",
+      "first_work_item_sha256": "c9dd4de7fb76d6ff5d6a9deb0cfae87410010765c0a22de4b9ee7034e9d7e7aa",
       "schema_version": 1,
-      "sha256": "6273ee66cbfe851ec3787d7273514fb05d1926fba4cf728e38008b026620a5c7"
+      "sha256": "4a3aa96f0d7b2b33b9324aa18eaec72868af879d901c762c2a428ceccf666dba"
     },
     "blocker_work_queue_schema_version": 1,
-    "blocker_work_queue_sha256": "6273ee66cbfe851ec3787d7273514fb05d1926fba4cf728e38008b026620a5c7",
+    "blocker_work_queue_sha256": "4a3aa96f0d7b2b33b9324aa18eaec72868af879d901c762c2a428ceccf666dba",
     "compact_output_modes": {
       "blocker_work_queue_meta_only": "handoff_summary.blocker_work_queue_meta",
       "blocker_work_queue_only": "handoff_summary.blocker_work_queue",
@@ -144,6 +148,10 @@
       "first_missing_precondition": null,
       "gap_report_status": "blocked",
       "gate": "oracle_parity",
+      "helper_command": "python3 scripts/stepfun_llamacpp_oracle.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --llama-cli /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --n-predict 1 --timeout-s 60.0 --llama-arg=--device --llama-arg=none --llama-arg=--gpu-layers --llama-arg=0 --execute --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
+      "helper_command_kind": "oracle_helper_refresh_command",
+      "helper_command_nchars": 478,
+      "helper_command_sha256": "c535c06e68d7f2785e2312abcd6be19fb752fd5754a37e02f698e57405cdfa74",
       "is_first": true,
       "oracle_blocker_kind": "llama_cpp_oracle_timeout",
       "primary_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --prompt '<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n' --predict 1 --temp 0 --top-k 1 --top-p 1 --min-p 0 --repeat-penalty 1 --seed 0 --no-display-prompt --simple-io --device none --gpu-layers 0",
@@ -154,7 +162,7 @@
       "timeout_s": 60.0,
       "work_item_schema_version": 1
     },
-    "first_blocker_work_item_sha256": "5d0526bbf1097b8bcf2bc5a01337736c1979f8cb64666b7dca88dd896cf3035f",
+    "first_blocker_work_item_sha256": "c9dd4de7fb76d6ff5d6a9deb0cfae87410010765c0a22de4b9ee7034e9d7e7aa",
     "kv_backed_decode_gap_report": {
       "first_missing_evidence": "streaming_runner_ready_flags",
       "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
@@ -1474,12 +1482,12 @@
   },
   "readiness_summary": {
     "blocker_work_queue_count": 2,
-    "blocker_work_queue_sha256": "6273ee66cbfe851ec3787d7273514fb05d1926fba4cf728e38008b026620a5c7",
+    "blocker_work_queue_sha256": "4a3aa96f0d7b2b33b9324aa18eaec72868af879d901c762c2a428ceccf666dba",
     "e2e_inference_claim_allowed": false,
     "e2e_inference_ready": false,
     "fail_on_blocked_exit_code": 2,
     "first_blocker_kind": "oracle_parity_blocked",
-    "first_blocker_work_item_sha256": "5d0526bbf1097b8bcf2bc5a01337736c1979f8cb64666b7dca88dd896cf3035f",
+    "first_blocker_work_item_sha256": "c9dd4de7fb76d6ff5d6a9deb0cfae87410010765c0a22de4b9ee7034e9d7e7aa",
     "kv_backed_decode_ready": false,
     "kv_decode_dispatch_ready": true,
     "open_blocker_count": 2,
@@ -1489,13 +1497,13 @@
     "schema_version": 1,
     "status": "blocked"
   },
-  "readiness_summary_sha256": "b84b8c5633d68d6cb8d453c22dd0a332de3de0ecfbf6765f861311491e8f857a",
+  "readiness_summary_sha256": "af0b0ecc3e8ca84b8d9b8750c1e4a2814af936599b25a2d966a8937123e02c31",
   "source_artifacts": {
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "ea774459da8dc412bd7e05dd0063536dbbe2b7c9fd48cfd442ba21499600a8af",
-      "size_bytes": 53582
+      "sha256": "f01f219f977f3f1e958dca86ba4fb09df6b5fce237b4ab02e767e7ffb28d1d96",
+      "size_bytes": 53669
     },
     "oracle": {
       "exists": true,

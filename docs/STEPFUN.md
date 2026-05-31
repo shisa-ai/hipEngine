@@ -601,7 +601,8 @@ reporting.
   metadata, `--blocker-work-queue-sha-only` emits just the queue digest for drift polling,
   `--first-blocker-sha-only` emits just the immediate work-item digest, and
   `--first-blocker-only` emits only the immediate work item
-  (including the primary command kind/string plus length and SHA-256) for lightweight automation.
+  (including the primary command kind/string plus length/SHA-256 and, for the oracle blocker,
+  the helper refresh command that regenerates the oracle JSON) for lightweight automation.
   It lists next actions for the
   StepFun-capable oracle and KV-backed decode blockers, and supports
   `--fail-on-blocked` for CI/handoff checks, including compact readiness/queue/first-blocker outputs;
