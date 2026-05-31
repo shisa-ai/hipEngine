@@ -9,6 +9,7 @@
     "attention_block_table_len": 2,
     "context_fits_resource_plan": true,
     "decode_input_upload_plan": {
+      "all_consistency_checks_passed": true,
       "cleanup_order": [
         "decode_attention_live_counts",
         "decode_kv_write_position",
@@ -17,6 +18,13 @@
         "prompt_base_offsets",
         "input_ids"
       ],
+      "consistency_checks": {
+        "cleanup_order_reverses_upload_order": true,
+        "entry_count_matches_upload_order": true,
+        "entry_total_nbytes_matches": true,
+        "input_token_hash_matches": true,
+        "span_payload_hashes_match_manifest": true
+      },
       "entries": [
         {
           "dtype": "int32",

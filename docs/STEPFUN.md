@@ -585,8 +585,9 @@ reporting.
   stop IDs, KV dispatch keys, and resource-fit booleans), plus the planned per-layer KV launch
   schedule (45 layers × prompt KV write, decode KV write, gated attention = 135
   planned operations), and includes a compact `handoff_summary` with open blockers, blocked gates,
-  ready signals, combined upload-plan order/bytes, next-command coverage, and the no-performance/no-e2e-claim
-  policy. `scripts/stepfun_correctness_status.py --summary-only` emits just that
+  ready signals, combined upload-plan order/bytes/consistency checks,
+  next-command coverage, and the no-performance/no-e2e-claim policy.
+  `scripts/stepfun_correctness_status.py --summary-only` emits just that
   handoff block for fast continuation checks. It lists next actions for the
   StepFun-capable oracle and KV-backed decode blockers, and supports
   `--fail-on-blocked` for CI/handoff checks.

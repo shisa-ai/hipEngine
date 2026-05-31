@@ -28592,3 +28592,18 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted status tests passed (`6 passed`), handoff-summary/source-artifact checks passed, and the full StepFun guard passed (`110 passed` plus CPU-reference fixture checks).
+
+## 2026-05-31 — StepFun combined upload-plan consistency checks recorded
+
+Added deterministic consistency checks to the metadata-only `StepFunKVDecodeRunPlan.decode_input_upload_plan`. The plan now records whether the upload-order entry count matches the entries, cleanup order reverses upload order, summed entry bytes match the input-token plus KV-span payload byte total, the input-token SHA-256 matches the run-plan payload, and every span-input payload SHA-256 matches the manifest. `scripts/stepfun_correctness_status.py` carries the aggregate pass signal into both the KV-backed decode readiness evidence and compact handoff summary so continuation/status checks can verify the staged input plan before any KV runner consumes it.
+
+Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json` and `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`; updated decode-planner/load-smoke/status tests and clarified `docs/STEPFUN.md`. This remains metadata-only/pre-runner evidence: no StepFun KV write/attention kernels are launched, and `oracle_parity=false`, `kv_backed_decode_ready=false`, and `e2e_inference_ready=false` remain unchanged.
+
+Validation:
+
+```bash
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`110 passed` plus CPU-reference fixture checks). Prompt-verifier evidence: targeted tests cover the new upload-plan consistency fields, no `import torch` was added to `hipengine/`, the runtime path remains registry/metadata-driven without new engine-wide backend or quant special-casing, and no StepFun performance claim was made.

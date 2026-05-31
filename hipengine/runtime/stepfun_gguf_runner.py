@@ -846,14 +846,33 @@ class StepFunKVDecodeRunPlan:
                 )
             ],
         ]
+        upload_order = [str(entry["name"]) for entry in entries]
+        cleanup_order = [str(entry["name"]) for entry in reversed(entries)]
+        input_token_nbytes = self.input_ids_nbytes
+        span_input_nbytes = int(span_manifest["total_nbytes"])
+        total_nbytes = input_token_nbytes + span_input_nbytes
+        span_payload_entries = list(self.span_input_host_payloads["entries"])
+        consistency_checks = {
+            "entry_count_matches_upload_order": len(entries) == len(upload_order),
+            "cleanup_order_reverses_upload_order": cleanup_order == list(reversed(upload_order)),
+            "entry_total_nbytes_matches": sum(int(entry["nbytes"]) for entry in entries)
+            == total_nbytes,
+            "input_token_hash_matches": str(entries[0]["sha256"]) == self.input_ids_sha256,
+            "span_payload_hashes_match_manifest": all(
+                str(entry["sha256"]) == str(payload_entry["sha256"])
+                for entry, payload_entry in zip(entries[1:], span_payload_entries, strict=True)
+            ),
+        }
         return {
             "entries": entries,
             "entry_count": len(entries),
-            "upload_order": [str(entry["name"]) for entry in entries],
-            "cleanup_order": [str(entry["name"]) for entry in reversed(entries)],
-            "input_token_nbytes": self.input_ids_nbytes,
-            "span_input_nbytes": int(span_manifest["total_nbytes"]),
-            "total_nbytes": self.input_ids_nbytes + int(span_manifest["total_nbytes"]),
+            "upload_order": upload_order,
+            "cleanup_order": cleanup_order,
+            "input_token_nbytes": input_token_nbytes,
+            "span_input_nbytes": span_input_nbytes,
+            "total_nbytes": total_nbytes,
+            "consistency_checks": consistency_checks,
+            "all_consistency_checks_passed": all(consistency_checks.values()),
             "streaming_runner_ready": self.streaming_runner_ready,
             "note": "Metadata-only combined upload plan; no kernels are launched.",
         }

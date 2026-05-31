@@ -33,7 +33,7 @@
         "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
       },
       {
-        "line": 600,
+        "line": 601,
         "state": "partial",
         "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
       }
@@ -52,6 +52,7 @@
       "oracle_parity": true
     },
     "kv_decode_input_upload_plan": {
+      "all_consistency_checks_passed": true,
       "cleanup_order": [
         "decode_attention_live_counts",
         "decode_kv_write_position",
@@ -207,6 +208,7 @@
       "attention_block_table_len": 2,
       "context_fits_resource_plan": true,
       "decode_input_upload_plan": {
+        "all_consistency_checks_passed": true,
         "cleanup_order": [
           "decode_attention_live_counts",
           "decode_kv_write_position",
@@ -215,6 +217,13 @@
           "prompt_base_offsets",
           "input_ids"
         ],
+        "consistency_checks": {
+          "cleanup_order_reverses_upload_order": true,
+          "entry_count_matches_upload_order": true,
+          "entry_total_nbytes_matches": true,
+          "input_token_hash_matches": true,
+          "span_payload_hashes_match_manifest": true
+        },
         "entries": [
           {
             "dtype": "int32",
@@ -833,6 +842,7 @@
         "prompt_span_shape_compatible": true,
         "resident_prompt_smoke": "host_composed_layer_prefix",
         "run_plan_context_fits_resource_plan": true,
+        "run_plan_decode_input_upload_checks_passed": true,
         "run_plan_decode_input_upload_entry_count": 6,
         "run_plan_decode_input_upload_total_nbytes": 484,
         "run_plan_decode_span_base_offsets_len": 2,
@@ -866,8 +876,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "14bce7ec11550813d28d07764585c86fd1fb6f417f1edd3ce40f5f39ccc2d5d9",
-      "size_bytes": 51927
+      "sha256": "ba61d96d9acf7afa45a50e1aa4070763af7ba98fa9c6e30a289b71151b5440c1",
+      "size_bytes": 51948
     },
     "oracle": {
       "exists": true,
@@ -884,8 +894,8 @@
     "text_resource": {
       "exists": true,
       "path": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
-      "sha256": "71f6d70f0c028f4313a8eee06e00282e3b949413c55f14c87195a24ead2efe27",
-      "size_bytes": 43663
+      "sha256": "1b2dd23f59a9ba09e1972b99ec84ac0bdffadf11b23113beca8b4f06ccd8ba58",
+      "size_bytes": 43987
     }
   },
   "status": "blocked",

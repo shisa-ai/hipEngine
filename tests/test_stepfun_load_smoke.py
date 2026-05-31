@@ -189,6 +189,14 @@ def test_stepfun_load_smoke_dry_run_plan_emits_resource_json(capsys: pytest.Capt
     assert decode_upload_plan["input_token_nbytes"] == run_plan["input_ids_nbytes"]
     assert decode_upload_plan["span_input_nbytes"] == upload_manifest["total_nbytes"]
     assert decode_upload_plan["total_nbytes"] == run_plan["input_ids_nbytes"] + upload_manifest["total_nbytes"]
+    assert decode_upload_plan["consistency_checks"] == {
+        "cleanup_order_reverses_upload_order": True,
+        "entry_count_matches_upload_order": True,
+        "entry_total_nbytes_matches": True,
+        "input_token_hash_matches": True,
+        "span_payload_hashes_match_manifest": True,
+    }
+    assert decode_upload_plan["all_consistency_checks_passed"] is True
     assert decode_upload_plan["entries"][0]["sha256"] == run_plan["input_ids_sha256"]
     assert decode_upload_plan["streaming_runner_ready"] is False
     assert run_plan["prompt_fits_resource_plan"] is True

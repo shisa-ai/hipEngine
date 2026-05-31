@@ -481,6 +481,14 @@ def _write_resource_artifact(path: Path) -> None:
                         "input_token_nbytes": 92,
                         "span_input_nbytes": 392,
                         "total_nbytes": 484,
+                        "consistency_checks": {
+                            "cleanup_order_reverses_upload_order": True,
+                            "entry_count_matches_upload_order": True,
+                            "entry_total_nbytes_matches": True,
+                            "input_token_hash_matches": True,
+                            "span_payload_hashes_match_manifest": True,
+                        },
+                        "all_consistency_checks_passed": True,
                         "streaming_runner_ready": False,
                         "note": "Metadata-only combined upload plan; no kernels are launched.",
                     },
@@ -759,6 +767,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "run_plan_prompt_span_base_offsets_len": 46,
         "run_plan_rendered_prompt_sha256": "0" * 64,
         "run_plan_span_input_total_nbytes": 384,
+        "run_plan_decode_input_upload_checks_passed": True,
         "run_plan_decode_input_upload_entry_count": 6,
         "run_plan_decode_input_upload_total_nbytes": 484,
         "run_plan_host_payload_entry_count": 5,
@@ -803,6 +812,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
             "prompt_base_offsets",
             "input_ids",
         ],
+        "all_consistency_checks_passed": True,
     }
     assert handoff["blocked_signals"] == {
         "e2e_inference": True,
@@ -969,6 +979,7 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
     assert payload["kv_decode_input_upload_plan"]["entry_count"] == 6
     assert payload["kv_decode_input_upload_plan"]["upload_order"][0] == "input_ids"
     assert payload["kv_decode_input_upload_plan"]["cleanup_order"][-1] == "input_ids"
+    assert payload["kv_decode_input_upload_plan"]["all_consistency_checks_passed"] is True
     assert payload["blocked_gates"] == ["oracle_parity", "kv_backed_decode", "e2e_inference"]
     assert payload["next_commands_available_for"] == [
         "oracle_parity_blocked",

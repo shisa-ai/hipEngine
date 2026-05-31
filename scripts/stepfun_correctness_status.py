@@ -496,6 +496,12 @@ def _readiness_gates(
                         "decode_input_upload_plan", {}
                     )
                 ).get("total_nbytes"),
+                "run_plan_decode_input_upload_checks_passed": dict(
+                    dict(kv_decode_dispatch_progress.get("run_plan", {})).get(
+                        "decode_input_upload_plan", {}
+                    )
+                ).get("all_consistency_checks_passed")
+                is True,
                 "run_plan_host_payload_total_nbytes": dict(
                     dict(kv_decode_dispatch_progress.get("run_plan", {})).get(
                         "span_input_host_payloads", {}
@@ -587,6 +593,10 @@ def _handoff_summary(
             "total_nbytes": decode_input_upload_plan.get("total_nbytes"),
             "upload_order": list(decode_input_upload_plan.get("upload_order", [])),
             "cleanup_order": list(decode_input_upload_plan.get("cleanup_order", [])),
+            "all_consistency_checks_passed": decode_input_upload_plan.get(
+                "all_consistency_checks_passed"
+            )
+            is True,
         },
         "blocked_signals": {
             "oracle_parity": "oracle_parity" in blocked_gates,

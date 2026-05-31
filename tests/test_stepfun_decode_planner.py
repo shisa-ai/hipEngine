@@ -322,6 +322,14 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
     assert upload_plan["input_token_nbytes"] == len(input_ids_payload)
     assert upload_plan["span_input_nbytes"] == host_payloads["total_nbytes"]
     assert upload_plan["total_nbytes"] == len(input_ids_payload) + host_payloads["total_nbytes"]
+    assert upload_plan["consistency_checks"] == {
+        "cleanup_order_reverses_upload_order": True,
+        "entry_count_matches_upload_order": True,
+        "entry_total_nbytes_matches": True,
+        "input_token_hash_matches": True,
+        "span_payload_hashes_match_manifest": True,
+    }
+    assert upload_plan["all_consistency_checks_passed"] is True
     assert upload_plan["entries"][0] == {
         "name": "input_ids",
         "source": "input_ids",
