@@ -15799,6 +15799,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match=r"observability.per_request.\*.finish_reason must be a non-empty string"):
         validate_cn_diagnostic_artifact_payload(blank_observed_finish_reason)
 
+    blank_observed_bucket_key = json.loads(json.dumps(accepted))
+    blank_observed_bucket_key["observability"]["per_request"]["0"]["bucket_key"] = " "
+    with pytest.raises(ValueError, match=r"observability.per_request.\*.bucket_key must be a non-empty string or null"):
+        validate_cn_diagnostic_artifact_payload(blank_observed_bucket_key)
+
+    blank_observed_admission_blocker = json.loads(json.dumps(accepted))
+    blank_observed_admission_blocker["observability"]["per_request"]["0"]["admission_blocked_reason"] = " "
+    with pytest.raises(ValueError, match=r"observability.per_request.\*.admission_blocked_reason must be a non-empty string or null"):
+        validate_cn_diagnostic_artifact_payload(blank_observed_admission_blocker)
+
     missing_warmup_decode_tokens = json.loads(json.dumps(accepted))
     missing_warmup_decode_tokens["workload"].pop("warmup_decode_tokens")
     with pytest.raises(ValueError, match="warmup_decode_tokens must be a non-negative int"):
