@@ -1399,6 +1399,15 @@ def _batch_execution_blockers(
             blockers.append("execution.batch_execution.decode_execution.moe_decode_path must be grouped_compact for retained c>N MoE decode")
         if decode_execution.get("full_attention_decode_path") != "native_batch":
             blockers.append("execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch")
+        linear_projection_path = decode_execution.get("linear_attention_projection_path")
+        if linear_projection_path not in {None, "native_batch"}:
+            blockers.append("execution.batch_execution.decode_execution.linear_attention_projection_path must be native_batch or absent")
+        linear_state_path = decode_execution.get("linear_attention_state_path")
+        if linear_state_path not in {None, "native_segments"}:
+            blockers.append("execution.batch_execution.decode_execution.linear_attention_state_path must be native_segments or absent")
+        linear_output_path = decode_execution.get("linear_attention_output_path")
+        if linear_output_path not in {None, "native_batch"}:
+            blockers.append("execution.batch_execution.decode_execution.linear_attention_output_path must be native_batch or absent")
         if decode_execution.get("native_caware_decode") is not True:
             blockers.append("execution.batch_execution.decode_execution.native_caware_decode must be true")
         for diagnostic_field in DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS:

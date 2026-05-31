@@ -3988,6 +3988,24 @@ class Qwen35ParoResidentSession:
             raise ValueError(
                 "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT must be auto, batch, batch_gemv, or selected_c1"
             )
+        linear_attention_projection_path = (
+            "selected_c1_forced"
+            if force_selected_c1_linear_projections
+            else (
+                "selected_c1_qkv_z"
+                if force_selected_c1_qkv_z_linear_projections
+                else (
+                    "batch_gemv_selected_c1_ab"
+                    if force_batch_gemv_linear_projections and force_selected_c1_ab_linear_projections
+                    else (
+                        "batch_gemv"
+                        if force_batch_gemv_linear_projections
+                        else "selected_c1_ab" if force_selected_c1_ab_linear_projections else "native_batch"
+                    )
+                )
+            )
+        )
+        linear_attention_state_path = "selected_c1_forced" if force_selected_c1_linear_state else "native_segments"
         linear_attention_output_path = (
             "selected_c1_forced"
             if (force_selected_c1_linear_state if force_selected_c1_linear_out is None else force_selected_c1_linear_out)
@@ -4157,26 +4175,8 @@ class Qwen35ParoResidentSession:
                                         in {"selected_c1_forced", "batch_gemv", "batch_gemv_from_f32"}
                                     )
                                 ),
-                                "linear_attention_projection_path": (
-                                    "selected_c1_forced"
-                                    if force_selected_c1_linear_projections
-                                    else (
-                                        "selected_c1_qkv_z"
-                                        if force_selected_c1_qkv_z_linear_projections
-                                        else (
-                                            "batch_gemv_selected_c1_ab"
-                                            if force_batch_gemv_linear_projections and force_selected_c1_ab_linear_projections
-                                            else (
-                                                "batch_gemv"
-                                                if force_batch_gemv_linear_projections
-                                                else "selected_c1_ab" if force_selected_c1_ab_linear_projections else "native_batch"
-                                            )
-                                        )
-                                    )
-                                ),
-                                "linear_attention_state_path": (
-                                    "selected_c1_forced" if force_selected_c1_linear_state else "native_segments"
-                                ),
+                                "linear_attention_projection_path": linear_attention_projection_path,
+                                "linear_attention_state_path": linear_attention_state_path,
                                 "linear_attention_output_path": linear_attention_output_path,
                                 "moe_decode_path": layer_moe_path,
                             }
@@ -4482,6 +4482,9 @@ class Qwen35ParoResidentSession:
                 and not force_per_row_full_attention_context
                 and not force_per_row_post_attention,
                 "linear_attention_segment_metadata": linear_segment_metadata,
+                "linear_attention_projection_path": linear_attention_projection_path,
+                "linear_attention_state_path": linear_attention_state_path,
+                "linear_attention_output_path": linear_attention_output_path,
                 "moe_decode_path": moe_decode_path,
                 "moe_decode_rows": int(rows),
                 "moe_grouped_compact_layers": int(moe_grouped_compact_layers),

@@ -11839,6 +11839,32 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
     assert retained_bench._batch_execution_blockers(valid, expected_max_layers=40, expected_concurrency=2, expected_prompt_length=512) == []
     for field, diagnostic_value, expected_message in (
         (
+            "linear_attention_projection_path",
+            "selected_c1_forced",
+            "execution.batch_execution.decode_execution.linear_attention_projection_path must be native_batch or absent",
+        ),
+        (
+            "linear_attention_state_path",
+            "selected_c1_forced",
+            "execution.batch_execution.decode_execution.linear_attention_state_path must be native_segments or absent",
+        ),
+        (
+            "linear_attention_output_path",
+            "batch_gemv_from_f32",
+            "execution.batch_execution.decode_execution.linear_attention_output_path must be native_batch or absent",
+        ),
+    ):
+        top_level_linear_diagnostic = json.loads(json.dumps(valid))
+        top_level_linear_diagnostic["decode_execution"][field] = diagnostic_value
+        top_level_linear_blockers = retained_bench._batch_execution_blockers(
+            top_level_linear_diagnostic,
+            expected_max_layers=40,
+            expected_concurrency=2,
+            expected_prompt_length=512,
+        )
+        assert expected_message in top_level_linear_blockers
+    for field, diagnostic_value, expected_message in (
+        (
             "linear_attention_decode_path",
             "selected_c1_per_row_fallback",
             "execution.batch_execution.decode_execution.layer_executions[1].linear_attention_decode_path must be native_batch_segments or absent",
@@ -14246,6 +14272,30 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         assert f"batch_execution.{diagnostic_field} must be absent for native retained decode" in str(
             diagnostic_batch_trace_error.value
         )
+
+    for field, diagnostic_value, expected_message in (
+        (
+            "linear_attention_projection_path",
+            "selected_c1_forced",
+            "decode_execution.linear_attention_projection_path must be native_batch or absent for accepted artifacts",
+        ),
+        (
+            "linear_attention_state_path",
+            "selected_c1_forced",
+            "decode_execution.linear_attention_state_path must be native_segments or absent for accepted artifacts",
+        ),
+        (
+            "linear_attention_output_path",
+            "batch_gemv_from_f32",
+            "decode_execution.linear_attention_output_path must be native_batch or absent for accepted artifacts",
+        ),
+    ):
+        diagnostic_top_level_linear = json.loads(json.dumps(accepted))
+        diagnostic_decode_execution = diagnostic_top_level_linear["execution"]["batch_execution"]["decode_execution"]
+        diagnostic_decode_execution[field] = diagnostic_value
+        with pytest.raises(ValueError) as top_level_linear_error:
+            validate_cn_diagnostic_artifact_payload(diagnostic_top_level_linear)
+        assert expected_message in str(top_level_linear_error.value)
 
     for field, diagnostic_value, expected_message in (
         (

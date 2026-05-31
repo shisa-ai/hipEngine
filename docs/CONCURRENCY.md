@@ -1391,7 +1391,13 @@ roll-up/status view.
       `/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-state-batch-gemv-out-native-full-atol4e-3-focus1269.json`
       still leaves native full-attention hidden-only red (`status=mismatch_found`,
       tokens green, first hidden failure step 6 / row 0 `max_abs=0.027099609375`).
-      A context-only diagnostic switch now exists for the next isolation step:
+      Decode-execution metadata now also lifts linear-attention projection,
+      state, and output route choices to top-level
+      `linear_attention_projection_path`, `linear_attention_state_path`, and
+      `linear_attention_output_path`; retained-bench and accepted-artifact gates
+      reject non-native top-level values, so a diagnostic fallback cannot hide
+      behind missing or stale per-layer traces. A context-only diagnostic switch
+      now exists for the next isolation step:
       hidden-bisect `--batch-decode-attn-context-path per_row` sets
       `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_CONTEXT`, routes the
       native-full context/gate stage through slot-specific c=1 spans, records

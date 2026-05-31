@@ -1515,6 +1515,9 @@ def test_qwen35_resident_run_layers_batch_decode_reports_native_batch_for_short_
         "full_attention_decode_path": "native_batch",
         "native_caware_decode": True,
         "linear_attention_segment_metadata": {"cu_seqlens": [0, 1, 2], "state_indices": [0, 2]},
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_state_path": "native_segments",
+        "linear_attention_output_path": "native_batch",
         "moe_decode_path": "grouped_compact",
         "moe_decode_rows": 2,
         "moe_grouped_compact_layers": 1,
@@ -1927,6 +1930,9 @@ def test_qwen35_resident_run_layers_batch_decode_can_force_selected_c1_moe_probe
         "full_attention_decode_path": "native_batch",
         "native_caware_decode": False,
         "linear_attention_segment_metadata": {"cu_seqlens": [0, 1, 2], "state_indices": [0, 2]},
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_state_path": "native_segments",
+        "linear_attention_output_path": "native_batch",
         "moe_decode_path": "selected_c1_forced",
         "moe_decode_rows": 2,
         "moe_grouped_compact_layers": 0,
@@ -2014,6 +2020,9 @@ def test_qwen35_resident_run_layers_batch_decode_uses_per_row_splitk_fallback_fo
         "full_attention_decode_path": "per_row_splitk_fallback",
         "native_caware_decode": False,
         "linear_attention_segment_metadata": {"cu_seqlens": [0, 1, 2], "state_indices": [0, 2]},
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_state_path": "native_segments",
+        "linear_attention_output_path": "native_batch",
         "moe_decode_path": "mixed_grouped_compact_with_per_row_full_attention_fallback",
         "moe_decode_rows": 2,
         "moe_grouped_compact_layers": 0,
@@ -2739,6 +2748,9 @@ def test_qwen35_resident_linear_batch_decode_selected_c1_projection_state_is_non
 
     execution = session.last_batch_decode_execution
     assert execution["native_caware_decode"] is False
+    assert execution["linear_attention_projection_path"] == "selected_c1_forced"
+    assert execution["linear_attention_state_path"] == "selected_c1_forced"
+    assert execution["linear_attention_output_path"] == "selected_c1_forced"
     assert execution["moe_decode_path"] == "grouped_compact"
     assert execution["moe_grouped_compact_layers"] == 1
     assert execution["moe_selected_c1_fallback_layers"] == 0
@@ -2831,6 +2843,9 @@ def test_qwen35_resident_linear_batch_decode_selected_qkv_z_projection_is_non_na
 
     execution = session.last_batch_decode_execution
     assert execution["native_caware_decode"] is False
+    assert execution["linear_attention_projection_path"] == "selected_c1_qkv_z"
+    assert execution["linear_attention_state_path"] == "native_segments"
+    assert execution["linear_attention_output_path"] == "native_batch"
     assert execution["blockers"] == ["linear-attention QKV/Z projections forced to selected-c1 diagnostic path"]
     layer = execution["layer_executions"][0]
     assert layer["native_caware_decode"] is False
@@ -2910,6 +2925,9 @@ def test_qwen35_resident_linear_batch_decode_selected_ab_projection_combines_wit
 
     execution = session.last_batch_decode_execution
     assert execution["native_caware_decode"] is False
+    assert execution["linear_attention_projection_path"] == "batch_gemv_selected_c1_ab"
+    assert execution["linear_attention_state_path"] == "native_segments"
+    assert execution["linear_attention_output_path"] == "native_batch"
     assert execution["blockers"] == [
         "linear-attention A/B projections forced to selected-c1 diagnostic path",
         "linear-attention projections forced to batch GEMV diagnostic path",
@@ -3030,6 +3048,9 @@ def test_qwen35_resident_linear_batch_decode_output_diagnostics_are_non_native(
 
     execution = session.last_batch_decode_execution
     assert execution["native_caware_decode"] is False
+    assert execution["linear_attention_projection_path"] == "native_batch"
+    assert execution["linear_attention_state_path"] == "native_segments"
+    assert execution["linear_attention_output_path"] == expected_path
     assert execution["moe_decode_path"] == "grouped_compact"
     assert execution["moe_grouped_compact_layers"] == 1
     assert execution["moe_selected_c1_fallback_layers"] == 0
@@ -3120,6 +3141,9 @@ def test_qwen35_resident_linear_batch_decode_can_force_per_row_probe(monkeypatch
         "full_attention_decode_path": "none",
         "native_caware_decode": False,
         "linear_attention_segment_metadata": {"cu_seqlens": [0, 1, 2], "state_indices": [0, 2]},
+        "linear_attention_projection_path": "native_batch",
+        "linear_attention_state_path": "native_segments",
+        "linear_attention_output_path": "native_batch",
         "moe_decode_path": "mixed_grouped_compact_with_per_row_linear_attention_fallback",
         "moe_decode_rows": 2,
         "moe_grouped_compact_layers": 0,

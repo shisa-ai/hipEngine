@@ -50284,3 +50284,27 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: targeted tests PASS; source expectation comparison PASS; verify count remains `12`; full guard PASS with c=2/c=8 primitive correctness and A/A fields zero; benchmark rollup files unchanged. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and this is diagnostic C2.3 evidence only.
+
+## 2026-05-31 — CONCURRENCY C2.3 top-level linear decode route metadata
+
+Lifted linear-attention decode route provenance from per-layer traces into top-level `decode_execution`: `linear_attention_projection_path`, `linear_attention_state_path`, and `linear_attention_output_path` now summarize the configured projection/state/output route choices for the batch decode. This makes C2.3 diagnostic artifacts easier to gate even when per-layer trace inspection is stale or incomplete.
+
+Retained-bench preconditions and accepted-artifact schema now reject non-native top-level linear route values (`projection != native_batch`, `state != native_segments`, or `output != native_batch`) before a c>N artifact can be promoted. CPU coverage now checks both runtime metadata emission for selected-c1/QKV-Z/A-B/batch-GEMV output diagnostics and top-level schema/precondition rejection, including the `batch_gemv_from_f32` output variant.
+
+Validation:
+
+```bash
+python3 -m compileall -q hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_batch_retained_bench.py scripts/qwen35_batch_artifact_schema.py tests/test_generation_batch_scheduler.py tests/test_qwen35_resident_batch_layout.py && pytest -q tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_run_layers_batch_decode_reports_native_batch_for_short_context tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_run_layers_batch_decode_can_force_selected_c1_moe_probe tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_run_layers_batch_decode_uses_per_row_splitk_fallback_for_long_context tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_linear_batch_decode_selected_c1_projection_state_is_non_native tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_linear_batch_decode_selected_qkv_z_projection_is_non_native tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_linear_batch_decode_selected_ab_projection_combines_with_batch_gemv tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_linear_batch_decode_output_diagnostics_are_non_native tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_linear_batch_decode_can_force_per_row_probe tests/test_generation_batch_scheduler.py::test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_paths tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \[(?: |~)\]', queue))
+print(count)
+assert count == 12
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: targeted metadata/schema tests PASS; verify count remains `12`; full guard PASS with c=2/c=8 primitive correctness and A/A fields zero; benchmark rollup files unchanged. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and this is diagnostic C2.3 gating/provenance evidence only.
