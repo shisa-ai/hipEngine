@@ -17114,6 +17114,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="samples must contain only positive numbers"):
         validate_cn_diagnostic_artifact_payload(zero_sample)
 
+    mismatched_decode_step_median = json.loads(json.dumps(accepted))
+    mismatched_decode_step_median["measurements"]["decode_step_seconds"]["median"] = 0.25
+    with pytest.raises(ValueError, match="measurements.decode_step_seconds.median must match decode_step_seconds.samples"):
+        validate_cn_diagnostic_artifact_payload(mismatched_decode_step_median)
+
+    mismatched_decode_step_stdev = json.loads(json.dumps(accepted))
+    mismatched_decode_step_stdev["measurements"]["decode_step_seconds"]["stdev"] = 0.0
+    with pytest.raises(ValueError, match="measurements.decode_step_seconds.stdev must match decode_step_seconds.samples"):
+        validate_cn_diagnostic_artifact_payload(mismatched_decode_step_stdev)
+
     missing_benchmark_rollup = json.loads(json.dumps(accepted))
     missing_benchmark_rollup.pop("benchmark_rollup")
     with pytest.raises(ValueError, match="benchmark_rollup must be an object"):

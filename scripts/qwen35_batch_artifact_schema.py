@@ -5,6 +5,7 @@ import json
 import math
 import re
 import shlex
+import statistics
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -3339,15 +3340,33 @@ def _validate_accepted_measurement_gates(payload: Mapping[str, Any], errors: lis
         errors.append("measurements.decode_step_seconds must be an object for accepted artifacts")
         return
     samples = decode_steps.get("samples")
+    samples_valid = False
     if not isinstance(samples, list) or not samples:
         errors.append("measurements.decode_step_seconds.samples must be a non-empty list for accepted artifacts")
     elif any(not _is_positive_number(sample) for sample in samples):
         errors.append("measurements.decode_step_seconds.samples must contain only positive numbers for accepted artifacts")
+    else:
+        samples_valid = True
     for field in ("median", "p95", "min", "max"):
         if not _is_positive_number(decode_steps.get(field)):
             errors.append(f"measurements.decode_step_seconds.{field} must be positive numeric for accepted artifacts")
     if not _is_nonnegative_number(decode_steps.get("stdev")):
         errors.append("measurements.decode_step_seconds.stdev must be non-negative numeric for accepted artifacts")
+    if samples_valid:
+        sample_values = [float(sample) for sample in samples]
+        ordered_samples = sorted(sample_values)
+        p95_index = min(len(ordered_samples) - 1, math.ceil(0.95 * len(ordered_samples)) - 1)
+        expected_values = {
+            "median": float(statistics.median(sample_values)),
+            "p95": ordered_samples[p95_index],
+            "min": ordered_samples[0],
+            "max": ordered_samples[-1],
+            "stdev": statistics.stdev(sample_values) if len(sample_values) > 1 else 0.0,
+        }
+        for field, expected in expected_values.items():
+            value = decode_steps.get(field)
+            if _is_nonnegative_number(value) and not _numbers_close(float(value), float(expected)):
+                errors.append(f"measurements.decode_step_seconds.{field} must match decode_step_seconds.samples for accepted artifacts")
 
 
 def _validate_accepted_scaling_gates(payload: Mapping[str, Any], errors: list[str]) -> None:
