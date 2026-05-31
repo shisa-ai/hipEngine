@@ -67,12 +67,20 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--first-blocker-sha-only",
+        action="store_true",
+        help=(
+            "Emit only handoff_summary.first_blocker_work_item_sha256 for immediate-blocker "
+            "drift polling. Overrides queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--first-blocker-only",
         action="store_true",
         help=(
             "Emit only handoff_summary.first_blocker_work_item for immediate routing. "
             "Overrides --summary-only, --blocker-work-queue-only, --blocker-work-queue-meta-only, "
-            "and --blocker-work-queue-sha-only."
+            "--blocker-work-queue-sha-only, and --first-blocker-sha-only."
         ),
     )
     parser.add_argument(
@@ -964,14 +972,21 @@ def _handoff_summary(
                 }
             )
     blocker_work_queue_sha256 = _stable_json_sha256(blocker_work_queue)
+    first_blocker_work_item = blocker_work_queue[0] if blocker_work_queue else None
+    first_blocker_work_item_sha256 = (
+        _stable_json_sha256(first_blocker_work_item)
+        if first_blocker_work_item is not None
+        else None
+    )
     blocker_work_queue_meta = {
         "schema_version": 1,
         "count": len(blocker_work_queue),
         "sha256": blocker_work_queue_sha256,
-        "first_blocker_kind": blocker_work_queue[0]["blocker_kind"] if blocker_work_queue else None,
+        "first_blocker_kind": first_blocker_work_item["blocker_kind"] if first_blocker_work_item else None,
         "first_work_item_schema_version": (
-            blocker_work_queue[0]["work_item_schema_version"] if blocker_work_queue else None
+            first_blocker_work_item["work_item_schema_version"] if first_blocker_work_item else None
         ),
+        "first_work_item_sha256": first_blocker_work_item_sha256,
     }
     return {
         "status": "blocked" if blocker_kinds else "ready",
@@ -983,7 +998,8 @@ def _handoff_summary(
         "blocker_work_queue_sha256": blocker_work_queue_meta["sha256"],
         "blocker_work_queue_meta": blocker_work_queue_meta,
         "blocker_work_queue": blocker_work_queue,
-        "first_blocker_work_item": blocker_work_queue[0] if blocker_work_queue else None,
+        "first_blocker_work_item": first_blocker_work_item,
+        "first_blocker_work_item_sha256": first_blocker_work_item_sha256,
         "exit_codes": {
             "ready": READY_EXIT_CODE,
             "source_artifact_mismatch": SOURCE_ARTIFACT_MISMATCH_EXIT_CODE,
@@ -997,6 +1013,7 @@ def _handoff_summary(
             "blocker_work_queue_only": "handoff_summary.blocker_work_queue",
             "blocker_work_queue_meta_only": "handoff_summary.blocker_work_queue_meta",
             "blocker_work_queue_sha_only": "handoff_summary.blocker_work_queue_sha256",
+            "first_blocker_sha_only": "handoff_summary.first_blocker_work_item_sha256",
             "first_blocker_only": "handoff_summary.first_blocker_work_item",
             "fail_on_blocked_preserves_payload": True,
         },
@@ -1276,6 +1293,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     if args.first_blocker_only:
         result = status["handoff_summary"]["first_blocker_work_item"]
+    elif args.first_blocker_sha_only:
+        result = status["handoff_summary"]["first_blocker_work_item_sha256"]
     elif args.blocker_work_queue_sha_only:
         result = status["handoff_summary"]["blocker_work_queue_sha256"]
     elif args.blocker_work_queue_meta_only:

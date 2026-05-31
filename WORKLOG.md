@@ -29346,3 +29346,36 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`15 passed`), source-artifact/queue-meta CLI checks passed, and the full StepFun guard passed (`119 passed` plus CPU-reference fixture checks). Prompt-verifier evidence: status tests cover the new compact queue metadata output, no `import torch` was added to `hipengine/`, the changed status helper adds no engine-wide backend or quant special-casing, and no StepFun performance claim was made.
+
+## 2026-05-31 — StepFun first-blocker digest CLI recorded
+
+Added `first_blocker_work_item_sha256` to `handoff_summary`, mirrored it in `blocker_work_queue_meta.first_work_item_sha256`, and exposed it through `--first-blocker-sha-only` in `scripts/stepfun_correctness_status.py`. Automation can now poll the immediate blocker digest without fetching the full handoff, queue, or first-blocker payload. `--first-blocker-only` remains highest precedence; current readiness is unchanged: `oracle_parity=false`, `kv_backed_decode_ready=false`, and `e2e_inference_ready=false`.
+
+Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, added CLI regression coverage, and clarified `docs/STEPFUN.md`. This is handoff metadata only; no StepFun KV write/attention kernels are launched and no performance/e2e claim is made.
+
+Validation:
+
+```bash
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_correctness_status.py --first-blocker-sha-only --pretty --output /tmp/stepfun-first-blocker-sha.json
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty --output /tmp/stepfun-source-verify.json
+python3 - <<'PY'
+import hashlib, json
+v=json.load(open('/tmp/stepfun-source-verify.json'))
+assert v['status'] == 'match'
+assert v['all_match'] is True
+s=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+sha=json.load(open('/tmp/stepfun-first-blocker-sha.json'))
+first=s['handoff_summary']['first_blocker_work_item']
+payload=json.dumps(first, sort_keys=True, separators=(',', ':'))
+assert sha == s['handoff_summary']['first_blocker_work_item_sha256'] == hashlib.sha256(payload.encode()).hexdigest()
+assert s['handoff_summary']['blocker_work_queue_meta']['first_work_item_sha256'] == sha
+assert s['handoff_summary']['compact_output_modes']['first_blocker_sha_only'] == 'handoff_summary.first_blocker_work_item_sha256'
+assert s['status'] == 'blocked'
+print('stepfun first blocker digest artifact ok')
+PY
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`16 passed`), source-artifact/first-blocker digest checks passed, and the full StepFun guard passed (`120 passed` plus CPU-reference fixture checks). Prompt-verifier evidence: status tests cover the new compact first-blocker digest output, no `import torch` was added to `hipengine/`, the changed status helper adds no engine-wide backend or quant special-casing, and no StepFun performance claim was made.

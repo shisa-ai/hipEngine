@@ -597,7 +597,8 @@ reporting.
   per-item schema versions, explicit queue indices / first-item markers, and compact current-attempt
   status), `--blocker-work-queue-meta-only` emits the queue schema/count/digest/first-kind
   metadata, `--blocker-work-queue-sha-only` emits just the queue digest for drift polling,
-  and `--first-blocker-only` emits only the immediate work item
+  `--first-blocker-sha-only` emits just the immediate work-item digest, and
+  `--first-blocker-only` emits only the immediate work item
   (including the primary command kind/string plus length and SHA-256) for lightweight automation.
   It lists next actions for the
   StepFun-capable oracle and KV-backed decode blockers, and supports
