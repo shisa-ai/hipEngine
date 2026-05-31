@@ -1,6 +1,6 @@
 {
   "backend": "hip_gfx1151",
-  "command": "python3 scripts/stepfun_layer_prefix_smoke.py --dry-run-plan --layer-count 45 --message \"hello\" --pretty",
+  "command": "python3 scripts/stepfun_layer_prefix_smoke.py --dry-run-plan --layer-count 45 --message \"hello\" --output benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-dry-run.json --pretty",
   "layer_count": 45,
   "model": "Step-3.7-flash-Q3_K_L",
   "no_vision_projector_mtp_slots": true,

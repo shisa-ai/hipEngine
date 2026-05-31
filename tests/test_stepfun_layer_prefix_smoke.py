@@ -73,6 +73,40 @@ def test_stepfun_layer_prefix_smoke_dry_run_plans_all_layers_without_hip(
     assert "no HIP runtime was initialized" in payload["note"]
 
 
+def test_stepfun_layer_prefix_smoke_dry_run_writes_output_file(
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    root = _stepfun_gguf_dir()
+    output_path = tmp_path / "prefix-plan.json"
+
+    rc = main(
+        [
+            "--dry-run-plan",
+            "--model-dir",
+            str(root),
+            "--layer-count",
+            "45",
+            "--message",
+            "hello",
+            "--output",
+            str(output_path),
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert output.err == ""
+    payload = json.loads(output_path.read_text())
+    assert payload["status"] == "planned"
+    assert payload["scope"] == "layers_0_44_prefix_no_skipped_layers"
+    assert payload["command"].endswith(f"--output {output_path} --pretty")
+    assert payload["selected_slot_count"] == 753
+    assert payload["resident_weight_nbytes"] > 102_000_000_000
+
+
 def test_stepfun_layer_prefix_smoke_budget_guard_blocks_before_hip(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

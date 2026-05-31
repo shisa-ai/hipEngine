@@ -59,6 +59,12 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Scan metadata and print the layer-prefix slot/resource plan without HIP allocation.",
     )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Write JSON output to this path instead of stdout.",
+    )
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output")
     return parser.parse_args(argv)
 
@@ -73,6 +79,29 @@ def _skipped_layers(layer_count: int, block_count: int) -> list[int]:
     if layer_count >= block_count:
         return []
     return [layer_count, block_count - 1]
+
+
+def _command(args: argparse.Namespace, *, dry_run: bool) -> str:
+    parts = ["python3 scripts/stepfun_layer_prefix_smoke.py"]
+    if dry_run:
+        parts.append("--dry-run-plan")
+    parts.extend(["--layer-count", str(args.layer_count), "--message", json.dumps(args.message)])
+    if args.max_resident_weight_gib is not None:
+        parts.extend(["--max-resident-weight-gib", f"{args.max_resident_weight_gib:g}"])
+    if args.output is not None:
+        parts.extend(["--output", str(args.output)])
+    if args.pretty:
+        parts.append("--pretty")
+    return " ".join(parts)
+
+
+def _emit_json(result: dict[str, object], *, pretty: bool, output: Path | None) -> None:
+    text = json.dumps(result, indent=2 if pretty else None, sort_keys=True) + "\n"
+    if output is None:
+        print(text, end="")
+        return
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(text)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -96,8 +125,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "scope": _scope(args.layer_count, model_map.config.block_count),
             "model": args.pattern.removesuffix("-*.gguf"),
             "backend": "hip_gfx1151",
-            "command": "python3 scripts/stepfun_layer_prefix_smoke.py "
-            f"--dry-run-plan --layer-count {args.layer_count} --message {json.dumps(args.message)} --pretty",
+            "command": _command(args, dry_run=True),
             "paths": [str(path) for path in paths],
             "split_count": info.split_count,
             "tensor_count": info.tensor_count,
@@ -113,7 +141,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "KV buffers, prompt embeddings, or logits were allocated/computed."
             ),
         }
-        print(json.dumps(result, indent=2 if args.pretty else None, sort_keys=True))
+        _emit_json(result, pretty=args.pretty, output=args.output)
         return 0
 
     if args.max_resident_weight_gib is not None:
@@ -155,8 +183,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "scope": _scope(args.layer_count, model_map.config.block_count),
             "model": args.pattern.removesuffix("-*.gguf"),
             "backend": "hip_gfx1151",
-            "command": "python3 scripts/stepfun_layer_prefix_smoke.py "
-            f"--layer-count {args.layer_count} --message {json.dumps(args.message)} --pretty",
+            "command": _command(args, dry_run=False),
             "paths": [str(path) for path in paths],
             "split_count": info.split_count,
             "tensor_count": info.tensor_count,
@@ -195,7 +222,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     free_after_free, _ = runtime.mem_get_info()
     result["hip_free_after_free_gib"] = free_after_free / 2**30
     result["memory_stats_after_free"] = memory_stats()
-    print(json.dumps(result, indent=2 if args.pretty else None, sort_keys=True))
+    _emit_json(result, pretty=args.pretty, output=args.output)
     return 0
 
 

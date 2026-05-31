@@ -27581,3 +27581,21 @@ python3 -m pytest -q tests/test_stepfun_layer_prefix_smoke.py -q
 ```
 
 Result: `3 passed`.
+
+## 2026-05-31 — StepFun layer-prefix smoke output files
+
+Added `--output` to `scripts/stepfun_layer_prefix_smoke.py`. The script now writes JSON directly to a requested path (creating parent directories) instead of requiring shell redirection, while preserving stdout output when `--output` is omitted. The recorded command inside the JSON reflects `--output`, reducing drift between docs and artifact generation.
+
+Extended `tests/test_stepfun_layer_prefix_smoke.py` with a dry-run output-file test that writes the all-45-layer metadata plan to a temporary path without initializing HIP. Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-dry-run.json` via the native output path:
+
+```bash
+python3 scripts/stepfun_layer_prefix_smoke.py --dry-run-plan --layer-count 45 --message hello --output benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-dry-run.json --pretty
+```
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_layer_prefix_smoke.py -q
+```
+
+Result: `4 passed`.
