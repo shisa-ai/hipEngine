@@ -238,7 +238,7 @@ _SWEEP_COMMAND_STATUS_LABELS = RETAINED_ARTIFACT_SWEEP_COMMAND_STATUS_LABELS
 _INT8_DIAGNOSTIC_UNIQUE_FLAGS = ("--rows", "--future-json", "--primitive-cpu-json", "--primitive-hip-json")
 _GGUF_DIAGNOSTIC_BACKEND = "hip_gfx1100"
 _GGUF_DIAGNOSTIC_MAX_NEW_TOKENS = 4
-_GGUF_DIAGNOSTIC_UNIQUE_FLAGS = ("--rows", "--backend", "--quant", "--max-new-tokens")
+_GGUF_DIAGNOSTIC_UNIQUE_FLAGS = ("--fixture", "--rows", "--backend", "--quant", "--max-new-tokens")
 _SWEEP_COMMAND_KNOWN_FLAGS = tuple(
     dict.fromkeys(
         _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS
@@ -2370,15 +2370,15 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 if _argv_value(argv, "--max-new-tokens") != str(_GGUF_DIAGNOSTIC_MAX_NEW_TOKENS):
                     errors.append("commands[].argv GGUF --max-new-tokens must match the template decode length")
                     break
-            duplicated_retained_flags = _duplicate_flags(argv, _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS)
-            if duplicated_retained_flags:
-                errors.append("commands[].argv must not repeat retained benchmark flags")
-                break
             if command_category == _INT8_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY and _duplicate_flags(argv, _INT8_DIAGNOSTIC_UNIQUE_FLAGS):
                 errors.append("commands[].argv must not repeat INT8 diagnostic flags")
                 break
             if command_category == _GGUF_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY and _duplicate_flags(argv, _GGUF_DIAGNOSTIC_UNIQUE_FLAGS):
                 errors.append("commands[].argv must not repeat GGUF diagnostic flags")
+                break
+            duplicated_retained_flags = _duplicate_flags(argv, _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS)
+            if duplicated_retained_flags:
+                errors.append("commands[].argv must not repeat retained benchmark flags")
                 break
             projection_dispatch_arg = _argv_value(argv, "--projection-dispatch-artifact")
             projection_dispatch_flag_present = any(

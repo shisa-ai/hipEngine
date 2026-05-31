@@ -7055,7 +7055,7 @@ def test_batch_c_sweep_can_plan_gguf_blocked_diagnostics(tmp_path: Path, monkeyp
     with pytest.raises(ValueError, match=r"commands\[\]\.argv GGUF --max-new-tokens must match the template decode length"):
         c_sweep.validate_sweep_summary(tampered_max_new_tokens)
 
-    for flag in ("--rows", "--backend", "--quant", "--max-new-tokens"):
+    for flag in ("--fixture", "--rows", "--backend", "--quant", "--max-new-tokens"):
         tampered = json.loads(json.dumps(summary))
         argv = tampered["commands"][gguf_entry_index]["argv"]
         argv.extend([flag, argv[argv.index(flag) + 1]])
@@ -7315,7 +7315,7 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     tampered_gguf_artifact["commands"][gguf_c8_index]["command"] = shlex.join(gguf_artifact_argv)
     with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match category/batch-size filename"):
         c_sweep.validate_sweep_summary(tampered_gguf_artifact)
-    for flag in ("--rows", "--backend", "--quant", "--max-new-tokens"):
+    for flag in ("--fixture", "--rows", "--backend", "--quant", "--max-new-tokens"):
         tampered = json.loads(json.dumps(summary))
         argv = tampered["commands"][gguf_c8_index]["argv"]
         argv.extend([flag, argv[argv.index(flag) + 1]])

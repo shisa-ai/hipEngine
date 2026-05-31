@@ -1616,7 +1616,7 @@ roll-up/status view.
       HIP device env prefixes, fixture/backend labels, and decode-length labels
       after each INT8 row, including stale c=8
       fixture/backend/decode/quant/artifact/env-prefix rejection and duplicate
-      c=8 GGUF diagnostic flag rejection;
+      c=8 GGUF fixture/diagnostic flag rejection;
       covered by `test_gguf_cN_diagnostic_template_records_blocked_c2_command`
       and `test_batch_c_sweep_can_plan_gguf_blocked_diagnostics` in
       `pytest -q tests/test_generation_batch_scheduler.py -q`.
