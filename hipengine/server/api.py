@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import time
 import uuid
 from collections import deque
@@ -1006,11 +1007,10 @@ def _non_negative_metric_mapping(value: Any) -> dict[str, float]:
         return {}
     metrics: dict[str, float] = {}
     for key, raw in value.items():
-        try:
-            numeric = float(raw)
-        except (TypeError, ValueError):
+        if isinstance(raw, bool) or not isinstance(raw, (int, float)):
             continue
-        if numeric < 0:
+        numeric = float(raw)
+        if not math.isfinite(numeric) or numeric < 0:
             continue
         metrics[str(key)] = numeric
     return metrics
