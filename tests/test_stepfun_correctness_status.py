@@ -1695,6 +1695,46 @@ def test_stepfun_correctness_status_fail_on_blocked_returns_nonzero(
 
 
 
+def test_stepfun_correctness_status_summary_fail_on_blocked_returns_nonzero(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--summary-only",
+            "--fail-on-blocked",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 2
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert captured.err == ""
+    assert payload["open_blocker_count"] == 2
+    assert payload["exit_codes"]["current_with_fail_on_blocked"] == 2
+    assert payload["compact_output_modes"]["summary_only"] == "handoff_summary"
+    assert payload["first_blocker_work_item"]["blocker_kind"] == "oracle_parity_blocked"
+
+
+
 def test_stepfun_correctness_status_blocker_work_queue_fail_on_blocked_returns_nonzero(
     capsys,
     tmp_path: Path,

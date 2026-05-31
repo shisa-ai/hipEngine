@@ -29186,3 +29186,28 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`12 passed`), source-artifact/queue-shape metadata checks passed, and the full StepFun guard passed (`116 passed` plus CPU-reference fixture checks). Prompt-verifier evidence: status tests cover the new queue schema/count fields, no `import torch` was added to `hipengine/`, the changed status helper adds no engine-wide backend or quant special-casing, and no StepFun performance claim was made.
+
+## 2026-05-31 — StepFun summary fail-on-blocked covered
+
+Added regression coverage for using `--summary-only` together with `--fail-on-blocked` in `scripts/stepfun_correctness_status.py`. The compact handoff summary is still emitted, but the helper returns exit code 2 while StepFun correctness remains blocked. With the existing queue-only and first-blocker-only checks, all compact output modes now have explicit blocked-exit coverage. This is test coverage only; no StepFun KV write/attention kernels are launched and no performance/e2e claim is made.
+
+Validation:
+
+```bash
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_correctness_status.py --summary-only --fail-on-blocked --pretty > /tmp/stepfun-summary-fail.json; rc=$?; test "$rc" -eq 2
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty --output /tmp/stepfun-source-verify.json
+python3 - <<'PY'
+import json
+p=json.load(open('/tmp/stepfun-summary-fail.json'))
+assert p['open_blocker_count'] == 2
+assert p['exit_codes']['current_with_fail_on_blocked'] == 2
+assert p['compact_output_modes']['summary_only'] == 'handoff_summary'
+assert p['first_blocker_work_item']['blocker_kind'] == 'oracle_parity_blocked'
+print('stepfun summary fail-on-blocked ok')
+PY
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`13 passed`), source-artifact and summary fail-on-blocked checks passed, and the full StepFun guard passed (`117 passed` plus CPU-reference fixture checks). Prompt-verifier evidence: the new test covers compact handoff summary output plus blocked exit semantics, no `import torch` was added to `hipengine/`, the test-only change adds no engine-wide backend or quant special-casing, and no StepFun performance claim was made.
