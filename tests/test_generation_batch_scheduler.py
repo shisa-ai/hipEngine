@@ -7294,6 +7294,7 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         if entry["category"] == "gguf_native_diagnostic" and entry["batch_size"] == 8
     )
     for flag, stale_value, expected_error in (
+        ("--fixture", "tests/fixtures/gguf/other.json", r"commands\[\]\.argv GGUF --fixture must match the template fixture"),
         ("--backend", "cpu_reference", r"commands\[\]\.argv GGUF --backend must match the template backend"),
         ("--max-new-tokens", "8", r"commands\[\]\.argv GGUF --max-new-tokens must match the template decode length"),
         ("--quant", "gguf_q2_bad", r"commands\[\]\.argv GGUF --quant must be one of the template quants"),
