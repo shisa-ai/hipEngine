@@ -2549,11 +2549,16 @@ def _memory_evidence_blockers(memory: Mapping[str, Any]) -> list[str]:
     if not isinstance(allocator_stats, Mapping):
         blockers.append("memory.allocator_memory_stats is missing")
     else:
+        stats_current = allocator_stats.get("current_allocated_bytes")
         stats_peak = allocator_stats.get("peak_allocated_bytes")
+        if not _is_finite_nonnegative_number(stats_current):
+            blockers.append("memory.allocator_memory_stats.current_allocated_bytes is unavailable or non-finite")
         if not _is_finite_nonnegative_number(stats_peak):
             blockers.append("memory.allocator_memory_stats.peak_allocated_bytes is unavailable or non-finite")
         elif _is_finite_nonnegative_number(allocator_peak) and int(stats_peak) != int(allocator_peak):
             blockers.append("memory.allocator_memory_stats.peak_allocated_bytes does not match allocator_reserved_peak_bytes")
+        if _is_finite_nonnegative_number(stats_current) and _is_finite_nonnegative_number(stats_peak) and float(stats_current) > float(stats_peak):
+            blockers.append("memory.allocator_memory_stats.current_allocated_bytes is above peak_allocated_bytes")
     dynamic_pool = memory.get("dynamic_pool")
     if not isinstance(dynamic_pool, Mapping):
         blockers.append("memory.dynamic_pool evidence is missing")
