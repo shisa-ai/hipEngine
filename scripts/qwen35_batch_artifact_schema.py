@@ -1784,10 +1784,14 @@ def _validate_accepted_scheduler_metadata(
             invalid_histogram_buckets = sorted(
                 str(key) for key in kernel_time_histogram if isinstance(key, str) and key not in _GRAPH_KERNEL_TIME_HISTOGRAM_BUCKET_SET
             )
+            allowed = ", ".join(GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS)
             if invalid_histogram_buckets:
-                allowed = ", ".join(GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS)
                 errors.append(
                     f"execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns keys must be one of {allowed} for accepted artifacts"
+                )
+            if set(kernel_time_histogram) != _GRAPH_KERNEL_TIME_HISTOGRAM_BUCKET_SET:
+                errors.append(
+                    f"execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns must include exactly the fixed buckets {allowed} for accepted artifacts"
                 )
             histogram_total = _validate_non_negative_int_mapping(
                 "execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns",

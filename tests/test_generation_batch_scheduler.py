@@ -15606,7 +15606,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                     "misses": 1,
                     "replay_hit_rate": 0.5,
                     "miss_reasons": {"cache_absent": 1},
-                    "kernel_time_histogram_ns": {"le_10us": 3, "le_100us": 1},
+                    "kernel_time_histogram_ns": {"le_10us": 3, "le_100us": 1, "le_1ms": 0, "le_10ms": 0, "gt_10ms": 0},
                 },
             },
             "seed_tokens": {"0": {"token_id": 0}, "1": {"token_id": 100}},
@@ -17338,9 +17338,20 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         validate_cn_diagnostic_artifact_payload(mismatched_graph_bucket_miss_reasons)
 
     invalid_graph_bucket_histogram = json.loads(json.dumps(accepted))
-    invalid_graph_bucket_histogram["execution"]["scheduler_metadata"]["graph_bucket_stats"]["kernel_time_histogram_ns"] = {"le_10us": -1}
+    invalid_graph_bucket_histogram["execution"]["scheduler_metadata"]["graph_bucket_stats"]["kernel_time_histogram_ns"] = {
+        "le_10us": -1,
+        "le_100us": 1,
+        "le_1ms": 0,
+        "le_10ms": 0,
+        "gt_10ms": 0,
+    }
     with pytest.raises(ValueError, match="kernel_time_histogram_ns.le_10us must be a non-negative int"):
         validate_cn_diagnostic_artifact_payload(invalid_graph_bucket_histogram)
+
+    missing_graph_bucket_histogram_key = json.loads(json.dumps(accepted))
+    missing_graph_bucket_histogram_key["execution"]["scheduler_metadata"]["graph_bucket_stats"]["kernel_time_histogram_ns"].pop("gt_10ms")
+    with pytest.raises(ValueError, match="kernel_time_histogram_ns must include exactly the fixed buckets"):
+        validate_cn_diagnostic_artifact_payload(missing_graph_bucket_histogram_key)
 
     unknown_graph_bucket_histogram = json.loads(json.dumps(accepted))
     unknown_graph_bucket_histogram["execution"]["scheduler_metadata"]["graph_bucket_stats"]["kernel_time_histogram_ns"] = {"lt_1us": 1}
