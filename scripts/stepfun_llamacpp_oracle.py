@@ -55,6 +55,28 @@ def _emit_json(result: dict[str, object], *, pretty: bool, output: Path | None) 
     output.write_text(text)
 
 
+def _as_text(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value
+
+
+def _comparison_fields(generated_text: str, expected_text: object) -> dict[str, object]:
+    if not isinstance(expected_text, str):
+        return {
+            "generated_text": generated_text,
+            "text_matches_expected_exact": None,
+            "text_matches_expected_stripped": None,
+        }
+    return {
+        "generated_text": generated_text,
+        "text_matches_expected_exact": generated_text == expected_text,
+        "text_matches_expected_stripped": generated_text.strip() == expected_text.strip(),
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     artifact = json.loads(args.artifact.read_text())
@@ -98,6 +120,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         "expected_next_token_text": artifact.get("next_token_text"),
         "expected_next_token_logit": artifact.get("next_token_logit"),
         "expected_top_tokens": artifact.get("top_tokens"),
+        "comparison_policy": {
+            "generated_text_source": "llama-cli stdout with --no-display-prompt --simple-io --log-disable",
+            "exact_text_match_field": "text_matches_expected_exact",
+            "stripped_text_match_field": "text_matches_expected_stripped",
+            "expected_text_field": "expected_next_token_text",
+        },
         "note": (
             "Dry-run oracle plan by default. Use --execute only when the machine can afford a llama.cpp "
             "one-token run over the StepFun Q3_K_L GGUF shards; compare output/tokenization manually or with "
@@ -105,21 +133,36 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
     }
     if args.execute:
-        completed = subprocess.run(
-            command,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=args.timeout_s,
-        )
-        result.update(
-            {
-                "status": "executed",
-                "returncode": completed.returncode,
-                "stdout": completed.stdout,
-                "stderr": completed.stderr,
-            }
-        )
+        try:
+            completed = subprocess.run(
+                command,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=args.timeout_s,
+            )
+        except subprocess.TimeoutExpired as exc:
+            stdout = _as_text(exc.stdout)
+            stderr = _as_text(exc.stderr)
+            result.update(
+                {
+                    "status": "timeout",
+                    "timeout_s": args.timeout_s,
+                    "stdout": stdout,
+                    "stderr": stderr,
+                    **_comparison_fields(stdout, result.get("expected_next_token_text")),
+                }
+            )
+        else:
+            result.update(
+                {
+                    "status": "executed",
+                    "returncode": completed.returncode,
+                    "stdout": completed.stdout,
+                    "stderr": completed.stderr,
+                    **_comparison_fields(completed.stdout, result.get("expected_next_token_text")),
+                }
+            )
     _emit_json(result, pretty=args.pretty, output=args.output)
     return 0
 

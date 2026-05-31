@@ -563,10 +563,12 @@ reporting.
   `Step-3.7-flash-Q3_K_L-00001-of-00003.gguf`, `--predict 1`, `--temp 0`,
   `--top-k 1`, `--top-p 1`, `--min-p 0`, `--repeat-penalty 1`, `--seed 0`,
   `--no-display-prompt`, `--simple-io`, and `--log-disable`.
-  Remaining implementation task: execute/parse the expensive llama.cpp oracle
-  run and compare its greedy token/logit result with the current host-composed
-  artifact (`next_token_id=369`, decoded ` |`); KV-backed decode parity remains
-  open too.
+  The helper now records a comparison policy and, when run with `--execute`,
+  captures llama.cpp stdout as `generated_text` plus exact/stripped text-match
+  booleans against the host-composed artifact (`next_token_id=369`, decoded
+  ` |`). Remaining implementation task: execute the expensive llama.cpp oracle
+  run and review/record the parsed result; KV-backed decode parity remains open
+  too.
 - [x] Preserve multi-EOS stopping and the chat assistant prefix. The short
   context planner renders the Step chat template with assistant `<think>` prefix
   and carries stop IDs `(1, 2, 128007)` with `should_stop()` checks.

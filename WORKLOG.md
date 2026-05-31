@@ -27707,3 +27707,17 @@ python3 -m pytest -q tests/test_stepfun_llamacpp_oracle.py -q
 ```
 
 Result: `1 passed`.
+
+## 2026-05-31 — StepFun llama.cpp oracle comparison fields
+
+Extended `scripts/stepfun_llamacpp_oracle.py` beyond dry-run command planning: `--execute` now captures llama.cpp stdout as `generated_text` and emits `text_matches_expected_exact` / `text_matches_expected_stripped` against the all-layer chunked artifact's `expected_next_token_text`. Timeout handling now returns JSON with `status=timeout` and partial stdout/stderr instead of crashing. The dry-run artifact also records the comparison policy so the next actual llama.cpp run has a mechanical field to inspect before claiming parity.
+
+Updated `tests/test_stepfun_llamacpp_oracle.py` with a fake llama-cli execution test that prints the expected ` |` token and verifies the comparison booleans. Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-oracle-plan.json` with the comparison policy fields. The real expensive llama.cpp oracle run remains open; no parity claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_llamacpp_oracle.py -q
+```
+
+Result: `2 passed`.

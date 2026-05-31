@@ -25,6 +25,12 @@
     "--log-disable"
   ],
   "command_shell": "/home/lhl/ai/llama.cpp-cpu/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --prompt '<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n' --predict 1 --temp 0 --top-k 1 --top-p 1 --min-p 0 --repeat-penalty 1 --seed 0 --no-display-prompt --simple-io --log-disable",
+  "comparison_policy": {
+    "exact_text_match_field": "text_matches_expected_exact",
+    "expected_text_field": "expected_next_token_text",
+    "generated_text_source": "llama-cli stdout with --no-display-prompt --simple-io --log-disable",
+    "stripped_text_match_field": "text_matches_expected_stripped"
+  },
   "expected_next_token_id": 369,
   "expected_next_token_logit": 19.158626556396484,
   "expected_next_token_text": " |",
