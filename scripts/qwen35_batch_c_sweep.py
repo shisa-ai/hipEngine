@@ -96,6 +96,27 @@ def _is_python_executable(executable: str) -> bool:
     return bool(version_suffix) and all(part.isdecimal() for part in version_suffix.split("."))
 
 
+def _is_env_assignment_token(token: str) -> bool:
+    key, sep, _value = token.partition("=")
+    return bool(
+        sep
+        and key
+        and (key[0].isalpha() or key[0] == "_")
+        and all(ch.isalnum() or ch == "_" for ch in key)
+    )
+
+
+def _strip_command_env_prefix(argv: Sequence[str]) -> list[str]:
+    idx = 0
+    if argv and Path(argv[0]).name == "env":
+        idx = 1
+    while idx < len(argv) and _is_env_assignment_token(argv[idx]):
+        idx += 1
+    if idx == 0:
+        return list(argv)
+    return list(argv[idx:])
+
+
 def _required_primitive_context_lens(rows: int) -> list[int]:
     max_context_len = _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS["max_context_len"]
     return [(idx % max_context_len) + 1 for idx in range(rows)]
@@ -2653,10 +2674,11 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if _argv_value(rocprof_command_argv, _ROCPROF_COMMAND_FLAGS[1]) != _ROCPROF_OUTPUT_FORMAT:
                         errors.append("commands[].preconditions[].profiler_command must include --output-format csv before rocprof separator when passed")
                         break
+                    profiled_launch_argv = _strip_command_env_prefix(profiled_command_argv)
                     if (
-                        len(profiled_command_argv) < 2
-                        or not _is_python_executable(profiled_command_argv[0])
-                        or profiled_command_argv[1] != _RETAINED_BENCH_SCRIPT
+                        len(profiled_launch_argv) < 2
+                        or not _is_python_executable(profiled_launch_argv[0])
+                        or profiled_launch_argv[1] != _RETAINED_BENCH_SCRIPT
                     ):
                         errors.append("commands[].preconditions[].profiler_command must launch retained bench after rocprof separator when passed")
                         break

@@ -10904,6 +10904,66 @@ def test_qwen35_retained_hardware_context_uses_visible_hip_device(monkeypatch) -
     assert hardware["visible_device"]["device_name"] == "AMD Radeon RX 7900 XTX"
 
 
+def test_qwen35_retained_command_labels_preserve_visible_hip_device_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
+
+    retained_json = "benchmarks/results/native-c8.json"
+    profiler_json = "benchmarks/results/profile-c8.json"
+    benchmark_command = retained_bench._command(["--batch-size", "8", "--json", retained_json])
+    correctness_command = retained_bench._primitive_correctness_command(
+        Path("benchmarks/results/primitive-c8.json"),
+        rows=8,
+    )
+    profiler_command = retained_bench._profiled_command(
+        SimpleNamespace(profiler_command=None, profiler_json=Path(profiler_json)),
+        ["--batch-size", "8", "--json", retained_json, "--profiler-json", profiler_json],
+    )
+
+    assert shlex.split(benchmark_command)[:4] == [
+        "env",
+        "HIP_VISIBLE_DEVICES=1",
+        "python3",
+        "scripts/qwen35_batch_retained_bench.py",
+    ]
+    assert shlex.split(correctness_command)[:4] == [
+        "env",
+        "HIP_VISIBLE_DEVICES=1",
+        "python3",
+        "scripts/qwen35_batch_correctness.py",
+    ]
+    assert profiler_command is not None
+    profiler_command_argv = shlex.split(profiler_command)
+    profiled_argv = profiler_command_argv[profiler_command_argv.index("--") + 1 :]
+    assert profiled_argv[:4] == [
+        "env",
+        "HIP_VISIBLE_DEVICES=1",
+        "python3",
+        "scripts/qwen35_batch_retained_bench.py",
+    ]
+    expected_profiled_launch = ["python3", "scripts/qwen35_batch_retained_bench.py"]
+    assert retained_bench._strip_command_env_prefix(profiled_argv)[:2] == expected_profiled_launch
+    assert artifact_schema._strip_command_env_prefix(profiled_argv)[:2] == expected_profiled_launch
+    assert c_sweep._strip_command_env_prefix(profiled_argv)[:2] == expected_profiled_launch
+    schema_errors: list[str] = []
+    artifact_schema._validate_retained_bench_command_target(
+        benchmark_command,
+        field="benchmark",
+        errors=schema_errors,
+    )
+    assert schema_errors == []
+    assert retained_bench._profiler_command_provenance_blockers(
+        profiler_command,
+        trace_dir=None,
+        profiler_artifact_path=profiler_json,
+        retained_artifact_path=retained_json,
+        expected_workload=None,
+        expected_inputs=None,
+        expected_build=None,
+        expected_references=None,
+        expected_kv_policy=None,
+    ) == []
+
+
 def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_path: Path) -> None:
     artifact = tmp_path / "primitive-c2.json"
     base_payload = {
@@ -11181,8 +11241,14 @@ def test_qwen35_retained_profiler_reference_loads_captured_summary(tmp_path: Pat
     assert retained_bench._RETAINED_KV_POLICY_FLAGS is RETAINED_ARTIFACT_RETAINED_KV_POLICY_FLAGS
     assert retained_bench._RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS is RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS
     assert retained_bench._RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS is RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS
-    primitive_command_tokens = shlex.split(
-        retained_bench._primitive_correctness_command(tmp_path / "primitive.json", rows=2, seed=1234)
+    primitive_command_tokens = retained_bench._strip_command_env_prefix(
+        shlex.split(
+            retained_bench._primitive_correctness_command(
+                tmp_path / "primitive.json",
+                rows=2,
+                seed=1234,
+            )
+        )
     )
     assert primitive_command_tokens[1] == RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_SCRIPT
     assert loaded["status"] == "captured"

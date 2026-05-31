@@ -6,7 +6,7 @@ import math
 import re
 import shlex
 import sys
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -299,14 +299,42 @@ def _is_python_executable(token: str) -> bool:
     return re.fullmatch(r"python(?:3(?:\.\d+)?)?", Path(token).name) is not None
 
 
+def _is_env_assignment_token(token: str) -> bool:
+    key, sep, _value = token.partition("=")
+    return bool(
+        sep
+        and key
+        and (key[0].isalpha() or key[0] == "_")
+        and all(ch.isalnum() or ch == "_" for ch in key)
+    )
+
+
+def _strip_command_env_prefix(argv: Sequence[str]) -> list[str]:
+    idx = 0
+    if argv and Path(argv[0]).name == "env":
+        idx = 1
+    while idx < len(argv) and _is_env_assignment_token(argv[idx]):
+        idx += 1
+    if idx == 0:
+        return list(argv)
+    return list(argv[idx:])
+
+
 def _validate_retained_bench_command_target(command: str, *, field: str, errors: list[str]) -> None:
     try:
         argv = shlex.split(command)
     except ValueError:
         errors.append(f"commands.{field} must be shell-parseable for accepted artifacts")
         return
-    if len(argv) < 2 or not _is_python_executable(argv[0]) or argv[1] != _RETAINED_BENCH_SCRIPT:
-        errors.append(f"commands.{field} must start with python scripts/qwen35_batch_retained_bench.py for accepted artifacts")
+    command_argv = _strip_command_env_prefix(argv)
+    if (
+        len(command_argv) < 2
+        or not _is_python_executable(command_argv[0])
+        or command_argv[1] != _RETAINED_BENCH_SCRIPT
+    ):
+        errors.append(
+            f"commands.{field} must start with python scripts/qwen35_batch_retained_bench.py for accepted artifacts"
+        )
 
 
 def _embedded_python_script_argv(command: str, script: str, *, field: str, errors: list[str]) -> list[str] | None:
@@ -1784,10 +1812,11 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             profiler_command_trace_dir = _argv_value(rocprof_command_argv, _ROCPROF_COMMAND_FLAGS[2])
             if profiler_command_trace_dir is None:
                 errors.append("commands.profiler must include -d <profiler.trace_dir> before rocprof separator for accepted artifacts")
+        profiled_launch_argv = _strip_command_env_prefix(profiled_command_argv)
         if (
-            len(profiled_command_argv) < 2
-            or not Path(profiled_command_argv[0]).name.startswith("python")
-            or profiled_command_argv[1] != _RETAINED_BENCH_SCRIPT
+            len(profiled_launch_argv) < 2
+            or not Path(profiled_launch_argv[0]).name.startswith("python")
+            or profiled_launch_argv[1] != _RETAINED_BENCH_SCRIPT
         ):
             errors.append("commands.profiler must target scripts/qwen35_batch_retained_bench.py after rocprof separator for accepted artifacts")
         else:

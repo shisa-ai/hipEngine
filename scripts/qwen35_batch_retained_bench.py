@@ -1712,6 +1712,27 @@ def _join_command_parts(parts: Sequence[str]) -> str:
     return " ".join(shlex.quote(part) for part in parts)
 
 
+def _is_env_assignment_token(token: str) -> bool:
+    key, sep, _value = token.partition("=")
+    return bool(
+        sep
+        and key
+        and (key[0].isalpha() or key[0] == "_")
+        and all(ch.isalnum() or ch == "_" for ch in key)
+    )
+
+
+def _strip_command_env_prefix(parts: Sequence[str]) -> list[str]:
+    idx = 0
+    if parts and Path(parts[0]).name == "env":
+        idx = 1
+    while idx < len(parts) and _is_env_assignment_token(parts[idx]):
+        idx += 1
+    if idx == 0:
+        return list(parts)
+    return list(parts[idx:])
+
+
 def _command_flag_count(parts: Sequence[str], flag: str) -> int:
     prefix = f"{flag}="
     return sum(1 for part in parts if part == flag or part.startswith(prefix))
@@ -1758,10 +1779,11 @@ def _profiler_command_provenance_blockers(
         for flag in _RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS:
             if _command_has_flag(retained_command, flag):
                 blockers.append(f"profiler command must not include {flag}")
+        profiled_launch_segment = _strip_command_env_prefix(profiled_segment)
         if (
-            len(profiled_segment) < 2
-            or not Path(profiled_segment[0]).name.startswith("python")
-            or profiled_segment[1] != _RETAINED_BENCH_SCRIPT
+            len(profiled_launch_segment) < 2
+            or not Path(profiled_launch_segment[0]).name.startswith("python")
+            or profiled_launch_segment[1] != _RETAINED_BENCH_SCRIPT
         ):
             blockers.append("profiler command must launch retained bench after rocprof separator")
     if _command_arg_value(rocprof_prefix_command, _ROCPROF_COMMAND_FLAGS[1]) != _ROCPROF_OUTPUT_FORMAT:
@@ -2425,14 +2447,35 @@ def _hardware_context() -> dict[str, Any]:
     }
 
 
+_COMMAND_ENV_KEYS = ("HIP_VISIBLE_DEVICES",)
+
+
+def _command_env_prefix_parts() -> list[str]:
+    assignments = [
+        f"{key}={value}"
+        for key in _COMMAND_ENV_KEYS
+        if (value := os.environ.get(key))
+    ]
+    return ["env", *assignments] if assignments else []
+
+
 def _command(argv: Sequence[str] | None) -> str:
-    parts = ["python3", _RETAINED_BENCH_SCRIPT]
+    parts = [*_command_env_prefix_parts(), "python3", _RETAINED_BENCH_SCRIPT]
     parts.extend(sys.argv[1:] if argv is None else list(argv))
     return " ".join(shlex.quote(part) for part in parts)
 
 
 def _primitive_correctness_command(path: Path | None, *, rows: int, seed: int = 1234) -> str:
-    parts = ["python3", _PRIMITIVE_CORRECTNESS_SCRIPT, "--rows", str(rows), "--seed", str(seed), "--json"]
+    parts = [
+        *_command_env_prefix_parts(),
+        "python3",
+        _PRIMITIVE_CORRECTNESS_SCRIPT,
+        "--rows",
+        str(rows),
+        "--seed",
+        str(seed),
+        "--json",
+    ]
     parts.append(str(path) if path is not None else "<primitive-correctness-json>")
     return " ".join(shlex.quote(part) for part in parts)
 

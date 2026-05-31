@@ -50492,3 +50492,25 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: focused hardware/schema tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs still pass with `device_name=AMD Radeon RX 7900 XTX`; benchmark rollup files unchanged. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and this only prevents future GPU1 re-baseline artifacts from mixing hardware provenance.
+
+## 2026-05-31 — CONCURRENCY retained command env provenance
+
+Made GPU1/XTX re-baseline command provenance self-reproducing. When `HIP_VISIBLE_DEVICES` is set, `scripts/qwen35_batch_retained_bench.py` now prefixes retained benchmark, primitive correctness reference, and profiled command labels with `env HIP_VISIBLE_DEVICES=<value> ...`; the retained-bench profiler provenance blocker, accepted artifact schema, and c-sweep persisted-summary validator strip that prefix only for launch-shape validation while keeping all retained flags after the rocprof separator. This keeps future artifacts' command strings aligned with their `hardware.visible_device` / primitive `device.env` metadata without creating a retained c>N performance claim.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 -m compileall -q scripts/qwen35_batch_retained_bench.py scripts/qwen35_batch_artifact_schema.py scripts/qwen35_batch_c_sweep.py tests/test_generation_batch_scheduler.py && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \[(?: |~)\]', queue))
+print(count)
+assert count == 12
+PY
+HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+git diff --check
+```
+
+Result: focused command-label tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs still pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and generated-token equality requirements remain open/unchanged.
