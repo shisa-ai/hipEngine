@@ -1593,7 +1593,10 @@ roll-up/status view.
       reaches an unambiguous `eq_ok`, `blocked`, or `rejected_correctness`
       status with exact command. Evidence: `scripts/qwen35_batch_gguf_diagnostic.py`
       emitted `/tmp/hipengine-gguf-c2-diagnostic.json` with `status=blocked`
-      and exact command `python3 scripts/qwen35_batch_gguf_diagnostic.py --fixture tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json --rows 2 --backend hip_gfx1100 --quant gguf_q4_k_m --max-new-tokens 4`; covered by
+      and exact command `python3 scripts/qwen35_batch_gguf_diagnostic.py --fixture tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json --rows 2 --backend hip_gfx1100 --quant gguf_q4_k_m --max-new-tokens 4`; the template also preserves
+      `HIP_VISIBLE_DEVICES` in its native c>N and independent c=1 command labels
+      for GPU1/XTX re-baseline runs; covered by
+      `test_gguf_cN_diagnostic_template_records_blocked_c2_command` in
       `pytest -q tests/test_generation_batch_scheduler.py -q`.
 - [ ] **C3.6 native LM-head/sampler launch.** Replace the per-row
       `serial_lm_head` loop with a native row-aware LM-head/argmax only after

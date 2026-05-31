@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shlex
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,6 +29,16 @@ DEFAULT_FIXTURE = REPO_ROOT / "tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json"
 GGUF_QUANTS = ("gguf_q4_k_m", "gguf_q5_k_m", "gguf_q6_k", "gguf_q8_0")
 _GGUF_DIAGNOSTIC_SCRIPT = RETAINED_ARTIFACT_GGUF_DIAGNOSTIC_SCRIPT
 _GGUF_E2E_CORRECTNESS_SCRIPT = RETAINED_ARTIFACT_GGUF_E2E_CORRECTNESS_SCRIPT
+_COMMAND_ENV_KEYS = ("HIP_VISIBLE_DEVICES",)
+
+
+def _command_env_prefix_parts() -> list[str]:
+    assignments = [
+        f"{key}={value}"
+        for key in _COMMAND_ENV_KEYS
+        if (value := os.environ.get(key))
+    ]
+    return ["env", *assignments] if assignments else []
 
 
 def _payload_json(payload: Any) -> str:
@@ -45,6 +56,7 @@ def _load_fixture(path: Path) -> dict[str, Any]:
 
 def _canonical_command(args: argparse.Namespace) -> str:
     argv = [
+        *_command_env_prefix_parts(),
         "python3",
         _GGUF_DIAGNOSTIC_SCRIPT,
         "--fixture",
@@ -65,6 +77,7 @@ def _canonical_command(args: argparse.Namespace) -> str:
 
 def _single_row_command(args: argparse.Namespace, *, model: str, row: int) -> str:
     argv = [
+        *_command_env_prefix_parts(),
         "python3",
         _GGUF_E2E_CORRECTNESS_SCRIPT,
         "--fixture",

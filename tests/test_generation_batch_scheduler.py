@@ -10325,7 +10325,8 @@ def test_hidden_artifact_compare_records_agree_rejects_nonfinite() -> None:
     assert hidden_artifact_compare._records_agree([{"max_abs": 0.0}, {"max_abs": 1.0}]) is False
 
 
-def test_gguf_cN_diagnostic_template_records_blocked_c2_command(tmp_path: Path) -> None:
+def test_gguf_cN_diagnostic_template_records_blocked_c2_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
     output = tmp_path / "gguf-c2.json"
     args = build_gguf_diagnostic_parser().parse_args(
         [
@@ -10348,11 +10349,13 @@ def test_gguf_cN_diagnostic_template_records_blocked_c2_command(tmp_path: Path) 
     assert payload["quant"] == "gguf_q4_k_m"
     assert gguf_diagnostic._GGUF_DIAGNOSTIC_SCRIPT is RETAINED_ARTIFACT_GGUF_DIAGNOSTIC_SCRIPT
     assert gguf_diagnostic._GGUF_E2E_CORRECTNESS_SCRIPT is RETAINED_ARTIFACT_GGUF_E2E_CORRECTNESS_SCRIPT
-    assert shlex.split(payload["command"])[1] == RETAINED_ARTIFACT_GGUF_DIAGNOSTIC_SCRIPT
+    command_tokens = shlex.split(payload["command"])
+    assert command_tokens[:4] == ["env", "HIP_VISIBLE_DEVICES=1", "python3", RETAINED_ARTIFACT_GGUF_DIAGNOSTIC_SCRIPT]
+    assert shlex.split(payload["native_cN_command"])[:4] == command_tokens[:4]
     assert "--rows 2" in payload["command"]
     assert len(payload["independent_c1_commands"]) == 2
     assert all(
-        shlex.split(command)[1] == RETAINED_ARTIFACT_GGUF_E2E_CORRECTNESS_SCRIPT
+        shlex.split(command)[:4] == ["env", "HIP_VISIBLE_DEVICES=1", "python3", RETAINED_ARTIFACT_GGUF_E2E_CORRECTNESS_SCRIPT]
         for command in payload["independent_c1_commands"]
     )
     assert any("native GGUF c>N" in reason for reason in payload["blockers"])
