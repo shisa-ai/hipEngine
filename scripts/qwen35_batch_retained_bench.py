@@ -409,6 +409,25 @@ def _extract_decode_rates(payload: Mapping[str, Any]) -> tuple[float | None, flo
     return aggregate, per_request
 
 
+def _visible_device_env_assignments(payload: Mapping[str, Any]) -> tuple[dict[str, str], list[str]]:
+    hardware = payload.get("hardware")
+    visible_device = hardware.get("visible_device") if isinstance(hardware, Mapping) else None
+    env = visible_device.get("env") if isinstance(visible_device, Mapping) else None
+    if not isinstance(env, Mapping):
+        return {}, []
+    assignments: dict[str, str] = {}
+    reasons: list[str] = []
+    for key in _COMMAND_ENV_KEYS:
+        value = env.get(key)
+        if value is None:
+            continue
+        if not isinstance(value, str) or not value:
+            reasons.append(f"hardware.visible_device.env.{key} is not a non-empty string when present")
+        else:
+            assignments[key] = value
+    return assignments, reasons
+
+
 def _scaling_reference(path: Path | None, *, default_workload_concurrency: int | None = None) -> dict[str, Any]:
     if path is None:
         return {
@@ -455,6 +474,13 @@ def _scaling_reference(path: Path | None, *, default_workload_concurrency: int |
         reasons.append("artifact_path does not match scaling reference artifact path")
     else:
         reference_artifact_path = source_artifact_path
+    reference_device_env, reference_device_env_reasons = _visible_device_env_assignments(payload)
+    reasons.extend(reference_device_env_reasons)
+    if reference_device_env:
+        retained_device_env = _current_command_device_env_assignments()
+        for key, value in reference_device_env.items():
+            if retained_device_env.get(key) != value:
+                reasons.append(f"hardware.visible_device.env.{key} does not match retained command env")
     aggregate, per_request = _extract_decode_rates(payload)
     throughput_missing = aggregate is None or per_request is None
     if reasons:

@@ -1454,7 +1454,9 @@ roll-up/status view.
       labels also preserve `HIP_VISIBLE_DEVICES=1` as an `env` prefix for the
       benchmark, primitive correctness reference, and profiled command, and the
       serial-bridge baseline benchmark label plus hardware metadata preserve the
-      same visible GPU1/XTX provenance; schema and c-sweep launch validators
+      same visible GPU1/XTX provenance; retained-bench scaling and c-sweep
+      preconditions reject scaling references whose visible-device env conflicts
+      with the retained command env. Schema and c-sweep launch validators
       accept that prefix while still requiring the retained benchmark script
       after it. Accepted artifact validation now also
       requires those command prefixes whenever retained hardware/primitive device

@@ -1080,6 +1080,25 @@ def _validate_profiler_cpu_side_bottlenecks(profiler: dict[str, Any], reasons: l
         reasons.append("cpu_side_bottleneck_shares does not sum to 1.0")
 
 
+def _visible_device_env_assignments(payload: Mapping[str, Any]) -> tuple[dict[str, str], list[str]]:
+    hardware = payload.get("hardware")
+    visible_device = hardware.get("visible_device") if isinstance(hardware, Mapping) else None
+    env = visible_device.get("env") if isinstance(visible_device, Mapping) else None
+    if not isinstance(env, Mapping):
+        return {}, []
+    assignments: dict[str, str] = {}
+    reasons: list[str] = []
+    for key in _COMMAND_ENV_KEYS:
+        value = env.get(key)
+        if value is None:
+            continue
+        if not isinstance(value, str) or not value:
+            reasons.append(f"hardware.visible_device.env.{key} is not a non-empty string when present")
+        else:
+            assignments[key] = value
+    return assignments, reasons
+
+
 def _scaling_reference_precondition(
     command: SweepCommand,
     *,
@@ -1127,6 +1146,13 @@ def _scaling_reference_precondition(
             reasons.append("artifact_path does not match scaling reference artifact path")
         else:
             source_artifact_path = raw_artifact_path
+        reference_device_env, reference_device_env_reasons = _visible_device_env_assignments(payload)
+        reasons.extend(reference_device_env_reasons)
+        if reference_device_env:
+            retained_device_env = _command_device_env_assignments(command.argv)
+            for key, value in reference_device_env.items():
+                if retained_device_env.get(key) != value:
+                    reasons.append(f"hardware.visible_device.env.{key} does not match retained command env")
         raw_status = payload.get("status")
         status = str(raw_status) if raw_status else "loaded"
         if status in _UNUSABLE_SCALING_REFERENCE_STATUSES:
