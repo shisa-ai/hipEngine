@@ -7402,6 +7402,11 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\] must contain only c-sweep schema keys"):
             c_sweep.validate_sweep_summary(tampered_unknown_command_key)
 
+        tampered_missing_git_dirty = json.loads(json.dumps(summary))
+        del tampered_missing_git_dirty["commands"][index]["git_dirty"]
+        with pytest.raises(ValueError, match=r"commands\[\] planned rows must contain exactly planned command keys"):
+            c_sweep.validate_sweep_summary(tampered_missing_git_dirty)
+
         tampered_git_dirty = json.loads(json.dumps(summary))
         tampered_git_dirty["commands"][index]["git_dirty"] = not summary["git"]["dirty"]
         with pytest.raises(ValueError, match=r"commands\[\]\.git_dirty must match git\.dirty"):
