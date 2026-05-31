@@ -7126,6 +7126,20 @@ def test_batch_c_sweep_can_plan_gguf_blocked_diagnostics(tmp_path: Path, monkeyp
         c_sweep.validate_sweep_summary(tampered_duplicate_quant)
 
     for index in gguf_entry_indices:
+        for tamper_argv_json in (False, True):
+            tampered_artifact_link = json.loads(json.dumps(summary))
+            entry = tampered_artifact_link["commands"][index]
+            stale_artifact_path = str(Path(entry["artifact_path"]).with_name("gguf-native-diagnostic-c2-stale.json"))
+            if tamper_argv_json:
+                artifact_link_argv = entry["argv"]
+                artifact_link_argv[artifact_link_argv.index("--json") + 1] = stale_artifact_path
+                entry["command"] = shlex.join(artifact_link_argv)
+            else:
+                entry["artifact_path"] = stale_artifact_path
+            with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match commands\[\]\.argv --json"):
+                c_sweep.validate_sweep_summary(tampered_artifact_link)
+
+    for index in gguf_entry_indices:
         tampered_artifact = json.loads(json.dumps(summary))
         stale_artifact_path = str(
             Path(tampered_artifact["commands"][index]["artifact_path"]).with_name("gguf-native-diagnostic-c2-stale.json")
