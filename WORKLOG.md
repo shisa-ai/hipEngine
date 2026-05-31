@@ -27843,3 +27843,7 @@ Result: `6 passed`.
 Extended `scripts/stepfun_correctness_status.py` to surface oracle execution metadata from the current blocker artifact: `oracle_status`, `oracle_elapsed_s`, `oracle_llama_cpp_version`, `oracle_stdout_len`, and `oracle_stderr_len`. This corrects the handoff view for the newer local StepFun-capable llama.cpp build: `/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli` now reports `version: 9197 (fcae601e4)`, and the bounded CPU/no-GPU oracle artifact has `status=timeout`, `elapsed_s=62.44178174599074`, empty stdout/stderr, and `oracle_blocker_kind=llama_cpp_oracle_timeout`.
 
 Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json` so it includes those oracle metadata fields alongside the existing P0-P12 checklist metric and blocker next actions. This is a status/audit improvement only; oracle parity and KV-backed decode remain open.
+
+## 2026-05-31 — StepFun oracle docs wording clarified
+
+Clarified the P11 llama.cpp oracle checklist text so the older CPU llama.cpp artifact is described as historical planning/execution evidence, while the canonical current blocker is the newer StepFun/`step35`-capable Vulkan build timing out under the bounded CPU/no-GPU oracle run. This keeps the partial P11 oracle item aligned with `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json` and avoids implying the stale `4131` CPU build is still the current oracle target.

@@ -567,16 +567,15 @@ reporting.
 - [~] Compare greedy next tokens and/or logits against llama.cpp for a small set
   of deterministic prompts. 2026-05-31 oracle-planning progress:
   `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-oracle-plan.json`
-  records the exact llama.cpp command for the all-layer chunked `hello` prompt
-  artifact using `/home/lhl/ai/llama.cpp-cpu/llama-cli` version
-  `4131 (8e752a77)`, model shard
+  records a deterministic one-token llama.cpp command for the all-layer chunked
+  `hello` prompt artifact (model shard
   `Step-3.7-flash-Q3_K_L-00001-of-00003.gguf`, `--predict 1`, `--temp 0`,
   `--top-k 1`, `--top-p 1`, `--min-p 0`, `--repeat-penalty 1`, `--seed 0`,
-  `--no-display-prompt`, `--simple-io`, and `--log-disable`.
-  The helper now records a comparison policy and, when run with `--execute`,
-  captures llama.cpp stdout as `generated_text` plus exact/stripped text-match
-  booleans against the host-composed artifact (`next_token_id=369`, decoded
-  ` |`). 2026-05-31 execution attempt artifact
+  `--no-display-prompt`, `--simple-io`, and `--log-disable`). The helper records
+  a comparison policy and, when run with `--execute`, captures llama.cpp stdout
+  as `generated_text` plus exact/stripped text-match booleans against the
+  host-composed artifact (`next_token_id=369`, decoded ` |`). Historical
+  execution attempt artifact
   `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-oracle-exec-attempt.json`
   uses diagnostic logs and fails before generation because the local
   `/home/lhl/ai/llama.cpp-cpu/llama-cli` does not support GGUF architecture
