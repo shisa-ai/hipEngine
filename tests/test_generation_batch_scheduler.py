@@ -11294,7 +11294,7 @@ def test_graph_bucket_cache_clear_resets_entries_and_counters() -> None:
         "misses": 1,
         "replay_hit_rate": 0.0,
         "miss_reasons": {"shape_changed": 1},
-        "kernel_time_histogram_ns": {"le_100us": 1, "le_10us": 1},
+        "kernel_time_histogram_ns": {"le_10us": 1, "le_100us": 1, "le_1ms": 0, "le_10ms": 0, "gt_10ms": 0},
     }
     with pytest.raises(ValueError, match="duration_ns"):
         cache.record_kernel_time_ns(-1)
@@ -12913,7 +12913,7 @@ def test_qwen35_retained_records_decode_graph_bucket_metadata() -> None:
         "misses": 1,
         "replay_hit_rate": 0.5,
         "miss_reasons": {"cache_absent": 1},
-        "kernel_time_histogram_ns": {},
+        "kernel_time_histogram_ns": {"le_10us": 0, "le_100us": 0, "le_1ms": 0, "le_10ms": 0, "gt_10ms": 0},
     }
 
 

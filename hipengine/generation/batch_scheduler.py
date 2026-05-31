@@ -406,13 +406,17 @@ class GraphBucketStats:
     def to_json_dict(self) -> dict[str, object]:
         lookup_count = int(self.hits) + int(self.misses)
         replay_hit_rate = float(self.hits) / float(lookup_count) if lookup_count > 0 else 0.0
+        kernel_time_histogram = {bucket: 0 for bucket in GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS}
+        for key, value in self.kernel_time_histogram_ns.items():
+            if key in kernel_time_histogram:
+                kernel_time_histogram[str(key)] = int(value)
         return {
             "entries": int(self.entries),
             "hits": int(self.hits),
             "misses": int(self.misses),
             "replay_hit_rate": replay_hit_rate,
             "miss_reasons": {str(key): int(value) for key, value in sorted(self.miss_reasons.items())},
-            "kernel_time_histogram_ns": {str(key): int(value) for key, value in sorted(self.kernel_time_histogram_ns.items())},
+            "kernel_time_histogram_ns": kernel_time_histogram,
         }
 
 
