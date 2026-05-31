@@ -14469,12 +14469,29 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     mismatched_profiler_command_env["commands"]["benchmark"] = (
         "env HIP_VISIBLE_DEVICES=1 " + mismatched_profiler_command_env["commands"]["benchmark"]
     )
+    mismatched_profiler_command_env["commands"]["correctness_reference"] = mismatched_profiler_command_env["commands"][
+        "correctness_reference"
+    ].replace("plus python3", "plus env HIP_VISIBLE_DEVICES=1 python3")
     mismatched_profiler_command_env["commands"]["profiler"] = mismatched_profiler_command_env["commands"]["profiler"].replace(
         "-- python3",
         "-- env HIP_VISIBLE_DEVICES=2 python3",
     )
     with pytest.raises(ValueError, match="commands.profiler device env prefix must match commands.benchmark"):
         validate_cn_diagnostic_artifact_payload(mismatched_profiler_command_env)
+
+    mismatched_correctness_command_env = json.loads(json.dumps(accepted))
+    mismatched_correctness_command_env["commands"]["benchmark"] = (
+        "env HIP_VISIBLE_DEVICES=1 " + mismatched_correctness_command_env["commands"]["benchmark"]
+    )
+    mismatched_correctness_command_env["commands"]["correctness_reference"] = mismatched_correctness_command_env["commands"][
+        "correctness_reference"
+    ].replace("plus python3", "plus env HIP_VISIBLE_DEVICES=2 python3")
+    mismatched_correctness_command_env["commands"]["profiler"] = mismatched_correctness_command_env["commands"]["profiler"].replace(
+        "-- python3",
+        "-- env HIP_VISIBLE_DEVICES=1 python3",
+    )
+    with pytest.raises(ValueError, match="commands.correctness_reference device env prefix must match commands.benchmark"):
+        validate_cn_diagnostic_artifact_payload(mismatched_correctness_command_env)
 
     mismatched_hardware_primitive_env = json.loads(json.dumps(gpu1_accepted))
     mismatched_hardware_primitive_env["hardware"]["visible_device"]["env"]["HIP_VISIBLE_DEVICES"] = "0"

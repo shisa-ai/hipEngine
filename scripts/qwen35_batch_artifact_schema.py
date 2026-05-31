@@ -341,6 +341,28 @@ def _retained_bench_command_device_env(command: str) -> dict[str, str]:
         return {}
 
 
+def _script_invocation_device_env_assignments(command: str, script: str) -> dict[str, str]:
+    try:
+        argv = shlex.split(command)
+    except ValueError:
+        return {}
+    for script_index, token in enumerate(argv):
+        if token != script or script_index == 0:
+            continue
+        python_index = script_index - 1
+        if not _is_python_executable(argv[python_index]):
+            continue
+        assignment_start = python_index
+        while assignment_start > 0 and _is_env_assignment_token(argv[assignment_start - 1]):
+            assignment_start -= 1
+        has_env_command_prefix = assignment_start > 0 and Path(argv[assignment_start - 1]).name == "env"
+        if assignment_start != 0 and not has_env_command_prefix:
+            return {}
+        prefix_start = assignment_start - 1 if has_env_command_prefix else assignment_start
+        return _command_device_env_assignments(argv[prefix_start:python_index])
+    return {}
+
+
 def _validate_retained_bench_command_target(command: str, *, field: str, errors: list[str]) -> None:
     try:
         argv = shlex.split(command)
@@ -1891,6 +1913,8 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
                 requirements=device_selection_env_requirements,
                 errors=errors,
             )
+            if _script_invocation_device_env_assignments(correctness_command, _PRIMITIVE_CORRECTNESS_SCRIPT) != benchmark_device_env:
+                errors.append("commands.correctness_reference device env prefix must match commands.benchmark for accepted artifacts")
     profiler_command = commands.get("profiler")
     profiler_command_output_format: str | None = None
     profiler_command_trace_dir: str | None = None
