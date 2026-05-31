@@ -1544,8 +1544,8 @@ roll-up/status view.
       INT8 rows, artifact filenames, HIP device env prefixes,
       future-retained JSON labels, CPU/HIP primitive evidence labels, and row
       labels before each GGUF quant fan-out, including stale c=8
-      future/primitive/artifact/row-label rejection plus duplicate c=8 INT8
-      diagnostic flag rejection. The future
+      future/primitive/artifact/row-label/env-prefix rejection plus duplicate
+      c=8 INT8 diagnostic flag rejection. The future
       retained-bench command now carries `--int8-kv-primitive-cpu-json` and
       `--int8-kv-primitive-hip-json`, `scripts/qwen35_kv_int8_accuracy.py`
       self-describes written JSON paths, and accepted c>N artifact schema

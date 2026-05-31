@@ -2290,6 +2290,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         "profiler_synthesized_fields",
         "profiler_precondition_synthesized_fields",
     }
+    expected_command_device_env: dict[str, str] | None = None
     if entries:
         for entry in entries:
             if not set(entry).issubset(expected_command_keys):
@@ -2330,6 +2331,12 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 break
             if command_text != shlex.join(argv):
                 errors.append("commands[].command must match shlex.join(commands[].argv)")
+                break
+            command_device_env = _command_device_env_assignments(argv)
+            if expected_command_device_env is None:
+                expected_command_device_env = dict(command_device_env)
+            elif command_device_env != expected_command_device_env:
+                errors.append("commands[].argv device env prefix must match the first command")
                 break
             launch_argv = _strip_command_env_prefix(argv)
             if len(launch_argv) < 2 or not _is_python_executable(launch_argv[0]):
