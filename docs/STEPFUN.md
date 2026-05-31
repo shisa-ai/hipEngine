@@ -584,7 +584,8 @@ reporting.
   llama.cpp build (`/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli`,
   version `5479`) accepts `step35` but the bounded CPU/no-GPU oracle attempt in
   `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json`
-  timed out before producing a comparable token (`oracle_blocker_kind=llama_cpp_oracle_timeout`).
+  timed out after a bounded 60 s attempt (recorded `elapsed_s=62.44`) before
+  producing a comparable token (`oracle_blocker_kind=llama_cpp_oracle_timeout`).
   Remaining implementation task: run a longer/faster StepFun-capable llama.cpp
   oracle and review/record the parsed result; KV-backed decode parity remains open too. The consolidated
   correctness-status artifact records both blockers (`oracle_parity_blocked`,

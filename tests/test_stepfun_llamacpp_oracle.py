@@ -114,6 +114,7 @@ def test_stepfun_llamacpp_oracle_execute_compares_stdout(
     payload = json.loads(output.out)
     assert payload["status"] == "executed"
     assert payload["returncode"] == 0
+    assert payload["elapsed_s"] >= 0.0
     assert payload["stdout"] == " |"
     assert payload["stderr"] == ""
     assert payload["generated_text"] == " |"
@@ -163,6 +164,7 @@ def test_stepfun_llamacpp_oracle_execute_structures_step35_blocker(
     payload = json.loads(output.out)
     assert payload["status"] == "executed"
     assert payload["returncode"] == 1
+    assert payload["elapsed_s"] >= 0.0
     assert payload["generated_text"] == ""
     assert payload["text_matches_expected_exact"] is False
     assert payload["oracle_blocker_kind"] == "llama_cpp_missing_step35_architecture"
@@ -236,6 +238,7 @@ def test_stepfun_llamacpp_oracle_timeout_is_structured(capsys, tmp_path: Path) -
     output = capsys.readouterr()
     payload = json.loads(output.out)
     assert payload["status"] == "timeout"
+    assert payload["elapsed_s"] >= 0.0
     assert payload["oracle_blocker_kind"] == "llama_cpp_oracle_timeout"
     assert payload["step35_supported"] is None
     assert payload["text_matches_expected_exact"] is False

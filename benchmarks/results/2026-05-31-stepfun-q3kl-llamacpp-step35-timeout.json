@@ -35,6 +35,7 @@
     "stripped_text_match_field": "text_matches_expected_stripped"
   },
   "diagnostic_logs": true,
+  "elapsed_s": 62.44178174599074,
   "expected_next_token_id": 369,
   "expected_next_token_logit": 19.158626556396484,
   "expected_next_token_text": " |",

@@ -27825,3 +27825,15 @@ python3 -m pytest -q tests/test_stepfun_llamacpp_oracle.py -q
 ```
 
 Result: targeted oracle tests passed.
+
+## 2026-05-31 — StepFun llama.cpp timeout elapsed metadata
+
+Updated `scripts/stepfun_llamacpp_oracle.py` to record `elapsed_s` for both executed and timeout oracle attempts. Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json`; the StepFun-capable local Vulkan build still times out before comparable output, and the artifact now records `elapsed_s=62.44178174599074` for the bounded 60 s CPU/no-GPU attempt. This makes the oracle blocker auditable without changing the parity status.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_llamacpp_oracle.py -q
+```
+
+Result: `6 passed`.

@@ -7,6 +7,7 @@ import argparse
 import json
 import shlex
 import subprocess
+import time
 from pathlib import Path
 from typing import Sequence
 
@@ -163,6 +164,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
     }
     if args.execute:
+        started = time.perf_counter()
         try:
             completed = subprocess.run(
                 command,
@@ -177,6 +179,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 {
                     "status": "timeout",
                     "timeout_s": args.timeout_s,
+                    "elapsed_s": time.perf_counter() - started,
                     "stdout": stdout,
                     "stderr": stderr,
                     **_comparison_fields(stdout, result.get("expected_next_token_text")),
@@ -196,6 +199,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 {
                     "status": "executed",
                     "returncode": completed.returncode,
+                    "elapsed_s": time.perf_counter() - started,
                     "stdout": _as_text(completed.stdout),
                     "stderr": _as_text(completed.stderr),
                     **_comparison_fields(_as_text(completed.stdout), result.get("expected_next_token_text")),
