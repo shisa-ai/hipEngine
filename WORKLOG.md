@@ -27637,3 +27637,13 @@ python3 scripts/stepfun_layer_prefix_smoke.py --layer-count 5 --message hello --
 ```
 
 Artifact summary: `status=partial_prompt_smoke`, `execution_mode=chunked`, layers 0-4 executed (dense layers 0-2 plus sliding/MoE layers 3-4), prompt length 23, `next_token_id=67707`, peak resident weight bytes `3,531,578,496`, no vision/projector/MTP slots, and zero active/current allocations after free. This extends the partial prompt path one layer deeper than the previous layers 0-3 artifact, but remains partial evidence only because layers 5-44 and oracle parity remain open.
+
+## 2026-05-31 — StepFun all-layer chunked prompt smoke
+
+Recorded the first all-45-layer text-only chunked prefix prompt artifact at `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json` using:
+
+```bash
+python3 scripts/stepfun_layer_prefix_smoke.py --layer-count 45 --message hello --max-resident-weight-gib 4 --stream-chunk-layers 1 --output benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --pretty
+```
+
+Artifact summary: `status=partial_prompt_smoke`, `execution_mode=chunked`, all layers 0-44 executed with no skipped layers, prompt length 23, `next_token_id=369`, peak resident weight bytes `3,531,578,496`, no vision/projector/MTP slots, and zero active/current allocations after free. This completes the tiny text-only prompt/no-modal P12 item for the host-composed layer-prefix path, but it is still not llama.cpp/CPU oracle parity and not the final KV-backed streaming decode runner.

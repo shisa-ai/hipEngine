@@ -528,9 +528,10 @@ reporting.
   prompt logits smoke binds chat rendering, embeddings, layer-0 prefill, and
   final `lm_head` rows while explicitly skipping layers 1-44; and a layer-prefix
   prompt logits probe now applies the contiguous layers 0-3
-  prefill bridge (dense layers 0-2 plus first sliding/MoE layer 3), and a
-  chunked prompt artifact extends that bridge through layer 4 before final
-  sampled `lm_head` checks while still skipping layers 5-44. A text-only decode
+  prefill bridge (dense layers 0-2 plus first sliding/MoE layer 3), a chunked
+  prompt artifact extends that bridge through layer 4, and a full-layer chunked
+  prompt artifact now runs layers 0-44 before final sampled `lm_head` checks.
+  A text-only decode
   slot planner covers all 754 validated GGUF slots, including root
   `rope_freqs.weight`, and has no vision/projector/MTP slot dependencies. The
   dense-MLP input bundle launches layer-0 `ffn_gate`/`ffn_up` projections vs CPU references,
@@ -547,9 +548,8 @@ reporting.
   `lm_head` projection for selected full-vocab rows vs CPU reference. A root-only
   prompt logits smoke now renders/tokenizes a Step chat prompt, embeds it, and
   runs final root logits from the last prompt embedding row. Remaining
-  implementation task is extending the layer-prefix bridge to all 45 layers,
-  replacing host-composed probes with the KV-backed decode path, and recording
-  llama.cpp/CPU oracle parity.
+  implementation task is replacing the host-composed layer-prefix bridge with
+  the KV-backed decode path and recording llama.cpp/CPU oracle parity.
 - [x] Use short contexts first (for example <= 512) before exercising long
   context and sliding-window boundaries. `StepFunShortContextDecodePlanner`
   enforces the current c=1 bring-up default `max_context=512`,
@@ -588,8 +588,8 @@ probe (output RMSNorm + resident Q8_0 `lm_head` projection for sampled vocab
 rows), the root-only prompt logits smoke (chat prompt -> embedding -> final root
 logits), the first-layer prompt logits smoke (chat prompt -> embedding -> layer-0
 prefill -> final root logits, with layers 1-44 skipped), the layer-prefix prompt
-logits smoke (chat prompt -> embedding -> layers 0-4 chunked prefill -> final
-root logits, with layers 5-44 skipped), resident KV-cache allocation/free, resident
+logits smoke (chat prompt -> embedding -> layers 0-44 chunked prefill -> final
+root logits, no layers skipped), resident KV-cache allocation/free, resident
 memory cleanup
 (two/three/four active weight allocations before session free, zero after), and
 no torch import. Full next-token/logit parity remains open until the streaming
@@ -641,7 +641,7 @@ layer loop is wired.
   current fit failure is claimed from VIS_VRAM/`hipMemGetInfo` alone; decision
   policy is to continue implementation and only choose offload/tiering after a
   real allocation/load attempt fails under the configured GTT setup.
-- [~] If it fits, run a tiny text-only prompt and confirm no vision/projector/MTP
+- [x] If it fits, run a tiny text-only prompt and confirm no vision/projector/MTP
   path is required. 2026-05-31 planning progress: `stepfun_text_decode_slot_paths()`
   covers all 754 validated text GGUF slots, including root RoPE frequencies, and
   the decode-planner test asserts there are no vision/projector/MTP slot
@@ -655,7 +655,11 @@ layer loop is wired.
   one-layer chunk; it uses no vision/projector/MTP slots. A deeper artifact
   `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-0-4-prompt-smoke.json`
   runs the same chunked path through layer 4 (`next_token_id=67707`, peak
-  resident weight bytes `3,531,578,496`) while still skipping layers 5-44. The same
+  resident weight bytes `3,531,578,496`). Full-layer artifact
+  `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json`
+  runs the chunked host-composed path through layers 0-44 (`next_token_id=369`,
+  peak resident weight bytes `3,531,578,496`, prompt length 23) with no
+  vision/projector/MTP slots and no skipped layers. The same
   script's `--dry-run-plan --layer-count 45` mode now plans the all-layer text
   prefix slot/resource shape without initializing HIP, and `--output` writes the
   JSON artifact directly;
@@ -665,12 +669,11 @@ layer loop is wired.
   estimate: keep root text tensors resident (`1,121,927,168` bytes) and stream
   one layer at a time, with a max root+layer peak of `3,531,578,496` bytes
   (`3.29 GiB`) at layer 3. Non-dry-run prefix smokes can now execute that
-  chunked path for small prefixes; all-45-layer chunked execution and parity are
-  still open. Non-dry-run prefix smokes also
+  chunked path through all 45 layers; llama.cpp/CPU oracle parity and KV-backed
+  decode are still open. Non-dry-run prefix smokes also
   support `--max-resident-weight-gib` so accidental all-layer HIP allocation
   attempts fail before runtime initialization unless an explicit memory budget is
-  supplied. Full prompt execution remains open until the KV-backed runner or
-  all-layer prefix bridge is allocated and validated.
+  supplied. Full KV-backed generation and oracle parity remain open.
 
 **Acceptance:** full-model smoke produces token(s) or a documented fit failure.
 Current materialization coverage is validated by
