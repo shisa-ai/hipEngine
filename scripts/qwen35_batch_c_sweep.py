@@ -235,7 +235,7 @@ _SWEEP_COMMAND_STATUS_LABELS = RETAINED_ARTIFACT_SWEEP_COMMAND_STATUS_LABELS
     _SKIPPED_COMMAND_STATUS,
     _FAILED_COMMAND_STATUS,
 ) = _SWEEP_COMMAND_STATUS_LABELS
-_INT8_DIAGNOSTIC_UNIQUE_FLAGS = ("--rows", "--future-json", "--primitive-cpu-json", "--primitive-hip-json")
+_INT8_DIAGNOSTIC_UNIQUE_FLAGS = ("--model", "--fixture", "--rows", "--future-json", "--primitive-cpu-json", "--primitive-hip-json")
 _GGUF_DIAGNOSTIC_BACKEND = "hip_gfx1100"
 _GGUF_DIAGNOSTIC_MAX_NEW_TOKENS = 4
 _GGUF_DIAGNOSTIC_UNIQUE_FLAGS = ("--fixture", "--rows", "--backend", "--quant", "--max-new-tokens")

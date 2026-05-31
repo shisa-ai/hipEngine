@@ -54162,3 +54162,23 @@ HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts
 ```
 
 Result: focused GGUF duplicate-fixture tests PASS; docs diff check PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed queue items still cite concrete tests/code, no item was marked complete for partial/planning-only work, no retained c>N performance/scaling claim was added, native c>N generated-token equality claims were not changed, and scaling claims were not changed.
+
+## 2026-05-31 — CONCURRENCY INT8 duplicate model/fixture flag rejection
+
+Added c-sweep summary validation for duplicate INT8 diagnostic `--model` and `--fixture` flags. `_INT8_DIAGNOSTIC_UNIQUE_FLAGS` now includes those labels so INT8 diagnostic rows cannot hide a stale second model/fixture behind valid first labels. `test_batch_c_sweep_can_plan_int8_blocked_diagnostics` and the full-shape combined `test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics` now duplicate `--model`/`--fixture` along with the existing INT8 diagnostic flags; the combined case covers c=8 rows under `--include-int8 --include-gguf --batch-sizes 1,2,4,8`. `docs/CONCURRENCY.md` C3.1 progress records duplicate c=8 INT8 model/fixture/diagnostic flag rejection. This remains planning/provenance hardening only; no generated-token equality or performance claim was added.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_c_sweep.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_batch_c_sweep_can_plan_int8_blocked_diagnostics tests/test_generation_batch_scheduler.py::test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics -q
+git diff --check
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+```
+
+Result: focused INT8 duplicate model/fixture tests PASS; docs diff check PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed queue items still cite concrete tests/code, no item was marked complete for partial/planning-only work, no retained c>N performance/scaling claim was added, native c>N generated-token equality claims were not changed, and scaling claims were not changed.
