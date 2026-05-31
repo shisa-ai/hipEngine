@@ -2798,6 +2798,10 @@ def _validate_claimed_execution_completed_tokens(
     has_any_completed_prompt_tokens = any(isinstance(row, Mapping) and "prompt_tokens" in row for row in completed)
     if has_any_completed_prompt_tokens and not isinstance(prompt_lengths, list):
         errors.append("workload.prompt_lengths must be a list when completed prompt metadata is present and generated_token_equality.passed is true")
+    elif has_any_completed_prompt_tokens and any(
+        not isinstance(length, int) or isinstance(length, bool) or length <= 0 for length in prompt_lengths
+    ):
+        errors.append("workload.prompt_lengths entries must be positive ints when completed prompt metadata is present and generated_token_equality.passed is true")
     seen_request_ids: set[int] = set()
     for index, row in enumerate(completed):
         if not isinstance(row, Mapping):

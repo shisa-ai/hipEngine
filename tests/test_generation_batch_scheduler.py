@@ -11450,6 +11450,14 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
     with pytest.raises(ValueError, match="workload.prompt_lengths must be a list when completed prompt metadata is present"):
         validate_cn_diagnostic_artifact_payload(missing_completed_prompt_lengths_claim)
 
+    zero_completed_prompt_lengths_claim = json.loads(json.dumps(payload))
+    zero_completed_prompt_lengths_claim["workload"]["prompt_lengths"] = [0, 2]
+    zero_completed_prompt_lengths_claim["workload"]["prompt_tokens_per_request"] = None
+    zero_completed_prompt_lengths_claim["workload"]["prompt_tokens_aggregate"] = 2
+    zero_completed_prompt_lengths_claim["execution"]["completed"][0]["prompt_tokens"] = []
+    with pytest.raises(ValueError, match="workload.prompt_lengths entries must be positive ints when completed prompt metadata is present"):
+        validate_cn_diagnostic_artifact_payload(zero_completed_prompt_lengths_claim)
+
     all_absent_completed_prompt_claim = json.loads(json.dumps(payload))
     for completed in all_absent_completed_prompt_claim["execution"]["completed"]:
         completed.pop("prompt_tokens")
