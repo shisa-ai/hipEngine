@@ -1453,9 +1453,9 @@ roll-up/status view.
       `primitive-c1/c2/c4/c8.json` command text, argv, `HIP_VISIBLE_DEVICES=1`,
       script/category, `--rows`, `--seed 1234`, and `--json` labels and rejects
       missing/empty/blank/stale primitive command text/argv, wrong device env,
-      missing/blank/wrong script/category, duplicate `--rows`/`--seed`/`--json` labels,
-      blank inline/missing `--json`, blank inline/missing/non-integer
-      `--rows`/`--seed` values,
+      missing/blank/wrong script/category, missing/malformed `batch_size`,
+      duplicate `--rows`/`--seed`/`--json` labels, blank inline/missing
+      `--json`, blank inline/missing/non-integer `--rows`/`--seed` values,
       parent-directory/symlinked/symlink-parent `output_dir`, missing/blank/non-string
       `artifact_path`, direct-symlink, symlink-parent, parent-directory, or
       outside-output-dir artifacts, wrong artifact filenames,

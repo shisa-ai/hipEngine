@@ -7341,6 +7341,17 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.category must be a non-empty string"):
             c_sweep.validate_sweep_summary(tampered_missing_category)
 
+        for bad_batch_size in ("2", True, 0):
+            tampered_bad_batch_size = json.loads(json.dumps(summary))
+            tampered_bad_batch_size["commands"][index]["batch_size"] = bad_batch_size
+            with pytest.raises(ValueError, match=r"commands\[\]\.batch_size must be a positive int"):
+                c_sweep.validate_sweep_summary(tampered_bad_batch_size)
+
+        tampered_missing_batch_size = json.loads(json.dumps(summary))
+        del tampered_missing_batch_size["commands"][index]["batch_size"]
+        with pytest.raises(ValueError, match=r"commands\[\]\.batch_size must be a positive int"):
+            c_sweep.validate_sweep_summary(tampered_missing_batch_size)
+
         tampered_script = json.loads(json.dumps(summary))
         script_entry = tampered_script["commands"][index]
         script_argv = script_entry["argv"]
