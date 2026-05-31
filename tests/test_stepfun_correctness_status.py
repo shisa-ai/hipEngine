@@ -1062,6 +1062,13 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     commands = status["next_action_commands"]
     oracle_commands = commands["oracle_parity_blocked"]
     assert oracle_commands["rerun_command_shell"].startswith("/tmp/llama-cli")
+    assert oracle_commands["oracle_helper_refresh_command"] == (
+        "python3 scripts/stepfun_llamacpp_oracle.py "
+        f"--artifact {prompt} --llama-cli /tmp/llama-cli "
+        "--model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf "
+        "--n-predict 1 --timeout-s 60.0 --llama-arg=--device --llama-arg=none "
+        f"--llama-arg=--gpu-layers --llama-arg=0 --execute --pretty --output {oracle}"
+    )
     assert f"--prompt-artifact {prompt}" in oracle_commands["status_refresh_command"]
     assert f"--oracle-artifact {oracle}" in oracle_commands["status_refresh_command"]
     assert oracle_commands["gap_report_status"] == "blocked"

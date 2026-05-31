@@ -654,7 +654,8 @@ reporting.
   inputs used to compute the summary; `--verify-source-artifacts STATUS_JSON`
   checks those embedded hashes/sizes against the current files before a handoff is
   trusted. The status also includes `next_action_commands` for rerunning the
-  oracle command shell and refreshing the resource/status artifacts.
+  oracle command shell, regenerating the oracle JSON via `scripts/stepfun_llamacpp_oracle.py`,
+  and refreshing the resource/status artifacts.
   Remaining implementation task: run a longer/faster
   StepFun-capable llama.cpp oracle and review/record the parsed result;
   KV-backed decode parity remains open too.

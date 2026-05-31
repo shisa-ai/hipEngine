@@ -29529,3 +29529,35 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`21 passed`), source-artifact and readiness-summary digest fail-on-blocked checks passed, and the full StepFun guard passed (`125 passed` plus CPU-reference fixture checks). Prompt-verifier evidence: the new test covers compact readiness digest output plus blocked exit semantics, no `import torch` was added to `hipengine/`, the test-only change adds no engine-wide backend or quant special-casing, and no StepFun performance claim was made.
+
+## 2026-05-31 — StepFun oracle helper refresh command recorded
+
+Added `oracle_helper_refresh_command` to `next_action_commands["oracle_parity_blocked"]` in `scripts/stepfun_correctness_status.py`. The oracle blocker handoff now includes both the raw `llama-cli` command shell and a copy/pasteable `scripts/stepfun_llamacpp_oracle.py --execute --pretty --output ...` command that regenerates the canonical oracle JSON artifact with the recorded llama-cli path, model shard, timeout, and extra llama arguments. This makes the first blocker actionable without manually reconstructing the helper invocation. Current readiness is unchanged: `oracle_parity=false`, `kv_backed_decode_ready=false`, and `e2e_inference_ready=false`.
+
+Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, updated status tests, and clarified `docs/STEPFUN.md`. This is handoff metadata only; no StepFun KV write/attention kernels are launched and no performance/e2e claim is made.
+
+Validation:
+
+```bash
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty --output /tmp/stepfun-source-verify.json
+python3 - <<'PY'
+import json
+v=json.load(open('/tmp/stepfun-source-verify.json'))
+assert v['status'] == 'match'
+assert v['all_match'] is True
+s=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+cmd=s['next_action_commands']['oracle_parity_blocked']['oracle_helper_refresh_command']
+assert cmd.startswith('python3 scripts/stepfun_llamacpp_oracle.py --artifact ')
+assert '--execute --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json' in cmd
+assert '--llama-cli /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli' in cmd
+assert '--model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf' in cmd
+assert '--timeout-s 60.0' in cmd
+assert '--llama-arg=--device --llama-arg=none --llama-arg=--gpu-layers --llama-arg=0' in cmd
+print('stepfun oracle helper refresh command artifact ok')
+PY
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`21 passed`), source-artifact/oracle-helper command checks passed, and the full StepFun guard passed (`125 passed` plus CPU-reference fixture checks). Prompt-verifier evidence: status tests cover the new oracle helper refresh command, no `import torch` was added to `hipengine/`, the changed status helper adds no engine-wide backend or quant special-casing, and no StepFun performance claim was made.

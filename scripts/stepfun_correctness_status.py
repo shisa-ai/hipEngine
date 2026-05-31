@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import re
+import shlex
 from pathlib import Path
 from typing import Sequence
 
@@ -653,6 +654,34 @@ def _resource_plan_refresh_command(
     )
 
 
+def _oracle_helper_refresh_command(
+    *,
+    oracle_progress: dict[str, object],
+    prompt_artifact: Path,
+    oracle_artifact: Path,
+) -> str:
+    command = [
+        "python3",
+        "scripts/stepfun_llamacpp_oracle.py",
+        "--artifact",
+        str(prompt_artifact),
+        "--llama-cli",
+        str(oracle_progress.get("llama_cli")),
+        "--model",
+        str(oracle_progress.get("model")),
+        "--n-predict",
+        str(oracle_progress.get("n_predict") or 1),
+    ]
+    timeout_s = oracle_progress.get("timeout_s")
+    if timeout_s is not None:
+        command.extend(["--timeout-s", str(timeout_s)])
+    for extra_arg in oracle_progress.get("extra_llama_args", []):
+        command.append(f"--llama-arg={extra_arg}")
+    command.extend(["--execute", "--pretty", "--output", str(oracle_artifact)])
+    return shlex.join(command)
+
+
+
 def _next_action_commands(
     *,
     oracle_progress: dict[str, object],
@@ -674,9 +703,15 @@ def _next_action_commands(
     oracle_missing_preconditions = list(oracle_gap_report.get("missing_preconditions", []))
     oracle_missing_evidence = list(oracle_gap_report.get("missing_evidence", []))
     kv_missing_evidence = list(kv_backed_decode_gap_report.get("missing_evidence", []))
+    oracle_helper_refresh = _oracle_helper_refresh_command(
+        oracle_progress=oracle_progress,
+        prompt_artifact=prompt_artifact,
+        oracle_artifact=oracle_artifact,
+    )
     return {
         "oracle_parity_blocked": {
             "rerun_command_shell": oracle_progress.get("command_shell"),
+            "oracle_helper_refresh_command": oracle_helper_refresh,
             "status_refresh_command": status_refresh,
             "gap_report_status": oracle_gap_report.get("status"),
             "missing_preconditions": oracle_missing_preconditions,
