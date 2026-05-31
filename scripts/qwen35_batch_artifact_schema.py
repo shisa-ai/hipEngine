@@ -67,6 +67,7 @@ _REQUIRED_BATCH_EXECUTION_FLAGS = (
 _REQUIRED_ACCEPTED_WORKLOAD_LABELS = (
     "model",
     "model_path",
+    "fixture_path",
     "quant",
     "kv_storage_dtype",
 )
@@ -573,8 +574,14 @@ def _validate_command_model_fixture_flags(command: str, *, field: str, workload:
         command_model = model_match.group(1).strip("'\"")
         if isinstance(model_path, str) and model_path and command_model != model_path:
             errors.append(f"commands.{field} --model must match workload.model_path for accepted artifacts")
-    if _COMMAND_FIXTURE_RE.search(command) is None:
+    fixture_match = _COMMAND_FIXTURE_RE.search(command)
+    if fixture_match is None:
         errors.append(f"commands.{field} must include --fixture for accepted artifacts")
+    else:
+        fixture_path = workload.get("fixture_path")
+        command_fixture = fixture_match.group(1).strip("'\"")
+        if isinstance(fixture_path, str) and fixture_path and command_fixture != fixture_path:
+            errors.append(f"commands.{field} --fixture must match workload.fixture_path for accepted artifacts")
 
 
 def _command_pattern_value(command: str, pattern: re.Pattern[str]) -> str | None:

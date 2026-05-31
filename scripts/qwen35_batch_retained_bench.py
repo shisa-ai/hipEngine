@@ -3780,6 +3780,7 @@ def _build_payload(
             "shape": f"c={args.batch_size} prompt={args.prompt_length} decode={args.decode_tokens}",
             "model": "Qwen3.5/3.6-35B-A3B-PARO",
             "model_path": str(Path(args.model)),
+            "fixture_path": str(Path(args.fixture)) if getattr(args, "fixture", None) is not None else "",
             "quant": "w4_paro",
             "prompt_tokens_per_request": args.prompt_length,
             "prompt_tokens_aggregate": aggregate_prefill_tokens,
