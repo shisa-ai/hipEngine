@@ -27753,3 +27753,7 @@ python3 -m pytest -q tests/test_stepfun_llamacpp_oracle.py -q
 ```
 
 Result: `4 passed`.
+
+## 2026-05-31 — StepFun P12 memory snapshot item closed
+
+Marked the P12 HIP-visible memory snapshot checklist item complete. Evidence spans the accepted P12 artifacts: full resident weight load/free in `benchmarks/results/2026-05-29-stepfun-q3kl-full-load-smoke-task20.json`, synthetic 512-token BF16 KV allocation/free recorded from `scripts/stepfun_gguf_load_smoke.py`, the dry-run text resource plan in `benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json`, and the all-layer host-composed prompt generation snapshots in `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json` (`119.9961 GiB` before execution, `118.8083 GiB` after generation before final root free, `119.8571 GiB` after final free). This closes P12 memory evidence for the current host-composed/full-load bring-up path; KV-backed decode parity remains open under P11.

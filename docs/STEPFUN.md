@@ -632,7 +632,7 @@ layer loop is wired.
   one next-token candidate (`next_token_id=369`, decoded text ` |`). This closes
   the P12 load/small-context token smoke item, but not P11 llama.cpp/CPU oracle
   parity or the final KV-backed decode runner.
-- [~] Record HIP-visible memory before load, after load, after KV allocation, and
+- [x] Record HIP-visible memory before load, after load, after KV allocation, and
   after generation; include UMA/GTT setting and backend (`hip_gfx1151`). Weight
   load evidence from
   `benchmarks/results/2026-05-29-stepfun-q3kl-full-load-smoke-task20.json`:
@@ -659,8 +659,10 @@ layer loop is wired.
   records sampled token text plus top-5 token/logit rows for future llama.cpp
   output comparison and HIP-visible free memory before execution (`119.9961 GiB`), after
   generation before final root free (`118.8083 GiB`), and after final free
-  (`119.8571 GiB`) for backend `hip_gfx1151`. KV-backed generation snapshots
-  remain open.
+  (`119.8571 GiB`) for backend `hip_gfx1151`. This closes the P12
+  HIP-visible memory snapshot requirement across the full-load/KV-allocation and
+  all-layer host-composed generation artifacts; KV-backed decode parity remains
+  open under P11.
 - [x] If the model does not fit, keep the failure artifact and decide between
   offload/tiering, lower context/KV footprint, or slice-only correctness. No
   current fit failure is claimed from VIS_VRAM/`hipMemGetInfo` alone; decision
