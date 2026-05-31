@@ -7297,6 +7297,14 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.category must match commands\[\]\.argv script"):
             c_sweep.validate_sweep_summary(tampered_script)
 
+        tampered_device_env = json.loads(json.dumps(summary))
+        device_env_entry = tampered_device_env["commands"][index]
+        device_env_argv = device_env_entry["argv"]
+        device_env_argv[1] = "HIP_VISIBLE_DEVICES=0"
+        device_env_entry["command"] = shlex.join(device_env_argv)
+        with pytest.raises(ValueError, match=r"commands\[\]\.argv device env prefix must match the first command"):
+            c_sweep.validate_sweep_summary(tampered_device_env)
+
         for tamper_argv_json in (False, True):
             tampered_artifact_link = json.loads(json.dumps(summary))
             entry = tampered_artifact_link["commands"][index]
