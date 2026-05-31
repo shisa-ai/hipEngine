@@ -52342,3 +52342,25 @@ git diff --check
 ```
 
 Result: focused accepted dynamic-pool event-counter tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed items were not changed, no retained c>N performance/scaling claim was added, and accepted retained rows now reject missing/mismatched dynamic-pool event counters.
+
+## 2026-05-31 — CONCURRENCY accepted pool high-water consistency
+
+Tightened accepted retained-artifact dynamic-pool evidence: `memory.dynamic_pool.pool_counters.high_water_observed_bytes` must now be at least `current_bytes`. The retained-bench promotion blocker reports the same inconsistency, so impossible KV-pool memory summaries are rejected before a c>N row can be promoted. This is evidence hardening only; no queue item was closed and no retained c>N performance/scaling claim was added.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 -m compileall -q scripts/qwen35_batch_artifact_schema.py scripts/qwen35_batch_retained_bench.py tests/test_generation_batch_scheduler.py && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_retained_memory_evidence_blockers_cover_required_fields tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equality -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue))
+print(count)
+assert count == 12
+PY
+HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+git diff --check
+```
+
+Result: focused accepted pool high-water tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed items were not changed, no retained c>N performance/scaling claim was added, and accepted retained rows now reject pool high-water counters below current bytes.

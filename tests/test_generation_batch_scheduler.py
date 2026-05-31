@@ -14317,6 +14317,7 @@ def test_qwen35_retained_memory_evidence_blockers_cover_required_fields() -> Non
     incomplete_memory["allocator_reserved_peak_bytes"] = float("inf")
     incomplete_memory["dynamic_pool"]["evidence"] = " "
     incomplete_memory["dynamic_pool"]["pool_counters"]["free_pages"] = -1
+    incomplete_memory["dynamic_pool"]["pool_counters"]["high_water_observed_bytes"] = 4096
     incomplete_memory["stable_block_id"] = {"passed": False, "audit": ""}
     incomplete_memory["prefix_sharing"]["enabled"] = "false"
     incomplete_memory["prefix_sharing"]["savings_bytes"] = float("inf")
@@ -14325,6 +14326,7 @@ def test_qwen35_retained_memory_evidence_blockers_cover_required_fields() -> Non
     assert "memory.allocator_reserved_peak_bytes is unavailable or non-finite" in blockers
     assert "memory.dynamic_pool.evidence is missing" in blockers
     assert "memory.dynamic_pool.pool_counters.free_pages is unavailable or non-finite" in blockers
+    assert "memory.dynamic_pool.pool_counters.high_water_observed_bytes is below current_bytes" in blockers
     assert "memory.stable_block_id.passed is not true" in blockers
     assert "memory.stable_block_id.audit is missing" in blockers
     assert "memory.prefix_sharing.enabled is not bool" in blockers
@@ -16846,6 +16848,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     negative_pool_counter["memory"]["dynamic_pool"]["pool_counters"]["free_pages"] = -1
     with pytest.raises(ValueError, match="pool_counters.free_pages must be finite non-negative numeric"):
         validate_cn_diagnostic_artifact_payload(negative_pool_counter)
+
+    inconsistent_pool_high_water = json.loads(json.dumps(accepted))
+    inconsistent_pool_high_water["memory"]["dynamic_pool"]["pool_counters"]["high_water_observed_bytes"] = 1
+    with pytest.raises(ValueError, match="pool_counters.high_water_observed_bytes must be >= current_bytes"):
+        validate_cn_diagnostic_artifact_payload(inconsistent_pool_high_water)
 
     nonfinite_prefix_savings = json.loads(json.dumps(accepted))
     nonfinite_prefix_savings["memory"]["prefix_sharing"]["savings_bytes"] = float("inf")
