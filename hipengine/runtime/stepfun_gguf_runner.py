@@ -103,6 +103,26 @@ class StepFunOneLayerLogitsProbe:
 
 
 @dataclass(frozen=True)
+class StepFunLayerPrefixLogitsProbe:
+    """Prompt embedding plus a contiguous resident layer prefix and logits."""
+
+    prompt: "StepFunPromptEmbedding"
+    layer_count: int
+    layer_hidden: object
+    logits: object
+
+    @property
+    def next_token_id(self) -> int:
+        import numpy as np
+
+        return int(np.argmax(self.logits[-1]))
+
+    @property
+    def next_token_logit(self) -> float:
+        return float(self.logits[-1, self.next_token_id])
+
+
+@dataclass(frozen=True)
 class StepFunPromptEmbedding:
     """Rendered/tokenized Step prompt plus resident BF16 embedding rows."""
 
@@ -248,9 +268,9 @@ class StepFunResidentSession:
     """Owned resident StepFun state for incremental GGUF decode bring-up.
 
     The session is intentionally still below the full streaming runner: it owns
-    materialized split-GGUF weights and exposes prompt embedding execution as the
-    first real resident operation. Layer execution, KV allocation, and logits are
-    wired in later P11 iterations.
+    materialized split-GGUF weights and exposes correctness bridges for prompt
+    embeddings, KV allocation, per-layer prefill probes, and sampled logits.
+    Full KV-backed streaming decode is still wired in later P11 iterations.
     """
 
     info: GGUFSplitModelInfo
@@ -458,9 +478,48 @@ class StepFunResidentSession:
         skips layers 1-44, so its logits are not next-token parity evidence.
         """
 
+        prefix = self.layer_prefix_prompt_logits_probe_bf16(
+            messages,
+            layer_count=1,
+            reasoning_effort=reasoning_effort,
+            add_generation_prompt=add_generation_prompt,
+            runtime=runtime,
+            stream=stream,
+        )
+        return StepFunOneLayerLogitsProbe(
+            prompt=prefix.prompt,
+            layer_hidden=prefix.layer_hidden,
+            logits=prefix.logits,
+        )
+
+    def layer_prefix_prompt_logits_probe_bf16(
+        self,
+        messages: Sequence[Mapping[str, object]],
+        *,
+        layer_count: int,
+        reasoning_effort: str | None = "low",
+        add_generation_prompt: bool = True,
+        runtime: HipRuntime | None = None,
+        stream: int = 0,
+    ) -> StepFunLayerPrefixLogitsProbe:
+        """Run tokenizer -> embeddings -> contiguous layer prefix -> logits.
+
+        This host-composed prefill bridge applies layers ``0..layer_count-1``
+        with BF16 boundaries between layers, then runs the final root logits
+        probe on the last prompt row. It is not a native decode/KV-cache path
+        and is not full next-token parity unless ``layer_count`` covers every
+        decoder layer and an external oracle comparison is recorded.
+        """
+
         import numpy as np
         from hipengine.loading.materialize import float_array_to_bf16_bits
 
+        if layer_count <= 0:
+            raise ValueError("layer_count must be positive")
+        if layer_count > self.model_map.config.block_count:
+            raise ValueError(
+                f"layer_count={layer_count} exceeds StepFun block_count={self.model_map.config.block_count}"
+            )
         prompt = self.embed_chat_prompt_bf16(
             messages,
             reasoning_effort=reasoning_effort,
@@ -468,16 +527,24 @@ class StepFunResidentSession:
             runtime=runtime,
             stream=stream,
         )
-        layer_hidden = self.layer_prefill_probe_bf16(
-            0,
-            prompt.embeddings_bf16,
-            runtime=runtime,
-            stream=stream,
-        )
-        last_hidden_bits = float_array_to_bf16_bits(np.asarray(layer_hidden[-1:], dtype=np.float32))
-        logits = self.final_logits_probe_bf16(last_hidden_bits, runtime=runtime, stream=stream)
-        return StepFunOneLayerLogitsProbe(
+        positions = np.arange(prompt.prompt_length, dtype=np.int64)
+        hidden_bits = np.ascontiguousarray(prompt.embeddings_bf16, dtype=np.uint16)
+        layer_hidden = None
+        for layer_id in range(int(layer_count)):
+            layer_hidden = self.layer_prefill_probe_bf16(
+                layer_id,
+                hidden_bits,
+                positions=positions,
+                runtime=runtime,
+                stream=stream,
+            )
+            hidden_bits = float_array_to_bf16_bits(np.asarray(layer_hidden, dtype=np.float32))
+        if layer_hidden is None:  # pragma: no cover - guarded by layer_count validation
+            raise RuntimeError("StepFun layer prefix produced no hidden state")
+        logits = self.final_logits_probe_bf16(hidden_bits[-1:].copy(), runtime=runtime, stream=stream)
+        return StepFunLayerPrefixLogitsProbe(
             prompt=prompt,
+            layer_count=int(layer_count),
             layer_hidden=layer_hidden,
             logits=logits,
         )
@@ -1100,6 +1167,59 @@ class StepFunResidentSession:
             raise ValueError(f"layer_id out of range: {layer_id}")
 
 
+def stepfun_layer_slot_paths(model_map: StepFunGGUFModelMap, layer_id: int) -> tuple[str, ...]:
+    """Return resident slot paths required to execute one StepFun layer."""
+
+    if layer_id < 0 or layer_id >= model_map.config.block_count:
+        raise ValueError(f"layer_id out of range: {layer_id}")
+    layer = model_map.layer(layer_id)
+    slots = [
+        "attn_norm",
+        "attn_q_norm",
+        "attn_k_norm",
+        "attn_q",
+        "attn_k",
+        "attn_v",
+        "attn_gate",
+        "attn_output",
+        "ffn_norm",
+    ]
+    if "ffn_gate" in layer.tensors:
+        slots.extend(["ffn_gate", "ffn_up", "ffn_down"])
+    elif "ffn_gate_inp" in layer.tensors:
+        slots.extend(
+            [
+                "ffn_gate_inp",
+                "exp_probs_bias",
+                "ffn_gate_exps",
+                "ffn_up_exps",
+                "ffn_down_exps",
+                "ffn_gate_shexp",
+                "ffn_up_shexp",
+                "ffn_down_shexp",
+            ]
+        )
+    else:
+        raise RuntimeError(f"layer {layer_id} does not expose a Step MLP path")
+    missing = [slot for slot in slots if slot not in layer.tensors]
+    if missing:
+        raise RuntimeError(f"layer {layer_id} is missing required Step slots: {missing}")
+    return tuple(f"layers.{layer_id}.{slot}" for slot in slots)
+
+
+def stepfun_layer_prefix_slot_paths(model_map: StepFunGGUFModelMap, layer_count: int) -> tuple[str, ...]:
+    """Return root + layer slot paths for a contiguous prompt-logits prefix."""
+
+    if layer_count <= 0:
+        raise ValueError("layer_count must be positive")
+    if layer_count > model_map.config.block_count:
+        raise ValueError(f"layer_count={layer_count} exceeds StepFun block_count={model_map.config.block_count}")
+    slots: list[str] = ["root.token_embedding", "root.output_norm", "root.lm_head"]
+    for layer_id in range(int(layer_count)):
+        slots.extend(stepfun_layer_slot_paths(model_map, layer_id))
+    return tuple(slots)
+
+
 def _swiglu_bf16_bits(gate, up, limit: float):
     import numpy as np
     from hipengine.loading.materialize import float_array_to_bf16_bits
@@ -1129,10 +1249,13 @@ __all__ = [
     "DEFAULT_STEPFUN_SHORT_CONTEXT",
     "StepFunDecodePlan",
     "StepFunKVCacheAllocation",
+    "StepFunLayerPrefixLogitsProbe",
     "StepFunMoERouterResult",
     "StepFunOneLayerLogitsProbe",
     "StepFunPromptEmbedding",
     "StepFunResidentSession",
     "StepFunRootOnlyLogitsProbe",
     "StepFunShortContextDecodePlanner",
+    "stepfun_layer_prefix_slot_paths",
+    "stepfun_layer_slot_paths",
 ]

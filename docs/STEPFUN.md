@@ -503,13 +503,16 @@ reporting.
   layer-0 Q/K/V/gate projections vs CPU references, a layer-0 attention
   prefill/output probe composes resident Q/K/V/gate projections, host Q/K
   RMSNorm, RoPE, causal GQA, head-wise gating, BF16 rounding, and resident
-  `attn_output` vs CPU reference, a layer-0 dense-layer prefill probe composes
+  `attn_output` vs CPU reference, and a layer-0 dense-layer prefill probe composes
   attention residual, `ffn_norm`, dense SwiGLU MLP, and final residual vs CPU
-  reference, and the same layer wrapper is exercised on a layer-3 sliding/MoE
-  block by composing the attention and MoE probes through `ffn_norm`, and a
-  first-layer prompt logits smoke binds chat rendering, embeddings, layer-0
-  prefill, and final `lm_head` rows while explicitly skipping layers 1-44. The
-  dense-MLP input bundle launches layer-0 `ffn_gate`/`ffn_up` projections vs CPU references,
+  reference. The same layer wrapper is exercised on a layer-3 sliding/MoE block
+  by composing the attention and MoE probes through `ffn_norm`; a first-layer
+  prompt logits smoke binds chat rendering, embeddings, layer-0 prefill, and
+  final `lm_head` rows while explicitly skipping layers 1-44; and a layer-prefix
+  prompt logits probe now applies the contiguous layers 0-3
+  prefill bridge (dense layers 0-2 plus first sliding/MoE layer 3) before final
+  sampled `lm_head` checks while still skipping layers 4-44. The dense-MLP input
+  bundle launches layer-0 `ffn_gate`/`ffn_up` projections vs CPU references,
   and a dense-MLP correctness probe composes gate/up, host SwiGLU BF16 rounding,
   and resident `ffn_down` vs CPU reference. The resident session also owns a
   BF16 KV-cache allocation/free helper, a layer-3 MoE router probe that
@@ -523,8 +526,9 @@ reporting.
   `lm_head` projection for selected full-vocab rows vs CPU reference. A root-only
   prompt logits smoke now renders/tokenizes a Step chat prompt, embeds it, and
   runs final root logits from the last prompt embedding row. Remaining
-  implementation task is composing those primitives into the layer/full-model
-  execution loop beyond embedding, the prompt planner, and CPU replay harness.
+  implementation task is extending the layer-prefix bridge to all 45 layers,
+  replacing host-composed probes with the KV-backed decode path, and recording
+  llama.cpp/CPU oracle parity.
 - [x] Use short contexts first (for example <= 512) before exercising long
   context and sliding-window boundaries. `StepFunShortContextDecodePlanner`
   enforces the current c=1 bring-up default `max_context=512`,
@@ -561,8 +565,10 @@ bundle (selected gate/up plus shared gate/up), the MoE correctness probe
 probe (output RMSNorm + resident Q8_0 `lm_head` projection for sampled vocab
 rows), the root-only prompt logits smoke (chat prompt -> embedding -> final root
 logits), the first-layer prompt logits smoke (chat prompt -> embedding -> layer-0
-prefill -> final root logits, with layers 1-44 skipped), resident KV-cache
-allocation/free, resident memory cleanup
+prefill -> final root logits, with layers 1-44 skipped), the layer-prefix prompt
+logits smoke (chat prompt -> embedding -> layers 0-3 prefill -> final root
+logits, with layers 4-44 skipped), resident KV-cache allocation/free, resident
+memory cleanup
 (two/three/four active weight allocations before session free, zero after), and
 no torch import. Full next-token/logit parity remains open until the streaming
 layer loop is wired.

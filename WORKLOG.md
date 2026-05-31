@@ -27439,3 +27439,17 @@ python3 -m pytest -q tests/test_stepfun_resident_session.py -q
 ```
 
 Result: `20 passed`.
+
+## 2026-05-31 — StepFun layer-prefix prompt logits smoke
+
+Added `StepFunLayerPrefixLogitsProbe`, `stepfun_layer_slot_paths()`, `stepfun_layer_prefix_slot_paths()`, and `StepFunResidentSession.layer_prefix_prompt_logits_probe_bf16()`. The new bridge renders/tokenizes a Step chat prompt, launches resident embeddings, applies a contiguous layer prefix with BF16 boundaries between host-composed layer probes, and runs final root logits on the last prompt row. `first_layer_prompt_logits_probe_bf16()` now delegates through the same prefix loop with `layer_count=1`.
+
+Extended `tests/test_stepfun_resident_session.py` with a real layer-prefix prompt logits smoke over layers 0-3: dense layers 0-2 plus the first sliding-attention MoE layer 3. The test uses the slot planner to materialize the root tensors plus all four layer blocks, checks prompt embeddings against CPU GGUF Q8_0 references, verifies sampled final logits against CPU output-norm/lm-head rows, and checks resident allocation cleanup. This is still not full next-token parity because layers 4-44 are skipped and attention/MoE composition remains host-side.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_resident_session.py -q
+```
+
+Result: `21 passed`.
