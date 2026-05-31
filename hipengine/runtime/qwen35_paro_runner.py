@@ -3953,9 +3953,15 @@ class Qwen35ParoResidentSession:
         force_selected_c1_linear_projections = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_PROJECTIONS"
         )
+        force_selected_c1_qkv_z_linear_projections = (
+            rows > 1
+            and not force_selected_c1_linear_projections
+            and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_QKVZ")
+        )
         force_batch_gemv_linear_projections = (
             rows > 1
             and not force_selected_c1_linear_projections
+            and not force_selected_c1_qkv_z_linear_projections
             and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_LINEAR_PROJECTIONS")
         )
         force_selected_c1_linear_state = rows > 1 and _env_flag(
@@ -4096,6 +4102,7 @@ class Qwen35ParoResidentSession:
                             tokens=rows,
                             force_selected_c1_moe=force_selected_c1_moe,
                             force_selected_c1_linear_projections=force_selected_c1_linear_projections,
+                            force_selected_c1_qkv_z_linear_projections=force_selected_c1_qkv_z_linear_projections,
                             force_batch_gemv_linear_projections=force_batch_gemv_linear_projections,
                             force_selected_c1_linear_state=force_selected_c1_linear_state,
                             selected_c1_linear_state_pairs=selected_c1_linear_state_pairs,
@@ -4135,6 +4142,7 @@ class Qwen35ParoResidentSession:
                                 "native_caware_decode": not (
                                     force_selected_c1_moe
                                     or force_selected_c1_linear_projections
+                                    or force_selected_c1_qkv_z_linear_projections
                                     or force_batch_gemv_linear_projections
                                     or force_selected_c1_linear_state
                                     or (
@@ -4145,7 +4153,11 @@ class Qwen35ParoResidentSession:
                                 "linear_attention_projection_path": (
                                     "selected_c1_forced"
                                     if force_selected_c1_linear_projections
-                                    else "batch_gemv" if force_batch_gemv_linear_projections else "native_batch"
+                                    else (
+                                        "selected_c1_qkv_z"
+                                        if force_selected_c1_qkv_z_linear_projections
+                                        else "batch_gemv" if force_batch_gemv_linear_projections else "native_batch"
+                                    )
                                 ),
                                 "linear_attention_state_path": (
                                     "selected_c1_forced" if force_selected_c1_linear_state else "native_segments"
@@ -4401,6 +4413,8 @@ class Qwen35ParoResidentSession:
                 decode_blockers.append("MoE decode forced to selected-c1 diagnostic path")
             if force_selected_c1_linear_projections:
                 decode_blockers.append("linear-attention projections forced to selected-c1 diagnostic path")
+            if force_selected_c1_qkv_z_linear_projections:
+                decode_blockers.append("linear-attention QKV/Z projections forced to selected-c1 diagnostic path")
             if force_batch_gemv_linear_projections:
                 decode_blockers.append("linear-attention projections forced to batch GEMV diagnostic path")
             if force_selected_c1_linear_state:
@@ -4441,6 +4455,7 @@ class Qwen35ParoResidentSession:
                 "native_caware_decode": full_attention_decode_path not in {"per_row_splitk_fallback", "per_row_context_fallback"}
                 and not force_selected_c1_moe
                 and not force_selected_c1_linear_projections
+                and not force_selected_c1_qkv_z_linear_projections
                 and not force_batch_gemv_linear_projections
                 and not force_selected_c1_linear_state
                 and linear_attention_output_path not in {"selected_c1_forced", "batch_gemv", "batch_gemv_from_f32"}

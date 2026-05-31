@@ -127,11 +127,17 @@ What is still not green:
   `qkv` drift below hidden tolerance but still leaves the same hidden-only step-11
   failure
   (`/tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-gemv-proj-state-out-perrow-full-atol4e-3-focus1269.json`).
+  Forcing token-1 QKV/Z exactly while leaving native A/B projection, native
+  segmented state, batch-GEMV output, and per-row full attention also stays
+  hidden-only red at step 11
+  (`/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-qkvz-native-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json`),
+  so A/B projection exactness/amplification is now isolated from QKV/Z.
   Re-enabling native full-attention decode under the selected-projection/
   batch-GEMV-output control keeps tokens green but returns hidden red at step 6
   (`/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-batch-gemv-out-native-full-atol4e-3-focus1269.json`),
-  so the current C2.3/C2.4 blockers are fused native output, residual projection
-  exactness/amplification, and native full-attention hidden parity; paged KV row
+  so the current C2.3/C2.4 blockers are native A/B projection
+  exactness/amplification, fused native output, and native full-attention hidden
+  parity; paged KV row
   setup, grouped-compact MoE, and the segmented state update itself under selected
   projections remain lower on the list. C2.3/C2.4/C2.5 remain the correctness
   priority.
@@ -1306,7 +1312,17 @@ roll-up/status view.
       `/tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-gemv-proj-state-out-perrow-full-atol4e-3-focus1269.json`
       reduces first layer-0 `qkv` drift to `max_abs=0.0009765625` under the
       0.004 hidden tolerance but remains hidden-only red at step 11 / row 0
-      (`max_abs=0.010431289672851562`). Re-enabling native full-attention decode
+      (`max_abs=0.010431289672851562`). A narrower QKV/Z-only selected-c1
+      diagnostic path (`--batch-decode-linear-projection-path selected_qkv_z`,
+      backed by `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_QKVZ`)
+      makes layer-0 `qkv` and `z` exact while keeping native A/B projection,
+      native segmented state, batch-GEMV output, and per-row full attention; the
+      matched probe
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-qkvz-native-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json`
+      is still hidden-only red at step 11 / row 0 (`max_abs=0.010393142700195312`).
+      This isolates the remaining per-row-full linear blocker to native A/B
+      projection exactness/amplification plus the already-red native output path,
+      not QKV/Z. Re-enabling native full-attention decode
       on the selected-projection/native-state/batch-GEMV-output control at
       `/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-batch-gemv-out-native-full-atol4e-3-focus1269.json`
       keeps generated tokens green but is hidden-only red (`status=mismatch_found`,
@@ -1343,10 +1359,10 @@ roll-up/status view.
       are also red). The failure is therefore not resolved by either boundary
       fallback alone, both boundaries together, diagnostic linear-state replay,
       or per-row context/gate replay. This shifts the
-      current C2.3/C2.4 target to native batched output fallback/retention,
-      residual projection exactness/amplification, and native full-attention
-      hidden parity; raw `recurrent_out` stage summaries from segmented state are
-      not equivalent to token-1 decode post-gate `recurrent_out` and must not be
+      current C2.3/C2.4 target to native A/B projection exactness/amplification,
+      native batched output fallback/retention, and native full-attention hidden
+      parity; raw `recurrent_out` stage summaries from segmented state are not
+      equivalent to token-1 decode post-gate `recurrent_out` and must not be
       used as a closure/blocker signal. The next target is retained projection/
       output/full-attention parity without diagnostic flags; do not change
       paged-KV writer code yet. Do not re-open row setup, native linear segment
