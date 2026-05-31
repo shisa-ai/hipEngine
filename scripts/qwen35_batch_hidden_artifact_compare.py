@@ -10,6 +10,7 @@ manually diffing full per-step traces.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -177,6 +178,15 @@ def _projection_route_classification(
     return "same_first_over_atol_location_with_metadata_delta"
 
 
+def _artifact_source_metadata(path: Path) -> dict[str, Any]:
+    data = path.read_bytes()
+    return {
+        "path": str(path),
+        "size_bytes": len(data),
+        "sha256": hashlib.sha256(data).hexdigest(),
+    }
+
+
 def _projection_rollup(payload: dict[str, Any]) -> dict[str, Any]:
     correctness = payload.get("correctness", {})
     if not isinstance(correctness, dict):
@@ -209,6 +219,7 @@ def _artifact_projection_summary(label: str, path: Path, payload: dict[str, Any]
     return {
         "label": label,
         "artifact_path": str(path),
+        "source_artifact": _artifact_source_metadata(path),
         "status": payload.get("status"),
         "hidden_passed": correctness.get("hidden_passed"),
         "token_passed": correctness.get("token_passed"),

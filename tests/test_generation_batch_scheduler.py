@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -7871,6 +7872,17 @@ def test_hidden_bisect_projection_artifact_compare_spots_limit_drift_delta(tmp_p
             "all_statuses_eq_ok": True,
         },
         "passed": True,
+    }
+    artifact_summaries = {entry["label"]: entry for entry in payload["artifacts"]}
+    assert artifact_summaries["selected_ab"]["source_artifact"] == {
+        "path": str(selected_ab),
+        "size_bytes": selected_ab.stat().st_size,
+        "sha256": hashlib.sha256(selected_ab.read_bytes()).hexdigest(),
+    }
+    assert artifact_summaries["selected_qkvz"]["source_artifact"] == {
+        "path": str(selected_qkvz),
+        "size_bytes": selected_qkvz.stat().st_size,
+        "sha256": hashlib.sha256(selected_qkvz.read_bytes()).hexdigest(),
     }
     assert payload["comparison"]["common_layer_limits"] == [1, 2]
     assert payload["comparison"]["first_over_atol_layer_limits_by_label"] == {
