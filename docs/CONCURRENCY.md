@@ -2142,9 +2142,10 @@ endpoint live; retained c>N rows include all gates above.
       context-bucket workload coverage plus fixed-bucket histogram observations
       that cover profiler kernel-duration evidence for accepted rows, and
       `/metrics` exports labeled miss-reason counters plus zero-filled counters
-      for every known kernel-time bucket while filtering unknown bucket labels;
-      the item remains open until real replay profiler evidence populates
-      kernel-time buckets.
+      for every known kernel-time bucket while filtering unknown bucket labels and
+      malformed scalar/mapping values (bool, non-finite, negative, or
+      non-numeric); the item remains open until real replay profiler evidence
+      populates kernel-time buckets.
 - [x] Retained-row gates 4 (admission/completion timestamps + p50/p95) and
       6/7/8 (dynamic pool + stable block id + prefix sharing artifact)
       enforced by the bench harness.
@@ -2196,11 +2197,15 @@ Establish these before optimizing anything:
       and serial diagnostics emit `decode_shape_key` / `graph_bucket_stats`, and the retained bench merges profiler kernel durations into that fixed-bucket histogram;
       accepted-artifact schema requires those fields, the complete fixed bucket
       key set, and non-empty known-bucket histogram observations for accepted rows
-      using the runtime bucket taxonomy; `/metrics` exports graph-bucket counters and filters kernel-time buckets to that taxonomy;
+      using the runtime bucket taxonomy; `/metrics` exports graph-bucket counters,
+      filters kernel-time buckets to that taxonomy, and rejects malformed graph/KV
+      scalar and mapping values before Prometheus export;
       covered by
       `test_graph_bucket_cache_clear_resets_entries_and_counters`,
       `test_qwen35_retained_records_decode_graph_bucket_metadata`,
       `test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates`,
+      `test_metrics_endpoint_filters_malformed_graph_bucket_scalars`,
+      `test_metrics_endpoint_filters_malformed_kv_pool_scalars`,
       and `test_metrics_endpoint_is_opt_in_and_additive`.
 - [ ] Eliminate residual serial loops on the native path after correctness
       is green:
