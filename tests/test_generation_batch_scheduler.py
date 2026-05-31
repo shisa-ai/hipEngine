@@ -13112,6 +13112,42 @@ def test_qwen35_retained_payload_orders_latency_samples_by_admission_row(monkeyp
     assert payload["observability"]["request_latency_seconds"]["p95"] == 2.5
 
 
+def test_qwen35_retained_generated_token_equality_blockers_cover_c1_rows() -> None:
+    equality = {
+        "passed": True,
+        "skipped": False,
+        "batch_sequences": [[0, 7, 9, 10], [100, 107, 109, 110]],
+        "c1_sequences": [[0, 7, 9, 10], [100, 107, 109, 110]],
+        "mismatches": [],
+    }
+    assert retained_bench._generated_token_equality_blockers(
+        equality,
+        expected_concurrency=2,
+        expected_decode_tokens=2,
+        expected_warmup_decode_tokens=1,
+    ) == []
+
+    invalid = json.loads(json.dumps(equality))
+    invalid["skipped"] = True
+    invalid["batch_sequences"][0] = [0, -1]
+    invalid["c1_sequences"][1][0] = 101
+    invalid["mismatches"] = [{"row": 1}]
+    blockers = retained_bench._generated_token_equality_blockers(
+        invalid,
+        expected_concurrency=2,
+        expected_decode_tokens=2,
+        expected_warmup_decode_tokens=1,
+    )
+    assert "correctness.generated_token_equality.skipped must be false" in blockers
+    assert (
+        "correctness.generated_token_equality.batch_sequences[0] "
+        "length does not match seed plus warmup plus decode tokens"
+    ) in blockers
+    assert "correctness.generated_token_equality.batch_sequences[0] contains a non-token id" in blockers
+    assert "correctness.generated_token_equality.batch_sequences must equal c1_sequences" in blockers
+    assert "correctness.generated_token_equality.mismatches must be empty" in blockers
+
+
 def test_qwen35_retained_execution_token_evidence_blockers_cover_seed_and_decode_suffix() -> None:
     seed_tokens = {"0": {"token_id": 0}, "1": {"token_id": 100}}
     generated_tokens = {

@@ -2548,6 +2548,53 @@ def _int_list(value: Any) -> list[int] | None:
     return [int(item) for item in value]
 
 
+def _generated_token_equality_blockers(
+    equality: Any,
+    *,
+    expected_concurrency: int,
+    expected_decode_tokens: int,
+    expected_warmup_decode_tokens: int,
+) -> list[str]:
+    if not isinstance(equality, Mapping):
+        return ["correctness.generated_token_equality is missing"]
+    blockers: list[str] = []
+    if equality.get("passed") is not True:
+        blockers.append("correctness.generated_token_equality.passed must be true")
+    if equality.get("skipped") is not False:
+        blockers.append("correctness.generated_token_equality.skipped must be false")
+    expected_tokens = 1 + int(expected_warmup_decode_tokens) + int(expected_decode_tokens)
+
+    def _validate_sequences(field: str) -> Any:
+        sequences = equality.get(field)
+        label = f"correctness.generated_token_equality.{field}"
+        if not isinstance(sequences, list):
+            blockers.append(f"{label} is not a list")
+            return sequences
+        if len(sequences) != expected_concurrency:
+            blockers.append(f"{label} length does not match expected concurrency")
+        for row_index, sequence in enumerate(sequences):
+            row_label = f"{label}[{row_index}]"
+            if not isinstance(sequence, list):
+                blockers.append(f"{row_label} is not a token id list")
+                continue
+            if len(sequence) != expected_tokens:
+                blockers.append(f"{row_label} length does not match seed plus warmup plus decode tokens")
+            if any(not isinstance(token, int) or isinstance(token, bool) or token < 0 for token in sequence):
+                blockers.append(f"{row_label} contains a non-token id")
+        return sequences
+
+    batch_sequences = _validate_sequences("batch_sequences")
+    c1_sequences = _validate_sequences("c1_sequences")
+    if isinstance(batch_sequences, list) and isinstance(c1_sequences, list) and batch_sequences != c1_sequences:
+        blockers.append("correctness.generated_token_equality.batch_sequences must equal c1_sequences")
+    mismatches = equality.get("mismatches")
+    if not isinstance(mismatches, list):
+        blockers.append("correctness.generated_token_equality.mismatches is not a list")
+    elif mismatches:
+        blockers.append("correctness.generated_token_equality.mismatches must be empty")
+    return blockers
+
+
 def _token_payload_ids(value: Any) -> list[int] | None:
     if not isinstance(value, list):
         return None
@@ -3483,6 +3530,12 @@ def _build_payload(
     profiler_blockers.extend(_profiler_synthesized_fields_blockers(profiler))
     profiler_blockers.extend(_profiler_kernel_evidence_blockers(profiler))
     profiler_blockers.extend(_profiler_cpu_side_bottleneck_blockers(profiler))
+    equality_structure_blockers = _generated_token_equality_blockers(
+        equality,
+        expected_concurrency=args.batch_size,
+        expected_decode_tokens=args.decode_tokens,
+        expected_warmup_decode_tokens=args.warmup_decode_tokens,
+    )
     batch_execution = dict(bench["batch_execution"])
     throughput_claim_eligible = bool(batch_execution.get("throughput_claim_eligible"))
     native_caware_decode = bool(batch_execution.get("native_caware_decode"))
@@ -3551,6 +3604,7 @@ def _build_payload(
         bench["finite_logits"]
         and throughput_claim_eligible
         and equality_passed
+        and not equality_structure_blockers
         and primitive_passed
         and protocol_shape
         and scaling_complete
@@ -3575,6 +3629,7 @@ def _build_payload(
         blocked_reasons.append("batch_execution.throughput_claim_eligible=false")
     if not equality_passed:
         blocked_reasons.append("generated-token equality vs independent c=1 did not pass")
+    blocked_reasons.extend(equality_structure_blockers)
     if not primitive_passed:
         blocked_reasons.append(f"primitive c>N correctness gate did not pass: {primitive_correctness.get('reason')}")
     if args.prompt_length < 512 or args.decode_tokens < 128:

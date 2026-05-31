@@ -52738,3 +52738,25 @@ git diff --check
 ```
 
 Result: focused retained observability timing blocker tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed items were not changed, no retained c>N performance/scaling claim was added, and retained preflight now rejects malformed per-request timing evidence before promotion.
+
+## 2026-05-31 — CONCURRENCY retained generated-equality blockers
+
+Tightened retained generated-token equality preflight: `scripts/qwen35_batch_retained_bench.py` now rejects retained promotion when `correctness.generated_token_equality` is missing/malformed, skipped, carries mismatches, lacks c=1 rows, has non-token ids, has wrong row counts, has wrong seed+warmup+decode lengths, or has native batch rows that differ from independent c=1 rows. This mirrors the generated-token equality accepted-artifact gate before promotion, so malformed equality evidence becomes a blocked artifact instead of an accepted-row schema failure. This is evidence hardening only; no queue item was closed and no retained c>N performance/scaling claim was added.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 -m compileall -q scripts/qwen35_batch_retained_bench.py tests/test_generation_batch_scheduler.py && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_retained_generated_token_equality_blockers_cover_c1_rows tests/test_generation_batch_scheduler.py::test_qwen35_retained_execution_token_evidence_blockers_cover_seed_and_decode_suffix tests/test_generation_batch_scheduler.py::test_qwen35_retained_payload_blocks_acceptance_without_memory_evidence -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue))
+print(count)
+assert count == 12
+PY
+HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+git diff --check
+```
+
+Result: focused retained generated-equality blocker tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed items were not changed, no retained c>N performance/scaling claim was added, and retained preflight now rejects malformed generated-token equality evidence before promotion.
