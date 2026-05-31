@@ -691,6 +691,13 @@ def _primary_command_metadata(kind: str | None, command: object) -> dict[str, ob
     }
 
 
+def _stable_json_sha256(value: object) -> str:
+    """Return a deterministic SHA-256 digest for JSON-compatible metadata."""
+
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
 def _readiness_gates(
     *,
     oracle_parity: bool,
@@ -943,6 +950,7 @@ def _handoff_summary(
         "open_blockers": blocker_kinds,
         "blocker_work_queue_schema_version": 1,
         "blocker_work_queue_count": len(blocker_work_queue),
+        "blocker_work_queue_sha256": _stable_json_sha256(blocker_work_queue),
         "blocker_work_queue": blocker_work_queue,
         "first_blocker_work_item": blocker_work_queue[0] if blocker_work_queue else None,
         "exit_codes": {

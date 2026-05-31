@@ -19,6 +19,12 @@ def _primary_command_fields(kind: str | None, command: str | None) -> dict[str, 
 
 
 
+def _stable_json_sha256(value: object) -> str:
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+
 def _streaming_runner_blockers() -> list[dict[str, object]]:
     return [
         {
@@ -908,6 +914,9 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
             "gate": "kv_backed_decode",
         },
     ]
+    assert handoff["blocker_work_queue_sha256"] == _stable_json_sha256(
+        handoff["blocker_work_queue"]
+    )
     assert handoff["first_blocker_work_item"] == handoff["blocker_work_queue"][0]
     assert handoff["exit_codes"] == {
         "ready": 0,
@@ -1232,6 +1241,9 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
     ]
     assert payload["handoff_summary"]["blocker_work_queue_schema_version"] == 1
     assert payload["handoff_summary"]["blocker_work_queue_count"] == 2
+    assert payload["handoff_summary"]["blocker_work_queue_sha256"] == _stable_json_sha256(
+        payload["handoff_summary"]["blocker_work_queue"]
+    )
     assert payload["handoff_summary"]["first_blocker_work_item"]["blocker_kind"] == (
         "oracle_parity_blocked"
     )
@@ -1344,6 +1356,9 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
             "gate": "kv_backed_decode",
         },
     ]
+    assert payload["blocker_work_queue_sha256"] == _stable_json_sha256(
+        payload["blocker_work_queue"]
+    )
     assert payload["first_blocker_work_item"] == payload["blocker_work_queue"][0]
     assert payload["exit_codes"] == {
         "ready": 0,
