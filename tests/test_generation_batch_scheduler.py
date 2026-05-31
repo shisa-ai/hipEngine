@@ -7392,6 +7392,11 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.returncode must be null for planned/skipped rows"):
             c_sweep.validate_sweep_summary(tampered_returncode)
 
+        tampered_missing_duration = json.loads(json.dumps(summary))
+        del tampered_missing_duration["commands"][index]["duration_seconds"]
+        with pytest.raises(ValueError, match=r"commands\[\]\.duration_seconds must be a non-negative number"):
+            c_sweep.validate_sweep_summary(tampered_missing_duration)
+
         tampered_duration = json.loads(json.dumps(summary))
         tampered_duration["commands"][index]["duration_seconds"] = 0.001
         with pytest.raises(ValueError, match=r"commands\[\]\.duration_seconds must be zero for planned rows"):
