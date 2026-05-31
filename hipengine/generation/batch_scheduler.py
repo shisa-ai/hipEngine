@@ -677,7 +677,15 @@ class ResidentBatchScheduler:
             for request in self.active_batch.requests.values()
         )
 
-    def next_decode_work(self) -> WorkItem | None:
+    def next_decode_work(
+        self,
+        *,
+        top_k: int = 0,
+        experts_per_token: int = 0,
+        replay_steps: int = 1,
+        kv_storage_dtype: str = "bf16",
+        layer_plan: str = "all",
+    ) -> WorkItem | None:
         """Emit one decode step over active requests with completed prefill."""
 
         request_ids = tuple(
@@ -689,7 +697,19 @@ class ResidentBatchScheduler:
         )
         if not request_ids:
             return None
-        self._set_bucket_key(request_ids, self._bucket_key(self.shape_key(mode=WorkKind.DECODE)))
+        self._set_bucket_key(
+            request_ids,
+            self._bucket_key(
+                self.shape_key(
+                    mode=WorkKind.DECODE,
+                    top_k=top_k,
+                    experts_per_token=experts_per_token,
+                    replay_steps=replay_steps,
+                    kv_storage_dtype=kv_storage_dtype,
+                    layer_plan=layer_plan,
+                )
+            ),
+        )
         return WorkItem(kind=WorkKind.DECODE, request_ids=request_ids, row_to_request=request_ids)
 
     def sampler_params_block(self, request_ids: Sequence[int]) -> SamplerParamsBlock:

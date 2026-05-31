@@ -1774,11 +1774,14 @@ roll-up/status view.
       `replay_steps`, `draft_depth`, and `tree_shape`, with the context bucket
       covering the workload prompt length and the KV/layer axes matching the
       retained workload; per-request `bucket_key` observability strings include
-      the same KV/layer axes and stale pre-axis strings block promotion; see
-      `BatchShapeKey`, `_record_decode_graph_bucket_metadata`, the serial-bridge
-      shape payload helpers,
+      the same KV/layer axes, stale pre-axis strings block promotion, and
+      retained/schema gates reject KV dtype or layer-plan values that differ
+      from the workload; see `BatchShapeKey`,
+      `_record_decode_graph_bucket_metadata`, the serial-bridge shape payload
+      helpers,
       `test_batch_shape_key_includes_context_bucket_mask_and_mode`,
       `test_resident_scheduler_completion_observability_and_pool_counters`,
+      `test_resident_scheduler_decode_bucket_key_uses_workload_axes`,
       `test_qwen35_retained_records_decode_graph_bucket_metadata`,
       `test_qwen35_retained_request_observability_blockers_cover_row_evidence`,
       `test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates`, and

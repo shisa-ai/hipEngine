@@ -1157,8 +1157,17 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
                     if component_total - request_latency > max(1e-9, request_latency * 1e-6):
                         errors.append("observability.per_request timing components must not exceed completion minus admission for accepted artifacts")
                         break
+        workload_kv_dtype = workload.get("kv_storage_dtype")
+        expected_kv_storage_dtype = workload_kv_dtype if isinstance(workload_kv_dtype, str) else None
+        max_layers = workload.get("max_layers")
+        expected_layer_plan = f"max_layers={max_layers}" if isinstance(max_layers, int) and not isinstance(max_layers, bool) else None
         for row in per_request.values():
-            _valid_request_observability(row, errors)
+            _valid_request_observability(
+                row,
+                errors,
+                expected_kv_storage_dtype=expected_kv_storage_dtype,
+                expected_layer_plan=expected_layer_plan,
+            )
 
     memory = _mapping_at(payload, "memory", errors)
     if concurrency_valid:
@@ -3699,7 +3708,22 @@ def _validate_scaling_ratio(
         errors.append(f"scaling.ratios.{field} must match scaling throughput fields for accepted artifacts")
 
 
-def _valid_request_observability(row: Any, errors: list[str]) -> bool:
+def _bucket_key_axis(bucket_key: str, axis: str) -> str | None:
+    prefix = f"{axis}="
+    for segment in bucket_key.split(":"):
+        if segment.startswith(prefix):
+            value = segment[len(prefix) :]
+            return value if value else None
+    return None
+
+
+def _valid_request_observability(
+    row: Any,
+    errors: list[str],
+    *,
+    expected_kv_storage_dtype: str | None = None,
+    expected_layer_plan: str | None = None,
+) -> bool:
     if not isinstance(row, Mapping):
         errors.append("observability.per_request entries must be objects for accepted artifacts")
         return False
@@ -3734,9 +3758,19 @@ def _valid_request_observability(row: Any, errors: list[str]) -> bool:
         if not isinstance(bucket_key, str) or not bucket_key.strip():
             errors.append("observability.per_request.*.bucket_key must be a non-empty string or null for accepted artifacts")
             ok = False
-        elif ":kv=" not in bucket_key or ":layers=" not in bucket_key:
-            errors.append("observability.per_request.*.bucket_key must include kv and layer-plan axes for accepted artifacts")
-            ok = False
+        else:
+            kv_axis = _bucket_key_axis(bucket_key, "kv")
+            layer_axis = _bucket_key_axis(bucket_key, "layers")
+            if kv_axis is None or layer_axis is None:
+                errors.append("observability.per_request.*.bucket_key must include kv and layer-plan axes for accepted artifacts")
+                ok = False
+            else:
+                if expected_kv_storage_dtype is not None and kv_axis != expected_kv_storage_dtype:
+                    errors.append("observability.per_request.*.bucket_key kv axis must match workload.kv_storage_dtype for accepted artifacts")
+                    ok = False
+                if expected_layer_plan is not None and layer_axis != expected_layer_plan:
+                    errors.append("observability.per_request.*.bucket_key layer-plan axis must match workload.max_layers for accepted artifacts")
+                    ok = False
     if "admission_blocked_reason" in row and row.get("admission_blocked_reason") is not None and (not isinstance(row.get("admission_blocked_reason"), str) or not row.get("admission_blocked_reason").strip()):
         errors.append("observability.per_request.*.admission_blocked_reason must be a non-empty string or null for accepted artifacts")
         ok = False

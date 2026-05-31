@@ -2825,7 +2825,22 @@ def _timing_measurement_blockers(
     return blockers
 
 
-def _request_observability_blockers(per_request: Any, *, expected_concurrency: int) -> list[str]:
+def _bucket_key_axis(bucket_key: str, axis: str) -> str | None:
+    prefix = f"{axis}="
+    for segment in bucket_key.split(":"):
+        if segment.startswith(prefix):
+            value = segment[len(prefix) :]
+            return value if value else None
+    return None
+
+
+def _request_observability_blockers(
+    per_request: Any,
+    *,
+    expected_concurrency: int,
+    expected_kv_storage_dtype: str | None = None,
+    expected_layer_plan: str | None = None,
+) -> list[str]:
     if not isinstance(per_request, Mapping):
         return ["observability.per_request is missing"]
     blockers: list[str] = []
@@ -2890,8 +2905,16 @@ def _request_observability_blockers(per_request: Any, *, expected_concurrency: i
         bucket_key = row.get("bucket_key")
         if bucket_key is not None and (not isinstance(bucket_key, str) or not bucket_key.strip()):
             blockers.append(f"{label}.bucket_key is not a non-empty string or null")
-        elif isinstance(bucket_key, str) and (":kv=" not in bucket_key or ":layers=" not in bucket_key):
-            blockers.append(f"{label}.bucket_key must include kv and layer-plan axes")
+        elif isinstance(bucket_key, str):
+            kv_axis = _bucket_key_axis(bucket_key, "kv")
+            layer_axis = _bucket_key_axis(bucket_key, "layers")
+            if kv_axis is None or layer_axis is None:
+                blockers.append(f"{label}.bucket_key must include kv and layer-plan axes")
+            else:
+                if expected_kv_storage_dtype is not None and kv_axis != str(expected_kv_storage_dtype):
+                    blockers.append(f"{label}.bucket_key kv axis must match expected KV storage dtype")
+                if expected_layer_plan is not None and layer_axis != str(expected_layer_plan):
+                    blockers.append(f"{label}.bucket_key layer-plan axis must match expected layer plan")
         admission_blocked_reason = row.get("admission_blocked_reason")
         if admission_blocked_reason is not None and (not isinstance(admission_blocked_reason, str) or not admission_blocked_reason.strip()):
             blockers.append(f"{label}.admission_blocked_reason is not a non-empty string or null")
@@ -3217,8 +3240,13 @@ def _decode_scheduler_step_native(
     generated_by_request: dict[int, list[dict[str, Any]]],
     *,
     count_output: bool,
+    kv_storage_dtype: str = "bf16",
+    layer_plan: str = "all",
 ) -> tuple[int, bool]:
-    work = scheduler.next_decode_work()
+    work = scheduler.next_decode_work(
+        kv_storage_dtype=kv_storage_dtype,
+        layer_plan=layer_plan,
+    )
     if work is None:
         raise RuntimeError("scheduler did not emit decode work")
     request_ids = tuple(request_id for request_id in work.request_ids if request_id in next_token_by_request)
@@ -3331,6 +3359,8 @@ def _run_native_bench(
                 next_token_by_request,
                 generated_by_request,
                 count_output=False,
+                kv_storage_dtype=kv_policy.storage_dtype.value,
+                layer_plan=f"max_layers={int(max_layers)}",
             )
             scheduler_metadata["decode_native_steps"] += int(native)
             warmup_step_seconds.append(time.perf_counter() - step_start)
@@ -3345,6 +3375,8 @@ def _run_native_bench(
                 next_token_by_request,
                 generated_by_request,
                 count_output=True,
+                kv_storage_dtype=kv_policy.storage_dtype.value,
+                layer_plan=f"max_layers={int(max_layers)}",
             )
             scheduler_metadata["decode_native_steps"] += int(native)
             measured_step_seconds.append(time.perf_counter() - step_start)
@@ -3719,6 +3751,8 @@ def _build_payload(
     observability_blockers = _request_observability_blockers(
         per_request_observability,
         expected_concurrency=args.batch_size,
+        expected_kv_storage_dtype=kv_policy.storage_dtype.value,
+        expected_layer_plan=f"max_layers={int(args.max_layers)}",
     )
     token_evidence_blockers = _execution_token_evidence_blockers(
         bench.get("seed_tokens"),

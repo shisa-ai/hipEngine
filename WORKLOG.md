@@ -53562,3 +53562,23 @@ HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts
 ```
 
 Result: focused retained/schema bucket-key tests PASS; docs diff check PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed queue items still cite concrete tests/code, no item was marked complete for partial work, no retained c>N performance/scaling claim was added, native c>N generated-token equality claims were not changed, and scaling claims were not changed.
+
+## 2026-05-31 — CONCURRENCY bucket-key axis value matching
+
+Tightened P2 bucket-key evidence from axis presence to axis value matching. `ResidentBatchScheduler.next_decode_work(...)` now accepts decode-shape workload axes (`kv_storage_dtype`, `layer_plan`, plus replay/expert fields) so callers can stamp the same label used for graph-bucket capture; the retained native bench passes the active KV policy and `max_layers=<N>` into decode work. Retained-bench blockers and accepted-artifact schema validation now reject per-request bucket labels whose `kv=` or `layers=` values differ from the retained workload, and tests cover the scheduler label override, retained blocker, accepted BF16 schema, and accepted INT8 schema fixture updates. `docs/CONCURRENCY.md` P2 progress now cites the value-mismatch gate. No queue item was closed and no retained c>N performance/scaling claim was added.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+python3 -m compileall -q hipengine/generation/batch_scheduler.py scripts/qwen35_batch_retained_bench.py scripts/qwen35_batch_artifact_schema.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_resident_scheduler_decode_bucket_key_uses_workload_axes tests/test_generation_batch_scheduler.py::test_qwen35_retained_request_observability_blockers_cover_row_evidence tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q
+git diff --check
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+```
+
+Result: focused scheduler/retained/schema bucket-key axis tests PASS; docs diff check PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed queue items still cite concrete tests/code, no item was marked complete for partial work, no retained c>N performance/scaling claim was added, native c>N generated-token equality claims were not changed, and scaling claims were not changed.
