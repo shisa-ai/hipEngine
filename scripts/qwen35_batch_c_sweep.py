@@ -109,6 +109,34 @@ def _primitive_context_lens_matches(value: Any, rows: int) -> bool:
     )
 
 
+def _primitive_device_metadata_blockers(device: Any) -> list[str]:
+    if not isinstance(device, Mapping):
+        return ["device metadata is missing or not an object"]
+    blockers: list[str] = []
+    env = device.get("env")
+    if not isinstance(env, Mapping):
+        blockers.append("device.env is missing or not an object")
+    else:
+        for key in ("HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES", "GPU_DEVICE_ORDINAL"):
+            value = env.get(key)
+            if value is not None and (not isinstance(value, str) or not value):
+                blockers.append(f"device.env.{key} is not a non-empty string when present")
+    for field in ("hipGetDeviceCount_error", "hipGetDevice_error", "hipDeviceGetName_error"):
+        value = device.get(field)
+        if not isinstance(value, int) or isinstance(value, bool) or value != 0:
+            blockers.append(f"device.{field} is missing or not integer zero")
+    visible_count = device.get("visible_device_count")
+    if not isinstance(visible_count, int) or isinstance(visible_count, bool) or visible_count <= 0:
+        blockers.append("device.visible_device_count is missing or not a positive int")
+    current_device = device.get("current_device")
+    if not isinstance(current_device, int) or isinstance(current_device, bool) or current_device < 0:
+        blockers.append("device.current_device is missing or not a non-negative int")
+    device_name = device.get("device_name")
+    if not isinstance(device_name, str) or not device_name:
+        blockers.append("device.device_name is missing or not a non-empty string")
+    return blockers
+
+
 _PROFILER_SYNTHESIZED_FIELDS = RETAINED_ARTIFACT_PROFILER_TRACE_SYNTHESIZED_FIELDS
 _SERIAL_BRIDGE_SCRIPT = RETAINED_ARTIFACT_SERIAL_BRIDGE_SCRIPT
 _LEGACY_NATIVE_BENCH_SCRIPT = RETAINED_ARTIFACT_LEGACY_NATIVE_BENCH_SCRIPT
@@ -455,6 +483,8 @@ def _primitive_correctness_precondition(command: SweepCommand) -> dict[str, Any]
         attn_vs_numpy = payload.get("attn_batch_vs_numpy_max_abs")
         if not _is_bounded_primitive_numpy_oracle(attn_vs_numpy):
             reasons.append("attn_batch_vs_numpy_max_abs is missing, non-finite, negative, or above 2e-5")
+        if not reasons:
+            reasons.extend(_primitive_device_metadata_blockers(payload.get("device")))
     result: dict[str, Any] = {
         "kind": _RETAINED_PRECONDITION_KINDS[0],
         "artifact_path": str(primitive_path),
@@ -473,6 +503,7 @@ def _primitive_correctness_precondition(command: SweepCommand) -> dict[str, Any]
                 },
                 "primitive_context_lens": list(payload["context_lens"]),
                 "primitive_rows": int(payload["rows"]),
+                "primitive_device": dict(payload["device"]),
                 "append_key_mismatch": int(payload["append_key_mismatch"]),
                 "append_value_mismatch": int(payload["append_value_mismatch"]),
                 "attn_batch_vs_c1_max_abs": float(payload["attn_batch_vs_c1_max_abs"]),
@@ -1858,6 +1889,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         "primitive_head_dim",
         "primitive_context_lens",
         "primitive_rows",
+        "primitive_device",
         "append_key_mismatch",
         "append_value_mismatch",
         "attn_batch_vs_c1_max_abs",
@@ -1928,6 +1960,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         "primitive_head_dim",
         "primitive_context_lens",
         "primitive_rows",
+        "primitive_device",
         "append_key_mismatch",
         "append_value_mismatch",
         "attn_batch_vs_c1_max_abs",
@@ -2431,6 +2464,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     batch_size = entry.get("batch_size")
                     if not isinstance(primitive_rows, int) or isinstance(primitive_rows, bool) or primitive_rows != batch_size:
                         errors.append("commands[].preconditions[].primitive_rows must be a typed int matching retained batch_size")
+                        break
+                    primitive_device_blockers = _primitive_device_metadata_blockers(primitive_precondition.get("primitive_device"))
+                    if primitive_device_blockers:
+                        errors.append("commands[].preconditions[].primitive_device must contain valid device metadata when primitive passed")
                         break
                     if not _is_zero_int(primitive_precondition.get("append_key_mismatch")) or not _is_zero_int(primitive_precondition.get("append_value_mismatch")):
                         errors.append("commands[].preconditions[].primitive append mismatches must be typed integer zeros when passed")

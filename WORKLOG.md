@@ -50426,3 +50426,25 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: focused retained/schema tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs still pass and carry `device_name=AMD Radeon RX 7900 XTX`; benchmark rollup files unchanged. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and generated-token equality requirements remain unchanged.
+
+## 2026-05-31 — CONCURRENCY c-sweep primitive device precondition
+
+Closed the remaining GPU-device provenance gap in the c>N retained sweep planner. `scripts/qwen35_batch_c_sweep.py` now validates the primitive correctness artifact's `device` object before marking the primitive precondition passed, persists that object as `primitive_device` in passed preconditions, and validates persisted summaries so stale/malformed primitive device metadata cannot be replayed as a passed precondition. The c-sweep tests now share a helper primitive summary with GPU1/XTX-style metadata and cover missing/malformed device metadata plus persisted-summary tampering.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_c_sweep.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_batch_c_sweep_primitive_precondition_requires_device_metadata tests/test_generation_batch_scheduler.py::test_batch_c_sweep_runs_retained_when_all_references_are_usable tests/test_generation_batch_scheduler.py::test_batch_c_sweep_fails_retained_row_on_profiler_synthesis_mismatch -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \[(?: |~)\]', queue))
+print(count)
+assert count == 12
+PY
+HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: focused c-sweep primitive-device tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs still pass and carry `device_name=AMD Radeon RX 7900 XTX`; benchmark rollup files unchanged. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and this only hardens preconditions for future GPU1 re-baseline artifacts.

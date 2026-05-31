@@ -1445,9 +1445,9 @@ roll-up/status view.
       gate artifacts missing those zero A/A fields. Primitive correctness
       artifacts also stamp the visible HIP device/env (for example GPU1/XTX via
       `HIP_VISIBLE_DEVICES=1`) so GPU re-baseline runs carry hardware provenance
-      directly in the JSON; retained-bench loading and accepted-artifact schema
-      now reject accepted/passing primitive gates without valid device metadata.
-      This does not close C2.5
+      directly in the JSON; retained-bench loading, accepted-artifact schema,
+      and c-sweep retained preconditions now reject accepted/passing primitive
+      gates without valid device metadata. This does not close C2.5
       because generated-token equality vs independent c=1 for c=4/c=8 is still
       missing.
 - [x] **C2.6 slot-validation and long-context fallback guards.** Add CPU

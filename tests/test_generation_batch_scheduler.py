@@ -534,6 +534,44 @@ class _FakeTextGenerator:
         return [f"generated:{prompt}:{seed}" for prompt, seed in zip(request.prompts, seeds, strict=True)]
 
 
+def _c_sweep_primitive_device_metadata() -> dict[str, object]:
+    return {
+        "env": {"HIP_VISIBLE_DEVICES": "1"},
+        "hipGetDeviceCount_error": 0,
+        "visible_device_count": 1,
+        "hipGetDevice_error": 0,
+        "current_device": 0,
+        "hipDeviceGetName_error": 0,
+        "device_name": "AMD Radeon RX 7900 XTX",
+    }
+
+
+def _write_c_sweep_primitive_summary(output_dir: Path, *, rows: int = 2) -> None:
+    primitive_path = output_dir / f"primitive-c{rows}.json"
+    primitive_path.write_text(
+        json.dumps(
+            {
+                "artifact_path": str(primitive_path),
+                "schema": 1,
+                "seed": 1234,
+                "rows": rows,
+                "block_size": 256,
+                "max_context_len": 4,
+                "num_q_heads": 4,
+                "num_kv_heads": 1,
+                "head_dim": 8,
+                "context_lens": [(idx % 4) + 1 for idx in range(rows)],
+                "passed": True,
+                "append_key_mismatch": 0,
+                "append_value_mismatch": 0,
+                "attn_batch_vs_c1_max_abs": 0.0,
+                "attn_batch_vs_numpy_max_abs": 5.0e-8,
+                "device": _c_sweep_primitive_device_metadata(),
+            }
+        )
+    )
+
+
 def _write_c_sweep_profiler_summary(
     output_dir: Path,
     *,
@@ -3108,6 +3146,7 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
             "primitive_head_dim": 8,
             "primitive_context_lens": [1, 2],
             "primitive_rows": 2,
+            "primitive_device": _c_sweep_primitive_device_metadata(),
             "append_key_mismatch": 0,
             "append_value_mismatch": 0,
             "attn_batch_vs_c1_max_abs": 0.0,
@@ -3158,27 +3197,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_missing(
 ) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
-    (output_dir / "primitive-c2.json").write_text(
-        json.dumps(
-            {
-                "artifact_path": str(output_dir / "primitive-c2.json"),
-                "schema": 1,
-                "seed": 1234,
-                "rows": 2,
-                "block_size": 256,
-                "max_context_len": 4,
-                "num_q_heads": 4,
-                "num_kv_heads": 1,
-                "head_dim": 8,
-                "context_lens": [1, 2],
-                "passed": True,
-                "append_key_mismatch": 0,
-                "append_value_mismatch": 0,
-                "attn_batch_vs_c1_max_abs": 0.0,
-                "attn_batch_vs_numpy_max_abs": 5.0e-8,
-            }
-        )
-    )
+    _write_c_sweep_primitive_summary(output_dir)
     _write_c_sweep_profiler_summary(output_dir, warmup_decode_tokens=1, max_layers=3)
     if missing_artifact != "c1":
         (output_dir / "native-baseline-c1.json").write_text(
@@ -3692,33 +3711,65 @@ def test_batch_c_sweep_primitive_precondition_requires_numpy_oracle(tmp_path: Pa
     }
 
 
+def test_batch_c_sweep_primitive_precondition_requires_device_metadata(tmp_path: Path) -> None:
+    primitive_path = tmp_path / "primitive-c2.json"
+    command = c_sweep.SweepCommand(
+        category="native_diagnostic",
+        batch_size=2,
+        artifact_path=tmp_path / "native-diagnostic-c2.json",
+        argv=(
+            "python3",
+            "scripts/qwen35_batch_retained_bench.py",
+            "--primitive-correctness-json",
+            str(primitive_path),
+        ),
+    )
+    primitive_payload = {
+        "artifact_path": str(primitive_path),
+        "schema": 1,
+        "seed": 1234,
+        "rows": 2,
+        "block_size": 256,
+        "max_context_len": 4,
+        "num_q_heads": 4,
+        "num_kv_heads": 1,
+        "head_dim": 8,
+        "context_lens": [1, 2],
+        "passed": True,
+        "append_key_mismatch": 0,
+        "append_value_mismatch": 0,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "attn_batch_vs_numpy_max_abs": 5.0e-8,
+    }
+    primitive_path.write_text(json.dumps(primitive_payload))
+    missing_device = c_sweep._primitive_correctness_precondition(command)
+    primitive_payload["device"] = {"env": {"HIP_VISIBLE_DEVICES": ""}}
+    primitive_path.write_text(json.dumps(primitive_payload))
+    malformed_device = c_sweep._primitive_correctness_precondition(command)
+    primitive_payload["device"] = _c_sweep_primitive_device_metadata()
+    primitive_path.write_text(json.dumps(primitive_payload))
+    passed = c_sweep._primitive_correctness_precondition(command)
+
+    assert missing_device == {
+        "kind": "primitive_correctness",
+        "artifact_path": str(primitive_path),
+        "passed": False,
+        "reason": "device metadata is missing or not an object",
+    }
+    assert malformed_device["passed"] is False
+    assert "device.env.HIP_VISIBLE_DEVICES is not a non-empty string when present" in malformed_device["reason"]
+    assert "device.visible_device_count is missing or not a positive int" in malformed_device["reason"]
+    assert passed["passed"] is True
+    assert passed["primitive_device"] == _c_sweep_primitive_device_metadata()
+
+
 def test_batch_c_sweep_skips_retained_when_scaling_reference_shape_missing(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
-    (output_dir / "primitive-c2.json").write_text(
-        json.dumps(
-            {
-                "artifact_path": str(output_dir / "primitive-c2.json"),
-                "schema": 1,
-                "seed": 1234,
-                "rows": 2,
-                "block_size": 256,
-                "max_context_len": 4,
-                "num_q_heads": 4,
-                "num_kv_heads": 1,
-                "head_dim": 8,
-                "context_lens": [1, 2],
-                "passed": True,
-                "append_key_mismatch": 0,
-                "append_value_mismatch": 0,
-                "attn_batch_vs_c1_max_abs": 0.0,
-                "attn_batch_vs_numpy_max_abs": 5.0e-8,
-            }
-        )
-    )
+    _write_c_sweep_primitive_summary(output_dir)
     _write_c_sweep_profiler_summary(output_dir, warmup_decode_tokens=1, max_layers=3)
     (output_dir / "native-baseline-c1.json").write_text(
         json.dumps(
@@ -3790,27 +3841,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_reason_is_non_null(
 ) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
-    (output_dir / "primitive-c2.json").write_text(
-        json.dumps(
-            {
-                "artifact_path": str(output_dir / "primitive-c2.json"),
-                "schema": 1,
-                "seed": 1234,
-                "rows": 2,
-                "block_size": 256,
-                "max_context_len": 4,
-                "num_q_heads": 4,
-                "num_kv_heads": 1,
-                "head_dim": 8,
-                "context_lens": [1, 2],
-                "passed": True,
-                "append_key_mismatch": 0,
-                "append_value_mismatch": 0,
-                "attn_batch_vs_c1_max_abs": 0.0,
-                "attn_batch_vs_numpy_max_abs": 5.0e-8,
-            }
-        )
-    )
+    _write_c_sweep_primitive_summary(output_dir)
     _write_c_sweep_profiler_summary(output_dir, warmup_decode_tokens=1, max_layers=3)
     (output_dir / "native-baseline-c1.json").write_text(
         json.dumps(
@@ -4027,27 +4058,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_rate_arithmetic_mis
 ) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
-    (output_dir / "primitive-c2.json").write_text(
-        json.dumps(
-            {
-                "artifact_path": str(output_dir / "primitive-c2.json"),
-                "schema": 1,
-                "seed": 1234,
-                "rows": 2,
-                "block_size": 256,
-                "max_context_len": 4,
-                "num_q_heads": 4,
-                "num_kv_heads": 1,
-                "head_dim": 8,
-                "context_lens": [1, 2],
-                "passed": True,
-                "append_key_mismatch": 0,
-                "append_value_mismatch": 0,
-                "attn_batch_vs_c1_max_abs": 0.0,
-                "attn_batch_vs_numpy_max_abs": 5.0e-8,
-            }
-        )
-    )
+    _write_c_sweep_primitive_summary(output_dir)
     _write_c_sweep_profiler_summary(output_dir, warmup_decode_tokens=1, max_layers=3)
     (output_dir / "native-baseline-c1.json").write_text(
         json.dumps(
@@ -4118,27 +4129,7 @@ def test_batch_c_sweep_skips_retained_when_scaling_reference_rate_arithmetic_mis
 def test_batch_c_sweep_skips_retained_when_profiler_summary_missing(tmp_path: Path, monkeypatch) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
-    (output_dir / "primitive-c2.json").write_text(
-        json.dumps(
-            {
-                "artifact_path": str(output_dir / "primitive-c2.json"),
-                "schema": 1,
-                "seed": 1234,
-                "rows": 2,
-                "block_size": 256,
-                "max_context_len": 4,
-                "num_q_heads": 4,
-                "num_kv_heads": 1,
-                "head_dim": 8,
-                "context_lens": [1, 2],
-                "passed": True,
-                "append_key_mismatch": 0,
-                "append_value_mismatch": 0,
-                "attn_batch_vs_c1_max_abs": 0.0,
-                "attn_batch_vs_numpy_max_abs": 5.0e-8,
-            }
-        )
-    )
+    _write_c_sweep_primitive_summary(output_dir)
     (output_dir / "native-baseline-c1.json").write_text(
         json.dumps(
             {
@@ -4208,27 +4199,7 @@ def test_batch_c_sweep_skips_retained_when_profiler_summary_missing(tmp_path: Pa
 def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Path, monkeypatch) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
-    (output_dir / "primitive-c2.json").write_text(
-        json.dumps(
-            {
-                "artifact_path": str(output_dir / "primitive-c2.json"),
-                "schema": 1,
-                "seed": 1234,
-                "rows": 2,
-                "block_size": 256,
-                "max_context_len": 4,
-                "num_q_heads": 4,
-                "num_kv_heads": 1,
-                "head_dim": 8,
-                "context_lens": [1, 2],
-                "passed": True,
-                "append_key_mismatch": 0,
-                "append_value_mismatch": 0,
-                "attn_batch_vs_c1_max_abs": 0.0,
-                "attn_batch_vs_numpy_max_abs": 5.0e-8,
-            }
-        )
-    )
+    _write_c_sweep_primitive_summary(output_dir)
     _write_c_sweep_profiler_summary(output_dir, warmup_decode_tokens=1, max_layers=3)
     (output_dir / "native-baseline-c1.json").write_text(
         json.dumps(
@@ -5631,6 +5602,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_primitive_precondition_rows["commands"][-1]["preconditions"][0]["primitive_rows"] = 3
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_rows must be a typed int matching retained batch_size"):
         c_sweep.validate_sweep_summary(tampered_primitive_precondition_rows)
+    tampered_primitive_precondition_device = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_device["commands"][-1]["preconditions"][0]["primitive_device"]["device_name"] = ""
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_device must contain valid device metadata when primitive passed"):
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_device)
     tampered_primitive_precondition_float_rows = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_float_rows["commands"][-1]["preconditions"][0]["primitive_rows"] = 2.0
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_rows must be a typed int matching retained batch_size"):
@@ -5679,6 +5654,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         "primitive_head_dim": 8,
         "primitive_context_lens": [1, 2],
         "primitive_rows": 2,
+        "primitive_device": _c_sweep_primitive_device_metadata(),
         "append_key_mismatch": 0,
         "append_value_mismatch": 0,
         "attn_batch_vs_c1_max_abs": 0.0,
@@ -5871,27 +5847,7 @@ def test_batch_c_sweep_rejects_retained_profiler_synthesis_mismatch(tmp_path: Pa
 def test_batch_c_sweep_fails_retained_row_on_profiler_synthesis_mismatch(tmp_path: Path, monkeypatch) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
-    (output_dir / "primitive-c2.json").write_text(
-        json.dumps(
-            {
-                "artifact_path": str(output_dir / "primitive-c2.json"),
-                "schema": 1,
-                "seed": 1234,
-                "rows": 2,
-                "block_size": 256,
-                "max_context_len": 4,
-                "num_q_heads": 4,
-                "num_kv_heads": 1,
-                "head_dim": 8,
-                "context_lens": [1, 2],
-                "passed": True,
-                "append_key_mismatch": 0,
-                "append_value_mismatch": 0,
-                "attn_batch_vs_c1_max_abs": 0.0,
-                "attn_batch_vs_numpy_max_abs": 5.0e-8,
-            }
-        )
-    )
+    _write_c_sweep_primitive_summary(output_dir)
     _write_c_sweep_profiler_summary(output_dir, warmup_decode_tokens=1, max_layers=3)
     (output_dir / "native-baseline-c1.json").write_text(
         json.dumps(
