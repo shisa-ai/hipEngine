@@ -572,8 +572,10 @@ reporting.
   BF16 KV write/decode registry keys plus decode/prompt 256-token paged-attention
   span contracts plus the planned per-layer KV launch schedule (45 layers ×
   prompt KV write, decode KV write, gated attention = 135 planned operations),
-  lists next actions for the StepFun-capable oracle and KV-backed decode blockers,
-  and supports `--fail-on-blocked` for CI/handoff checks.
+  and includes a compact `handoff_summary` with open blockers, blocked gates,
+  ready signals, next-command coverage, and the no-performance/no-e2e-claim
+  policy. It lists next actions for the StepFun-capable oracle and KV-backed
+  decode blockers, and supports `--fail-on-blocked` for CI/handoff checks.
   This checklist item is partial rather than complete because the current runner
   is host-composed/chunked and does not yet implement the final KV-backed
   one-token decode path.

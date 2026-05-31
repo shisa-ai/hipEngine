@@ -28122,3 +28122,33 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted planner/load-smoke/status tests passed (`11 passed`), artifact schema check printed `stepfun kv launch schedule artifacts ok`, and the full StepFun guard passed (`103 passed` plus CPU-reference fixture checks).
+
+## 2026-05-31 — StepFun handoff summary recorded
+
+Extended the consolidated StepFun Q3_K_L correctness-status helper with a compact `handoff_summary` so cross-session consumers do not need to parse every detailed section to understand the current state. The regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json` now records the open P0-P12 metric, the two open blockers (`oracle_parity_blocked`, `kv_backed_decode_not_wired`), blocked readiness gates (`oracle_parity`, `kv_backed_decode`, `e2e_inference`), ready signals (all-layer prompt smoke, oracle target, KV dispatch, KV launch schedule), next-command coverage, and an explicit no-performance/no-e2e-claim policy. This is handoff/status evidence only; `oracle_parity=false`, `kv_backed_decode_ready=false`, and `e2e_inference_ready=false` remain unchanged.
+
+Updated `tests/test_stepfun_correctness_status.py` to assert the handoff summary and clarified the P11 status paragraph in `docs/STEPFUN.md`.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 - <<'PY'
+import json
+p=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+h=p['handoff_summary']
+assert h['open_blocker_count'] == 2
+assert h['open_blockers'] == ['oracle_parity_blocked', 'kv_backed_decode_not_wired']
+assert h['blocked_gates'] == ['oracle_parity', 'kv_backed_decode', 'e2e_inference']
+assert h['ready_signals']['all_layer_prompt_smoke'] is True
+assert h['ready_signals']['kv_decode_dispatch_ready'] is True
+assert h['ready_signals']['kv_launch_schedule_recorded'] is True
+assert h['no_claim_policy']['performance_claim_allowed'] is False
+assert p['oracle_parity'] is False
+assert p['kv_backed_decode_ready'] is False
+print('stepfun handoff summary status ok')
+PY
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted status tests passed (`3 passed`), handoff summary schema check printed `stepfun handoff summary status ok`, and the full StepFun guard passed (`103 passed` plus CPU-reference fixture checks).

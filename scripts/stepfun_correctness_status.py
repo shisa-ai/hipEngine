@@ -408,6 +408,61 @@ def _readiness_gates(
     }
 
 
+def _handoff_summary(
+    *,
+    docs_status: dict[str, object],
+    blockers: Sequence[dict[str, object]],
+    readiness_gates: dict[str, object],
+    next_action_commands: dict[str, object],
+    all_layer_prompt_smoke: bool,
+    oracle_progress: dict[str, object],
+    kv_decode_dispatch_ready: bool,
+    kv_decode_dispatch_progress: dict[str, object],
+) -> dict[str, object]:
+    """Return a compact status summary for cross-session handoff."""
+
+    blocker_kinds = [str(blocker.get("kind")) for blocker in blockers]
+    ready_gates: list[str] = []
+    blocked_gates: list[str] = []
+    for name, gate_obj in readiness_gates.items():
+        gate = dict(gate_obj) if isinstance(gate_obj, dict) else {}
+        if gate.get("ready") is True:
+            ready_gates.append(str(name))
+        else:
+            blocked_gates.append(str(name))
+    launch_schedule = dict(kv_decode_dispatch_progress.get("launch_schedule", {}))
+    return {
+        "status": "blocked" if blocker_kinds else "ready",
+        "open_or_partial_items_p0_p12": docs_status.get("open_or_partial_count_p0_p12"),
+        "open_blocker_count": len(blocker_kinds),
+        "open_blockers": blocker_kinds,
+        "ready_gates": ready_gates,
+        "blocked_gates": blocked_gates,
+        "ready_signals": {
+            "all_layer_prompt_smoke": all_layer_prompt_smoke,
+            "oracle_target_recorded": oracle_progress.get("expected_next_token_id") is not None,
+            "kv_decode_dispatch_ready": kv_decode_dispatch_ready,
+            "kv_launch_schedule_recorded": bool(launch_schedule.get("operation_count")),
+        },
+        "blocked_signals": {
+            "oracle_parity": "oracle_parity" in blocked_gates,
+            "kv_backed_decode": "kv_backed_decode" in blocked_gates,
+            "e2e_inference": "e2e_inference" in blocked_gates,
+        },
+        "next_commands_available_for": [
+            kind for kind in blocker_kinds if kind in next_action_commands
+        ],
+        "no_claim_policy": {
+            "performance_claim_allowed": False,
+            "e2e_inference_claim_allowed": False,
+            "reason": (
+                "StepFun performance or e2e readiness claims require oracle_parity and "
+                "kv_backed_decode readiness gates to pass first."
+            ),
+        },
+    }
+
+
 def build_status(
     prompt_artifact: Path,
     oracle_artifact: Path,
@@ -495,6 +550,16 @@ def build_status(
             ),
         },
     ]
+    handoff_summary = _handoff_summary(
+        docs_status=docs_status,
+        blockers=blockers,
+        readiness_gates=readiness_gates,
+        next_action_commands=next_action_commands,
+        all_layer_prompt_smoke=all_layer_prompt_smoke,
+        oracle_progress=oracle_progress,
+        kv_decode_dispatch_ready=kv_decode_dispatch_ready,
+        kv_decode_dispatch_progress=kv_decode_dispatch_progress,
+    )
     return {
         "status": "blocked" if blockers else "ready",
         "model": "Step-3.7-flash-Q3_K_L",
@@ -527,6 +592,7 @@ def build_status(
         "kv_backed_decode_ready": kv_backed_decode_ready,
         "e2e_inference_ready": e2e_inference_ready,
         "readiness_gates": readiness_gates,
+        "handoff_summary": handoff_summary,
         "blockers": blockers,
         "next_actions": next_actions,
         "next_action_commands": next_action_commands,

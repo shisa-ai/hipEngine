@@ -418,6 +418,30 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     }
     assert gates["e2e_inference"]["ready"] is False
     assert gates["e2e_inference"]["blocked_by"] == ["oracle_parity", "kv_backed_decode"]
+    handoff = status["handoff_summary"]
+    assert handoff["status"] == "blocked"
+    assert handoff["open_or_partial_items_p0_p12"] == 2
+    assert handoff["open_blocker_count"] == 2
+    assert handoff["open_blockers"] == ["oracle_parity_blocked", "kv_backed_decode_not_wired"]
+    assert handoff["ready_gates"] == []
+    assert handoff["blocked_gates"] == ["oracle_parity", "kv_backed_decode", "e2e_inference"]
+    assert handoff["ready_signals"] == {
+        "all_layer_prompt_smoke": True,
+        "kv_decode_dispatch_ready": True,
+        "kv_launch_schedule_recorded": True,
+        "oracle_target_recorded": True,
+    }
+    assert handoff["blocked_signals"] == {
+        "e2e_inference": True,
+        "kv_backed_decode": True,
+        "oracle_parity": True,
+    }
+    assert handoff["next_commands_available_for"] == [
+        "oracle_parity_blocked",
+        "kv_backed_decode_not_wired",
+    ]
+    assert handoff["no_claim_policy"]["performance_claim_allowed"] is False
+    assert handoff["no_claim_policy"]["e2e_inference_claim_allowed"] is False
     assert {blocker["kind"] for blocker in status["blockers"]} == {
         "oracle_parity_blocked",
         "kv_backed_decode_not_wired",
@@ -507,6 +531,16 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
         "oracle_parity",
         "kv_backed_decode",
     ]
+    assert payload["handoff_summary"]["open_blockers"] == [
+        "oracle_parity_blocked",
+        "kv_backed_decode_not_wired",
+    ]
+    assert payload["handoff_summary"]["blocked_gates"] == [
+        "oracle_parity",
+        "kv_backed_decode",
+        "e2e_inference",
+    ]
+    assert payload["handoff_summary"]["no_claim_policy"]["performance_claim_allowed"] is False
     assert payload["next_action_commands"]["oracle_parity_blocked"]["rerun_command_shell"].startswith(
         "/tmp/llama-cli"
     )

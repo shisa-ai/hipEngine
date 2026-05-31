@@ -33,13 +33,48 @@
         "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
       },
       {
-        "line": 584,
+        "line": 586,
         "state": "partial",
         "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
       }
     ]
   },
   "e2e_inference_ready": false,
+  "handoff_summary": {
+    "blocked_gates": [
+      "oracle_parity",
+      "kv_backed_decode",
+      "e2e_inference"
+    ],
+    "blocked_signals": {
+      "e2e_inference": true,
+      "kv_backed_decode": true,
+      "oracle_parity": true
+    },
+    "next_commands_available_for": [
+      "oracle_parity_blocked",
+      "kv_backed_decode_not_wired"
+    ],
+    "no_claim_policy": {
+      "e2e_inference_claim_allowed": false,
+      "performance_claim_allowed": false,
+      "reason": "StepFun performance or e2e readiness claims require oracle_parity and kv_backed_decode readiness gates to pass first."
+    },
+    "open_blocker_count": 2,
+    "open_blockers": [
+      "oracle_parity_blocked",
+      "kv_backed_decode_not_wired"
+    ],
+    "open_or_partial_items_p0_p12": 2,
+    "ready_gates": [],
+    "ready_signals": {
+      "all_layer_prompt_smoke": true,
+      "kv_decode_dispatch_ready": true,
+      "kv_launch_schedule_recorded": true,
+      "oracle_target_recorded": true
+    },
+    "status": "blocked"
+  },
   "kv_backed_decode_ready": false,
   "kv_decode_dispatch_progress": {
     "all_registered": true,
@@ -329,8 +364,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "d7eb75d58391c48e35166c53b10d210c81810db4cc7e9d99d444aafae1e8e5d1",
-      "size_bytes": 50420
+      "sha256": "e5090c48f422ee6facc140d80b281da999d0fe453d70162259f9ba1ec2ddab16",
+      "size_bytes": 50585
     },
     "oracle": {
       "exists": true,
