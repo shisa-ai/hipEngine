@@ -24511,49 +24511,21 @@ Next multiloop focus: validate this best route on longer horizons (D128/D160)
 or build a deployable route-history mechanism.  Do not default threshold=4 or
 the expanded W4 site mask from this D64-only evidence.
 
-## 2026-05-31 — DFlash multiloop iter26 threshold4 full-attn K/V fused route
+## 2026-05-31 — DFlash multiloop iter26 no-keep full-attn K/V fused route
 
-Active loop: `dflash-27b-w7900/run-20260531-102747`.  Iteration 26 switched
-after three no-keep variants (shared gate/up site, draft confidence floor,
-`HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH=multi_row`) to a different target-verifier
-cost lever: opt-in full-attention K/V pack8 fusion on top of the retained
-threshold4 regenerated 7-chain / 2-AR profile route.
-
-Command shape:
+Active loop: `dflash-27b-w7900/run-20260531-102747`.  Iteration 26 tested
+opt-in `HIPENGINE_PARO_FULL_ATTN_KV_PACK8_FUSED=1` on top of the retained
+threshold4 regenerated 7-chain / 2-AR route:
 
 ```bash
 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_PARO_FULL_ATTN_KV_PACK8_FUSED=1 HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD=4 HIPENGINE_W4_MULTI_ROW_PACK8_SITES=full_qk,linear_qkv_z,dense_gate_up,single_full_o,single_full_v,single_linear_out,single_shared_down,single_dense_down PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --verifier-graph auto --full-attn-chain-mode batched --canonical-commit-mode bulk_direct --profile-route-manifest /tmp/multiloop-dflash-27b-w7900-threshold4-regenerated-manifest.json --drafter-query-mode budget_prefix --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/multiloop-dflash-27b-w7900.json
 ```
 
-Result: exact `9/9` on four full W7900 27B B=4/D64 replicates.  Ratios were
-`1.2763x`, `1.2628x`, `1.2696x`, `1.2686x` AR; retained rollup uses the
-4-run median `1.2691x` AR and `41.10 tok/s` DFlash/spec vs prior threshold4
-regenerated `1.2646x`, `40.94 tok/s` (+0.4% spec tok/s).  Acceptance and route
-mix are unchanged: 7 chain / 2 AR, avg accept `2.7479`, rows/output `1.2587`.
-
-This is **not defaulted**.  The stack is still profile-history routing + opt-in
-verifier graph + `bulk_direct` + `budget_prefix` + expanded W4 site mask +
-threshold=4 + opt-in full-attn K/V fusion.  Threshold=4 has a known non-exact
-chain row, so this remains only a diagnostic route for this W7900 27B B=4/D64
-gate.
-
-Validation:
-
-```bash
-python3 -m py_compile scripts/dflash_chain_e2e_bench.py scripts/dflash_build_profile_route_manifest.py hipengine/runtime/qwen35_paro.py
-HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_paro_awq_gemv_multi_row_decode.py tests/test_dflash_profile_route_manifest.py tests/test_dflash_draft_confidence.py tests/test_speculative_benchmark.py
-python3 -m json.tool benchmarks/results/2026-05-31-hipengine-dflash-27b-threshold4-full-attn-kv-fused.json >/tmp/hipengine-dflash-27b-threshold4-full-attn-kv-fused-artifact-check.json
-```
-
-Result: targeted pytest `17 passed`; artifact JSON valid.
-
-Retained artifact:
-- `benchmarks/results/2026-05-31-hipengine-dflash-27b-threshold4-full-attn-kv-fused.json`
-
-Docs/rollup updated:
-- `docs/DFLASH.md` table now includes the full-attn K/V fused threshold4 route.
-- `benchmarks/README.md` and `benchmarks/CHANGELOG.md` retained diagnostic row.
-
-Next multiloop focus: confirm whether the small fused-K/V delta persists on a
-longer D128/D160 horizon or stop/park if route-history, verifier graph,
-threshold4, W4-site, and full-attn K/V levers are considered exhausted.
+Result: exact `9/9` on four full W7900 27B B=4/D64 replicates; ratios were
+`1.2763x`, `1.2628x`, `1.2696x`, `1.2686x` AR and the 4-run median was
+`1.2691x` / `41.10 tok/s`.  Guard passed (`py_compile` plus targeted pytest
+`17 passed`).  The multiloop acceptance gate still rejected/no-kept it because
+the +0.36% median speedup vs retained `1.2646x` was not beyond run variance
+(MAD `0.00339`, one replicate below the retained best).  Docs/artifact rollup
+from the attempted retention were reverted; retained best remains
+`cfab012` threshold4 regenerated route at `1.2646x`, `40.94 tok/s`.
