@@ -1208,10 +1208,14 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
             errors.append("memory.stable_block_id.audit must be a non-empty string for accepted artifacts")
     prefix_sharing = memory.get("prefix_sharing")
     if isinstance(prefix_sharing, Mapping):
-        if not isinstance(prefix_sharing.get("enabled"), bool):
+        prefix_enabled = prefix_sharing.get("enabled")
+        prefix_savings = prefix_sharing.get("savings_bytes")
+        if not isinstance(prefix_enabled, bool):
             errors.append("memory.prefix_sharing.enabled must be a bool for accepted artifacts")
-        if not _is_nonnegative_number(prefix_sharing.get("savings_bytes")):
+        if not _is_nonnegative_number(prefix_savings):
             errors.append("memory.prefix_sharing.savings_bytes must be finite non-negative numeric for accepted artifacts")
+        elif prefix_enabled is False and float(prefix_savings) != 0.0:
+            errors.append("memory.prefix_sharing.savings_bytes must be 0 when prefix sharing is disabled for accepted artifacts")
 
 
 def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[str]) -> None:

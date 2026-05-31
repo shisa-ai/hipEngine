@@ -2590,10 +2590,14 @@ def _memory_evidence_blockers(memory: Mapping[str, Any]) -> list[str]:
     if not isinstance(prefix_sharing, Mapping):
         blockers.append("memory.prefix_sharing evidence is missing")
     else:
-        if not isinstance(prefix_sharing.get("enabled"), bool):
+        prefix_enabled = prefix_sharing.get("enabled")
+        prefix_savings = prefix_sharing.get("savings_bytes")
+        if not isinstance(prefix_enabled, bool):
             blockers.append("memory.prefix_sharing.enabled is not bool")
-        if not _is_finite_nonnegative_number(prefix_sharing.get("savings_bytes")):
+        if not _is_finite_nonnegative_number(prefix_savings):
             blockers.append("memory.prefix_sharing.savings_bytes is unavailable or non-finite")
+        elif prefix_enabled is False and float(prefix_savings) != 0.0:
+            blockers.append("memory.prefix_sharing.savings_bytes is nonzero while prefix sharing is disabled")
     return blockers
 
 

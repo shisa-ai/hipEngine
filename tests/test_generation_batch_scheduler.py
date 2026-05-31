@@ -14422,6 +14422,12 @@ def test_qwen35_retained_memory_evidence_blockers_cover_required_fields() -> Non
     assert "memory.prefix_sharing.enabled is not bool" in blockers
     assert "memory.prefix_sharing.savings_bytes is unavailable or non-finite" in blockers
 
+    disabled_with_savings = json.loads(json.dumps(complete_memory))
+    disabled_with_savings["prefix_sharing"]["savings_bytes"] = 4096
+    assert "memory.prefix_sharing.savings_bytes is nonzero while prefix sharing is disabled" in retained_bench._memory_evidence_blockers(
+        disabled_with_savings
+    )
+
 
 def test_qwen35_retained_decode_shape_key_blockers_require_concurrency_axes() -> None:
     valid = {
@@ -16965,6 +16971,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     negative_prefix_savings["memory"]["prefix_sharing"]["savings_bytes"] = -1
     with pytest.raises(ValueError, match="prefix_sharing.savings_bytes must be finite non-negative numeric"):
         validate_cn_diagnostic_artifact_payload(negative_prefix_savings)
+
+    disabled_prefix_with_savings = json.loads(json.dumps(accepted))
+    disabled_prefix_with_savings["memory"]["prefix_sharing"]["savings_bytes"] = 4096
+    with pytest.raises(ValueError, match="prefix_sharing.savings_bytes must be 0 when prefix sharing is disabled"):
+        validate_cn_diagnostic_artifact_payload(disabled_prefix_with_savings)
 
     missing_scaling = dict(accepted)
     missing_scaling.pop("scaling")
