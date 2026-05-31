@@ -7277,6 +7277,16 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         str(tmp_path / "artifacts" / "primitive-c4.json"),
         str(tmp_path / "artifacts" / "primitive-c8.json"),
     ]
+    primitive_entry_indices = [
+        index for index, entry in enumerate(summary["commands"]) if entry["category"] == "primitive"
+    ]
+    for index in primitive_entry_indices:
+        tampered_seed = json.loads(json.dumps(summary))
+        primitive_argv = tampered_seed["commands"][index]["argv"]
+        primitive_argv[primitive_argv.index("--seed") + 1] = "4321"
+        tampered_seed["commands"][index]["command"] = shlex.join(primitive_argv)
+        with pytest.raises(ValueError, match=r"commands\[\]\.argv --seed must match required primitive correctness seed"):
+            c_sweep.validate_sweep_summary(tampered_seed)
     optional_planned = [item for item in planned if item.category in {"int8_native_diagnostic", "gguf_native_diagnostic"}]
     optional_entries = [
         entry
