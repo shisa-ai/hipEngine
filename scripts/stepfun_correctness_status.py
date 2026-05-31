@@ -84,6 +84,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--oracle-helper-command-only",
+        action="store_true",
+        help=(
+            "Emit only next_action_commands.oracle_parity_blocked.oracle_helper_refresh_command "
+            "for oracle artifact regeneration. Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--first-blocker-sha-only",
         action="store_true",
         help=(
@@ -1078,6 +1086,9 @@ def _handoff_summary(
             "summary_only": "handoff_summary",
             "readiness_summary_only": "readiness_summary",
             "readiness_summary_sha_only": "readiness_summary_sha256",
+            "oracle_helper_command_only": (
+                "next_action_commands.oracle_parity_blocked.oracle_helper_refresh_command"
+            ),
             "blocker_work_queue_only": "handoff_summary.blocker_work_queue",
             "blocker_work_queue_meta_only": "handoff_summary.blocker_work_queue_meta",
             "blocker_work_queue_sha_only": "handoff_summary.blocker_work_queue_sha256",
@@ -1391,6 +1402,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["handoff_summary"]["first_blocker_work_item"]
     elif args.first_blocker_sha_only:
         result = status["handoff_summary"]["first_blocker_work_item_sha256"]
+    elif args.oracle_helper_command_only:
+        result = status["next_action_commands"]["oracle_parity_blocked"].get(
+            "oracle_helper_refresh_command"
+        )
     elif args.readiness_summary_sha_only:
         result = status["readiness_summary_sha256"]
     elif args.readiness_summary_only:

@@ -964,6 +964,9 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "summary_only": "handoff_summary",
         "readiness_summary_only": "readiness_summary",
         "readiness_summary_sha_only": "readiness_summary_sha256",
+        "oracle_helper_command_only": (
+            "next_action_commands.oracle_parity_blocked.oracle_helper_refresh_command"
+        ),
         "blocker_work_queue_only": "handoff_summary.blocker_work_queue",
         "blocker_work_queue_meta_only": "handoff_summary.blocker_work_queue_meta",
         "blocker_work_queue_sha_only": "handoff_summary.blocker_work_queue_sha256",
@@ -1552,6 +1555,9 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "summary_only": "handoff_summary",
         "readiness_summary_only": "readiness_summary",
         "readiness_summary_sha_only": "readiness_summary_sha256",
+        "oracle_helper_command_only": (
+            "next_action_commands.oracle_parity_blocked.oracle_helper_refresh_command"
+        ),
         "blocker_work_queue_only": "handoff_summary.blocker_work_queue",
         "blocker_work_queue_meta_only": "handoff_summary.blocker_work_queue_meta",
         "blocker_work_queue_sha_only": "handoff_summary.blocker_work_queue_sha256",
@@ -1813,6 +1819,50 @@ def test_stepfun_correctness_status_first_blocker_sha_only(capsys, tmp_path: Pat
     assert json.loads(output.read_text()) == status["handoff_summary"][
         "first_blocker_work_item_sha256"
     ]
+
+
+def test_stepfun_correctness_status_oracle_helper_command_only(capsys, tmp_path: Path) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "oracle-helper-command.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--blocker-work-queue-only",
+            "--readiness-summary-only",
+            "--oracle-helper-command-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(output.read_text())
+    assert payload == status["next_action_commands"]["oracle_parity_blocked"][
+        "oracle_helper_refresh_command"
+    ]
+    assert payload == _oracle_helper_command(prompt, oracle)
+
 
 
 def test_stepfun_correctness_status_first_blocker_only(capsys, tmp_path: Path) -> None:
