@@ -11057,6 +11057,21 @@ def test_qwen35_retained_command_labels_preserve_visible_hip_device_env(monkeypa
         expected_references=None,
         expected_kv_policy=None,
     ) == []
+    profiler_command_without_env = profiler_command.replace(
+        "-- env HIP_VISIBLE_DEVICES=1 python3",
+        "-- python3",
+    )
+    assert "profiler command device env prefix must match retained command" in retained_bench._profiler_command_provenance_blockers(
+        profiler_command_without_env,
+        trace_dir=None,
+        profiler_artifact_path=profiler_json,
+        retained_artifact_path=retained_json,
+        expected_workload=None,
+        expected_inputs=None,
+        expected_build=None,
+        expected_references=None,
+        expected_kv_policy=None,
+    )
 
 
 def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_path: Path) -> None:
@@ -11625,7 +11640,8 @@ def test_qwen35_retained_memory_payload_uses_bench_evidence() -> None:
     assert retained_bench._memory_evidence_blockers(memory) == []
 
 
-def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_paths() -> None:
+def test_qwen35_retained_profiler_provenance_blockers_require_retained_trace_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("HIP_VISIBLE_DEVICES", raising=False)
     valid = {
         "artifact_path": "benchmarks/results/profiler-c2.json",
         "source_artifact_path": "benchmarks/results/profiler-c2.json",

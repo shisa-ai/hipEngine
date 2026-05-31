@@ -93,6 +93,8 @@ _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = PROFILER_DISALLOWED_DIAGNOSTIC_KERN
 _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS = RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS
 _REQUIRED_PRIMITIVE_CORRECTNESS_SEED = RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SEED
 _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT = RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT
+_COMMAND_ENV_KEYS = ("HIP_VISIBLE_DEVICES",)
+
 
 def _required_primitive_context_lens(rows: int) -> list[int]:
     max_context_len = _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS["max_context_len"]
@@ -1733,6 +1735,23 @@ def _strip_command_env_prefix(parts: Sequence[str]) -> list[str]:
     return list(parts[idx:])
 
 
+def _command_device_env_assignments(parts: Sequence[str]) -> dict[str, str]:
+    idx = 0
+    if parts and Path(parts[0]).name == "env":
+        idx = 1
+    assignments: dict[str, str] = {}
+    while idx < len(parts) and _is_env_assignment_token(parts[idx]):
+        key, _sep, value = parts[idx].partition("=")
+        if key in _COMMAND_ENV_KEYS:
+            assignments[key] = value
+        idx += 1
+    return assignments
+
+
+def _current_command_device_env_assignments() -> dict[str, str]:
+    return _command_device_env_assignments(_command_env_prefix_parts())
+
+
 def _command_flag_count(parts: Sequence[str], flag: str) -> int:
     prefix = f"{flag}="
     return sum(1 for part in parts if part == flag or part.startswith(prefix))
@@ -1779,6 +1798,8 @@ def _profiler_command_provenance_blockers(
         for flag in _RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS:
             if _command_has_flag(retained_command, flag):
                 blockers.append(f"profiler command must not include {flag}")
+        if _command_device_env_assignments(profiled_segment) != _current_command_device_env_assignments():
+            blockers.append("profiler command device env prefix must match retained command")
         profiled_launch_segment = _strip_command_env_prefix(profiled_segment)
         if (
             len(profiled_launch_segment) < 2
@@ -2445,9 +2466,6 @@ def _hardware_context() -> dict[str, Any]:
         "rocminfo": _run_capture(["bash", "-lc", "rocminfo | grep -E 'Name:|gfx' | head -4"], timeout=10.0),
         "rocm_smi": _run_capture(["rocm-smi", "--showmeminfo", "vram", "--showuse", "--showtemp"], timeout=10.0),
     }
-
-
-_COMMAND_ENV_KEYS = ("HIP_VISIBLE_DEVICES",)
 
 
 def _command_env_prefix_parts() -> list[str]:
