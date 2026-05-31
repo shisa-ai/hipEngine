@@ -421,8 +421,10 @@ def _kv_backed_decode_gap_report(
         ],
         "missing_preconditions": missing_preconditions,
         "missing_precondition_count": len(missing_preconditions),
+        "first_missing_precondition": missing_preconditions[0] if missing_preconditions else None,
         "missing_evidence": missing_evidence,
         "missing_evidence_count": len(missing_evidence),
+        "first_missing_evidence": missing_evidence[0] if missing_evidence else None,
         "preconditions": preconditions,
         "remaining_evidence": remaining_evidence,
         "operation_count": launch_schedule.get("operation_count"),
@@ -499,7 +501,7 @@ def _next_action_commands(
             "status_refresh_command": status_refresh,
             "gap_report_status": kv_backed_decode_gap_report.get("status"),
             "missing_evidence": kv_missing_evidence,
-            "first_missing_evidence": kv_missing_evidence[0] if kv_missing_evidence else None,
+            "first_missing_evidence": kv_backed_decode_gap_report.get("first_missing_evidence"),
             "success_criteria": [
                 "kv_backed_decode_gap_report.status is ready",
                 "kv_backed_decode_gap_report.missing_evidence is empty",
@@ -724,6 +726,7 @@ def _handoff_summary(
             "missing_evidence_count": kv_backed_decode_gap_report.get(
                 "missing_evidence_count"
             ),
+            "first_missing_evidence": kv_backed_decode_gap_report.get("first_missing_evidence"),
             "missing_evidence": list(kv_backed_decode_gap_report.get("missing_evidence", [])),
             "operation_count": kv_backed_decode_gap_report.get("operation_count"),
             "upload_total_nbytes": kv_backed_decode_gap_report.get("upload_total_nbytes"),

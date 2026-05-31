@@ -58,6 +58,7 @@
       "oracle_parity": true
     },
     "kv_backed_decode_gap_report": {
+      "first_missing_evidence": "streaming_runner_ready_flags",
       "missing_evidence": [
         "streaming_runner_ready_flags",
         "kv_kernel_launch_trace",
@@ -119,6 +120,8 @@
     "status": "blocked"
   },
   "kv_backed_decode_gap_report": {
+    "first_missing_evidence": "streaming_runner_ready_flags",
+    "first_missing_precondition": null,
     "missing_evidence": [
       "streaming_runner_ready_flags",
       "kv_kernel_launch_trace",
@@ -965,6 +968,8 @@
       },
       "dispatch_ready": true,
       "gap_report": {
+        "first_missing_evidence": "streaming_runner_ready_flags",
+        "first_missing_precondition": null,
         "missing_evidence": [
           "streaming_runner_ready_flags",
           "kv_kernel_launch_trace",

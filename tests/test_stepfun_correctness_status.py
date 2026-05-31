@@ -787,6 +787,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "kv_kernel_launch_trace",
         "kv_backed_next_token_artifact",
     ]
+    assert gap_report["first_missing_evidence"] == "streaming_runner_ready_flags"
     assert gap_report["missing_evidence_count"] == 3
     assert gap_report["operation_count"] == 135
     assert gap_report["upload_entry_count"] == 6
@@ -834,6 +835,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "all_consistency_checks_passed": True,
     }
     assert handoff["kv_backed_decode_gap_report"] == {
+        "first_missing_evidence": "streaming_runner_ready_flags",
         "missing_evidence": [
             "streaming_runner_ready_flags",
             "kv_kernel_launch_trace",
@@ -941,6 +943,7 @@ def test_stepfun_correctness_status_drops_kv_blocker_when_gap_report_is_ready(tm
     assert status["e2e_inference_ready"] is False
     assert status["kv_backed_decode_gap_report"]["status"] == "ready"
     assert status["kv_backed_decode_gap_report"]["missing_evidence"] == []
+    assert status["kv_backed_decode_gap_report"]["first_missing_evidence"] is None
     assert status["readiness_gates"]["kv_backed_decode"]["ready"] is True
     assert status["handoff_summary"]["ready_gates"] == ["kv_backed_decode"]
     assert status["handoff_summary"]["blocked_gates"] == ["oracle_parity", "e2e_inference"]
@@ -1074,6 +1077,7 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
     assert payload["ready_signals"]["kv_decode_input_upload_plan_recorded"] is True
     assert payload["kv_decode_input_upload_plan"]["entry_count"] == 6
     assert payload["kv_backed_decode_gap_report"] == {
+        "first_missing_evidence": "streaming_runner_ready_flags",
         "missing_evidence": [
             "streaming_runner_ready_flags",
             "kv_kernel_launch_trace",
