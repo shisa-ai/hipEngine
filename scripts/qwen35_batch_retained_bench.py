@@ -592,6 +592,9 @@ def _scaling_reference(
     status = str(payload.get("status") or "loaded")
     if status in _UNUSABLE_SCALING_REFERENCE_STATUSES:
         reasons.append(f"status={status!r} is not usable as a scaling reference")
+    reference_reason = payload.get("reason")
+    if reference_reason is not None:
+        reasons.append(f"scaling reference reason is non-null: {reference_reason}")
     if throughput_missing:
         reasons.append("decode throughput fields missing")
     elif not _is_finite_positive_number(aggregate) or not _is_finite_positive_number(per_request):

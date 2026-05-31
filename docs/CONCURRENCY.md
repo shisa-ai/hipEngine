@@ -1459,7 +1459,7 @@ roll-up/status view.
       retained-bench scaling and c-sweep
       preconditions reject scaling references whose prompt/decode shape labels
       mismatch the retained workload, whose status is unusable for scaling,
-      whose rates are non-positive/non-finite, whose aggregate rate is
+      whose reason field is non-null, whose rates are non-positive/non-finite, whose aggregate rate is
       inconsistent with per-request rate times concurrency, whose visible-device name conflicts with `hardware.gpu`, whose visible-device env is absent despite a matching benchmark command env, whose visible-device env conflicts, whose device-stamped artifact lacks software provenance, whose benchmark command label is absent, whose benchmark command env is missing/conflicts with the retained command env, or whose command launches the wrong baseline script. Schema and c-sweep launch validators
       accept that prefix while still requiring the retained benchmark script
       after it. Accepted artifact validation now also

@@ -11288,6 +11288,46 @@ def test_qwen35_retained_scaling_comparison_rejects_bad_rate_references(tmp_path
     assert scaling["ratios"]["aggregate_vs_serial_bridge"] is None
 
 
+def test_qwen35_retained_scaling_comparison_rejects_reference_reason(tmp_path: Path) -> None:
+    c1 = tmp_path / "native-baseline-c1.json"
+    c1.write_text(
+        json.dumps(
+            {
+                "artifact_path": str(c1),
+                "prompt_length": 512,
+                "decode_tokens": 128,
+                "throughput": {"warmed_decode_tok_s": 5.0},
+            }
+        )
+    )
+    serial = tmp_path / "serial-bridge-c2.json"
+    serial.write_text(
+        json.dumps(
+            {
+                "artifact_path": str(serial),
+                "status": "blocked",
+                "reason": "decode throughput fields missing",
+                "workload": {"concurrency": 2, "prompt_tokens_per_request": 512, "gen_tokens_per_request": 128},
+                "measurements": {"decode_tok_s_aggregate": 8.0, "decode_tok_s_per_request": 4.0},
+            }
+        )
+    )
+    args = argparse.Namespace(c1_baseline_json=c1, serial_bridge_json=serial, prompt_length=512, decode_tokens=128)
+
+    scaling = retained_bench._build_scaling_comparison(
+        args,
+        native_decode_tok_s_aggregate=16.0,
+        native_decode_tok_s_per_request=8.0,
+    )
+
+    assert scaling["complete"] is False
+    assert scaling["c1_baseline"]["reason"] is None
+    assert scaling["serial_bridge_baseline"]["reason"] == "scaling reference reason is non-null: decode throughput fields missing"
+    assert scaling["serial_bridge_baseline"]["decode_tok_s_per_request"] is None
+    assert scaling["ratios"]["aggregate_vs_c1"] == 16.0 / 5.0
+    assert scaling["ratios"]["aggregate_vs_serial_bridge"] is None
+
+
 @pytest.mark.parametrize("status", RETAINED_ARTIFACT_UNUSABLE_SCALING_BASELINE_STATUSES)
 def test_qwen35_retained_scaling_comparison_rejects_shared_unusable_statuses(
     tmp_path: Path,
