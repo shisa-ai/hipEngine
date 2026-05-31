@@ -106,12 +106,16 @@ What is still not green:
   equality is still missing for the full c=2 512/128 gate and therefore for
   c=4/c=8.
 - Hidden-state bisection now separates generated-token equality from hidden drift:
-  focused L4/L8 controls keep tokens green, and the latest selected-c1
-  linear-projection/state/output control is hidden/token green only while
-  grouped-compact MoE remains the active MoE path
-  (`/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-selected-c1-proj-state-atol4e-3-focus1269.json`).
-  Forcing selected-c1 MoE on top of that green linear control regresses to
-  hidden red
+  focused L4/L8 controls keep tokens green, and L1 selected-c1 projection/output
+  probes collapse the current C2.3 failure to the first linear-attention layer:
+  native segmented state fails immediately at row 0 / dim 1269
+  (`/tmp/hipengine-hidden-bisect-L1-512-4-c2-selected-proj-native-state-selected-out-focus1269.json`,
+  first stage `recurrent_out` `max_abs=2.7936763763427734`, first hidden
+  `max_abs=8.89697265625`), while the matched selected-c1 state/output
+  companion is hidden/token green
+  (`/tmp/hipengine-hidden-bisect-L1-512-4-c2-selected-proj-state-out-focus1269.json`).
+  Forcing selected-c1 MoE on the older L8 selected-c1 linear replay still
+  regresses to hidden red
   (`/tmp/hipengine-hidden-bisect-L8-512-16-c2-linear-all-selected-c1-atol4e-3-focus1269.json`),
   so the current C2.3 blocker is native linear-attention segmented
   conv/GDN/recurrent state plus native batched output projection parity, not
@@ -1257,6 +1261,17 @@ roll-up/status view.
       keeps tokens green but is still hidden-only red (`max_abs=0.00811767578125`),
       so the native segmented state path is the correctness-critical blocker but
       the selected-c1 diagnostic remains non-retained and not a closure signal.
+      The smaller L1/512/4 pair removes downstream full-attention and later-MoE
+      noise: selected-c1 projection/output with native segmented state at
+      `/tmp/hipengine-hidden-bisect-L1-512-4-c2-selected-proj-native-state-selected-out-focus1269.json`
+      fails immediately (`status=mismatch_found`, first token row 0 / index 1,
+      first hidden row 0 / dim 1269 `max_abs=8.89697265625`, first layer-0
+      stage drift `recurrent_out max_abs=2.7936763763427734`), while the matched
+      selected-c1 projection/state/output control
+      `/tmp/hipengine-hidden-bisect-L1-512-4-c2-selected-proj-state-out-focus1269.json`
+      is hidden/token green (`status=eq_ok`). This confirms native segmented
+      conv/GDN/recurrent state can cause immediate c=2 row drift before any
+      downstream layer, and keeps the selected-c1 controls diagnostic-only.
       The next target is retained parity for both native segmented conv/GDN/
       recurrent state and native batched output projection; do not change
       paged-KV writer code yet. Do not re-open

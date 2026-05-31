@@ -49077,3 +49077,29 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: verify count remains `12`; full guard PASS; c=2/c=8 primitive correctness artifacts pass with zero append/A-A mismatches and zero batch-vs-c1 attention error; diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, no benchmark rollup files changed, and C2.3 remains open pending a native segmented state/output fix plus generated-token equality.
+
+## 2026-05-31 — CONCURRENCY C2.3 L1 native-state isolation
+
+Advanced the active C2.3 diagnostic from the L8 paired probes down to a single linear-attention layer. The L1/512/4 c=2 hidden-bisect probe with selected-c1 QKV/Z/A/B projections and selected-c1 output but native segmented conv/GDN/recurrent state (`/tmp/hipengine-hidden-bisect-L1-512-4-c2-selected-proj-native-state-selected-out-focus1269.json`) is `status=mismatch_found`: first generated-token mismatch is row 0 / index 1, first hidden mismatch is row 0 / dim 1269 (`max_abs=8.89697265625`), and the first layer-0 linear-stage drift is `recurrent_out` (`max_abs=2.7936763763427734`). The matched selected-c1 projection/state/output control (`/tmp/hipengine-hidden-bisect-L1-512-4-c2-selected-proj-state-out-focus1269.json`) is `status=eq_ok` with hidden/token gates green. `docs/CONCURRENCY.md` records both artifacts and keeps C2.3 open: the result is diagnostic-only because selected-c1 projections/output/state are forced, but it confirms native segmented state can cause immediate c=2 row drift before downstream full-attention or later MoE layers.
+
+Diagnostic commands:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 4 --max-layers 1 --layer-limits 1 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --batch-decode-linear-projection-path selected_c1 --batch-decode-linear-output-path selected_c1 --json /tmp/hipengine-hidden-bisect-L1-512-4-c2-selected-proj-native-state-selected-out-focus1269.json
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 4 --max-layers 1 --layer-limits 1 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --batch-decode-linear-projection-path selected_c1 --batch-decode-linear-state-path selected_c1 --batch-decode-linear-output-path selected_c1 --json /tmp/hipengine-hidden-bisect-L1-512-4-c2-selected-proj-state-out-focus1269.json
+```
+
+Validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: verify count remains `12`; full guard PASS; c=2/c=8 primitive correctness artifacts pass with zero append/A-A mismatches and zero batch-vs-c1 attention error; diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, no benchmark rollup files changed, and C2.3 remains open pending retained native segmented state/output parity plus generated-token equality.
