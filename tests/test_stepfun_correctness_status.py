@@ -1323,6 +1323,61 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
     assert "docs_checklist" not in payload
 
 
+def test_stepfun_correctness_status_blocker_work_queue_only(capsys, tmp_path: Path) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "blocker-work-queue.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--blocker-work-queue-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(output.read_text())
+    assert payload == [
+        {
+            "blocker_kind": "oracle_parity_blocked",
+            "command_available": True,
+            "first_missing_evidence": "oracle_completed_successfully",
+            "first_missing_precondition": "step35_not_rejected",
+            "gap_report_status": "blocked",
+            "gate": "oracle_parity",
+            "oracle_blocker_kind": "llama_cpp_missing_step35_architecture",
+        },
+        {
+            "blocker_kind": "kv_backed_decode_not_wired",
+            "command_available": True,
+            "first_missing_evidence": "streaming_runner_ready_flags",
+            "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
+            "gap_report_status": "blocked",
+            "gate": "kv_backed_decode",
+        },
+    ]
+
+
 def test_stepfun_correctness_status_verifies_source_artifact_provenance(capsys, tmp_path: Path) -> None:
     prompt = tmp_path / "prompt.json"
     oracle = tmp_path / "oracle.json"

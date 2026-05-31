@@ -40,6 +40,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the compact handoff_summary instead of the full status artifact.",
     )
     parser.add_argument(
+        "--blocker-work-queue-only",
+        action="store_true",
+        help=(
+            "Emit only handoff_summary.blocker_work_queue for lightweight blocker routing. "
+            "Overrides --summary-only."
+        ),
+    )
+    parser.add_argument(
         "--verify-source-artifacts",
         type=Path,
         default=None,
@@ -1155,7 +1163,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.docs,
         resource_artifact=args.resource_artifact,
     )
-    result = status["handoff_summary"] if args.summary_only else status
+    if args.blocker_work_queue_only:
+        result = status["handoff_summary"]["blocker_work_queue"]
+    elif args.summary_only:
+        result = status["handoff_summary"]
+    else:
+        result = status
     _emit_json(
         result,
         pretty=args.pretty,
