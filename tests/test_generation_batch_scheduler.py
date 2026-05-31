@@ -10750,6 +10750,52 @@ def test_qwen35_batch_correctness_context_lens_parser_validates_rows() -> None:
         batch_correctness._parse_context_lens("514,512", rows=2, max_context_len=513)
 
 
+def test_qwen35_batch_correctness_records_visible_hip_device_metadata(monkeypatch) -> None:
+    class FakeHipFunc:
+        def __init__(self, func):
+            self.func = func
+            self.argtypes = None
+            self.restype = None
+
+        def __call__(self, *args):
+            return self.func(*args)
+
+    class FakeHipLibrary:
+        def __init__(self) -> None:
+            self.hipGetDeviceCount = FakeHipFunc(self._count)
+            self.hipGetDevice = FakeHipFunc(self._device)
+            self.hipDeviceGetName = FakeHipFunc(self._name)
+
+        @staticmethod
+        def _count(count_ptr):
+            count_ptr._obj.value = 1
+            return 0
+
+        @staticmethod
+        def _device(device_ptr):
+            device_ptr._obj.value = 0
+            return 0
+
+        @staticmethod
+        def _name(name_buffer, _length, device):
+            assert int(device.value) == 0
+            name_buffer.value = b"AMD Radeon RX 7900 XTX"
+            return 0
+
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
+    monkeypatch.delenv("ROCR_VISIBLE_DEVICES", raising=False)
+    metadata = batch_correctness._visible_hip_device_metadata(SimpleNamespace(library=FakeHipLibrary()))
+    assert metadata == {
+        "env": {"HIP_VISIBLE_DEVICES": "1"},
+        "hipGetDeviceCount_error": 0,
+        "visible_device_count": 1,
+        "hipGetDevice_error": 0,
+        "current_device": 0,
+        "hipDeviceGetName_error": 0,
+        "device_name": "AMD Radeon RX 7900 XTX",
+    }
+
+
 def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_path: Path) -> None:
     artifact = tmp_path / "primitive-c2.json"
     base_payload = {

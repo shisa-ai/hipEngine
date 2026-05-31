@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import json
 import math
+import os
 import sys
 from pathlib import Path
 
@@ -66,6 +68,42 @@ class _DeviceArena:
         for buf in reversed(self.buffers):
             free(buf, runtime=self.runtime)
         self.buffers.clear()
+
+
+def _visible_hip_device_metadata(runtime) -> dict[str, object]:
+    env_keys = ("HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES", "GPU_DEVICE_ORDINAL")
+    metadata: dict[str, object] = {
+        "env": {key: os.environ.get(key) for key in env_keys if os.environ.get(key) is not None}
+    }
+    library = runtime.library
+    try:
+        library.hipGetDeviceCount.argtypes = [ctypes.POINTER(ctypes.c_int)]
+        library.hipGetDeviceCount.restype = ctypes.c_int
+        count = ctypes.c_int()
+        count_error = int(library.hipGetDeviceCount(ctypes.byref(count)))
+        metadata["hipGetDeviceCount_error"] = count_error
+        metadata["visible_device_count"] = int(count.value)
+        if count_error != 0 or count.value <= 0:
+            return metadata
+
+        library.hipGetDevice.argtypes = [ctypes.POINTER(ctypes.c_int)]
+        library.hipGetDevice.restype = ctypes.c_int
+        current_device = ctypes.c_int()
+        device_error = int(library.hipGetDevice(ctypes.byref(current_device)))
+        metadata["hipGetDevice_error"] = device_error
+        device_index = int(current_device.value) if device_error == 0 else 0
+        metadata["current_device"] = device_index
+
+        library.hipDeviceGetName.argtypes = [ctypes.c_char_p, ctypes.c_int, ctypes.c_int]
+        library.hipDeviceGetName.restype = ctypes.c_int
+        name = ctypes.create_string_buffer(256)
+        name_error = int(library.hipDeviceGetName(name, ctypes.c_int(len(name)), ctypes.c_int(device_index)))
+        metadata["hipDeviceGetName_error"] = name_error
+        if name_error == 0:
+            metadata["device_name"] = name.value.decode("utf-8", errors="replace")
+    except Exception as exc:  # pragma: no cover - defensive provenance only.
+        metadata["error"] = f"{type(exc).__name__}: {exc}"
+    return metadata
 
 
 def _numpy_attention(
@@ -400,6 +438,7 @@ def run(
         "num_kv_heads": num_kv_heads,
         "head_dim": head_dim,
         "context_lens": context_lens.tolist(),
+        "device": _visible_hip_device_metadata(arena.runtime),
         "append_key_mismatch": append_key_mismatch,
         "append_value_mismatch": append_value_mismatch,
         "append_batch_aa_key_mismatch": append_batch_aa_key_mismatch,

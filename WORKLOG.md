@@ -50374,3 +50374,33 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: GPU1/XTX visibility check PASS; docs section reviewed; verify count remains `12`; configured guard PASS inside a `HIP_VISIBLE_DEVICES=1` shell with c=2/c=8 primitive correctness and A/A fields zero; benchmark rollup files unchanged. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and this is environment setup for future GPU1 re-baseline work only.
+
+## 2026-05-31 — CONCURRENCY primitive correctness GPU device provenance
+
+Stamped `scripts/qwen35_batch_correctness.py` artifacts with visible HIP device provenance so GPU1/XTX re-baseline outputs carry hardware/env directly in JSON. The new `device` object records the active ROCm visibility env (`HIP_VISIBLE_DEVICES`, `ROCR_VISIBLE_DEVICES`, `CUDA_VISIBLE_DEVICES`, `GPU_DEVICE_ORDINAL` when present), `visible_device_count`, `current_device`, HIP call error codes, and `device_name`. CPU coverage uses a fake HIP runtime to lock the JSON shape without requiring a GPU.
+
+Validation (GPU-capable commands ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 -m compileall -q scripts/qwen35_batch_correctness.py tests/test_generation_batch_scheduler.py && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_batch_correctness_records_visible_hip_device_metadata tests/test_generation_batch_scheduler.py::test_qwen35_primitive_correctness_passed_matches_retained_bounds -q
+HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness-gpu1-device.json
+python3 - <<'PY'
+import json, pathlib
+payload = json.loads(pathlib.Path('/tmp/hipengine-multiloop-c2-correctness-gpu1-device.json').read_text())
+assert payload['device']['device_name'] == 'AMD Radeon RX 7900 XTX'
+assert payload['device']['env']['HIP_VISIBLE_DEVICES'] == '1'
+assert payload['passed'] is True
+PY
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \[(?: |~)\]', queue))
+print(count)
+assert count == 12
+PY
+HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: focused metadata tests PASS; GPU1 primitive artifact assertion PASS with device `AMD Radeon RX 7900 XTX`; verify count remains `12`; configured guard PASS inside a `HIP_VISIBLE_DEVICES=1` shell and both c=2/c=8 primitive JSONs now include the XTX device stamp; benchmark rollup files unchanged. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and this is hardware-provenance support for future GPU1 re-baseline work only.
