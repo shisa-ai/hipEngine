@@ -27553,3 +27553,7 @@ python3 -m pytest -q tests/test_stepfun_layer_prefix_smoke.py -q
 ```
 
 Result: `2 passed`.
+
+## 2026-05-31 — StepFun post-Q3 GGUF variant TODO
+
+Documented newly downloaded local GGUF variants in `docs/STEPFUN.md` as post-Q3 follow-up targets, not as active bring-up scope: `Step-3.7-Flash-APEX-I-Compact.gguf` (`90,321,538,656` bytes / `84.12 GiB`) and `Step-3.7-Flash-UD-IQ4_NL-00001..00003-of-00003.gguf` (`97,317,818,880` bytes / `90.63 GiB` total). The TODO explicitly says to finish Q3_K_L e2e text decode first, then reuse the same metadata/materialization/slice/load/prompt-oracle gates for IQ4_NL and APEX-I-Compact, adding any needed quant support only through registry axes rather than engine-wide special-casing.

@@ -25,6 +25,13 @@
   - `Step-3.7-flash-Q3_K_L-00002-of-00003.gguf` — 46,401,560,832 bytes
   - `Step-3.7-flash-Q3_K_L-00003-of-00003.gguf` — 9,558,706,368 bytes
   - total: 102,504,428,544 bytes (102.50 GB / 95.46 GiB)
+- Additional local GGUF variants now present for post-Q3 validation, not the
+  active bring-up target yet:
+  - `Step-3.7-Flash-APEX-I-Compact.gguf` — 90,321,538,656 bytes (84.12 GiB)
+  - `Step-3.7-Flash-UD-IQ4_NL-00001-of-00003.gguf` — 5,232,064 bytes
+  - `Step-3.7-Flash-UD-IQ4_NL-00002-of-00003.gguf` — 49,628,912,512 bytes
+  - `Step-3.7-Flash-UD-IQ4_NL-00003-of-00003.gguf` — 47,683,674,304 bytes
+  - UD-IQ4_NL total: 97,317,818,880 bytes (90.63 GiB)
 - No local Step 3.7 GGUF multimodal projector file was found. Text-only GGUF
   bring-up should not depend on vision assets.
 
@@ -115,6 +122,17 @@ current `qwen35moe` GGUF layout:
 - observed quant mix in shard 1: embeddings and output are `Q8_0`; many gate,
   up, query, key, and attention-gate matrices are `Q3_K`; value, output, and
   down projections are often `Q5_K`; norms and router bias are `F32`.
+
+### Deferred local GGUF variants
+
+The local `Step-3.7-Flash-UD-IQ4_NL` split and single-file
+`Step-3.7-Flash-APEX-I-Compact` GGUF variants are explicit follow-up targets
+only after the current Q3_K_L path has end-to-end text decode correctness. The
+post-Q3 validation gate should reuse the same sequence as Q3_K_L: metadata scan,
+tensor-slot coverage, quant-layout support via registry keys (no engine-wide
+variant branches), selected tensor CPU/HIP slice checks, resident load/resource
+smoke, short prompt logits/token oracle, and only then any benchmark artifact.
+Do not let these variants distract from finishing Q3_K_L P11/P12.
 
 ### HF ModelOpt NVFP4
 
@@ -662,6 +680,11 @@ Step throughput claim appears in docs or chat.
 
 ### Deferred tracks
 
+- [ ] Post-Q3 GGUF variant validation for the local `Step-3.7-Flash-UD-IQ4_NL`
+  split and `Step-3.7-Flash-APEX-I-Compact` single-file variant. Reuse the
+  Q3_K_L metadata/materialization/slice/load/prompt-oracle gates first; add new
+  quant plugins or variants only through the registry axes, not engine-wide
+  special-casing.
 - [ ] NVFP4 ModelOpt safetensors loader and `modelopt_nvfp4` quant plugin.
 - [ ] Vision encoder and multimodal projector loading/inference.
 - [ ] MTP/EAGLE speculative decode and `num_nextn_predict_layers=3` support.
