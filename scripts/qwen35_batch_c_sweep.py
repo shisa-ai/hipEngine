@@ -1690,6 +1690,10 @@ def _retained_profiler_synthesis_postcondition(
     return result
 
 
+def _summary_json(summary: Mapping[str, Any]) -> str:
+    return json.dumps(summary, indent=2, allow_nan=False)
+
+
 def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
     _validate_run_options(args)
     output_dir = Path(args.output_dir)
@@ -1779,7 +1783,7 @@ def run_sweep(args: argparse.Namespace) -> dict[str, Any]:
     if args.summary_json is not None:
         path = Path(args.summary_json)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(summary, indent=2) + "\n")
+        path.write_text(_summary_json(summary) + "\n")
     return summary
 
 
@@ -3829,7 +3833,7 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         print(f"invalid c-sweep run: {exc}", file=sys.stderr)
         return 1
-    print(json.dumps(summary, indent=2))
+    print(_summary_json(summary))
     return 1 if summary["status"] in {"failed", "blocked"} else 0
 
 

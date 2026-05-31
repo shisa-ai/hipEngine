@@ -2050,6 +2050,13 @@ def test_batch_c_sweep_profiler_precondition_rejects_missing_cpu_summary(tmp_pat
     }
 
 
+def test_batch_c_sweep_summary_json_rejects_nonfinite() -> None:
+    with pytest.raises(ValueError, match="Out of range float values"):
+        c_sweep._summary_json({"bad": float("inf")})
+
+    assert json.loads(c_sweep._summary_json({"ok": 1.0})) == {"ok": 1.0}
+
+
 def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) -> None:
     summary_path = tmp_path / "summary.json"
     args = build_c_sweep_parser().parse_args(
