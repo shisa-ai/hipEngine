@@ -11115,6 +11115,13 @@ def test_qwen35_batch_serial_bench_helpers_summarize_and_slice(tmp_path) -> None
     assert stats["stdev"] > 0.0
 
 
+def test_qwen35_batch_serial_bench_payload_json_rejects_nonfinite() -> None:
+    with pytest.raises(ValueError, match="Out of range float values"):
+        serial_bench._payload_json({"bad": float("-inf")})
+
+    assert json.loads(serial_bench._payload_json({"ok": 1.0})) == {"ok": 1.0}
+
+
 def test_qwen35_batch_serial_bench_command_preserves_visible_hip_device_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
 

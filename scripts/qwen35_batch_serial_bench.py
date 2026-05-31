@@ -42,6 +42,10 @@ DEFAULT_FIXTURE = "fixtures/qwen35_paro/parent_512_32_seed1234.json"
 _COMMAND_ENV_KEYS = ("HIP_VISIBLE_DEVICES",)
 
 
+def _payload_json(payload: Any) -> str:
+    return json.dumps(payload, indent=2, ensure_ascii=False, allow_nan=False)
+
+
 def _command_env_prefix_parts() -> list[str]:
     assignments = [
         f"{key}={value}"
@@ -488,7 +492,7 @@ def main(argv: list[str] | None = None) -> int:
         kv_policy=kv_policy,
     )
     payload = _build_payload(args, argv, bench, [len(prompt) for prompt in prompts])
-    text = json.dumps(payload, indent=2, ensure_ascii=False)
+    text = _payload_json(payload)
     print(text)
     if args.json is not None:
         args.json.parent.mkdir(parents=True, exist_ok=True)
