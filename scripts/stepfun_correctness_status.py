@@ -84,6 +84,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--status-refresh-command-only",
+        action="store_true",
+        help=(
+            "Emit only next_action_commands.oracle_parity_blocked.status_refresh_command for "
+            "consolidated status refresh. Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--status-refresh-command-sha-only",
+        action="store_true",
+        help=(
+            "Emit only next_action_commands.oracle_parity_blocked.status_refresh_command_sha256 "
+            "for status-refresh command drift polling. Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--oracle-helper-command-only",
         action="store_true",
         help=(
@@ -1108,6 +1124,12 @@ def _handoff_summary(
             "summary_only": "handoff_summary",
             "readiness_summary_only": "readiness_summary",
             "readiness_summary_sha_only": "readiness_summary_sha256",
+            "status_refresh_command_only": (
+                "next_action_commands.oracle_parity_blocked.status_refresh_command"
+            ),
+            "status_refresh_command_sha_only": (
+                "next_action_commands.oracle_parity_blocked.status_refresh_command_sha256"
+            ),
             "oracle_helper_command_only": (
                 "next_action_commands.oracle_parity_blocked.oracle_helper_refresh_command"
             ),
@@ -1434,6 +1456,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.oracle_helper_command_only:
         result = status["next_action_commands"]["oracle_parity_blocked"].get(
             "oracle_helper_refresh_command"
+        )
+    elif args.status_refresh_command_sha_only:
+        result = status["next_action_commands"]["oracle_parity_blocked"].get(
+            "status_refresh_command_sha256"
+        )
+    elif args.status_refresh_command_only:
+        result = status["next_action_commands"]["oracle_parity_blocked"].get(
+            "status_refresh_command"
         )
     elif args.readiness_summary_sha_only:
         result = status["readiness_summary_sha256"]

@@ -964,6 +964,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "summary_only": "handoff_summary",
         "readiness_summary_only": "readiness_summary",
         "readiness_summary_sha_only": "readiness_summary_sha256",
+        "status_refresh_command_only": (
+            "next_action_commands.oracle_parity_blocked.status_refresh_command"
+        ),
+        "status_refresh_command_sha_only": (
+            "next_action_commands.oracle_parity_blocked.status_refresh_command_sha256"
+        ),
         "oracle_helper_command_only": (
             "next_action_commands.oracle_parity_blocked.oracle_helper_refresh_command"
         ),
@@ -1582,6 +1588,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "summary_only": "handoff_summary",
         "readiness_summary_only": "readiness_summary",
         "readiness_summary_sha_only": "readiness_summary_sha256",
+        "status_refresh_command_only": (
+            "next_action_commands.oracle_parity_blocked.status_refresh_command"
+        ),
+        "status_refresh_command_sha_only": (
+            "next_action_commands.oracle_parity_blocked.status_refresh_command_sha256"
+        ),
         "oracle_helper_command_only": (
             "next_action_commands.oracle_parity_blocked.oracle_helper_refresh_command"
         ),
@@ -1849,6 +1861,96 @@ def test_stepfun_correctness_status_first_blocker_sha_only(capsys, tmp_path: Pat
     assert json.loads(output.read_text()) == status["handoff_summary"][
         "first_blocker_work_item_sha256"
     ]
+
+
+def test_stepfun_correctness_status_status_refresh_command_sha_only(capsys, tmp_path: Path) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "status-refresh-command-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--readiness-summary-only",
+            "--status-refresh-command-only",
+            "--status-refresh-command-sha-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(output.read_text())
+    command = status["next_action_commands"]["oracle_parity_blocked"][
+        "status_refresh_command"
+    ]
+    assert payload == status["next_action_commands"]["oracle_parity_blocked"][
+        "status_refresh_command_sha256"
+    ]
+    assert payload == hashlib.sha256(command.encode()).hexdigest()
+
+
+def test_stepfun_correctness_status_status_refresh_command_only(capsys, tmp_path: Path) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "status-refresh-command.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--readiness-summary-only",
+            "--status-refresh-command-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(output.read_text())
+    assert payload == status["next_action_commands"]["oracle_parity_blocked"][
+        "status_refresh_command"
+    ]
+    assert f"--prompt-artifact {prompt}" in payload
+    assert f"--resource-artifact {resource}" in payload
+
 
 
 def test_stepfun_correctness_status_oracle_helper_command_sha_only(capsys, tmp_path: Path) -> None:
