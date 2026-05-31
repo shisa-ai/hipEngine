@@ -7123,6 +7123,13 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         ("gguf_native_diagnostic", 2),
         ("gguf_native_diagnostic", 2),
     ]
+    expected_optional_artifact_names = [
+        "int8-native-diagnostic-c2.json",
+        "gguf-native-diagnostic-c2-gguf_q4_k_m.json",
+        "gguf-native-diagnostic-c2-gguf_q5_k_m.json",
+        "gguf-native-diagnostic-c2-gguf_q6_k.json",
+        "gguf-native-diagnostic-c2-gguf_q8_0.json",
+    ]
 
     planned = build_sweep_commands(args)
     summary = run_sweep(args)
@@ -7142,6 +7149,31 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         "int8_native_diagnostic": {"planned": 1},
         "gguf_native_diagnostic": {"planned": 4},
     }
+    optional_planned = [item for item in planned if item.category in {"int8_native_diagnostic", "gguf_native_diagnostic"}]
+    optional_entries = [
+        entry
+        for entry in summary["commands"]
+        if entry["category"] in {"int8_native_diagnostic", "gguf_native_diagnostic"}
+    ]
+    assert [item.artifact_path.name for item in optional_planned] == expected_optional_artifact_names
+    assert [Path(entry["artifact_path"]).name for entry in optional_entries] == expected_optional_artifact_names
+    assert all(tuple(entry["argv"][:2]) == ("env", "HIP_VISIBLE_DEVICES=1") for entry in optional_entries)
+    assert c_sweep._strip_command_env_prefix(optional_entries[0]["argv"])[1] == RETAINED_ARTIFACT_INT8_DIAGNOSTIC_SCRIPT
+    assert all(
+        c_sweep._strip_command_env_prefix(entry["argv"])[1] == RETAINED_ARTIFACT_GGUF_DIAGNOSTIC_SCRIPT
+        for entry in optional_entries[1:]
+    )
+    assert optional_entries[0]["argv"][optional_entries[0]["argv"].index("--future-json") + 1].endswith(
+        "/int8-native-retained-future-c2.json"
+    )
+    assert [entry["argv"][entry["argv"].index("--quant") + 1] for entry in optional_entries[1:]] == [
+        "gguf_q4_k_m",
+        "gguf_q5_k_m",
+        "gguf_q6_k",
+        "gguf_q8_0",
+    ]
+    assert all(entry["argv"][entry["argv"].index("--backend") + 1] == "hip_gfx1100" for entry in optional_entries[1:])
+    assert all(entry["argv"][entry["argv"].index("--max-new-tokens") + 1] == "4" for entry in optional_entries[1:])
 
     int8_index = next(
         index for index, entry in enumerate(summary["commands"]) if entry["category"] == "int8_native_diagnostic"
