@@ -948,6 +948,18 @@ def _is_retained_artifact_path(value: Any) -> bool:
         return False
 
 
+def _retained_output_artifact_blockers(path: Any) -> list[str]:
+    if path is None:
+        return ["artifact_path must be provided under benchmarks/results"]
+    path_text = str(path)
+    blockers: list[str] = []
+    if not _is_retained_artifact_path(path_text):
+        blockers.append("artifact_path must be a repo-relative path under benchmarks/results")
+    if Path(path_text).suffix.lower() != ".json":
+        blockers.append("artifact_path must point to a .json artifact")
+    return blockers
+
+
 def _synthesized_profiler_total_kernel_duration(profiler: Mapping[str, Any]) -> float | None:
     kernel_durations = profiler.get("kernel_durations_ns")
     if not isinstance(kernel_durations, Mapping):
@@ -3536,6 +3548,7 @@ def _build_payload(
         expected_decode_tokens=args.decode_tokens,
         expected_warmup_decode_tokens=args.warmup_decode_tokens,
     )
+    output_artifact_blockers = _retained_output_artifact_blockers(getattr(args, "json", None))
     batch_execution = dict(bench["batch_execution"])
     throughput_claim_eligible = bool(batch_execution.get("throughput_claim_eligible"))
     native_caware_decode = bool(batch_execution.get("native_caware_decode"))
@@ -3605,6 +3618,7 @@ def _build_payload(
         and throughput_claim_eligible
         and equality_passed
         and not equality_structure_blockers
+        and not output_artifact_blockers
         and primitive_passed
         and protocol_shape
         and scaling_complete
@@ -3630,6 +3644,7 @@ def _build_payload(
     if not equality_passed:
         blocked_reasons.append("generated-token equality vs independent c=1 did not pass")
     blocked_reasons.extend(equality_structure_blockers)
+    blocked_reasons.extend(output_artifact_blockers)
     if not primitive_passed:
         blocked_reasons.append(f"primitive c>N correctness gate did not pass: {primitive_correctness.get('reason')}")
     if args.prompt_length < 512 or args.decode_tokens < 128:

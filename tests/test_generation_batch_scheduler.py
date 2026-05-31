@@ -13343,10 +13343,23 @@ def test_qwen35_retained_artifact_paths_reject_symlink_escapes(
     monkeypatch.chdir(repo_root)
 
     assert retained_bench._is_retained_artifact_path("benchmarks/results/source.json")
+    assert retained_bench._retained_output_artifact_blockers("benchmarks/results/source.json") == []
     assert not retained_bench._is_retained_artifact_path("/tmp/source.json")
+    assert retained_bench._retained_output_artifact_blockers("/tmp/source.json") == [
+        "artifact_path must be a repo-relative path under benchmarks/results"
+    ]
     assert not retained_bench._is_retained_artifact_path("benchmarks/results/../source.json")
+    assert retained_bench._retained_output_artifact_blockers(None) == [
+        "artifact_path must be provided under benchmarks/results"
+    ]
+    assert retained_bench._retained_output_artifact_blockers("benchmarks/results/source.txt") == [
+        "artifact_path must point to a .json artifact"
+    ]
     if symlink_artifact is not None:
         assert not retained_bench._is_retained_artifact_path("benchmarks/results/external-source.json")
+        assert retained_bench._retained_output_artifact_blockers("benchmarks/results/external-source.json") == [
+            "artifact_path must be a repo-relative path under benchmarks/results"
+        ]
 
 
 def test_qwen35_retained_allocator_memory_evidence_from_stats() -> None:
