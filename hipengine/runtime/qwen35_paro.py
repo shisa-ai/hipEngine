@@ -2789,6 +2789,42 @@ class Qwen35ParoDecodeState:
                 )
         return scratch.qkv, scratch.z
 
+    def project_linear_attention_decode_rows_ab_fp16(
+        self,
+        hidden: Tensor,
+        scratch: Qwen35ParoLinearAttentionScratch,
+        *,
+        tokens: int,
+        library=None,
+        stream: int = 0,
+    ) -> tuple[Tensor, Tensor]:
+        """Replay only linear-attention A/B projections with the token-1 path."""
+
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        runtime = self.runtime or get_hip_runtime()
+        for row in range(tokens):
+            row_scratch = self._decode_row_linear_attention_projection_scratch(hidden, scratch, row)
+            self.project_linear_attention_ab_fp16(
+                row_scratch.attn_input,
+                row_scratch,
+                tokens=1,
+                library=library,
+                stream=stream,
+            )
+            for dst, src in (
+                (self._row_tensor_view(scratch.a, row), row_scratch.a),
+                (self._row_tensor_view(scratch.b, row), row_scratch.b),
+            ):
+                runtime.memcpy_async(
+                    dst.ptr,
+                    src.ptr,
+                    src.numel * src.dtype.itemsize,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+        return scratch.a, scratch.b
+
     def run_linear_attention_decode_rows_state_fp16(
         self,
         scratch: Qwen35ParoLinearAttentionScratch,
@@ -5163,6 +5199,7 @@ class Qwen35ParoDecodeState:
         group_size: int = 128,
         force_selected_c1_projections: bool = False,
         force_selected_c1_qkv_z_projections: bool = False,
+        force_selected_c1_ab_projections: bool = False,
         force_batch_gemv_projections: bool = False,
         force_selected_c1_state: bool = False,
         selected_c1_state_pairs: Sequence[tuple[Tensor, Tensor]] | None = None,
@@ -5199,7 +5236,16 @@ class Qwen35ParoDecodeState:
                     library=library,
                     stream=stream,
                 )
-            self.project_linear_attention_ab_fp16(hidden, scratch, tokens=tokens, library=library, stream=stream)
+            if force_selected_c1_ab_projections:
+                self.project_linear_attention_decode_rows_ab_fp16(
+                    hidden,
+                    scratch,
+                    tokens=tokens,
+                    library=library,
+                    stream=stream,
+                )
+            else:
+                self.project_linear_attention_ab_fp16(hidden, scratch, tokens=tokens, library=library, stream=stream)
         if force_selected_c1_state:
             if selected_c1_state_pairs is None:
                 raise ValueError("selected_c1_state_pairs are required for selected-c1 linear state replay")
@@ -5236,6 +5282,7 @@ class Qwen35ParoDecodeState:
         group_size: int = 128,
         force_selected_c1_projections: bool = False,
         force_selected_c1_qkv_z_projections: bool = False,
+        force_selected_c1_ab_projections: bool = False,
         force_batch_gemv_projections: bool = False,
         force_selected_c1_state: bool = False,
         selected_c1_state_pairs: Sequence[tuple[Tensor, Tensor]] | None = None,
@@ -5257,6 +5304,7 @@ class Qwen35ParoDecodeState:
             group_size=group_size,
             force_selected_c1_projections=force_selected_c1_projections,
             force_selected_c1_qkv_z_projections=force_selected_c1_qkv_z_projections,
+            force_selected_c1_ab_projections=force_selected_c1_ab_projections,
             force_batch_gemv_projections=force_batch_gemv_projections,
             force_selected_c1_state=force_selected_c1_state,
             selected_c1_state_pairs=selected_c1_state_pairs,
@@ -5588,6 +5636,7 @@ class Qwen35ParoDecodeState:
         force_selected_c1_moe: bool = False,
         force_selected_c1_linear_projections: bool = False,
         force_selected_c1_qkv_z_linear_projections: bool = False,
+        force_selected_c1_ab_linear_projections: bool = False,
         force_batch_gemv_linear_projections: bool = False,
         force_selected_c1_linear_state: bool = False,
         selected_c1_linear_state_pairs: Sequence[tuple[Tensor, Tensor]] | None = None,
@@ -5623,6 +5672,7 @@ class Qwen35ParoDecodeState:
             group_size=group_size,
             force_selected_c1_projections=force_selected_c1_linear_projections,
             force_selected_c1_qkv_z_projections=force_selected_c1_qkv_z_linear_projections,
+            force_selected_c1_ab_projections=force_selected_c1_ab_linear_projections,
             force_batch_gemv_projections=force_batch_gemv_linear_projections,
             force_selected_c1_state=force_selected_c1_linear_state,
             selected_c1_state_pairs=selected_c1_linear_state_pairs,

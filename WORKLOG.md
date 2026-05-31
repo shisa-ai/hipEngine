@@ -49527,3 +49527,62 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: artifact assertions PASS; verify count remains `12`; full guard PASS with c=2/c=8 primitive correctness and A/A fields zero; diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, benchmark rollup files are unchanged, and selected-QKVZ remains diagnostic/non-retained.
+
+## 2026-05-31 — CONCURRENCY C2.3 selected-AB projection isolation
+
+Added a narrower A/B-only projection diagnostic: `--batch-decode-linear-projection-path selected_ab` / `batch_gemv_selected_ab` maps to `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_AB`, replays only linear-attention A/B projections with token-1 kernels, and leaves QKV/Z on the requested batch path. Resident metadata records `linear_attention_projection_path=batch_gemv_selected_c1_ab` for the combined QKV/Z batch-GEMV + selected-A/B probe, marks `native_caware_decode=false`, and retained-artifact disallowed fragments reject the diagnostic.
+
+Ran the L8/512/16 c=2 batch-GEMV-QKVZ + selected-A/B control with native segmented state, batch-GEMV output, and per-row full attention. Artifact `/tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-gemv-qkvz-selected-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json` is still `status=mismatch_found`: generated tokens remain green, but hidden is red at decode step 11 / generated index 12 / row 0 (`max_abs=0.010435104370117188`). QKV/Z direct stage errors are under the 0.004 hidden tolerance but are still bit-different (`qkv max_abs=0.0009765625`, `bit_mismatch=5`; `z max_abs=3.0517578125e-05`, `bit_mismatch=3`), and `qkv` is the first bit-drift stage. Together with the previous selected-QKVZ/native-A/B red probe and selected-all green control, this means both QKV/Z bit exactness and A/B exactness are still required for the controlled per-row-full path; do not promote batch-GEMV QKV/Z just because direct stage max error is under tolerance.
+
+Diagnostic command:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --batch-decode-linear-projection-path batch_gemv_selected_ab --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-gemv-qkvz-selected-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json
+```
+
+Validation:
+
+```bash
+python3 - <<'PY'
+import json, pathlib
+path = pathlib.Path('/tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-gemv-qkvz-selected-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json')
+payload = json.loads(path.read_text())
+assert payload['status'] == 'mismatch_found'
+assert payload['correctness']['token_passed'] is True
+assert payload['correctness']['failure_modes'] == ['hidden']
+fh = payload['correctness']['first_hidden_mismatch']
+assert fh['decode_step'] == 11 and fh['generated_index'] == 12 and fh['row'] == 0
+assert abs(fh['max_abs'] - 0.010435104370117188) == 0.0
+execution = fh['batch_decode_execution']
+for blocker in (
+    'linear-attention A/B projections forced to selected-c1 diagnostic path',
+    'linear-attention projections forced to batch GEMV diagnostic path',
+    'linear-attention output projection forced to batch GEMV diagnostic path',
+):
+    assert blocker in execution['blockers'], execution['blockers']
+projection_paths = {layer.get('linear_attention_projection_path') for layer in execution['layer_executions'] if layer.get('layer_type') == 'linear_attention'}
+assert projection_paths == {'batch_gemv_selected_c1_ab'}
+stages = payload['layer_summaries'][0]['decode_linear_stages']['steps'][0]['layers'][0]['stages']
+for stage, expected_max_abs, expected_bits in (('qkv', 0.0009765625, 5), ('z', 3.0517578125e-05, 3)):
+    for row in stages[stage]['rows']:
+        assert row['passed'] is True
+        assert row['hidden_comparison']['elements_over_atol'] == 0
+        assert abs(row['hidden_comparison']['max_abs'] - expected_max_abs) == 0.0
+        assert row['hidden_comparison']['bit_mismatch'] == expected_bits
+first_bit = payload['correctness']['decode_linear_stage_bit_drift_summary']['first_bit_drift']
+assert first_bit['stage'] == 'qkv'
+assert first_bit['passed_under_atol'] is True
+PY
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \[(?: |~)\]', queue))
+print(count)
+assert count == 12
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: artifact assertions PASS; verify count remains `12`; full guard PASS with c=2/c=8 primitive correctness and A/A fields zero; diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, benchmark rollup files are unchanged, and selected-A/B remains diagnostic/non-retained.

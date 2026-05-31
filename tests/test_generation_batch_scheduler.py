@@ -7067,6 +7067,30 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert selected_qkv_z_projection_payload["workload"]["batch_decode_linear_projection_path"] == "selected_qkv_z"
     assert selected_qkv_z_projection_payload["workload"]["native_caware_decode"] is False
 
+    selected_ab_projection = build_hidden_bisect_parser().parse_args(
+        [
+            "--dry-run",
+            "--batch-decode-linear-projection-path",
+            "batch_gemv_selected_ab",
+            "--prompt-length",
+            "32",
+            "--batch-size",
+            "2",
+            "--decode-tokens",
+            "4",
+            "--max-layers",
+            "8",
+            "--layer-limits",
+            "8",
+        ]
+    )
+    selected_ab_projection_payload = run_hidden_bisect(
+        selected_ab_projection,
+        ["--dry-run", "--batch-decode-linear-projection-path", "batch_gemv_selected_ab", "--layer-limits", "8"],
+    )
+    assert selected_ab_projection_payload["workload"]["batch_decode_linear_projection_path"] == "batch_gemv_selected_ab"
+    assert selected_ab_projection_payload["workload"]["native_caware_decode"] is False
+
     batch_gemv_projection = build_hidden_bisect_parser().parse_args(
         [
             "--dry-run",

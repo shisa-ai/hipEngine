@@ -3958,6 +3958,11 @@ class Qwen35ParoResidentSession:
             and not force_selected_c1_linear_projections
             and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_QKVZ")
         )
+        force_selected_c1_ab_linear_projections = (
+            rows > 1
+            and not force_selected_c1_linear_projections
+            and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_AB")
+        )
         force_batch_gemv_linear_projections = (
             rows > 1
             and not force_selected_c1_linear_projections
@@ -4103,6 +4108,7 @@ class Qwen35ParoResidentSession:
                             force_selected_c1_moe=force_selected_c1_moe,
                             force_selected_c1_linear_projections=force_selected_c1_linear_projections,
                             force_selected_c1_qkv_z_linear_projections=force_selected_c1_qkv_z_linear_projections,
+                            force_selected_c1_ab_linear_projections=force_selected_c1_ab_linear_projections,
                             force_batch_gemv_linear_projections=force_batch_gemv_linear_projections,
                             force_selected_c1_linear_state=force_selected_c1_linear_state,
                             selected_c1_linear_state_pairs=selected_c1_linear_state_pairs,
@@ -4143,6 +4149,7 @@ class Qwen35ParoResidentSession:
                                     force_selected_c1_moe
                                     or force_selected_c1_linear_projections
                                     or force_selected_c1_qkv_z_linear_projections
+                                    or force_selected_c1_ab_linear_projections
                                     or force_batch_gemv_linear_projections
                                     or force_selected_c1_linear_state
                                     or (
@@ -4156,7 +4163,15 @@ class Qwen35ParoResidentSession:
                                     else (
                                         "selected_c1_qkv_z"
                                         if force_selected_c1_qkv_z_linear_projections
-                                        else "batch_gemv" if force_batch_gemv_linear_projections else "native_batch"
+                                        else (
+                                            "batch_gemv_selected_c1_ab"
+                                            if force_batch_gemv_linear_projections and force_selected_c1_ab_linear_projections
+                                            else (
+                                                "batch_gemv"
+                                                if force_batch_gemv_linear_projections
+                                                else "selected_c1_ab" if force_selected_c1_ab_linear_projections else "native_batch"
+                                            )
+                                        )
                                     )
                                 ),
                                 "linear_attention_state_path": (
@@ -4415,6 +4430,8 @@ class Qwen35ParoResidentSession:
                 decode_blockers.append("linear-attention projections forced to selected-c1 diagnostic path")
             if force_selected_c1_qkv_z_linear_projections:
                 decode_blockers.append("linear-attention QKV/Z projections forced to selected-c1 diagnostic path")
+            if force_selected_c1_ab_linear_projections:
+                decode_blockers.append("linear-attention A/B projections forced to selected-c1 diagnostic path")
             if force_batch_gemv_linear_projections:
                 decode_blockers.append("linear-attention projections forced to batch GEMV diagnostic path")
             if force_selected_c1_linear_state:
@@ -4456,6 +4473,7 @@ class Qwen35ParoResidentSession:
                 and not force_selected_c1_moe
                 and not force_selected_c1_linear_projections
                 and not force_selected_c1_qkv_z_linear_projections
+                and not force_selected_c1_ab_linear_projections
                 and not force_batch_gemv_linear_projections
                 and not force_selected_c1_linear_state
                 and linear_attention_output_path not in {"selected_c1_forced", "batch_gemv", "batch_gemv_from_f32"}

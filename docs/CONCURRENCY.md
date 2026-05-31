@@ -130,14 +130,18 @@ What is still not green:
   Forcing token-1 QKV/Z exactly while leaving native A/B projection, native
   segmented state, batch-GEMV output, and per-row full attention also stays
   hidden-only red at step 11
-  (`/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-qkvz-native-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json`),
-  so A/B projection exactness/amplification is now isolated from QKV/Z.
+  (`/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-qkvz-native-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json`).
+  Conversely, forcing token-1 A/B while leaving QKV/Z on the batch-GEMV path also
+  stays hidden-only red at step 11
+  (`/tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-gemv-qkvz-selected-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json`).
+  The selected-all projection control is green, so both QKV/Z bit exactness and
+  A/B exactness/amplification remain in the linear-projection closure set.
   Re-enabling native full-attention decode under the selected-projection/
   batch-GEMV-output control keeps tokens green but returns hidden red at step 6
   (`/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-batch-gemv-out-native-full-atol4e-3-focus1269.json`),
-  so the current C2.3/C2.4 blockers are native A/B projection
-  exactness/amplification, fused native output, and native full-attention hidden
-  parity; paged KV row
+  so the current C2.3/C2.4 blockers are native QKV/Z bit exactness, native A/B
+  projection exactness/amplification, fused native output, and native
+  full-attention hidden parity; paged KV row
   setup, grouped-compact MoE, and the segmented state update itself under selected
   projections remain lower on the list. C2.3/C2.4/C2.5 remain the correctness
   priority.
@@ -1320,9 +1324,19 @@ roll-up/status view.
       matched probe
       `/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-qkvz-native-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json`
       is still hidden-only red at step 11 / row 0 (`max_abs=0.010393142700195312`).
-      This isolates the remaining per-row-full linear blocker to native A/B
-      projection exactness/amplification plus the already-red native output path,
-      not QKV/Z. Re-enabling native full-attention decode
+      The complementary A/B-only selected-c1 diagnostic
+      (`--batch-decode-linear-projection-path batch_gemv_selected_ab`, backed by
+      `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_AB` plus the
+      batch-GEMV QKV/Z override) keeps generated tokens green but is also
+      hidden-only red at step 11 / row 0
+      (`/tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-gemv-qkvz-selected-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json`,
+      `max_abs=0.010435104370117188`); layer-0 `qkv`/`z` drift is under 0.004
+      but still bit-different (`qkv` `max_abs=0.0009765625`, `bit_mismatch=5`),
+      and the first red stage is the same large `recurrent_out` amplification.
+      Together with the green selected-all projection control, this means both
+      QKV/Z bit exactness and A/B exactness are still required for this controlled
+      path; do not promote the batch-GEMV QKV/Z path just because its direct
+      stage max error is under hidden tolerance. Re-enabling native full-attention decode
       on the selected-projection/native-state/batch-GEMV-output control at
       `/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-batch-gemv-out-native-full-atol4e-3-focus1269.json`
       keeps generated tokens green but is hidden-only red (`status=mismatch_found`,
