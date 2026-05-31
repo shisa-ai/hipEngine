@@ -7281,6 +7281,13 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         index for index, entry in enumerate(summary["commands"]) if entry["category"] == "primitive"
     ]
     for index in primitive_entry_indices:
+        tampered_rows = json.loads(json.dumps(summary))
+        rows_argv = tampered_rows["commands"][index]["argv"]
+        rows_argv[rows_argv.index("--rows") + 1] = "9"
+        tampered_rows["commands"][index]["command"] = shlex.join(rows_argv)
+        with pytest.raises(ValueError, match=r"commands\[\]\.batch_size must match commands\[\]\.argv --batch-size/--rows"):
+            c_sweep.validate_sweep_summary(tampered_rows)
+
         tampered_seed = json.loads(json.dumps(summary))
         primitive_argv = tampered_seed["commands"][index]["argv"]
         primitive_argv[primitive_argv.index("--seed") + 1] = "4321"
