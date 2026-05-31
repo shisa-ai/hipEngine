@@ -1843,6 +1843,44 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_stale_inputs(
     assert payload["records"]["oracle"]["match"] is True
 
 
+def test_stepfun_correctness_status_first_blocker_sha_fail_on_blocked_returns_nonzero(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--first-blocker-sha-only",
+            "--fail-on-blocked",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 2
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert captured.err == ""
+    assert payload == status["handoff_summary"]["first_blocker_work_item_sha256"]
+
+
+
 def test_stepfun_correctness_status_fail_on_blocked_returns_nonzero(
     capsys,
     tmp_path: Path,
