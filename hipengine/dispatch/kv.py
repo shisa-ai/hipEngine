@@ -31,6 +31,8 @@ class PagedKVWriteKind(str, Enum):
 class PagedAttnDecodeKind(str, Enum):
     """Paged-attention decode launch variants selected by KV storage metadata."""
 
+    SPLITK_GATE_F32 = "splitk_gate_f32"
+    SPLITK_GATE_BF16 = "splitk_gate_bf16"
     GQA_SPLITK = "gqa_splitk"
     GQA_SPLITK_GATE_BF16 = "gqa_splitk_gate_bf16"
     GQA_SPLITK_GATE_FP16 = "gqa_splitk_gate_fp16"
@@ -77,6 +79,9 @@ _PAGED_KV_WRITE_ROUTES: dict[tuple[DType, PagedKVWriteKind, DType], _RouteTempla
     (DType.BF16, PagedKVWriteKind.BATCH, DType.BF16): _RouteTemplate(
         "paged_kv_write", "mixed_bf16_batch_spans"
     ),
+    (DType.BF16, PagedKVWriteKind.PROMPT, DType.BF16): _RouteTemplate(
+        "paged_kv_write", "mixed_bf16_prompt_spans"
+    ),
     (DType.BF16, PagedKVWriteKind.DECODE, DType.FP16): _RouteTemplate(
         "paged_kv_write", "mixed_fp16_spans"
     ),
@@ -102,6 +107,12 @@ _PAGED_KV_WRITE_ROUTES: dict[tuple[DType, PagedKVWriteKind, DType], _RouteTempla
 
 
 _PAGED_ATTN_DECODE_ROUTES: dict[tuple[DType, PagedAttnDecodeKind], _RouteTemplate] = {
+    (DType.BF16, PagedAttnDecodeKind.SPLITK_GATE_F32): _RouteTemplate(
+        "paged_attn_decode", "bf16_split_k_gate_f32_spans"
+    ),
+    (DType.BF16, PagedAttnDecodeKind.SPLITK_GATE_BF16): _RouteTemplate(
+        "paged_attn_decode", "bf16_split_k_gate_bf16_spans"
+    ),
     (DType.BF16, PagedAttnDecodeKind.GQA_SPLITK): _RouteTemplate(
         "paged_attn_decode", "bf16_split_k_gqa_spans"
     ),

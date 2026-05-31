@@ -8,8 +8,10 @@ import pytest
 
 from hipengine.kernels.registry import KernelKey
 from hipengine.runtime.stepfun_gguf_runner import (
+    STEPFUN_GGUF_KERNEL_QUANT,
     StepFunShortContextDecodePlanner,
     stepfun_kv_cache_nbytes,
+    stepfun_kv_decode_kernel_plan,
     stepfun_text_decode_slot_paths,
 )
 
@@ -52,6 +54,15 @@ def test_stepfun_short_context_decode_plan_preserves_chat_prefix_and_multi_eos()
     )
     assert plan.quant_dispatch_keys["gguf_q8_0"] == KernelKey(
         "hip_gfx1151", "linear", "gguf_q8_0", "gemv_bf16_bf16_out"
+    )
+    assert plan.kv_dispatch_keys["prompt_kv_write"] == KernelKey(
+        "hip_gfx1151", "paged_kv_write", STEPFUN_GGUF_KERNEL_QUANT, "mixed_bf16_prompt_spans"
+    )
+    assert plan.kv_dispatch_keys["decode_kv_write"] == KernelKey(
+        "hip_gfx1151", "paged_kv_write", STEPFUN_GGUF_KERNEL_QUANT, "mixed_bf16_spans"
+    )
+    assert plan.kv_dispatch_keys["decode_attention"] == KernelKey(
+        "hip_gfx1151", "paged_attn_decode", STEPFUN_GGUF_KERNEL_QUANT, "bf16_split_k_gate_f32_spans"
     )
 
 
@@ -137,9 +148,43 @@ def test_stepfun_text_decode_resource_plan_estimates_weight_and_kv_bytes() -> No
     }
     assert payload["kv_nbytes"] == 94_371_840
     assert payload["total_nbytes"] == plan.total_nbytes
+    kv_kernel_plan = payload["kv_decode_kernel_plan"]
+    assert kv_kernel_plan["model_quant"] == STEPFUN_GGUF_KERNEL_QUANT
+    assert kv_kernel_plan["kv_storage_dtype"] == "bf16"
+    assert kv_kernel_plan["decode_attention_kind"] == "splitk_gate_f32"
+    assert kv_kernel_plan["all_registered"] is True
+    assert kv_kernel_plan["dispatch_keys"]["prompt_kv_write"] == {
+        "backend": "hip_gfx1151",
+        "layer": "paged_kv_write",
+        "quant": STEPFUN_GGUF_KERNEL_QUANT,
+        "variant": "mixed_bf16_prompt_spans",
+    }
+    assert kv_kernel_plan["dispatch_keys"]["decode_attention"] == {
+        "backend": "hip_gfx1151",
+        "layer": "paged_attn_decode",
+        "quant": STEPFUN_GGUF_KERNEL_QUANT,
+        "variant": "bf16_split_k_gate_f32_spans",
+    }
 
     with pytest.raises(ValueError, match="context_pages"):
         planner.text_decode_resource_plan(context_pages=0, page_size=512)
+
+
+def test_stepfun_kv_decode_kernel_plan_resolves_step35_registry_keys() -> None:
+    plan = stepfun_kv_decode_kernel_plan(backend="hip_gfx1151")
+
+    assert plan.model_quant == STEPFUN_GGUF_KERNEL_QUANT
+    assert plan.kv_storage_dtype == "bf16"
+    assert plan.decode_attention_kind == "splitk_gate_f32"
+    assert plan.all_registered is True
+    assert plan.registered == {
+        "prompt_kv_write": True,
+        "decode_kv_write": True,
+        "decode_attention": True,
+    }
+    assert plan.dispatch_keys["decode_attention"] == KernelKey(
+        "hip_gfx1151", "paged_attn_decode", STEPFUN_GGUF_KERNEL_QUANT, "bf16_split_k_gate_f32_spans"
+    )
 
 
 def test_stepfun_decode_planner_does_not_import_torch() -> None:

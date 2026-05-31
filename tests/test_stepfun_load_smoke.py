@@ -59,6 +59,17 @@ def test_stepfun_load_smoke_dry_run_plan_emits_resource_json(capsys: pytest.Capt
         "value_nbytes": 1_048_576,
     }
     assert plan["kv_nbytes"] == payload["kv_nbytes"]
+    kv_plan = plan["kv_decode_kernel_plan"]
+    assert kv_plan["model_quant"] == "gguf_step35"
+    assert kv_plan["kv_storage_dtype"] == "bf16"
+    assert kv_plan["decode_attention_kind"] == "splitk_gate_f32"
+    assert kv_plan["all_registered"] is True
+    assert kv_plan["dispatch_keys"]["decode_attention"] == {
+        "backend": "hip_gfx1151",
+        "layer": "paged_attn_decode",
+        "quant": "gguf_step35",
+        "variant": "bf16_split_k_gate_f32_spans",
+    }
     assert plan["slot_paths"][:4] == [
         "root.token_embedding",
         "root.rope_freqs",

@@ -27876,3 +27876,19 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted status tests passed (`3 passed`); full StepFun guard passed (`101 passed` plus fixture checks).
+
+## 2026-05-31 — StepFun KV dispatch plan recorded
+
+Added StepFun GGUF KV dispatch planning for the remaining P11 KV-backed decode blocker. The planner now resolves `gguf_step35` registry keys for BF16 prompt KV writes (`paged_kv_write/mixed_bf16_prompt_spans`), one-token decode KV writes (`paged_kv_write/mixed_bf16_spans`), and generic gated BF16 paged decode attention (`paged_attn_decode/bf16_split_k_gate_f32_spans`) on `hip_gfx1151`. This is dispatch-readiness evidence only: the streaming KV-backed runner and oracle parity remain open.
+
+Updated the gfx1100 registry aliases so gfx1151 can inherit the StepFun-specific `gguf_step35` KV write/attention keys without backend or quant branches, extended `StepFunTextDecodeResourcePlan.to_dict()` with `kv_decode_kernel_plan`, regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json`, and added planner/load-smoke tests for the machine-readable keys.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_decode_planner.py tests/test_stepfun_load_smoke.py -q
+python3 -m pytest -q tests/test_kv_dispatch.py -q
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted StepFun planner/load-smoke tests passed (`7 passed`), KV dispatch tests passed (`3 passed`), and the full StepFun guard passed (`102 passed` plus CPU-reference fixture checks).

@@ -7,6 +7,8 @@ from importlib import import_module
 from pathlib import Path
 from typing import Mapping, Sequence
 
+from hipengine.core.device import Device
+from hipengine.core.dtype import DType
 from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import (
     DeviceBuffer,
@@ -16,7 +18,15 @@ from hipengine.core.memory import (
     host_array_ptr,
     malloc,
 )
+from hipengine.core.tensor import Tensor
+from hipengine.dispatch.kv import (
+    PagedAttnDecodeKind,
+    PagedKVWriteKind,
+    plan_paged_attn_decode,
+    plan_paged_kv_write,
+)
 from hipengine.kernels.registry import KernelKey, resolve
+from hipengine.kvcache import KVLiveSpans
 from hipengine.loading.gguf import GGUFSplitModelInfo, scan_gguf_splits
 from hipengine.loading.stepfun_gguf import (
     SLIDING_ATTENTION,
@@ -34,6 +44,7 @@ from hipengine.tokenization import StepFunGGUFTokenizer
 
 DEFAULT_STEPFUN_SHORT_CONTEXT = 512
 DEFAULT_STEPFUN_MAX_NEW_TOKENS = 1
+STEPFUN_GGUF_KERNEL_QUANT = "gguf_step35"
 BF16_BYTES = 2
 
 
@@ -48,6 +59,7 @@ class StepFunDecodePlan:
     max_new_tokens: int
     backend: str
     quant_dispatch_keys: Mapping[str, KernelKey]
+    kv_dispatch_keys: Mapping[str, KernelKey]
 
     @property
     def prompt_length(self) -> int:
@@ -163,6 +175,39 @@ class StepFunKVCacheAllocation:
 
 
 @dataclass(frozen=True)
+class StepFunKVDecodeKernelPlan:
+    """Registry-key plan for the StepFun BF16 KV-backed decode path."""
+
+    backend: str
+    model_quant: str
+    kv_storage_dtype: str
+    dispatch_keys: Mapping[str, KernelKey]
+    registered: Mapping[str, bool]
+    decode_attention_kind: str
+
+    @property
+    def all_registered(self) -> bool:
+        return all(bool(value) for value in self.registered.values())
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "backend": self.backend,
+            "model_quant": self.model_quant,
+            "kv_storage_dtype": self.kv_storage_dtype,
+            "decode_attention_kind": self.decode_attention_kind,
+            "dispatch_keys": {
+                name: _kernel_key_to_dict(key) for name, key in self.dispatch_keys.items()
+            },
+            "registered": dict(self.registered),
+            "all_registered": self.all_registered,
+            "note": (
+                "These are registry-key checks for the planned StepFun BF16 KV write/decode path. "
+                "They do not claim that the streaming runner or oracle parity is complete."
+            ),
+        }
+
+
+@dataclass(frozen=True)
 class StepFunTextDecodeResourcePlan:
     """Resident-weight and KV-cache byte plan for text-only Step decode."""
 
@@ -172,6 +217,7 @@ class StepFunTextDecodeResourcePlan:
     context_pages: int
     page_size: int
     backend: str
+    kv_decode_kernel_plan: StepFunKVDecodeKernelPlan
 
     @classmethod
     def from_model_map(
@@ -195,6 +241,7 @@ class StepFunTextDecodeResourcePlan:
             context_pages=int(context_pages),
             page_size=int(page_size),
             backend=backend,
+            kv_decode_kernel_plan=stepfun_kv_decode_kernel_plan(backend=backend),
         )
 
     @property
@@ -239,6 +286,7 @@ class StepFunTextDecodeResourcePlan:
             "kv_gib": self.kv_gib,
             "total_nbytes": self.total_nbytes,
             "total_gib": self.total_gib,
+            "kv_decode_kernel_plan": self.kv_decode_kernel_plan.to_dict(),
         }
 
 
@@ -307,6 +355,7 @@ class StepFunShortContextDecodePlanner:
             max_new_tokens=self.max_new_tokens,
             backend=self.backend,
             quant_dispatch_keys=self.resolve_quant_dispatch_keys(),
+            kv_dispatch_keys=self.resolve_kv_dispatch_keys(),
         )
 
     def text_decode_resource_plan(
@@ -339,22 +388,13 @@ class StepFunShortContextDecodePlanner:
             "gguf_q5_k": KernelKey(self.backend, "linear", "gguf_q5_k", "gemv_bf16_bf16_out"),
             "gguf_q8_0": KernelKey(self.backend, "linear", "gguf_q8_0", "gemv_bf16_bf16_out"),
         }
-        missing = [
-            key
-            for key in required.values()
-            if resolve(
-                backend=key.backend,
-                layer=key.layer,
-                quant=key.quant,
-                variant=key.variant,
-                missing="none",
-            )
-            is None
-        ]
-        if missing:
-            joined = ", ".join(str(key) for key in missing)
-            raise RuntimeError(f"missing StepFun mixed-quant dispatch keys: {joined}")
+        _raise_for_missing_stepfun_dispatch(required, "mixed-quant")
         return required
+
+    def resolve_kv_dispatch_keys(self) -> Mapping[str, KernelKey]:
+        """Return BF16 KV write/decode dispatch keys for this model."""
+
+        return stepfun_kv_decode_kernel_plan(backend=self.backend).dispatch_keys
 
     def _validate_short_context(self, input_ids: tuple[int, ...]) -> None:
         if len(input_ids) + self.max_new_tokens > self.max_context:
@@ -1309,6 +1349,90 @@ def stepfun_kv_cache_nbytes(
     )
 
 
+def stepfun_kv_decode_kernel_plan(*, backend: str = "hip_gfx1151") -> StepFunKVDecodeKernelPlan:
+    """Return registered BF16 KV dispatch keys planned for StepFun decode."""
+
+    _register_backend_plugin(backend)
+    spans = _planning_bf16_kv_spans()
+    dispatch_keys = {
+        "prompt_kv_write": plan_paged_kv_write(
+            spans,
+            kind=PagedKVWriteKind.PROMPT,
+            source_dtype=DType.BF16,
+            model_quant=STEPFUN_GGUF_KERNEL_QUANT,
+        ).key(backend),
+        "decode_kv_write": plan_paged_kv_write(
+            spans,
+            kind=PagedKVWriteKind.DECODE,
+            source_dtype=DType.BF16,
+            model_quant=STEPFUN_GGUF_KERNEL_QUANT,
+        ).key(backend),
+        "decode_attention": plan_paged_attn_decode(
+            spans,
+            kind=PagedAttnDecodeKind.SPLITK_GATE_F32,
+            model_quant=STEPFUN_GGUF_KERNEL_QUANT,
+        ).key(backend),
+    }
+    registered = {name: _can_resolve_kernel_key(key) for name, key in dispatch_keys.items()}
+    plan = StepFunKVDecodeKernelPlan(
+        backend=backend,
+        model_quant=STEPFUN_GGUF_KERNEL_QUANT,
+        kv_storage_dtype=DType.BF16.value,
+        dispatch_keys=dispatch_keys,
+        registered=registered,
+        decode_attention_kind=PagedAttnDecodeKind.SPLITK_GATE_F32.value,
+    )
+    if not plan.all_registered:
+        missing = {name: key for name, key in dispatch_keys.items() if not registered[name]}
+        joined = ", ".join(f"{name}={key}" for name, key in missing.items())
+        raise RuntimeError(f"missing StepFun KV dispatch keys: {joined}")
+    return plan
+
+
+def _planning_bf16_kv_spans() -> KVLiveSpans:
+    """Construct no-allocation span metadata for registry-key planning."""
+
+    device = Device("hip", 0)
+    block_table = Tensor.from_handle(0, (1,), DType.INT32, device)
+    live_counts = Tensor.from_handle(0, (1,), DType.INT64, device)
+    return KVLiveSpans.paged_uniform(
+        block_table=block_table,
+        live_counts=live_counts,
+        max_live_count=1,
+        storage_dtype=DType.BF16,
+        span_role="decode",
+    )
+
+
+def _can_resolve_kernel_key(key: KernelKey) -> bool:
+    return (
+        resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+            missing="none",
+        )
+        is not None
+    )
+
+
+def _raise_for_missing_stepfun_dispatch(keys: Mapping[str, KernelKey], label: str) -> None:
+    missing = [key for key in keys.values() if not _can_resolve_kernel_key(key)]
+    if missing:
+        joined = ", ".join(str(key) for key in missing)
+        raise RuntimeError(f"missing StepFun {label} dispatch keys: {joined}")
+
+
+def _kernel_key_to_dict(key: KernelKey) -> dict[str, str]:
+    return {
+        "backend": key.backend,
+        "layer": key.layer,
+        "quant": key.quant,
+        "variant": key.variant,
+    }
+
+
 def stepfun_slot_tensor(model_map: StepFunGGUFModelMap, slot_path: str):
     """Resolve a StepFun materialization slot path to its GGUF tensor info."""
 
@@ -1424,8 +1548,10 @@ def _register_backend_plugin(backend: str) -> None:
 __all__ = [
     "DEFAULT_STEPFUN_MAX_NEW_TOKENS",
     "DEFAULT_STEPFUN_SHORT_CONTEXT",
+    "STEPFUN_GGUF_KERNEL_QUANT",
     "StepFunDecodePlan",
     "StepFunKVCacheAllocation",
+    "StepFunKVDecodeKernelPlan",
     "StepFunLayerPrefixLogitsProbe",
     "StepFunMoERouterResult",
     "StepFunOneLayerLogitsProbe",
@@ -1436,6 +1562,7 @@ __all__ = [
     "StepFunTextDecodeResourcePlan",
     "stepfun_kv_cache_layer_nbytes",
     "stepfun_kv_cache_nbytes",
+    "stepfun_kv_decode_kernel_plan",
     "stepfun_layer_prefix_slot_paths",
     "stepfun_layer_slot_paths",
     "stepfun_slot_tensor",

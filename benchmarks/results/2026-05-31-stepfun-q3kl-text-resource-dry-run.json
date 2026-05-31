@@ -34,6 +34,39 @@
     "backend": "hip_gfx1151",
     "context_pages": 1,
     "kv_buffer_count": 90,
+    "kv_decode_kernel_plan": {
+      "all_registered": true,
+      "backend": "hip_gfx1151",
+      "decode_attention_kind": "splitk_gate_f32",
+      "dispatch_keys": {
+        "decode_attention": {
+          "backend": "hip_gfx1151",
+          "layer": "paged_attn_decode",
+          "quant": "gguf_step35",
+          "variant": "bf16_split_k_gate_f32_spans"
+        },
+        "decode_kv_write": {
+          "backend": "hip_gfx1151",
+          "layer": "paged_kv_write",
+          "quant": "gguf_step35",
+          "variant": "mixed_bf16_spans"
+        },
+        "prompt_kv_write": {
+          "backend": "hip_gfx1151",
+          "layer": "paged_kv_write",
+          "quant": "gguf_step35",
+          "variant": "mixed_bf16_prompt_spans"
+        }
+      },
+      "kv_storage_dtype": "bf16",
+      "model_quant": "gguf_step35",
+      "note": "These are registry-key checks for the planned StepFun BF16 KV write/decode path. They do not claim that the streaming runner or oracle parity is complete.",
+      "registered": {
+        "decode_attention": true,
+        "decode_kv_write": true,
+        "prompt_kv_write": true
+      }
+    },
     "kv_gib": 0.087890625,
     "kv_layer_nbytes": [
       {

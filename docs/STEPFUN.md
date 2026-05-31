@@ -535,6 +535,12 @@ reporting.
   A text-only decode
   slot planner covers all 754 validated GGUF slots, including root
   `rope_freqs.weight`, and has no vision/projector/MTP slot dependencies. The
+  same resource plan now records the StepFun GGUF KV dispatch keys under the
+  registry quant axis `gguf_step35`: prompt KV writes use
+  `paged_kv_write/mixed_bf16_prompt_spans`, decode KV writes use
+  `paged_kv_write/mixed_bf16_spans`, and gated decode attention uses the generic
+  `paged_attn_decode/bf16_split_k_gate_f32_spans` route on `hip_gfx1151`; this
+  is dispatch-readiness evidence only, not a completed streaming runner. The
   dense-MLP input bundle launches layer-0 `ffn_gate`/`ffn_up` projections vs CPU references,
   and a dense-MLP correctness probe composes gate/up, host SwiGLU BF16 rounding,
   and resident `ffn_down` vs CPU reference. The resident session also owns a

@@ -424,6 +424,11 @@ def register_qwen35_paged_kv_write_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "paged_kv_write", "gguf_step35", "mixed_bf16_spans"),
+        qwen35_write_paged_kv_mixed_value_bf16_spans,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "paged_kv_write", "w4_paro", "mixed_bf16_batch_spans"),
         qwen35_write_paged_kv_mixed_value_bf16_batch_spans,
         replace=replace,
@@ -435,6 +440,11 @@ def register_qwen35_paged_kv_write_kernels(*, replace: bool = True) -> None:
     )
     register(
         KernelKey("hip_gfx1100", "paged_kv_write", "gguf_qwen35", "mixed_bf16_prompt_spans"),
+        qwen35_write_paged_kv_mixed_value_bf16_prompt_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "paged_kv_write", "gguf_step35", "mixed_bf16_prompt_spans"),
         qwen35_write_paged_kv_mixed_value_bf16_prompt_spans,
         replace=replace,
     )
