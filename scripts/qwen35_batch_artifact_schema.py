@@ -2625,8 +2625,8 @@ def _validate_claimed_generated_token_equality(
                 errors.append(f"{label}[{index}] must be a non-empty per-row token-id list when passed is true")
             if expected_tokens is not None and len(sequence) != expected_tokens:
                 errors.append(f"{label}[{index}] length must match seed plus workload.warmup_decode_tokens plus workload.gen_tokens_per_request when passed is true")
-            if any(not isinstance(token, int) or isinstance(token, bool) for token in sequence):
-                errors.append(f"{label}[{index}] must contain only token ids when passed is true")
+            if any(not _is_valid_token_id(token) for token in sequence):
+                errors.append(f"{label}[{index}] must contain only non-negative token ids when passed is true")
     if isinstance(batch_sequences, list) and isinstance(c1_sequences, list) and batch_sequences != c1_sequences:
         errors.append("correctness.generated_token_equality.batch_sequences must equal c1_sequences when passed is true")
     mismatches = equality.get("mismatches")
@@ -2857,8 +2857,8 @@ def _validate_generated_token_sequence_lengths(
             continue
         if len(sequence) != expected_equality_tokens:
             errors.append(f"{label}[{index}] length must match seed plus workload.warmup_decode_tokens plus workload.gen_tokens_per_request for accepted artifacts")
-        if any(not isinstance(token, int) or isinstance(token, bool) for token in sequence):
-            errors.append(f"{label}[{index}] must contain only token ids for accepted artifacts")
+        if any(not _is_valid_token_id(token) for token in sequence):
+            errors.append(f"{label}[{index}] must contain only non-negative token ids for accepted artifacts")
 
 
 def _validate_execution_seed_tokens(
@@ -3004,13 +3004,23 @@ def _extract_generated_token_ids(row: Any, label: str, errors: list[str]) -> lis
     return token_ids
 
 
+def _is_valid_token_id(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
 def _extract_token_id(item: Any, label: str, errors: list[str]) -> int | None:
-    if isinstance(item, int) and not isinstance(item, bool):
+    if _is_valid_token_id(item):
         return item
+    if isinstance(item, int) and not isinstance(item, bool):
+        errors.append(f"{label} must be a non-negative token id for accepted artifacts")
+        return None
     if isinstance(item, Mapping):
         token_id = item.get("token_id")
-        if isinstance(token_id, int) and not isinstance(token_id, bool):
+        if _is_valid_token_id(token_id):
             return token_id
+        if isinstance(token_id, int) and not isinstance(token_id, bool):
+            errors.append(f"{label}.token_id must be non-negative for accepted artifacts")
+            return None
     errors.append(f"{label} must be a token id or object with token_id for accepted artifacts")
     return None
 

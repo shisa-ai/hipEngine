@@ -11362,6 +11362,12 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
     with pytest.raises(ValueError, match="batch_sequences\\[0\\] must be a non-empty per-row token-id list"):
         validate_cn_diagnostic_artifact_payload(empty_row_claim)
 
+    negative_token_claim = json.loads(json.dumps(payload))
+    negative_token_claim["correctness"]["generated_token_equality"]["batch_sequences"][0][2] = -1
+    negative_token_claim["correctness"]["generated_token_equality"]["c1_sequences"][0][2] = -1
+    with pytest.raises(ValueError, match="batch_sequences\\[0\\] must contain only non-negative token ids"):
+        validate_cn_diagnostic_artifact_payload(negative_token_claim)
+
     missing_shape_claim = json.loads(json.dumps(payload))
     missing_shape_claim["workload"].pop("concurrency")
     missing_shape_claim["workload"].pop("warmup_decode_tokens")
