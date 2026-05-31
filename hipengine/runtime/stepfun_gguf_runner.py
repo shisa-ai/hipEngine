@@ -20,6 +20,7 @@ from hipengine.kernels.registry import KernelKey, resolve
 from hipengine.loading.gguf import GGUFSplitModelInfo, scan_gguf_splits
 from hipengine.loading.stepfun_gguf import (
     SLIDING_ATTENTION,
+    StepFunGGUFConfig,
     StepFunGGUFModelMap,
     build_stepfun_gguf_tensor_map,
 )
@@ -162,6 +163,42 @@ class StepFunKVCacheAllocation:
 
 
 @dataclass(frozen=True)
+class StepFunTextDecodeResourcePlan:
+    """Resident-weight and KV-cache byte plan for text-only Step decode."""
+
+    slot_paths: tuple[str, ...]
+    resident_weight_nbytes: int
+    kv_layer_nbytes: tuple[tuple[int, int], ...]
+    context_pages: int
+    page_size: int
+    backend: str
+
+    @property
+    def slot_count(self) -> int:
+        return len(self.slot_paths)
+
+    @property
+    def kv_nbytes(self) -> int:
+        return sum(key_bytes + value_bytes for key_bytes, value_bytes in self.kv_layer_nbytes)
+
+    @property
+    def total_nbytes(self) -> int:
+        return self.resident_weight_nbytes + self.kv_nbytes
+
+    @property
+    def resident_weight_gib(self) -> float:
+        return self.resident_weight_nbytes / 2**30
+
+    @property
+    def kv_gib(self) -> float:
+        return self.kv_nbytes / 2**30
+
+    @property
+    def total_gib(self) -> float:
+        return self.total_nbytes / 2**30
+
+
+@dataclass(frozen=True)
 class StepFunShortContextDecodePlanner:
     """Pre-run planner for StepFun text-only c=1 decode.
 
@@ -226,6 +263,35 @@ class StepFunShortContextDecodePlanner:
             max_new_tokens=self.max_new_tokens,
             backend=self.backend,
             quant_dispatch_keys=self.resolve_quant_dispatch_keys(),
+        )
+
+    def text_decode_resource_plan(
+        self,
+        *,
+        context_pages: int = 1,
+        page_size: int | None = None,
+    ) -> StepFunTextDecodeResourcePlan:
+        """Estimate resident text weights plus BF16 KV-cache bytes.
+
+        The plan is metadata-only and torch-free; it does not allocate HIP
+        memory. It mirrors the slot set used by the text-only resident runner so
+        load-smoke memory snapshots can be compared against expected bytes.
+        """
+
+        page = self.max_context if page_size is None else int(page_size)
+        slots = stepfun_text_decode_slot_paths(self.model_map)
+        resident_nbytes = sum(stepfun_slot_tensor(self.model_map, slot).nbytes for slot in slots)
+        return StepFunTextDecodeResourcePlan(
+            slot_paths=slots,
+            resident_weight_nbytes=int(resident_nbytes),
+            kv_layer_nbytes=stepfun_kv_cache_layer_nbytes(
+                self.model_map.config,
+                context_pages=context_pages,
+                page_size=page,
+            ),
+            context_pages=int(context_pages),
+            page_size=page,
+            backend=self.backend,
         )
 
     def resolve_quant_dispatch_keys(self) -> Mapping[str, KernelKey]:
@@ -333,16 +399,16 @@ class StepFunResidentSession:
         if page_size <= 0:
             raise ValueError("page_size must be positive")
         runtime = runtime or get_hip_runtime()
-        tokens = int(context_pages) * int(page_size)
+        layer_nbytes = stepfun_kv_cache_layer_nbytes(
+            self.model_map.config,
+            context_pages=context_pages,
+            page_size=page_size,
+        )
         buffers: list[DeviceBuffer] = []
-        layer_nbytes: list[tuple[int, int]] = []
         try:
-            for kv_heads in self.model_map.config.kv_head_counts:
-                key_nbytes = tokens * int(kv_heads) * int(self.model_map.config.head_dim) * BF16_BYTES
-                value_nbytes = tokens * int(kv_heads) * int(self.model_map.config.value_dim) * BF16_BYTES
+            for key_nbytes, value_nbytes in layer_nbytes:
                 buffers.append(malloc(key_nbytes, runtime=runtime))
                 buffers.append(malloc(value_nbytes, runtime=runtime))
-                layer_nbytes.append((key_nbytes, value_nbytes))
         except Exception:
             for buffer in reversed(buffers):
                 free(buffer, runtime=runtime)
@@ -351,7 +417,7 @@ class StepFunResidentSession:
             buffers=tuple(buffers),
             context_pages=int(context_pages),
             page_size=int(page_size),
-            layer_nbytes=tuple(layer_nbytes),
+            layer_nbytes=layer_nbytes,
         )
 
     def weight_for_slot(self, slot_path: str):
@@ -1167,6 +1233,62 @@ class StepFunResidentSession:
             raise ValueError(f"layer_id out of range: {layer_id}")
 
 
+def stepfun_kv_cache_layer_nbytes(
+    config: StepFunGGUFConfig,
+    *,
+    context_pages: int,
+    page_size: int,
+) -> tuple[tuple[int, int], ...]:
+    """Return per-layer BF16 key/value cache byte counts for StepFun."""
+
+    if context_pages <= 0:
+        raise ValueError("context_pages must be positive")
+    if page_size <= 0:
+        raise ValueError("page_size must be positive")
+    tokens = int(context_pages) * int(page_size)
+    return tuple(
+        (
+            tokens * int(kv_heads) * int(config.head_dim) * BF16_BYTES,
+            tokens * int(kv_heads) * int(config.value_dim) * BF16_BYTES,
+        )
+        for kv_heads in config.kv_head_counts
+    )
+
+
+def stepfun_kv_cache_nbytes(
+    config: StepFunGGUFConfig,
+    *,
+    context_pages: int,
+    page_size: int,
+) -> int:
+    """Return total BF16 KV-cache bytes for StepFun."""
+
+    return sum(
+        key_nbytes + value_nbytes
+        for key_nbytes, value_nbytes in stepfun_kv_cache_layer_nbytes(
+            config,
+            context_pages=context_pages,
+            page_size=page_size,
+        )
+    )
+
+
+def stepfun_slot_tensor(model_map: StepFunGGUFModelMap, slot_path: str):
+    """Resolve a StepFun materialization slot path to its GGUF tensor info."""
+
+    if slot_path.startswith("root."):
+        parts = slot_path.split(".")
+        if len(parts) != 2:
+            raise ValueError(f"invalid StepFun root slot path: {slot_path!r}")
+        return model_map.root(parts[1])
+    if slot_path.startswith("layers."):
+        parts = slot_path.split(".")
+        if len(parts) != 3:
+            raise ValueError(f"invalid StepFun layer slot path: {slot_path!r}")
+        return model_map.layer(int(parts[1])).tensor(parts[2])
+    raise ValueError(f"invalid StepFun materialization slot path: {slot_path!r}")
+
+
 def stepfun_layer_slot_paths(model_map: StepFunGGUFModelMap, layer_id: int) -> tuple[str, ...]:
     """Return resident slot paths required to execute one StepFun layer."""
 
@@ -1275,7 +1397,11 @@ __all__ = [
     "StepFunResidentSession",
     "StepFunRootOnlyLogitsProbe",
     "StepFunShortContextDecodePlanner",
+    "StepFunTextDecodeResourcePlan",
+    "stepfun_kv_cache_layer_nbytes",
+    "stepfun_kv_cache_nbytes",
     "stepfun_layer_prefix_slot_paths",
     "stepfun_layer_slot_paths",
+    "stepfun_slot_tensor",
     "stepfun_text_decode_slot_paths",
 ]

@@ -27467,3 +27467,17 @@ python3 -m pytest -q tests/test_stepfun_decode_planner.py -q
 ```
 
 Result: `4 passed`.
+
+## 2026-05-31 — StepFun text decode resource plan
+
+Added `StepFunTextDecodeResourcePlan`, reusable StepFun BF16 KV-cache byte helpers, and `StepFunShortContextDecodePlanner.text_decode_resource_plan()`. The metadata-only plan ties the text-only 754-slot resident weight plan to exact resident-weight bytes plus a context/page-specific KV footprint without allocating HIP memory. `StepFunResidentSession.allocate_kv_cache()` and `scripts/stepfun_gguf_load_smoke.py` now share the same KV byte helper, keeping the load-smoke estimates aligned with runtime allocation shape.
+
+Extended `tests/test_stepfun_decode_planner.py` to assert the real Q3_K_L split-GGUF text plan reports 754 slots, `102,499,149,312` resident-weight bytes via the split metadata, and `94,371,840` bytes (`0.0879 GiB`) for a 512-token BF16 KV cache across 45 layers / 90 buffers. This is planning evidence only; generation memory snapshots remain open until the full KV-backed runner or all-layer prompt path is validated.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_decode_planner.py -q
+```
+
+Result: `5 passed`.

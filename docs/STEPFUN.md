@@ -548,7 +548,7 @@ reporting.
 **Acceptance:** `python3 -m pytest -q tests/test_stepfun_decode_planner.py`
 passes for short-context limits, mixed-quant dispatch-key validation,
 assistant-prefix rendering, multi-EOS stopping, text-only full-model slot
-planning, and torch-free imports.
+planning, resident-weight/KV byte planning, and torch-free imports.
 `python3 -m pytest -q tests/test_stepfun_resident_session.py` passes for real
 resident Q8_0 token embedding of a rendered Step chat prompt and `[0, BOS, EOS,
 128007, vocab-1, EOS]` plus real layer-0 `Q3_K` `attn_q` and `Q5_K`
@@ -607,8 +607,11 @@ layer loop is wired.
   `94,371,840` bytes (`0.0879 GiB`) across 90 K/V buffers, with free memory
   `23.9061 GiB` after weights -> `23.8183 GiB` after KV -> `23.9061 GiB` after
   KV free. `StepFunResidentSession.allocate_kv_cache()` now covers the same
-  owned per-layer K/V allocation/free shape for runtime bring-up. Generation
-  snapshots remain open.
+  owned per-layer K/V allocation/free shape for runtime bring-up. 2026-05-31
+  resource-planning progress: `StepFunShortContextDecodePlanner.text_decode_resource_plan()`
+  ties the full 754-slot text plan to `102,499,149,312` resident-weight bytes
+  and a 512-token BF16 KV estimate of `94,371,840` bytes (`0.0879 GiB`) across
+  90 K/V buffers for backend `hip_gfx1151`. Generation snapshots remain open.
 - [x] If the model does not fit, keep the failure artifact and decide between
   offload/tiering, lower context/KV footprint, or slice-only correctness. No
   current fit failure is claimed from VIS_VRAM/`hipMemGetInfo` alone; decision

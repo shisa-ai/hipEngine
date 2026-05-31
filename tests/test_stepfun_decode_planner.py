@@ -9,6 +9,7 @@ import pytest
 from hipengine.kernels.registry import KernelKey
 from hipengine.runtime.stepfun_gguf_runner import (
     StepFunShortContextDecodePlanner,
+    stepfun_kv_cache_nbytes,
     stepfun_text_decode_slot_paths,
 )
 
@@ -92,6 +93,33 @@ def test_stepfun_text_decode_slot_paths_cover_validated_text_model_without_extra
             assert parts[0] == "layers"
             tensor_names.append(planner.model_map.layer(int(parts[1])).tensor(parts[2]).name)
     assert set(tensor_names) == set(planner.model_map.tensor_names)
+
+
+def test_stepfun_text_decode_resource_plan_estimates_weight_and_kv_bytes() -> None:
+    planner = StepFunShortContextDecodePlanner.from_gguf_paths(_stepfun_gguf_paths())
+
+    plan = planner.text_decode_resource_plan(context_pages=1, page_size=512)
+
+    assert plan.backend == "hip_gfx1151"
+    assert plan.context_pages == 1
+    assert plan.page_size == 512
+    assert plan.slot_paths == stepfun_text_decode_slot_paths(planner.model_map)
+    assert plan.slot_count == planner.info.tensor_count == 754
+    assert plan.resident_weight_nbytes == planner.info.total_tensor_nbytes
+    assert plan.resident_weight_gib == pytest.approx(planner.info.total_tensor_nbytes / 2**30)
+    assert len(plan.kv_layer_nbytes) == planner.model_map.config.block_count == 45
+    assert plan.kv_layer_nbytes[0] == (1_048_576, 1_048_576)
+    assert plan.kv_nbytes == 94_371_840
+    assert plan.kv_gib == pytest.approx(94_371_840 / 2**30)
+    assert plan.kv_nbytes == stepfun_kv_cache_nbytes(
+        planner.model_map.config,
+        context_pages=1,
+        page_size=512,
+    )
+    assert plan.total_nbytes == plan.resident_weight_nbytes + plan.kv_nbytes
+
+    with pytest.raises(ValueError, match="context_pages"):
+        planner.text_decode_resource_plan(context_pages=0, page_size=512)
 
 
 def test_stepfun_decode_planner_does_not_import_torch() -> None:

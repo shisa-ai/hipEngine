@@ -22,11 +22,14 @@ from hipengine.loading.stepfun_gguf_materialize import (
     materialize_stepfun_gguf_weights,
     plan_stepfun_gguf_materialization,
 )
+from hipengine.runtime.stepfun_gguf_runner import (
+    stepfun_kv_cache_layer_nbytes,
+    stepfun_kv_cache_nbytes as runtime_stepfun_kv_cache_nbytes,
+)
 
 DEFAULT_MODEL_DIR = Path("/data/models/gguf")
 DEFAULT_PATTERN = "Step-3.7-flash-Q3_K_L-*.gguf"
 BOOT_CONFIG = Path("/etc/modprobe.d/amdgpu_llm_optimized.conf")
-BF16_BYTES = 2
 
 
 def _stepfun_kv_cache_nbytes(
@@ -37,10 +40,10 @@ def _stepfun_kv_cache_nbytes(
 ) -> int:
     if context_pages <= 0:
         return 0
-    tokens = context_pages * page_size
-    return sum(
-        tokens * kv_heads * (config.head_dim + config.value_dim) * BF16_BYTES
-        for kv_heads in config.kv_head_counts
+    return runtime_stepfun_kv_cache_nbytes(
+        config,
+        context_pages=context_pages,
+        page_size=page_size,
     )
 
 
@@ -53,12 +56,15 @@ def _allocate_stepfun_kv_cache(
 ) -> list[DeviceBuffer]:
     if context_pages <= 0:
         return []
-    tokens = context_pages * page_size
     buffers: list[DeviceBuffer] = []
     try:
-        for layer_id, kv_heads in enumerate(config.kv_head_counts):
-            key_nbytes = tokens * kv_heads * config.head_dim * BF16_BYTES
-            value_nbytes = tokens * kv_heads * config.value_dim * BF16_BYTES
+        for layer_id, (key_nbytes, value_nbytes) in enumerate(
+            stepfun_kv_cache_layer_nbytes(
+                config,
+                context_pages=context_pages,
+                page_size=page_size,
+            )
+        ):
             buffers.append(malloc(key_nbytes, runtime=runtime))
             buffers.append(malloc(value_nbytes, runtime=runtime))
             print(
