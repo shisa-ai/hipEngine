@@ -66,6 +66,7 @@ _REQUIRED_BATCH_EXECUTION_FLAGS = (
 )
 _REQUIRED_ACCEPTED_WORKLOAD_LABELS = (
     "model",
+    "model_path",
     "quant",
     "kv_storage_dtype",
 )
@@ -563,9 +564,15 @@ def _validate_command_json_matches_artifact_path(
         errors.append(f"commands.{field} --json path must match {artifact_field} for accepted artifacts")
 
 
-def _validate_command_model_fixture_flags(command: str, *, field: str, errors: list[str]) -> None:
-    if _COMMAND_MODEL_RE.search(command) is None:
+def _validate_command_model_fixture_flags(command: str, *, field: str, workload: Mapping[str, Any], errors: list[str]) -> None:
+    model_match = _COMMAND_MODEL_RE.search(command)
+    if model_match is None:
         errors.append(f"commands.{field} must include --model for accepted artifacts")
+    else:
+        model_path = workload.get("model_path")
+        command_model = model_match.group(1).strip("'\"")
+        if isinstance(model_path, str) and model_path and command_model != model_path:
+            errors.append(f"commands.{field} --model must match workload.model_path for accepted artifacts")
     if _COMMAND_FIXTURE_RE.search(command) is None:
         errors.append(f"commands.{field} must include --fixture for accepted artifacts")
 
@@ -1837,6 +1844,7 @@ def _validate_accepted_benchmark_rollup_declaration(
 def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[str]) -> None:
     payload_artifact_path = _validate_accepted_payload_artifact_path(payload, errors)
     _validate_accepted_benchmark_rollup_declaration(payload, payload_artifact_path=payload_artifact_path, errors=errors)
+    workload = _mapping_at(payload, "workload", errors)
     hardware = _mapping_at(payload, "hardware", errors)
     if not hardware:
         errors.append("hardware must be a non-empty object for accepted artifacts")
@@ -1927,7 +1935,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         else:
             _validate_retained_bench_command_target(benchmark_command, field="benchmark", errors=errors)
             _validate_retained_bench_unique_flags(benchmark_command, field="benchmark", errors=errors)
-            _validate_command_model_fixture_flags(benchmark_command, field="benchmark", errors=errors)
+            _validate_command_model_fixture_flags(benchmark_command, field="benchmark", workload=workload, errors=errors)
             _validate_command_workload_shape(benchmark_command, field="benchmark", payload=payload, errors=errors)
             _validate_command_json_matches_artifact_path(
                 benchmark_command,
@@ -2040,7 +2048,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         else:
             profiler_profiled_benchmark_command = shlex.join(profiled_command_argv)
             _validate_retained_bench_unique_flags(profiler_profiled_benchmark_command, field="profiler", errors=errors)
-            _validate_command_model_fixture_flags(profiler_profiled_benchmark_command, field="profiler", errors=errors)
+            _validate_command_model_fixture_flags(profiler_profiled_benchmark_command, field="profiler", workload=workload, errors=errors)
             if isinstance(benchmark_command, str):
                 _validate_profiled_command_matches_benchmark_model_fixture(profiler_profiled_benchmark_command, benchmark_command, errors)
             _validate_command_workload_shape(profiler_profiled_benchmark_command, field="profiler", payload=payload, errors=errors)

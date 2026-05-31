@@ -15277,6 +15277,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         },
         "workload": {
             "model": "Qwen3.5/3.6-35B-A3B-PARO",
+            "model_path": "/models/test-qwen35",
             "quant": "w4_paro",
             "kv_storage_dtype": "bf16",
             "kv_policy": {"policy_class": "FixedPagedKVPolicy", "storage_dtype": "bf16"},
@@ -17792,6 +17793,13 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     missing_benchmark_model["commands"]["benchmark"] = "python3 scripts/qwen35_batch_retained_bench.py --fixture fixtures/qwen35.json --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json benchmarks/results/accepted-c2.json"
     with pytest.raises(ValueError, match="commands.benchmark must include --model"):
         validate_cn_diagnostic_artifact_payload(missing_benchmark_model)
+
+    mismatched_benchmark_model_path = json.loads(json.dumps(accepted))
+    mismatched_benchmark_model_path["commands"]["benchmark"] = mismatched_benchmark_model_path["commands"][
+        "benchmark"
+    ].replace("--model /models/test-qwen35", "--model /models/other-qwen35")
+    with pytest.raises(ValueError, match="commands.benchmark --model must match workload.model_path"):
+        validate_cn_diagnostic_artifact_payload(mismatched_benchmark_model_path)
 
     missing_benchmark_fixture = json.loads(json.dumps(accepted))
     missing_benchmark_fixture["commands"]["benchmark"] = "python3 scripts/qwen35_batch_retained_bench.py --model /models/test-qwen35 --batch-size 2 --prompt-length 512 --decode-tokens 128 --max-layers 40 --json benchmarks/results/accepted-c2.json"
