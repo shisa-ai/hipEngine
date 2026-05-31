@@ -1103,11 +1103,17 @@ def _scaling_reference_command_env_assignments(
     payload: Mapping[str, Any],
     *,
     required_env: Mapping[str, str] | None = None,
+    require_command_label: bool = False,
 ) -> tuple[dict[str, str], list[str]]:
     commands = payload.get("commands")
     command = commands.get("benchmark") if isinstance(commands, Mapping) else payload.get("command")
     if command is None:
-        return {}, []
+        reasons = [
+            f"commands.benchmark is missing while retained command env sets {key}"
+            for key, value in (required_env or {}).items()
+            if require_command_label and value
+        ]
+        return {}, reasons
     if not isinstance(command, str) or not command:
         return {}, ["commands.benchmark is not a non-empty string when present"]
     try:
@@ -1180,6 +1186,7 @@ def _scaling_reference_precondition(
         reference_command_env, reference_command_env_reasons = _scaling_reference_command_env_assignments(
             payload,
             required_env=retained_device_env,
+            require_command_label=bool(reference_device_env),
         )
         reasons.extend(reference_command_env_reasons)
         if reference_command_env:
