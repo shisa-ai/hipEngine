@@ -5610,6 +5610,16 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_postcondition_field_match["commands"][-1]["postconditions"][0]["profiler_synthesized_fields"] = ["trace_kernel_names"]
     with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler synthesized fields must match when passed"):
         c_sweep.validate_sweep_summary(tampered_postcondition_field_match)
+    synthesized_field_summary = json.loads(json.dumps(persisted))
+    synthesized_field_summary["commands"][-1]["preconditions"][-1]["profiler_trace_synthesized_fields"] = ["trace_kernel_names"]
+    synthesized_postcondition = synthesized_field_summary["commands"][-1]["postconditions"][0]
+    synthesized_postcondition["profiler_synthesized_fields"] = ["trace_kernel_names"]
+    synthesized_postcondition["profiler_precondition_synthesized_fields"] = ["trace_kernel_names"]
+    c_sweep.validate_sweep_summary(synthesized_field_summary)
+    tampered_synthesized_field_drop = json.loads(json.dumps(synthesized_field_summary))
+    tampered_synthesized_field_drop["commands"][-1]["postconditions"][0]["profiler_synthesized_fields"] = []
+    with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler synthesized fields must match when passed"):
+        c_sweep.validate_sweep_summary(tampered_synthesized_field_drop)
     tampered_profiler_source_artifact_path = json.loads(json.dumps(persisted))
     tampered_profiler_source_artifact_path["commands"][-1]["preconditions"][-1]["profiler_source_artifact_path"] = str(output_dir / "other-profiler-c2.json")
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path must match profiler artifact_path when profiler passed"):
