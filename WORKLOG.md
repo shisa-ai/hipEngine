@@ -27509,3 +27509,13 @@ python3 -m pytest -q tests/test_stepfun_load_smoke.py tests/test_stepfun_decode_
 ```
 
 Result: `6 passed`.
+
+## 2026-05-31 — StepFun dry-run resource artifact
+
+Recorded a metadata-only StepFun load-smoke resource artifact at `benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json` using:
+
+```bash
+python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan --kv-context-pages 1 --kv-page-size 512 --pretty > benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json
+```
+
+Artifact summary: `status=planned`, 3 GGUF splits, 754 tensors/slots, `102,499,149,312` planned resident-weight bytes (`95.4598 GiB`), 512-token BF16 KV estimate `94,371,840` bytes (`0.0879 GiB`) across 90 K/V buffers, `hip_gfx1151` backend, and no HIP allocation snapshots because this was intentionally metadata-only. This is a reproducibility/resource-planning artifact, not generation correctness or throughput evidence.

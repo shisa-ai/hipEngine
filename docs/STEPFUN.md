@@ -614,7 +614,9 @@ layer loop is wired.
   90 K/V buffers for backend `hip_gfx1151`; the load-smoke JSON now embeds that
   resource-plan dictionary when KV allocation is requested and offers
   `--dry-run-plan` for metadata-only resource artifacts without HIP allocation.
-  Generation snapshots remain open.
+  Artifact `benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json`
+  records the dry-run plan for the same 512-token KV shape. Generation snapshots
+  remain open.
 - [x] If the model does not fit, keep the failure artifact and decide between
   offload/tiering, lower context/KV footprint, or slice-only correctness. No
   current fit failure is claimed from VIS_VRAM/`hipMemGetInfo` alone; decision
