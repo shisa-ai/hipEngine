@@ -7346,6 +7346,11 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.category must be a known c-sweep command category"):
             c_sweep.validate_sweep_summary(tampered_unknown_category)
 
+        tampered_known_category = json.loads(json.dumps(summary))
+        tampered_known_category["commands"][index]["category"] = "serial_bridge"
+        with pytest.raises(ValueError, match=r"commands\[\]\.category must match commands\[\]\.argv script"):
+            c_sweep.validate_sweep_summary(tampered_known_category)
+
         for bad_batch_size in ("2", True, 0):
             tampered_bad_batch_size = json.loads(json.dumps(summary))
             tampered_bad_batch_size["commands"][index]["batch_size"] = bad_batch_size

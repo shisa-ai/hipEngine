@@ -2137,6 +2137,13 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         _INT8_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY,
         _GGUF_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY,
     }
+    expected_scripts_by_category = {
+        _PRIMITIVE_COMMAND_CATEGORY: {_PRIMITIVE_CORRECTNESS_SCRIPT},
+        _SERIAL_BRIDGE_COMMAND_CATEGORY: {_SERIAL_BRIDGE_SCRIPT},
+        _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY: {_LEGACY_NATIVE_BENCH_SCRIPT, _RETAINED_BENCH_SCRIPT},
+        _INT8_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY: {_INT8_DIAGNOSTIC_SCRIPT},
+        _GGUF_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY: {_GGUF_DIAGNOSTIC_SCRIPT},
+    }
     expected_minimal_failed_condition_keys = {
         "kind",
         "artifact_path",
@@ -2356,6 +2363,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 errors.append("commands[].argv must start with a python executable")
                 break
             command_category = entry.get("category")
+            expected_scripts = expected_scripts_by_category.get(command_category)
+            if expected_scripts is not None and launch_argv[1] not in expected_scripts:
+                errors.append("commands[].category must match commands[].argv script")
+                break
             if command_category in {
                 _SERIAL_BRIDGE_COMMAND_CATEGORY,
                 _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY,
@@ -2540,17 +2551,6 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 if option_seed is not None and primitive_seed != option_seed:
                     errors.append("commands[].argv --seed must match options.seed")
                     break
-            expected_scripts_by_category = {
-                _PRIMITIVE_COMMAND_CATEGORY: {_PRIMITIVE_CORRECTNESS_SCRIPT},
-                _SERIAL_BRIDGE_COMMAND_CATEGORY: {_SERIAL_BRIDGE_SCRIPT},
-                _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY: {_LEGACY_NATIVE_BENCH_SCRIPT, _RETAINED_BENCH_SCRIPT},
-                _INT8_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY: {_INT8_DIAGNOSTIC_SCRIPT},
-                _GGUF_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY: {_GGUF_DIAGNOSTIC_SCRIPT},
-            }
-            expected_scripts = expected_scripts_by_category.get(entry.get("category"))
-            if expected_scripts is not None and (len(launch_argv) < 2 or launch_argv[1] not in expected_scripts):
-                errors.append("commands[].category must match commands[].argv script")
-                break
             if entry.get("category") == _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY and entry.get("batch_size") != 1:
                 retained_gate_flags = _RETAINED_GATE_FLAGS
                 if any(not isinstance(_argv_value(argv, flag), str) or not _argv_value(argv, flag) for flag in retained_gate_flags):
