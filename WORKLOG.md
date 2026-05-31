@@ -27789,3 +27789,17 @@ python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
 ```
 
 Result: `3 passed`.
+
+## 2026-05-31 — StepFun correctness status checklist metric
+
+Extended `scripts/stepfun_correctness_status.py` to parse `docs/STEPFUN.md` and include the loop's P0-P12 open/partial checklist metric plus line-numbered item summaries in the status artifact. Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`; it now records `docs_checklist.open_or_partial_count_p0_p12=2` alongside `all_layer_prompt_smoke=true`, `oracle_parity=false`, `kv_backed_decode_ready=false`, and `e2e_inference_ready=false`.
+
+Updated `tests/test_stepfun_correctness_status.py` with a fixture docs file covering one open and one partial P0-P12 item while ignoring P13. This is a handoff/CI-status improvement only; it does not change the remaining blockers or make a parity/performance claim.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+```
+
+Result: `3 passed`.

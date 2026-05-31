@@ -43,13 +43,27 @@ def _write_oracle_artifact(path: Path) -> None:
     )
 
 
+def _write_docs(path: Path) -> None:
+    path.write_text(
+        "# StepFun\n\n"
+        "### P0 — setup\n\n"
+        "- [x] Done setup.\n"
+        "- [ ] Wire KV-backed decode.\n"
+        "- [~] Compare oracle.\n"
+        "### P13 — benchmark\n\n"
+        "- [ ] Out-of-scope benchmark item.\n"
+    )
+
+
 def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -> None:
     prompt = tmp_path / "prompt.json"
     oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
     _write_prompt_artifact(prompt)
     _write_oracle_artifact(oracle)
+    _write_docs(docs)
 
-    status = build_status(prompt, oracle)
+    status = build_status(prompt, oracle, docs)
 
     assert status["status"] == "blocked"
     assert status["all_layer_prompt_smoke"] is True
@@ -67,14 +81,21 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "oracle_parity_blocked",
         "kv_backed_decode_not_wired",
     }
+    assert status["docs_checklist"]["open_or_partial_count_p0_p12"] == 2
+    assert [item["state"] for item in status["docs_checklist"]["open_or_partial_items_p0_p12"]] == [
+        "open",
+        "partial",
+    ]
 
 
 def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
     prompt = tmp_path / "prompt.json"
     oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
     output = tmp_path / "status.json"
     _write_prompt_artifact(prompt)
     _write_oracle_artifact(oracle)
+    _write_docs(docs)
 
     rc = main(
         [
@@ -82,6 +103,8 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
             str(prompt),
             "--oracle-artifact",
             str(oracle),
+            "--docs",
+            str(docs),
             "--output",
             str(output),
             "--pretty",
@@ -97,6 +120,7 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
     assert payload["all_layer_prompt_smoke"] is True
     assert payload["e2e_inference_ready"] is False
     assert len(payload["next_actions"]) == 2
+    assert payload["docs_checklist"]["open_or_partial_count_p0_p12"] == 2
 
 
 def test_stepfun_correctness_status_fail_on_blocked_returns_nonzero(
@@ -105,8 +129,10 @@ def test_stepfun_correctness_status_fail_on_blocked_returns_nonzero(
 ) -> None:
     prompt = tmp_path / "prompt.json"
     oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
     _write_prompt_artifact(prompt)
     _write_oracle_artifact(oracle)
+    _write_docs(docs)
 
     rc = main(
         [
@@ -114,6 +140,8 @@ def test_stepfun_correctness_status_fail_on_blocked_returns_nonzero(
             str(prompt),
             "--oracle-artifact",
             str(oracle),
+            "--docs",
+            str(docs),
             "--fail-on-blocked",
         ]
     )

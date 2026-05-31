@@ -17,6 +17,22 @@
       "kind": "kv_backed_decode_not_wired"
     }
   ],
+  "docs_checklist": {
+    "docs_path": "docs/STEPFUN.md",
+    "open_or_partial_count_p0_p12": 2,
+    "open_or_partial_items_p0_p12": [
+      {
+        "line": 510,
+        "state": "open",
+        "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
+      },
+      {
+        "line": 564,
+        "state": "partial",
+        "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
+      }
+    ]
+  },
   "e2e_inference_ready": false,
   "kv_backed_decode_ready": false,
   "model": "Step-3.7-flash-Q3_K_L",

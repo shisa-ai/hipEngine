@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Sequence
 
@@ -14,12 +15,14 @@ DEFAULT_PROMPT_ARTIFACT = Path(
 DEFAULT_ORACLE_ARTIFACT = Path(
     "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-oracle-exec-attempt.json"
 )
+DEFAULT_DOCS_PATH = Path("docs/STEPFUN.md")
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prompt-artifact", type=Path, default=DEFAULT_PROMPT_ARTIFACT)
     parser.add_argument("--oracle-artifact", type=Path, default=DEFAULT_ORACLE_ARTIFACT)
+    parser.add_argument("--docs", type=Path, default=DEFAULT_DOCS_PATH)
     parser.add_argument("--output", type=Path, default=None, help="Write JSON output to this path instead of stdout.")
     parser.add_argument(
         "--fail-on-blocked",
@@ -34,9 +37,36 @@ def _load(path: Path) -> dict[str, object]:
     return json.loads(path.read_text())
 
 
-def build_status(prompt_artifact: Path, oracle_artifact: Path) -> dict[str, object]:
+def _docs_checklist_status(docs_path: Path) -> dict[str, object]:
+    text = docs_path.read_text()
+    block = text.split("### P0", 1)[1].split("### P13", 1)[0]
+    start_line = text[: text.index("### P0")].count("\n") + 1
+    items: list[dict[str, object]] = []
+    for offset, line in enumerate(block.splitlines(), start=0):
+        match = re.match(r"^- \[( |~)\] (.*)", line)
+        if match:
+            items.append(
+                {
+                    "line": start_line + offset,
+                    "state": "partial" if match.group(1) == "~" else "open",
+                    "text": match.group(2),
+                }
+            )
+    return {
+        "docs_path": str(docs_path),
+        "open_or_partial_count_p0_p12": len(items),
+        "open_or_partial_items_p0_p12": items,
+    }
+
+
+def build_status(
+    prompt_artifact: Path,
+    oracle_artifact: Path,
+    docs_path: Path = DEFAULT_DOCS_PATH,
+) -> dict[str, object]:
     prompt = _load(prompt_artifact)
     oracle = _load(oracle_artifact)
+    docs_status = _docs_checklist_status(docs_path)
     all_layer_prompt_smoke = (
         prompt.get("status") == "partial_prompt_smoke"
         and prompt.get("execution_mode") == "chunked"
@@ -105,6 +135,7 @@ def build_status(prompt_artifact: Path, oracle_artifact: Path) -> dict[str, obje
         "e2e_inference_ready": False,
         "blockers": blockers,
         "next_actions": next_actions,
+        "docs_checklist": docs_status,
         "note": (
             "Host-composed all-layer prompt smoke is present; true e2e inference still needs "
             "oracle parity and KV-backed decode."
@@ -123,7 +154,7 @@ def _emit_json(result: dict[str, object], *, pretty: bool, output: Path | None) 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
-    status = build_status(args.prompt_artifact, args.oracle_artifact)
+    status = build_status(args.prompt_artifact, args.oracle_artifact, args.docs)
     _emit_json(
         status,
         pretty=args.pretty,
