@@ -13,6 +13,8 @@ from __future__ import annotations
 import argparse
 import ctypes
 import json
+import os
+import shlex
 import statistics
 import sys
 import time
@@ -33,6 +35,61 @@ DEFAULT_MODEL = (
     "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/"
     "snapshots/dca2736e88e9f70855128fc81a8e918043a163cd"
 )
+_COMMAND_ENV_KEYS = ("HIP_VISIBLE_DEVICES",)
+
+
+def _command_env_prefix_parts() -> list[str]:
+    assignments = [
+        f"{key}={value}"
+        for key in _COMMAND_ENV_KEYS
+        if (value := os.environ.get(key)) is not None
+    ]
+    return ["env", *assignments] if assignments else []
+
+
+def _visible_hip_device_context() -> dict[str, Any]:
+    env_keys = ("HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES", "GPU_DEVICE_ORDINAL")
+    context: dict[str, Any] = {"env": {key: os.environ.get(key) for key in env_keys if os.environ.get(key) is not None}}
+    try:
+        hip = ctypes.CDLL("libamdhip64.so")
+        count = ctypes.c_int()
+        count_error = int(hip.hipGetDeviceCount(ctypes.byref(count)))
+        context["hipGetDeviceCount_error"] = count_error
+        context["visible_device_count"] = int(count.value)
+        if count_error != 0 or count.value <= 0:
+            return context
+        device = ctypes.c_int()
+        device_error = int(hip.hipGetDevice(ctypes.byref(device)))
+        context["hipGetDevice_error"] = device_error
+        context["current_device"] = int(device.value)
+        if device_error != 0:
+            return context
+        name = ctypes.create_string_buffer(256)
+        name_error = int(hip.hipDeviceGetName(name, len(name), device))
+        context["hipDeviceGetName_error"] = name_error
+        if name_error == 0:
+            context["device_name"] = name.value.decode("utf-8", errors="replace")
+    except Exception as exc:  # pragma: no cover - best-effort benchmark provenance.
+        context["error"] = f"{type(exc).__name__}: {exc}"
+    return context
+
+
+def _hardware_context() -> dict[str, Any]:
+    visible_device = _visible_hip_device_context()
+    visible_device_name = visible_device.get("device_name")
+    gpu_name = visible_device_name if isinstance(visible_device_name, str) and visible_device_name else "AMD Radeon Pro W7900"
+    return {
+        "gpu": gpu_name,
+        "arch": "gfx1100",
+        "default_hardware": gpu_name == "AMD Radeon Pro W7900",
+        "visible_device": visible_device,
+    }
+
+
+def _command(argv: list[str] | None) -> str:
+    parts = [*_command_env_prefix_parts(), "python3", "scripts/qwen35_paro_bench.py"]
+    parts.extend(sys.argv[1:] if argv is None else list(argv))
+    return " ".join(shlex.quote(part) for part in parts)
 
 
 def _workload_summary(
@@ -316,6 +373,8 @@ def main() -> int:
         "backend": runner.backend,
         "requested_backend": args.backend,
         "target_arch": runner.target_arch,
+        "hardware": _hardware_context(),
+        "commands": {"benchmark": _command(None)},
         "mode": "actual_autoregressive_resident",
         "prompt_source": "repeated_token_id" if args.token_id is not None else "prompt_tokenized_repeat",
         "prompt": args.prompt,

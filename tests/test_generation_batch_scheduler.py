@@ -57,6 +57,7 @@ from scripts import qwen35_batch_gguf_diagnostic as gguf_diagnostic
 from scripts import qwen35_batch_int8_diagnostic as int8_diagnostic
 from scripts import qwen35_batch_retained_bench as retained_bench
 from scripts import qwen35_batch_serial_bench as serial_bench
+from scripts import qwen35_paro_bench as paro_bench
 from scripts.qwen35_batch_artifact_schema import (
     DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS,
     DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS,
@@ -11390,6 +11391,62 @@ def test_qwen35_retained_hardware_context_uses_visible_hip_device(monkeypatch) -
     assert hardware["default_hardware"] is False
     assert hardware["visible_device"]["env"] == {"HIP_VISIBLE_DEVICES": "1"}
     assert hardware["visible_device"]["device_name"] == "AMD Radeon RX 7900 XTX"
+
+
+def test_qwen35_c1_baseline_hardware_context_uses_visible_hip_device(monkeypatch) -> None:
+    class FakeHipFunc:
+        def __init__(self, func):
+            self.func = func
+            self.argtypes = None
+            self.restype = None
+
+        def __call__(self, *args):
+            return self.func(*args)
+
+    class FakeHipLibrary:
+        def __init__(self) -> None:
+            self.hipGetDeviceCount = FakeHipFunc(self._count)
+            self.hipGetDevice = FakeHipFunc(self._device)
+            self.hipDeviceGetName = FakeHipFunc(self._name)
+
+        @staticmethod
+        def _count(count_ptr):
+            count_ptr._obj.value = 1
+            return 0
+
+        @staticmethod
+        def _device(device_ptr):
+            device_ptr._obj.value = 0
+            return 0
+
+        @staticmethod
+        def _name(name_buffer, _length, device):
+            assert int(device.value) == 0
+            name_buffer.value = b"AMD Radeon RX 7900 XTX"
+            return 0
+
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
+    monkeypatch.setattr(paro_bench.ctypes, "CDLL", lambda _path: FakeHipLibrary())
+
+    hardware = paro_bench._hardware_context()
+
+    assert hardware["gpu"] == "AMD Radeon RX 7900 XTX"
+    assert hardware["default_hardware"] is False
+    assert hardware["visible_device"]["env"] == {"HIP_VISIBLE_DEVICES": "1"}
+    assert hardware["visible_device"]["device_name"] == "AMD Radeon RX 7900 XTX"
+
+
+def test_qwen35_c1_baseline_command_preserves_visible_hip_device_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
+
+    command = paro_bench._command(["--json", "benchmarks/results/native-baseline-c1.json"])
+
+    assert shlex.split(command)[:4] == [
+        "env",
+        "HIP_VISIBLE_DEVICES=1",
+        "python3",
+        "scripts/qwen35_paro_bench.py",
+    ]
 
 
 def test_qwen35_serial_bridge_hardware_context_uses_visible_hip_device(monkeypatch) -> None:
