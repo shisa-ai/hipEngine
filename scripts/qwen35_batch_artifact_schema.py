@@ -354,6 +354,83 @@ def _embedded_python_script_argv(command: str, script: str, *, field: str, error
     return argv[script_index - 1 :]
 
 
+def _env_assignment_prefix_contains(argv: Sequence[str], python_index: int, *, key: str, value: str) -> bool:
+    assignment_start = python_index
+    while assignment_start > 0 and _is_env_assignment_token(argv[assignment_start - 1]):
+        assignment_start -= 1
+    if assignment_start == python_index:
+        return False
+    has_env_command_prefix = assignment_start > 0 and Path(argv[assignment_start - 1]).name == "env"
+    if assignment_start != 0 and not has_env_command_prefix:
+        return False
+    return f"{key}={value}" in argv[assignment_start:python_index]
+
+
+def _command_script_invocation_has_env_assignment(command: str, script: str, *, key: str, value: str) -> bool:
+    try:
+        argv = shlex.split(command)
+    except ValueError:
+        return False
+    for script_index, token in enumerate(argv):
+        if token != script or script_index == 0:
+            continue
+        python_index = script_index - 1
+        if _is_python_executable(argv[python_index]) and _env_assignment_prefix_contains(
+            argv,
+            python_index,
+            key=key,
+            value=value,
+        ):
+            return True
+    return False
+
+
+def _accepted_device_selection_env_requirements(payload: Mapping[str, Any], errors: list[str]) -> dict[str, str]:
+    requirements: dict[str, str] = {}
+    hardware = payload.get("hardware")
+    visible_device = hardware.get("visible_device") if isinstance(hardware, Mapping) else None
+    correctness = payload.get("correctness")
+    primitive = correctness.get("primitive_batch_correctness") if isinstance(correctness, Mapping) else None
+    primitive_device = primitive.get("device") if isinstance(primitive, Mapping) else None
+    sources: tuple[tuple[str, Any], ...] = (
+        ("hardware.visible_device.env", visible_device),
+        ("correctness.primitive_batch_correctness.device.env", primitive_device),
+    )
+    for source_path, source in sources:
+        env = source.get("env") if isinstance(source, Mapping) else None
+        if not isinstance(env, Mapping):
+            continue
+        value = env.get("HIP_VISIBLE_DEVICES")
+        if value is None:
+            continue
+        if not isinstance(value, str) or not value:
+            errors.append(f"{source_path}.HIP_VISIBLE_DEVICES must be a non-empty string for accepted artifacts")
+            continue
+        existing = requirements.get("HIP_VISIBLE_DEVICES")
+        if existing is not None and existing != value:
+            errors.append(
+                "hardware.visible_device.env.HIP_VISIBLE_DEVICES must match primitive device env for accepted artifacts"
+            )
+        else:
+            requirements["HIP_VISIBLE_DEVICES"] = value
+    return requirements
+
+
+def _validate_command_device_selection_env(
+    command: str,
+    *,
+    field: str,
+    script: str,
+    requirements: Mapping[str, str],
+    errors: list[str],
+) -> None:
+    for key, value in requirements.items():
+        if not _command_script_invocation_has_env_assignment(command, script, key=key, value=value):
+            errors.append(
+                f"commands.{field} must include {key}={value} before {script} for accepted artifacts"
+            )
+
+
 def _validate_correctness_script_argv_shape(argv: list[str] | None, *, field: str, errors: list[str]) -> None:
     if argv is None:
         return
@@ -1702,6 +1779,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             errors.append(f"commands.{field} must be a non-empty string for accepted artifacts")
         elif isinstance(command_value, str):
             _append_disallowed_accepted_diagnostic_text_errors(command_value, path=f"commands.{field}", errors=errors)
+    device_selection_env_requirements = _accepted_device_selection_env_requirements(payload, errors)
     environment_commands = commands.get("environment")
     if not _is_nonempty_string_list(environment_commands):
         errors.append("commands.environment must be a non-empty string list for accepted artifacts")
@@ -1735,6 +1813,13 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
                 errors=errors,
             )
             _validate_retained_benchmark_reference_paths(benchmark_command, field="benchmark", payload=payload, errors=errors)
+            _validate_command_device_selection_env(
+                benchmark_command,
+                field="benchmark",
+                script=_RETAINED_BENCH_SCRIPT,
+                requirements=device_selection_env_requirements,
+                errors=errors,
+            )
     correctness_command = commands.get("correctness_reference")
     if isinstance(correctness_command, str):
         correctness_command_lower = correctness_command.lower()
@@ -1774,6 +1859,13 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
                 field="correctness_reference",
                 artifact_field="correctness.primitive_batch_correctness.artifact_path",
                 artifact_path=primitive_artifact_path,
+                errors=errors,
+            )
+            _validate_command_device_selection_env(
+                correctness_command,
+                field="correctness_reference",
+                script=_PRIMITIVE_CORRECTNESS_SCRIPT,
+                requirements=device_selection_env_requirements,
                 errors=errors,
             )
     profiler_command = commands.get("profiler")
@@ -1834,6 +1926,13 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
                 errors=errors,
             )
             _validate_retained_benchmark_reference_paths(profiler_profiled_benchmark_command, field="profiler", payload=payload, errors=errors)
+            _validate_command_device_selection_env(
+                profiler_command,
+                field="profiler",
+                script=_RETAINED_BENCH_SCRIPT,
+                requirements=device_selection_env_requirements,
+                errors=errors,
+            )
             if "--require-cached-build" not in profiled_command_argv:
                 errors.append("commands.profiler must include --require-cached-build after rocprof separator for accepted artifacts")
             compiler_version_match = _COMMAND_COMPILER_VERSION_FILE_RE.search(profiler_profiled_benchmark_command)

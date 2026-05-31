@@ -14314,6 +14314,51 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="primitive_batch_correctness.device.device_name must match hardware.gpu"):
         validate_cn_diagnostic_artifact_payload(mismatched_primitive_device_gpu)
 
+    gpu1_accepted = json.loads(json.dumps(accepted))
+    gpu1_accepted["hardware"]["gpu"] = "AMD Radeon RX 7900 XTX"
+    gpu1_accepted["hardware"]["visible_device"] = _c_sweep_primitive_device_metadata()
+    gpu1_accepted["correctness"]["primitive_batch_correctness"]["device"] = _c_sweep_primitive_device_metadata()
+    gpu1_accepted["commands"]["benchmark"] = "env HIP_VISIBLE_DEVICES=1 " + gpu1_accepted["commands"]["benchmark"]
+    gpu1_accepted["commands"]["correctness_reference"] = gpu1_accepted["commands"]["correctness_reference"].replace(
+        "plus python3",
+        "plus env HIP_VISIBLE_DEVICES=1 python3",
+    )
+    gpu1_accepted["commands"]["profiler"] = gpu1_accepted["commands"]["profiler"].replace(
+        "-- python3",
+        "-- env HIP_VISIBLE_DEVICES=1 python3",
+    )
+    validate_cn_diagnostic_artifact_payload(gpu1_accepted)
+
+    missing_benchmark_device_env = json.loads(json.dumps(gpu1_accepted))
+    missing_benchmark_device_env["commands"]["benchmark"] = missing_benchmark_device_env["commands"]["benchmark"].replace(
+        "env HIP_VISIBLE_DEVICES=1 ",
+        "",
+        1,
+    )
+    with pytest.raises(ValueError, match="commands.benchmark must include HIP_VISIBLE_DEVICES=1"):
+        validate_cn_diagnostic_artifact_payload(missing_benchmark_device_env)
+
+    missing_correctness_device_env = json.loads(json.dumps(gpu1_accepted))
+    missing_correctness_device_env["commands"]["correctness_reference"] = missing_correctness_device_env["commands"][
+        "correctness_reference"
+    ].replace("env HIP_VISIBLE_DEVICES=1 ", "", 1)
+    with pytest.raises(ValueError, match="commands.correctness_reference must include HIP_VISIBLE_DEVICES=1"):
+        validate_cn_diagnostic_artifact_payload(missing_correctness_device_env)
+
+    missing_profiler_device_env = json.loads(json.dumps(gpu1_accepted))
+    missing_profiler_device_env["commands"]["profiler"] = missing_profiler_device_env["commands"]["profiler"].replace(
+        "env HIP_VISIBLE_DEVICES=1 ",
+        "",
+        1,
+    )
+    with pytest.raises(ValueError, match="commands.profiler must include HIP_VISIBLE_DEVICES=1"):
+        validate_cn_diagnostic_artifact_payload(missing_profiler_device_env)
+
+    mismatched_hardware_primitive_env = json.loads(json.dumps(gpu1_accepted))
+    mismatched_hardware_primitive_env["hardware"]["visible_device"]["env"]["HIP_VISIBLE_DEVICES"] = "0"
+    with pytest.raises(ValueError, match="hardware.visible_device.env.HIP_VISIBLE_DEVICES must match primitive device env"):
+        validate_cn_diagnostic_artifact_payload(mismatched_hardware_primitive_env)
+
     primitive_attn_mismatch = json.loads(json.dumps(accepted))
     primitive_attn_mismatch["correctness"]["primitive_batch_correctness"]["attn_batch_vs_c1_max_abs"] = 0.25
     with pytest.raises(ValueError, match="primitive_batch_correctness.attn_batch_vs_c1_max_abs must be 0.0"):
