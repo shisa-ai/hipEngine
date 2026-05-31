@@ -102,6 +102,14 @@ _UNUSABLE_SCALING_REFERENCE_STATUSES = RETAINED_ARTIFACT_UNUSABLE_SCALING_BASELI
 _COMMAND_ENV_KEYS = ("HIP_VISIBLE_DEVICES",)
 
 
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"JSON contains non-finite constant {value!r}")
+
+
+def _load_json_path(path: Path) -> Any:
+    return json.loads(path.read_text(encoding="utf-8"), parse_constant=_reject_json_constant)
+
+
 def _required_primitive_context_lens(rows: int) -> list[int]:
     max_context_len = _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS["max_context_len"]
     return [(idx % max_context_len) + 1 for idx in range(rows)]
@@ -518,7 +526,7 @@ def _scaling_reference(
             "reason": "artifact path does not exist",
         }
     try:
-        payload = json.loads(path.read_text())
+        payload = _load_json_path(path)
     except Exception as exc:
         return {
             "artifact_path": str(path),
@@ -672,7 +680,7 @@ def _primitive_correctness_reference(path: Path | None, *, rows: int) -> dict[st
             "reason": "artifact path does not exist",
         }
     try:
-        payload = json.loads(path.read_text())
+        payload = _load_json_path(path)
     except Exception as exc:
         return {
             "artifact_path": str(path),
@@ -790,7 +798,7 @@ def _int8_kv_primitive_layer_accuracy_reference(
             "reason": "artifact path does not exist",
         }
     try:
-        payload = json.loads(path.read_text())
+        payload = _load_json_path(path)
     except Exception as exc:
         return {
             "artifact_path": str(path),
@@ -1211,7 +1219,7 @@ def _profiler_reference(path: Path | None) -> dict[str, Any]:
     if not path.exists():
         return {"artifact_path": str(path), "status": "missing", "reason": "artifact path does not exist"}
     try:
-        payload = json.loads(path.read_text())
+        payload = _load_json_path(path)
     except Exception as exc:
         return {"artifact_path": str(path), "status": "invalid_json", "reason": f"{type(exc).__name__}: {exc}"}
     if not isinstance(payload, Mapping):
@@ -1693,10 +1701,10 @@ def _load_retained_json_artifact(value: str) -> tuple[Mapping[str, Any] | None, 
     if not path.is_file():
         return None, "artifact_path must point to a regular JSON artifact"
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload = _load_json_path(path)
     except OSError as exc:
         return None, f"artifact_path must point to a readable JSON artifact: {exc}"
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, ValueError) as exc:
         return None, f"artifact_path must point to a valid JSON artifact: {exc}"
     if not isinstance(payload, Mapping):
         return None, "artifact_path must point to a JSON object artifact"
@@ -2426,10 +2434,10 @@ def _load_sampler_equality_artifact(value: str) -> tuple[Mapping[str, Any] | Non
     if not path.is_file():
         return None, "equality_artifact must point to a regular JSON artifact"
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload = _load_json_path(path)
     except OSError as exc:
         return None, f"equality_artifact must point to a readable JSON artifact: {exc}"
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, ValueError) as exc:
         return None, f"equality_artifact must point to a valid JSON artifact: {exc}"
     if not isinstance(payload, Mapping):
         return None, "equality_artifact must point to a JSON object artifact"
@@ -3013,10 +3021,10 @@ def _projection_dispatch_candidates_for_payload(args: argparse.Namespace) -> lis
         return None
     path = _projection_dispatch_artifact_file_path(artifact)
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload = _load_json_path(path)
     except OSError as exc:
         raise ValueError(f"invalid projection dispatch artifact {artifact}: {exc}") from exc
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, ValueError) as exc:
         raise ValueError(f"invalid projection dispatch artifact {artifact}: must be valid JSON: {exc}") from exc
     if not isinstance(payload, Mapping):
         raise ValueError(f"invalid projection dispatch artifact {artifact}: root must be a JSON object")

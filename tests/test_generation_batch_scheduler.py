@@ -11276,6 +11276,16 @@ def test_qwen35_retained_payload_json_rejects_nan() -> None:
     assert json.loads(retained_bench._payload_json({"ok": 1.0})) == {"ok": 1.0}
 
 
+def test_qwen35_retained_load_json_path_rejects_nonfinite(tmp_path: Path) -> None:
+    payload_path = tmp_path / "payload.json"
+    payload_path.write_text('{"bad": Infinity}', encoding="utf-8")
+    with pytest.raises(ValueError, match="JSON contains non-finite constant 'Infinity'"):
+        retained_bench._load_json_path(payload_path)
+
+    payload_path.write_text('{"ok": 1.0}', encoding="utf-8")
+    assert retained_bench._load_json_path(payload_path) == {"ok": 1.0}
+
+
 def test_qwen35_retained_scaling_comparison_uses_c1_and_serial_artifacts(tmp_path: Path) -> None:
     c1 = tmp_path / "native-baseline-c1.json"
     c1.write_text(
@@ -12399,7 +12409,7 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     assert mismatched_numpy["passed"] is False
     assert "attn_batch_vs_numpy_max_abs is missing, non-finite, negative, or above 2e-5" in mismatched_numpy["reason"]
     assert nan_numpy["passed"] is False
-    assert "attn_batch_vs_numpy_max_abs is missing, non-finite, negative, or above 2e-5" in nan_numpy["reason"]
+    assert "JSON contains non-finite constant 'NaN'" in nan_numpy["reason"]
     assert negative_numpy["passed"] is False
     assert "attn_batch_vs_numpy_max_abs is missing, non-finite, negative, or above 2e-5" in negative_numpy["reason"]
     assert mismatched_c1["passed"] is False
