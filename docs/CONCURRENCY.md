@@ -1332,9 +1332,17 @@ roll-up/status view.
       rejected by retained-artifact gates; CPU coverage is
       `test_qwen35_decode_state_decode_batch_full_attention_can_force_per_row_context`,
       `test_qwen35_resident_run_layers_batch_decode_can_force_per_row_full_attention_context_probe`,
-      and hidden-bisect dry-run / retained-schema tests. The failure is therefore
-      not resolved by either boundary fallback alone, both boundaries together,
-      or diagnostic linear-state replay. This shifts the
+      and hidden-bisect dry-run / retained-schema tests. The first context-only
+      probe at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-batch-gemv-out-native-full-perrow-context-atol4e-3-focus1269.json`
+      remains hidden-only red (`status=mismatch_found`, tokens green, first
+      hidden failure step 2 / row 1 `max_abs=0.008087158203125`), with the
+      context trace source fixed to `attention_scratch.query_raw`; context-oracle
+      numeric checks pass for `batch_context_vs_numpy` and `c1_context_vs_numpy`
+      but remain red for `batch_numpy_vs_c1_numpy` (key/value prefix-hash checks
+      are also red). The failure is therefore not resolved by either boundary
+      fallback alone, both boundaries together, diagnostic linear-state replay,
+      or per-row context/gate replay. This shifts the
       current C2.3/C2.4 target to native batched output fallback/retention,
       residual projection exactness/amplification, and native full-attention
       hidden parity; raw `recurrent_out` stage summaries from segmented state are

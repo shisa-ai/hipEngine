@@ -1725,7 +1725,17 @@ def test_qwen35_resident_run_layers_batch_decode_can_force_per_row_full_attentio
 
     session._slot_full_cache = fake_slot_full_cache
     session._slot_full_spans = fake_slot_full_spans
-    session._ensure_full_decode_batch_scratch = lambda layer_id, rows: SimpleNamespace(name="attention", rows=rows)
+    trace_context_ptrs: list[int] = []
+    session._decode_full_attention_trace = []
+    session._trace_decode_full_attention = lambda **kwargs: None
+    session._trace_decode_full_attention_scratch = lambda **kwargs: trace_context_ptrs.append(int(kwargs["context"].ptr))
+    session._trace_decode_full_attention_moe_scratch = lambda **kwargs: None
+    session._ensure_full_decode_batch_scratch = lambda layer_id, rows: SimpleNamespace(
+        name="attention",
+        rows=rows,
+        query_raw=Tensor.from_handle(0x8700, (rows, 1, 8), DType.FP32, device),
+        attn_out=Tensor.from_handle(0x8800, (1, 8), DType.FP32, device),
+    )
     session._ensure_moe_decode_batch_scratch = lambda layer_id, rows: SimpleNamespace(name="moe", rows=rows)
     copies: list[tuple[int, int, int, int]] = []
 
@@ -1755,6 +1765,7 @@ def test_qwen35_resident_run_layers_batch_decode_can_force_per_row_full_attentio
     assert [int(context[0].ptr) for context in per_row_contexts] == [0x5100, 0x5300]
     assert [context[2].slot for context in per_row_contexts] == [0, 2]
     assert slot_span_calls == [0, 2]
+    assert trace_context_ptrs == [0x8700]
     assert copies == [(0x2000, 0x9000, 2 * session.hidden_nbytes, 5)]
     assert session.last_batch_decode_execution["full_attention_decode_path"] == "native_batch"
     assert session.last_batch_decode_execution["native_caware_decode"] is False
@@ -1764,6 +1775,7 @@ def test_qwen35_resident_run_layers_batch_decode_can_force_per_row_full_attentio
     layer_execution = session.last_batch_decode_execution["layer_executions"][0]
     assert layer_execution["native_caware_decode"] is False
     assert layer_execution["full_attention_context_decode_path"] == "per_row_context_gate_fallback"
+    assert layer_execution["attn_context_trace_source"] == "attention_scratch.query_raw"
     metadata = session.batch_execution_metadata(scheduler_owned=True, native_decode=True)
     assert not metadata.native_caware_decode
     assert metadata.row_execution == "native_batch_with_diagnostic_fallback"

@@ -49407,7 +49407,7 @@ Result: artifact assertions PASS; verify count remains `12`; full guard PASS wit
 
 ## 2026-05-31 — CONCURRENCY C2.3 context-only full-attention diagnostic path
 
-Added a context-only full-attention diagnostic fallback for the next C2.3 isolation step. Hidden-bisect now accepts `--batch-decode-attn-context-path per_row`, records `workload.batch_decode_attention_context_path`, sets `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_CONTEXT`, and marks `workload.native_caware_decode=false` for that diagnostic. The resident native-full decode path now builds slot-specific row context spans, calls the token-1 context/gate kernel per row, labels layer metadata with `full_attention_context_decode_path=per_row_context_gate_fallback`, and adds the blocker `full-attention context/gate forced to per-row diagnostic path`; retained-artifact schema and retained-bench blockers reject that field for accepted native retained decode. `Qwen35ParoAttentionScratch` row views now slice `attn_out` as well as `gated_attn` so the row-context diagnostic writes to the intended row.
+Added a context-only full-attention diagnostic fallback for the next C2.3 isolation step. Hidden-bisect now accepts `--batch-decode-attn-context-path per_row`, records `workload.batch_decode_attention_context_path`, sets `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_CONTEXT`, and marks `workload.native_caware_decode=false` for that diagnostic. The resident native-full decode path now builds slot-specific row context spans, calls the token-1 context/gate kernel per row, mirrors each per-row FP32 context into the batch `query_raw` context trace buffer, labels layer metadata with `full_attention_context_decode_path=per_row_context_gate_fallback`, and adds the blocker `full-attention context/gate forced to per-row diagnostic path`; retained-artifact schema and retained-bench blockers reject that field for accepted native retained decode.
 
 Validation:
 
@@ -49425,3 +49425,53 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: targeted tests PASS; full guard plus `tests/test_qwen35_decode_state.py` PASS; c=2/c=8 primitive correctness PASS with A/A fields zero; verify count remains `12`; diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, benchmark rollup files are unchanged, and the new context-only path is explicitly diagnostic/non-retained.
+
+## 2026-05-31 — CONCURRENCY C2.3 context-only full-attention probe
+
+Re-ran the selected-projection/native-state/batch-GEMV-output native-full control with the new context-only diagnostic fallback enabled. Artifact `/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-batch-gemv-out-native-full-perrow-context-atol4e-3-focus1269.json` remains `status=mismatch_found`: generated tokens are green, but hidden is red at decode step 2 / generated index 3 / row 1 (`max_abs=0.008087158203125`). The context trace source is now `attention_scratch.query_raw`; context-oracle numeric checks pass for `batch_context_vs_numpy` and `c1_context_vs_numpy` but fail for `batch_numpy_vs_c1_numpy`, with key/value prefix-hash checks still red. This keeps the per-row context/gate path diagnostic-only and does not close C2.3/C2.4.
+
+Diagnostic command:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --batch-decode-linear-projection-path selected_c1 --batch-decode-linear-output-path batch_gemv --batch-decode-attn-context-path per_row --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-batch-gemv-out-native-full-perrow-context-atol4e-3-focus1269.json
+```
+
+Validation:
+
+```bash
+python3 - <<'PY'
+import json, pathlib
+path = pathlib.Path('/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-batch-gemv-out-native-full-perrow-context-atol4e-3-focus1269.json')
+payload = json.loads(path.read_text())
+assert payload['status'] == 'mismatch_found'
+assert payload['correctness']['token_passed'] is True
+assert payload['correctness']['failure_modes'] == ['hidden']
+fh = payload['correctness']['first_hidden_mismatch']
+assert fh['decode_step'] == 2 and fh['generated_index'] == 3 and fh['row'] == 1
+assert abs(fh['max_abs'] - 0.008087158203125) == 0.0
+execution = fh['batch_decode_execution']
+assert execution['native_full_attention_layers'] == 2
+assert execution['full_attention_decode_path'] == 'native_batch'
+assert execution['native_caware_decode'] is False
+assert 'full-attention context/gate forced to per-row diagnostic path' in execution['blockers']
+summary = payload['layer_summaries'][0]['decode_full_context_oracle']
+comparisons = summary['comparison_failure_summary']['comparisons']
+assert comparisons['batch_context_vs_numpy']['passed'] is True
+assert comparisons['c1_context_vs_numpy']['passed'] is True
+assert comparisons['batch_numpy_vs_c1_numpy']['passed'] is False
+assert summary['kv_prefix_failure_summary']['kinds']['key']['passed'] is False
+assert summary['kv_prefix_failure_summary']['kinds']['value']['passed'] is False
+PY
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \[(?: |~)\]', queue))
+print(count)
+assert count == 12
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_qwen35_decode_state.py tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: artifact assertions PASS; verify count remains `12`; full guard PASS (345 pytest cases plus c=2/c=8 primitive correctness, A/A fields zero); diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, benchmark rollup files are unchanged, and the context-only full-attention path remains diagnostic/non-retained.

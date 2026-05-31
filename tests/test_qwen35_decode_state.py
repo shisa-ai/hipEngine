@@ -22,6 +22,7 @@ class FakeRuntime:
         self.next_ptr = 0xA000
         self.allocations: dict[int, int] = {}
         self.freed: list[int] = []
+        self.copies: list[tuple[int, int, int, int]] = []
 
     def malloc(self, nbytes: int) -> int:
         ptr = self.next_ptr
@@ -40,6 +41,9 @@ class FakeRuntime:
 
     def memset_async(self, dst: int, value: int, nbytes: int, stream: int) -> None:
         self.memset(dst, value, nbytes)
+
+    def memcpy_async(self, dst: int, src: int, nbytes: int, kind, stream: int) -> None:
+        self.copies.append((int(dst), int(src), int(nbytes), int(stream)))
 
 
 def _config() -> Qwen35ParoConfig:
@@ -534,16 +538,20 @@ def test_qwen35_decode_state_decode_batch_full_attention_can_force_per_row_conte
     )
 
     assert out is moe_scratch.moe_out
-    attn_out_row_nbytes = (scratch.attn_out.numel // scratch.attn_out.shape[0]) * scratch.attn_out.dtype.itemsize
+    context_row_nbytes = state.config.num_attention_heads * state.config.head_dim * DType.FP32.itemsize
     assert calls == [
         ("input_norm", None, None),
         ("prepare", None, None),
         ("append", None, None),
         ("row_context", scratch.attn_out.ptr, 5),
-        ("row_context", scratch.attn_out.ptr + attn_out_row_nbytes, 8),
+        ("row_context", scratch.attn_out.ptr, 8),
         ("o_proj", None, None),
         ("post_norm", None, None),
         ("grouped_moe", None, None),
+    ]
+    assert runtime.copies == [
+        (scratch.query_raw.ptr, scratch.attn_out.ptr, context_row_nbytes, 0),
+        (scratch.query_raw.ptr + context_row_nbytes, scratch.attn_out.ptr, context_row_nbytes, 0),
     ]
 
 

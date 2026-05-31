@@ -2877,7 +2877,7 @@ class Qwen35ParoDecodeState:
             partial_out=scratch.partial_out,
             partial_m=scratch.partial_m,
             partial_l=scratch.partial_l,
-            attn_out=self._row_tensor_view(scratch.attn_out, row),
+            attn_out=scratch.attn_out,
             gated_attn=self._row_tensor_view(scratch.gated_attn, row),
             o_rot=self._row_tensor_view(scratch.o_rot, row),
             o_proj=self._row_tensor_view(scratch.o_proj, row),
@@ -3912,6 +3912,14 @@ class Qwen35ParoDecodeState:
                     block_size=block_size,
                     library=library,
                     stream=stream,
+                )
+                row_context = self._row_tensor_view(attention_scratch.query_raw, row)
+                self.runtime.memcpy_async(
+                    row_context.ptr,
+                    attention_scratch.attn_out.ptr,
+                    self.config.num_attention_heads * self.config.head_dim * DType.FP32.itemsize,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
                 )
             gated = attention_scratch.gated_attn
         else:
