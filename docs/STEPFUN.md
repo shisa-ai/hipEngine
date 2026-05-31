@@ -580,7 +580,7 @@ reporting.
   BF16 KV write/decode registry keys plus decode/prompt 256-token paged-attention
   span contracts, a metadata-only `kv_decode_run_plan` for the canonical short
   `hello` prompt (input token IDs with int32 byte-count/SHA-256 metadata, prompt
-  positions, rendered prompt SHA-256, decode position/live-count, stop IDs, KV dispatch keys, and resource-fit
+  positions, rendered prompt SHA-256, an input-token device-upload helper, decode position/live-count, stop IDs, KV dispatch keys, and resource-fit
   booleans), plus the planned per-layer KV launch
   schedule (45 layers × prompt KV write, decode KV write, gated attention = 135
   planned operations), and includes a compact `handoff_summary` with open blockers, blocked gates,

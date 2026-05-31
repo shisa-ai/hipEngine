@@ -28496,3 +28496,19 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted decode-planner/load-smoke/status tests passed (`17 passed`), artifact schema and source-artifact verification passed, and the full StepFun guard passed (`109 passed` plus CPU-reference fixture checks).
+
+## 2026-05-31 — StepFun KV input-token upload helper recorded
+
+Added `StepFunKVDecodeRunPlan.upload_input_ids_payload()`, a pre-runner helper that allocates a device buffer and copies the validated int32 input-token payload bytes for the rendered prompt. The helper returns `StepFunInputIDDeviceUpload` with token count, dtype, buffer metadata, SHA-256, and `free()`. Decode-planner tests use a fake HIP runtime to prove exact byte copies, normal free behavior, and copy-failure cleanup for the input-token upload path. This is still pre-runner upload evidence: no StepFun KV write/attention kernels are launched, and `oracle_parity=false`, `kv_backed_decode_ready=false`, and `e2e_inference_ready=false` remain unchanged.
+
+Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json` after the docs update so source-artifact verification stays current, updated decode-planner coverage, and clarified `docs/STEPFUN.md`.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_decode_planner.py -q
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty --output /tmp/stepfun-source-verify.json
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted decode-planner tests passed (`10 passed`), source-artifact verification passed, and the full StepFun guard passed (`109 passed` plus CPU-reference fixture checks).

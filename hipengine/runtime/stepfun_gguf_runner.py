@@ -180,6 +180,28 @@ class StepFunKVCacheAllocation:
 
 
 @dataclass(frozen=True)
+class StepFunInputIDDeviceUpload:
+    """Owned device buffer for planned StepFun input-token uploads."""
+
+    buffer: DeviceBuffer
+    payload_sha256: str
+    token_count: int
+    dtype: str = "int32"
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "token_count": self.token_count,
+            "dtype": self.dtype,
+            "ptr": self.buffer.ptr,
+            "nbytes": self.buffer.nbytes,
+            "sha256": self.payload_sha256,
+        }
+
+    def free(self, *, runtime: HipRuntime | None = None) -> None:
+        free(self.buffer, runtime=runtime)
+
+
+@dataclass(frozen=True)
 class StepFunKVSpanInputDeviceUpload:
     """Owned device buffers for planned StepFun KV span-input uploads."""
 
@@ -634,6 +656,33 @@ class StepFunKVDecodeRunPlan:
         if source == "decode_span_inputs.attention_live_counts":
             return [self.decode_live_count]
         raise KeyError(f"unknown StepFun KV upload source: {source}")
+
+    def upload_input_ids_payload(
+        self,
+        *,
+        runtime: HipRuntime | None = None,
+    ) -> StepFunInputIDDeviceUpload:
+        """Allocate/copy the planned input-token payload to a device buffer."""
+
+        payload = self.input_ids_payload_bytes
+        buffer = malloc(len(payload), runtime=runtime)
+        try:
+            host_payload = ctypes.create_string_buffer(payload, len(payload))
+            copy_host_to_device(
+                buffer,
+                host_buffer_ptr(host_payload),
+                len(payload),
+                runtime=runtime,
+            )
+        except Exception:
+            free(buffer, runtime=runtime)
+            raise
+        return StepFunInputIDDeviceUpload(
+            buffer=buffer,
+            payload_sha256=hashlib.sha256(payload).hexdigest(),
+            token_count=self.prompt_length,
+            dtype=self.input_ids_dtype,
+        )
 
     @property
     def span_input_host_payload_bytes(self) -> dict[str, bytes]:
@@ -2121,6 +2170,7 @@ __all__ = [
     "STEPFUN_GGUF_KERNEL_QUANT",
     "STEPFUN_KV_ATTENTION_BLOCK_SIZE",
     "StepFunDecodePlan",
+    "StepFunInputIDDeviceUpload",
     "StepFunKVCacheAllocation",
     "StepFunKVDecodeKernelPlan",
     "StepFunKVDecodeRunPlan",

@@ -269,6 +269,30 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
     assert sum(len(payload_bytes) for payload_bytes in host_payload_bytes.values()) == (
         prompt_base_offsets_nbytes + prompt_live_counts_nbytes + 24
     )
+    input_runtime = _FakeHipRuntime()
+    input_upload = run_plan.upload_input_ids_payload(runtime=input_runtime)
+    try:
+        assert input_upload.token_count == run_plan.prompt_length
+        assert input_upload.dtype == "int32"
+        assert input_upload.buffer.nbytes == len(input_ids_payload)
+        assert input_runtime.copies[input_upload.buffer.ptr] == input_ids_payload
+        assert input_upload.payload_sha256 == hashlib.sha256(input_ids_payload).hexdigest()
+        assert input_upload.to_dict() == {
+            "token_count": run_plan.prompt_length,
+            "dtype": "int32",
+            "ptr": input_upload.buffer.ptr,
+            "nbytes": len(input_ids_payload),
+            "sha256": hashlib.sha256(input_ids_payload).hexdigest(),
+        }
+    finally:
+        input_upload.free(runtime=input_runtime)
+    assert input_runtime.freed == [input_upload.buffer.ptr]
+    failing_input_runtime = _FakeHipRuntime(fail_on_copy_index=1)
+    with pytest.raises(RuntimeError, match="simulated host-to-device copy failure"):
+        run_plan.upload_input_ids_payload(runtime=failing_input_runtime)
+    assert len(failing_input_runtime.allocations) == 1
+    assert failing_input_runtime.freed == list(failing_input_runtime.allocations)
+    assert failing_input_runtime.copies == {}
     host_payloads = payload["span_input_host_payloads"]
     assert host_payloads["entry_count"] == 5
     assert host_payloads["total_nbytes"] == prompt_base_offsets_nbytes + prompt_live_counts_nbytes + 24
