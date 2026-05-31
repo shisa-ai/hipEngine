@@ -11314,6 +11314,7 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
             "prompt_tokens_aggregate": 5,
             "warmup_decode_tokens": 0,
             "gen_tokens_per_request": 2,
+            "gen_tokens_aggregate": 4,
         },
         "correctness": {
             "passed": False,
@@ -11453,6 +11454,16 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
     bad_prompt_aggregate_claim["workload"]["prompt_tokens_aggregate"] = -1
     with pytest.raises(ValueError, match="workload.prompt_tokens_aggregate must be a non-negative int"):
         validate_cn_diagnostic_artifact_payload(bad_prompt_aggregate_claim)
+
+    mismatched_gen_aggregate_claim = json.loads(json.dumps(payload))
+    mismatched_gen_aggregate_claim["workload"]["gen_tokens_aggregate"] = 5
+    with pytest.raises(ValueError, match="workload.gen_tokens_aggregate must equal workload.concurrency times workload.gen_tokens_per_request"):
+        validate_cn_diagnostic_artifact_payload(mismatched_gen_aggregate_claim)
+
+    bad_gen_aggregate_claim = json.loads(json.dumps(payload))
+    bad_gen_aggregate_claim["workload"]["gen_tokens_aggregate"] = 0
+    with pytest.raises(ValueError, match="workload.gen_tokens_aggregate must be a positive int"):
+        validate_cn_diagnostic_artifact_payload(bad_gen_aggregate_claim)
 
     missing_shape_claim = json.loads(json.dumps(payload))
     missing_shape_claim["workload"].pop("concurrency")

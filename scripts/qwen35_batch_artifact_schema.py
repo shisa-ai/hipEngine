@@ -2622,6 +2622,12 @@ def _validate_claimed_generated_token_equality(
     gen_tokens_valid = isinstance(gen_tokens, int) and not isinstance(gen_tokens, bool) and gen_tokens > 0
     if not gen_tokens_valid:
         errors.append("workload.gen_tokens_per_request must be a positive int when generated_token_equality.passed is true")
+    gen_tokens_aggregate = workload.get("gen_tokens_aggregate")
+    if gen_tokens_aggregate is not None:
+        if not isinstance(gen_tokens_aggregate, int) or isinstance(gen_tokens_aggregate, bool) or gen_tokens_aggregate <= 0:
+            errors.append("workload.gen_tokens_aggregate must be a positive int when present and generated_token_equality.passed is true")
+        elif concurrency_valid and gen_tokens_valid and gen_tokens_aggregate != int(concurrency) * int(gen_tokens):
+            errors.append("workload.gen_tokens_aggregate must equal workload.concurrency times workload.gen_tokens_per_request when generated_token_equality.passed is true")
     warmup_tokens = workload.get("warmup_decode_tokens")
     warmup_tokens_valid = isinstance(warmup_tokens, int) and not isinstance(warmup_tokens, bool) and warmup_tokens >= 0
     if not warmup_tokens_valid:
