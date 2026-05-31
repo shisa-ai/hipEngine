@@ -4246,6 +4246,61 @@ def test_batch_c_sweep_scaling_reference_rejects_mismatched_visible_device_name(
     assert "hardware.gpu does not match hardware.visible_device.device_name" in precondition["reason"]
 
 
+def test_batch_c_sweep_scaling_reference_requires_software_for_device_stamped_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    reference_path = output_dir / "serial-bridge-c2.json"
+    reference_path.write_text(
+        json.dumps(
+            {
+                "artifact_path": str(reference_path),
+                "schema": 2,
+                "status": "blocked",
+                "hardware": {
+                    "gpu": "AMD Radeon RX 7900 XTX",
+                    "visible_device": {"env": {"HIP_VISIBLE_DEVICES": "1"}, "device_name": "AMD Radeon RX 7900 XTX"},
+                },
+                "commands": {
+                    "benchmark": f"env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_serial_bench.py --json {reference_path}"
+                },
+                "workload": {"concurrency": 2, "prompt_tokens_per_request": 16, "gen_tokens_per_request": 2},
+                "measurements": {"decode_tok_s_aggregate": 20.0, "decode_tok_s_per_request": 10.0},
+            }
+        )
+    )
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._scaling_reference_precondition(
+        native,
+        flag="--serial-bridge-json",
+        kind="serial_bridge",
+        expected_concurrency=2,
+    )
+
+    assert precondition["passed"] is False
+    assert precondition["reason"] == "software provenance is missing for device-stamped scaling reference"
+
+
 def test_batch_c_sweep_scaling_reference_rejects_mismatched_command_device_env(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -11159,6 +11214,35 @@ def test_qwen35_retained_scaling_reference_rejects_mismatched_visible_device_nam
     assert reference["decode_tok_s_per_request"] is None
 
 
+def test_qwen35_retained_scaling_reference_requires_software_for_device_stamped_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
+    serial = tmp_path / "serial-bridge-c2.json"
+    serial.write_text(
+        json.dumps(
+            {
+                "artifact_path": str(serial),
+                "status": "blocked",
+                "hardware": {
+                    "gpu": "AMD Radeon RX 7900 XTX",
+                    "visible_device": {"env": {"HIP_VISIBLE_DEVICES": "1"}, "device_name": "AMD Radeon RX 7900 XTX"},
+                },
+                "commands": {"benchmark": f"env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_serial_bench.py --json {serial}"},
+                "workload": {"concurrency": 2, "prompt_tokens_per_request": 512, "gen_tokens_per_request": 128},
+                "measurements": {"decode_tok_s_aggregate": 8.0, "decode_tok_s_per_request": 4.0},
+            }
+        )
+    )
+
+    reference = retained_bench._scaling_reference(serial)
+
+    assert reference["reason"] == "software provenance is missing for device-stamped scaling reference"
+    assert reference["decode_tok_s_aggregate"] is None
+    assert reference["decode_tok_s_per_request"] is None
+
+
 def test_qwen35_retained_scaling_reference_rejects_mismatched_command_device_env(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -11577,6 +11661,7 @@ def test_qwen35_c1_baseline_artifact_path_self_binding_is_scaling_reference_comp
                 "artifact_path": paro_bench._artifact_path(c1),
                 "schema": 1,
                 "hardware": {"visible_device": {"env": {"HIP_VISIBLE_DEVICES": "1"}}},
+                "software": {"python": "3.10", "hipcc_version": "hipcc 6.2", "hipengine_commit": "abc123", "hipengine_dirty": False},
                 "commands": {"benchmark": f"env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_paro_bench.py --json {c1}"},
                 "prompt_length": 512,
                 "decode_tokens": 128,

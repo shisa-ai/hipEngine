@@ -436,6 +436,21 @@ def _visible_device_env_assignments(payload: Mapping[str, Any]) -> tuple[dict[st
     return assignments, reasons
 
 
+def _scaling_reference_software_reasons(payload: Mapping[str, Any]) -> list[str]:
+    software = payload.get("software")
+    if not isinstance(software, Mapping):
+        return ["software provenance is missing for device-stamped scaling reference"]
+    reasons: list[str] = []
+    for field in ("python", "hipcc_version", "hipengine_commit"):
+        value = software.get(field)
+        if not isinstance(value, str) or not value:
+            reasons.append(f"software.{field} is missing or not a non-empty string")
+    dirty = software.get("hipengine_dirty")
+    if not isinstance(dirty, bool):
+        reasons.append("software.hipengine_dirty is missing or not a bool")
+    return reasons
+
+
 def _scaling_reference_command_env_assignments(
     payload: Mapping[str, Any],
     *,
@@ -540,6 +555,8 @@ def _scaling_reference(
         for key, value in reference_command_env.items():
             if retained_device_env.get(key) != value:
                 reasons.append(f"commands.benchmark device env {key} does not match retained command env")
+    if reference_device_env and not reasons:
+        reasons.extend(_scaling_reference_software_reasons(payload))
     aggregate, per_request = _extract_decode_rates(payload)
     throughput_missing = aggregate is None or per_request is None
     if reasons:
