@@ -6942,6 +6942,11 @@ def test_batch_c_sweep_can_plan_int8_blocked_diagnostics(tmp_path: Path) -> None
     assert summary["retained_precondition_counts"] == {}
     assert summary["skipped_preconditions"] == []
 
+    tampered_include_int8 = json.loads(json.dumps(summary))
+    tampered_include_int8["options"]["include_int8"] = False
+    with pytest.raises(ValueError, match=r"command_count must match batch_sizes/options\.include_int8/include_gguf"):
+        c_sweep.validate_sweep_summary(tampered_include_int8)
+
     int8_entry_index = next(
         index for index, entry in enumerate(summary["commands"]) if entry["category"] == "int8_native_diagnostic"
     )
@@ -7011,6 +7016,11 @@ def test_batch_c_sweep_can_plan_gguf_blocked_diagnostics(tmp_path: Path, monkeyp
         "native_diagnostic": {"planned": 2},
         "gguf_native_diagnostic": {"planned": 4},
     }
+
+    tampered_include_gguf = json.loads(json.dumps(summary))
+    tampered_include_gguf["options"]["include_gguf"] = False
+    with pytest.raises(ValueError, match=r"command_count must match batch_sizes/options\.include_int8/include_gguf"):
+        c_sweep.validate_sweep_summary(tampered_include_gguf)
 
     gguf_entry_index = next(
         index for index, entry in enumerate(summary["commands"]) if entry["category"] == "gguf_native_diagnostic"

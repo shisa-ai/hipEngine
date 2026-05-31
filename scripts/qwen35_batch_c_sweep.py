@@ -3540,13 +3540,16 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     ):
         errors.append("completed_command_count must be a typed int matching len(commands)")
     command_count = summary.get("command_count")
+    command_count_shape_ok = False
     if not isinstance(command_count, int) or isinstance(command_count, bool) or command_count < len(entries):
         errors.append("command_count must be an int greater than or equal to completed_command_count")
-    elif summary.get("dry_run") is True and command_count != len(entries):
-        errors.append("dry-run summaries must include all planned commands")
-    elif isinstance(options, Mapping) and options.get("stop_on_failure") is False and command_count != len(entries):
-        errors.append("non-stop summaries must include all planned commands")
-    elif isinstance(options, Mapping) and isinstance(options.get("include_int8"), bool) and isinstance(options.get("include_gguf"), bool) and batch_sizes:
+    else:
+        command_count_shape_ok = True
+        if summary.get("dry_run") is True and command_count != len(entries):
+            errors.append("dry-run summaries must include all planned commands")
+        elif isinstance(options, Mapping) and options.get("stop_on_failure") is False and command_count != len(entries):
+            errors.append("non-stop summaries must include all planned commands")
+    if command_count_shape_ok and isinstance(options, Mapping) and isinstance(options.get("include_int8"), bool) and isinstance(options.get("include_gguf"), bool) and batch_sizes:
         expected_plan: list[tuple[str, int]] = []
         for c in batch_sizes:
             expected_plan.extend([

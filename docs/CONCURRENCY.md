@@ -1537,8 +1537,9 @@ roll-up/status view.
       `512,513`, so C3.1 handoff artifacts name both the generated-token gate
       and the lower-level INT8 KV accuracy gate before promotion; c-sweep
       `--include-int8` rows now bind c-specific future-retained, CPU primitive,
-      and HIP primitive JSON paths and reject stale path labels or duplicate
-      INT8 diagnostic flags in sweep summaries. The future
+      and HIP primitive JSON paths and reject stale path labels, duplicate
+      INT8 diagnostic flags, or summaries where the `int8_native_diagnostic`
+      rows no longer agree with `options.include_int8`. The future
       retained-bench command now carries `--int8-kv-primitive-cpu-json` and
       `--int8-kv-primitive-hip-json`, `scripts/qwen35_kv_int8_accuracy.py`
       self-describes written JSON paths, and accepted c>N artifact schema
@@ -1601,7 +1602,9 @@ roll-up/status view.
       for GPU1/XTX re-baseline runs. The c-sweep planner now has
       `--include-gguf`, which adds blocked GGUF c>N diagnostic commands for
       Q4_K_M/Q5_K_M/Q6_K/Q8_0 at c>1 while preserving the visible HIP device env
-      and rejects stale GGUF fixture, duplicate/unsupported quant order, or artifact filename metadata in sweep summaries;
+      and rejects stale GGUF fixture, duplicate/unsupported quant order,
+      artifact filename metadata, or summaries where GGUF diagnostic rows no
+      longer agree with `options.include_gguf`;
       covered by `test_gguf_cN_diagnostic_template_records_blocked_c2_command`
       and `test_batch_c_sweep_can_plan_gguf_blocked_diagnostics` in
       `pytest -q tests/test_generation_batch_scheduler.py -q`.
