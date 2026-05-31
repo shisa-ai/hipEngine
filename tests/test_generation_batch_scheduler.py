@@ -7336,6 +7336,15 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
             with pytest.raises(ValueError, match=error):
                 c_sweep.validate_sweep_summary(tampered_non_integer)
 
+            tampered_missing_flag = json.loads(json.dumps(summary))
+            missing_flag_entry = tampered_missing_flag["commands"][index]
+            missing_flag_argv = missing_flag_entry["argv"]
+            flag_index = missing_flag_argv.index(flag)
+            del missing_flag_argv[flag_index : flag_index + 2]
+            missing_flag_entry["command"] = shlex.join(missing_flag_argv)
+            with pytest.raises(ValueError, match=error):
+                c_sweep.validate_sweep_summary(tampered_missing_flag)
+
         for tamper_argv_json in (False, True):
             tampered_artifact_link = json.loads(json.dumps(summary))
             entry = tampered_artifact_link["commands"][index]

@@ -1453,8 +1453,9 @@ roll-up/status view.
       `primitive-c1/c2/c4/c8.json` command text, argv, `HIP_VISIBLE_DEVICES=1`,
       script/category, `--rows`, `--seed 1234`, and `--json` labels and rejects
       stale primitive command text/argv, wrong device env, wrong-script/category,
-      duplicate `--rows`/`--seed`/`--json` labels, non-integer `--rows`/`--seed`
-      values, artifact-path/argv `--json`, `--rows`, or `--seed` labels in
+      duplicate `--rows`/`--seed`/`--json` labels, missing or non-integer
+      `--rows`/`--seed` values, artifact-path/argv `--json`, `--rows`, or
+      `--seed` labels in
       `test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics`.
       The primitive script also re-runs
       the batched KV append and batched full-attention context kernels on the
