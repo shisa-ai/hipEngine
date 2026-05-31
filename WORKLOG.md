@@ -24313,3 +24313,50 @@ Docs/rollup updated:
 Next multiloop focus: generalization/safety gates.  Check the current best stack
 on longer decode horizons (D128/D160) and/or build a deployable route-history
 mechanism; do not default from this D64-only evidence.
+
+## 2026-05-31 — DFlash multiloop iter17 single_full_v site mask
+
+Active loop: `dflash-27b-w7900/run-20260531-102747`.  Iteration 17 tested
+whether the retained graph-aware 7-chain / 2-AR budget-prefix stack benefits
+from adding only `single_full_v` to the W4 multi-row site mask.  The hypothesis
+was target verifier cost reduction: default exact-safe M12.6 routes full-attn QK
+and O through small-B multi-row kernels, but leaves full-attn V on the prefill W4
+path.
+
+Command:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_W4_MULTI_ROW_PACK8_SITES=full_qk,linear_qkv_z,dense_gate_up,single_full_o,single_full_v,single_shared_down,single_dense_down PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --verifier-graph auto --full-attn-chain-mode batched --canonical-commit-mode bulk_direct --profile-route-manifest /tmp/multiloop-dflash-27b-w7900-profile-route-vgraph-aware-iter9-manifest.json --drafter-query-mode budget_prefix --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/multiloop-dflash-27b-w7900.json
+```
+
+Result: exact `9/9`, DFlash/spec `38.99 tok/s`, AR `32.47 tok/s`, `1.2007x`
+AR.  This improves the retained budget-prefix stack from `1.1832x -> 1.2007x`
+and `38.65 -> 38.99 tok/s` (+0.9% spec tok/s).  Summed target-verify time
+moves `12.7088 -> 12.5807 s` (-1.0%); draft time is unchanged.  Route mix stays
+7 chain / 2 AR and chain-row verifier graph validation passes.
+
+This is **not defaulted**.  The stack is still profile-history routing + opt-in
+verifier graph + `bulk_direct` + `budget_prefix`, and `single_full_v` remains
+outside the default exact-safe W4 site mask.  Exactness is only established for
+this W7900 27B B=4/D64 gate.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/dflash_chain_e2e_bench.py scripts/dflash_build_profile_route_manifest.py hipengine/runtime/qwen35_paro.py
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_paro_awq_gemv_multi_row_decode.py tests/test_dflash_profile_route_manifest.py tests/test_dflash_draft_confidence.py tests/test_speculative_benchmark.py
+python3 -m json.tool benchmarks/results/2026-05-31-hipengine-dflash-27b-graph-aware-route-single-full-v.json >/tmp/hipengine-dflash-27b-single-full-v-artifact-check.json
+```
+
+Result: targeted pytest `17 passed`; artifact JSON valid.
+
+Retained artifact:
+- `benchmarks/results/2026-05-31-hipengine-dflash-27b-graph-aware-route-single-full-v.json`
+
+Docs/rollup updated:
+- `docs/DFLASH.md` table now includes `single_full_v` W4 site mask.
+- `benchmarks/README.md` and `benchmarks/CHANGELOG.md` retained diagnostic row.
+
+Next multiloop focus: test nearby W4 site-mask candidates one at a time (e.g.
+`single_linear_out`), or validate the best stack on D128/D160 before any broader
+promotion discussion.  Do not default `single_full_v` from D64-only evidence.

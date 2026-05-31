@@ -321,13 +321,13 @@ losers: `code:class_continuation`, `code:json_yaml_continuation`,
 `instruct:simple_qa_qwen_static_chat` route to DFlash chain; quicksort,
 function-continuation, sort-third, and the short GSM8K-style prompt route to AR.
 
-| Metric | all-chain `multi_row_decode` | profile route | profile route + verifier graph | graph-aware profile route + verifier graph | graph-aware + graph + bulk-direct | + budget-prefix drafter query |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| exact rows | 9/9 | 9/9 | 9/9 | 9/9 | 9/9 | 9/9 |
-| AR decode | 32.57 tok/s | 32.65 tok/s | 32.38 tok/s | 32.34 tok/s | 32.49 tok/s | 32.67 tok/s |
-| DFlash/spec decode | 31.75 tok/s | 34.63 tok/s | 36.81 tok/s | 37.55 tok/s | 38.22 tok/s | 38.65 tok/s |
-| vs AR | 0.975x | 1.061x | 1.137x | 1.161x | 1.176x | 1.183x |
-| route mix | 9 chain / 0 AR | 5 chain / 4 AR | 5 chain / 4 AR | 7 chain / 2 AR | 7 chain / 2 AR | 7 chain / 2 AR |
+| Metric | all-chain `multi_row_decode` | profile route | profile route + verifier graph | graph-aware profile route + verifier graph | graph-aware + graph + bulk-direct | + budget-prefix drafter query | + `single_full_v` W4 site |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| exact rows | 9/9 | 9/9 | 9/9 | 9/9 | 9/9 | 9/9 | 9/9 |
+| AR decode | 32.57 tok/s | 32.65 tok/s | 32.38 tok/s | 32.34 tok/s | 32.49 tok/s | 32.67 tok/s | 32.47 tok/s |
+| DFlash/spec decode | 31.75 tok/s | 34.63 tok/s | 36.81 tok/s | 37.55 tok/s | 38.22 tok/s | 38.65 tok/s | 38.99 tok/s |
+| vs AR | 0.975x | 1.061x | 1.137x | 1.161x | 1.176x | 1.183x | 1.201x |
+| route mix | 9 chain / 0 AR | 5 chain / 4 AR | 5 chain / 4 AR | 7 chain / 2 AR | 7 chain / 2 AR | 7 chain / 2 AR | 7 chain / 2 AR |
 
 Verifier HIP graph capture (`--verifier-graph auto`) on the same route was the
 first multiloop result to clear the numeric `>1.10x` gate: exact `9/9`,
@@ -338,18 +338,22 @@ GSM8K-style prompt became chain winners, yielding a 7-chain / 2-AR route at
 commit also stayed exact and improved the graph-aware route to `38.22 tok/s`,
 `1.176x` AR.  Finally, limiting the drafter query rows to the root+B prefix
 (`--drafter-query-mode budget_prefix`) stayed exact and nudged the route to
-`38.65 tok/s`, `1.183x` AR.  Chain rows report graph validation success with
-`captured_validated_miss`/`replayed` statuses.  This remains a **diagnostic
-profile-history route**, not a promoted default: the route depends on prior
-prompt history rather than a deployable online classifier, verifier graph
-capture is still opt-in, `bulk_direct` exactness is only established for this
-gate, and budget-prefix proposals can differ from the z-lab block-query
-contract.  Retained artifacts:
+`38.65 tok/s`, `1.183x` AR.  Adding opt-in `single_full_v` to the W4
+multi-row site mask also stayed exact and reduced summed target-verify time by
+about 1%, reaching `38.99 tok/s`, `1.201x` AR.  Chain rows report graph
+validation success with `captured_validated_miss`/`replayed` statuses.  This
+remains a **diagnostic profile-history route**, not a promoted default: the
+route depends on prior prompt history rather than a deployable online
+classifier, verifier graph capture is still opt-in, `bulk_direct` exactness is
+only established for this gate, budget-prefix proposals can differ from the
+z-lab block-query contract, and `single_full_v` remains outside the default
+exact-safe W4 site mask.  Retained artifacts:
 [`2026-05-31-hipengine-dflash-27b-profile-route-multiloop.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-profile-route-multiloop.json),
 [`2026-05-31-hipengine-dflash-27b-profile-route-verifier-graph.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-profile-route-verifier-graph.json),
 [`2026-05-31-hipengine-dflash-27b-graph-aware-profile-route.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-graph-aware-profile-route.json),
-[`2026-05-31-hipengine-dflash-27b-graph-aware-route-bulk-direct.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-graph-aware-route-bulk-direct.json), and
-[`2026-05-31-hipengine-dflash-27b-graph-aware-route-budget-prefix.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-graph-aware-route-budget-prefix.json).
+[`2026-05-31-hipengine-dflash-27b-graph-aware-route-bulk-direct.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-graph-aware-route-bulk-direct.json),
+[`2026-05-31-hipengine-dflash-27b-graph-aware-route-budget-prefix.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-graph-aware-route-budget-prefix.json), and
+[`2026-05-31-hipengine-dflash-27b-graph-aware-route-single-full-v.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-graph-aware-route-single-full-v.json).
 
 ### 2026-05-26 W7900 27B multi-row-decode default
 
