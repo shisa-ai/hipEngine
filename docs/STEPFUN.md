@@ -628,9 +628,11 @@ layer loop is wired.
   the decode-planner test asserts there are no vision/projector/MTP slot
   dependencies. Partial prompt artifact
   `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-prompt-smoke.json`
-  runs the resident text-only chat prompt through the layers 0-3 prefix bridge
-  with no vision/projector/MTP slots; actual full-model prompt execution remains
-  open until the KV-backed runner or all-layer prefix bridge is validated.
+  is produced by `python3 scripts/stepfun_layer_prefix_smoke.py --layer-count 4
+  --message hello --pretty` and runs the resident text-only chat prompt through
+  the layers 0-3 prefix bridge with no vision/projector/MTP slots; actual
+  full-model prompt execution remains open until the KV-backed runner or
+  all-layer prefix bridge is validated.
 
 **Acceptance:** full-model smoke produces token(s) or a documented fit failure.
 Current materialization coverage is validated by
@@ -638,7 +640,9 @@ Current materialization coverage is validated by
 quant/layout planning (`Q3_K`, `Q5_K`, `Q8_0`, `F32`), split-shard payload
 access on first/last shard tensors, selected-slot HIP loading/freeing with
 memory stats, and torch-free imports; `python3 -m pytest -q tests/test_stepfun_load_smoke.py`
-validates metadata-only dry-run load-smoke JSON. This is still not a throughput benchmark.
+validates metadata-only dry-run load-smoke JSON; `python3 -m pytest -q
+tests/test_stepfun_layer_prefix_smoke.py` validates the reusable partial prompt
+smoke script. This is still not a throughput benchmark.
 
 ### P13 — Benchmark and rollup only after correctness
 

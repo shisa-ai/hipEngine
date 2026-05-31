@@ -1,7 +1,7 @@
 {
   "backend": "hip_gfx1151",
-  "command": "python3 <one-off StepFunResidentSession layer_prefix_prompt_logits_probe_bf16 artifact writer>",
-  "elapsed_s": 2.776532714953646,
+  "command": "python3 scripts/stepfun_layer_prefix_smoke.py --layer-count 4 --message \"hello\" --pretty",
+  "elapsed_s": 2.878072208026424,
   "hip_free_after_free_gib": 119.85709762573242,
   "hip_free_after_load_gib": 116.18153762817383,
   "hip_free_before_gib": 119.99605941772461,
@@ -61,7 +61,7 @@
   "next_token_id": 104939,
   "next_token_logit": 15.455097198486328,
   "no_vision_projector_mtp_slots": true,
-  "note": "Partial correctness smoke only: host-composed layer-prefix bridge uses resident roots/layers 0-3 and final sampled logits; layers 4-44 and KV-backed decode remain open, so this is not full next-token parity or throughput evidence.",
+  "note": "Partial correctness smoke only: host-composed layer-prefix bridge uses resident root/layer weights and final sampled logits; skipped layers and KV-backed decode remain open, so this is not full next-token parity or throughput evidence.",
   "paths": [
     "/data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf",
     "/data/models/gguf/Step-3.7-flash-Q3_K_L-00002-of-00003.gguf",

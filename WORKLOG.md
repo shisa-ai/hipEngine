@@ -27525,3 +27525,17 @@ Artifact summary: `status=planned`, 3 GGUF splits, 754 tensors/slots, `102,499,1
 Recorded a resident text-only prompt smoke artifact at `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-prompt-smoke.json`. The artifact uses the existing `StepFunResidentSession.layer_prefix_prompt_logits_probe_bf16()` bridge on prompt `hello` with `layer_count=4`, materializing root text tensors plus layers 0-3 (dense layers 0-2 and sliding/MoE layer 3). It records 56 selected resident slots, `3,910,240,384` resident weight bytes, prompt length 23, sampled final logits, `next_token_id=104939`, and allocation cleanup (`active_allocations=0`, `current_allocated_bytes=0` after free).
 
 This is partial text-only prompt evidence only: it confirms the validated prefix path uses no vision/projector/MTP slots, but layers 4-44 and KV-backed decode remain open, so it is not full next-token parity or throughput evidence. `hipMemGetInfo` total/free readings remain diagnostic under the configured Strix Halo GTT setup; the artifact includes a note to rely on hipEngine allocation counters and relative snapshots instead.
+
+## 2026-05-31 — StepFun reusable layer-prefix smoke script
+
+Added `scripts/stepfun_layer_prefix_smoke.py`, a reusable JSON-emitting diagnostic for the existing resident layer-prefix prompt bridge. The script selects root text tensors plus `layers.0..N-1`, rejects vision/projector/MTP/nextn slots, runs `StepFunResidentSession.layer_prefix_prompt_logits_probe_bf16()`, records sampled final logits and allocation cleanup, and labels the result as partial prompt evidence with skipped layers/KV-backed decode still open.
+
+Added `tests/test_stepfun_layer_prefix_smoke.py` covering the script on a real layer-0 prompt smoke and regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-prompt-smoke.json` with the exact command `python3 scripts/stepfun_layer_prefix_smoke.py --layer-count 4 --message hello --pretty`.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_layer_prefix_smoke.py tests/test_stepfun_resident_session.py::test_stepfun_resident_session_layer_prefix_prompt_logits_probe_runs_dense_and_moe_prefix -q
+```
+
+Result: `2 passed`.
