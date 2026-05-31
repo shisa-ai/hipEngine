@@ -116,8 +116,12 @@ def _drift_bit_mismatch(record: dict[str, Any] | None) -> int | None:
         return None
 
 
+def _record_key(record: dict[str, Any] | None) -> str:
+    return json.dumps(record, sort_keys=True, allow_nan=False)
+
+
 def _records_agree(records: Sequence[dict[str, Any] | None]) -> bool:
-    return len({json.dumps(record, sort_keys=True) for record in records}) <= 1
+    return len({_record_key(record) for record in records}) <= 1
 
 
 def _int_delta(values: Sequence[int | None]) -> int | None:
