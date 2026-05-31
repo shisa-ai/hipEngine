@@ -11402,6 +11402,11 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
     with pytest.raises(ValueError, match="execution.generated_tokens.1 must be non-empty when any generated-token metadata is present"):
         validate_cn_diagnostic_artifact_payload(partial_generated_claim)
 
+    extra_generated_row_claim = json.loads(json.dumps(payload))
+    extra_generated_row_claim["execution"]["generated_tokens"]["2"] = [{"token_id": 99}]
+    with pytest.raises(ValueError, match="execution.generated_tokens keys must match workload.concurrency row ids"):
+        validate_cn_diagnostic_artifact_payload(extra_generated_row_claim)
+
     all_empty_generated_claim = json.loads(json.dumps(payload))
     all_empty_generated_claim["execution"]["generated_tokens"] = {"0": [], "1": []}
     validate_cn_diagnostic_artifact_payload(all_empty_generated_claim)
