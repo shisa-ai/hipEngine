@@ -5832,6 +5832,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_scaling_precondition_missing_artifact["commands"][-1]["preconditions"][2].pop("reference_artifact_path")
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.reference_artifact_path must match scaling reference artifact_path when passed"):
         c_sweep.validate_sweep_summary(tampered_scaling_precondition_missing_artifact)
+    tampered_scaling_precondition_empty_label = json.loads(json.dumps(persisted))
+    tampered_scaling_precondition_empty_label["commands"][-1]["preconditions"][1]["benchmark_model"] = ""
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.benchmark input labels must be null or non-empty strings when passed"):
+        c_sweep.validate_sweep_summary(tampered_scaling_precondition_empty_label)
+    tampered_scaling_precondition_label_type = json.loads(json.dumps(persisted))
+    tampered_scaling_precondition_label_type["commands"][-1]["preconditions"][2]["benchmark_fixture"] = 123
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.benchmark input labels must be null or non-empty strings when passed"):
+        c_sweep.validate_sweep_summary(tampered_scaling_precondition_label_type)
     tampered_scaling_precondition_model = json.loads(json.dumps(persisted))
     tampered_scaling_precondition_model["commands"][-1]["preconditions"][1]["benchmark_model"] = "/tmp/other-model"
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.benchmark_model must match retained command model when present"):
