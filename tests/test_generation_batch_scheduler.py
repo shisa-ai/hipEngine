@@ -7409,6 +7409,21 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must be under output_dir"):
             c_sweep.validate_sweep_summary(tampered_artifact_output_dir)
 
+        tampered_artifact_parent_component = json.loads(json.dumps(summary))
+        artifact_parent_entry = tampered_artifact_parent_component["commands"][index]
+        artifact_parent_component_path = str(
+            Path(artifact_parent_entry["artifact_path"]).parent
+            / "artifact-parent"
+            / ".."
+            / Path(artifact_parent_entry["artifact_path"]).name
+        )
+        artifact_parent_entry["artifact_path"] = artifact_parent_component_path
+        artifact_parent_argv = artifact_parent_entry["argv"]
+        artifact_parent_argv[artifact_parent_argv.index("--json") + 1] = artifact_parent_component_path
+        artifact_parent_entry["command"] = shlex.join(artifact_parent_argv)
+        with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must not contain parent-directory components"):
+            c_sweep.validate_sweep_summary(tampered_artifact_parent_component)
+
         tampered_rows = json.loads(json.dumps(summary))
         rows_argv = tampered_rows["commands"][index]["argv"]
         rows_argv[rows_argv.index("--rows") + 1] = "9"
