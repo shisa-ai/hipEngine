@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
+from scripts.qwen35_batch_artifact_schema import _load_payload
 from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_GGUF_DIAGNOSTIC_SCRIPT,
     RETAINED_ARTIFACT_GGUF_E2E_CORRECTNESS_SCRIPT,
@@ -33,16 +34,8 @@ def _payload_json(payload: Any) -> str:
     return json.dumps(payload, indent=2, allow_nan=False)
 
 
-def _reject_json_constant(value: str) -> None:
-    raise ValueError(f"JSON contains non-finite constant {value!r}")
-
-
-def _load_json_path(path: Path) -> Any:
-    return json.loads(path.read_text(encoding="utf-8"), parse_constant=_reject_json_constant)
-
-
 def _load_fixture(path: Path) -> dict[str, Any]:
-    fixture = _load_json_path(path)
+    fixture = _load_payload(path)
     required = {"model", "prompt", "prompt_ids", "sampling", "acceptance"}
     missing = sorted(required - set(fixture))
     if missing:

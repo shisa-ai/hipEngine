@@ -41,6 +41,7 @@ from hipengine.kvcache import ResolvedKVPolicy
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
 from scripts.qwen35_batch_artifact_schema import (
     DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS,
+    _load_payload,
     validate_cn_diagnostic_artifact_payload,
 )
 from scripts.qwen35_batch_constants import (
@@ -102,12 +103,8 @@ _UNUSABLE_SCALING_REFERENCE_STATUSES = RETAINED_ARTIFACT_UNUSABLE_SCALING_BASELI
 _COMMAND_ENV_KEYS = ("HIP_VISIBLE_DEVICES",)
 
 
-def _reject_json_constant(value: str) -> None:
-    raise ValueError(f"JSON contains non-finite constant {value!r}")
-
-
-def _load_json_path(path: Path) -> Any:
-    return json.loads(path.read_text(encoding="utf-8"), parse_constant=_reject_json_constant)
+def _load_json_path(path: Path) -> Mapping[str, Any]:
+    return _load_payload(path)
 
 
 def _required_primitive_context_lens(rows: int) -> list[int]:

@@ -22,6 +22,7 @@ if str(REPO_ROOT) not in sys.path:
 from hipengine.generation import ResidentBatchScheduler
 from hipengine.kvcache import ResolvedKVPolicy
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
+from scripts.qwen35_batch_artifact_schema import _load_payload
 from scripts.qwen35_kv_policy_args import add_kv_policy_args, append_kv_policy_flags, kv_policy_json, resolve_args_kv_policy
 
 DEFAULT_MODEL = (
@@ -35,16 +36,8 @@ def _payload_json(payload: Any) -> str:
     return json.dumps(payload, indent=2, allow_nan=False)
 
 
-def _reject_json_constant(value: str) -> None:
-    raise ValueError(f"JSON contains non-finite constant {value!r}")
-
-
-def _load_json_path(path: Path) -> Any:
-    return json.loads(path.read_text(encoding="utf-8"), parse_constant=_reject_json_constant)
-
-
 def _load_prompt_slices(path: Path, *, prompt_length: int, batch_size: int) -> list[list[int]]:
-    fixture = _load_json_path(path)
+    fixture = _load_payload(path)
     tokens = [int(token) for token in fixture["prompt_ids"]]
     needed = prompt_length * batch_size
     if prompt_length <= 0:
