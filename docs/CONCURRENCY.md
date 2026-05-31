@@ -126,11 +126,15 @@ What is still not green:
   A new row-aware batch-GEMV QKV/Z projection diagnostic reduces that layer-0
   `qkv` drift below hidden tolerance but still leaves the same hidden-only step-11
   failure
-  (`/tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-gemv-proj-state-out-perrow-full-atol4e-3-focus1269.json`),
-  so the current C2.3 blockers are the fused native output kernel plus remaining
-  projection exactness/amplification, not paged KV, context softmax, row setup,
-  grouped-compact MoE, or the segmented state update itself under selected
-  projections. C2.3/C2.4/C2.5 remain the correctness priority.
+  (`/tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-gemv-proj-state-out-perrow-full-atol4e-3-focus1269.json`).
+  Re-enabling native full-attention decode under the selected-projection/
+  batch-GEMV-output control keeps tokens green but returns hidden red at step 6
+  (`/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-batch-gemv-out-native-full-atol4e-3-focus1269.json`),
+  so the current C2.3/C2.4 blockers are fused native output, residual projection
+  exactness/amplification, and native full-attention hidden parity; paged KV row
+  setup, grouped-compact MoE, and the segmented state update itself under selected
+  projections remain lower on the list. C2.3/C2.4/C2.5 remain the correctness
+  priority.
 - Long-context c>N still uses a per-row split-K fallback label; no long-context
   native c>N claim is allowed until the split-K reducer is row-aware.
 - INT8 c>N parity, runtime projection dispatch evidence, native LM-head/sampler,
@@ -1302,15 +1306,20 @@ roll-up/status view.
       `/tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-gemv-proj-state-out-perrow-full-atol4e-3-focus1269.json`
       reduces first layer-0 `qkv` drift to `max_abs=0.0009765625` under the
       0.004 hidden tolerance but remains hidden-only red at step 11 / row 0
-      (`max_abs=0.010431289672851562`). This shifts the current C2.3 target to
-      native batched output fallback/retention plus the residual projection
-      exactness/amplification; raw `recurrent_out` stage summaries from segmented
-      state are not equivalent to token-1 decode post-gate `recurrent_out` and
-      must not be used as a closure/blocker signal. The next target is retained
-      projection/output parity without diagnostic flags; do not change
-      paged-KV writer code yet. Do not re-open
-      context softmax math, row setup, native linear segment metadata,
-      output trace/copy semantics, or grouped MoE output yet.
+      (`max_abs=0.010431289672851562`). Re-enabling native full-attention decode
+      on the selected-projection/native-state/batch-GEMV-output control at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-batch-gemv-out-native-full-atol4e-3-focus1269.json`
+      keeps generated tokens green but is hidden-only red (`status=mismatch_found`,
+      first hidden failure step 6 / row 1 `max_abs=0.0124053955078125`), with
+      `native_full_attention_layers=2` and no per-row-full blocker. This shifts
+      the current C2.3/C2.4 target to native batched output fallback/retention,
+      residual projection exactness/amplification, and native full-attention
+      hidden parity; raw `recurrent_out` stage summaries from segmented state are
+      not equivalent to token-1 decode post-gate `recurrent_out` and must not be
+      used as a closure/blocker signal. The next target is retained projection/
+      output/full-attention parity without diagnostic flags; do not change
+      paged-KV writer code yet. Do not re-open row setup, native linear segment
+      metadata, output trace/copy semantics, or grouped MoE output yet.
 - [ ] **C2.4 full c=2 BF16 512/128 equality.** Re-run the full 40-layer c=2
       512/128 retained protocol with `serial_lm_head` default and no serial
       decode bridge. Acceptance: generated-token equality vs two c=1 sessions

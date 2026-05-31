@@ -49233,3 +49233,42 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: targeted compile/pytest PASS; artifact assertions PASS (`status=mismatch_found`, tokens green, first-stage `qkv` drift under hidden tolerance with 5 bit mismatches); verify count remains `12`; full guard PASS with c=2/c=8 primitive A/A fields zero; diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, no benchmark rollup files changed, and the new batch-GEMV projection flag remains diagnostic-only.
+
+## 2026-05-31 — CONCURRENCY C2.3 native-full controlled probe
+
+Ran the C2.3/C2.4 boundary probe with the controlled linear path that was green under per-row full attention, but with native full-attention decode re-enabled: selected-c1 QKV/Z/A/B projections, native segmented state, batch-GEMV linear output, default native full attention. Artifact `/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-batch-gemv-out-native-full-atol4e-3-focus1269.json` is `status=mismatch_found`, generated tokens remain green, and hidden is red at decode step 6 / generated index 7 / row 1 (`max_abs=0.0124053955078125`). Execution metadata records `native_full_attention_layers=2`, `full_attention_decode_path=native_batch`, and blockers only for selected-c1 projections plus batch-GEMV linear output; the native full-attention layers themselves are not per-row fallback. This re-adds native full-attention hidden parity to the C2.3/C2.4 blocker list, while generated-token equality for this short L8/16 controlled probe still passes.
+
+Diagnostic command:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --batch-decode-linear-projection-path selected_c1 --batch-decode-linear-output-path batch_gemv --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-batch-gemv-out-native-full-atol4e-3-focus1269.json
+```
+
+Validation:
+
+```bash
+python3 - <<'PY'
+import json, pathlib
+path = pathlib.Path('/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-batch-gemv-out-native-full-atol4e-3-focus1269.json')
+payload = json.loads(path.read_text())
+assert payload['status'] == 'mismatch_found'
+assert payload['correctness']['token_passed'] is True
+fh = payload['correctness']['first_hidden_mismatch']
+assert fh['decode_step'] == 6 and fh['row'] == 1
+assert abs(fh['max_abs'] - 0.0124053955078125) == 0.0
+execution = fh['batch_decode_execution']
+assert execution['native_full_attention_layers'] == 2
+assert execution['full_attention_decode_path'] == 'native_batch'
+assert 'full-attention decode used a per-row fallback' not in execution['blockers']
+PY
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: artifact assertions PASS; verify count remains `12`; full guard PASS with c=2/c=8 primitive A/A fields zero; diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, no benchmark rollup files changed, and the native-full probe is recorded as hidden-only diagnostic evidence (tokens green, no generated-token equality claim beyond the L8/16 probe).
