@@ -1277,6 +1277,10 @@ def _profiler_reference(path: Path | None) -> dict[str, Any]:
     return result
 
 
+def _payload_json(payload: Mapping[str, Any]) -> str:
+    return json.dumps(payload, indent=2, ensure_ascii=False, allow_nan=False)
+
+
 def _profiled_command(args: argparse.Namespace, argv: Sequence[str] | None) -> str | None:
     explicit = getattr(args, "profiler_command", None)
     if isinstance(explicit, str) and explicit:
@@ -3426,7 +3430,7 @@ def main(argv: list[str] | None = None) -> int:
         }
 
     payload = _build_payload(args, argv, bench, [len(prompt) for prompt in prompts], equality)
-    text = json.dumps(payload, indent=2, ensure_ascii=False)
+    text = _payload_json(payload)
     print(text)
     if args.json is not None:
         args.json.parent.mkdir(parents=True, exist_ok=True)

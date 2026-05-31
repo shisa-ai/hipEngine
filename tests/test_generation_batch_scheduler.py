@@ -11149,6 +11149,13 @@ def test_qwen35_batch_diagnostic_artifact_schema_requires_label_fields() -> None
         validate_cn_diagnostic_artifact_payload(missing)
 
 
+def test_qwen35_retained_payload_json_rejects_nan() -> None:
+    with pytest.raises(ValueError, match="Out of range float values"):
+        retained_bench._payload_json({"bad": float("nan")})
+
+    assert json.loads(retained_bench._payload_json({"ok": 1.0})) == {"ok": 1.0}
+
+
 def test_qwen35_retained_scaling_comparison_uses_c1_and_serial_artifacts(tmp_path: Path) -> None:
     c1 = tmp_path / "native-baseline-c1.json"
     c1.write_text(
