@@ -1319,8 +1319,13 @@ roll-up/status view.
       per-row input and post-attention boundaries at
       `/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-batch-gemv-out-native-full-perrow-input-post-atol4e-3-focus1269.json`
       also remains hidden-only red (`status=mismatch_found`, tokens green, first
-      hidden failure step 6 / row 0 `max_abs=0.02734375`), so the failure is not
-      resolved by either boundary fallback alone or together. This shifts the
+      hidden failure step 6 / row 0 `max_abs=0.02734375`). Forcing selected-c1
+      linear state replay as well at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-state-batch-gemv-out-native-full-atol4e-3-focus1269.json`
+      still leaves native full-attention hidden-only red (`status=mismatch_found`,
+      tokens green, first hidden failure step 6 / row 0 `max_abs=0.027099609375`).
+      The failure is therefore not resolved by either boundary fallback alone,
+      both boundaries together, or diagnostic linear-state replay. This shifts the
       current C2.3/C2.4 target to native batched output fallback/retention,
       residual projection exactness/amplification, and native full-attention
       hidden parity; raw `recurrent_out` stage summaries from segmented state are
