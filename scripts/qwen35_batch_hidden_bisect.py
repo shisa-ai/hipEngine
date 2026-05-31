@@ -2884,14 +2884,18 @@ def _decode_linear_projection_bit_drift_rollup(layer_summaries: Sequence[dict[st
         limit_over_atol_stages = [
             stage for stage in limit_drift_stages if stage_has_over_atol_drift[stage]
         ]
+        limit_under_atol_stages = [
+            stage for stage in limit_drift_stages if not stage_has_over_atol_drift[stage]
+        ]
         layer_limits.append(
             {
                 "layer_limit": int(summary.get("layer_limit", 0)),
                 "drift_stages": limit_drift_stages,
-                "under_atol_drift_stages": [
-                    stage for stage in limit_drift_stages if not stage_has_over_atol_drift[stage]
-                ],
+                "drift_stage_count": len(limit_drift_stages),
+                "under_atol_drift_stages": limit_under_atol_stages,
+                "under_atol_drift_stage_count": len(limit_under_atol_stages),
                 "over_atol_drift_stages": limit_over_atol_stages,
+                "over_atol_drift_stage_count": len(limit_over_atol_stages),
             }
         )
     first_over_atol_layer_limit = next(

@@ -1345,10 +1345,11 @@ roll-up/status view.
       amplification. A narrow multi-limit probe at
       `/tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-batch-gemv-qkvz-selected-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json`
       is hidden/token green (`status=eq_ok`) while reporting
-      `first_over_atol_layer_limit={"layer_limit": 2, ...}`:
-      `layer_limit=1` QKV/Z under-atol drift only and `layer_limit=2` QKV/Z
-      over-atol drift, confirming projection amplification begins at the second
-      retained linear layer before it becomes an end-to-end hidden mismatch.
+      `first_over_atol_layer_limit={"layer_limit": 2, ...}` plus per-limit
+      drift/under-atol/over-atol stage counts: `layer_limit=1` QKV/Z under-atol
+      drift only and `layer_limit=2` QKV/Z over-atol drift, confirming projection
+      amplification begins at the second retained linear layer before it becomes
+      an end-to-end hidden mismatch.
       Together with the green selected-all projection
       control, this means both QKV/Z bit exactness and A/B exactness are still
       required for this controlled path; do not promote the batch-GEMV QKV/Z
