@@ -592,7 +592,8 @@ reporting.
   source-level streaming blocker, next-command/blocker coverage that names the first missing
   oracle/KV evidence item plus the first source KV runner blocker, an ordered blocker work queue,
   and the no-performance/no-e2e-claim policy. `scripts/stepfun_correctness_status.py --readiness-summary-only`
-  emits a tiny top-level readiness/blocker digest for scheduler polling, `--summary-only`
+  emits a tiny top-level readiness/blocker digest for scheduler polling, `--readiness-summary-sha-only`
+  emits just that readiness-summary digest for drift polling, `--summary-only`
   emits just the handoff block for fast continuation checks, while `--blocker-work-queue-only`
   emits only the ordered queue (with a handoff-level queue count/schema version/SHA-256,
   per-item schema versions, explicit queue indices / first-item markers, and compact current-attempt

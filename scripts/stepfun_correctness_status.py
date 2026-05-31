@@ -51,6 +51,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--readiness-summary-sha-only",
+        action="store_true",
+        help=(
+            "Emit only readiness_summary_sha256 for top-level readiness drift polling. "
+            "Overrides --summary-only and blocker queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--blocker-work-queue-only",
         action="store_true",
         help=(
@@ -1019,6 +1027,7 @@ def _handoff_summary(
         "compact_output_modes": {
             "summary_only": "handoff_summary",
             "readiness_summary_only": "readiness_summary",
+            "readiness_summary_sha_only": "readiness_summary_sha256",
             "blocker_work_queue_only": "handoff_summary.blocker_work_queue",
             "blocker_work_queue_meta_only": "handoff_summary.blocker_work_queue_meta",
             "blocker_work_queue_sha_only": "handoff_summary.blocker_work_queue_sha256",
@@ -1254,6 +1263,7 @@ def build_status(
             "e2e_inference_claim_allowed"
         ],
     }
+    readiness_summary_sha256 = _stable_json_sha256(readiness_summary)
     return {
         "status": "blocked" if blockers else "ready",
         "model": "Step-3.7-flash-Q3_K_L",
@@ -1289,6 +1299,7 @@ def build_status(
         "e2e_inference_ready": e2e_inference_ready,
         "readiness_gates": readiness_gates,
         "readiness_summary": readiness_summary,
+        "readiness_summary_sha256": readiness_summary_sha256,
         "handoff_summary": handoff_summary,
         "blockers": blockers,
         "next_actions": next_actions,
@@ -1330,6 +1341,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["handoff_summary"]["first_blocker_work_item"]
     elif args.first_blocker_sha_only:
         result = status["handoff_summary"]["first_blocker_work_item_sha256"]
+    elif args.readiness_summary_sha_only:
+        result = status["readiness_summary_sha256"]
     elif args.readiness_summary_only:
         result = status["readiness_summary"]
     elif args.blocker_work_queue_sha_only:

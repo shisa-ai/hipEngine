@@ -940,6 +940,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert handoff["compact_output_modes"] == {
         "summary_only": "handoff_summary",
         "readiness_summary_only": "readiness_summary",
+        "readiness_summary_sha_only": "readiness_summary_sha256",
         "blocker_work_queue_only": "handoff_summary.blocker_work_queue",
         "blocker_work_queue_meta_only": "handoff_summary.blocker_work_queue_meta",
         "blocker_work_queue_sha_only": "handoff_summary.blocker_work_queue_sha256",
@@ -1228,6 +1229,9 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
     assert payload["source_artifacts"]["docs"]["path"] == str(docs)
     assert payload["all_layer_prompt_smoke"] is True
     assert payload["e2e_inference_ready"] is False
+    assert payload["readiness_summary_sha256"] == _stable_json_sha256(
+        payload["readiness_summary"]
+    )
     assert payload["readiness_summary"] == {
         "schema_version": 1,
         "status": "blocked",
@@ -1372,6 +1376,47 @@ def test_stepfun_correctness_status_readiness_summary_only(capsys, tmp_path: Pat
     assert payload["fail_on_blocked_exit_code"] == 2
 
 
+def test_stepfun_correctness_status_readiness_summary_sha_only(capsys, tmp_path: Path) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "readiness-summary-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--blocker-work-queue-only",
+            "--readiness-summary-only",
+            "--readiness-summary-sha-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(output.read_text())
+    assert payload == status["readiness_summary_sha256"]
+    assert payload == _stable_json_sha256(status["readiness_summary"])
+
+
 def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path: Path) -> None:
     prompt = tmp_path / "prompt.json"
     oracle = tmp_path / "oracle.json"
@@ -1479,6 +1524,7 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
     assert payload["compact_output_modes"] == {
         "summary_only": "handoff_summary",
         "readiness_summary_only": "readiness_summary",
+        "readiness_summary_sha_only": "readiness_summary_sha256",
         "blocker_work_queue_only": "handoff_summary.blocker_work_queue",
         "blocker_work_queue_meta_only": "handoff_summary.blocker_work_queue_meta",
         "blocker_work_queue_sha_only": "handoff_summary.blocker_work_queue_sha256",
