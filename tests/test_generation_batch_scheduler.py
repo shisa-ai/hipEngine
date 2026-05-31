@@ -13155,6 +13155,59 @@ def test_qwen35_retained_request_observability_blockers_cover_row_evidence() -> 
     assert "observability.per_request.0.bucket_key is not a non-empty string or null" in blockers
 
 
+def test_qwen35_retained_completed_execution_blockers_cover_row_evidence() -> None:
+    completed = [
+        {
+            "request_id": 0,
+            "prompt_tokens": [100, 101],
+            "generated_tokens": [10, 11],
+            "finished": True,
+            "finish_reason": "length",
+        },
+        {
+            "request_id": 1,
+            "prompt_tokens": [200, 201],
+            "generated_tokens": [20, 21],
+            "finished": True,
+            "finish_reason": "length",
+        },
+    ]
+    generated_tokens = {
+        "0": [{"token_id": 10}, {"token_id": 11}],
+        "1": [{"token_id": 20}, {"token_id": 21}],
+    }
+    per_request = {"0": {"finish_reason": "length"}, "1": {"finish_reason": "length"}}
+    assert retained_bench._completed_execution_blockers(
+        completed,
+        expected_concurrency=2,
+        expected_prompt_lengths=[2, 2],
+        expected_decode_tokens=2,
+        generated_tokens=generated_tokens,
+        per_request_observability=per_request,
+    ) == []
+
+    invalid = json.loads(json.dumps(completed))
+    invalid[1]["request_id"] = 0
+    invalid[0]["prompt_tokens"] = [100]
+    invalid[0]["generated_tokens"] = [10, 99]
+    invalid[0]["finished"] = False
+    invalid[0]["finish_reason"] = "stop"
+    blockers = retained_bench._completed_execution_blockers(
+        invalid,
+        expected_concurrency=2,
+        expected_prompt_lengths=[2, 2],
+        expected_decode_tokens=2,
+        generated_tokens=generated_tokens,
+        per_request_observability=per_request,
+    )
+    assert "execution.completed request_id values are not unique" in blockers
+    assert "execution.completed[0].prompt_tokens length does not match expected prompt length" in blockers
+    assert "execution.completed[0].generated_tokens does not match execution generated_tokens" in blockers
+    assert "execution.completed[0].finished is not true" in blockers
+    assert "execution.completed[0].finish_reason does not match observability" in blockers
+    assert "execution.completed does not include every request_id" in blockers
+
+
 def test_qwen35_retained_artifact_paths_reject_symlink_escapes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

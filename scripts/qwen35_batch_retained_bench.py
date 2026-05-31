@@ -2540,6 +2540,28 @@ def _sampler_execution_blockers(batch_execution: Mapping[str, Any], *, expected_
     return blockers
 
 
+def _int_list(value: Any) -> list[int] | None:
+    if not isinstance(value, list):
+        return None
+    if any(not isinstance(item, int) or isinstance(item, bool) for item in value):
+        return None
+    return [int(item) for item in value]
+
+
+def _token_payload_ids(value: Any) -> list[int] | None:
+    if not isinstance(value, list):
+        return None
+    ids: list[int] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            return None
+        token_id = item.get("token_id")
+        if not isinstance(token_id, int) or isinstance(token_id, bool):
+            return None
+        ids.append(int(token_id))
+    return ids
+
+
 def _request_observability_blockers(per_request: Any, *, expected_concurrency: int) -> list[str]:
     if not isinstance(per_request, Mapping):
         return ["observability.per_request is missing"]
@@ -2603,6 +2625,66 @@ def _request_observability_blockers(per_request: Any, *, expected_concurrency: i
         finish_reason = row.get("finish_reason")
         if finish_reason is not None and (not isinstance(finish_reason, str) or not finish_reason.strip()):
             blockers.append(f"{label}.finish_reason is not a non-empty string")
+    return blockers
+
+
+def _completed_execution_blockers(
+    completed: Any,
+    *,
+    expected_concurrency: int,
+    expected_prompt_lengths: Sequence[int],
+    expected_decode_tokens: int,
+    generated_tokens: Any,
+    per_request_observability: Any,
+) -> list[str]:
+    if not isinstance(completed, list):
+        return ["execution.completed is missing"]
+    blockers: list[str] = []
+    if len(completed) != expected_concurrency:
+        blockers.append("execution.completed length does not match expected concurrency")
+    generated_by_request = generated_tokens if isinstance(generated_tokens, Mapping) else {}
+    per_request = per_request_observability if isinstance(per_request_observability, Mapping) else {}
+    seen_request_ids: set[int] = set()
+    for index, row in enumerate(completed):
+        label = f"execution.completed[{index}]"
+        if not isinstance(row, Mapping):
+            blockers.append(f"{label} is not an object")
+            continue
+        request_id = row.get("request_id")
+        if not isinstance(request_id, int) or isinstance(request_id, bool) or request_id < 0 or request_id >= expected_concurrency:
+            blockers.append(f"{label}.request_id is not in expected range")
+            continue
+        if request_id in seen_request_ids:
+            blockers.append("execution.completed request_id values are not unique")
+        seen_request_ids.add(request_id)
+        prompt_tokens = _int_list(row.get("prompt_tokens"))
+        if prompt_tokens is None:
+            blockers.append(f"{label}.prompt_tokens is not an int list")
+        elif request_id < len(expected_prompt_lengths) and len(prompt_tokens) != int(expected_prompt_lengths[request_id]):
+            blockers.append(f"{label}.prompt_tokens length does not match expected prompt length")
+        completed_tokens = _int_list(row.get("generated_tokens"))
+        if completed_tokens is None:
+            blockers.append(f"{label}.generated_tokens is not an int list")
+        else:
+            if len(completed_tokens) != expected_decode_tokens:
+                blockers.append(f"{label}.generated_tokens length does not match expected decode tokens")
+            expected_generated = _token_payload_ids(generated_by_request.get(str(request_id)))
+            if expected_generated is not None and completed_tokens != expected_generated:
+                blockers.append(f"{label}.generated_tokens does not match execution generated_tokens")
+        if row.get("finished") is not True:
+            blockers.append(f"{label}.finished is not true")
+        finish_reason = row.get("finish_reason")
+        if not isinstance(finish_reason, str) or not finish_reason.strip():
+            blockers.append(f"{label}.finish_reason is missing")
+        else:
+            observed = per_request.get(str(request_id))
+            if isinstance(observed, Mapping):
+                observed_finish_reason = observed.get("finish_reason")
+                if isinstance(observed_finish_reason, str) and observed_finish_reason != finish_reason:
+                    blockers.append(f"{label}.finish_reason does not match observability")
+    missing_request_ids = [str(request_id) for request_id in range(expected_concurrency) if request_id not in seen_request_ids]
+    if missing_request_ids:
+        blockers.append("execution.completed does not include every request_id")
     return blockers
 
 
@@ -3333,6 +3415,14 @@ def _build_payload(
         per_request_observability,
         expected_concurrency=args.batch_size,
     )
+    completed_blockers = _completed_execution_blockers(
+        bench.get("completed"),
+        expected_concurrency=args.batch_size,
+        expected_prompt_lengths=prompt_lengths,
+        expected_decode_tokens=args.decode_tokens,
+        generated_tokens=bench.get("generated_tokens"),
+        per_request_observability=per_request_observability,
+    )
     graph_bucket_blockers = _decode_shape_key_blockers(scheduler_metadata, concurrency=args.batch_size, prompt_length=args.prompt_length)
     graph_bucket_blockers.extend(_graph_bucket_evidence_blockers(scheduler_metadata))
     graph_bucket_blockers.extend(_graph_replay_profiler_evidence_blockers(scheduler_metadata, profiler))
@@ -3355,6 +3445,7 @@ def _build_payload(
         and not sampler_blockers
         and not memory_blockers
         and not observability_blockers
+        and not completed_blockers
         and not graph_bucket_blockers
         and not int8_kv_primitive_blockers
     )
@@ -3384,6 +3475,7 @@ def _build_payload(
     blocked_reasons.extend(sampler_blockers)
     blocked_reasons.extend(memory_blockers)
     blocked_reasons.extend(observability_blockers)
+    blocked_reasons.extend(completed_blockers)
     blocked_reasons.extend(graph_bucket_blockers)
     blocked_reasons.extend(int8_kv_primitive_blockers)
     if not isinstance(per_request_observability, Mapping):
