@@ -27661,3 +27661,17 @@ python3 -m pytest -q tests/test_stepfun_layer_prefix_smoke.py -q
 ```
 
 Result: `4 passed`.
+
+## 2026-05-31 — StepFun all-layer prompt token text
+
+Updated `scripts/stepfun_layer_prefix_smoke.py` to include decoded token text in prompt-smoke JSON: `next_token_text` for the argmax token and `sampled_token_text` for sampled vocabulary rows. This does not change execution or claim oracle parity, but it makes the all-layer chunked artifact easier to compare against future llama.cpp text output.
+
+Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json` with the same all-layer chunked command. Artifact summary remains `next_token_id=369`, peak resident weight bytes `3,531,578,496`, and zero active/current allocations after free; the decoded next-token text is ` |`.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_layer_prefix_smoke.py -q
+```
+
+Result: `4 passed`.

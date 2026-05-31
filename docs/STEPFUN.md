@@ -637,7 +637,8 @@ layer loop is wired.
   records the dry-run plan for the same 512-token KV shape. 2026-05-31
   host-composed all-layer prompt smoke artifact
   `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json`
-  records HIP-visible free memory before execution (`119.9961 GiB`), after
+  records sampled token text for future llama.cpp output comparison and
+  HIP-visible free memory before execution (`119.9961 GiB`), after
   generation before final root free (`118.8083 GiB`), and after final free
   (`119.8571 GiB`) for backend `hip_gfx1151`. KV-backed generation snapshots
   remain open.
@@ -663,7 +664,7 @@ layer loop is wired.
   resident weight bytes `3,531,578,496`). Full-layer artifact
   `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json`
   runs the chunked host-composed path through layers 0-44 (`next_token_id=369`,
-  peak resident weight bytes `3,531,578,496`, prompt length 23) with no
+  decoded token text ` |`, peak resident weight bytes `3,531,578,496`, prompt length 23) with no
   vision/projector/MTP slots and no skipped layers; it records HIP-visible free
   memory before execution (`119.9961 GiB`), after generation before final root
   free (`118.8083 GiB`), and after final free (`119.8571 GiB`). The same

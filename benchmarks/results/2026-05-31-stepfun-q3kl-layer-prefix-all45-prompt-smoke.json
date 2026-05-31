@@ -319,7 +319,7 @@
     }
   ],
   "command": "python3 scripts/stepfun_layer_prefix_smoke.py --layer-count 45 --message \"hello\" --max-resident-weight-gib 4 --stream-chunk-layers 1 --output benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --pretty",
-  "elapsed_s": 71.50490431208163,
+  "elapsed_s": 72.24973056092858,
   "execution_mode": "chunked",
   "hip_free_after_free_gib": 119.85709762573242,
   "hip_free_after_generation_before_free_gib": 118.80826950073242,
@@ -380,6 +380,7 @@
   "model": "Step-3.7-flash-Q3_K_L",
   "next_token_id": 369,
   "next_token_logit": 19.158626556396484,
+  "next_token_text": " |",
   "no_vision_projector_mtp_slots": true,
   "note": "Partial correctness smoke only: host-composed layer-prefix bridge uses resident root/layer weights and final sampled logits; skipped layers and KV-backed decode remain open, so this is not full next-token parity or throughput evidence.",
   "paths": [
@@ -396,6 +397,12 @@
     "1": -4.994274139404297,
     "128007": 5.630763053894043,
     "128895": -5.464812755584717
+  },
+  "sampled_token_text": {
+    "0": "<\uff5cbegin\u2581of\u2581sentence\uff5c>",
+    "1": "<\uff5cend\u2581of\u2581sentence\uff5c>",
+    "128007": "<|im_end|>",
+    "128895": "[PAD128895]"
   },
   "scope": "layers_0_44_prefix_no_skipped_layers",
   "selected_slot_count": 753,

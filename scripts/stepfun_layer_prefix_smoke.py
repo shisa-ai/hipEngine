@@ -27,6 +27,7 @@ from hipengine.core.memory import memory_stats, reset_memory_stats
 from hipengine.loading.gguf import scan_gguf_splits
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.loading.stepfun_gguf import build_stepfun_gguf_tensor_map
+from hipengine.tokenization.gguf import StepFunGGUFTokenizer
 from hipengine.runtime.stepfun_gguf_runner import (
     StepFunResidentSession,
     stepfun_layer_prefix_slot_paths,
@@ -252,6 +253,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     info = scan_gguf_splits(paths)
     model_map = build_stepfun_gguf_tensor_map(info)
+    tokenizer = StepFunGGUFTokenizer.from_gguf_info(info)
     selected_slots = stepfun_layer_prefix_slot_paths(model_map, args.layer_count)
     no_modal_slots = not any(
         fragment in slot for slot in selected_slots for fragment in FORBIDDEN_TEXT_ONLY_FRAGMENTS
@@ -360,6 +362,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise ValueError(
             f"sample token ids out of range for vocab_size={model_map.config.vocab_size}: {sample_ids}"
         )
+    sampled_token_text = {
+        str(token_id): tokenizer.decode([token_id], skip_special=False) for token_id in sample_ids
+    }
     if free_after_generation is None:
         free_after_generation, _ = runtime.mem_get_info()
     try:
@@ -391,7 +396,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             "sampled_logits": {
                 str(token_id): float(probe.logits[0, token_id]) for token_id in sample_ids
             },
+            "sampled_token_text": sampled_token_text,
             "next_token_id": probe.next_token_id,
+            "next_token_text": tokenizer.decode([probe.next_token_id], skip_special=False),
             "next_token_logit": probe.next_token_logit,
             "hip_total_gib": total / 2**30,
             "hip_free_before_gib": free_before / 2**30,
