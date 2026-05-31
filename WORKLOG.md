@@ -27599,3 +27599,17 @@ python3 -m pytest -q tests/test_stepfun_layer_prefix_smoke.py -q
 ```
 
 Result: `4 passed`.
+
+## 2026-05-31 — StepFun chunked prefix memory plan
+
+Added `--stream-chunk-layers` to `scripts/stepfun_layer_prefix_smoke.py` dry-run mode. It emits a metadata-only estimate for a future streaming runner that keeps root text tensors resident and loads a fixed-size layer chunk at a time; non-dry-run use is rejected because the current prompt smoke still loads all selected slots at once.
+
+Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-dry-run.json` with `--stream-chunk-layers 1`. The all-layer dry-run artifact still reports 753 selected slots and `102,499,149,056` resident bytes for the all-resident prefix plan, but now also records a root-plus-one-layer streaming estimate: root text tensors `1,121,927,168` bytes, 45 chunks, max chunk at layer 3 with `2,409,651,328` layer bytes / `3,531,578,496` root+layer peak (`3.29 GiB`). This is a concrete memory-plan direction for e2e bring-up, not implemented streaming execution.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_layer_prefix_smoke.py -q
+```
+
+Result: `4 passed`.

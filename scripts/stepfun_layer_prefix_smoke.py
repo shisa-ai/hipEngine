@@ -26,6 +26,7 @@ from hipengine.loading.stepfun_gguf import build_stepfun_gguf_tensor_map
 from hipengine.runtime.stepfun_gguf_runner import (
     StepFunResidentSession,
     stepfun_layer_prefix_slot_paths,
+    stepfun_layer_slot_paths,
     stepfun_slot_tensor,
 )
 
@@ -53,6 +54,12 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=float,
         default=None,
         help="Refuse non-dry-run execution if selected resident weights exceed this GiB budget.",
+    )
+    parser.add_argument(
+        "--stream-chunk-layers",
+        type=int,
+        default=None,
+        help="In dry-run mode, estimate root-plus-N-layer streaming resident-weight peak.",
     )
     parser.add_argument(
         "--dry-run-plan",
@@ -88,6 +95,8 @@ def _command(args: argparse.Namespace, *, dry_run: bool) -> str:
     parts.extend(["--layer-count", str(args.layer_count), "--message", json.dumps(args.message)])
     if args.max_resident_weight_gib is not None:
         parts.extend(["--max-resident-weight-gib", f"{args.max_resident_weight_gib:g}"])
+    if args.stream_chunk_layers is not None:
+        parts.extend(["--stream-chunk-layers", str(args.stream_chunk_layers)])
     if args.output is not None:
         parts.extend(["--output", str(args.output)])
     if args.pretty:
@@ -104,6 +113,48 @@ def _emit_json(result: dict[str, object], *, pretty: bool, output: Path | None) 
     output.write_text(text)
 
 
+def _slot_nbytes(model_map, slot: str) -> int:
+    return int(stepfun_slot_tensor(model_map, slot).nbytes)
+
+
+def _streaming_plan(model_map, *, layer_count: int, chunk_layers: int) -> dict[str, object]:
+    if chunk_layers <= 0:
+        raise ValueError("--stream-chunk-layers must be positive")
+    root_slots = ("root.token_embedding", "root.output_norm", "root.lm_head")
+    root_nbytes = sum(_slot_nbytes(model_map, slot) for slot in root_slots)
+    chunks: list[dict[str, object]] = []
+    for start in range(0, layer_count, chunk_layers):
+        end = min(start + chunk_layers, layer_count)
+        layer_slots: list[str] = []
+        for layer_id in range(start, end):
+            layer_slots.extend(stepfun_layer_slot_paths(model_map, layer_id))
+        layer_nbytes = sum(_slot_nbytes(model_map, slot) for slot in layer_slots)
+        chunks.append(
+            {
+                "start_layer": start,
+                "end_layer_exclusive": end,
+                "layer_count": end - start,
+                "slot_count": len(layer_slots),
+                "layer_weight_nbytes": int(layer_nbytes),
+                "peak_with_roots_nbytes": int(root_nbytes + layer_nbytes),
+            }
+        )
+    max_chunk = max(chunks, key=lambda chunk: int(chunk["peak_with_roots_nbytes"]))
+    return {
+        "chunk_layers": int(chunk_layers),
+        "root_slots": list(root_slots),
+        "root_resident_weight_nbytes": int(root_nbytes),
+        "chunk_count": len(chunks),
+        "chunks": chunks,
+        "max_chunk": max_chunk,
+        "peak_resident_weight_nbytes": int(max_chunk["peak_with_roots_nbytes"]),
+        "note": (
+            "Metadata-only estimate for a future streaming runner that keeps root tensors resident and loads "
+            "a fixed-size layer chunk at a time; the current prompt smoke does not implement chunked execution."
+        ),
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     paths = tuple(sorted(args.model_dir.glob(args.pattern)))
@@ -118,7 +169,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     if not no_modal_slots:
         raise RuntimeError("layer-prefix text smoke selected a vision/projector/MTP slot")
-    resident_weight_nbytes = sum(stepfun_slot_tensor(model_map, slot).nbytes for slot in selected_slots)
+    resident_weight_nbytes = sum(_slot_nbytes(model_map, slot) for slot in selected_slots)
+    if args.stream_chunk_layers is not None and not args.dry_run_plan:
+        raise ValueError("--stream-chunk-layers is metadata-only; use it with --dry-run-plan")
     if args.dry_run_plan:
         result = {
             "status": "planned",
@@ -141,6 +194,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "KV buffers, prompt embeddings, or logits were allocated/computed."
             ),
         }
+        if args.stream_chunk_layers is not None:
+            result["streaming_plan"] = _streaming_plan(
+                model_map,
+                layer_count=args.layer_count,
+                chunk_layers=args.stream_chunk_layers,
+            )
         _emit_json(result, pretty=args.pretty, output=args.output)
         return 0
 

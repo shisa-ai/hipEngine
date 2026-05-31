@@ -48,6 +48,8 @@ def test_stepfun_layer_prefix_smoke_dry_run_plans_all_layers_without_hip(
             "45",
             "--message",
             "hello",
+            "--stream-chunk-layers",
+            "1",
             "--pretty",
         ]
     )
@@ -71,6 +73,16 @@ def test_stepfun_layer_prefix_smoke_dry_run_plans_all_layers_without_hip(
     assert payload["no_vision_projector_mtp_slots"] is True
     assert payload["resident_weight_nbytes"] > 102_000_000_000
     assert "no HIP runtime was initialized" in payload["note"]
+    streaming_plan = payload["streaming_plan"]
+    assert streaming_plan["chunk_layers"] == 1
+    assert streaming_plan["chunk_count"] == 45
+    assert streaming_plan["root_slots"] == [
+        "root.token_embedding",
+        "root.output_norm",
+        "root.lm_head",
+    ]
+    assert streaming_plan["peak_resident_weight_nbytes"] < payload["resident_weight_nbytes"]
+    assert streaming_plan["max_chunk"]["layer_count"] == 1
 
 
 def test_stepfun_layer_prefix_smoke_dry_run_writes_output_file(
@@ -111,6 +123,20 @@ def test_stepfun_layer_prefix_smoke_budget_guard_blocks_before_hip(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     root = _stepfun_gguf_dir()
+
+    with pytest.raises(ValueError, match="metadata-only"):
+        main(
+            [
+                "--model-dir",
+                str(root),
+                "--layer-count",
+                "1",
+                "--message",
+                "hello",
+                "--stream-chunk-layers",
+                "1",
+            ]
+        )
 
     with pytest.raises(MemoryError, match="max-resident-weight-gib"):
         main(
