@@ -10101,6 +10101,16 @@ def test_hidden_artifact_compare_payload_json_rejects_nonfinite() -> None:
     assert json.loads(hidden_artifact_compare._payload_json({"ok": 1.0})) == {"ok": 1.0}
 
 
+def test_hidden_artifact_compare_load_json_rejects_nonfinite(tmp_path: Path) -> None:
+    artifact = tmp_path / "artifact.json"
+    artifact.write_text('{"bad": NaN}', encoding="utf-8")
+    with pytest.raises(ValueError, match="non-finite constant 'NaN'"):
+        hidden_artifact_compare._load_json(artifact)
+
+    artifact.write_text('{"ok": 1.0}', encoding="utf-8")
+    assert hidden_artifact_compare._load_json(artifact) == {"ok": 1.0}
+
+
 def test_hidden_artifact_compare_records_agree_rejects_nonfinite() -> None:
     with pytest.raises(ValueError, match="Out of range float values"):
         hidden_artifact_compare._records_agree([{"max_abs": float("nan")}, {"max_abs": float("nan")}])

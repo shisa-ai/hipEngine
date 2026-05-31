@@ -1470,7 +1470,7 @@ roll-up/status view.
       device env, so summary JSON records the actual GPU1 selection instead of
       relying on inherited shell state; retained-bench, c-sweep, primitive
       correctness, validation summaries, hidden-bisect diagnostics/output cloning,
-      hidden-artifact comparison output/record canonicalization, INT8/GGUF
+      hidden-artifact comparison input/output/record canonicalization, INT8/GGUF
       diagnostic templates, serial/packed/sparse correctness smokes, and
       serial-bridge baseline JSON serializers now reject non-finite values
       instead of emitting `NaN`/`Infinity`; c-sweep, retained-bench, and

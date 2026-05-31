@@ -21,8 +21,12 @@ def _payload_json(payload: Any) -> str:
     return json.dumps(payload, indent=2, sort_keys=True, allow_nan=False)
 
 
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"artifact JSON contains non-finite constant {value!r}")
+
+
 def _load_json(path: Path) -> dict[str, Any]:
-    payload = json.loads(path.read_text())
+    payload = json.loads(path.read_text(), parse_constant=_reject_json_constant)
     if not isinstance(payload, dict):
         raise ValueError(f"artifact {path} must contain a JSON object")
     return payload
