@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shlex
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,6 +22,16 @@ from scripts.qwen35_batch_constants import RETAINED_ARTIFACT_RETAINED_BENCH_SCRI
 from scripts.qwen35_batch_retained_bench import DEFAULT_FIXTURE, DEFAULT_MODEL
 
 _RETAINED_BENCH_SCRIPT = RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT
+_COMMAND_ENV_KEYS = ("HIP_VISIBLE_DEVICES",)
+
+
+def _command_env_prefix_parts() -> list[str]:
+    assignments = [
+        f"{key}={value}"
+        for key in _COMMAND_ENV_KEYS
+        if (value := os.environ.get(key))
+    ]
+    return ["env", *assignments] if assignments else []
 
 
 def _payload_json(payload: Any) -> str:
@@ -29,6 +40,7 @@ def _payload_json(payload: Any) -> str:
 
 def _future_gate_command(args: argparse.Namespace) -> str:
     argv = [
+        *_command_env_prefix_parts(),
         "python3",
         _RETAINED_BENCH_SCRIPT,
         "--model",
@@ -63,6 +75,7 @@ def _future_gate_command(args: argparse.Namespace) -> str:
 
 def _primitive_layer_accuracy_command(args: argparse.Namespace, *, device: str, output: Path) -> str:
     argv = [
+        *_command_env_prefix_parts(),
         "python3",
         "scripts/qwen35_kv_int8_accuracy.py",
         "--device",

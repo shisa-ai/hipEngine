@@ -10358,7 +10358,8 @@ def test_gguf_cN_diagnostic_template_records_blocked_c2_command(tmp_path: Path) 
     assert any("native GGUF c>N" in reason for reason in payload["blockers"])
 
 
-def test_int8_cN_diagnostic_template_records_blocked_c2_gate(tmp_path: Path) -> None:
+def test_int8_cN_diagnostic_template_records_blocked_c2_gate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
     output = tmp_path / "int8-c2.json"
     args = build_int8_diagnostic_parser().parse_args(
         [
@@ -10386,17 +10387,17 @@ def test_int8_cN_diagnostic_template_records_blocked_c2_gate(tmp_path: Path) -> 
     assert payload["execution"]["batch_execution"]["throughput_claim_eligible"] is False
     assert int8_diagnostic._RETAINED_BENCH_SCRIPT is RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT
     future_gate_tokens = shlex.split(payload["commands"]["future_generated_token_gate"])
-    assert future_gate_tokens[1] == RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT
+    assert future_gate_tokens[:4] == ["env", "HIP_VISIBLE_DEVICES=1", "python3", RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT]
     assert "--kv-storage int8_per_token_head" in payload["commands"]["future_generated_token_gate"]
     assert future_gate_tokens[future_gate_tokens.index("--int8-kv-primitive-cpu-json") + 1] == "/tmp/hipengine-int8-c2-primitive-cpu.json"
     assert future_gate_tokens[future_gate_tokens.index("--int8-kv-primitive-hip-json") + 1] == "/tmp/hipengine-int8-c2-primitive-hip.json"
     cpu_primitive_tokens = shlex.split(payload["commands"]["primitive_layer_accuracy_cpu_reference"])
-    assert cpu_primitive_tokens[:3] == ["python3", "scripts/qwen35_kv_int8_accuracy.py", "--device"]
+    assert cpu_primitive_tokens[:5] == ["env", "HIP_VISIBLE_DEVICES=1", "python3", "scripts/qwen35_kv_int8_accuracy.py", "--device"]
     assert cpu_primitive_tokens[cpu_primitive_tokens.index("--device") + 1] == "cpu"
     assert cpu_primitive_tokens[cpu_primitive_tokens.index("--contexts") + 1] == "512,513"
     assert cpu_primitive_tokens[cpu_primitive_tokens.index("--scale-dtype") + 1] == "fp16"
     hip_primitive_tokens = shlex.split(payload["commands"]["primitive_layer_accuracy_hip_gate"])
-    assert hip_primitive_tokens[:3] == ["python3", "scripts/qwen35_kv_int8_accuracy.py", "--device"]
+    assert hip_primitive_tokens[:5] == ["env", "HIP_VISIBLE_DEVICES=1", "python3", "scripts/qwen35_kv_int8_accuracy.py", "--device"]
     assert hip_primitive_tokens[hip_primitive_tokens.index("--device") + 1] == "hip"
     assert "--require-int8-hip" in hip_primitive_tokens
     assert hip_primitive_tokens[hip_primitive_tokens.index("--contexts") + 1] == "512,513"

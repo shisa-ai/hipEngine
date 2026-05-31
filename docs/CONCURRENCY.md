@@ -1542,7 +1542,11 @@ roll-up/status view.
       requires loaded, self-matching CPU-reference plus HIP `--require-int8-hip`
       INT8 primitive layer-accuracy evidence whose retained-bench/profiler
       command flags are bound to those artifact paths before any
-      `int8_per_token_head` retained row can validate. The item remains open because
+      `int8_per_token_head` retained row can validate. The INT8 diagnostic
+      template now also preserves `HIP_VISIBLE_DEVICES` in the future retained
+      command and both primitive layer-accuracy commands, with
+      `test_int8_cN_diagnostic_template_records_blocked_c2_gate` covering the
+      GPU1/XTX command-label handoff. The item remains open because
       blocked-before-execution is not an accepted C3.1 terminal status.
 - [x] **C3.2 per-row `KVLiveSpans` everywhere.** Audit full-attention decode,
       KV append, and storage-dtype wrappers for scalar `(block_table,
