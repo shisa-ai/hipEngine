@@ -2877,7 +2877,7 @@ class Qwen35ParoDecodeState:
             partial_out=scratch.partial_out,
             partial_m=scratch.partial_m,
             partial_l=scratch.partial_l,
-            attn_out=scratch.attn_out,
+            attn_out=self._row_tensor_view(scratch.attn_out, row),
             gated_attn=self._row_tensor_view(scratch.gated_attn, row),
             o_rot=self._row_tensor_view(scratch.o_rot, row),
             o_proj=self._row_tensor_view(scratch.o_proj, row),
@@ -3832,6 +3832,8 @@ class Qwen35ParoDecodeState:
         block_size: int = 256,
         force_selected_c1_moe: bool = False,
         force_per_row_input_rmsnorm: bool = False,
+        force_per_row_context: bool = False,
+        per_row_contexts: Sequence[tuple[Tensor, Tensor, KVLiveSpans]] | None = None,
         force_per_row_post_attention: bool = False,
         post_input_rmsnorm_trace: Callable[[Qwen35ParoAttentionScratch], None] | None = None,
         input_scratch_trace: Callable[[str, int, Qwen35ParoAttentionScratch], None] | None = None,
@@ -3895,17 +3897,35 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
-        gated = self.decode_full_attention_context_gate_fp16_batch(
-            attention_scratch,
-            key_cache=key_cache,
-            value_cache=value_cache,
-            spans=decode_spans,
-            rows=tokens,
-            gate=gate,
-            block_size=block_size,
-            library=library,
-            stream=stream,
-        )
+        if force_per_row_context and tokens > 1:
+            if per_row_contexts is None or len(per_row_contexts) != tokens:
+                raise ValueError("per_row_contexts must provide one key/value/span tuple per decode row")
+            for row, (row_key_cache, row_value_cache, row_decode_spans) in enumerate(per_row_contexts):
+                row_scratch = self._decode_row_full_attention_scratch(attention_scratch, row)
+                row_gate = self._row_tensor_view(gate, row)
+                self.decode_full_attention_context_gate_fp16(
+                    row_scratch,
+                    key_cache=row_key_cache,
+                    value_cache=row_value_cache,
+                    spans=row_decode_spans,
+                    gate=row_gate,
+                    block_size=block_size,
+                    library=library,
+                    stream=stream,
+                )
+            gated = attention_scratch.gated_attn
+        else:
+            gated = self.decode_full_attention_context_gate_fp16_batch(
+                attention_scratch,
+                key_cache=key_cache,
+                value_cache=value_cache,
+                spans=decode_spans,
+                rows=tokens,
+                gate=gate,
+                block_size=block_size,
+                library=library,
+                stream=stream,
+            )
         attn_out = self.project_full_attention_o_fp16(
             gated,
             attention_scratch,

@@ -49404,3 +49404,24 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: artifact assertions PASS; verify count remains `12`; full guard PASS with c=2/c=8 primitive A/A fields zero; diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, no benchmark rollup files changed, and the selected-state/native-full probe remains diagnostic-only negative evidence.
+
+## 2026-05-31 — CONCURRENCY C2.3 context-only full-attention diagnostic path
+
+Added a context-only full-attention diagnostic fallback for the next C2.3 isolation step. Hidden-bisect now accepts `--batch-decode-attn-context-path per_row`, records `workload.batch_decode_attention_context_path`, sets `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_CONTEXT`, and marks `workload.native_caware_decode=false` for that diagnostic. The resident native-full decode path now builds slot-specific row context spans, calls the token-1 context/gate kernel per row, labels layer metadata with `full_attention_context_decode_path=per_row_context_gate_fallback`, and adds the blocker `full-attention context/gate forced to per-row diagnostic path`; retained-artifact schema and retained-bench blockers reject that field for accepted native retained decode. `Qwen35ParoAttentionScratch` row views now slice `attn_out` as well as `gated_attn` so the row-context diagnostic writes to the intended row.
+
+Validation:
+
+```bash
+python3 -m compileall -q hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_batch_hidden_bisect.py scripts/qwen35_batch_constants.py scripts/qwen35_batch_artifact_schema.py scripts/qwen35_batch_retained_bench.py tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py
+pytest -q tests/test_qwen35_decode_state.py::test_qwen35_decode_state_decode_batch_full_attention_can_force_per_row_context tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_run_layers_batch_decode_can_force_per_row_full_attention_context_probe tests/test_generation_batch_scheduler.py::test_hidden_bisect_dry_run_records_layer_commands tests/test_generation_batch_scheduler.py::test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_paths tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_qwen35_decode_state.py tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: targeted tests PASS; full guard plus `tests/test_qwen35_decode_state.py` PASS; c=2/c=8 primitive correctness PASS with A/A fields zero; verify count remains `12`; diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, benchmark rollup files are unchanged, and the new context-only path is explicitly diagnostic/non-retained.

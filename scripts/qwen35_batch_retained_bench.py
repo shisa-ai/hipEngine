@@ -1274,6 +1274,8 @@ def _decode_layer_execution_blockers(
                 blockers.append(f"{label}.num_splits_per_row must be absent for native retained decode")
             if "full_attention_input_decode_path" in layer:
                 blockers.append(f"{label}.full_attention_input_decode_path must be absent for native retained decode")
+            if "full_attention_context_decode_path" in layer:
+                blockers.append(f"{label}.full_attention_context_decode_path must be absent for native retained decode")
             if "post_attention_decode_path" in layer:
                 blockers.append(f"{label}.post_attention_decode_path must be absent for native retained decode")
             if "attn_context_trace_source" in layer:

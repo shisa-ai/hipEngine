@@ -3990,6 +3990,9 @@ class Qwen35ParoResidentSession:
         force_per_row_full_attention_input = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"
         )
+        force_per_row_full_attention_context = rows > 1 and _env_flag(
+            "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_CONTEXT"
+        )
         force_per_row_post_attention = rows > 1 and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN")
         use_single_row_c1_linear = rows == 1 and not force_per_row_linear
         use_per_row_linear = force_per_row_linear or use_single_row_c1_linear
@@ -4180,6 +4183,13 @@ class Qwen35ParoResidentSession:
                         post_input_rmsnorm_trace = None
                         input_scratch_trace = None
                         qkv_tensor_trace = None
+                        per_row_contexts = None
+                        if force_per_row_full_attention_context:
+                            per_row_contexts = []
+                            for slot in slots:
+                                row_key_cache, row_value_cache = self._slot_full_cache(layer_id, slot)
+                                _row_position, _row_append_spans, row_decode_spans = self._slot_full_spans(layer_id, slot)
+                                per_row_contexts.append((row_key_cache, row_value_cache, row_decode_spans))
                         if isinstance(getattr(self, "_decode_full_attention_trace", None), list):
                             def post_input_rmsnorm_trace(
                                 attention_scratch: Qwen35ParoAttentionScratch,
@@ -4243,6 +4253,8 @@ class Qwen35ParoResidentSession:
                             tokens=rows,
                             force_selected_c1_moe=force_selected_c1_moe,
                             force_per_row_input_rmsnorm=force_per_row_full_attention_input,
+                            force_per_row_context=force_per_row_full_attention_context,
+                            per_row_contexts=per_row_contexts,
                             force_per_row_post_attention=force_per_row_post_attention,
                             post_input_rmsnorm_trace=post_input_rmsnorm_trace,
                             input_scratch_trace=input_scratch_trace,
@@ -4284,7 +4296,10 @@ class Qwen35ParoResidentSession:
                             "max_context": int(max_context),
                             "full_attention_decode_path": "native_batch",
                             "native_caware_decode": not (
-                                force_selected_c1_moe or force_per_row_full_attention_input or force_per_row_post_attention
+                                force_selected_c1_moe
+                                or force_per_row_full_attention_input
+                                or force_per_row_full_attention_context
+                                or force_per_row_post_attention
                             ),
                             "moe_decode_path": layer_moe_path,
                         }
@@ -4292,6 +4307,8 @@ class Qwen35ParoResidentSession:
                             layer_execution["attn_context_trace_source"] = "attention_scratch.query_raw"
                         if force_per_row_full_attention_input:
                             layer_execution["full_attention_input_decode_path"] = "per_row_rmsnorm_fallback"
+                        if force_per_row_full_attention_context:
+                            layer_execution["full_attention_context_decode_path"] = "per_row_context_gate_fallback"
                         if force_per_row_post_attention:
                             layer_execution["post_attention_decode_path"] = "per_row_add_rmsnorm_fallback"
                         full_spans_metadata = getattr(self, "_last_batch_full_spans_metadata", None)
@@ -4402,6 +4419,8 @@ class Qwen35ParoResidentSession:
                     )
             if force_per_row_full_attention_input:
                 decode_blockers.append("full-attention input RMSNorm forced to per-row diagnostic path")
+            if force_per_row_full_attention_context:
+                decode_blockers.append("full-attention context/gate forced to per-row diagnostic path")
             if force_per_row_post_attention:
                 decode_blockers.append("post-attention add/rmsnorm forced to per-row diagnostic path")
             if full_attention_decode_path in {"per_row_splitk_fallback", "per_row_context_fallback"}:
@@ -4427,6 +4446,7 @@ class Qwen35ParoResidentSession:
                 and linear_attention_output_path not in {"selected_c1_forced", "batch_gemv", "batch_gemv_from_f32"}
                 and not force_per_row_linear
                 and not force_per_row_full_attention_input
+                and not force_per_row_full_attention_context
                 and not force_per_row_post_attention,
                 "linear_attention_segment_metadata": linear_segment_metadata,
                 "moe_decode_path": moe_decode_path,

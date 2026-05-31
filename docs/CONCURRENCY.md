@@ -1324,8 +1324,17 @@ roll-up/status view.
       `/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-state-batch-gemv-out-native-full-atol4e-3-focus1269.json`
       still leaves native full-attention hidden-only red (`status=mismatch_found`,
       tokens green, first hidden failure step 6 / row 0 `max_abs=0.027099609375`).
-      The failure is therefore not resolved by either boundary fallback alone,
-      both boundaries together, or diagnostic linear-state replay. This shifts the
+      A context-only diagnostic switch now exists for the next isolation step:
+      hidden-bisect `--batch-decode-attn-context-path per_row` sets
+      `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_CONTEXT`, routes the
+      native-full context/gate stage through slot-specific c=1 spans, records
+      `full_attention_context_decode_path=per_row_context_gate_fallback`, and is
+      rejected by retained-artifact gates; CPU coverage is
+      `test_qwen35_decode_state_decode_batch_full_attention_can_force_per_row_context`,
+      `test_qwen35_resident_run_layers_batch_decode_can_force_per_row_full_attention_context_probe`,
+      and hidden-bisect dry-run / retained-schema tests. The failure is therefore
+      not resolved by either boundary fallback alone, both boundaries together,
+      or diagnostic linear-state replay. This shifts the
       current C2.3/C2.4 target to native batched output fallback/retention,
       residual projection exactness/amplification, and native full-attention
       hidden parity; raw `recurrent_out` stage summaries from segmented state are

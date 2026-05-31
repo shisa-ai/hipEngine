@@ -6915,6 +6915,7 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert payload["workload"]["batch_decode_linear_output_path"] == "auto"
     assert payload["workload"]["batch_decode_full_attention_path"] == "native_batch"
     assert payload["workload"]["batch_decode_attention_input_path"] == "batch"
+    assert payload["workload"]["batch_decode_attention_context_path"] == "batch"
     assert payload["workload"]["batch_decode_post_attention_path"] == "batch"
     assert payload["workload"]["native_caware_decode"] is True
     assert payload["workload"]["layer_limits"] == [1, 4, 8]
@@ -6969,6 +6970,30 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     )
     assert per_row_attn_input_payload["workload"]["batch_decode_attention_input_path"] == "per_row"
     assert per_row_attn_input_payload["workload"]["native_caware_decode"] is False
+
+    per_row_attn_context = build_hidden_bisect_parser().parse_args(
+        [
+            "--dry-run",
+            "--batch-decode-attn-context-path",
+            "per_row",
+            "--prompt-length",
+            "32",
+            "--batch-size",
+            "2",
+            "--decode-tokens",
+            "4",
+            "--max-layers",
+            "8",
+            "--layer-limits",
+            "8",
+        ]
+    )
+    per_row_attn_context_payload = run_hidden_bisect(
+        per_row_attn_context,
+        ["--dry-run", "--batch-decode-attn-context-path", "per_row", "--layer-limits", "8"],
+    )
+    assert per_row_attn_context_payload["workload"]["batch_decode_attention_context_path"] == "per_row"
+    assert per_row_attn_context_payload["workload"]["native_caware_decode"] is False
 
     selected_c1_moe = build_hidden_bisect_parser().parse_args(
         [
@@ -11441,6 +11466,9 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
         "full_attention_input_decode_path"
     ] = "per_row_rmsnorm_fallback"
     full_attention_boundary_diagnostic["decode_execution"]["layer_executions"][0][
+        "full_attention_context_decode_path"
+    ] = "per_row_context_gate_fallback"
+    full_attention_boundary_diagnostic["decode_execution"]["layer_executions"][0][
         "post_attention_decode_path"
     ] = "per_row_add_rmsnorm_fallback"
     full_attention_boundary_diagnostic["decode_execution"]["layer_executions"][0][
@@ -11454,6 +11482,10 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
     )
     assert (
         "execution.batch_execution.decode_execution.layer_executions[0].full_attention_input_decode_path must be absent for native retained decode"
+        in full_attention_boundary_blockers
+    )
+    assert (
+        "execution.batch_execution.decode_execution.layer_executions[0].full_attention_context_decode_path must be absent for native retained decode"
         in full_attention_boundary_blockers
     )
     assert (
@@ -13758,12 +13790,14 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     diagnostic_full_attention_boundary_layer = json.loads(json.dumps(accepted))
     boundary_layer = diagnostic_full_attention_boundary_layer["execution"]["batch_execution"]["decode_execution"]["layer_executions"][0]
     boundary_layer["full_attention_input_decode_path"] = "per_row_rmsnorm_fallback"
+    boundary_layer["full_attention_context_decode_path"] = "per_row_context_gate_fallback"
     boundary_layer["post_attention_decode_path"] = "per_row_add_rmsnorm_fallback"
     boundary_layer["attn_context_trace_source"] = "attention_scratch.query_raw"
     with pytest.raises(ValueError) as boundary_error:
         validate_cn_diagnostic_artifact_payload(diagnostic_full_attention_boundary_layer)
     boundary_error_message = str(boundary_error.value)
     assert "layer_executions[0].full_attention_input_decode_path must be absent for native retained decode" in boundary_error_message
+    assert "layer_executions[0].full_attention_context_decode_path must be absent for native retained decode" in boundary_error_message
     assert "layer_executions[0].post_attention_decode_path must be absent for native retained decode" in boundary_error_message
     assert "layer_executions[0].attn_context_trace_source must be absent for native retained decode" in boundary_error_message
 

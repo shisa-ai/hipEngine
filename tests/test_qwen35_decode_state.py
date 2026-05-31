@@ -452,6 +452,101 @@ def test_qwen35_decode_state_prepare_full_attention_qkv_fp16_tokens_uses_vector_
     assert calls[2][1][10] == 2
 
 
+def test_qwen35_decode_state_decode_batch_full_attention_can_force_per_row_context(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _full_attention_weights())
+    hidden = _tensor(0xD000, (2, 4096), "fp16")
+    scratch = state.reserve_full_attention_scratch(tokens=2, num_splits=1, activation_dtype="fp16", gated_dtype="fp16")
+    moe_scratch = state.reserve_moe_grouped_prefill_scratch(tokens=2, activation_dtype="fp16")
+    batch_key_cache = _tensor(0xE000, (4, 256, 2, 256), "bf16")
+    batch_value_cache = _tensor(0xF000, (4, 256, 2, 256), "bf16")
+    batch_spans = KVLiveSpans.paged_uniform(
+        block_table=_tensor(0x1000, (2, 4), "int32"),
+        live_counts=_tensor(0x2000, (2,), "int64"),
+        max_live_count=8,
+        storage_dtype="bf16",
+    )
+    row_contexts = (
+        (
+            _tensor(0xE100, (1, 256, 2, 256), "bf16"),
+            _tensor(0xF100, (1, 256, 2, 256), "bf16"),
+            KVLiveSpans.paged_uniform(
+                block_table=_tensor(0x1100, (1, 4), "int32"),
+                live_counts=_tensor(0x2100, (1,), "int64"),
+                max_live_count=5,
+                storage_dtype="bf16",
+            ),
+        ),
+        (
+            _tensor(0xE200, (1, 256, 2, 256), "bf16"),
+            _tensor(0xF200, (1, 256, 2, 256), "bf16"),
+            KVLiveSpans.paged_uniform(
+                block_table=_tensor(0x1200, (1, 4), "int32"),
+                live_counts=_tensor(0x2200, (1,), "int64"),
+                max_live_count=8,
+                storage_dtype="bf16",
+            ),
+        ),
+    )
+    calls: list[tuple[str, int | None, int | None]] = []
+
+    monkeypatch.setattr(state, "input_rmsnorm_fp16", lambda *args, **kwargs: calls.append(("input_norm", None, None)) or scratch.attn_input)
+    monkeypatch.setattr(
+        state,
+        "prepare_full_attention_qkv_fp16_decode_rows",
+        lambda *args, **kwargs: calls.append(("prepare", None, None)) or (scratch.query, scratch.key, scratch.value, scratch.gate),
+    )
+    monkeypatch.setattr(state, "append_full_attention_kv_fp16_decode_batch", lambda *args, **kwargs: calls.append(("append", None, None)))
+    monkeypatch.setattr(
+        state,
+        "decode_full_attention_context_gate_fp16_batch",
+        lambda *args, **kwargs: pytest.fail("unexpected batch context path"),
+    )
+
+    def fake_row_context(row_scratch, **kwargs):
+        calls.append(("row_context", int(row_scratch.attn_out.ptr), int(kwargs["spans"].max_live_count)))
+        return row_scratch.gated_attn
+
+    monkeypatch.setattr(state, "decode_full_attention_context_gate_fp16", fake_row_context)
+    monkeypatch.setattr(state, "project_full_attention_o_fp16", lambda *args, **kwargs: calls.append(("o_proj", None, None)) or scratch.o_proj)
+    monkeypatch.setattr(
+        state,
+        "post_attention_add_rmsnorm_fp16",
+        lambda *args, **kwargs: calls.append(("post_norm", None, None)) or (moe_scratch.normed, moe_scratch.residual),
+    )
+    monkeypatch.setattr(state, "run_moe_grouped_compact_fp16", lambda *args, **kwargs: calls.append(("grouped_moe", None, None)) or moe_scratch.moe_out)
+
+    out = state.run_full_attention_moe_decode_batch_layer_fp16(
+        hidden,
+        key_cache=batch_key_cache,
+        value_cache=batch_value_cache,
+        append_spans=batch_spans,
+        decode_spans=batch_spans,
+        cos_table=_tensor(0x4000, (8, 4), "fp32"),
+        sin_table=_tensor(0x5000, (8, 4), "fp32"),
+        positions=_tensor(0x6000, (2,), "int64"),
+        max_positions=8,
+        attention_scratch=scratch,
+        moe_scratch=moe_scratch,
+        tokens=2,
+        force_per_row_context=True,
+        per_row_contexts=row_contexts,
+    )
+
+    assert out is moe_scratch.moe_out
+    attn_out_row_nbytes = (scratch.attn_out.numel // scratch.attn_out.shape[0]) * scratch.attn_out.dtype.itemsize
+    assert calls == [
+        ("input_norm", None, None),
+        ("prepare", None, None),
+        ("append", None, None),
+        ("row_context", scratch.attn_out.ptr, 5),
+        ("row_context", scratch.attn_out.ptr + attn_out_row_nbytes, 8),
+        ("o_proj", None, None),
+        ("post_norm", None, None),
+        ("grouped_moe", None, None),
+    ]
+
+
 def test_qwen35_decode_state_prefill_full_attention_fp16_calls_native_kernel(monkeypatch) -> None:
     runtime = FakeRuntime()
     state = _state(runtime, _full_attention_weights())
