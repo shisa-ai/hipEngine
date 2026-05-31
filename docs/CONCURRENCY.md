@@ -1777,7 +1777,7 @@ roll-up/status view.
       replay length)`. Acceptance: bucket hit/miss stats and profiler evidence
       show replay for common shapes. Progress: graph-bucket stats now serialize
       `entries`, `hits`, `misses`, `replay_hit_rate`, miss-reason counts, and typed-integer kernel-time
-      histogram buckets from `GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS`; retained bench profiler summaries populate those buckets, invalid hit/miss/replay-rate stats plus missing or unknown-bucket histogram observations block promotion, and retained accepted-artifact schema requires non-empty known-bucket kernel-time
+      histogram buckets from `GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS`; retained bench profiler summaries populate those buckets, invalid hit/miss/replay-rate stats, internally inconsistent entry coverage or miss-reason totals, plus missing or unknown-bucket histogram observations block promotion, and retained accepted-artifact schema requires non-empty known-bucket kernel-time
       histogram evidence plus those
       observability fields plus actual/accepted-schema-validated replay shape-key axes (`context_bucket`,
       `kv_storage_dtype`, `layer_plan`, `top_k`, `experts_per_token`,
@@ -1794,6 +1794,7 @@ roll-up/status view.
       `test_resident_scheduler_completion_observability_and_pool_counters`,
       `test_resident_scheduler_decode_bucket_key_uses_workload_axes`,
       `test_qwen35_retained_records_decode_graph_bucket_metadata`,
+      `test_qwen35_retained_graph_replay_stats_blockers_require_hit_evidence`,
       `test_qwen35_retained_request_observability_blockers_cover_row_evidence`,
       `test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates`, and
       `test_qwen35_batch_serial_shape_key_payloads_include_workload_axes`), positive profiler `graph_replay` expected-kernel/duration/category/share evidence whenever replay hits are positive, and per-bucket histogram observation counts covering both replay hits and profiler kernel-duration evidence before a c>N row can be promoted; `/metrics` exposes a

@@ -15408,10 +15408,24 @@ def test_qwen35_retained_graph_replay_stats_blockers_require_hit_evidence() -> N
         }
     }
 
+    stale_internal_counts = {
+        "graph_bucket_stats": {
+            "entries": 3,
+            "hits": 1,
+            "misses": 1,
+            "replay_hit_rate": 0.5,
+            "miss_reasons": {"cache_absent": 2},
+        }
+    }
+
     assert retained_bench._graph_replay_stats_blockers(valid) == []
     blockers = retained_bench._graph_replay_stats_blockers(missing_hit_evidence)
     assert "execution.scheduler_metadata.graph_bucket_stats.hits must be positive" in blockers
     assert "execution.scheduler_metadata.graph_bucket_stats.replay_hit_rate must be finite positive <= 1" in blockers
+
+    internal_count_blockers = retained_bench._graph_replay_stats_blockers(stale_internal_counts)
+    assert "execution.scheduler_metadata.graph_bucket_stats.entries must be covered by hits plus misses" in internal_count_blockers
+    assert "execution.scheduler_metadata.graph_bucket_stats.miss_reasons counts must sum to misses" in internal_count_blockers
 
 
 def test_qwen35_retained_graph_histogram_blockers_reject_unknown_buckets() -> None:
