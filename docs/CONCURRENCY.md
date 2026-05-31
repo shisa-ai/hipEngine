@@ -1614,8 +1614,9 @@ roll-up/status view.
       HIP device env, and rejects stale GGUF fixture/backend/decode-length/row
       labels across all four standalone quant rows plus stale env-prefix labels,
       duplicate GGUF diagnostic flags, duplicate/unsupported quant order,
-      artifact filename metadata, or summaries where GGUF
-      diagnostic rows no longer agree with `options.include_gguf`; combined
+      artifact filename metadata across all four standalone quant rows, or
+      summaries where GGUF diagnostic rows no longer agree with
+      `options.include_gguf`; combined
       `--include-int8 --include-gguf` dry-run coverage locks the c=2/c=4/c=8
       four-quant artifact filenames, HIP device env prefixes, fixture/backend
       labels, and decode-length labels
