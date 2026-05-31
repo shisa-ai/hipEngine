@@ -34,6 +34,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Return exit code 2 when the summarized status is not ready.",
     )
+    parser.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Emit only the compact handoff_summary instead of the full status artifact.",
+    )
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output")
     return parser.parse_args(argv)
 
@@ -621,8 +626,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.docs,
         resource_artifact=args.resource_artifact,
     )
+    result = status["handoff_summary"] if args.summary_only else status
     _emit_json(
-        status,
+        result,
         pretty=args.pretty,
         output=args.output,
     )

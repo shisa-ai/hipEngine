@@ -28152,3 +28152,32 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted status tests passed (`3 passed`), handoff summary schema check printed `stepfun handoff summary status ok`, and the full StepFun guard passed (`103 passed` plus CPU-reference fixture checks).
+
+## 2026-05-31 — StepFun summary-only handoff mode recorded
+
+Added `--summary-only` to `scripts/stepfun_correctness_status.py` so continuation agents can emit only the compact `handoff_summary` without parsing the full consolidated status artifact. The summary-only JSON still reports the two open blockers (`oracle_parity_blocked`, `kv_backed_decode_not_wired`), the blocked gates (`oracle_parity`, `kv_backed_decode`, `e2e_inference`), ready signals (all-layer prompt smoke, oracle target, KV dispatch, KV launch schedule), next-command coverage, and the no-performance/no-e2e-claim policy. Full status output remains unchanged; `oracle_parity=false`, `kv_backed_decode_ready=false`, and `e2e_inference_ready=false` remain unchanged.
+
+Updated `tests/test_stepfun_correctness_status.py` to cover the summary-only output contract and clarified the P11 status paragraph in `docs/STEPFUN.md`.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_correctness_status.py --summary-only --pretty --output /tmp/stepfun-handoff-summary.json
+python3 - <<'PY'
+import json
+p=json.load(open('/tmp/stepfun-handoff-summary.json'))
+assert p['status'] == 'blocked'
+assert p['open_or_partial_items_p0_p12'] == 2
+assert p['open_blockers'] == ['oracle_parity_blocked', 'kv_backed_decode_not_wired']
+assert p['blocked_gates'] == ['oracle_parity', 'kv_backed_decode', 'e2e_inference']
+assert p['ready_signals']['kv_decode_dispatch_ready'] is True
+assert p['no_claim_policy']['performance_claim_allowed'] is False
+assert 'blockers' not in p
+assert 'docs_checklist' not in p
+print('stepfun summary-only handoff ok')
+PY
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted status tests passed (`4 passed`), summary-only schema check passed, and the full StepFun guard passed (`104 passed` plus CPU-reference fixture checks).

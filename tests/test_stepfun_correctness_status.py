@@ -551,6 +551,56 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
     assert payload["docs_checklist"]["open_or_partial_count_p0_p12"] == 2
 
 
+def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path: Path) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "summary.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(output.read_text())
+    assert payload["status"] == "blocked"
+    assert payload["open_or_partial_items_p0_p12"] == 2
+    assert payload["open_blockers"] == [
+        "oracle_parity_blocked",
+        "kv_backed_decode_not_wired",
+    ]
+    assert payload["ready_signals"]["kv_decode_dispatch_ready"] is True
+    assert payload["blocked_gates"] == ["oracle_parity", "kv_backed_decode", "e2e_inference"]
+    assert payload["next_commands_available_for"] == [
+        "oracle_parity_blocked",
+        "kv_backed_decode_not_wired",
+    ]
+    assert payload["no_claim_policy"]["e2e_inference_claim_allowed"] is False
+    assert "blockers" not in payload
+    assert "docs_checklist" not in payload
+
+
 def test_stepfun_correctness_status_fail_on_blocked_returns_nonzero(
     capsys,
     tmp_path: Path,
