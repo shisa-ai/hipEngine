@@ -2894,6 +2894,10 @@ def _decode_linear_projection_bit_drift_rollup(layer_summaries: Sequence[dict[st
                 "over_atol_drift_stages": limit_over_atol_stages,
             }
         )
+    first_over_atol_layer_limit = next(
+        (entry for entry in layer_limits if entry["over_atol_drift_stages"]),
+        None,
+    )
     return {
         "projection_stages": list(DECODE_LINEAR_PROJECTION_BIT_EXACT_STAGES),
         "bit_exact": not drift_stages,
@@ -2908,6 +2912,7 @@ def _decode_linear_projection_bit_drift_rollup(layer_summaries: Sequence[dict[st
         "first_over_atol_drift": first_over_atol_drift,
         "stages": stage_rollups,
         "layer_limits": layer_limits,
+        "first_over_atol_layer_limit": first_over_atol_layer_limit,
     }
 
 

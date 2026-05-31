@@ -7626,6 +7626,7 @@ def test_hidden_bisect_linear_stage_summary_rolls_up_first_bit_drift() -> None:
     assert projection_rollup["over_atol_drift_stages"] == []
     assert projection_rollup["first_bit_drift"]["stage"] == "qkv"
     assert projection_rollup["first_over_atol_drift"] is None
+    assert projection_rollup["first_over_atol_layer_limit"] is None
     assert projection_rollup["stages"]["qkv"]["total_bit_mismatch"] == 1
     assert projection_rollup["stages"]["qkv"]["total_elements_over_atol"] == 0
     assert projection_rollup["stages"]["qkv"]["first_over_atol_drift"] is None
@@ -7724,6 +7725,7 @@ def test_hidden_bisect_projection_bit_drift_rollup_reports_first_over_atol_drift
             "over_atol_drift_stages": ["z"],
         }
     ]
+    assert rollup["first_over_atol_layer_limit"] == rollup["layer_limits"][0]
 
 
 def test_hidden_bisect_linear_handoff_summary_distinguishes_copy_from_producer_drift() -> None:
