@@ -1,6 +1,6 @@
 # Environment variables
 
-Last updated: 2026-05-29
+Last updated: 2026-05-31
 
 This is the user-facing env-var reference for hipEngine. Most users should not
 need any hipEngine-specific env vars for normal `LLM.generate()` use; prefer
@@ -41,6 +41,35 @@ env -i HOME=$HOME USER=$USER LOGNAME=$LOGNAME SHELL=$SHELL TERM=${TERM:-xterm} \
 Use `HSA_OVERRIDE_GFX_VERSION=11.0.0` only as a local compatibility workaround
 when the ROCm stack requires it for the attached gfx11 card; it is not a general
 hipEngine default.
+
+### Multi-GPU ROCm device selection
+
+Use one ROCm visibility filter per process when reserving a card for another
+workload. For the current dual-gfx1100 lab host, GPU0 is the 48GB Radeon Pro
+W7900 and GPU1 is the Radeon RX 7900 XTX; use GPU1/XTX for concurrency
+re-baseline work so the W7900 stays free:
+
+```bash
+HIP_VISIBLE_DEVICES=1 python <command>
+```
+
+Before a long run, confirm the visible HIP device from the same shell:
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 - <<'PY'
+import ctypes
+hip = ctypes.CDLL('libamdhip64.so')
+count = ctypes.c_int()
+assert hip.hipGetDeviceCount(ctypes.byref(count)) == 0 and count.value == 1
+name = ctypes.create_string_buffer(256)
+assert hip.hipDeviceGetName(name, ctypes.c_int(len(name)), ctypes.c_int(0)) == 0
+print(name.value.decode(errors='replace'))
+PY
+```
+
+Do not stack `HIP_VISIBLE_DEVICES=1` and `ROCR_VISIBLE_DEVICES=1` unless that
+specific shell has been re-tested; on the current host that combination exposed
+zero HIP devices, while either filter alone exposed the XTX.
 
 ### Benchmarking/profiling cached HIP builds
 

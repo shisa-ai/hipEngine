@@ -50343,3 +50343,34 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: GPU1/XTX visibility confirmed; targeted full-attention boundary metadata/schema tests PASS; verify count remains `12`; full guard PASS on GPU1 with c=2/c=8 primitive correctness and A/A fields zero; benchmark rollup files unchanged. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and this is C2.3 gating/provenance evidence only.
+
+## 2026-05-31 — CONCURRENCY GPU1/XTX re-baseline environment docs
+
+Documented the multi-GPU ROCm visibility profile in `docs/ENVS.md` for the current dual-gfx1100 lab host: GPU0 is the 48GB Radeon Pro W7900, GPU1 is the Radeon RX 7900 XTX, and concurrency re-baseline / guard work should use `HIP_VISIBLE_DEVICES=1` so the W7900 stays free. The docs also include a same-shell HIP device-name check and warn not to stack `HIP_VISIBLE_DEVICES=1` with `ROCR_VISIBLE_DEVICES=1` unless re-tested; in this shell that combination exposed zero HIP devices, while `HIP_VISIBLE_DEVICES=1` alone exposed the XTX.
+
+Validation:
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 - <<'PY'
+import ctypes
+hip = ctypes.CDLL('libamdhip64.so')
+count = ctypes.c_int()
+assert hip.hipGetDeviceCount(ctypes.byref(count)) == 0 and count.value == 1
+name = ctypes.create_string_buffer(256)
+assert hip.hipDeviceGetName(name, ctypes.c_int(len(name)), ctypes.c_int(0)) == 0
+print(name.value.decode(errors='replace'))
+assert '7900 XTX' in name.value.decode(errors='replace')
+PY
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \[(?: |~)\]', queue))
+print(count)
+assert count == 12
+PY
+HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: GPU1/XTX visibility check PASS; docs section reviewed; verify count remains `12`; configured guard PASS inside a `HIP_VISIBLE_DEVICES=1` shell with c=2/c=8 primitive correctness and A/A fields zero; benchmark rollup files unchanged. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and this is environment setup for future GPU1 re-baseline work only.
