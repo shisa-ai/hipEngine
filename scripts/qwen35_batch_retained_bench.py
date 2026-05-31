@@ -499,6 +499,34 @@ def _scaling_reference(path: Path | None, *, default_workload_concurrency: int |
     }
 
 
+def _primitive_device_metadata_blockers(device: Any) -> list[str]:
+    if not isinstance(device, Mapping):
+        return ["device metadata is missing or not an object"]
+    blockers: list[str] = []
+    env = device.get("env")
+    if not isinstance(env, Mapping):
+        blockers.append("device.env is missing or not an object")
+    else:
+        for key in ("HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES", "GPU_DEVICE_ORDINAL"):
+            value = env.get(key)
+            if value is not None and (not isinstance(value, str) or not value):
+                blockers.append(f"device.env.{key} is not a non-empty string when present")
+    for field in ("hipGetDeviceCount_error", "hipGetDevice_error", "hipDeviceGetName_error"):
+        value = device.get(field)
+        if not isinstance(value, int) or isinstance(value, bool) or value != 0:
+            blockers.append(f"device.{field} is missing or not integer zero")
+    visible_count = device.get("visible_device_count")
+    if not isinstance(visible_count, int) or isinstance(visible_count, bool) or visible_count <= 0:
+        blockers.append("device.visible_device_count is missing or not a positive int")
+    current_device = device.get("current_device")
+    if not isinstance(current_device, int) or isinstance(current_device, bool) or current_device < 0:
+        blockers.append("device.current_device is missing or not a non-negative int")
+    device_name = device.get("device_name")
+    if not isinstance(device_name, str) or not device_name:
+        blockers.append("device.device_name is missing or not a non-empty string")
+    return blockers
+
+
 def _primitive_correctness_reference(path: Path | None, *, rows: int) -> dict[str, Any]:
     if path is None:
         return {
@@ -570,6 +598,7 @@ def _primitive_correctness_reference(path: Path | None, *, rows: int) -> dict[st
         reasons.append("attn_batch_aa_max_abs is missing or not 0.0")
     if payload.get("aa_passed") is not True:
         reasons.append("aa_passed is not true")
+    reasons.extend(_primitive_device_metadata_blockers(payload.get("device")))
     attn_vs_c1 = payload.get("attn_batch_vs_c1_max_abs")
     if not _is_number(attn_vs_c1) or float(attn_vs_c1) != 0.0:
         reasons.append("attn_batch_vs_c1_max_abs is missing or not 0.0")
@@ -603,6 +632,7 @@ def _primitive_correctness_reference(path: Path | None, *, rows: int) -> dict[st
         "attn_batch_vs_numpy_max_abs": payload.get("attn_batch_vs_numpy_max_abs"),
         "attn_batch_aa_max_abs": attn_batch_aa,
         "aa_passed": payload.get("aa_passed"),
+        "device": payload.get("device"),
         "reason": None if not reasons else "; ".join(reasons),
     }
 

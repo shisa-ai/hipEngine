@@ -2380,6 +2380,40 @@ def _validate_int8_kv_primitive_layer_accuracy_gates(
                 errors.append(f"commands.{command_field} {flag} must match correctness.int8_kv_primitive_layer_accuracy.{label}.artifact_path for accepted int8_per_token_head artifacts")
 
 
+def _validate_primitive_device_metadata(device: Any, errors: list[str]) -> None:
+    prefix = "correctness.primitive_batch_correctness.device"
+    if not isinstance(device, Mapping):
+        errors.append(f"{prefix} must be an object for accepted artifacts")
+        return
+    env = device.get("env")
+    if not isinstance(env, Mapping):
+        errors.append(f"{prefix}.env must be an object for accepted artifacts")
+    else:
+        for key in ("HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES", "GPU_DEVICE_ORDINAL"):
+            value = env.get(key)
+            if value is not None and (not isinstance(value, str) or not value):
+                errors.append(f"{prefix}.env.{key} must be a non-empty string when present for accepted artifacts")
+    for field in ("hipGetDeviceCount_error", "hipGetDevice_error", "hipDeviceGetName_error"):
+        value = device.get(field)
+        if not isinstance(value, int) or isinstance(value, bool):
+            errors.append(f"{prefix}.{field} must be an int for accepted artifacts")
+        elif value != 0:
+            errors.append(f"{prefix}.{field} must be 0 for accepted artifacts")
+    visible_count = device.get("visible_device_count")
+    if not isinstance(visible_count, int) or isinstance(visible_count, bool):
+        errors.append(f"{prefix}.visible_device_count must be an int for accepted artifacts")
+    elif visible_count <= 0:
+        errors.append(f"{prefix}.visible_device_count must be positive for accepted artifacts")
+    current_device = device.get("current_device")
+    if not isinstance(current_device, int) or isinstance(current_device, bool):
+        errors.append(f"{prefix}.current_device must be an int for accepted artifacts")
+    elif current_device < 0:
+        errors.append(f"{prefix}.current_device must be non-negative for accepted artifacts")
+    device_name = device.get("device_name")
+    if not isinstance(device_name, str) or not device_name:
+        errors.append(f"{prefix}.device_name must be a non-empty string for accepted artifacts")
+
+
 def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness: Mapping[str, Any], errors: list[str]) -> None:
     if correctness.get("passed") is not True:
         errors.append("correctness.passed must be true for accepted artifacts")
@@ -2527,6 +2561,7 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
         errors.append("correctness.primitive_batch_correctness.attn_batch_aa_max_abs must be 0.0 for accepted artifacts")
     if primitive.get("aa_passed") is not True:
         errors.append("correctness.primitive_batch_correctness.aa_passed must be true for accepted artifacts")
+    _validate_primitive_device_metadata(primitive.get("device"), errors)
     attn_vs_c1 = primitive.get("attn_batch_vs_c1_max_abs")
     if not _is_number(attn_vs_c1):
         errors.append("correctness.primitive_batch_correctness.attn_batch_vs_c1_max_abs must be numeric for accepted artifacts")

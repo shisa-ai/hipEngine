@@ -10817,6 +10817,15 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
         "attn_batch_vs_numpy_max_abs": 5.0e-8,
         "attn_batch_aa_max_abs": 0.0,
         "aa_passed": True,
+        "device": {
+            "env": {"HIP_VISIBLE_DEVICES": "1"},
+            "hipGetDeviceCount_error": 0,
+            "visible_device_count": 1,
+            "hipGetDevice_error": 0,
+            "current_device": 0,
+            "hipDeviceGetName_error": 0,
+            "device_name": "AMD Radeon RX 7900 XTX",
+        },
     }
 
     def write_primitive(path: Path, payload: dict[str, object]) -> None:
@@ -10879,6 +10888,10 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     aa_payload["attn_batch_aa_max_abs"] = 1e-8
     aa_payload["aa_passed"] = False
     write_primitive(mismatched_aa_artifact, aa_payload)
+    invalid_device_artifact = tmp_path / "primitive-c2-device.json"
+    invalid_device_payload = json.loads(artifact.read_text())
+    invalid_device_payload["device"] = {"env": {"HIP_VISIBLE_DEVICES": ""}}
+    write_primitive(invalid_device_artifact, invalid_device_payload)
     wrong_artifact_path_artifact = tmp_path / "primitive-c2-wrong-artifact-path.json"
     wrong_artifact_path_payload = json.loads(artifact.read_text())
     wrong_artifact_path_artifact.write_text(json.dumps(wrong_artifact_path_payload))
@@ -10896,6 +10909,7 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     bool_context = retained_bench._primitive_correctness_reference(bool_context_artifact, rows=2)
     bool_append = retained_bench._primitive_correctness_reference(bool_append_artifact, rows=2)
     mismatched_aa = retained_bench._primitive_correctness_reference(mismatched_aa_artifact, rows=2)
+    invalid_device = retained_bench._primitive_correctness_reference(invalid_device_artifact, rows=2)
     wrong_artifact_path = retained_bench._primitive_correctness_reference(wrong_artifact_path_artifact, rows=2)
     missing = retained_bench._primitive_correctness_reference(None, rows=2)
 
@@ -10906,6 +10920,7 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     assert passed["seed"] == 1234
     assert passed["block_size"] == 256
     assert passed["context_lens"] == [1, 2]
+    assert passed["device"]["device_name"] == "AMD Radeon RX 7900 XTX"
     assert mismatched["passed"] is False
     assert "does not match batch_size=4" in mismatched["reason"]
     assert missing_schema["passed"] is False
@@ -10931,6 +10946,9 @@ def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_
     assert mismatched_aa["passed"] is False
     assert "attn_batch_aa_max_abs is missing or not 0.0" in mismatched_aa["reason"]
     assert "aa_passed is not true" in mismatched_aa["reason"]
+    assert invalid_device["passed"] is False
+    assert "device.env.HIP_VISIBLE_DEVICES is not a non-empty string when present" in invalid_device["reason"]
+    assert "device.visible_device_count is missing or not a positive int" in invalid_device["reason"]
     assert wrong_artifact_path["passed"] is False
     assert wrong_artifact_path["source_artifact_path"] == str(artifact)
     assert "artifact_path does not match primitive correctness artifact path" in wrong_artifact_path["reason"]
@@ -13041,6 +13059,15 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                 "attn_batch_vs_numpy_max_abs": 5.0e-8,
                 "attn_batch_aa_max_abs": 0.0,
                 "aa_passed": True,
+                "device": {
+                    "env": {},
+                    "hipGetDeviceCount_error": 0,
+                    "visible_device_count": 2,
+                    "hipGetDevice_error": 0,
+                    "current_device": 0,
+                    "hipDeviceGetName_error": 0,
+                    "device_name": "AMD Radeon Pro W7900",
+                },
             },
         },
         "execution": {
@@ -14089,6 +14116,24 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     primitive_aa_passed_false["correctness"]["primitive_batch_correctness"]["aa_passed"] = False
     with pytest.raises(ValueError, match="primitive_batch_correctness.aa_passed must be true"):
         validate_cn_diagnostic_artifact_payload(primitive_aa_passed_false)
+
+    missing_primitive_device = json.loads(json.dumps(accepted))
+    missing_primitive_device["correctness"]["primitive_batch_correctness"].pop("device")
+    with pytest.raises(ValueError, match="primitive_batch_correctness.device must be an object"):
+        validate_cn_diagnostic_artifact_payload(missing_primitive_device)
+
+    invalid_primitive_device = json.loads(json.dumps(accepted))
+    invalid_primitive_device["correctness"]["primitive_batch_correctness"]["device"] = {
+        "env": {"HIP_VISIBLE_DEVICES": ""},
+        "hipGetDeviceCount_error": 1,
+        "visible_device_count": 0,
+        "hipGetDevice_error": 0,
+        "current_device": -1,
+        "hipDeviceGetName_error": 0,
+        "device_name": "",
+    }
+    with pytest.raises(ValueError, match="primitive_batch_correctness.device.env.HIP_VISIBLE_DEVICES"):
+        validate_cn_diagnostic_artifact_payload(invalid_primitive_device)
 
     primitive_attn_mismatch = json.loads(json.dumps(accepted))
     primitive_attn_mismatch["correctness"]["primitive_batch_correctness"]["attn_batch_vs_c1_max_abs"] = 0.25
