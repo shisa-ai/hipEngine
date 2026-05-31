@@ -311,6 +311,27 @@ def _parse_expected_kinds(value: str | None) -> list[str] | None:
     return [part.strip() for part in value.split(",") if part.strip()]
 
 
+def _parse_expected_scalar(value: str) -> int | str:
+    try:
+        return int(value)
+    except ValueError:
+        return value
+
+
+def _parse_expected_location(values: Sequence[str] | None) -> dict[str, int | str]:
+    location: dict[str, int | str] = {}
+    for value in values or []:
+        if "=" not in value:
+            raise ValueError(f"location expectation {value!r} must use KEY=VALUE")
+        key, raw_expected = value.split("=", 1)
+        key = key.strip()
+        raw_expected = raw_expected.strip()
+        if not key or not raw_expected:
+            raise ValueError(f"location expectation {value!r} must use non-empty KEY=VALUE")
+        location[key] = _parse_expected_scalar(raw_expected)
+    return location
+
+
 def _parse_layer_expectation(value: str) -> tuple[int, str]:
     if "=" not in value:
         raise ValueError(f"layer expectation {value!r} must use LAYER=VALUE")
@@ -363,6 +384,9 @@ def _expectation_metadata(args: argparse.Namespace) -> dict[str, Any] | None:
     expected_bit_mismatch_delta = getattr(args, "expect_first_over_atol_bit_mismatch_delta", None)
     if expected_bit_mismatch_delta is not None:
         metadata["first_over_atol_bit_mismatch_delta"] = int(expected_bit_mismatch_delta)
+    expected_location = _parse_expected_location(getattr(args, "expect_first_over_atol_location", None))
+    if expected_location:
+        metadata["first_over_atol_location"] = expected_location
     layer_classifications: dict[str, str] = {}
     for raw_expectation in getattr(args, "expect_layer_route_classification", None) or []:
         layer_limit, expected = _parse_layer_expectation(str(raw_expectation))
@@ -425,6 +449,22 @@ def _validate_expectations(payload: dict[str, Any], args: argparse.Namespace) ->
             "first_over_atol_bit_mismatch_delta expected "
             f"{expected_bit_mismatch_delta!r} but found {comparison.get('first_over_atol_bit_mismatch_delta')!r}"
         )
+    expected_location = _parse_expected_location(getattr(args, "expect_first_over_atol_location", None))
+    if expected_location:
+        locations = comparison.get("first_over_atol_drift_location_by_label", {})
+        if not isinstance(locations, dict) or not locations:
+            errors.append("first_over_atol_location expected but no first-over-atol locations were found")
+        else:
+            for label, location in locations.items():
+                if not isinstance(location, dict):
+                    errors.append(f"first_over_atol_location for {label} expected {expected_location!r} but found {location!r}")
+                    continue
+                for key, expected in expected_location.items():
+                    found = location.get(key)
+                    if found != expected:
+                        errors.append(
+                            f"first_over_atol_location[{label}].{key} expected {expected!r} but found {found!r}"
+                        )
     for raw_expectation in getattr(args, "expect_layer_route_classification", None) or []:
         layer_limit, expected = _parse_layer_expectation(str(raw_expectation))
         entry = _layer_limit_by_value(comparison, layer_limit)
@@ -599,6 +639,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--expect-first-over-atol-bit-mismatch-delta",
         type=int,
         help="Fail unless comparison.first_over_atol_bit_mismatch_delta matches",
+    )
+    parser.add_argument(
+        "--expect-first-over-atol-location",
+        action="append",
+        help="Fail unless every label's first-over-atol location has KEY=VALUE (repeatable)",
     )
     parser.add_argument(
         "--expect-layer-first-over-atol-bit-mismatch-delta",

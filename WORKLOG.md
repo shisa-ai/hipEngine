@@ -50172,3 +50172,44 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: targeted tests PASS; bit-delta expectation comparison PASS; verify count remains `12`; full guard PASS with c=2/c=8 primitive correctness and A/A fields zero; benchmark rollup files unchanged. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and this is diagnostic C2.3 evidence only.
+
+## 2026-05-31 — CONCURRENCY C2.3 projection comparator coordinate expectations
+
+Added repeatable `--expect-first-over-atol-location KEY=VALUE` checks to `scripts/qwen35_batch_hidden_artifact_compare.py`. The comparator now verifies that every label's first-over-atol location carries the expected coordinate fields, records that coordinate expectation under `expectations.first_over_atol_location`, and fails with a label/key-specific error if the coordinate moves while the broader classification/delta still pass. CPU coverage now checks the passing coordinate expectations and a failing `stage=z` coordinate expectation.
+
+Regenerated `/tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-projection-route-compare.json` with coordinate expectations enabled. The artifact now records expected first-over-atol coordinate fields: `layer_limit=2`, `decode_step=0`, `generated_index=1`, `layer_index=1`, `stage=qkv`, `row=0`, `max_abs_flat_index=857`, and `elements_over_atol=2`, alongside the existing classification and bit-delta expectations.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_hidden_artifact_compare.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_projection_artifact_compare_spots_limit_drift_delta tests/test_generation_batch_scheduler.py::test_hidden_bisect_projection_bit_drift_rollup_reports_first_over_atol_drift -q
+python3 scripts/qwen35_batch_hidden_artifact_compare.py --artifact selected_qkvz=/tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-selected-qkvz-native-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json --artifact selected_ab=/tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-batch-gemv-qkvz-selected-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json --json /tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-projection-route-compare.json --expect-route-classification same_first_over_atol_location_with_record_and_drift_delta --expect-route-difference-kinds drift_stages,first_over_atol_record,first_over_atol_bit_mismatch --expect-layer-route-classification 1=no_over_atol_with_drift_delta --expect-layer-route-classification 2=same_first_over_atol_location_with_record_delta --expect-layer-route-difference-kinds 1=drift_stages --expect-layer-route-difference-kinds 2=first_over_atol_record,first_over_atol_bit_mismatch --expect-first-over-atol-bit-mismatch-delta 1 --expect-first-over-atol-location layer_limit=2 --expect-first-over-atol-location decode_step=0 --expect-first-over-atol-location generated_index=1 --expect-first-over-atol-location layer_index=1 --expect-first-over-atol-location stage=qkv --expect-first-over-atol-location row=0 --expect-first-over-atol-location max_abs_flat_index=857 --expect-first-over-atol-location elements_over_atol=2 --expect-layer-first-over-atol-bit-mismatch-delta 2=1 --expect-first-diverging-layer-limit 1 --expect-hidden-passed-all --expect-token-passed-all --expect-all-statuses-eq-ok
+python3 - <<'PY'
+import json, pathlib
+path = pathlib.Path('/tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-projection-route-compare.json')
+payload = json.loads(path.read_text())
+assert payload['expectations']['first_over_atol_location'] == {
+    'layer_limit': 2,
+    'decode_step': 0,
+    'generated_index': 1,
+    'layer_index': 1,
+    'stage': 'qkv',
+    'row': 0,
+    'max_abs_flat_index': 857,
+    'elements_over_atol': 2,
+}
+assert payload['expectations']['passed'] is True
+PY
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \[(?: |~)\]', queue))
+print(count)
+assert count == 12
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: targeted tests PASS; coordinate expectation comparison PASS; verify count remains `12`; full guard PASS with c=2/c=8 primitive correctness and A/A fields zero; benchmark rollup files unchanged. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and this is diagnostic C2.3 evidence only.
