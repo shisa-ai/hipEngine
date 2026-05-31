@@ -11440,6 +11440,11 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
     with pytest.raises(ValueError, match="execution.completed length must match workload.concurrency"):
         validate_cn_diagnostic_artifact_payload(partial_completed_claim)
 
+    extra_completed_claim = json.loads(json.dumps(payload))
+    extra_completed_claim["execution"]["completed"].append(json.loads(json.dumps(payload["execution"]["completed"][0])))
+    with pytest.raises(ValueError, match="execution.completed length must match workload.concurrency"):
+        validate_cn_diagnostic_artifact_payload(extra_completed_claim)
+
     unfinished_completed_claim = json.loads(json.dumps(payload))
     unfinished_completed_claim["execution"]["completed"][0]["finished"] = False
     with pytest.raises(ValueError, match=r"execution.completed\[0\].finished must be true"):
