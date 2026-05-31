@@ -261,6 +261,13 @@ def test_qwen35_artifact_reference_loader_rejects_symlinks_and_directories(
         assert errors[-1] == "symlink_parent_path parent directories must not be symlinks for accepted artifacts"
 
 
+def test_qwen35_validation_summary_json_rejects_nonfinite() -> None:
+    with pytest.raises(ValueError, match="Out of range float values"):
+        artifact_schema._validation_summary_json({"bad": float("inf")})
+
+    assert json.loads(artifact_schema._validation_summary_json({"ok": 1.0})) == {"ok": 1.0}
+
+
 def test_qwen35_validation_summary_payload_rejects_traversal() -> None:
     summary = {
         "schema": 1,

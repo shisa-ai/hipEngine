@@ -3405,11 +3405,15 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
         raise ValueError("invalid c>N validation summary: " + "; ".join(errors))
 
 
+def _validation_summary_json(summary: Mapping[str, Any]) -> str:
+    return json.dumps(summary, indent=2, sort_keys=True, allow_nan=False)
+
+
 def _write_validation_summary(path: Path, summary: Mapping[str, Any]) -> None:
     validate_cn_diagnostic_validation_summary(summary)
     _validate_validation_summary_output_path(path, summary)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
+    path.write_text(_validation_summary_json(summary) + "\n")
 
 
 def _summary_json_path_context(path: Path) -> tuple[Path, Path]:
