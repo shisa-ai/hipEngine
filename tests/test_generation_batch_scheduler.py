@@ -6986,6 +6986,32 @@ def test_batch_c_sweep_can_plan_gguf_blocked_diagnostics(tmp_path: Path, monkeyp
         "gguf_native_diagnostic": {"planned": 4},
     }
 
+    gguf_entry_index = next(
+        index for index, entry in enumerate(summary["commands"]) if entry["category"] == "gguf_native_diagnostic"
+    )
+    tampered_fixture = json.loads(json.dumps(summary))
+    fixture_argv = tampered_fixture["commands"][gguf_entry_index]["argv"]
+    fixture_argv[fixture_argv.index("--fixture") + 1] = "tests/fixtures/gguf/other.json"
+    tampered_fixture["commands"][gguf_entry_index]["command"] = shlex.join(fixture_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv GGUF --fixture must match the template fixture"):
+        c_sweep.validate_sweep_summary(tampered_fixture)
+
+    tampered_quant = json.loads(json.dumps(summary))
+    quant_argv = tampered_quant["commands"][gguf_entry_index]["argv"]
+    quant_argv[quant_argv.index("--quant") + 1] = "gguf_q2_bad"
+    tampered_quant["commands"][gguf_entry_index]["command"] = shlex.join(quant_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv GGUF --quant must be one of the template quants"):
+        c_sweep.validate_sweep_summary(tampered_quant)
+
+    tampered_artifact = json.loads(json.dumps(summary))
+    stale_artifact_path = str(Path(tampered_artifact["commands"][gguf_entry_index]["artifact_path"]).with_name("gguf-native-diagnostic-c2-stale.json"))
+    tampered_artifact["commands"][gguf_entry_index]["artifact_path"] = stale_artifact_path
+    artifact_argv = tampered_artifact["commands"][gguf_entry_index]["argv"]
+    artifact_argv[artifact_argv.index("--json") + 1] = stale_artifact_path
+    tampered_artifact["commands"][gguf_entry_index]["command"] = shlex.join(artifact_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match category/batch-size filename"):
+        c_sweep.validate_sweep_summary(tampered_artifact)
+
 
 def test_projection_dispatch_keeps_c1_on_row_gemv_even_with_fast_candidate() -> None:
     row_gemv = ProjectionKernelSelection("linear", "w4_paro", "row_gemv")
