@@ -29502,3 +29502,30 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`20 passed`), source-artifact/readiness-summary digest checks passed, and the full StepFun guard passed (`124 passed` plus CPU-reference fixture checks). Prompt-verifier evidence: status tests cover the new compact readiness digest output, no `import torch` was added to `hipengine/`, the changed status helper adds no engine-wide backend or quant special-casing, and no StepFun performance claim was made.
+
+## 2026-05-31 — StepFun readiness summary digest fail-on-blocked covered
+
+Added regression coverage for using `--readiness-summary-sha-only` together with `--fail-on-blocked` in `scripts/stepfun_correctness_status.py`. The compact readiness digest payload is still emitted, but the helper returns exit code 2 while StepFun correctness remains blocked. With the existing compact-output checks, readiness summary, readiness digest, handoff summary, queue, queue-meta, queue digest, first-blocker, and first-blocker digest outputs all preserve payloads while reporting blocked exit status. This is test coverage only; no StepFun KV write/attention kernels are launched and no performance/e2e claim is made.
+
+Validation:
+
+```bash
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_correctness_status.py --readiness-summary-sha-only --fail-on-blocked --pretty > /tmp/stepfun-readiness-summary-sha-fail.json; rc=$?; test "$rc" -eq 2
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty --output /tmp/stepfun-source-verify.json
+python3 - <<'PY'
+import json
+v=json.load(open('/tmp/stepfun-source-verify.json'))
+assert v['status'] == 'match'
+assert v['all_match'] is True
+s=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+sha=json.load(open('/tmp/stepfun-readiness-summary-sha-fail.json'))
+assert sha == s['readiness_summary_sha256']
+assert s['status'] == 'blocked'
+print('stepfun readiness summary sha fail-on-blocked ok')
+PY
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`21 passed`), source-artifact and readiness-summary digest fail-on-blocked checks passed, and the full StepFun guard passed (`125 passed` plus CPU-reference fixture checks). Prompt-verifier evidence: the new test covers compact readiness digest output plus blocked exit semantics, no `import torch` was added to `hipengine/`, the test-only change adds no engine-wide backend or quant special-casing, and no StepFun performance claim was made.
