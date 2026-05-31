@@ -1613,7 +1613,8 @@ roll-up/status view.
       agree with `options.include_gguf`; combined `--include-int8 --include-gguf`
       dry-run coverage locks the c=2/c=4/c=8 four-quant artifact filenames,
       HIP device env prefixes, backend labels, and decode-length labels after
-      each INT8 row;
+      each INT8 row, including stale c=8 backend/decode/quant/artifact
+      rejection;
       covered by `test_gguf_cN_diagnostic_template_records_blocked_c2_command`
       and `test_batch_c_sweep_can_plan_gguf_blocked_diagnostics` in
       `pytest -q tests/test_generation_batch_scheduler.py -q`.

@@ -7259,6 +7259,33 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         ):
             c_sweep.validate_sweep_summary(tampered)
 
+    gguf_c8_index = next(
+        index
+        for index, entry in enumerate(summary["commands"])
+        if entry["category"] == "gguf_native_diagnostic" and entry["batch_size"] == 8
+    )
+    for flag, stale_value, expected_error in (
+        ("--backend", "cpu_reference", r"commands\[\]\.argv GGUF --backend must match the template backend"),
+        ("--max-new-tokens", "8", r"commands\[\]\.argv GGUF --max-new-tokens must match the template decode length"),
+        ("--quant", "gguf_q2_bad", r"commands\[\]\.argv GGUF --quant must be one of the template quants"),
+    ):
+        tampered = json.loads(json.dumps(summary))
+        argv = tampered["commands"][gguf_c8_index]["argv"]
+        argv[argv.index(flag) + 1] = stale_value
+        tampered["commands"][gguf_c8_index]["command"] = shlex.join(argv)
+        with pytest.raises(ValueError, match=expected_error):
+            c_sweep.validate_sweep_summary(tampered)
+    tampered_gguf_artifact = json.loads(json.dumps(summary))
+    stale_gguf_artifact_path = str(
+        Path(tampered_gguf_artifact["commands"][gguf_c8_index]["artifact_path"]).with_name("gguf-native-diagnostic-c8-stale.json")
+    )
+    gguf_artifact_argv = tampered_gguf_artifact["commands"][gguf_c8_index]["argv"]
+    gguf_artifact_argv[gguf_artifact_argv.index("--json") + 1] = stale_gguf_artifact_path
+    tampered_gguf_artifact["commands"][gguf_c8_index]["artifact_path"] = stale_gguf_artifact_path
+    tampered_gguf_artifact["commands"][gguf_c8_index]["command"] = shlex.join(gguf_artifact_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match category/batch-size filename"):
+        c_sweep.validate_sweep_summary(tampered_gguf_artifact)
+
     int8_index = int8_entry_indices[0]
     first_gguf_index = next(
         index for index, entry in enumerate(summary["commands"]) if entry["category"] == "gguf_native_diagnostic"
