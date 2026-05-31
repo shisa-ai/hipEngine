@@ -2548,6 +2548,8 @@ def _memory_evidence_blockers(memory: Mapping[str, Any]) -> list[str]:
     if not isinstance(dynamic_pool, Mapping):
         blockers.append("memory.dynamic_pool evidence is missing")
     else:
+        if not isinstance(dynamic_pool.get("enabled"), bool):
+            blockers.append("memory.dynamic_pool.enabled is not bool")
         evidence = dynamic_pool.get("evidence")
         if not isinstance(evidence, str) or not evidence.strip():
             blockers.append("memory.dynamic_pool.evidence is missing")

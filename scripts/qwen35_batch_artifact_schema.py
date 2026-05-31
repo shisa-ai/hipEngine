@@ -1173,6 +1173,8 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
             errors.append(f"memory.{field} must be an object for accepted artifacts")
     dynamic_pool = memory.get("dynamic_pool")
     if isinstance(dynamic_pool, Mapping):
+        if not isinstance(dynamic_pool.get("enabled"), bool):
+            errors.append("memory.dynamic_pool.enabled must be a bool for accepted artifacts")
         evidence = dynamic_pool.get("evidence")
         if not isinstance(evidence, str) or not evidence.strip():
             errors.append("memory.dynamic_pool.evidence must be a non-empty string for accepted artifacts")
