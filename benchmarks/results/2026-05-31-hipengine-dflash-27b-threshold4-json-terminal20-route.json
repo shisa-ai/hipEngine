@@ -1,0 +1,413 @@
+{
+  "commands": {
+    "guard": "python parse exact gate + py_compile + HIP_VISIBLE_DEVICES=0 ... pytest -q tests/test_paro_awq_gemv_multi_row_decode.py tests/test_dflash_profile_route_manifest.py tests/test_dflash_draft_confidence.py tests/test_speculative_benchmark.py",
+    "threshold4_json_terminal20_route": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD=4 HIPENGINE_W4_MULTI_ROW_PACK8_SITES=full_qk,linear_qkv_z,dense_gate_up,single_full_o,single_full_v,single_linear_out,single_shared_down,single_dense_down PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --verifier-graph auto --full-attn-chain-mode batched --canonical-commit-mode bulk_direct --profile-route-manifest /tmp/multiloop-dflash-27b-w7900-threshold4-json-terminal20-manifest.json --drafter-query-mode budget_prefix --terminal-ar-tokens 5 --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/multiloop-dflash-27b-w7900.json"
+  },
+  "correctness_gate": {
+    "all_correctness_passed": true,
+    "all_exact_match_ar": true,
+    "exact_rows": "9/9",
+    "known_rejected_control": "json-YAML routed to chain with terminal_ar_tokens=17 remained non-exact at token index 48; terminal_ar_tokens=20 is the first exact cutoff tested in this loop.",
+    "native_bulk_bplus1": true,
+    "oracle": "same-session greedy AR equality plus finite logits from dflash_chain_e2e_bench"
+  },
+  "decision": {
+    "accepted": true,
+    "defaulted": false,
+    "reason": "Keep as a default-off/profile-history diagnostic win. Per-prompt terminal_ar_tokens lets the previously fast but non-exact json-YAML row run chain for the safe prefix and AR for the fragile tail, preserving exact 9/9 while improving median speedup over the retained terminal-tail route. It remains non-default because the route depends on prompt history, verifier graph/bulk_direct/budget_prefix/threshold4/expanded-W4 gates, and prompt-specific tail cutoffs."
+  },
+  "deltas": {
+    "median_spec_tok_s_vs_prior_best_percent": 4.028808976156117,
+    "median_speedup_vs_prior_best_absolute": 0.05186566760056577,
+    "median_speedup_vs_prior_best_relative_percent": 3.994460833640856,
+    "rows_per_output_delta": 0.015625
+  },
+  "hardware": {
+    "arch": "gfx1100",
+    "backend": "hip_gfx1100",
+    "gpu": "AMD Radeon Pro W7900"
+  },
+  "manifest": {
+    "default": "ar",
+    "description": "threshold4 retained route plus json-YAML chain with prompt-specific terminal_ar_tokens=20",
+    "generated_at": "2026-05-31T13:00:43.234396+00:00",
+    "min_chain_speedup": 1.0,
+    "routes": {
+      "code:class_continuation": "chain",
+      "code:function_continuation": "chain",
+      "code:humaneval_add": "chain",
+      "code:json_yaml_continuation": "chain",
+      "code:quicksort_prefix": "chain",
+      "instruct:simple_qa_no_template": "chain",
+      "instruct:simple_qa_qwen_static_chat": "chain",
+      "math:short_gsm8k_style": "chain"
+    },
+    "row_evidence": [
+      {
+        "benchmark_group": "code_promotion",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "code:quicksort_prefix",
+        "route": "chain",
+        "speedup_vs_ar": 1.2062343241393776
+      },
+      {
+        "benchmark_group": "code_promotion",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "code:function_continuation",
+        "route": "chain",
+        "speedup_vs_ar": 1.07835362572281
+      },
+      {
+        "benchmark_group": "code_promotion",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "code:class_continuation",
+        "route": "chain",
+        "speedup_vs_ar": 1.5733812557247893
+      },
+      {
+        "benchmark_group": "code_promotion",
+        "chain_shape": true,
+        "exact_match_ar": false,
+        "prompt_id": "code:json_yaml_continuation",
+        "route": "ar",
+        "speedup_vs_ar": 1.4254369469283559
+      },
+      {
+        "benchmark_group": "code_promotion",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "code:humaneval_add",
+        "route": "chain",
+        "speedup_vs_ar": 1.573585279011015
+      },
+      {
+        "benchmark_group": "code_promotion",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "code:humaneval_sort_third",
+        "route": "ar",
+        "speedup_vs_ar": 0.898914540014793
+      },
+      {
+        "benchmark_group": "robustness",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "math:short_gsm8k_style",
+        "route": "chain",
+        "speedup_vs_ar": 1.4770811314363343
+      },
+      {
+        "benchmark_group": "robustness",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "instruct:simple_qa_no_template",
+        "route": "chain",
+        "speedup_vs_ar": 1.5810995805741468
+      },
+      {
+        "benchmark_group": "robustness",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "instruct:simple_qa_qwen_static_chat",
+        "route": "chain",
+        "speedup_vs_ar": 1.3760458554620467
+      }
+    ],
+    "source_artifact": "/tmp/multiloop-dflash-27b-w7900-threshold4-allchain-profile.json",
+    "summary": {
+      "chain_routes": 7,
+      "default_route": "ar",
+      "rows_seen": 9,
+      "rows_with_prompt_id": 9,
+      "skipped_rows": 0
+    },
+    "terminal_ar_tokens": {
+      "code:json_yaml_continuation": 20,
+      "default": 5
+    }
+  },
+  "measurements": {
+    "json_terminal20_median": {
+      "acceptance": {
+        "accept_histogram": {
+          "0": 14,
+          "1": 10,
+          "2": 21,
+          "3": 8,
+          "4": 69
+        },
+        "accepted_output_tokens": 352,
+        "avg_accept_length": 2.8852459016393444,
+        "exact_rate_0_to_n": {
+          "0": 0.11475409836065574,
+          "1": 0.08196721311475409,
+          "10": 0.0,
+          "2": 0.1721311475409836,
+          "3": 0.06557377049180328,
+          "4": 0.5655737704918032,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "ge_rate_1_to_n": {
+          "1": 0.8852459016393442,
+          "10": 0.0,
+          "2": 0.8032786885245902,
+          "3": 0.6311475409836066,
+          "4": 0.5655737704918032,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "multi_token_acceptance_rate": 0.8032786885245902,
+        "steps": 122
+      },
+      "all_correctness_passed": true,
+      "all_exact_match_ar": true,
+      "ar_decode_tok_s": 32.420055791510194,
+      "row_speedups": [
+        {
+          "benchmark_group": "code_promotion",
+          "draft_calls": 18,
+          "draft_seconds": 0.34964322682935745,
+          "exact_match_ar": true,
+          "first_mismatch_index": null,
+          "prompt_id": "code:quicksort_prefix",
+          "route": "chain_with_terminal_ar",
+          "speedup_vs_ar": 1.2763471202169552,
+          "target_verify_rows_per_output_token": 1.4375,
+          "target_verify_seconds": 1.1866569858975708,
+          "terminal_ar_cycles": 1
+        },
+        {
+          "benchmark_group": "code_promotion",
+          "draft_calls": 20,
+          "draft_seconds": 0.3857220736099407,
+          "exact_match_ar": true,
+          "first_mismatch_index": null,
+          "prompt_id": "code:function_continuation",
+          "route": "chain_with_terminal_ar",
+          "speedup_vs_ar": 1.1326269298493032,
+          "target_verify_rows_per_output_token": 1.625,
+          "target_verify_seconds": 1.3559799345675856,
+          "terminal_ar_cycles": 3
+        },
+        {
+          "benchmark_group": "code_promotion",
+          "draft_calls": 15,
+          "draft_seconds": 0.29093241947703063,
+          "exact_match_ar": true,
+          "first_mismatch_index": null,
+          "prompt_id": "code:class_continuation",
+          "route": "chain_with_terminal_ar",
+          "speedup_vs_ar": 1.5509036398007077,
+          "target_verify_rows_per_output_token": 1.1875,
+          "target_verify_seconds": 0.9827896404312924,
+          "terminal_ar_cycles": 0
+        },
+        {
+          "benchmark_group": "code_promotion",
+          "draft_calls": 11,
+          "draft_seconds": 0.21236949507147074,
+          "exact_match_ar": true,
+          "first_mismatch_index": null,
+          "prompt_id": "code:json_yaml_continuation",
+          "route": "chain_with_prompt_terminal_ar",
+          "speedup_vs_ar": 1.3355878708650717,
+          "target_verify_rows_per_output_token": 1.140625,
+          "target_verify_seconds": 1.261335942777805,
+          "terminal_ar_cycles": 17
+        },
+        {
+          "benchmark_group": "code_promotion",
+          "draft_calls": 14,
+          "draft_seconds": 0.26899926911573857,
+          "exact_match_ar": true,
+          "first_mismatch_index": null,
+          "prompt_id": "code:humaneval_add",
+          "route": "chain_with_terminal_ar",
+          "speedup_vs_ar": 1.5532414761897404,
+          "target_verify_rows_per_output_token": 1.15625,
+          "target_verify_seconds": 0.9989149388857186,
+          "terminal_ar_cycles": 3
+        },
+        {
+          "benchmark_group": "code_promotion",
+          "draft_calls": 0,
+          "draft_seconds": 0.0,
+          "exact_match_ar": true,
+          "first_mismatch_index": null,
+          "prompt_id": "code:humaneval_sort_third",
+          "route": "ar",
+          "speedup_vs_ar": 0.994601814536159,
+          "target_verify_rows_per_output_token": 1.0,
+          "target_verify_seconds": 1.9963687970303,
+          "terminal_ar_cycles": 0
+        },
+        {
+          "benchmark_group": "robustness",
+          "draft_calls": 14,
+          "draft_seconds": 0.2690514490241185,
+          "exact_match_ar": true,
+          "first_mismatch_index": null,
+          "prompt_id": "math:short_gsm8k_style",
+          "route": "chain_with_terminal_ar",
+          "speedup_vs_ar": 1.59065212025434,
+          "target_verify_rows_per_output_token": 1.140625,
+          "target_verify_seconds": 0.9739839552203193,
+          "terminal_ar_cycles": 2
+        },
+        {
+          "benchmark_group": "robustness",
+          "draft_calls": 14,
+          "draft_seconds": 0.26528791000600904,
+          "exact_match_ar": true,
+          "first_mismatch_index": null,
+          "prompt_id": "instruct:simple_qa_no_template",
+          "route": "chain_with_terminal_ar",
+          "speedup_vs_ar": 1.5675243911192203,
+          "target_verify_rows_per_output_token": 1.15625,
+          "target_verify_seconds": 0.9885305279167369,
+          "terminal_ar_cycles": 3
+        },
+        {
+          "benchmark_group": "robustness",
+          "draft_calls": 16,
+          "draft_seconds": 0.30387862818315625,
+          "exact_match_ar": true,
+          "first_mismatch_index": null,
+          "prompt_id": "instruct:simple_qa_qwen_static_chat",
+          "route": "chain_with_terminal_ar",
+          "speedup_vs_ar": 1.4534692118339037,
+          "target_verify_rows_per_output_token": 1.28125,
+          "target_verify_seconds": 1.04415322560817,
+          "terminal_ar_cycles": 1
+        }
+      ],
+      "rows": 9,
+      "spec_decode_tok_s": 43.76482513547898,
+      "spec_decode_tok_s_mean": 43.7347960294548,
+      "speedup_vs_ar": 1.3503054260720835,
+      "speedup_vs_ar_mad": 0.002507647070408847,
+      "speedup_vs_ar_mean": 1.3474825179739587,
+      "target_verify_rows_per_output_token": 1.2361111111111112
+    },
+    "json_terminal20_replicates": [
+      {
+        "all_correctness_passed": true,
+        "all_exact_match_ar": true,
+        "ar_decode_tok_s": 32.53844980506605,
+        "exact_rows": 9,
+        "json_yaml": {
+          "draft_calls": 11,
+          "draft_seconds": 0.21172579086851329,
+          "exact_match_ar": true,
+          "first_mismatch_index": null,
+          "speedup_vs_ar": 1.3424353755254204,
+          "target_verify_rows_per_output_token": 1.140625,
+          "target_verify_seconds": 1.249391841585748,
+          "terminal_ar_cycles": 17
+        },
+        "replicate": 1,
+        "rows": 9,
+        "spec_decode_tok_s": 44.018440276084135,
+        "speedup_vs_ar": 1.3528130731424923,
+        "target_verify_rows_per_output_token": 1.2361111111111112
+      },
+      {
+        "all_correctness_passed": true,
+        "all_exact_match_ar": true,
+        "ar_decode_tok_s": 32.41105626212797,
+        "exact_rows": 9,
+        "json_yaml": {
+          "draft_calls": 11,
+          "draft_seconds": 0.21236949507147074,
+          "exact_match_ar": true,
+          "first_mismatch_index": null,
+          "speedup_vs_ar": 1.3355878708650717,
+          "target_verify_rows_per_output_token": 1.140625,
+          "target_verify_seconds": 1.261335942777805,
+          "terminal_ar_cycles": 17
+        },
+        "replicate": 2,
+        "rows": 9,
+        "spec_decode_tok_s": 43.76482513547898,
+        "speedup_vs_ar": 1.3503054260720835,
+        "target_verify_rows_per_output_token": 1.2361111111111112
+      },
+      {
+        "all_correctness_passed": true,
+        "all_exact_match_ar": true,
+        "ar_decode_tok_s": 32.420055791510194,
+        "exact_rows": 9,
+        "json_yaml": {
+          "draft_calls": 11,
+          "draft_seconds": 0.21268392889760435,
+          "exact_match_ar": true,
+          "first_mismatch_index": null,
+          "speedup_vs_ar": 1.3342256666903265,
+          "target_verify_rows_per_output_token": 1.140625,
+          "target_verify_seconds": 1.2667648936621845,
+          "terminal_ar_cycles": 17
+        },
+        "replicate": 3,
+        "rows": 9,
+        "spec_decode_tok_s": 43.42112267680128,
+        "speedup_vs_ar": 1.3393290547073002,
+        "target_verify_rows_per_output_token": 1.2361111111111112
+      }
+    ],
+    "previous_terminal_ar_tail_median": {
+      "ar_decode_tok_s": 32.4003548074971,
+      "spec_decode_tok_s": 42.06990887063802,
+      "speedup_vs_ar": 1.2984397584715177,
+      "target_verify_rows_per_output_token": 1.2204861111111112
+    }
+  },
+  "models": {
+    "drafter": {
+      "dtype": "bf16",
+      "name": "z-lab/Qwen3.6-27B-DFlash",
+      "path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106",
+      "snapshot_revision": "0919688658996800f86b895034249700e9481106"
+    },
+    "target": {
+      "name": "z-lab/Qwen3.6-27B-PARO",
+      "path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207",
+      "quant": "w4_paro_packed",
+      "snapshot_revision": "84f86409151d4f2ec86dc0b6a096d5f6daa7f207"
+    }
+  },
+  "notes": [
+    "Manifest terminal_ar_tokens is default-off; absent manifests preserve the CLI --terminal-ar-tokens behavior.",
+    "The route now has 8 chain prompts / 1 AR prompt; only sort-third remains full AR.",
+    "json-YAML uses terminal_ar_tokens=20 while every other prompt falls back to terminal_ar_tokens=5.",
+    "Rows/output rises versus the prior terminal-tail route because json-YAML now performs verifier rows for its safe prefix, but the added chain prefix wins wall time."
+  ],
+  "performance_claim": false,
+  "run_tag": "dflash-27b-w7900/run-20260531-102747",
+  "schema": "hipengine.benchmark_result.v1",
+  "software": {
+    "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n",
+    "hipengine_branch": "mpt-dflash",
+    "hipengine_commit": "e080e0dbe07436b8d756494a205f368315249895",
+    "hipengine_dirty": true,
+    "hipengine_status_porcelain": " M scripts/dflash_chain_e2e_bench.py\n M tests/test_dflash_draft_confidence.py\n?? .handoff/\n?? benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-b3-batched-graphauto-rev2.json\n?? benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-b3-batched-graphauto.json\n?? benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-b3-c1loop-graphauto.json\n?? benchmarks/results/2026-05-22-hipengine-mtp-m12.6b-w7900-b3-batched-graphauto.json\n",
+    "platform": "Linux-7.0.10-1-cachyos-x86_64-with-glibc2.43",
+    "python": "3.12.9"
+  },
+  "timestamp": "2026-05-31T16:19:27.805749+00:00",
+  "validation": {
+    "exact_gate": "passed on final replicate; all three replicates exact 9/9",
+    "py_compile": "passed: scripts/dflash_chain_e2e_bench.py scripts/dflash_build_profile_route_manifest.py hipengine/runtime/qwen35_paro.py",
+    "pytest": "18 passed: tests/test_paro_awq_gemv_multi_row_decode.py tests/test_dflash_profile_route_manifest.py tests/test_dflash_draft_confidence.py tests/test_speculative_benchmark.py"
+  },
+  "workload": {}
+}

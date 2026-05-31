@@ -24580,3 +24580,56 @@ Docs/rollup updated:
 Next multiloop focus: test whether `--terminal-ar-tokens 5` stays beneficial at
 D128/D160 or whether a different terminal threshold (e.g. 4 or 6) is a better
 D64 gate before considering any default promotion path.
+
+## 2026-05-31 — DFlash multiloop iter38 json terminal20 profile route
+
+Active loop: `dflash-27b-w7900/run-20260531-102747`.  Iteration 38 refined
+zero-probe profile-history routing after the global terminal tail plateau.  The
+prior attempt to route `code:json_yaml_continuation` to chain with
+`terminal_ar_tokens=17` was fast but still non-exact at token index 48.  This
+iteration added default-off manifest-side `terminal_ar_tokens` overrides to
+`scripts/dflash_chain_e2e_bench.py` and raised only json-YAML to
+`terminal_ar_tokens=20`; every other prompt falls back to CLI
+`--terminal-ar-tokens 5`.
+
+Retained command shape:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD=4 HIPENGINE_W4_MULTI_ROW_PACK8_SITES=full_qk,linear_qkv_z,dense_gate_up,single_full_o,single_full_v,single_linear_out,single_shared_down,single_dense_down PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --verifier-graph auto --full-attn-chain-mode batched --canonical-commit-mode bulk_direct --profile-route-manifest /tmp/multiloop-dflash-27b-w7900-threshold4-json-terminal20-manifest.json --drafter-query-mode budget_prefix --terminal-ar-tokens 5 --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/multiloop-dflash-27b-w7900.json
+```
+
+Result: exact `9/9` on three full W7900 27B B=4/D64 replicates.  Ratios were
+`1.3528x`, `1.3503x`, `1.3393x` AR; retained rollup uses the 3-run median
+`1.3503x` AR and `43.76 tok/s` DFlash/spec vs prior terminal-tail best
+`1.2984x`, `42.07 tok/s` (+4.0% spec tok/s).  The route is now 8 chain / 1 AR:
+json-YAML is exact with chain-prefix + AR-tail (`terminal_ar_tokens=20`,
+`first_mismatch_index=None`), and sort-third remains full AR.  Rows/output rises
+from `1.2205` to `1.2361` because json-YAML now pays verifier rows for its safe
+prefix, but the added chain prefix wins wall time.
+
+This is **not defaulted**.  The stack is still profile-history routing + opt-in
+verifier graph + `bulk_direct` + `budget_prefix` + expanded W4 site mask +
+threshold=4 + prompt-specific terminal AR tails.  The new manifest override is
+absent by default and preserves CLI `--terminal-ar-tokens` behavior when unused.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/dflash_chain_e2e_bench.py scripts/dflash_build_profile_route_manifest.py hipengine/runtime/qwen35_paro.py
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_paro_awq_gemv_multi_row_decode.py tests/test_dflash_profile_route_manifest.py tests/test_dflash_draft_confidence.py tests/test_speculative_benchmark.py
+python3 -m json.tool benchmarks/results/2026-05-31-hipengine-dflash-27b-threshold4-json-terminal20-route.json >/tmp/hipengine-dflash-27b-threshold4-json-terminal20-route-artifact-check.json
+```
+
+Result: targeted pytest `18 passed`; artifact JSON valid.
+
+Retained artifact:
+- `benchmarks/results/2026-05-31-hipengine-dflash-27b-threshold4-json-terminal20-route.json`
+
+Docs/rollup updated:
+- `docs/DFLASH.md` table now includes the json terminal20 route.
+- `benchmarks/README.md` and `benchmarks/CHANGELOG.md` retained diagnostic row.
+
+Next multiloop focus: the prompt-history route is now the largest D64 win, but
+it is brittle.  Either validate the route/cutoffs on longer horizons or build a
+deployable prompt-history/route-manifest mechanism before considering default
+promotion.

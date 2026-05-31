@@ -167,22 +167,48 @@ def _load_profile_route_manifest(path: Path | None) -> tuple[str, dict[str, str]
         raise ValueError("profile route manifest 'routes' must be a JSON object")
     routes: dict[str, str] = {}
     for key, value in routes_raw.items():
-        if key in {"default", "routes", "notes", "description"}:
+        if key in {"default", "routes", "notes", "description", "terminal_ar_tokens"}:
             continue
         routes[str(key)] = _canonical_profile_route(value)
     return default, routes, raw
 
 
-def _profile_route_for_prompt(prompt: dict[str, Any], *, default: str, routes: dict[str, str]) -> str:
-    for key in (
+def _profile_prompt_keys(prompt: dict[str, Any]) -> tuple[str, ...]:
+    return (
         str(prompt.get("id") or ""),
         str(prompt.get("prompt_ids_sha256") or ""),
         str(prompt.get("prompt_text_sha256") or ""),
         str(prompt.get("benchmark_group") or ""),
-    ):
+    )
+
+
+def _profile_route_for_prompt(prompt: dict[str, Any], *, default: str, routes: dict[str, str]) -> str:
+    for key in _profile_prompt_keys(prompt):
         if key and key in routes:
             return routes[key]
     return default
+
+
+def _terminal_ar_tokens_for_prompt(prompt: dict[str, Any], *, default: int, manifest: dict[str, Any] | None) -> int:
+    if manifest is None or "terminal_ar_tokens" not in manifest:
+        return int(default)
+    raw = manifest.get("terminal_ar_tokens")
+    if raw is None:
+        return int(default)
+    if isinstance(raw, int):
+        value = raw
+    elif isinstance(raw, dict):
+        value = raw.get("default", default)
+        for key in _profile_prompt_keys(prompt):
+            if key and key in raw:
+                value = raw[key]
+                break
+    else:
+        raise ValueError("profile route manifest terminal_ar_tokens must be an integer or object")
+    parsed = int(value)
+    if parsed < 0:
+        raise ValueError("profile route manifest terminal_ar_tokens values must be non-negative")
+    return parsed
 
 
 @dataclass(frozen=True)
@@ -3063,6 +3089,8 @@ def main(argv: list[str] | None = None) -> int:
             "Optional JSON manifest for profile/oracle routing diagnostics."
             " Values may be ar, chain, tree, or spec. Keys match prompt id,"
             " prompt hash, or benchmark group; default falls back to spec."
+            " An optional terminal_ar_tokens integer/object can override"
+            " --terminal-ar-tokens globally or per prompt key."
         ),
     )
     parser.add_argument("--hardware-gpu", default=None, help="Human-readable GPU name to record in the benchmark artifact")
@@ -3124,6 +3152,11 @@ def main(argv: list[str] | None = None) -> int:
     for prompt in prompts:
         prompt_ids = [int(x) for x in prompt["prompt_ids"]]
         profile_route = _profile_route_for_prompt(prompt, default=profile_route_default, routes=profile_routes)
+        terminal_ar_tokens_for_row = _terminal_ar_tokens_for_prompt(
+            prompt,
+            default=args.terminal_ar_tokens,
+            manifest=profile_route_manifest,
+        )
         for budget in budgets:
             tree_top_k_for_row = args.tree_top_k if args.tree_mode == "branching_topk" or profile_route == "tree" else 1
             ar, spec = run_same_session_pair(
@@ -3149,7 +3182,7 @@ def main(argv: list[str] | None = None) -> int:
                 adaptive_budget_mode=args.adaptive_budget,
                 adaptive_min_remaining_tokens=args.adaptive_min_remaining_tokens,
                 adaptive_probe_amortization_tokens=args.adaptive_probe_amortization_tokens,
-                terminal_ar_tokens=args.terminal_ar_tokens,
+                terminal_ar_tokens=terminal_ar_tokens_for_row,
                 chain_attn_mode=args.full_attn_chain_mode,
                 tree_mode=args.tree_mode,
                 tree_top_k=tree_top_k_for_row,

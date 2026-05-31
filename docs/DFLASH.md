@@ -321,13 +321,13 @@ losers: `code:class_continuation`, `code:json_yaml_continuation`,
 `instruct:simple_qa_qwen_static_chat` route to DFlash chain; quicksort,
 function-continuation, sort-third, and the short GSM8K-style prompt route to AR.
 
-| Metric | all-chain `multi_row_decode` | profile route | profile route + verifier graph | graph-aware profile route + verifier graph | graph-aware + graph + bulk-direct | + budget-prefix drafter query | + `single_full_v` W4 site | + `single_linear_out` W4 site | threshold4 + json→AR | threshold4 regenerated route | + terminal AR tail |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| exact rows | 9/9 | 9/9 | 9/9 | 9/9 | 9/9 | 9/9 | 9/9 | 9/9 | 9/9 | 9/9 | 9/9 |
-| AR decode | 32.57 tok/s | 32.65 tok/s | 32.38 tok/s | 32.34 tok/s | 32.49 tok/s | 32.67 tok/s | 32.47 tok/s | 32.60 tok/s | 32.47 tok/s | 32.38 tok/s | 32.40 tok/s |
-| DFlash/spec decode | 31.75 tok/s | 34.63 tok/s | 36.81 tok/s | 37.55 tok/s | 38.22 tok/s | 38.65 tok/s | 38.99 tok/s | 40.22 tok/s | 40.69 tok/s | 40.94 tok/s | 42.07 tok/s |
-| vs AR | 0.975x | 1.061x | 1.137x | 1.161x | 1.176x | 1.183x | 1.201x | 1.234x | 1.253x | 1.265x | 1.298x |
-| route mix | 9 chain / 0 AR | 5 chain / 4 AR | 5 chain / 4 AR | 7 chain / 2 AR | 7 chain / 2 AR | 7 chain / 2 AR | 7 chain / 2 AR | 7 chain / 2 AR | 6 chain / 3 AR | 7 chain / 2 AR | 7 chain / 2 AR + AR tail |
+| Metric | all-chain `multi_row_decode` | profile route | profile route + verifier graph | graph-aware profile route + verifier graph | graph-aware + graph + bulk-direct | + budget-prefix drafter query | + `single_full_v` W4 site | + `single_linear_out` W4 site | threshold4 + json→AR | threshold4 regenerated route | + terminal AR tail | + json terminal20 route |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| exact rows | 9/9 | 9/9 | 9/9 | 9/9 | 9/9 | 9/9 | 9/9 | 9/9 | 9/9 | 9/9 | 9/9 | 9/9 |
+| AR decode | 32.57 tok/s | 32.65 tok/s | 32.38 tok/s | 32.34 tok/s | 32.49 tok/s | 32.67 tok/s | 32.47 tok/s | 32.60 tok/s | 32.47 tok/s | 32.38 tok/s | 32.40 tok/s | 32.42 tok/s |
+| DFlash/spec decode | 31.75 tok/s | 34.63 tok/s | 36.81 tok/s | 37.55 tok/s | 38.22 tok/s | 38.65 tok/s | 38.99 tok/s | 40.22 tok/s | 40.69 tok/s | 40.94 tok/s | 42.07 tok/s | 43.76 tok/s |
+| vs AR | 0.975x | 1.061x | 1.137x | 1.161x | 1.176x | 1.183x | 1.201x | 1.234x | 1.253x | 1.265x | 1.298x | 1.350x |
+| route mix | 9 chain / 0 AR | 5 chain / 4 AR | 5 chain / 4 AR | 7 chain / 2 AR | 7 chain / 2 AR | 7 chain / 2 AR | 7 chain / 2 AR | 7 chain / 2 AR | 6 chain / 3 AR | 7 chain / 2 AR | 7 chain / 2 AR + AR tail | 8 chain / 1 AR + prompt tail |
 
 Verifier HIP graph capture (`--verifier-graph auto`) on the same route was the
 first multiloop result to clear the numeric `>1.10x` gate: exact `9/9`,
@@ -352,15 +352,20 @@ json-YAML and sort-third on AR, reaching `40.94 tok/s`, `1.265x` AR.  Adding a
 default-off terminal AR tail guard (`--terminal-ar-tokens 5`) then skipped only
 cycles whose remaining decode horizon was below a full B=4 draft window, avoiding
 adaptive probing while cutting rows/output from `1.259` to `1.220` and reaching
-a 3-run median `42.07 tok/s`, `1.298x` AR.  Chain rows report graph validation
-success with `captured_validated_miss`/`replayed` statuses.  This remains a
+a 3-run median `42.07 tok/s`, `1.298x` AR.  The follow-up retained route lets
+the profile manifest override terminal AR cutoffs per prompt: json-YAML, the
+previously fast but non-exact chain row, now routes through chain for its safe
+prefix and switches to AR with `terminal_ar_tokens=20`, while the other prompts
+keep `terminal_ar_tokens=5`.  This exact 8-chain / 1-AR route reaches a 3-run
+median `43.76 tok/s`, `1.350x` AR.  Chain rows report graph validation success
+with `captured_validated_miss`/`replayed` statuses.  This remains a
 **diagnostic profile-history route**, not a promoted default: the route depends
 on prior prompt history rather than a deployable online classifier, verifier
 graph capture is still opt-in, `bulk_direct` exactness is only established for
 this gate, budget-prefix proposals can differ from the z-lab block-query
-contract, threshold `4` has known non-exact chain rows, terminal-tail AR routing
-is only proven on this D64 suite, and `single_full_v` / `single_linear_out`
-remain outside the default exact-safe W4 site mask.
+contract, threshold `4` has known non-exact chain rows, prompt-specific
+terminal-tail AR routing is only proven on this D64 suite, and `single_full_v` /
+`single_linear_out` remain outside the default exact-safe W4 site mask.
 Retained artifacts:
 [`2026-05-31-hipengine-dflash-27b-profile-route-multiloop.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-profile-route-multiloop.json),
 [`2026-05-31-hipengine-dflash-27b-profile-route-verifier-graph.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-profile-route-verifier-graph.json),
@@ -370,8 +375,9 @@ Retained artifacts:
 [`2026-05-31-hipengine-dflash-27b-graph-aware-route-single-full-v.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-graph-aware-route-single-full-v.json),
 [`2026-05-31-hipengine-dflash-27b-graph-aware-route-single-linear-out.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-graph-aware-route-single-linear-out.json),
 [`2026-05-31-hipengine-dflash-27b-threshold4-json-ar-route.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-threshold4-json-ar-route.json),
-[`2026-05-31-hipengine-dflash-27b-threshold4-regenerated-route.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-threshold4-regenerated-route.json), and
-[`2026-05-31-hipengine-dflash-27b-threshold4-terminal-ar-tail.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-threshold4-terminal-ar-tail.json).
+[`2026-05-31-hipengine-dflash-27b-threshold4-regenerated-route.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-threshold4-regenerated-route.json),
+[`2026-05-31-hipengine-dflash-27b-threshold4-terminal-ar-tail.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-threshold4-terminal-ar-tail.json), and
+[`2026-05-31-hipengine-dflash-27b-threshold4-json-terminal20-route.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-threshold4-json-terminal20-route.json).
 
 ### 2026-05-26 W7900 27B multi-row-decode default
 

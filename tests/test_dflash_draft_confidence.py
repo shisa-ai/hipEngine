@@ -7,6 +7,7 @@ from scripts.dflash_chain_e2e_bench import (
     _confidence_limited_active_count,
     _load_profile_route_manifest,
     _profile_route_for_prompt,
+    _terminal_ar_tokens_for_prompt,
     _top1_probabilities_from_topk,
     _top1_probability_from_topk,
 )
@@ -56,6 +57,22 @@ def test_profile_route_manifest_accepts_aliases_and_prompt_ids(tmp_path) -> None
     assert _profile_route_for_prompt({"id": "code:class_continuation"}, default=default, routes=routes) == "chain"
     assert _profile_route_for_prompt({"benchmark_group": "math"}, default=default, routes=routes) == "tree"
     assert _profile_route_for_prompt({"id": "unknown"}, default=default, routes=routes) == "ar"
+
+
+def test_profile_route_manifest_can_override_terminal_ar_tokens(tmp_path) -> None:
+    manifest = tmp_path / "routes.json"
+    manifest.write_text(
+        '{"default": "ar", "terminal_ar_tokens": {"default": 5, "code:json_yaml_continuation": 20, "robustness": 7}}',
+        encoding="utf-8",
+    )
+
+    _default, _routes, raw = _load_profile_route_manifest(manifest)
+
+    assert raw is not None
+    assert _terminal_ar_tokens_for_prompt({"id": "code:json_yaml_continuation"}, default=0, manifest=raw) == 20
+    assert _terminal_ar_tokens_for_prompt({"benchmark_group": "robustness"}, default=0, manifest=raw) == 7
+    assert _terminal_ar_tokens_for_prompt({"id": "unknown"}, default=0, manifest=raw) == 5
+    assert _terminal_ar_tokens_for_prompt({"id": "unknown"}, default=3, manifest=None) == 3
 
 
 def test_profile_route_rejects_unknown_value() -> None:
