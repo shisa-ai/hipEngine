@@ -7201,6 +7201,16 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         str(tmp_path / "artifacts" / "int8-native-retained-future-c4.json"),
         str(tmp_path / "artifacts" / "int8-native-retained-future-c8.json"),
     ]
+    assert [entry["argv"][entry["argv"].index("--primitive-cpu-json") + 1] for entry in int8_entries] == [
+        str(tmp_path / "artifacts" / "int8-primitive-cpu-c2.json"),
+        str(tmp_path / "artifacts" / "int8-primitive-cpu-c4.json"),
+        str(tmp_path / "artifacts" / "int8-primitive-cpu-c8.json"),
+    ]
+    assert [entry["argv"][entry["argv"].index("--primitive-hip-json") + 1] for entry in int8_entries] == [
+        str(tmp_path / "artifacts" / "int8-primitive-hip-c2.json"),
+        str(tmp_path / "artifacts" / "int8-primitive-hip-c4.json"),
+        str(tmp_path / "artifacts" / "int8-primitive-hip-c8.json"),
+    ]
     assert [entry["argv"][entry["argv"].index("--rows") + 1] for entry in gguf_entries] == [
         "2",
         "2",
