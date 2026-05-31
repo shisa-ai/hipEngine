@@ -475,6 +475,7 @@ def _scaling_reference_command_env_assignments(
     required_env: Mapping[str, str] | None = None,
     require_command_label: bool = False,
     expected_command_script: str | None = None,
+    expected_inputs: Mapping[str, str] | None = None,
 ) -> tuple[dict[str, str], list[str]]:
     commands = payload.get("commands")
     command = commands.get("benchmark") if isinstance(commands, Mapping) else payload.get("command")
@@ -501,6 +502,15 @@ def _scaling_reference_command_env_assignments(
         launch = _strip_command_env_prefix(argv)
         if len(launch) < 2 or not Path(launch[0]).name.startswith("python") or launch[1] != expected_command_script:
             reasons.append(f"commands.benchmark must launch {expected_command_script}")
+    for label, flag in (("model", "--model"), ("fixture", "--fixture")):
+        expected_value = (expected_inputs or {}).get(label)
+        if not expected_value:
+            continue
+        command_value = _command_arg_value(command, flag)
+        if command_value is None:
+            reasons.append(f"commands.benchmark must include {flag} matching retained {label}")
+        elif command_value != expected_value:
+            reasons.append(f"commands.benchmark {flag} does not match retained {label}")
     return assignments, reasons
 
 
@@ -509,6 +519,7 @@ def _scaling_reference(
     *,
     default_workload_concurrency: int | None = None,
     expected_command_script: str | None = None,
+    expected_inputs: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     if path is None:
         return {
@@ -567,6 +578,7 @@ def _scaling_reference(
         required_env=retained_device_env,
         require_command_label=bool(reference_device_env),
         expected_command_script=expected_command_script,
+        expected_inputs=expected_inputs,
     )
     reasons.extend(reference_command_env_reasons)
     if reference_command_env:
@@ -1403,12 +1415,25 @@ def _build_scaling_comparison(
     native_decode_tok_s_aggregate: float | None,
     native_decode_tok_s_per_request: float | None,
 ) -> dict[str, Any]:
+    expected_inputs = {
+        key: value
+        for key, value in {
+            "model": str(getattr(args, "model", "")),
+            "fixture": str(getattr(args, "fixture", "")),
+        }.items()
+        if value
+    }
     c1 = _scaling_reference(
         getattr(args, "c1_baseline_json", None),
         default_workload_concurrency=1,
         expected_command_script=_LEGACY_NATIVE_BENCH_SCRIPT,
+        expected_inputs=expected_inputs,
     )
-    serial = _scaling_reference(getattr(args, "serial_bridge_json", None), expected_command_script=_SERIAL_BRIDGE_SCRIPT)
+    serial = _scaling_reference(
+        getattr(args, "serial_bridge_json", None),
+        expected_command_script=_SERIAL_BRIDGE_SCRIPT,
+        expected_inputs=expected_inputs,
+    )
     prompt_tokens_per_request = getattr(args, "prompt_length", None)
     if isinstance(prompt_tokens_per_request, bool) or not isinstance(prompt_tokens_per_request, int):
         prompt_tokens_per_request = None

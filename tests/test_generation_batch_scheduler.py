@@ -12082,6 +12082,43 @@ def test_qwen35_retained_scaling_reference_rejects_wrong_command_script(
     assert reference["decode_tok_s_per_request"] is None
 
 
+def test_qwen35_retained_scaling_reference_rejects_mismatched_input_labels(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HIP_VISIBLE_DEVICES", raising=False)
+    serial = tmp_path / "serial-bridge-c2.json"
+    payload = {
+        "artifact_path": str(serial),
+        "status": "blocked",
+        "commands": {
+            "benchmark": f"python3 scripts/qwen35_batch_serial_bench.py --model /tmp/model --fixture /tmp/fixture.json --json {serial}"
+        },
+        "workload": {"concurrency": 2, "prompt_tokens_per_request": 512, "gen_tokens_per_request": 128},
+        "measurements": {"decode_tok_s_aggregate": 8.0, "decode_tok_s_per_request": 4.0},
+    }
+    serial.write_text(json.dumps(payload))
+    expected_inputs = {"model": "/tmp/model", "fixture": "/tmp/fixture.json"}
+    matched = retained_bench._scaling_reference(serial, expected_inputs=expected_inputs)
+
+    payload["commands"]["benchmark"] = f"python3 scripts/qwen35_batch_serial_bench.py --fixture /tmp/fixture.json --json {serial}"
+    serial.write_text(json.dumps(payload))
+    missing_model = retained_bench._scaling_reference(serial, expected_inputs=expected_inputs)
+
+    payload["commands"]["benchmark"] = (
+        f"python3 scripts/qwen35_batch_serial_bench.py --model /tmp/model --fixture /tmp/other-fixture.json --json {serial}"
+    )
+    serial.write_text(json.dumps(payload))
+    mismatched_fixture = retained_bench._scaling_reference(serial, expected_inputs=expected_inputs)
+
+    assert matched["reason"] is None
+    assert matched["decode_tok_s_aggregate"] == 8.0
+    assert missing_model["reason"] == "commands.benchmark must include --model matching retained model"
+    assert missing_model["decode_tok_s_aggregate"] is None
+    assert mismatched_fixture["reason"] == "commands.benchmark --fixture does not match retained fixture"
+    assert mismatched_fixture["decode_tok_s_per_request"] is None
+
+
 def test_qwen35_retained_scaling_reference_requires_artifact_path(tmp_path: Path) -> None:
     c1 = tmp_path / "native-baseline-c1.json"
     c1_payload = {
