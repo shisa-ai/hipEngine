@@ -11310,8 +11310,9 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
             "native_compact_prefill": True,
             "native_caware_decode": False,
             "concurrency": 2,
-            "prompt_lengths": [2, 3],
-            "prompt_tokens_aggregate": 5,
+            "prompt_lengths": [2, 2],
+            "prompt_tokens_per_request": 2,
+            "prompt_tokens_aggregate": 4,
             "warmup_decode_tokens": 0,
             "gen_tokens_per_request": 2,
             "gen_tokens_aggregate": 4,
@@ -11332,7 +11333,7 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
             "generated_tokens": {"0": [{"token_id": 11}, {"token_id": 12}], "1": [{"token_id": 21}, {"token_id": 22}]},
             "completed": [
                 {"request_id": 0, "prompt_tokens": [100, 101], "generated_tokens": [11, 12], "finished": True, "finish_reason": "length"},
-                {"request_id": 1, "prompt_tokens": [200, 201, 202], "generated_tokens": [21, 22], "finished": True, "finish_reason": "length"},
+                {"request_id": 1, "prompt_tokens": [200, 201], "generated_tokens": [21, 22], "finished": True, "finish_reason": "length"},
             ],
             "batch_execution": {
                 "native_compact_prefill": True,
@@ -11444,6 +11445,16 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
     bad_prompt_lengths_claim["workload"]["prompt_lengths"] = [2, -1]
     with pytest.raises(ValueError, match="workload.prompt_lengths entries must be non-negative ints"):
         validate_cn_diagnostic_artifact_payload(bad_prompt_lengths_claim)
+
+    mismatched_prompt_per_request_claim = json.loads(json.dumps(payload))
+    mismatched_prompt_per_request_claim["workload"]["prompt_tokens_per_request"] = 3
+    with pytest.raises(ValueError, match="workload.prompt_tokens_per_request must match every workload.prompt_lengths entry"):
+        validate_cn_diagnostic_artifact_payload(mismatched_prompt_per_request_claim)
+
+    bad_prompt_per_request_claim = json.loads(json.dumps(payload))
+    bad_prompt_per_request_claim["workload"]["prompt_tokens_per_request"] = -1
+    with pytest.raises(ValueError, match="workload.prompt_tokens_per_request must be a non-negative int"):
+        validate_cn_diagnostic_artifact_payload(bad_prompt_per_request_claim)
 
     mismatched_prompt_aggregate_claim = json.loads(json.dumps(payload))
     mismatched_prompt_aggregate_claim["workload"]["prompt_tokens_aggregate"] = 6
