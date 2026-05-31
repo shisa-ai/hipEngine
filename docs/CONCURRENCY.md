@@ -1452,7 +1452,8 @@ roll-up/status view.
       primitive device name to match `hardware.gpu` (with retained-bench hardware
       context resolved from the visible HIP device). Retained-bench command
       labels also preserve `HIP_VISIBLE_DEVICES=1` as an `env` prefix for the
-      benchmark, primitive correctness reference, and profiled command; schema
+      benchmark, primitive correctness reference, and profiled command, and the
+      serial-bridge baseline benchmark label preserves the same prefix; schema
       and c-sweep launch validators accept that prefix while still requiring the
       retained benchmark script after it. Accepted artifact validation now also
       requires those command prefixes whenever retained hardware/primitive device

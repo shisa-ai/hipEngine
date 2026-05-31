@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import shlex
 import statistics
 import subprocess
@@ -37,6 +38,16 @@ DEFAULT_MODEL = (
     "snapshots/dca2736e88e9f70855128fc81a8e918043a163cd"
 )
 DEFAULT_FIXTURE = "fixtures/qwen35_paro/parent_512_32_seed1234.json"
+_COMMAND_ENV_KEYS = ("HIP_VISIBLE_DEVICES",)
+
+
+def _command_env_prefix_parts() -> list[str]:
+    assignments = [
+        f"{key}={value}"
+        for key in _COMMAND_ENV_KEYS
+        if (value := os.environ.get(key)) is not None
+    ]
+    return ["env", *assignments] if assignments else []
 
 
 def _load_prompt_slices(path: Path, *, prompt_length: int, batch_size: int) -> list[list[int]]:
@@ -136,7 +147,7 @@ def _hardware_context() -> dict[str, Any]:
 
 
 def _command(argv: Sequence[str] | None) -> str:
-    parts = ["python3", "scripts/qwen35_batch_serial_bench.py"]
+    parts = [*_command_env_prefix_parts(), "python3", "scripts/qwen35_batch_serial_bench.py"]
     parts.extend(sys.argv[1:] if argv is None else list(argv))
     return " ".join(shlex.quote(part) for part in parts)
 

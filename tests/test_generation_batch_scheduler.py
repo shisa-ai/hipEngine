@@ -56,6 +56,7 @@ from scripts import qwen35_batch_correctness as batch_correctness
 from scripts import qwen35_batch_gguf_diagnostic as gguf_diagnostic
 from scripts import qwen35_batch_int8_diagnostic as int8_diagnostic
 from scripts import qwen35_batch_retained_bench as retained_bench
+from scripts import qwen35_batch_serial_bench as serial_bench
 from scripts.qwen35_batch_artifact_schema import (
     DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS,
     DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS,
@@ -10694,6 +10695,19 @@ def test_qwen35_batch_serial_bench_helpers_summarize_and_slice(tmp_path) -> None
     assert stats["min"] == 1.0
     assert stats["max"] == 10.0
     assert stats["stdev"] > 0.0
+
+
+def test_qwen35_batch_serial_bench_command_preserves_visible_hip_device_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
+
+    command = serial_bench._command(["--batch-size", "2", "--json", "benchmarks/results/serial-c2.json"])
+
+    assert shlex.split(command)[:4] == [
+        "env",
+        "HIP_VISIBLE_DEVICES=1",
+        "python3",
+        "scripts/qwen35_batch_serial_bench.py",
+    ]
 
 
 def test_qwen35_batch_diagnostic_artifact_schema_requires_label_fields() -> None:
