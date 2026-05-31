@@ -2315,6 +2315,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             artifact_path_for_symlink_check = (
                 artifact_path_for_symlink_check if artifact_path_for_symlink_check.is_absolute() else REPO_ROOT / artifact_path_for_symlink_check
             )
+            if artifact_path_for_symlink_check.is_symlink():
+                errors.append("commands[].artifact_path must be a regular file, not a symlink")
+                break
             if _path_has_symlink_parent(artifact_path_for_symlink_check):
                 errors.append("commands[].artifact_path parent directories must not be symlinks")
                 break
