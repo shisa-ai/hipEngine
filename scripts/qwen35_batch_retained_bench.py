@@ -303,6 +303,9 @@ def _graph_kernel_time_histogram_blockers(scheduler_metadata: Mapping[str, Any])
     total_observations = 0
     blockers: list[str] = []
     allowed_buckets = set(GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS)
+    if set(histogram) != allowed_buckets:
+        allowed = ", ".join(GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS)
+        blockers.append(f"execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns must include exactly the fixed buckets {allowed}")
     for bucket, count in histogram.items():
         if not isinstance(bucket, str) or bucket not in allowed_buckets:
             blockers.append(f"execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns.{bucket} is not a known bucket")

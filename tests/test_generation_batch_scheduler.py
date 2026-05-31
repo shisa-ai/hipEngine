@@ -15083,12 +15083,14 @@ def test_qwen35_retained_graph_histogram_blockers_reject_unknown_buckets() -> No
         {"graph_bucket_stats": {"kernel_time_histogram_ns": {"lt_1us": 1, "le_10us": 1}}}
     )
 
-    assert blockers == ["execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns.lt_1us is not a known bucket"]
+    assert "execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns.lt_1us is not a known bucket" in blockers
+    assert any("kernel_time_histogram_ns must include exactly the fixed buckets" in blocker for blocker in blockers)
 
     short_histogram = retained_bench._graph_kernel_time_histogram_blockers(
         {"graph_bucket_stats": {"hits": 2, "kernel_time_histogram_ns": {"le_10us": 1}}}
     )
     assert "execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns observation count must cover graph_bucket_stats.hits" in short_histogram
+    assert any("kernel_time_histogram_ns must include exactly the fixed buckets" in blocker for blocker in short_histogram)
 
 
 def test_qwen35_retained_graph_replay_profiler_evidence_blockers_require_graph_duration() -> None:

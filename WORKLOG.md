@@ -53164,3 +53164,23 @@ git diff --check
 ```
 
 Result: focused accepted graph histogram schema tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed queue items were not changed, no retained c>N performance/scaling claim was added, and accepted graph histogram evidence now requires the stable fixed-bucket schema while positive-observation gates still block claims without profiler evidence.
+
+## 2026-05-31 — CONCURRENCY retained graph histogram blocker fixed-bucket gate
+
+Applied the fixed graph histogram schema to the retained-bench blocker path: `_graph_kernel_time_histogram_blockers()` now reports a blocker unless `execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns` contains exactly the fixed `GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS` key set. The retained blocker test now covers both unknown buckets and sparse histograms missing zero-count fixed buckets. This is pre-acceptance evidence hardening only; no queue item was closed and no retained c>N performance/scaling claim was added.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 -m compileall -q scripts/qwen35_batch_retained_bench.py tests/test_generation_batch_scheduler.py && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_retained_graph_histogram_blockers_reject_unknown_buckets tests/test_generation_batch_scheduler.py::test_qwen35_retained_attaches_profiler_graph_kernel_time_histogram tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+git diff --check
+```
+
+Result: focused retained graph histogram blocker tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed queue items were not changed, no retained c>N performance/scaling claim was added, and sparse graph histogram evidence is blocked before accepted artifact schema validation.
