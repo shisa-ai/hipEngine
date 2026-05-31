@@ -7385,6 +7385,20 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
             with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match commands\[\]\.argv --json"):
                 c_sweep.validate_sweep_summary(tampered_artifact_link)
 
+        tampered_artifact_filename = json.loads(json.dumps(summary))
+        artifact_filename_entry = tampered_artifact_filename["commands"][index]
+        wrong_artifact_filename = str(
+            Path(artifact_filename_entry["artifact_path"]).with_name(
+                f"other-{Path(artifact_filename_entry['artifact_path']).name}"
+            )
+        )
+        artifact_filename_entry["artifact_path"] = wrong_artifact_filename
+        artifact_filename_argv = artifact_filename_entry["argv"]
+        artifact_filename_argv[artifact_filename_argv.index("--json") + 1] = wrong_artifact_filename
+        artifact_filename_entry["command"] = shlex.join(artifact_filename_argv)
+        with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match category/batch-size filename"):
+            c_sweep.validate_sweep_summary(tampered_artifact_filename)
+
         tampered_rows = json.loads(json.dumps(summary))
         rows_argv = tampered_rows["commands"][index]["argv"]
         rows_argv[rows_argv.index("--rows") + 1] = "9"
