@@ -28641,3 +28641,31 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`7 passed`), source-artifact and gap-report artifact checks passed, and the full StepFun guard passed (`111 passed` plus CPU-reference fixture checks). Prompt-verifier evidence: status tests cover the top-level readiness-gate/handoff/blocker gap-report fields and the future-ready path where KV blocker emission drops once evidence is present, no `import torch` was added to `hipengine/`, the changed status code adds no engine-wide backend or quant special-casing, and no StepFun performance claim was made.
+
+## 2026-05-31 — StepFun KV next-action gap command recorded
+
+Threaded `kv_backed_decode_gap_report` into `next_action_commands["kv_backed_decode_not_wired"]`. The status artifact now carries `gap_report_status`, the full `missing_evidence` list, and `first_missing_evidence=streaming_runner_ready_flags` next to the resource/status refresh commands, and the KV success criteria now explicitly require `kv_backed_decode_gap_report.status == ready` and an empty missing-evidence list before `kv_backed_decode_ready` can pass. This keeps the handoff focused on the first unresolved KV runner evidence item without changing readiness: `oracle_parity=false`, `kv_backed_decode_ready=false`, and `e2e_inference_ready=false` remain unchanged.
+
+Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, updated status tests, and clarified `docs/STEPFUN.md`. This remains blocker-handoff metadata only; no StepFun KV write/attention kernels are launched and no performance/e2e claim is made.
+
+Validation:
+
+```bash
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty --output /tmp/stepfun-source-verify.json
+python3 - <<'PY'
+import json
+p=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+cmd=p['next_action_commands']['kv_backed_decode_not_wired']
+assert cmd['gap_report_status'] == 'blocked'
+assert cmd['first_missing_evidence'] == 'streaming_runner_ready_flags'
+assert cmd['missing_evidence'] == p['kv_backed_decode_gap_report']['missing_evidence']
+assert cmd['success_criteria'][0] == 'kv_backed_decode_gap_report.status is ready'
+assert p['handoff_summary']['next_commands_available_for'] == ['oracle_parity_blocked', 'kv_backed_decode_not_wired']
+print('stepfun kv next-action gap command ok')
+PY
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`7 passed`), source-artifact and next-action gap-command artifact checks passed, and the full StepFun guard passed (`111 passed` plus CPU-reference fixture checks). Prompt-verifier evidence: status tests cover the new next-action gap-report fields, no `import torch` was added to `hipengine/`, the changed status helper adds no engine-wide backend or quant special-casing, and no StepFun performance claim was made.

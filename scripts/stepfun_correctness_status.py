@@ -467,6 +467,7 @@ def _resource_plan_refresh_command(
 def _next_action_commands(
     *,
     oracle_progress: dict[str, object],
+    kv_backed_decode_gap_report: dict[str, object],
     prompt_artifact: Path,
     oracle_artifact: Path,
     resource_artifact: Path,
@@ -480,6 +481,7 @@ def _next_action_commands(
         resource_artifact=resource_artifact,
         docs_path=docs_path,
     )
+    kv_missing_evidence = list(kv_backed_decode_gap_report.get("missing_evidence", []))
     return {
         "oracle_parity_blocked": {
             "rerun_command_shell": oracle_progress.get("command_shell"),
@@ -495,7 +497,12 @@ def _next_action_commands(
                 output_artifact=resource_artifact
             ),
             "status_refresh_command": status_refresh,
+            "gap_report_status": kv_backed_decode_gap_report.get("status"),
+            "missing_evidence": kv_missing_evidence,
+            "first_missing_evidence": kv_missing_evidence[0] if kv_missing_evidence else None,
             "success_criteria": [
+                "kv_backed_decode_gap_report.status is ready",
+                "kv_backed_decode_gap_report.missing_evidence is empty",
                 "kv_backed_decode_ready is true",
                 "readiness_gates.kv_backed_decode.ready is true",
                 "e2e_inference_ready is true only after oracle_parity is also true",
@@ -780,6 +787,7 @@ def build_status(
     )
     next_action_commands = _next_action_commands(
         oracle_progress=oracle_progress,
+        kv_backed_decode_gap_report=kv_backed_decode_gap_report,
         prompt_artifact=prompt_artifact,
         oracle_artifact=oracle_artifact,
         resource_artifact=resource_artifact,

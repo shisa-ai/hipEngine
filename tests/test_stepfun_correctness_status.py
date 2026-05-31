@@ -896,7 +896,20 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         f"--kv-context-pages 1 --kv-page-size 512 --pretty > {resource}"
     )
     assert kv_commands["status_refresh_command"] == oracle_commands["status_refresh_command"]
-    assert kv_commands["success_criteria"][-1] == "e2e_inference_ready is true only after oracle_parity is also true"
+    assert kv_commands["gap_report_status"] == "blocked"
+    assert kv_commands["missing_evidence"] == [
+        "streaming_runner_ready_flags",
+        "kv_kernel_launch_trace",
+        "kv_backed_next_token_artifact",
+    ]
+    assert kv_commands["first_missing_evidence"] == "streaming_runner_ready_flags"
+    assert kv_commands["success_criteria"] == [
+        "kv_backed_decode_gap_report.status is ready",
+        "kv_backed_decode_gap_report.missing_evidence is empty",
+        "kv_backed_decode_ready is true",
+        "readiness_gates.kv_backed_decode.ready is true",
+        "e2e_inference_ready is true only after oracle_parity is also true",
+    ]
     assert status["docs_checklist"]["open_or_partial_count_p0_p12"] == 2
     assert [item["state"] for item in status["docs_checklist"]["open_or_partial_items_p0_p12"]] == [
         "open",
@@ -1009,9 +1022,10 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
     assert payload["next_action_commands"]["oracle_parity_blocked"]["rerun_command_shell"].startswith(
         "/tmp/llama-cli"
     )
-    assert payload["next_action_commands"]["kv_backed_decode_not_wired"][
-        "resource_plan_refresh_command"
-    ].endswith(f"> {resource}")
+    kv_command = payload["next_action_commands"]["kv_backed_decode_not_wired"]
+    assert kv_command["resource_plan_refresh_command"].endswith(f"> {resource}")
+    assert kv_command["first_missing_evidence"] == "streaming_runner_ready_flags"
+    assert kv_command["success_criteria"][0] == "kv_backed_decode_gap_report.status is ready"
     assert len(payload["next_actions"]) == 2
     assert payload["docs_checklist"]["open_or_partial_count_p0_p12"] == 2
 

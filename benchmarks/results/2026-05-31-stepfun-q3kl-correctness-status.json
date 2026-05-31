@@ -39,7 +39,7 @@
         "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
       },
       {
-        "line": 602,
+        "line": 603,
         "state": "partial",
         "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
       }
@@ -812,9 +812,18 @@
   "model": "Step-3.7-flash-Q3_K_L",
   "next_action_commands": {
     "kv_backed_decode_not_wired": {
+      "first_missing_evidence": "streaming_runner_ready_flags",
+      "gap_report_status": "blocked",
+      "missing_evidence": [
+        "streaming_runner_ready_flags",
+        "kv_kernel_launch_trace",
+        "kv_backed_next_token_artifact"
+      ],
       "resource_plan_refresh_command": "python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan --kv-context-pages 1 --kv-page-size 512 --pretty > benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
       "status_refresh_command": "python3 scripts/stepfun_correctness_status.py --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --oracle-artifact benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json --resource-artifact benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json --docs docs/STEPFUN.md --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty",
       "success_criteria": [
+        "kv_backed_decode_gap_report.status is ready",
+        "kv_backed_decode_gap_report.missing_evidence is empty",
         "kv_backed_decode_ready is true",
         "readiness_gates.kv_backed_decode.ready is true",
         "e2e_inference_ready is true only after oracle_parity is also true"
@@ -1046,8 +1055,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "e8151c35bb70112bdc42e784f4abe6d10802cd87cd2d0c345e1f11ccb6241b48",
-      "size_bytes": 52059
+      "sha256": "3ce8d01809052a25c1d0ba69923936452307acc423ed10845cca61d05f91d33e",
+      "size_bytes": 52107
     },
     "oracle": {
       "exists": true,
