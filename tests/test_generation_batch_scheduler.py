@@ -11479,8 +11479,8 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
         validate_cn_diagnostic_artifact_payload(mismatched_prompt_per_request_claim)
 
     bad_prompt_per_request_claim = json.loads(json.dumps(payload))
-    bad_prompt_per_request_claim["workload"]["prompt_tokens_per_request"] = -1
-    with pytest.raises(ValueError, match="workload.prompt_tokens_per_request must be a non-negative int"):
+    bad_prompt_per_request_claim["workload"]["prompt_tokens_per_request"] = 0
+    with pytest.raises(ValueError, match="workload.prompt_tokens_per_request must be a positive int"):
         validate_cn_diagnostic_artifact_payload(bad_prompt_per_request_claim)
 
     mismatched_prompt_aggregate_claim = json.loads(json.dumps(payload))

@@ -2615,8 +2615,8 @@ def _validate_claimed_generated_token_equality(
     prompt_tokens_per_request = workload.get("prompt_tokens_per_request")
     prompt_tokens_per_request_valid = False
     if prompt_tokens_per_request is not None:
-        if not isinstance(prompt_tokens_per_request, int) or isinstance(prompt_tokens_per_request, bool) or prompt_tokens_per_request < 0:
-            errors.append("workload.prompt_tokens_per_request must be a non-negative int when present and generated_token_equality.passed is true")
+        if not isinstance(prompt_tokens_per_request, int) or isinstance(prompt_tokens_per_request, bool) or prompt_tokens_per_request <= 0:
+            errors.append("workload.prompt_tokens_per_request must be a positive int when present and generated_token_equality.passed is true")
         elif prompt_lengths_valid and any(length != prompt_tokens_per_request for length in prompt_lengths):
             errors.append("workload.prompt_tokens_per_request must match every workload.prompt_lengths entry when generated_token_equality.passed is true")
         else:
