@@ -20,6 +20,9 @@ DEFAULT_RESOURCE_ARTIFACT = Path(
     "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json"
 )
 DEFAULT_DOCS_PATH = Path("docs/STEPFUN.md")
+READY_EXIT_CODE = 0
+SOURCE_ARTIFACT_MISMATCH_EXIT_CODE = 1
+BLOCKED_EXIT_CODE = 2
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -926,6 +929,20 @@ def _handoff_summary(
         "open_blockers": blocker_kinds,
         "blocker_work_queue": blocker_work_queue,
         "first_blocker_work_item": blocker_work_queue[0] if blocker_work_queue else None,
+        "exit_codes": {
+            "ready": READY_EXIT_CODE,
+            "source_artifact_mismatch": SOURCE_ARTIFACT_MISMATCH_EXIT_CODE,
+            "blocked_when_fail_on_blocked": BLOCKED_EXIT_CODE,
+            "current_with_fail_on_blocked": (
+                READY_EXIT_CODE if not blocker_kinds else BLOCKED_EXIT_CODE
+            ),
+        },
+        "compact_output_modes": {
+            "summary_only": "handoff_summary",
+            "blocker_work_queue_only": "handoff_summary.blocker_work_queue",
+            "first_blocker_only": "handoff_summary.first_blocker_work_item",
+            "fail_on_blocked_preserves_payload": True,
+        },
         "ready_gates": ready_gates,
         "blocked_gates": blocked_gates,
         "ready_signals": {
@@ -1193,7 +1210,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             pretty=args.pretty,
             output=args.output,
         )
-        return 0 if verification["all_match"] is True else 1
+        return READY_EXIT_CODE if verification["all_match"] is True else SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
     status = build_status(
         args.prompt_artifact,
         args.oracle_artifact,
@@ -1214,8 +1231,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         output=args.output,
     )
     if args.fail_on_blocked and status["status"] != "ready":
-        return 2
-    return 0
+        return BLOCKED_EXIT_CODE
+    return READY_EXIT_CODE
 
 
 if __name__ == "__main__":  # pragma: no cover

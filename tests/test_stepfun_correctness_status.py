@@ -897,6 +897,18 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         },
     ]
     assert handoff["first_blocker_work_item"] == handoff["blocker_work_queue"][0]
+    assert handoff["exit_codes"] == {
+        "ready": 0,
+        "source_artifact_mismatch": 1,
+        "blocked_when_fail_on_blocked": 2,
+        "current_with_fail_on_blocked": 2,
+    }
+    assert handoff["compact_output_modes"] == {
+        "summary_only": "handoff_summary",
+        "blocker_work_queue_only": "handoff_summary.blocker_work_queue",
+        "first_blocker_only": "handoff_summary.first_blocker_work_item",
+        "fail_on_blocked_preserves_payload": True,
+    }
     assert handoff["ready_gates"] == []
     assert handoff["blocked_gates"] == ["oracle_parity", "kv_backed_decode", "e2e_inference"]
     assert handoff["ready_signals"] == {
@@ -1212,6 +1224,10 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
     assert payload["handoff_summary"]["blocker_work_queue"][1][
         "first_streaming_runner_blocker"
     ] == "streaming_decode_loop_not_wired"
+    assert payload["handoff_summary"]["exit_codes"]["current_with_fail_on_blocked"] == 2
+    assert payload["handoff_summary"]["compact_output_modes"]["first_blocker_only"] == (
+        "handoff_summary.first_blocker_work_item"
+    )
     assert payload["handoff_summary"]["blocked_gates"] == [
         "oracle_parity",
         "kv_backed_decode",
@@ -1303,6 +1319,18 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         },
     ]
     assert payload["first_blocker_work_item"] == payload["blocker_work_queue"][0]
+    assert payload["exit_codes"] == {
+        "ready": 0,
+        "source_artifact_mismatch": 1,
+        "blocked_when_fail_on_blocked": 2,
+        "current_with_fail_on_blocked": 2,
+    }
+    assert payload["compact_output_modes"] == {
+        "summary_only": "handoff_summary",
+        "blocker_work_queue_only": "handoff_summary.blocker_work_queue",
+        "first_blocker_only": "handoff_summary.first_blocker_work_item",
+        "fail_on_blocked_preserves_payload": True,
+    }
     assert payload["ready_signals"]["kv_decode_dispatch_ready"] is True
     assert payload["ready_signals"]["kv_decode_run_plan_recorded"] is True
     assert payload["ready_signals"]["kv_decode_input_upload_plan_recorded"] is True
