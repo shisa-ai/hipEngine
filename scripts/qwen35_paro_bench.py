@@ -16,6 +16,7 @@ import json
 import os
 import shlex
 import statistics
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -83,6 +84,33 @@ def _hardware_context() -> dict[str, Any]:
         "arch": "gfx1100",
         "default_hardware": gpu_name == "AMD Radeon Pro W7900",
         "visible_device": visible_device,
+    }
+
+
+def _run_capture(command: list[str], *, timeout: float = 5.0) -> dict[str, Any]:
+    try:
+        proc = subprocess.run(
+            command,
+            cwd=REPO_ROOT,
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=timeout,
+        )
+        return {"command": " ".join(shlex.quote(part) for part in command), "returncode": proc.returncode, "output": proc.stdout.strip()}
+    except Exception as exc:  # pragma: no cover - best-effort benchmark provenance.
+        return {"command": " ".join(shlex.quote(part) for part in command), "returncode": None, "output": f"{type(exc).__name__}: {exc}"}
+
+
+def _software_context() -> dict[str, Any]:
+    commit = _run_capture(["git", "rev-parse", "--short", "HEAD"])
+    dirty = subprocess.run(["git", "diff", "--quiet"], cwd=REPO_ROOT, check=False).returncode != 0
+    return {
+        "python": sys.version.split()[0],
+        "hipcc_version": _run_capture(["hipcc", "--version"], timeout=10.0)["output"],
+        "hipengine_commit": commit["output"],
+        "hipengine_dirty": dirty,
     }
 
 
@@ -379,6 +407,7 @@ def main() -> int:
         "requested_backend": args.backend,
         "target_arch": runner.target_arch,
         "hardware": _hardware_context(),
+        "software": _software_context(),
         "commands": {"benchmark": _command(None)},
         "mode": "actual_autoregressive_resident",
         "prompt_source": "repeated_token_id" if args.token_id is not None else "prompt_tokenized_repeat",

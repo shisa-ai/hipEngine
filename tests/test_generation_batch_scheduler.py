@@ -11449,6 +11449,31 @@ def test_qwen35_c1_baseline_command_preserves_visible_hip_device_env(monkeypatch
     ]
 
 
+def test_qwen35_c1_baseline_software_context_records_git_dirty_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeProc:
+        def __init__(self, returncode: int) -> None:
+            self.returncode = returncode
+            self.stdout = ""
+
+    monkeypatch.setattr(
+        paro_bench,
+        "_run_capture",
+        lambda command, *, timeout=5.0: {
+            "command": " ".join(command),
+            "returncode": 0,
+            "output": "abc123" if command[:2] == ["git", "rev-parse"] else "hipcc 6.2",
+        },
+    )
+    monkeypatch.setattr(paro_bench.subprocess, "run", lambda *args, **kwargs: FakeProc(1))
+
+    software = paro_bench._software_context()
+
+    assert software["hipengine_commit"] == "abc123"
+    assert software["hipcc_version"] == "hipcc 6.2"
+    assert software["hipengine_dirty"] is True
+    assert software["python"]
+
+
 def test_qwen35_c1_baseline_artifact_path_self_binding_is_scaling_reference_compatible(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
