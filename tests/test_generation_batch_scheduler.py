@@ -7265,6 +7265,12 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     ]
     assert all(tuple(entry["argv"][:2]) == ("env", "HIP_VISIBLE_DEVICES=1") for entry in primitive_entries)
     assert [entry["argv"][entry["argv"].index("--rows") + 1] for entry in primitive_entries] == ["1", "2", "4", "8"]
+    assert [entry["argv"][entry["argv"].index("--seed") + 1] for entry in primitive_entries] == [
+        "1234",
+        "1234",
+        "1234",
+        "1234",
+    ]
     assert [entry["argv"][entry["argv"].index("--json") + 1] for entry in primitive_entries] == [
         str(tmp_path / "artifacts" / "primitive-c1.json"),
         str(tmp_path / "artifacts" / "primitive-c2.json"),
