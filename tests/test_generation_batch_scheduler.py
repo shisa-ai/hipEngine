@@ -7062,7 +7062,6 @@ def test_batch_c_sweep_can_plan_gguf_blocked_diagnostics(tmp_path: Path, monkeyp
     gguf_entry_indices = [
         index for index, entry in enumerate(summary["commands"]) if entry["category"] == "gguf_native_diagnostic"
     ]
-    gguf_entry_index = gguf_entry_indices[0]
     stale_template_flag_cases = (
         (
             "--fixture",
@@ -7124,6 +7123,27 @@ def test_batch_c_sweep_can_plan_gguf_blocked_diagnostics(tmp_path: Path, monkeyp
     tampered_duplicate_quant["commands"][duplicate_index]["command"] = shlex.join(duplicate_argv)
     with pytest.raises(ValueError, match=r"commands\[\] GGUF quant order must match the template quant set for each c>1"):
         c_sweep.validate_sweep_summary(tampered_duplicate_quant)
+
+    tampered_swapped_quant_order = json.loads(json.dumps(summary))
+    first_index, second_index = gguf_entry_indices[:2]
+    first_entry = tampered_swapped_quant_order["commands"][first_index]
+    second_entry = tampered_swapped_quant_order["commands"][second_index]
+    first_argv = first_entry["argv"]
+    second_argv = second_entry["argv"]
+    first_quant = first_argv[first_argv.index("--quant") + 1]
+    second_quant = second_argv[second_argv.index("--quant") + 1]
+    first_artifact_path = first_entry["artifact_path"]
+    second_artifact_path = second_entry["artifact_path"]
+    first_argv[first_argv.index("--quant") + 1] = second_quant
+    first_argv[first_argv.index("--json") + 1] = second_artifact_path
+    first_entry["artifact_path"] = second_artifact_path
+    first_entry["command"] = shlex.join(first_argv)
+    second_argv[second_argv.index("--quant") + 1] = first_quant
+    second_argv[second_argv.index("--json") + 1] = first_artifact_path
+    second_entry["artifact_path"] = first_artifact_path
+    second_entry["command"] = shlex.join(second_argv)
+    with pytest.raises(ValueError, match=r"commands\[\] GGUF quant order must match the template quant set for each c>1"):
+        c_sweep.validate_sweep_summary(tampered_swapped_quant_order)
 
     for index in gguf_entry_indices:
         for tamper_argv_json in (False, True):
