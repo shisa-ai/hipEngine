@@ -1,0 +1,96 @@
+{
+  "artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json",
+  "command": [
+    "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli",
+    "--model",
+    "/data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf",
+    "--prompt",
+    "<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n",
+    "--predict",
+    "1",
+    "--temp",
+    "0",
+    "--top-k",
+    "1",
+    "--top-p",
+    "1",
+    "--min-p",
+    "0",
+    "--repeat-penalty",
+    "1",
+    "--seed",
+    "0",
+    "--no-display-prompt",
+    "--simple-io",
+    "--device",
+    "none",
+    "--gpu-layers",
+    "0"
+  ],
+  "command_shell": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --prompt '<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n' --predict 1 --temp 0 --top-k 1 --top-p 1 --min-p 0 --repeat-penalty 1 --seed 0 --no-display-prompt --simple-io --device none --gpu-layers 0",
+  "comparison_policy": {
+    "exact_text_match_field": "text_matches_expected_exact",
+    "expected_text_field": "expected_next_token_text",
+    "generated_text_source": "llama-cli stdout with --no-display-prompt --simple-io",
+    "stripped_text_match_field": "text_matches_expected_stripped"
+  },
+  "diagnostic_logs": true,
+  "expected_next_token_id": 369,
+  "expected_next_token_logit": 19.158626556396484,
+  "expected_next_token_text": " |",
+  "expected_top_tokens": [
+    {
+      "logit": 19.158626556396484,
+      "rank": 1,
+      "token_id": 369,
+      "token_text": " |"
+    },
+    {
+      "logit": 18.343582153320312,
+      "rank": 2,
+      "token_id": 5,
+      "token_text": "#"
+    },
+    {
+      "logit": 16.907772064208984,
+      "rank": 3,
+      "token_id": 15251,
+      "token_text": "\ufeff"
+    },
+    {
+      "logit": 16.793684005737305,
+      "rank": 4,
+      "token_id": 223,
+      "token_text": " "
+    },
+    {
+      "logit": 15.653017044067383,
+      "rank": 5,
+      "token_id": 201,
+      "token_text": "\n"
+    }
+  ],
+  "extra_llama_args": [
+    "--device",
+    "none",
+    "--gpu-layers",
+    "0"
+  ],
+  "generated_text": "",
+  "llama_cli": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli",
+  "llama_cpp_version": "version: 9197 (fcae601e4)\nbuilt with GNU 15.2.1 for Linux x86_64",
+  "model": "/data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf",
+  "n_predict": 1,
+  "note": "Dry-run oracle plan by default. Use --execute only when the machine can afford a llama.cpp one-token run over the StepFun Q3_K_L GGUF shards; compare output/tokenization manually or with a follow-up parser before claiming parity.",
+  "oracle_blocker_detail": "llama.cpp oracle timed out before producing a comparable token",
+  "oracle_blocker_kind": "llama_cpp_oracle_timeout",
+  "prompt": "<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n",
+  "prompt_length": 23,
+  "status": "timeout",
+  "stderr": "",
+  "stdout": "",
+  "step35_supported": null,
+  "text_matches_expected_exact": false,
+  "text_matches_expected_stripped": false,
+  "timeout_s": 60.0
+}

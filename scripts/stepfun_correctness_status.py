@@ -13,7 +13,7 @@ DEFAULT_PROMPT_ARTIFACT = Path(
     "benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json"
 )
 DEFAULT_ORACLE_ARTIFACT = Path(
-    "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-oracle-exec-attempt.json"
+    "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json"
 )
 DEFAULT_DOCS_PATH = Path("docs/STEPFUN.md")
 

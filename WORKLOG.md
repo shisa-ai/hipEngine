@@ -27807,3 +27807,21 @@ Result: `3 passed`.
 ## 2026-05-31 — StepFun P11 runner item marked partial
 
 Updated `docs/STEPFUN.md` to mark the P11 Step GGUF runner checklist item as partial (`[~]`) instead of open. The current evidence is substantial — all three Q3_K_L shards load/plan, the host-composed chunked runner executes a 23-token prompt through all 45 layers and emits a next-token candidate, and the correctness-status artifact captures `all_layer_prompt_smoke=true`. The item remains partial because the path is still host-composed/chunked rather than the final KV-backed one-token decode runner, and oracle parity is blocked on a StepFun/`step35`-capable llama.cpp or CPU oracle.
+
+## 2026-05-31 — StepFun step35-capable llama.cpp timeout blocker
+
+Found a newer local llama.cpp Vulkan build at `/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli` (`version: 5479 (c7fe79f6)`) that accepts the StepFun/`step35` GGUF instead of failing immediately with `unknown model architecture`. Extended `scripts/stepfun_llamacpp_oracle.py` with repeatable `--llama-arg` support for extra llama-cli flags and structured timeout blocker fields, then attempted a bounded CPU/no-GPU oracle run:
+
+```bash
+python3 scripts/stepfun_llamacpp_oracle.py --llama-cli /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli --execute --diagnostic-logs --timeout-s 60 --llama-arg=--device --llama-arg=none --llama-arg=--gpu-layers --llama-arg=0 --output benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json --pretty
+```
+
+Artifact summary: `status=timeout`, `oracle_blocker_kind=llama_cpp_oracle_timeout`, empty stdout, non-empty stderr/loading logs, expected hipEngine token remains `next_token_id=369` / decoded ` |`. Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json` to point at this more accurate oracle blocker instead of the older CPU build's architecture-support failure. Oracle parity remains open; this is blocker evidence only.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_llamacpp_oracle.py -q
+```
+
+Result: targeted oracle tests passed.

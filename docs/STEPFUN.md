@@ -580,11 +580,13 @@ reporting.
   `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-oracle-exec-attempt.json`
   uses diagnostic logs and fails before generation because the local
   `/home/lhl/ai/llama.cpp-cpu/llama-cli` does not support GGUF architecture
-  `step35` (`unknown model architecture: 'step35'`); the JSON now exposes
-  `oracle_blocker_kind=llama_cpp_missing_step35_architecture` and
-  `step35_supported=false` for machine-checkable blocker handling. Remaining implementation
-  task: use/build a StepFun-capable llama.cpp oracle and review/record the
-  parsed result; KV-backed decode parity remains open too. The consolidated
+  `step35` (`unknown model architecture: 'step35'`). A newer local Vulkan
+  llama.cpp build (`/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli`,
+  version `5479`) accepts `step35` but the bounded CPU/no-GPU oracle attempt in
+  `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json`
+  timed out before producing a comparable token (`oracle_blocker_kind=llama_cpp_oracle_timeout`).
+  Remaining implementation task: run a longer/faster StepFun-capable llama.cpp
+  oracle and review/record the parsed result; KV-backed decode parity remains open too. The consolidated
   correctness-status artifact records both blockers (`oracle_parity_blocked`,
   `kv_backed_decode_not_wired`) for the current all-layer prompt smoke plus
   machine-readable next actions for each blocker.

@@ -67,6 +67,7 @@ def test_stepfun_llamacpp_oracle_dry_run_builds_command(
     assert command[command.index("--top-p") + 1] == "1"
     assert command[command.index("--min-p") + 1] == "0"
     assert command[command.index("--repeat-penalty") + 1] == "1"
+    assert payload["extra_llama_args"] == []
     assert "--no-display-prompt" in command
     assert "--simple-io" in command
     assert "--log-disable" in command
@@ -166,6 +167,78 @@ def test_stepfun_llamacpp_oracle_execute_structures_step35_blocker(
     assert payload["text_matches_expected_exact"] is False
     assert payload["oracle_blocker_kind"] == "llama_cpp_missing_step35_architecture"
     assert payload["step35_supported"] is False
+
+
+def test_stepfun_llamacpp_oracle_appends_extra_args(capsys, tmp_path: Path) -> None:
+    artifact = tmp_path / "artifact.json"
+    _write_artifact(artifact)
+    llama_cli = tmp_path / "llama-cli"
+    llama_cli.write_text("#!/usr/bin/env bash\necho 'version: test (deadbeef)'\n")
+    llama_cli.chmod(0o755)
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"fake")
+
+    rc = main(
+        [
+            "--artifact",
+            str(artifact),
+            "--llama-cli",
+            str(llama_cli),
+            "--model",
+            str(model),
+            "--llama-arg=--device",
+            "--llama-arg=none",
+            "--llama-arg=--gpu-layers",
+            "--llama-arg=0",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    output = capsys.readouterr()
+    payload = json.loads(output.out)
+    assert payload["extra_llama_args"] == ["--device", "none", "--gpu-layers", "0"]
+    assert payload["command"][-5:] == ["--device", "none", "--gpu-layers", "0", "--log-disable"]
+
+
+def test_stepfun_llamacpp_oracle_timeout_is_structured(capsys, tmp_path: Path) -> None:
+    artifact = tmp_path / "artifact.json"
+    _write_artifact(artifact)
+    llama_cli = tmp_path / "llama-cli"
+    llama_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "if [ \"$1\" = \"--version\" ]; then\n"
+        "  echo 'version: test (deadbeef)'\n"
+        "else\n"
+        "  sleep 2\n"
+        "fi\n"
+    )
+    llama_cli.chmod(0o755)
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"fake")
+
+    rc = main(
+        [
+            "--artifact",
+            str(artifact),
+            "--llama-cli",
+            str(llama_cli),
+            "--model",
+            str(model),
+            "--execute",
+            "--timeout-s",
+            "0.1",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    output = capsys.readouterr()
+    payload = json.loads(output.out)
+    assert payload["status"] == "timeout"
+    assert payload["oracle_blocker_kind"] == "llama_cpp_oracle_timeout"
+    assert payload["step35_supported"] is None
+    assert payload["text_matches_expected_exact"] is False
 
 
 def test_stepfun_llamacpp_oracle_diagnostic_logs_omit_log_disable(

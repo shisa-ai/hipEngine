@@ -6,10 +6,10 @@
   "backend": "hip_gfx1151",
   "blockers": [
     {
-      "artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-oracle-exec-attempt.json",
-      "detail": "local llama.cpp build reports unknown model architecture: 'step35'",
+      "artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
+      "detail": "llama.cpp oracle timed out before producing a comparable token",
       "kind": "oracle_parity_blocked",
-      "oracle_blocker_kind": "llama_cpp_missing_step35_architecture"
+      "oracle_blocker_kind": "llama_cpp_oracle_timeout"
     },
     {
       "artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json",
@@ -47,10 +47,10 @@
     }
   ],
   "note": "Host-composed all-layer prompt smoke is present; true e2e inference still needs oracle parity and KV-backed decode.",
-  "oracle_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-oracle-exec-attempt.json",
-  "oracle_blocker_kind": "llama_cpp_missing_step35_architecture",
+  "oracle_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
+  "oracle_blocker_kind": "llama_cpp_oracle_timeout",
   "oracle_parity": false,
   "prompt_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json",
   "status": "blocked",
-  "step35_supported_by_local_llama_cpp": false
+  "step35_supported_by_local_llama_cpp": null
 }

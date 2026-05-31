@@ -24,6 +24,12 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--n-predict", type=int, default=1)
     parser.add_argument("--timeout-s", type=float, default=900.0)
+    parser.add_argument(
+        "--llama-arg",
+        action="append",
+        default=None,
+        help="Additional argument appended to llama-cli; repeat for each token (use --llama-arg=--flag for flags).",
+    )
     parser.add_argument("--execute", action="store_true", help="Run llama-cli instead of only emitting the plan.")
     parser.add_argument(
         "--diagnostic-logs",
@@ -123,6 +129,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--no-display-prompt",
         "--simple-io",
     ]
+    if args.llama_arg:
+        command.extend(args.llama_arg)
     if not args.diagnostic_logs:
         command.append("--log-disable")
     result: dict[str, object] = {
@@ -133,6 +141,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "model": str(args.model),
         "n_predict": args.n_predict,
         "diagnostic_logs": bool(args.diagnostic_logs),
+        "extra_llama_args": list(args.llama_arg or ()),
         "command": command,
         "command_shell": shlex.join(command),
         "prompt": prompt,
@@ -171,7 +180,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "stdout": stdout,
                     "stderr": stderr,
                     **_comparison_fields(stdout, result.get("expected_next_token_text")),
-                    **_blocker_fields(stderr),
+                    **(
+                        _blocker_fields(stderr)
+                        if _blocker_fields(stderr)["oracle_blocker_kind"] is not None
+                        else {
+                            "oracle_blocker_kind": "llama_cpp_oracle_timeout",
+                            "oracle_blocker_detail": "llama.cpp oracle timed out before producing a comparable token",
+                            "step35_supported": None,
+                        }
+                    ),
                 }
             )
         else:
