@@ -1311,8 +1311,13 @@ roll-up/status view.
       `/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-batch-gemv-out-native-full-atol4e-3-focus1269.json`
       keeps generated tokens green but is hidden-only red (`status=mismatch_found`,
       first hidden failure step 6 / row 1 `max_abs=0.0124053955078125`), with
-      `native_full_attention_layers=2` and no per-row-full blocker. This shifts
-      the current C2.3/C2.4 target to native batched output fallback/retention,
+      `native_full_attention_layers=2` and no per-row-full blocker. Forcing only
+      the full-attention input/RMSNorm boundary per row at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-batch-gemv-out-native-full-perrow-input-atol4e-3-focus1269.json`
+      does not clear that native-full path (`status=mismatch_found`, tokens green,
+      first hidden failure step 6 / row 0 `max_abs=0.027587890625`), so the
+      failure is not resolved by that boundary fallback alone. This shifts the
+      current C2.3/C2.4 target to native batched output fallback/retention,
       residual projection exactness/amplification, and native full-attention
       hidden parity; raw `recurrent_out` stage summaries from segmented state are
       not equivalent to token-1 decode post-gate `recurrent_out` and must not be
