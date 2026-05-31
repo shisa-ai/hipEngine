@@ -2608,8 +2608,8 @@ def _validate_claimed_generated_token_equality(
             errors.append("workload.prompt_lengths must be a list when present and generated_token_equality.passed is true")
         elif concurrency_valid and len(prompt_lengths) != concurrency:
             errors.append("workload.prompt_lengths length must match workload.concurrency when generated_token_equality.passed is true")
-        elif any(not isinstance(length, int) or isinstance(length, bool) or length < 0 for length in prompt_lengths):
-            errors.append("workload.prompt_lengths entries must be non-negative ints when generated_token_equality.passed is true")
+        elif any(not isinstance(length, int) or isinstance(length, bool) or length <= 0 for length in prompt_lengths):
+            errors.append("workload.prompt_lengths entries must be positive ints when generated_token_equality.passed is true")
         else:
             prompt_lengths_valid = True
     prompt_tokens_per_request = workload.get("prompt_tokens_per_request")
