@@ -7352,6 +7352,21 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.batch_size must be a positive int"):
             c_sweep.validate_sweep_summary(tampered_missing_batch_size)
 
+        tampered_status = json.loads(json.dumps(summary))
+        tampered_status["commands"][index]["status"] = "passed"
+        with pytest.raises(ValueError, match=r"commands\[\]\.status must be planned for dry-run summaries"):
+            c_sweep.validate_sweep_summary(tampered_status)
+
+        tampered_returncode = json.loads(json.dumps(summary))
+        tampered_returncode["commands"][index]["returncode"] = 0
+        with pytest.raises(ValueError, match=r"commands\[\]\.returncode must be null for planned/skipped rows"):
+            c_sweep.validate_sweep_summary(tampered_returncode)
+
+        tampered_duration = json.loads(json.dumps(summary))
+        tampered_duration["commands"][index]["duration_seconds"] = 0.001
+        with pytest.raises(ValueError, match=r"commands\[\]\.duration_seconds must be zero for planned rows"):
+            c_sweep.validate_sweep_summary(tampered_duration)
+
         tampered_script = json.loads(json.dumps(summary))
         script_entry = tampered_script["commands"][index]
         script_argv = script_entry["argv"]
