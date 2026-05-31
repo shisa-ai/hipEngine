@@ -179,7 +179,9 @@ def _profiler_graph_kernel_time_histogram(profiler: Mapping[str, Any]) -> dict[s
             continue
         cache.record_kernel_time_ns(int(numeric_duration))
     histogram = cache.stats.kernel_time_histogram_ns
-    return {str(bucket): int(count) for bucket, count in histogram.items()} or None
+    if not histogram:
+        return None
+    return {bucket: int(histogram.get(bucket, 0)) for bucket in GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS}
 
 
 def _attach_profiler_graph_kernel_time_histogram(scheduler_metadata: dict[str, Any], profiler: Mapping[str, Any]) -> None:

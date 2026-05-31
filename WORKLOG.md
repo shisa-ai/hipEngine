@@ -53184,3 +53184,23 @@ git diff --check
 ```
 
 Result: focused retained graph histogram blocker tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed queue items were not changed, no retained c>N performance/scaling claim was added, and sparse graph histogram evidence is blocked before accepted artifact schema validation.
+
+## 2026-05-31 — CONCURRENCY profiler graph histogram helper schema
+
+Normalized the profiler-only graph histogram helper to the fixed bucket schema: `_profiler_graph_kernel_time_histogram()` now returns `None` only when there are no valid integer profiler durations, and otherwise returns every `GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS` key with zero counts for unobserved buckets. The retained histogram merge test now asserts the helper's fixed-bucket output before merge. This keeps scheduler JSON, retained profiler merge, accepted artifact validation, and profiler-derived helper output aligned. No queue item was closed and no retained c>N performance/scaling claim was added.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 -m compileall -q scripts/qwen35_batch_retained_bench.py tests/test_generation_batch_scheduler.py && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_retained_attaches_profiler_graph_kernel_time_histogram tests/test_generation_batch_scheduler.py::test_qwen35_retained_graph_histogram_blockers_reject_unknown_buckets tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+git diff --check
+```
+
+Result: focused profiler graph histogram helper tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed queue items were not changed, no retained c>N performance/scaling claim was added, and profiler-derived graph histogram evidence now uses the stable fixed-bucket schema while positive-observation gates still block claims without real profiler evidence.
