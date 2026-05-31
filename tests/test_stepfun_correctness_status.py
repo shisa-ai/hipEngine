@@ -959,6 +959,8 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "kv_kernel_launch_trace",
         "kv_backed_next_token_artifact",
     ]
+    assert kv_blocker["streaming_runner_blocker_count"] == 3
+    assert kv_blocker["first_streaming_runner_blocker"] == "streaming_decode_loop_not_wired"
     assert {action["blocker_kind"] for action in status["next_actions"]} == {
         "oracle_parity_blocked",
         "kv_backed_decode_not_wired",
@@ -996,6 +998,8 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "kv_backed_next_token_artifact",
     ]
     assert kv_commands["first_missing_evidence"] == "streaming_runner_ready_flags"
+    assert kv_commands["streaming_runner_blocker_count"] == 3
+    assert kv_commands["first_streaming_runner_blocker"] == "streaming_decode_loop_not_wired"
     assert kv_commands["success_criteria"] == [
         "kv_backed_decode_gap_report.status is ready",
         "kv_backed_decode_gap_report.missing_evidence is empty",
@@ -1173,6 +1177,8 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
     kv_command = payload["next_action_commands"]["kv_backed_decode_not_wired"]
     assert kv_command["resource_plan_refresh_command"].endswith(f"> {resource}")
     assert kv_command["first_missing_evidence"] == "streaming_runner_ready_flags"
+    assert kv_command["first_streaming_runner_blocker"] == "streaming_decode_loop_not_wired"
+    assert kv_command["streaming_runner_blocker_count"] == 3
     assert kv_command["success_criteria"][0] == "kv_backed_decode_gap_report.status is ready"
     assert len(payload["next_actions"]) == 2
     assert payload["docs_checklist"]["open_or_partial_count_p0_p12"] == 2

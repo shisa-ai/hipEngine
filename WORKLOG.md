@@ -28791,3 +28791,33 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`8 passed`), source-artifact/KV gap blocker cross-link checks passed, and the full StepFun guard passed (`112 passed` plus CPU-reference fixture checks). Prompt-verifier evidence: status tests cover the new cross-linked runner-blocker fields, no `import torch` was added to `hipengine/`, the changed status helper adds no engine-wide backend or quant special-casing, and no StepFun performance claim was made.
+
+## 2026-05-31 — StepFun KV blocker command carries source blocker
+
+Threaded the first source-level streaming runner blocker into the KV-backed decode blocker and `next_action_commands["kv_backed_decode_not_wired"]`. The blocker and command now carry `streaming_runner_blocker_count=3` and `first_streaming_runner_blocker=streaming_decode_loop_not_wired`, matching `handoff_summary.kv_backed_decode_gap_report`, so agents following only the command/blocker payload can start with the resident decode-loop gap before looking for a retained kernel trace or KV-backed next-token artifact.
+
+Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, updated status tests, and clarified `docs/STEPFUN.md`. Current readiness is unchanged: `oracle_parity=false`, `kv_backed_decode_ready=false`, and `e2e_inference_ready=false`; no StepFun KV write/attention kernels are launched and no performance/e2e claim is made.
+
+Validation:
+
+```bash
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty --output /tmp/stepfun-source-verify.json
+python3 - <<'PY'
+import json
+p=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+cmd=p['next_action_commands']['kv_backed_decode_not_wired']
+blocker=next(b for b in p['blockers'] if b['kind']=='kv_backed_decode_not_wired')
+h=p['handoff_summary']['kv_backed_decode_gap_report']
+for obj in [cmd, blocker]:
+    assert obj['first_streaming_runner_blocker'] == h['first_streaming_runner_blocker'] == 'streaming_decode_loop_not_wired'
+    assert obj['streaming_runner_blocker_count'] == h['streaming_runner_blocker_count'] == 3
+assert cmd['first_missing_evidence'] == 'streaming_runner_ready_flags'
+assert p['kv_backed_decode_ready'] is False
+print('stepfun kv blocker command source-blocker artifact ok')
+PY
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`8 passed`), source-artifact/KV command source-blocker checks passed, and the full StepFun guard passed (`112 passed` plus CPU-reference fixture checks). Prompt-verifier evidence: status tests cover the new blocker/command source-blocker fields, no `import torch` was added to `hipengine/`, the changed status helper adds no engine-wide backend or quant special-casing, and no StepFun performance claim was made.

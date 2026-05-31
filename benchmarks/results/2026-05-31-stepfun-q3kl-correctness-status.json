@@ -26,6 +26,7 @@
     {
       "artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json",
       "detail": "KV dispatch registry keys are recorded as ready in the text resource plan; current all-layer prompt smoke is still host-composed prefill/logits, so the final KV-backed one-token decode runner remains open.",
+      "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
       "gap_report_status": "blocked",
       "kind": "kv_backed_decode_not_wired",
       "kv_decode_dispatch_ready": true,
@@ -34,7 +35,8 @@
         "kv_kernel_launch_trace",
         "kv_backed_next_token_artifact"
       ],
-      "resource_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json"
+      "resource_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
+      "streaming_runner_blocker_count": 3
     }
   ],
   "docs_checklist": {
@@ -924,6 +926,7 @@
   "next_action_commands": {
     "kv_backed_decode_not_wired": {
       "first_missing_evidence": "streaming_runner_ready_flags",
+      "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
       "gap_report_status": "blocked",
       "missing_evidence": [
         "streaming_runner_ready_flags",
@@ -932,6 +935,7 @@
       ],
       "resource_plan_refresh_command": "python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan --kv-context-pages 1 --kv-page-size 512 --pretty > benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
       "status_refresh_command": "python3 scripts/stepfun_correctness_status.py --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --oracle-artifact benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json --resource-artifact benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json --docs docs/STEPFUN.md --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty",
+      "streaming_runner_blocker_count": 3,
       "success_criteria": [
         "kv_backed_decode_gap_report.status is ready",
         "kv_backed_decode_gap_report.missing_evidence is empty",
@@ -1383,8 +1387,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "a657b2e21c2edccea946e5f1d7e6affc9af59db7ed62b4968f9941002610cb80",
-      "size_bytes": 52454
+      "sha256": "42ef67c2e84e51dbd1d364583d59294cf91e374b01975026d1e801c59046c46a",
+      "size_bytes": 52501
     },
     "oracle": {
       "exists": true,

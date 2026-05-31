@@ -639,6 +639,12 @@ def _next_action_commands(
             "gap_report_status": kv_backed_decode_gap_report.get("status"),
             "missing_evidence": kv_missing_evidence,
             "first_missing_evidence": kv_backed_decode_gap_report.get("first_missing_evidence"),
+            "streaming_runner_blocker_count": kv_backed_decode_gap_report.get(
+                "streaming_runner_blocker_count"
+            ),
+            "first_streaming_runner_blocker": kv_backed_decode_gap_report.get(
+                "first_streaming_runner_blocker"
+            ),
             "success_criteria": [
                 "kv_backed_decode_gap_report.status is ready",
                 "kv_backed_decode_gap_report.missing_evidence is empty",
@@ -995,6 +1001,12 @@ def build_status(
                 "kv_decode_dispatch_ready": kv_decode_dispatch_ready,
                 "gap_report_status": kv_backed_decode_gap_report.get("status"),
                 "missing_evidence": list(kv_backed_decode_gap_report.get("missing_evidence", [])),
+                "streaming_runner_blocker_count": kv_backed_decode_gap_report.get(
+                    "streaming_runner_blocker_count"
+                ),
+                "first_streaming_runner_blocker": kv_backed_decode_gap_report.get(
+                    "first_streaming_runner_blocker"
+                ),
             }
         )
     next_actions = []
