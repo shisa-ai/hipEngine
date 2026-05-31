@@ -13112,6 +13112,49 @@ def test_qwen35_retained_payload_orders_latency_samples_by_admission_row(monkeyp
     assert payload["observability"]["request_latency_seconds"]["p95"] == 2.5
 
 
+def test_qwen35_retained_request_observability_blockers_cover_row_evidence() -> None:
+    valid = {
+        "0": {
+            "queue_seconds": 0.1,
+            "prefill_seconds": 0.2,
+            "decode_seconds": 0.3,
+            "kv_pages_owned": 2,
+            "kv_pages_peak": 3,
+            "bucket_key": "decode:c=2:ctx=512:mask=11",
+            "admission_blocked_reason": None,
+            "finish_reason": "length",
+            "admitted_timestamp": 10.0,
+            "completion_timestamp": 11.0,
+        },
+        "1": {
+            "queue_seconds": 0.1,
+            "prefill_seconds": 0.2,
+            "decode_seconds": 0.3,
+            "kv_pages_owned": 2,
+            "kv_pages_peak": 3,
+            "bucket_key": "decode:c=2:ctx=512:mask=11",
+            "admission_blocked_reason": None,
+            "finish_reason": "length",
+            "admitted_timestamp": 20.0,
+            "completion_timestamp": 22.5,
+        },
+    }
+    assert retained_bench._request_observability_blockers(valid, expected_concurrency=2) == []
+
+    invalid = json.loads(json.dumps(valid))
+    invalid["2"] = invalid.pop("1")
+    invalid["0"].pop("decode_seconds")
+    invalid["0"]["kv_pages_peak"] = 1
+    invalid["0"]["completion_timestamp"] = 9.0
+    invalid["0"]["bucket_key"] = " "
+    blockers = retained_bench._request_observability_blockers(invalid, expected_concurrency=2)
+    assert "observability.per_request keys do not match expected row ids" in blockers
+    assert "observability.per_request.0.decode_seconds is missing" in blockers
+    assert "observability.per_request.0.completion_timestamp is not greater than admitted_timestamp" in blockers
+    assert "observability.per_request.0.kv_pages_peak is below kv_pages_owned" in blockers
+    assert "observability.per_request.0.bucket_key is not a non-empty string or null" in blockers
+
+
 def test_qwen35_retained_artifact_paths_reject_symlink_escapes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

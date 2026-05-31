@@ -2540,6 +2540,72 @@ def _sampler_execution_blockers(batch_execution: Mapping[str, Any], *, expected_
     return blockers
 
 
+def _request_observability_blockers(per_request: Any, *, expected_concurrency: int) -> list[str]:
+    if not isinstance(per_request, Mapping):
+        return ["observability.per_request is missing"]
+    blockers: list[str] = []
+    expected_keys = {str(request_id) for request_id in range(expected_concurrency)}
+    if set(per_request.keys()) != expected_keys:
+        blockers.append("observability.per_request keys do not match expected row ids")
+    required_fields = (
+        "queue_seconds",
+        "prefill_seconds",
+        "decode_seconds",
+        "kv_pages_owned",
+        "kv_pages_peak",
+        "bucket_key",
+        "admission_blocked_reason",
+        "finish_reason",
+        "admitted_timestamp",
+        "completion_timestamp",
+    )
+    for request_id, row in per_request.items():
+        label = f"observability.per_request.{request_id}"
+        if not isinstance(row, Mapping):
+            blockers.append(f"{label} is not an object")
+            continue
+        for field in required_fields:
+            if field not in row:
+                blockers.append(f"{label}.{field} is missing")
+        for field in ("queue_seconds", "prefill_seconds", "decode_seconds", "admitted_timestamp", "completion_timestamp"):
+            if field in row and not _is_finite_nonnegative_number(row.get(field)):
+                blockers.append(f"{label}.{field} is unavailable or non-finite")
+        admitted_timestamp = row.get("admitted_timestamp")
+        completion_timestamp = row.get("completion_timestamp")
+        if (
+            _is_finite_nonnegative_number(admitted_timestamp)
+            and _is_finite_nonnegative_number(completion_timestamp)
+            and float(completion_timestamp) <= float(admitted_timestamp)
+        ):
+            blockers.append(f"{label}.completion_timestamp is not greater than admitted_timestamp")
+        for field in ("kv_pages_owned", "kv_pages_peak"):
+            value = row.get(field)
+            if field in row and (not isinstance(value, int) or isinstance(value, bool) or value < 0):
+                blockers.append(f"{label}.{field} is not a non-negative int")
+        kv_pages_owned = row.get("kv_pages_owned")
+        kv_pages_peak = row.get("kv_pages_peak")
+        if (
+            isinstance(kv_pages_owned, int)
+            and not isinstance(kv_pages_owned, bool)
+            and kv_pages_owned >= 0
+            and isinstance(kv_pages_peak, int)
+            and not isinstance(kv_pages_peak, bool)
+            and kv_pages_peak >= 0
+            and kv_pages_peak < kv_pages_owned
+        ):
+            blockers.append(f"{label}.kv_pages_peak is below kv_pages_owned")
+        bucket_key = row.get("bucket_key")
+        if bucket_key is not None and (not isinstance(bucket_key, str) or not bucket_key.strip()):
+            blockers.append(f"{label}.bucket_key is not a non-empty string or null")
+        admission_blocked_reason = row.get("admission_blocked_reason")
+        if admission_blocked_reason is not None and (not isinstance(admission_blocked_reason, str) or not admission_blocked_reason.strip()):
+            blockers.append(f"{label}.admission_blocked_reason is not a non-empty string or null")
+        finish_reason = row.get("finish_reason")
+        if finish_reason is not None and (not isinstance(finish_reason, str) or not finish_reason.strip()):
+            blockers.append(f"{label}.finish_reason is not a non-empty string")
+    return blockers
+
+
 def _memory_evidence_blockers(
     memory: Mapping[str, Any],
     *,
@@ -3257,6 +3323,16 @@ def _build_payload(
         expected_kv_policy=kv_policy_json(kv_policy),
         expected_kv_storage_dtype=kv_policy.storage_dtype.value,
     )
+    raw_per_request_observability = bench.get("request_observability")
+    per_request_observability = (
+        dict(raw_per_request_observability)
+        if isinstance(raw_per_request_observability, Mapping)
+        else raw_per_request_observability
+    )
+    observability_blockers = _request_observability_blockers(
+        per_request_observability,
+        expected_concurrency=args.batch_size,
+    )
     graph_bucket_blockers = _decode_shape_key_blockers(scheduler_metadata, concurrency=args.batch_size, prompt_length=args.prompt_length)
     graph_bucket_blockers.extend(_graph_bucket_evidence_blockers(scheduler_metadata))
     graph_bucket_blockers.extend(_graph_replay_profiler_evidence_blockers(scheduler_metadata, profiler))
@@ -3278,6 +3354,7 @@ def _build_payload(
         and not projection_blockers
         and not sampler_blockers
         and not memory_blockers
+        and not observability_blockers
         and not graph_bucket_blockers
         and not int8_kv_primitive_blockers
     )
@@ -3306,9 +3383,11 @@ def _build_payload(
     blocked_reasons.extend(projection_blockers)
     blocked_reasons.extend(sampler_blockers)
     blocked_reasons.extend(memory_blockers)
+    blocked_reasons.extend(observability_blockers)
     blocked_reasons.extend(graph_bucket_blockers)
     blocked_reasons.extend(int8_kv_primitive_blockers)
-    per_request_observability = dict(bench.get("request_observability", {}))
+    if not isinstance(per_request_observability, Mapping):
+        per_request_observability = {}
     admission_timestamps = {
         request_id: row.get("admitted_timestamp")
         for request_id, row in per_request_observability.items()
