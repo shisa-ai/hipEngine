@@ -7301,6 +7301,13 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     tampered_gguf_artifact["commands"][gguf_c8_index]["command"] = shlex.join(gguf_artifact_argv)
     with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match category/batch-size filename"):
         c_sweep.validate_sweep_summary(tampered_gguf_artifact)
+    for flag in ("--rows", "--backend", "--quant", "--max-new-tokens"):
+        tampered = json.loads(json.dumps(summary))
+        argv = tampered["commands"][gguf_c8_index]["argv"]
+        argv.extend([flag, argv[argv.index(flag) + 1]])
+        tampered["commands"][gguf_c8_index]["command"] = shlex.join(argv)
+        with pytest.raises(ValueError, match=r"commands\[\]\.argv must not repeat GGUF diagnostic flags"):
+            c_sweep.validate_sweep_summary(tampered)
 
     int8_index = int8_entry_indices[0]
     first_gguf_index = next(
