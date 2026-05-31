@@ -24407,3 +24407,52 @@ Next multiloop focus: one-at-a-time exactness/speed tests for the remaining W4
 site-mask candidates (especially `single_full_v` + `single_linear_out` generalization
 on D128/D160, or risky `shared_gate_up` only if measured independently).  Do not
 default this mask from D64-only evidence.
+
+## 2026-05-31 — DFlash multiloop iter21 threshold4 json→AR route
+
+Active loop: `dflash-27b-w7900/run-20260531-102747`.  Iteration 21 kept the
+threshold=4 verifier-cost lever only after routing its known non-exact prompt to
+AR.  Iteration 20 showed `HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD=4` is much
+faster but non-exact for `code:json_yaml_continuation`; this run clones the
+retained graph-aware manifest and forces that prompt to AR, leaving the other
+threshold=4 chain winners on the faster path.
+
+Command:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD=4 HIPENGINE_W4_MULTI_ROW_PACK8_SITES=full_qk,linear_qkv_z,dense_gate_up,single_full_o,single_full_v,single_linear_out,single_shared_down,single_dense_down PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --verifier-graph auto --full-attn-chain-mode batched --canonical-commit-mode bulk_direct --profile-route-manifest /tmp/multiloop-dflash-27b-w7900-threshold4-json-ar-manifest.json --drafter-query-mode budget_prefix --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/multiloop-dflash-27b-w7900.json
+```
+
+Result: exact `9/9`, DFlash/spec `40.69 tok/s`, AR `32.47 tok/s`, `1.2533x`
+AR.  This improves the retained `single_linear_out` stack from `1.2340x ->
+1.2533x` and `40.22 -> 40.69 tok/s` (+1.2% spec tok/s).  Route mix is now 6
+chain / 3 AR: `code:json_yaml_continuation` joins function-continuation and
+sort-third as AR fallbacks.  The lower threshold reduces drafter work indirectly
+because one former chain row is now AR; chain-row verifier graph validation still
+passes.
+
+This is **not defaulted**.  The stack is still profile-history routing + opt-in
+verifier graph + `bulk_direct` + `budget_prefix` + expanded W4 site mask +
+threshold=4.  Threshold=4 has a known non-exact chain row, so this is only a
+retained diagnostic route for this W7900 27B B=4/D64 gate.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/dflash_chain_e2e_bench.py scripts/dflash_build_profile_route_manifest.py hipengine/runtime/qwen35_paro.py
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_paro_awq_gemv_multi_row_decode.py tests/test_dflash_profile_route_manifest.py tests/test_dflash_draft_confidence.py tests/test_speculative_benchmark.py
+python3 -m json.tool benchmarks/results/2026-05-31-hipengine-dflash-27b-threshold4-json-ar-route.json >/tmp/hipengine-dflash-27b-threshold4-json-ar-artifact-check.json
+```
+
+Result: targeted pytest `17 passed`; artifact JSON valid.
+
+Retained artifact:
+- `benchmarks/results/2026-05-31-hipengine-dflash-27b-threshold4-json-ar-route.json`
+
+Docs/rollup updated:
+- `docs/DFLASH.md` table now includes the threshold4 json→AR route.
+- `benchmarks/README.md` and `benchmarks/CHANGELOG.md` retained diagnostic row.
+
+Next multiloop focus: validate this exact route on longer horizons (D128/D160)
+or look for a deployable route-history mechanism.  Do not default threshold=4
+or the expanded W4 site mask from this D64-only evidence.
