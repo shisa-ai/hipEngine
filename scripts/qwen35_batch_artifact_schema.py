@@ -2796,6 +2796,8 @@ def _validate_claimed_execution_completed_tokens(
     workload = payload.get("workload")
     prompt_lengths = workload.get("prompt_lengths") if isinstance(workload, Mapping) else None
     has_any_completed_prompt_tokens = any(isinstance(row, Mapping) and "prompt_tokens" in row for row in completed)
+    if has_any_completed_prompt_tokens and not isinstance(prompt_lengths, list):
+        errors.append("workload.prompt_lengths must be a list when completed prompt metadata is present and generated_token_equality.passed is true")
     seen_request_ids: set[int] = set()
     for index, row in enumerate(completed):
         if not isinstance(row, Mapping):
