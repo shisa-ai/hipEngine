@@ -39,6 +39,13 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Emit only the compact handoff_summary instead of the full status artifact.",
     )
+    parser.add_argument(
+        "--verify-source-artifacts",
+        type=Path,
+        default=None,
+        metavar="STATUS_JSON",
+        help="Verify source_artifacts in an existing status JSON against the current filesystem.",
+    )
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output")
     return parser.parse_args(argv)
 
@@ -78,6 +85,48 @@ def _source_artifacts(
         "oracle": _artifact_record(oracle_artifact),
         "text_resource": _artifact_record(resource_artifact),
         "docs": _artifact_record(docs_path),
+    }
+
+
+def _verify_source_artifacts(status_artifact: Path) -> dict[str, object]:
+    """Verify embedded source_artifacts provenance against current files."""
+
+    status = _load(status_artifact)
+    source_artifacts = status.get("source_artifacts", {})
+    if not isinstance(source_artifacts, dict) or not source_artifacts:
+        return {
+            "status": "missing_source_artifacts",
+            "status_artifact": str(status_artifact),
+            "all_match": False,
+            "checked_count": 0,
+            "records": {},
+        }
+    records: dict[str, object] = {}
+    all_match = True
+    for name, recorded_obj in source_artifacts.items():
+        recorded = dict(recorded_obj) if isinstance(recorded_obj, dict) else {}
+        path_value = recorded.get("path")
+        current = _artifact_record(Path(str(path_value))) if path_value is not None else {}
+        matches = {
+            "exists": recorded.get("exists") == current.get("exists"),
+            "size_bytes": recorded.get("size_bytes") == current.get("size_bytes"),
+            "sha256": recorded.get("sha256") == current.get("sha256"),
+        }
+        match = all(matches.values())
+        all_match = all_match and match
+        records[str(name)] = {
+            "path": path_value,
+            "match": match,
+            "matches": matches,
+            "recorded": recorded,
+            "current": current,
+        }
+    return {
+        "status": "match" if all_match else "mismatch",
+        "status_artifact": str(status_artifact),
+        "all_match": all_match,
+        "checked_count": len(records),
+        "records": records,
     }
 
 
@@ -642,6 +691,14 @@ def _emit_json(result: dict[str, object], *, pretty: bool, output: Path | None) 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
+    if args.verify_source_artifacts is not None:
+        verification = _verify_source_artifacts(args.verify_source_artifacts)
+        _emit_json(
+            verification,
+            pretty=args.pretty,
+            output=args.output,
+        )
+        return 0 if verification["all_match"] is True else 1
     status = build_status(
         args.prompt_artifact,
         args.oracle_artifact,

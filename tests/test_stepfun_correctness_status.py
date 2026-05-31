@@ -666,6 +666,122 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
     assert "docs_checklist" not in payload
 
 
+def test_stepfun_correctness_status_verifies_source_artifact_provenance(capsys, tmp_path: Path) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    status_output = tmp_path / "status.json"
+    verify_output = tmp_path / "verify.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(status_output),
+            "--pretty",
+        ]
+    )
+    assert rc == 0
+
+    rc = main(
+        [
+            "--verify-source-artifacts",
+            str(status_output),
+            "--output",
+            str(verify_output),
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(verify_output.read_text())
+    assert payload["status"] == "match"
+    assert payload["status_artifact"] == str(status_output)
+    assert payload["all_match"] is True
+    assert payload["checked_count"] == 4
+    assert payload["records"]["prompt"]["match"] is True
+    assert payload["records"]["prompt"]["matches"] == {
+        "exists": True,
+        "sha256": True,
+        "size_bytes": True,
+    }
+    assert payload["records"]["docs"]["current"]["sha256"] == hashlib.sha256(
+        docs.read_bytes()
+    ).hexdigest()
+
+
+def test_stepfun_correctness_status_source_artifact_verify_detects_stale_inputs(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    status_output = tmp_path / "status.json"
+    verify_output = tmp_path / "verify.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(status_output),
+        ]
+    )
+    assert rc == 0
+    prompt.write_text(prompt.read_text() + "\n")
+
+    rc = main(
+        [
+            "--verify-source-artifacts",
+            str(status_output),
+            "--output",
+            str(verify_output),
+        ]
+    )
+
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(verify_output.read_text())
+    assert payload["status"] == "mismatch"
+    assert payload["all_match"] is False
+    assert payload["records"]["prompt"]["match"] is False
+    assert payload["records"]["prompt"]["matches"] == {
+        "exists": True,
+        "sha256": False,
+        "size_bytes": False,
+    }
+    assert payload["records"]["oracle"]["match"] is True
+
+
 def test_stepfun_correctness_status_fail_on_blocked_returns_nonzero(
     capsys,
     tmp_path: Path,

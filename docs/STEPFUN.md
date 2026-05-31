@@ -629,8 +629,10 @@ reporting.
   and `e2e_inference` so each false readiness boolean carries required evidence
   and current blocker state. The same status artifact records `source_artifacts`
   path/size/SHA-256 provenance for the prompt, oracle, resource-plan, and docs
-  inputs used to compute the summary, plus `next_action_commands` for rerunning
-  the oracle command shell and refreshing the resource/status artifacts.
+  inputs used to compute the summary; `--verify-source-artifacts STATUS_JSON`
+  checks those embedded hashes/sizes against the current files before a handoff is
+  trusted. The status also includes `next_action_commands` for rerunning the
+  oracle command shell and refreshing the resource/status artifacts.
   Remaining implementation task: run a longer/faster
   StepFun-capable llama.cpp oracle and review/record the parsed result;
   KV-backed decode parity remains open too.

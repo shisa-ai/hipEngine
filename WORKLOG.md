@@ -28258,3 +28258,30 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted decode-planner/load-smoke/status tests passed (`14 passed`), artifact schema check printed `stepfun kv run plan token inputs artifacts ok`, and the full StepFun guard passed (`106 passed` plus CPU-reference fixture checks).
+
+## 2026-05-31 — StepFun source-artifact verification mode recorded
+
+Added `--verify-source-artifacts STATUS_JSON` to `scripts/stepfun_correctness_status.py` so future continuation agents can check that a consolidated status artifact still matches the current prompt-smoke, oracle, text-resource, and docs inputs before acting on its handoff summary. The verification mode emits per-source recorded/current provenance, match flags for existence/size/SHA-256, and returns nonzero on stale inputs. Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json` after the docs update so its embedded docs/source hashes are current. This is provenance/status evidence only; `oracle_parity=false`, `kv_backed_decode_ready=false`, and `e2e_inference_ready=false` remain unchanged.
+
+Updated `tests/test_stepfun_correctness_status.py` to cover matching and stale-source verification paths and clarified the P11 status paragraph in `docs/STEPFUN.md`.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty --output /tmp/stepfun-source-verify.json
+python3 - <<'PY'
+import json
+p=json.load(open('/tmp/stepfun-source-verify.json'))
+assert p['status'] == 'match'
+assert p['all_match'] is True
+assert p['checked_count'] == 4
+for name in ('prompt', 'oracle', 'text_resource', 'docs'):
+    assert p['records'][name]['match'] is True
+    assert all(p['records'][name]['matches'].values())
+print('stepfun source artifact verification ok')
+PY
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted status tests passed (`6 passed`), source-artifact verification printed `stepfun source artifact verification ok`, and the full StepFun guard passed (`108 passed` plus CPU-reference fixture checks).
