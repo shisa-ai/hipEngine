@@ -7324,6 +7324,18 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.argv must not repeat retained benchmark flags"):
             c_sweep.validate_sweep_summary(tampered_duplicate_json)
 
+        for flag, bad_value, error in (
+            ("--rows", "rows", r"commands\[\]\.argv --rows must have an int value"),
+            ("--seed", "seed", r"commands\[\]\.argv --seed must have an int value"),
+        ):
+            tampered_non_integer = json.loads(json.dumps(summary))
+            non_integer_entry = tampered_non_integer["commands"][index]
+            non_integer_argv = non_integer_entry["argv"]
+            non_integer_argv[non_integer_argv.index(flag) + 1] = bad_value
+            non_integer_entry["command"] = shlex.join(non_integer_argv)
+            with pytest.raises(ValueError, match=error):
+                c_sweep.validate_sweep_summary(tampered_non_integer)
+
         for tamper_argv_json in (False, True):
             tampered_artifact_link = json.loads(json.dumps(summary))
             entry = tampered_artifact_link["commands"][index]
