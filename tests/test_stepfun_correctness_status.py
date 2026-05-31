@@ -866,6 +866,8 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert handoff["open_or_partial_items_p0_p12"] == 2
     assert handoff["open_blocker_count"] == 2
     assert handoff["open_blockers"] == ["oracle_parity_blocked", "kv_backed_decode_not_wired"]
+    assert handoff["blocker_work_queue_schema_version"] == 1
+    assert handoff["blocker_work_queue_count"] == 2
     assert handoff["blocker_work_queue"] == [
         {
             "blocker_kind": "oracle_parity_blocked",
@@ -1228,6 +1230,8 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
         "oracle_parity_blocked",
         "kv_backed_decode_not_wired",
     ]
+    assert payload["handoff_summary"]["blocker_work_queue_schema_version"] == 1
+    assert payload["handoff_summary"]["blocker_work_queue_count"] == 2
     assert payload["handoff_summary"]["first_blocker_work_item"]["blocker_kind"] == (
         "oracle_parity_blocked"
     )
@@ -1298,6 +1302,8 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "oracle_parity_blocked",
         "kv_backed_decode_not_wired",
     ]
+    assert payload["blocker_work_queue_schema_version"] == 1
+    assert payload["blocker_work_queue_count"] == 2
     assert payload["blocker_work_queue"] == [
         {
             "blocker_kind": "oracle_parity_blocked",

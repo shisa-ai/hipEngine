@@ -29154,3 +29154,35 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`12 passed`), source-artifact/current-status queue checks passed, and the full StepFun guard passed (`116 passed` plus CPU-reference fixture checks). Prompt-verifier evidence: status tests cover the new compact current-attempt fields, no `import torch` was added to `hipengine/`, the changed status helper adds no engine-wide backend or quant special-casing, and no StepFun performance claim was made.
+
+## 2026-05-31 — StepFun blocker queue shape metadata recorded
+
+Added `blocker_work_queue_schema_version=1` and `blocker_work_queue_count` to `handoff_summary` in `scripts/stepfun_correctness_status.py`. Compact-output consumers can now validate the queue schema/count before relying on per-item `queue_index` and `is_first` ordering fields. The current queue still contains two blockers (`oracle_parity_blocked`, then `kv_backed_decode_not_wired`) and readiness remains blocked: `oracle_parity=false`, `kv_backed_decode_ready=false`, and `e2e_inference_ready=false`.
+
+Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, updated status tests, and clarified `docs/STEPFUN.md`. This is handoff metadata only; no StepFun KV write/attention kernels are launched and no performance/e2e claim is made.
+
+Validation:
+
+```bash
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_correctness_status.py --summary-only --pretty --output /tmp/stepfun-handoff-summary.json
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty --output /tmp/stepfun-source-verify.json
+python3 - <<'PY'
+import json
+v=json.load(open('/tmp/stepfun-source-verify.json'))
+assert v['status'] == 'match'
+assert v['all_match'] is True
+s=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+h=json.load(open('/tmp/stepfun-handoff-summary.json'))
+assert h == s['handoff_summary']
+assert h['blocker_work_queue_schema_version'] == 1
+assert h['blocker_work_queue_count'] == len(h['blocker_work_queue']) == 2
+assert h['first_blocker_work_item'] == h['blocker_work_queue'][0]
+assert [item['queue_index'] for item in h['blocker_work_queue']] == [0, 1]
+print('stepfun blocker queue shape metadata artifact ok')
+PY
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`12 passed`), source-artifact/queue-shape metadata checks passed, and the full StepFun guard passed (`116 passed` plus CPU-reference fixture checks). Prompt-verifier evidence: status tests cover the new queue schema/count fields, no `import torch` was added to `hipengine/`, the changed status helper adds no engine-wide backend or quant special-casing, and no StepFun performance claim was made.

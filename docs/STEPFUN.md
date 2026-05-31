@@ -593,8 +593,9 @@ reporting.
   oracle/KV evidence item plus the first source KV runner blocker, an ordered blocker work queue,
   and the no-performance/no-e2e-claim policy. `scripts/stepfun_correctness_status.py --summary-only`
   emits just that handoff block for fast continuation checks, while `--blocker-work-queue-only`
-  emits only the ordered queue (with explicit queue indices / first-item markers and compact
-  current-attempt status) and `--first-blocker-only` emits only the immediate work item
+  emits only the ordered queue (with a handoff-level queue count/schema version, explicit queue
+  indices / first-item markers, and compact current-attempt status) and `--first-blocker-only`
+  emits only the immediate work item
   (including the primary command kind/string plus length and SHA-256) for lightweight automation.
   It lists next actions for the
   StepFun-capable oracle and KV-backed decode blockers, and supports

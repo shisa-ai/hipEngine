@@ -49,7 +49,7 @@
         "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
       },
       {
-        "line": 610,
+        "line": 611,
         "state": "partial",
         "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
       }
@@ -104,6 +104,8 @@
         "streaming_runner_blocker_count": 3
       }
     ],
+    "blocker_work_queue_count": 2,
+    "blocker_work_queue_schema_version": 1,
     "compact_output_modes": {
       "blocker_work_queue_only": "handoff_summary.blocker_work_queue",
       "fail_on_blocked_preserves_payload": true,
@@ -1455,8 +1457,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "48ce092a27f6cf2a0c824e82e54eeb08e53f445895304ac0fb0afa761467801e",
-      "size_bytes": 52979
+      "sha256": "6300884fe7dc25d98c29963fb9195320510bb970a60232ec35479790c353c794",
+      "size_bytes": 53026
     },
     "oracle": {
       "exists": true,
