@@ -227,6 +227,36 @@
   "oracle_stderr_len": 0,
   "oracle_stdout_len": 0,
   "prompt_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json",
+  "readiness_gates": {
+    "e2e_inference": {
+      "blocked_by": [
+        "oracle_parity",
+        "kv_backed_decode"
+      ],
+      "ready": false,
+      "required_evidence": "Both oracle parity and KV-backed decode readiness must be true before StepFun text-only GGUF inference is marked ready."
+    },
+    "kv_backed_decode": {
+      "blocked_by": "kv_backed_decode_not_wired",
+      "current_evidence": {
+        "decode_span_shape_compatible": true,
+        "dispatch_ready": true,
+        "prompt_span_shape_compatible": true,
+        "resident_prompt_smoke": "host_composed_layer_prefix"
+      },
+      "dispatch_ready": true,
+      "ready": false,
+      "required_evidence": "A streaming runner must materialize prompt KV rows, launch one-token decode KV write and gated paged attention from the resident cache, then feed final logits without host-composed layer outputs."
+    },
+    "oracle_parity": {
+      "blocked_by": "llama_cpp_oracle_timeout",
+      "current_oracle_status": "timeout",
+      "expected_next_token_id": 369,
+      "expected_next_token_text": " |",
+      "ready": false,
+      "required_evidence": "A StepFun/step35-capable oracle must generate a comparable token and match the expected next-token text/logit policy recorded in oracle_progress."
+    }
+  },
   "status": "blocked",
   "step35_supported_by_local_llama_cpp": null,
   "text_resource_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json"

@@ -237,6 +237,66 @@ def _kv_decode_dispatch_progress(resource: dict[str, object]) -> dict[str, objec
     }
 
 
+def _readiness_gates(
+    *,
+    oracle_parity: bool,
+    kv_decode_dispatch_ready: bool,
+    kv_backed_decode_ready: bool,
+    oracle_progress: dict[str, object],
+    kv_decode_dispatch_progress: dict[str, object],
+) -> dict[str, object]:
+    """Return explicit readiness gates for the remaining StepFun blockers."""
+
+    return {
+        "oracle_parity": {
+            "ready": oracle_parity,
+            "blocked_by": None if oracle_parity else oracle_progress.get("oracle_blocker_kind"),
+            "required_evidence": (
+                "A StepFun/step35-capable oracle must generate a comparable token and match the "
+                "expected next-token text/logit policy recorded in oracle_progress."
+            ),
+            "expected_next_token_id": oracle_progress.get("expected_next_token_id"),
+            "expected_next_token_text": oracle_progress.get("expected_next_token_text"),
+            "current_oracle_status": oracle_progress.get("status"),
+        },
+        "kv_backed_decode": {
+            "ready": kv_backed_decode_ready,
+            "blocked_by": None if kv_backed_decode_ready else "kv_backed_decode_not_wired",
+            "dispatch_ready": kv_decode_dispatch_ready,
+            "required_evidence": (
+                "A streaming runner must materialize prompt KV rows, launch one-token decode KV "
+                "write and gated paged attention from the resident cache, then feed final logits "
+                "without host-composed layer outputs."
+            ),
+            "current_evidence": {
+                "dispatch_ready": kv_decode_dispatch_ready,
+                "decode_span_shape_compatible": kv_decode_dispatch_progress.get(
+                    "decode_span_shape_compatible"
+                ),
+                "prompt_span_shape_compatible": kv_decode_dispatch_progress.get(
+                    "prompt_span_shape_compatible"
+                ),
+                "resident_prompt_smoke": "host_composed_layer_prefix",
+            },
+        },
+        "e2e_inference": {
+            "ready": oracle_parity and kv_backed_decode_ready,
+            "blocked_by": [
+                name
+                for name, ready in (
+                    ("oracle_parity", oracle_parity),
+                    ("kv_backed_decode", kv_backed_decode_ready),
+                )
+                if not ready
+            ],
+            "required_evidence": (
+                "Both oracle parity and KV-backed decode readiness must be true before StepFun "
+                "text-only GGUF inference is marked ready."
+            ),
+        },
+    }
+
+
 def build_status(
     prompt_artifact: Path,
     oracle_artifact: Path,
@@ -264,6 +324,15 @@ def build_status(
     oracle_progress = _oracle_progress(oracle)
     kv_decode_dispatch_progress = _kv_decode_dispatch_progress(resource)
     kv_decode_dispatch_ready = kv_decode_dispatch_progress["all_registered"] is True
+    kv_backed_decode_ready = False
+    e2e_inference_ready = oracle_parity and kv_backed_decode_ready
+    readiness_gates = _readiness_gates(
+        oracle_parity=oracle_parity,
+        kv_decode_dispatch_ready=kv_decode_dispatch_ready,
+        kv_backed_decode_ready=kv_backed_decode_ready,
+        oracle_progress=oracle_progress,
+        kv_decode_dispatch_progress=kv_decode_dispatch_progress,
+    )
     blockers: list[dict[str, object]] = []
     if not oracle_parity:
         blockers.append(
@@ -331,8 +400,9 @@ def build_status(
         "linear_projection_progress": _linear_projection_progress(prompt),
         "kv_decode_dispatch_progress": kv_decode_dispatch_progress,
         "kv_decode_dispatch_ready": kv_decode_dispatch_ready,
-        "kv_backed_decode_ready": False,
-        "e2e_inference_ready": False,
+        "kv_backed_decode_ready": kv_backed_decode_ready,
+        "e2e_inference_ready": e2e_inference_ready,
+        "readiness_gates": readiness_gates,
         "blockers": blockers,
         "next_actions": next_actions,
         "docs_checklist": docs_status,

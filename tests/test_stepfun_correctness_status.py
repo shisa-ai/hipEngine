@@ -307,6 +307,23 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert status["kv_decode_dispatch_ready"] is True
     assert status["kv_backed_decode_ready"] is False
     assert status["e2e_inference_ready"] is False
+    gates = status["readiness_gates"]
+    assert gates["oracle_parity"]["ready"] is False
+    assert gates["oracle_parity"]["blocked_by"] == "llama_cpp_missing_step35_architecture"
+    assert gates["oracle_parity"]["expected_next_token_id"] == 369
+    assert gates["oracle_parity"]["expected_next_token_text"] == " |"
+    assert gates["oracle_parity"]["current_oracle_status"] == "executed"
+    assert gates["kv_backed_decode"]["ready"] is False
+    assert gates["kv_backed_decode"]["blocked_by"] == "kv_backed_decode_not_wired"
+    assert gates["kv_backed_decode"]["dispatch_ready"] is True
+    assert gates["kv_backed_decode"]["current_evidence"] == {
+        "decode_span_shape_compatible": True,
+        "dispatch_ready": True,
+        "prompt_span_shape_compatible": True,
+        "resident_prompt_smoke": "host_composed_layer_prefix",
+    }
+    assert gates["e2e_inference"]["ready"] is False
+    assert gates["e2e_inference"]["blocked_by"] == ["oracle_parity", "kv_backed_decode"]
     assert {blocker["kind"] for blocker in status["blockers"]} == {
         "oracle_parity_blocked",
         "kv_backed_decode_not_wired",
@@ -369,6 +386,12 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
     assert payload["oracle_progress"]["timeout_s"] == 60.0
     assert payload["linear_projection_progress"]["resident_linear_projection_slot_count"] == 487
     assert payload["kv_decode_dispatch_ready"] is True
+    assert payload["readiness_gates"]["oracle_parity"]["ready"] is False
+    assert payload["readiness_gates"]["kv_backed_decode"]["dispatch_ready"] is True
+    assert payload["readiness_gates"]["e2e_inference"]["blocked_by"] == [
+        "oracle_parity",
+        "kv_backed_decode",
+    ]
     assert len(payload["next_actions"]) == 2
     assert payload["docs_checklist"]["open_or_partial_count_p0_p12"] == 2
 

@@ -28006,3 +28006,32 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted status tests passed (`3 passed`), artifact schema check printed `stepfun oracle progress status ok`, and the full StepFun guard passed (`103 passed` plus CPU-reference fixture checks).
+
+## 2026-05-31 — StepFun readiness gates recorded
+
+Extended the consolidated StepFun Q3_K_L correctness-status helper with explicit `readiness_gates` for `oracle_parity`, `kv_backed_decode`, and `e2e_inference`. The regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json` now ties each false readiness boolean to required evidence and the current blocker state: oracle parity still needs a StepFun/step35-capable oracle token/logit match, KV-backed decode still needs a streaming runner that uses resident prompt/decode KV writes plus gated paged attention, and end-to-end inference remains blocked by both gates. This is blocker/status evidence only; `oracle_parity=false`, `kv_backed_decode_ready=false`, and `e2e_inference_ready=false` remain unchanged.
+
+Updated `tests/test_stepfun_correctness_status.py` to assert the readiness-gate structure and clarified `docs/STEPFUN.md` so P11 documents the new machine-readable gates.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 - <<'PY'
+import json
+p=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+g=p['readiness_gates']
+assert g['oracle_parity']['ready'] is False
+assert g['oracle_parity']['expected_next_token_id'] == 369
+assert g['kv_backed_decode']['ready'] is False
+assert g['kv_backed_decode']['dispatch_ready'] is True
+assert g['e2e_inference']['ready'] is False
+assert g['e2e_inference']['blocked_by'] == ['oracle_parity', 'kv_backed_decode']
+assert p['oracle_parity'] is False
+assert p['kv_backed_decode_ready'] is False
+print('stepfun readiness gates status ok')
+PY
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted status tests passed (`3 passed`), artifact schema check printed `stepfun readiness gates status ok`, and the full StepFun guard passed (`103 passed` plus CPU-reference fixture checks).

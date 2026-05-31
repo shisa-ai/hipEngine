@@ -612,10 +612,12 @@ reporting.
   text ` |`, top-5 expected tokens, timeout 60 s, elapsed 62.44 s, generated text
   length 0, and the llama.cpp command shell). It records both blockers
   (`oracle_parity_blocked`, `kv_backed_decode_not_wired`) for the current
-  all-layer prompt smoke, and lists machine-readable next actions for each
-  blocker. Remaining implementation task: run a longer/faster StepFun-capable
-  llama.cpp oracle and review/record the parsed result; KV-backed decode parity
-  remains open too.
+  all-layer prompt smoke, lists machine-readable next actions for each blocker,
+  and now includes `readiness_gates` for `oracle_parity`, `kv_backed_decode`,
+  and `e2e_inference` so each false readiness boolean carries required evidence
+  and current blocker state. Remaining implementation task: run a longer/faster
+  StepFun-capable llama.cpp oracle and review/record the parsed result;
+  KV-backed decode parity remains open too.
 - [x] Preserve multi-EOS stopping and the chat assistant prefix. The short
   context planner renders the Step chat template with assistant `<think>` prefix
   and carries stop IDs `(1, 2, 128007)` with `should_stop()` checks.
