@@ -388,10 +388,11 @@ def _is_number(value: Any) -> bool:
 def _safe_ratio(numerator: Any, denominator: Any) -> float | None:
     if not (_is_number(numerator) and _is_number(denominator)):
         return None
+    num = float(numerator)
     denom = float(denominator)
-    if denom <= 0.0:
+    if not math.isfinite(num) or num <= 0.0 or not math.isfinite(denom) or denom <= 0.0:
         return None
-    return float(numerator) / denom
+    return num / denom
 
 
 def _extract_decode_rates(payload: Mapping[str, Any]) -> tuple[float | None, float | None]:
