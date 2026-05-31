@@ -549,7 +549,8 @@ reporting.
   prompt positions, explicit prompt/decode span inputs (`base_offsets`/live-count
   arrays with dtype and byte-count metadata), a small host upload manifest mapping
   those arrays/scalars to future kernel arguments, bytes-producing and device-upload
-  helpers with deterministic little-endian SHA-256 hashes for each upload, decode live count, decode position, stop-token IDs, KV dispatch keys,
+  helpers (including partial-upload cleanup coverage) with deterministic little-endian
+  SHA-256 hashes for each upload, decode live count, decode position, stop-token IDs, KV dispatch keys,
   and the planned launch-order operation count; this is dispatch/span/run-plan readiness evidence only, not a
   completed streaming runner. The
   dense-MLP input bundle launches layer-0 `ffn_gate`/`ffn_up` projections vs CPU references,

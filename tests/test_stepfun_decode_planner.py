@@ -34,8 +34,10 @@ def _stepfun_gguf_paths() -> tuple[Path, ...]:
 
 
 class _FakeHipRuntime:
-    def __init__(self) -> None:
+    def __init__(self, *, fail_on_copy_index: int | None = None) -> None:
         self.next_ptr = 0x1000
+        self.fail_on_copy_index = fail_on_copy_index
+        self.copy_count = 0
         self.allocations: dict[int, int] = {}
         self.copies: dict[int, bytes] = {}
         self.freed: list[int] = []
@@ -49,6 +51,9 @@ class _FakeHipRuntime:
     def memcpy(self, dst: int, src: int, nbytes: int, kind: int) -> None:
         assert int(kind) == 1
         assert self.allocations[int(dst)] >= int(nbytes)
+        self.copy_count += 1
+        if self.copy_count == self.fail_on_copy_index:
+            raise RuntimeError("simulated host-to-device copy failure")
         self.copies[int(dst)] = ctypes.string_at(int(src), int(nbytes))
 
     def free(self, ptr: int) -> None:
@@ -304,6 +309,30 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
         "decode_attention",
     ]
     assert payload["streaming_runner_ready"] is False
+
+
+def test_stepfun_kv_decode_run_plan_frees_partial_uploads_after_copy_failure() -> None:
+    planner = StepFunShortContextDecodePlanner.from_gguf_paths(
+        _stepfun_gguf_paths(),
+        max_context=512,
+        max_new_tokens=1,
+    )
+    run_plan = planner.plan_kv_decode_chat(
+        [{"role": "user", "content": "hello"}],
+        reasoning_effort="low",
+        context_pages=1,
+        page_size=512,
+    )
+    fake_runtime = _FakeHipRuntime(fail_on_copy_index=2)
+
+    with pytest.raises(RuntimeError, match="simulated host-to-device copy failure"):
+        run_plan.upload_span_input_payloads(runtime=fake_runtime)
+
+    allocated_ptrs = tuple(fake_runtime.allocations)
+    assert fake_runtime.copy_count == 2
+    assert len(allocated_ptrs) == 2
+    assert fake_runtime.freed == [allocated_ptrs[1], allocated_ptrs[0]]
+    assert fake_runtime.copies == {allocated_ptrs[0]: run_plan.span_input_host_payload_bytes["prompt_base_offsets"]}
 
 
 def test_stepfun_kv_decode_run_plan_rejects_resource_span_too_small() -> None:
