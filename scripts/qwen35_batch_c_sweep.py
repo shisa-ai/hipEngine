@@ -1099,6 +1099,20 @@ def _visible_device_env_assignments(payload: Mapping[str, Any]) -> tuple[dict[st
     return assignments, reasons
 
 
+def _scaling_reference_command_env_assignments(payload: Mapping[str, Any]) -> tuple[dict[str, str], list[str]]:
+    commands = payload.get("commands")
+    command = commands.get("benchmark") if isinstance(commands, Mapping) else payload.get("command")
+    if command is None:
+        return {}, []
+    if not isinstance(command, str) or not command:
+        return {}, ["commands.benchmark is not a non-empty string when present"]
+    try:
+        argv = shlex.split(command)
+    except ValueError:
+        return {}, ["commands.benchmark is not shell-parseable"]
+    return _command_device_env_assignments(argv), []
+
+
 def _scaling_reference_precondition(
     command: SweepCommand,
     *,
@@ -1148,11 +1162,17 @@ def _scaling_reference_precondition(
             source_artifact_path = raw_artifact_path
         reference_device_env, reference_device_env_reasons = _visible_device_env_assignments(payload)
         reasons.extend(reference_device_env_reasons)
+        retained_device_env = _command_device_env_assignments(command.argv)
         if reference_device_env:
-            retained_device_env = _command_device_env_assignments(command.argv)
             for key, value in reference_device_env.items():
                 if retained_device_env.get(key) != value:
                     reasons.append(f"hardware.visible_device.env.{key} does not match retained command env")
+        reference_command_env, reference_command_env_reasons = _scaling_reference_command_env_assignments(payload)
+        reasons.extend(reference_command_env_reasons)
+        if reference_command_env:
+            for key, value in reference_command_env.items():
+                if retained_device_env.get(key) != value:
+                    reasons.append(f"commands.benchmark device env {key} does not match retained command env")
         raw_status = payload.get("status")
         status = str(raw_status) if raw_status else "loaded"
         if status in _UNUSABLE_SCALING_REFERENCE_STATUSES:
