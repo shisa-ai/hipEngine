@@ -919,6 +919,13 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert handoff["blocker_work_queue_sha256"] == _stable_json_sha256(
         handoff["blocker_work_queue"]
     )
+    assert handoff["blocker_work_queue_meta"] == {
+        "schema_version": 1,
+        "count": 2,
+        "sha256": handoff["blocker_work_queue_sha256"],
+        "first_blocker_kind": "oracle_parity_blocked",
+        "first_work_item_schema_version": 1,
+    }
     assert handoff["first_blocker_work_item"] == handoff["blocker_work_queue"][0]
     assert handoff["exit_codes"] == {
         "ready": 0,
@@ -929,6 +936,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert handoff["compact_output_modes"] == {
         "summary_only": "handoff_summary",
         "blocker_work_queue_only": "handoff_summary.blocker_work_queue",
+        "blocker_work_queue_meta_only": "handoff_summary.blocker_work_queue_meta",
         "blocker_work_queue_sha_only": "handoff_summary.blocker_work_queue_sha256",
         "first_blocker_only": "handoff_summary.first_blocker_work_item",
         "fail_on_blocked_preserves_payload": True,
@@ -1247,6 +1255,13 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
     assert payload["handoff_summary"]["blocker_work_queue_sha256"] == _stable_json_sha256(
         payload["handoff_summary"]["blocker_work_queue"]
     )
+    assert payload["handoff_summary"]["blocker_work_queue_meta"] == {
+        "schema_version": 1,
+        "count": 2,
+        "sha256": payload["handoff_summary"]["blocker_work_queue_sha256"],
+        "first_blocker_kind": "oracle_parity_blocked",
+        "first_work_item_schema_version": 1,
+    }
     assert payload["handoff_summary"]["first_blocker_work_item"]["blocker_kind"] == (
         "oracle_parity_blocked"
     )
@@ -1364,6 +1379,13 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
     assert payload["blocker_work_queue_sha256"] == _stable_json_sha256(
         payload["blocker_work_queue"]
     )
+    assert payload["blocker_work_queue_meta"] == {
+        "schema_version": 1,
+        "count": 2,
+        "sha256": payload["blocker_work_queue_sha256"],
+        "first_blocker_kind": "oracle_parity_blocked",
+        "first_work_item_schema_version": 1,
+    }
     assert payload["first_blocker_work_item"] == payload["blocker_work_queue"][0]
     assert payload["exit_codes"] == {
         "ready": 0,
@@ -1374,6 +1396,7 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
     assert payload["compact_output_modes"] == {
         "summary_only": "handoff_summary",
         "blocker_work_queue_only": "handoff_summary.blocker_work_queue",
+        "blocker_work_queue_meta_only": "handoff_summary.blocker_work_queue_meta",
         "blocker_work_queue_sha_only": "handoff_summary.blocker_work_queue_sha256",
         "first_blocker_only": "handoff_summary.first_blocker_work_item",
         "fail_on_blocked_preserves_payload": True,
@@ -1507,6 +1530,46 @@ def test_stepfun_correctness_status_blocker_work_queue_only(capsys, tmp_path: Pa
             "streaming_runner_blocker_count": 3,
             "gate": "kv_backed_decode",
         },
+    ]
+
+
+def test_stepfun_correctness_status_blocker_work_queue_meta_only(capsys, tmp_path: Path) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "blocker-work-queue-meta.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--blocker-work-queue-only",
+            "--blocker-work-queue-meta-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert json.loads(output.read_text()) == status["handoff_summary"][
+        "blocker_work_queue_meta"
     ]
 
 
