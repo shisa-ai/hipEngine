@@ -1542,9 +1542,9 @@ roll-up/status view.
       rows no longer agree with `options.include_int8`; combined
       `--include-int8 --include-gguf` dry-run coverage locks the c=2/c=4/c=8
       INT8 rows, artifact filenames, HIP device env prefixes,
-      future-retained JSON labels, and CPU/HIP primitive evidence labels before
-      each GGUF quant fan-out, including stale future/primitive-label rejection
-      on the c=8 combined row. The future
+      future-retained JSON labels, CPU/HIP primitive evidence labels, row
+      labels, and artifact filenames before each GGUF quant fan-out, including
+      stale c=8 future/primitive/artifact/row-label rejection. The future
       retained-bench command now carries `--int8-kv-primitive-cpu-json` and
       `--int8-kv-primitive-hip-json`, `scripts/qwen35_kv_int8_accuracy.py`
       self-describes written JSON paths, and accepted c>N artifact schema

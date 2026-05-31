@@ -7258,6 +7258,22 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
             ValueError, match=rf"commands\[\]\.argv INT8 {flag} must match the c-specific output_dir artifact path"
         ):
             c_sweep.validate_sweep_summary(tampered)
+    tampered_int8_rows = json.loads(json.dumps(summary))
+    int8_rows_argv = tampered_int8_rows["commands"][int8_entry_indices[-1]]["argv"]
+    int8_rows_argv[int8_rows_argv.index("--rows") + 1] = "4"
+    tampered_int8_rows["commands"][int8_entry_indices[-1]]["command"] = shlex.join(int8_rows_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.batch_size must match commands\[\]\.argv --batch-size/--rows"):
+        c_sweep.validate_sweep_summary(tampered_int8_rows)
+    tampered_int8_artifact = json.loads(json.dumps(summary))
+    stale_int8_artifact_path = str(
+        Path(tampered_int8_artifact["commands"][int8_entry_indices[-1]]["artifact_path"]).with_name("int8-native-diagnostic-c8-stale.json")
+    )
+    int8_artifact_argv = tampered_int8_artifact["commands"][int8_entry_indices[-1]]["argv"]
+    int8_artifact_argv[int8_artifact_argv.index("--json") + 1] = stale_int8_artifact_path
+    tampered_int8_artifact["commands"][int8_entry_indices[-1]]["artifact_path"] = stale_int8_artifact_path
+    tampered_int8_artifact["commands"][int8_entry_indices[-1]]["command"] = shlex.join(int8_artifact_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match category/batch-size filename"):
+        c_sweep.validate_sweep_summary(tampered_int8_artifact)
 
     gguf_c8_index = next(
         index
