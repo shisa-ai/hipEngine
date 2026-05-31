@@ -1,0 +1,850 @@
+{
+  "commands": {
+    "bulk_direct_profile_route": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --verifier-graph auto --full-attn-chain-mode batched --canonical-commit-mode bulk_direct --profile-route-manifest /tmp/multiloop-dflash-27b-w7900-profile-route-vgraph-aware-iter9-manifest.json --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/multiloop-dflash-27b-w7900.json",
+    "guard": "python parse exact gate + py_compile + HIP_VISIBLE_DEVICES=0 ... pytest -q tests/test_paro_awq_gemv_multi_row_decode.py tests/test_dflash_profile_route_manifest.py tests/test_dflash_draft_confidence.py tests/test_speculative_benchmark.py"
+  },
+  "correctness_gate": {
+    "bulk_direct_exact": true,
+    "bulk_direct_graph_validation_passed": true,
+    "oracle": "same-session greedy AR equality plus finite logits from dflash_chain_e2e_bench",
+    "previous_branch_copy_exact": true
+  },
+  "decision": {
+    "accepted": true,
+    "defaulted": false,
+    "reason": "Keep as multiloop best diagnostic. It improves the graph-aware branch_copy route and stays exact on the 27B D64 gate, but remains non-default because bulk_direct canonical state safety is only proven for this gate, routing is profile-history based, and verifier graph auto is opt-in."
+  },
+  "deltas": {
+    "bulk_direct_vs_ar_percent": 17.645562669474902,
+    "bulk_direct_vs_branch_copy_commit_seconds_percent": 4.87113148143099,
+    "bulk_direct_vs_branch_copy_spec_tok_s_percent": 1.7770926727115555,
+    "bulk_direct_vs_branch_copy_speedup_relative_percent": 1.3163421704068146
+  },
+  "hardware": {
+    "arch": "gfx1100",
+    "backend": "hip_gfx1100",
+    "gpu": "AMD Radeon Pro W7900",
+    "selection": "HIP_VISIBLE_DEVICES=0"
+  },
+  "manifest": {
+    "default": "ar",
+    "description": "Zero-probe DFlash profile/history route generated from exact same-session bench rows.",
+    "generated_at": "2026-05-31T11:18:13.411603+00:00",
+    "min_chain_speedup": 1.0,
+    "routes": {
+      "code:class_continuation": "chain",
+      "code:humaneval_add": "chain",
+      "code:json_yaml_continuation": "chain",
+      "code:quicksort_prefix": "chain",
+      "instruct:simple_qa_no_template": "chain",
+      "instruct:simple_qa_qwen_static_chat": "chain",
+      "math:short_gsm8k_style": "chain"
+    },
+    "row_evidence": [
+      {
+        "benchmark_group": "code_promotion",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "code:quicksort_prefix",
+        "route": "chain",
+        "speedup_vs_ar": 1.0659258221076515
+      },
+      {
+        "benchmark_group": "code_promotion",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "code:function_continuation",
+        "route": "ar",
+        "speedup_vs_ar": 0.9196818421793826
+      },
+      {
+        "benchmark_group": "code_promotion",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "code:class_continuation",
+        "route": "chain",
+        "speedup_vs_ar": 1.3062637403504407
+      },
+      {
+        "benchmark_group": "code_promotion",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "code:json_yaml_continuation",
+        "route": "chain",
+        "speedup_vs_ar": 1.184095679062715
+      },
+      {
+        "benchmark_group": "code_promotion",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "code:humaneval_add",
+        "route": "chain",
+        "speedup_vs_ar": 1.392888619643686
+      },
+      {
+        "benchmark_group": "code_promotion",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "code:humaneval_sort_third",
+        "route": "ar",
+        "speedup_vs_ar": 0.7478533733234
+      },
+      {
+        "benchmark_group": "robustness",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "math:short_gsm8k_style",
+        "route": "chain",
+        "speedup_vs_ar": 1.1162106405325762
+      },
+      {
+        "benchmark_group": "robustness",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "instruct:simple_qa_no_template",
+        "route": "chain",
+        "speedup_vs_ar": 1.3285034781097234
+      },
+      {
+        "benchmark_group": "robustness",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "instruct:simple_qa_qwen_static_chat",
+        "route": "chain",
+        "speedup_vs_ar": 1.2531283831081876
+      }
+    ],
+    "source_artifact": "/tmp/multiloop-dflash-27b-w7900-allchain-vgraph-iter9.json",
+    "summary": {
+      "chain_routes": 7,
+      "default_route": "ar",
+      "rows_seen": 9,
+      "rows_with_prompt_id": 9,
+      "skipped_rows": 0
+    }
+  },
+  "measurements": {
+    "graph_aware_profile_route_verifier_graph_bulk_direct": {
+      "acceptance": {
+        "accept_histogram": {
+          "0": 15,
+          "1": 9,
+          "2": 12,
+          "3": 8,
+          "4": 69
+        },
+        "accepted_output_tokens": 333,
+        "avg_accept_length": 2.9469026548672566,
+        "exact_rate_0_to_n": {
+          "0": 0.13274336283185842,
+          "1": 0.07964601769911504,
+          "10": 0.0,
+          "2": 0.10619469026548672,
+          "3": 0.07079646017699115,
+          "4": 0.6106194690265486,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "ge_rate_1_to_n": {
+          "1": 0.8672566371681416,
+          "10": 0.0,
+          "2": 0.7876106194690266,
+          "3": 0.6814159292035398,
+          "4": 0.6106194690265486,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "multi_token_acceptance_rate": 0.7876106194690266,
+        "steps": 113
+      },
+      "all_correctness_passed": true,
+      "all_exact_match_ar": true,
+      "ar_decode_tok_s": 32.48674853265784,
+      "decode_tokens": 576,
+      "row_speedups": [
+        {
+          "ar_decode_tok_s": 32.693138256636715,
+          "commit_seconds": 0.00281799107324332,
+          "draft_seconds": 0.3711138549260795,
+          "exact_match_ar": true,
+          "prompt_id": "code:quicksort_prefix",
+          "route": "spec",
+          "spec_decode_tok_s": 35.42474927448236,
+          "speedup_vs_ar": 1.0835530378394043,
+          "target_verify_rows_per_output_token": 1.421875,
+          "target_verify_seconds": 1.4314249069429934,
+          "verifier_graph": {
+            "last": {
+              "bucket_key": {
+                "base_slot": 1,
+                "capture_width": 25600,
+                "chain_attn_mode": "batched",
+                "linear_attn_mode": "tree_tloop",
+                "rows": 5
+              },
+              "chain_attn_mode": "batched",
+              "linear_attn_fallback": false,
+              "linear_attn_mode": "tree_tloop",
+              "mode": "auto",
+              "replay_count": 1,
+              "replayed": true,
+              "status": "captured_validated_miss",
+              "validation_passed": true
+            },
+            "mode": "auto",
+            "status_counts": {
+              "captured_validated_miss": 2,
+              "replayed": 16
+            },
+            "validation_passed": true
+          }
+        },
+        {
+          "ar_decode_tok_s": 32.4914373599781,
+          "commit_seconds": 0.0,
+          "draft_seconds": 0.0,
+          "exact_match_ar": true,
+          "prompt_id": "code:function_continuation",
+          "route": "spec",
+          "spec_decode_tok_s": 32.564181776053,
+          "speedup_vs_ar": 1.0022388795936896,
+          "target_verify_rows_per_output_token": 1.0,
+          "target_verify_seconds": 1.9653495500097051,
+          "verifier_graph": {
+            "last": null,
+            "mode": "off",
+            "status_counts": {},
+            "validation_passed": null
+          }
+        },
+        {
+          "ar_decode_tok_s": 32.44097697947046,
+          "commit_seconds": 0.002449544961564243,
+          "draft_seconds": 0.30809282325208187,
+          "exact_match_ar": true,
+          "prompt_id": "code:class_continuation",
+          "route": "spec",
+          "spec_decode_tok_s": 43.24543295254045,
+          "speedup_vs_ar": 1.3330496482860963,
+          "target_verify_rows_per_output_token": 1.1875,
+          "target_verify_seconds": 1.168329848907888,
+          "verifier_graph": {
+            "last": {
+              "bucket_key": {
+                "base_slot": 1,
+                "capture_width": 25600,
+                "chain_attn_mode": "batched",
+                "linear_attn_mode": "chain_tloop",
+                "rows": 5
+              },
+              "chain_attn_mode": "batched",
+              "linear_attn_fallback": false,
+              "linear_attn_mode": "chain_tloop",
+              "mode": "auto",
+              "replay_count": 15,
+              "replayed": true,
+              "status": "replayed",
+              "validation_passed": true
+            },
+            "mode": "auto",
+            "status_counts": {
+              "captured_validated_miss": 1,
+              "replayed": 14
+            },
+            "validation_passed": true
+          }
+        },
+        {
+          "ar_decode_tok_s": 32.448594238660625,
+          "commit_seconds": 0.002601127023808658,
+          "draft_seconds": 0.3495542638702318,
+          "exact_match_ar": true,
+          "prompt_id": "code:json_yaml_continuation",
+          "route": "spec",
+          "spec_decode_tok_s": 38.4776005493548,
+          "speedup_vs_ar": 1.185801772069095,
+          "target_verify_rows_per_output_token": 1.328125,
+          "target_verify_seconds": 1.3099939089734107,
+          "verifier_graph": {
+            "last": {
+              "bucket_key": {
+                "base_slot": 1,
+                "capture_width": 25600,
+                "chain_attn_mode": "batched",
+                "linear_attn_mode": "chain_tloop",
+                "rows": 5
+              },
+              "chain_attn_mode": "batched",
+              "linear_attn_fallback": false,
+              "linear_attn_mode": "chain_tloop",
+              "mode": "auto",
+              "replay_count": 17,
+              "replayed": true,
+              "status": "replayed",
+              "validation_passed": true
+            },
+            "mode": "auto",
+            "status_counts": {
+              "captured_validated_miss": 1,
+              "replayed": 16
+            },
+            "validation_passed": true
+          }
+        },
+        {
+          "ar_decode_tok_s": 32.52325189929697,
+          "commit_seconds": 0.0022314079105854034,
+          "draft_seconds": 0.2878496857592836,
+          "exact_match_ar": true,
+          "prompt_id": "code:humaneval_add",
+          "route": "spec",
+          "spec_decode_tok_s": 45.45483025796625,
+          "speedup_vs_ar": 1.3976102512353263,
+          "target_verify_rows_per_output_token": 1.09375,
+          "target_verify_seconds": 1.1168745670001954,
+          "verifier_graph": {
+            "last": {
+              "bucket_key": {
+                "base_slot": 1,
+                "capture_width": 25600,
+                "chain_attn_mode": "batched",
+                "linear_attn_mode": "tree_tloop",
+                "rows": 5
+              },
+              "chain_attn_mode": "batched",
+              "linear_attn_fallback": false,
+              "linear_attn_mode": "tree_tloop",
+              "mode": "auto",
+              "replay_count": 1,
+              "replayed": true,
+              "status": "captured_validated_miss",
+              "validation_passed": true
+            },
+            "mode": "auto",
+            "status_counts": {
+              "captured_validated_miss": 2,
+              "replayed": 12
+            },
+            "validation_passed": true
+          }
+        },
+        {
+          "ar_decode_tok_s": 32.17279189393407,
+          "commit_seconds": 0.0,
+          "draft_seconds": 0.0,
+          "exact_match_ar": true,
+          "prompt_id": "code:humaneval_sort_third",
+          "route": "spec",
+          "spec_decode_tok_s": 32.06375571578847,
+          "speedup_vs_ar": 0.9966109196085603,
+          "target_verify_rows_per_output_token": 1.0,
+          "target_verify_seconds": 1.9960231910226867,
+          "verifier_graph": {
+            "last": null,
+            "mode": "off",
+            "status_counts": {},
+            "validation_passed": null
+          }
+        },
+        {
+          "ar_decode_tok_s": 32.36762298138068,
+          "commit_seconds": 0.0024607429513707757,
+          "draft_seconds": 0.3658631151774898,
+          "exact_match_ar": true,
+          "prompt_id": "math:short_gsm8k_style",
+          "route": "spec",
+          "spec_decode_tok_s": 36.7051578765748,
+          "speedup_vs_ar": 1.1340084471970422,
+          "target_verify_rows_per_output_token": 1.40625,
+          "target_verify_seconds": 1.3741862574825063,
+          "verifier_graph": {
+            "last": {
+              "bucket_key": {
+                "base_slot": 1,
+                "capture_width": 25600,
+                "chain_attn_mode": "batched",
+                "linear_attn_mode": "tree_tloop",
+                "rows": 5
+              },
+              "chain_attn_mode": "batched",
+              "linear_attn_fallback": false,
+              "linear_attn_mode": "tree_tloop",
+              "mode": "auto",
+              "replay_count": 2,
+              "replayed": true,
+              "status": "replayed",
+              "validation_passed": true
+            },
+            "mode": "auto",
+            "status_counts": {
+              "captured_validated_miss": 2,
+              "replayed": 16
+            },
+            "validation_passed": true
+          }
+        },
+        {
+          "ar_decode_tok_s": 32.5689096918728,
+          "commit_seconds": 0.0024479336570948362,
+          "draft_seconds": 0.30193866905756295,
+          "exact_match_ar": true,
+          "prompt_id": "instruct:simple_qa_no_template",
+          "route": "spec",
+          "spec_decode_tok_s": 44.12433410498512,
+          "speedup_vs_ar": 1.3547992402090097,
+          "target_verify_rows_per_output_token": 1.171875,
+          "target_verify_seconds": 1.1449813910294324,
+          "verifier_graph": {
+            "last": {
+              "bucket_key": {
+                "base_slot": 1,
+                "capture_width": 25600,
+                "chain_attn_mode": "batched",
+                "linear_attn_mode": "tree_tloop",
+                "rows": 5
+              },
+              "chain_attn_mode": "batched",
+              "linear_attn_fallback": false,
+              "linear_attn_mode": "tree_tloop",
+              "mode": "auto",
+              "replay_count": 1,
+              "replayed": true,
+              "status": "captured_validated_miss",
+              "validation_passed": true
+            },
+            "mode": "auto",
+            "status_counts": {
+              "captured_validated_miss": 2,
+              "replayed": 13
+            },
+            "validation_passed": true
+          }
+        },
+        {
+          "ar_decode_tok_s": 32.680323535459955,
+          "commit_seconds": 0.0023845909163355827,
+          "draft_seconds": 0.3244632170535624,
+          "exact_match_ar": true,
+          "prompt_id": "instruct:simple_qa_qwen_static_chat",
+          "route": "spec",
+          "spec_decode_tok_s": 41.08779674892681,
+          "speedup_vs_ar": 1.2572640752575257,
+          "target_verify_rows_per_output_token": 1.25,
+          "target_verify_seconds": 1.229776719235815,
+          "verifier_graph": {
+            "last": {
+              "bucket_key": {
+                "base_slot": 1,
+                "capture_width": 25600,
+                "chain_attn_mode": "batched",
+                "linear_attn_mode": "tree_tloop",
+                "rows": 5
+              },
+              "chain_attn_mode": "batched",
+              "linear_attn_fallback": false,
+              "linear_attn_mode": "tree_tloop",
+              "mode": "auto",
+              "replay_count": 1,
+              "replayed": true,
+              "status": "captured_validated_miss",
+              "validation_passed": true
+            },
+            "mode": "auto",
+            "status_counts": {
+              "captured_validated_miss": 2,
+              "replayed": 14
+            },
+            "validation_passed": true
+          }
+        }
+      ],
+      "rows": 9,
+      "spec_decode_tok_s": 38.2192181042627,
+      "speedup_vs_ar": 1.176455626694749,
+      "summed_phase_seconds": {
+        "commit": 0.01739333849400282,
+        "draft": 2.308875629096292,
+        "target_verify": 12.736940340604633
+      },
+      "target_verify_rows_per_output_token": 1.2065972222222223
+    },
+    "previous_graph_aware_profile_route_branch_copy": {
+      "acceptance": {
+        "accept_histogram": {
+          "0": 15,
+          "1": 9,
+          "2": 12,
+          "3": 8,
+          "4": 69
+        },
+        "accepted_output_tokens": 333,
+        "avg_accept_length": 2.9469026548672566,
+        "exact_rate_0_to_n": {
+          "0": 0.13274336283185842,
+          "1": 0.07964601769911504,
+          "10": 0.0,
+          "2": 0.10619469026548672,
+          "3": 0.07079646017699115,
+          "4": 0.6106194690265486,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "ge_rate_1_to_n": {
+          "1": 0.8672566371681416,
+          "10": 0.0,
+          "2": 0.7876106194690266,
+          "3": 0.6814159292035398,
+          "4": 0.6106194690265486,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "multi_token_acceptance_rate": 0.7876106194690266,
+        "steps": 113
+      },
+      "all_correctness_passed": true,
+      "all_exact_match_ar": true,
+      "ar_decode_tok_s": 32.3396792333529,
+      "decode_tokens": 576,
+      "row_speedups": [
+        {
+          "ar_decode_tok_s": 32.2543175370721,
+          "draft_seconds": 0.37467588495928794,
+          "exact_match_ar": true,
+          "prompt_id": "code:quicksort_prefix",
+          "route": "spec",
+          "spec_decode_tok_s": 34.23675867264697,
+          "speedup_vs_ar": 1.061462814499061,
+          "target_verify_rows_per_output_token": 1.421875,
+          "target_verify_seconds": 1.4903351918328553,
+          "verifier_graph": {
+            "last": {
+              "bucket_key": {
+                "base_slot": 2,
+                "capture_width": 25600,
+                "chain_attn_mode": "batched",
+                "linear_attn_mode": "tree_tloop",
+                "rows": 5
+              },
+              "chain_attn_mode": "batched",
+              "linear_attn_fallback": false,
+              "linear_attn_mode": "tree_tloop",
+              "mode": "auto",
+              "replay_count": 1,
+              "replayed": true,
+              "status": "captured_validated_miss",
+              "validation_passed": true
+            },
+            "mode": "auto",
+            "status_counts": {
+              "captured_validated_miss": 2,
+              "replayed": 16
+            },
+            "validation_passed": true
+          }
+        },
+        {
+          "ar_decode_tok_s": 32.48219872784986,
+          "draft_seconds": 0.0,
+          "exact_match_ar": true,
+          "prompt_id": "code:function_continuation",
+          "route": "spec",
+          "spec_decode_tok_s": 32.13611153532798,
+          "speedup_vs_ar": 0.9893453274077424,
+          "target_verify_rows_per_output_token": 1.0,
+          "target_verify_seconds": 1.991529060062021,
+          "verifier_graph": {
+            "last": null,
+            "mode": "off",
+            "status_counts": {},
+            "validation_passed": null
+          }
+        },
+        {
+          "ar_decode_tok_s": 32.216624388499696,
+          "draft_seconds": 0.31102045497391373,
+          "exact_match_ar": true,
+          "prompt_id": "code:class_continuation",
+          "route": "spec",
+          "spec_decode_tok_s": 42.18624962872167,
+          "speedup_vs_ar": 1.309455923128334,
+          "target_verify_rows_per_output_token": 1.1875,
+          "target_verify_seconds": 1.202872623805888,
+          "verifier_graph": {
+            "last": {
+              "bucket_key": {
+                "base_slot": 2,
+                "capture_width": 25600,
+                "chain_attn_mode": "batched",
+                "linear_attn_mode": "chain_tloop",
+                "rows": 5
+              },
+              "chain_attn_mode": "batched",
+              "linear_attn_fallback": false,
+              "linear_attn_mode": "chain_tloop",
+              "mode": "auto",
+              "replay_count": 15,
+              "replayed": true,
+              "status": "replayed",
+              "validation_passed": true
+            },
+            "mode": "auto",
+            "status_counts": {
+              "captured_validated_miss": 1,
+              "replayed": 14
+            },
+            "validation_passed": true
+          }
+        },
+        {
+          "ar_decode_tok_s": 32.210471482871185,
+          "draft_seconds": 0.3518850716063753,
+          "exact_match_ar": true,
+          "prompt_id": "code:json_yaml_continuation",
+          "route": "spec",
+          "spec_decode_tok_s": 37.99730393418331,
+          "speedup_vs_ar": 1.179656868866059,
+          "target_verify_rows_per_output_token": 1.328125,
+          "target_verify_seconds": 1.328766005113721,
+          "verifier_graph": {
+            "last": {
+              "bucket_key": {
+                "base_slot": 2,
+                "capture_width": 25600,
+                "chain_attn_mode": "batched",
+                "linear_attn_mode": "chain_tloop",
+                "rows": 5
+              },
+              "chain_attn_mode": "batched",
+              "linear_attn_fallback": false,
+              "linear_attn_mode": "chain_tloop",
+              "mode": "auto",
+              "replay_count": 17,
+              "replayed": true,
+              "status": "replayed",
+              "validation_passed": true
+            },
+            "mode": "auto",
+            "status_counts": {
+              "captured_validated_miss": 1,
+              "replayed": 16
+            },
+            "validation_passed": true
+          }
+        },
+        {
+          "ar_decode_tok_s": 32.239232141097254,
+          "draft_seconds": 0.2889823227887973,
+          "exact_match_ar": true,
+          "prompt_id": "code:humaneval_add",
+          "route": "spec",
+          "spec_decode_tok_s": 45.19221714967882,
+          "speedup_vs_ar": 1.4017770941904546,
+          "target_verify_rows_per_output_token": 1.09375,
+          "target_verify_seconds": 1.1243867671582848,
+          "verifier_graph": {
+            "last": {
+              "bucket_key": {
+                "base_slot": 2,
+                "capture_width": 25600,
+                "chain_attn_mode": "batched",
+                "linear_attn_mode": "tree_tloop",
+                "rows": 5
+              },
+              "chain_attn_mode": "batched",
+              "linear_attn_fallback": false,
+              "linear_attn_mode": "tree_tloop",
+              "mode": "auto",
+              "replay_count": 1,
+              "replayed": true,
+              "status": "captured_validated_miss",
+              "validation_passed": true
+            },
+            "mode": "auto",
+            "status_counts": {
+              "captured_validated_miss": 2,
+              "replayed": 12
+            },
+            "validation_passed": true
+          }
+        },
+        {
+          "ar_decode_tok_s": 32.03802957427143,
+          "draft_seconds": 0.0,
+          "exact_match_ar": true,
+          "prompt_id": "code:humaneval_sort_third",
+          "route": "spec",
+          "spec_decode_tok_s": 31.934685394070744,
+          "speedup_vs_ar": 0.9967743278355772,
+          "target_verify_rows_per_output_token": 1.0,
+          "target_verify_seconds": 2.004090511938557,
+          "verifier_graph": {
+            "last": null,
+            "mode": "off",
+            "status_counts": {},
+            "validation_passed": null
+          }
+        },
+        {
+          "ar_decode_tok_s": 32.503116024106866,
+          "draft_seconds": 0.3689200459048152,
+          "exact_match_ar": true,
+          "prompt_id": "math:short_gsm8k_style",
+          "route": "spec",
+          "spec_decode_tok_s": 35.91874493210489,
+          "speedup_vs_ar": 1.1050861986729128,
+          "target_verify_rows_per_output_token": 1.40625,
+          "target_verify_seconds": 1.4091305325273424,
+          "verifier_graph": {
+            "last": {
+              "bucket_key": {
+                "base_slot": 2,
+                "capture_width": 25600,
+                "chain_attn_mode": "batched",
+                "linear_attn_mode": "tree_tloop",
+                "rows": 5
+              },
+              "chain_attn_mode": "batched",
+              "linear_attn_fallback": false,
+              "linear_attn_mode": "tree_tloop",
+              "mode": "auto",
+              "replay_count": 2,
+              "replayed": true,
+              "status": "replayed",
+              "validation_passed": true
+            },
+            "mode": "auto",
+            "status_counts": {
+              "captured_validated_miss": 2,
+              "replayed": 16
+            },
+            "validation_passed": true
+          }
+        },
+        {
+          "ar_decode_tok_s": 32.6016052300956,
+          "draft_seconds": 0.30692631809506565,
+          "exact_match_ar": true,
+          "prompt_id": "instruct:simple_qa_no_template",
+          "route": "spec",
+          "spec_decode_tok_s": 43.10841796799118,
+          "speedup_vs_ar": 1.3222790001823714,
+          "target_verify_rows_per_output_token": 1.171875,
+          "target_verify_seconds": 1.1748417898779735,
+          "verifier_graph": {
+            "last": {
+              "bucket_key": {
+                "base_slot": 2,
+                "capture_width": 25600,
+                "chain_attn_mode": "batched",
+                "linear_attn_mode": "tree_tloop",
+                "rows": 5
+              },
+              "chain_attn_mode": "batched",
+              "linear_attn_fallback": false,
+              "linear_attn_mode": "tree_tloop",
+              "mode": "auto",
+              "replay_count": 1,
+              "replayed": true,
+              "status": "captured_validated_miss",
+              "validation_passed": true
+            },
+            "mode": "auto",
+            "status_counts": {
+              "captured_validated_miss": 2,
+              "replayed": 13
+            },
+            "validation_passed": true
+          }
+        },
+        {
+          "ar_decode_tok_s": 32.52044156908148,
+          "draft_seconds": 0.3251245559658855,
+          "exact_match_ar": true,
+          "prompt_id": "instruct:simple_qa_qwen_static_chat",
+          "route": "spec",
+          "spec_decode_tok_s": 40.25643411458019,
+          "speedup_vs_ar": 1.237880919576862,
+          "target_verify_rows_per_output_token": 1.25,
+          "target_verify_seconds": 1.2610442192526534,
+          "verifier_graph": {
+            "last": {
+              "bucket_key": {
+                "base_slot": 2,
+                "capture_width": 25600,
+                "chain_attn_mode": "batched",
+                "linear_attn_mode": "tree_tloop",
+                "rows": 5
+              },
+              "chain_attn_mode": "batched",
+              "linear_attn_fallback": false,
+              "linear_attn_mode": "tree_tloop",
+              "mode": "auto",
+              "replay_count": 1,
+              "replayed": true,
+              "status": "captured_validated_miss",
+              "validation_passed": true
+            },
+            "mode": "auto",
+            "status_counts": {
+              "captured_validated_miss": 2,
+              "replayed": 14
+            },
+            "validation_passed": true
+          }
+        }
+      ],
+      "rows": 9,
+      "spec_decode_tok_s": 37.551886284633504,
+      "speedup_vs_ar": 1.1611706477875356,
+      "summed_phase_seconds": {
+        "commit": 0.016585439909249544,
+        "draft": 2.3275346542941406,
+        "target_verify": 12.986996701569296
+      },
+      "target_verify_rows_per_output_token": 1.2065972222222223
+    }
+  },
+  "models": {
+    "drafter_name": "z-lab/Qwen3.6-27B-DFlash",
+    "drafter_path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106",
+    "drafter_revision": "0919688658996800f86b895034249700e9481106",
+    "target_name": "z-lab/Qwen3.6-27B-PARO",
+    "target_path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207",
+    "target_revision": "84f86409151d4f2ec86dc0b6a096d5f6daa7f207"
+  },
+  "performance_claim": false,
+  "run_tag": "dflash-27b-w7900-graph-aware-route-bulk-direct",
+  "schema_version": 1,
+  "status": "diagnostic",
+  "summary": "Graph-aware profile route plus verifier graph remains exact under bulk_direct canonical commit and improves W7900 27B B=4/D64 to 1.176x AR.",
+  "timestamp": "2026-05-31T11:37:40.611029+00:00",
+  "validation": [
+    "Graph-aware profile-route + verifier-graph + bulk_direct run exact 9/9; all_correctness_passed=true",
+    "All chain-routed rows report verifier_graph validation_passed=true",
+    "python3 -m py_compile scripts/dflash_chain_e2e_bench.py scripts/dflash_build_profile_route_manifest.py hipengine/runtime/qwen35_paro.py",
+    "HIP_VISIBLE_DEVICES=0 ... pytest -q tests/test_paro_awq_gemv_multi_row_decode.py tests/test_dflash_profile_route_manifest.py tests/test_dflash_draft_confidence.py tests/test_speculative_benchmark.py -> 17 passed"
+  ],
+  "workload": {
+    "canonical_commit_mode": "bulk_direct",
+    "decode_tokens": 64,
+    "draft_budget": 4,
+    "full_attn_chain_mode": "batched",
+    "prompt_suite": "fixtures/dflash/stable_prompts.jsonl",
+    "route_policy": "graph-aware profile history manifest regenerated from exact all-chain verifier-graph rows with min-chain-speedup=1.0 and default-route=ar",
+    "shape": "DFlash route B=4 D64 9-prompt stable suite",
+    "verifier_graph": "auto",
+    "verifier_mode": "native_bulk_bplus1"
+  }
+}

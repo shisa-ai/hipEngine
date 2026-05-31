@@ -321,27 +321,31 @@ losers: `code:class_continuation`, `code:json_yaml_continuation`,
 `instruct:simple_qa_qwen_static_chat` route to DFlash chain; quicksort,
 function-continuation, sort-third, and the short GSM8K-style prompt route to AR.
 
-| Metric | all-chain `multi_row_decode` | profile route | profile route + verifier graph | graph-aware profile route + verifier graph |
-| --- | ---: | ---: | ---: | ---: |
-| exact rows | 9/9 | 9/9 | 9/9 | 9/9 |
-| AR decode | 32.57 tok/s | 32.65 tok/s | 32.38 tok/s | 32.34 tok/s |
-| DFlash/spec decode | 31.75 tok/s | 34.63 tok/s | 36.81 tok/s | 37.55 tok/s |
-| vs AR | 0.975x | 1.061x | 1.137x | 1.161x |
-| route mix | 9 chain / 0 AR | 5 chain / 4 AR | 5 chain / 4 AR | 7 chain / 2 AR |
+| Metric | all-chain `multi_row_decode` | profile route | profile route + verifier graph | graph-aware profile route + verifier graph | graph-aware + graph + bulk-direct |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| exact rows | 9/9 | 9/9 | 9/9 | 9/9 | 9/9 |
+| AR decode | 32.57 tok/s | 32.65 tok/s | 32.38 tok/s | 32.34 tok/s | 32.49 tok/s |
+| DFlash/spec decode | 31.75 tok/s | 34.63 tok/s | 36.81 tok/s | 37.55 tok/s | 38.22 tok/s |
+| vs AR | 0.975x | 1.061x | 1.137x | 1.161x | 1.176x |
+| route mix | 9 chain / 0 AR | 5 chain / 4 AR | 5 chain / 4 AR | 7 chain / 2 AR | 7 chain / 2 AR |
 
 Verifier HIP graph capture (`--verifier-graph auto`) on the same route was the
 first multiloop result to clear the numeric `>1.10x` gate: exact `9/9`,
 `36.81 tok/s`, `1.137x` AR.  Rebuilding the profile manifest from an exact
 all-chain verifier-graph row made the route graph-aware: quicksort and the short
 GSM8K-style prompt became chain winners, yielding a 7-chain / 2-AR route at
-`37.55 tok/s`, `1.161x` AR.  Chain rows report graph validation success with
+`37.55 tok/s`, `1.161x` AR.  On this exact D64 gate, `bulk_direct` canonical
+commit also stayed exact and improved the graph-aware route to `38.22 tok/s`,
+`1.176x` AR.  Chain rows report graph validation success with
 `captured_validated_miss`/`replayed` statuses.  This remains a **diagnostic
 profile-history route**, not a promoted default: the route depends on prior
-prompt history rather than a deployable online classifier, and verifier graph
-capture is still opt-in.  Retained artifacts:
+prompt history rather than a deployable online classifier, verifier graph
+capture is still opt-in, and `bulk_direct` exactness is only established for
+this gate.  Retained artifacts:
 [`2026-05-31-hipengine-dflash-27b-profile-route-multiloop.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-profile-route-multiloop.json),
-[`2026-05-31-hipengine-dflash-27b-profile-route-verifier-graph.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-profile-route-verifier-graph.json), and
-[`2026-05-31-hipengine-dflash-27b-graph-aware-profile-route.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-graph-aware-profile-route.json).
+[`2026-05-31-hipengine-dflash-27b-profile-route-verifier-graph.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-profile-route-verifier-graph.json),
+[`2026-05-31-hipengine-dflash-27b-graph-aware-profile-route.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-graph-aware-profile-route.json), and
+[`2026-05-31-hipengine-dflash-27b-graph-aware-route-bulk-direct.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-graph-aware-route-bulk-direct.json).
 
 ### 2026-05-26 W7900 27B multi-row-decode default
 
