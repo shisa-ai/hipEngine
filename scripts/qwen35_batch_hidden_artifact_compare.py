@@ -366,6 +366,39 @@ def _parse_layer_int_expectation(value: str) -> tuple[int, int]:
         raise ValueError(f"layer expectation {value!r} has non-integer expected value") from exc
 
 
+def _parse_label_expectation(value: str, description: str) -> tuple[str, str]:
+    if "=" not in value:
+        raise ValueError(f"{description} expectation {value!r} must use LABEL=VALUE")
+    label, expected = value.split("=", 1)
+    label = label.strip()
+    expected = expected.strip()
+    if not label or not expected:
+        raise ValueError(f"{description} expectation {value!r} must use non-empty LABEL=VALUE")
+    return label, expected
+
+
+def _parse_label_int_expectation(value: str, description: str) -> tuple[str, int]:
+    label, raw_expected = _parse_label_expectation(value, description)
+    try:
+        return label, int(raw_expected)
+    except ValueError as exc:
+        raise ValueError(f"{description} expectation {value!r} has non-integer expected value") from exc
+
+
+def _artifact_by_label(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    entries = payload.get("artifacts", [])
+    if not isinstance(entries, list):
+        return {}
+    artifacts: dict[str, dict[str, Any]] = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        label = entry.get("label")
+        if isinstance(label, str) and label:
+            artifacts[label] = entry
+    return artifacts
+
+
 def _layer_limit_by_value(comparison: dict[str, Any], layer_limit: int) -> dict[str, Any] | None:
     entries = comparison.get("layer_limits", [])
     if not isinstance(entries, list):
@@ -416,6 +449,18 @@ def _expectation_metadata(args: argparse.Namespace) -> dict[str, Any] | None:
         layer_bit_mismatch_deltas[str(layer_limit)] = expected
     if layer_bit_mismatch_deltas:
         metadata["layer_first_over_atol_bit_mismatch_deltas"] = layer_bit_mismatch_deltas
+    source_sha256: dict[str, str] = {}
+    for raw_expectation in getattr(args, "expect_artifact_sha256", None) or []:
+        label, expected = _parse_label_expectation(str(raw_expectation), "artifact sha256")
+        source_sha256[label] = expected
+    if source_sha256:
+        metadata["source_artifact_sha256"] = source_sha256
+    source_sizes: dict[str, int] = {}
+    for raw_expectation in getattr(args, "expect_artifact_size_bytes", None) or []:
+        label, expected = _parse_label_int_expectation(str(raw_expectation), "artifact size")
+        source_sizes[label] = expected
+    if source_sizes:
+        metadata["source_artifact_size_bytes"] = source_sizes
     required_booleans: dict[str, bool] = {}
     if getattr(args, "expect_hidden_passed_all", False):
         required_booleans["hidden_passed_all"] = True
@@ -501,6 +546,21 @@ def _validate_expectations(payload: dict[str, Any], args: argparse.Namespace) ->
             errors.append(
                 f"layer {layer_limit} first_over_atol_bit_mismatch_delta expected {expected!r} but found {found!r}"
             )
+    artifacts_by_label = _artifact_by_label(payload)
+    for raw_expectation in getattr(args, "expect_artifact_sha256", None) or []:
+        label, expected = _parse_label_expectation(str(raw_expectation), "artifact sha256")
+        artifact = artifacts_by_label.get(label)
+        source = artifact.get("source_artifact") if isinstance(artifact, dict) else None
+        found = source.get("sha256") if isinstance(source, dict) else None
+        if found != expected:
+            errors.append(f"artifact {label} source_artifact.sha256 expected {expected!r} but found {found!r}")
+    for raw_expectation in getattr(args, "expect_artifact_size_bytes", None) or []:
+        label, expected = _parse_label_int_expectation(str(raw_expectation), "artifact size")
+        artifact = artifacts_by_label.get(label)
+        source = artifact.get("source_artifact") if isinstance(artifact, dict) else None
+        found = source.get("size_bytes") if isinstance(source, dict) else None
+        if found != expected:
+            errors.append(f"artifact {label} source_artifact.size_bytes expected {expected!r} but found {found!r}")
     if getattr(args, "expect_hidden_passed_all", False) and comparison.get("hidden_passed_all") is not True:
         errors.append(f"hidden_passed_all expected True but found {comparison.get('hidden_passed_all')!r}")
     if getattr(args, "expect_token_passed_all", False) and comparison.get("token_passed_all") is not True:
@@ -660,6 +720,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--expect-layer-first-over-atol-bit-mismatch-delta",
         action="append",
         help="Fail unless a layer limit has the expected first-over-atol bit-mismatch delta, as LAYER=INT",
+    )
+    parser.add_argument(
+        "--expect-artifact-sha256",
+        action="append",
+        help="Fail unless an artifact's source_artifact.sha256 matches, as LABEL=SHA256",
+    )
+    parser.add_argument(
+        "--expect-artifact-size-bytes",
+        action="append",
+        help="Fail unless an artifact's source_artifact.size_bytes matches, as LABEL=INT",
     )
     parser.add_argument("--expect-first-diverging-layer-limit", type=int, help="Fail unless first_diverging_layer_limit matches")
     parser.add_argument("--expect-hidden-passed-all", action="store_true", help="Fail unless hidden_passed_all is true")

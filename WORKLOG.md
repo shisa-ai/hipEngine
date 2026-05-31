@@ -50249,3 +50249,38 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: targeted tests PASS; source metadata assertions PASS; verify count remains `12`; full guard PASS with c=2/c=8 primitive correctness and A/A fields zero; benchmark rollup files unchanged. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and this is diagnostic C2.3 evidence only.
+
+## 2026-05-31 — CONCURRENCY C2.3 projection comparator source expectations
+
+Added label-scoped `--expect-artifact-sha256 LABEL=SHA256` and `--expect-artifact-size-bytes LABEL=INT` checks to `scripts/qwen35_batch_hidden_artifact_compare.py`. The projection-route comparison now records those source-fingerprint expectations under `expectations.source_artifact_sha256` / `expectations.source_artifact_size_bytes` and fails with a label-specific error if a compact comparison is rerun against stale or swapped input JSONs.
+
+Regenerated `/tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-projection-route-compare.json` with source expectations enabled. The command now mechanically requires `selected_qkvz` size `5040233`, sha256 `3c2e4b0749c6eafb22ee84f1abef91243bb304a6eaff0385899630b14a1da1d5`, and `selected_ab` size `5939797`, sha256 `63482b197880a1b96c029fd2d1f70cffb1d4cb4b1a0f89683dc7942a6329f456`, alongside the existing route/coordinate/bit-delta expectations.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_hidden_artifact_compare.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_projection_artifact_compare_spots_limit_drift_delta tests/test_generation_batch_scheduler.py::test_hidden_bisect_projection_bit_drift_rollup_reports_first_over_atol_drift -q
+python3 scripts/qwen35_batch_hidden_artifact_compare.py --artifact selected_qkvz=/tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-selected-qkvz-native-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json --artifact selected_ab=/tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-batch-gemv-qkvz-selected-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json --json /tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-projection-route-compare.json --expect-route-classification same_first_over_atol_location_with_record_and_drift_delta --expect-route-difference-kinds drift_stages,first_over_atol_record,first_over_atol_bit_mismatch --expect-layer-route-classification 1=no_over_atol_with_drift_delta --expect-layer-route-classification 2=same_first_over_atol_location_with_record_delta --expect-layer-route-difference-kinds 1=drift_stages --expect-layer-route-difference-kinds 2=first_over_atol_record,first_over_atol_bit_mismatch --expect-first-over-atol-bit-mismatch-delta 1 --expect-first-over-atol-location layer_limit=2 --expect-first-over-atol-location decode_step=0 --expect-first-over-atol-location generated_index=1 --expect-first-over-atol-location layer_index=1 --expect-first-over-atol-location stage=qkv --expect-first-over-atol-location row=0 --expect-first-over-atol-location max_abs_flat_index=857 --expect-first-over-atol-location elements_over_atol=2 --expect-layer-first-over-atol-bit-mismatch-delta 2=1 --expect-artifact-sha256 selected_qkvz=3c2e4b0749c6eafb22ee84f1abef91243bb304a6eaff0385899630b14a1da1d5 --expect-artifact-size-bytes selected_qkvz=5040233 --expect-artifact-sha256 selected_ab=63482b197880a1b96c029fd2d1f70cffb1d4cb4b1a0f89683dc7942a6329f456 --expect-artifact-size-bytes selected_ab=5939797 --expect-first-diverging-layer-limit 1 --expect-hidden-passed-all --expect-token-passed-all --expect-all-statuses-eq-ok
+python3 - <<'PY'
+import json, pathlib
+payload = json.loads(pathlib.Path('/tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-projection-route-compare.json').read_text())
+assert payload['expectations']['source_artifact_sha256'] == {
+    'selected_ab': '63482b197880a1b96c029fd2d1f70cffb1d4cb4b1a0f89683dc7942a6329f456',
+    'selected_qkvz': '3c2e4b0749c6eafb22ee84f1abef91243bb304a6eaff0385899630b14a1da1d5',
+}
+assert payload['expectations']['source_artifact_size_bytes'] == {'selected_ab': 5939797, 'selected_qkvz': 5040233}
+assert payload['expectations']['passed'] is True
+PY
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \[(?: |~)\]', queue))
+print(count)
+assert count == 12
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: targeted tests PASS; source expectation comparison PASS; verify count remains `12`; full guard PASS with c=2/c=8 primitive correctness and A/A fields zero; benchmark rollup files unchanged. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and this is diagnostic C2.3 evidence only.

@@ -7802,6 +7802,10 @@ def test_hidden_bisect_projection_artifact_compare_spots_limit_drift_delta(tmp_p
     write_artifact(selected_qkvz, first_limit_drift=False, first_over_bit_mismatch=3722)
     out = tmp_path / "compare.json"
 
+    selected_ab_sha256 = hashlib.sha256(selected_ab.read_bytes()).hexdigest()
+    selected_qkvz_sha256 = hashlib.sha256(selected_qkvz.read_bytes()).hexdigest()
+    selected_ab_size = selected_ab.stat().st_size
+    selected_qkvz_size = selected_qkvz.stat().st_size
     artifact_args = [f"selected_ab={selected_ab}", f"selected_qkvz={selected_qkvz}"]
     payload = hidden_artifact_compare.run(
         argparse.Namespace(
@@ -7829,6 +7833,14 @@ def test_hidden_bisect_projection_artifact_compare_spots_limit_drift_delta(tmp_p
                 "elements_over_atol=2",
             ],
             expect_layer_first_over_atol_bit_mismatch_delta=["2=1"],
+            expect_artifact_sha256=[
+                f"selected_ab={selected_ab_sha256}",
+                f"selected_qkvz={selected_qkvz_sha256}",
+            ],
+            expect_artifact_size_bytes=[
+                f"selected_ab={selected_ab_size}",
+                f"selected_qkvz={selected_qkvz_size}",
+            ],
             expect_first_diverging_layer_limit=1,
             expect_hidden_passed_all=True,
             expect_token_passed_all=True,
@@ -7865,6 +7877,14 @@ def test_hidden_bisect_projection_artifact_compare_spots_limit_drift_delta(tmp_p
             "elements_over_atol": 2,
         },
         "layer_first_over_atol_bit_mismatch_deltas": {"2": 1},
+        "source_artifact_sha256": {
+            "selected_ab": selected_ab_sha256,
+            "selected_qkvz": selected_qkvz_sha256,
+        },
+        "source_artifact_size_bytes": {
+            "selected_ab": selected_ab_size,
+            "selected_qkvz": selected_qkvz_size,
+        },
         "first_diverging_layer_limit": 1,
         "required_booleans": {
             "hidden_passed_all": True,
@@ -7876,13 +7896,13 @@ def test_hidden_bisect_projection_artifact_compare_spots_limit_drift_delta(tmp_p
     artifact_summaries = {entry["label"]: entry for entry in payload["artifacts"]}
     assert artifact_summaries["selected_ab"]["source_artifact"] == {
         "path": str(selected_ab),
-        "size_bytes": selected_ab.stat().st_size,
-        "sha256": hashlib.sha256(selected_ab.read_bytes()).hexdigest(),
+        "size_bytes": selected_ab_size,
+        "sha256": selected_ab_sha256,
     }
     assert artifact_summaries["selected_qkvz"]["source_artifact"] == {
         "path": str(selected_qkvz),
-        "size_bytes": selected_qkvz.stat().st_size,
-        "sha256": hashlib.sha256(selected_qkvz.read_bytes()).hexdigest(),
+        "size_bytes": selected_qkvz_size,
+        "sha256": selected_qkvz_sha256,
     }
     assert payload["comparison"]["common_layer_limits"] == [1, 2]
     assert payload["comparison"]["first_over_atol_layer_limits_by_label"] == {
@@ -7953,6 +7973,22 @@ def test_hidden_bisect_projection_artifact_compare_spots_limit_drift_delta(tmp_p
                 artifact=artifact_args,
                 json=None,
                 expect_first_over_atol_location=["stage=z"],
+            )
+        )
+    with pytest.raises(ValueError, match=r"artifact selected_ab source_artifact\.sha256 expected"):
+        hidden_artifact_compare.run(
+            argparse.Namespace(
+                artifact=artifact_args,
+                json=None,
+                expect_artifact_sha256=["selected_ab=not-the-hash"],
+            )
+        )
+    with pytest.raises(ValueError, match=r"artifact selected_qkvz source_artifact\.size_bytes expected"):
+        hidden_artifact_compare.run(
+            argparse.Namespace(
+                artifact=artifact_args,
+                json=None,
+                expect_artifact_size_bytes=[f"selected_qkvz={selected_qkvz_size + 1}"],
             )
         )
 

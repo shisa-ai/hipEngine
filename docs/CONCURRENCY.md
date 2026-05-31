@@ -1363,9 +1363,10 @@ roll-up/status view.
       and per-layer-limit expectation flags for those classifications/statuses,
       the exact first-over-atol coordinate, and the one-bit mismatch delta; the
       artifact records the passed expectation set under `expectations` plus
-      SHA256/size metadata for both source artifacts, so this diagnostic can be
-      rechecked mechanically without a bespoke JSON assertion snippet. They
-      differ at L1:
+      SHA256/size metadata for both source artifacts, and the compare helper can
+      require those fingerprints with `--expect-artifact-sha256` /
+      `--expect-artifact-size-bytes`, so this diagnostic can be rechecked
+      mechanically without a bespoke JSON assertion snippet. They differ at L1:
       selected-QKV/Z/native-A/B has no QKV/Z drift while the A/B-selected route
       has under-tolerance QKV/Z drift. Together with the green selected-all
       projection control, this means both QKV/Z bit exactness and A/B exactness
