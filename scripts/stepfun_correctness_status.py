@@ -858,6 +858,10 @@ def _handoff_summary(
                     "blocker_kind": blocker_kind,
                     "gate": "oracle_parity",
                     "command_available": blocker_kind in next_action_commands,
+                    "primary_command_kind": "rerun_command_shell",
+                    "primary_command": dict(next_action_commands.get(blocker_kind, {})).get(
+                        "rerun_command_shell"
+                    ),
                     "gap_report_status": oracle_gap_report.get("status"),
                     "first_missing_precondition": oracle_gap_report.get(
                         "first_missing_precondition"
@@ -872,6 +876,10 @@ def _handoff_summary(
                     "blocker_kind": blocker_kind,
                     "gate": "kv_backed_decode",
                     "command_available": blocker_kind in next_action_commands,
+                    "primary_command_kind": "resource_plan_refresh_command",
+                    "primary_command": dict(next_action_commands.get(blocker_kind, {})).get(
+                        "resource_plan_refresh_command"
+                    ),
                     "gap_report_status": kv_backed_decode_gap_report.get("status"),
                     "first_missing_evidence": kv_backed_decode_gap_report.get(
                         "first_missing_evidence"
@@ -887,6 +895,8 @@ def _handoff_summary(
                     "blocker_kind": blocker_kind,
                     "gate": None,
                     "command_available": blocker_kind in next_action_commands,
+                    "primary_command_kind": None,
+                    "primary_command": None,
                     "gap_report_status": None,
                 }
             )
