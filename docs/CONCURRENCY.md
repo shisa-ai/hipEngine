@@ -1455,8 +1455,9 @@ roll-up/status view.
       stale primitive command text/argv, wrong device env, wrong-script/category,
       duplicate `--rows`/`--seed`/`--json` labels, blank inline/missing
       `--json`, blank inline/missing/non-integer `--rows`/`--seed` values,
-      direct-symlink, symlink-parent, parent-directory, or outside-output-dir
-      artifacts, wrong artifact filenames, artifact-path/argv `--json`,
+      symlinked `output_dir`, direct-symlink, symlink-parent,
+      parent-directory, or outside-output-dir artifacts, wrong artifact filenames,
+      artifact-path/argv `--json`,
       `--rows`, or `--seed` labels in
       `test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics`.
       The primitive script also re-runs

@@ -7249,6 +7249,17 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     assert summary["command_count"] == 27
     assert summary["completed_command_count"] == 27
     assert summary["status_counts"] == {"planned": 27}
+    if hasattr(os, "symlink"):
+        output_dir_link = tmp_path / "artifacts-output-link"
+        try:
+            output_dir_link.symlink_to(tmp_path / "artifacts", target_is_directory=True)
+            symlink_output_dir_summary = json.loads(json.dumps(summary))
+            symlink_output_dir_summary["output_dir"] = str(output_dir_link)
+            with pytest.raises(ValueError, match="output_dir must not be a symlink"):
+                c_sweep.validate_sweep_summary(symlink_output_dir_summary)
+        finally:
+            if output_dir_link.is_symlink():
+                output_dir_link.unlink()
     assert summary["category_status_counts"] == {
         "primitive": {"planned": 4},
         "serial_bridge": {"planned": 4},
