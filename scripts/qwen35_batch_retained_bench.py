@@ -976,8 +976,7 @@ def _cached_build_provenance_blockers(args: argparse.Namespace) -> list[str]:
     return blockers
 
 
-def _retained_command_provenance_blockers(args: argparse.Namespace, argv: Sequence[str] | None) -> list[str]:
-    command = _command(argv)
+def _retained_command_label_provenance_blockers(args: argparse.Namespace, command: str) -> list[str]:
     blockers: list[str] = []
     for field, flag in (("model", "--model"), ("fixture", "--fixture")):
         command_value = _command_arg_value(command, flag)
@@ -986,7 +985,23 @@ def _retained_command_provenance_blockers(args: argparse.Namespace, argv: Sequen
             blockers.append(f"commands.benchmark must include {flag} for retained promotion")
         elif expected_value and command_value != expected_value:
             blockers.append(f"commands.benchmark {flag} must match retained {field}")
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        blockers.append("commands.benchmark must be shell-parseable for retained promotion")
+        return blockers
+    command_device_env = _command_device_env_assignments(parts)
+    for key, expected_value in _current_command_device_env_assignments().items():
+        command_value = command_device_env.get(key)
+        if command_value is None:
+            blockers.append(f"commands.benchmark must include {key}={expected_value} for retained promotion")
+        elif command_value != expected_value:
+            blockers.append(f"commands.benchmark {key} must match retained command env")
     return blockers
+
+
+def _retained_command_provenance_blockers(args: argparse.Namespace, argv: Sequence[str] | None) -> list[str]:
+    return _retained_command_label_provenance_blockers(args, _command(argv))
 
 
 def _synthesized_profiler_total_kernel_duration(profiler: Mapping[str, Any]) -> float | None:

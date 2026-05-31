@@ -13405,6 +13405,21 @@ def test_qwen35_retained_artifact_paths_reject_symlink_escapes(
         command_args,
         ["--model", "/tmp/other", "--fixture", "/tmp/fixture.json"],
     ) == ["commands.benchmark --model must match retained model"]
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
+    assert retained_bench._retained_command_label_provenance_blockers(
+        command_args,
+        "env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py "
+        "--model /tmp/model --fixture /tmp/fixture.json",
+    ) == []
+    assert retained_bench._retained_command_label_provenance_blockers(
+        command_args,
+        "python3 scripts/qwen35_batch_retained_bench.py --model /tmp/model --fixture /tmp/fixture.json",
+    ) == ["commands.benchmark must include HIP_VISIBLE_DEVICES=1 for retained promotion"]
+    assert retained_bench._retained_command_label_provenance_blockers(
+        command_args,
+        "env HIP_VISIBLE_DEVICES=2 python3 scripts/qwen35_batch_retained_bench.py "
+        "--model /tmp/model --fixture /tmp/fixture.json",
+    ) == ["commands.benchmark HIP_VISIBLE_DEVICES must match retained command env"]
     assert retained_bench._retained_output_artifact_blockers("benchmarks/results/source.txt") == [
         "artifact_path must point to a .json artifact"
     ]
