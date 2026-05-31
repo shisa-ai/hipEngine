@@ -53343,3 +53343,23 @@ HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts
 ```
 
 Result: focused metrics endpoint test PASS; docs diff check PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed queue items were not changed, no retained c>N performance/scaling claim was added, and malformed live graph metric values no longer appear as valid Prometheus evidence.
+
+## 2026-05-31 — CONCURRENCY Prometheus graph scalar filtering
+
+Hardened live `/metrics` graph observability for scalar graph-bucket counters. `_graph_bucket_metric_values()` now passes `entries`, `hits`, and `misses` through a finite, non-bool, non-negative scalar filter before computing `replay_hit_rate`; malformed values collapse to zero instead of exporting bogus counters or NaN/inf rates. Added `test_metrics_endpoint_filters_malformed_graph_bucket_scalars` covering boolean, NaN, infinity, and negative scalar cases while preserving a partially valid hit-only rate. This is observability/evidence hardening only; no queue item was closed and no retained c>N performance/scaling claim was added.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine/server/api.py tests/test_server_api.py && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_server_api.py::test_metrics_endpoint_filters_malformed_graph_bucket_scalars tests/test_server_api.py::test_metrics_endpoint_is_opt_in_and_additive -q
+git diff --check
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+```
+
+Result: focused metrics endpoint tests PASS; docs diff check PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed queue items were not changed, no retained c>N performance/scaling claim was added, and malformed scalar graph metric values no longer appear as valid Prometheus evidence.

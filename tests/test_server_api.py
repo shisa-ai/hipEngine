@@ -486,6 +486,47 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
     assert 'hipengine_graph_bucket_kernel_time_bucket_total{bucket="lt_1us"}' not in metrics.text
 
 
+def test_metrics_endpoint_filters_malformed_graph_bucket_scalars() -> None:
+    fake = FakeLLM()
+    fake.graph_bucket_stats = SimpleNamespace(
+        entries=True,
+        hits=float("nan"),
+        misses=float("inf"),
+        replay_hit_rate=1.0,
+        miss_reasons={},
+        kernel_time_histogram_ns={},
+    )
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False, metrics="prometheus"),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    malformed = client.get("/metrics")
+
+    assert malformed.status_code == 200
+    assert _metric_value(malformed.text, "hipengine_graph_bucket_entries") == 0
+    assert _metric_value(malformed.text, "hipengine_graph_bucket_hits_total") == 0
+    assert _metric_value(malformed.text, "hipengine_graph_bucket_misses_total") == 0
+    assert _metric_value(malformed.text, "hipengine_graph_bucket_replay_hit_rate") == 0
+
+    fake.graph_bucket_stats = SimpleNamespace(
+        entries=-1,
+        hits=3,
+        misses=-4,
+        replay_hit_rate=0.0,
+        miss_reasons={},
+        kernel_time_histogram_ns={},
+    )
+    partially_valid = client.get("/metrics")
+
+    assert partially_valid.status_code == 200
+    assert _metric_value(partially_valid.text, "hipengine_graph_bucket_entries") == 0
+    assert _metric_value(partially_valid.text, "hipengine_graph_bucket_hits_total") == 3
+    assert _metric_value(partially_valid.text, "hipengine_graph_bucket_misses_total") == 0
+    assert _metric_value(partially_valid.text, "hipengine_graph_bucket_replay_hit_rate") == 1
+
+
 def test_streaming_chat_completion_lowers_n_to_seeded_rows() -> None:
     fake = FakeLLM(outputs=["alpha", "beta"])
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)

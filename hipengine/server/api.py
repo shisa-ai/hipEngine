@@ -948,7 +948,7 @@ def _graph_bucket_metric_values(engine: Any | None) -> dict[str, Any]:
         return values
     data = _stats_to_mapping(stats)
     for key in ("entries", "hits", "misses"):
-        values[key] = float(data.get(key, 0) or 0)
+        values[key] = _non_negative_metric_value(data.get(key))
     lookups = values["hits"] + values["misses"]
     values["replay_hit_rate"] = values["hits"] / lookups if lookups > 0.0 else 0.0
     values["miss_reasons"] = _non_negative_metric_mapping(data.get("miss_reasons"))
@@ -1002,15 +1002,22 @@ def _stats_to_mapping(stats: Any) -> Mapping[str, Any]:
     return {key: getattr(stats, key) for key in keys if hasattr(stats, key)}
 
 
+def _non_negative_metric_value(value: Any, *, default: float = 0.0) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return default
+    numeric = float(value)
+    if not math.isfinite(numeric) or numeric < 0:
+        return default
+    return numeric
+
+
 def _non_negative_metric_mapping(value: Any) -> dict[str, float]:
     if not isinstance(value, Mapping):
         return {}
     metrics: dict[str, float] = {}
     for key, raw in value.items():
-        if isinstance(raw, bool) or not isinstance(raw, (int, float)):
-            continue
-        numeric = float(raw)
-        if not math.isfinite(numeric) or numeric < 0:
+        numeric = _non_negative_metric_value(raw, default=-1.0)
+        if numeric < 0:
             continue
         metrics[str(key)] = numeric
     return metrics
