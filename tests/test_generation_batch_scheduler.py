@@ -7363,6 +7363,15 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.argv must include --json <artifact_path>"):
             c_sweep.validate_sweep_summary(tampered_missing_json)
 
+        tampered_blank_json = json.loads(json.dumps(summary))
+        blank_json_entry = tampered_blank_json["commands"][index]
+        blank_json_argv = blank_json_entry["argv"]
+        blank_json_index = blank_json_argv.index("--json")
+        blank_json_argv[blank_json_index : blank_json_index + 2] = ["--json="]
+        blank_json_entry["command"] = shlex.join(blank_json_argv)
+        with pytest.raises(ValueError, match=r"commands\[\]\.argv flag values must be non-empty"):
+            c_sweep.validate_sweep_summary(tampered_blank_json)
+
         for tamper_argv_json in (False, True):
             tampered_artifact_link = json.loads(json.dumps(summary))
             entry = tampered_artifact_link["commands"][index]
