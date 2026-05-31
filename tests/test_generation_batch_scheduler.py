@@ -11449,6 +11449,39 @@ def test_qwen35_c1_baseline_command_preserves_visible_hip_device_env(monkeypatch
     ]
 
 
+def test_qwen35_c1_baseline_artifact_path_self_binding_is_scaling_reference_compatible(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
+    c1 = tmp_path / "native-baseline-c1.json"
+    c1.write_text(
+        json.dumps(
+            {
+                "artifact_path": paro_bench._artifact_path(c1),
+                "schema": 1,
+                "hardware": {"visible_device": {"env": {"HIP_VISIBLE_DEVICES": "1"}}},
+                "commands": {"benchmark": f"env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_paro_bench.py --json {c1}"},
+                "prompt_length": 512,
+                "decode_tokens": 128,
+                "throughput": {"warmed_decode_tok_s": 5.0},
+            }
+        )
+    )
+
+    reference = retained_bench._scaling_reference(
+        c1,
+        default_workload_concurrency=1,
+        expected_command_script=retained_bench._LEGACY_NATIVE_BENCH_SCRIPT,
+    )
+
+    assert reference["reference_artifact_path"] == str(c1)
+    assert reference["reason"] is None
+    assert reference["workload_concurrency"] == 1
+    assert reference["decode_tok_s_aggregate"] == 5.0
+    assert reference["decode_tok_s_per_request"] == 5.0
+
+
 def test_qwen35_serial_bridge_hardware_context_uses_visible_hip_device(monkeypatch) -> None:
     class FakeHipFunc:
         def __init__(self, func):

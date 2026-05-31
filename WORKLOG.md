@@ -50822,3 +50822,25 @@ git diff --check
 ```
 
 Result: focused c=1 baseline provenance tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and generated-token equality requirements remain open/unchanged.
+
+## 2026-05-31 — CONCURRENCY c1 baseline artifact self-binding
+
+Made future c=1 baseline JSON usable as a retained scaling reference without hand-editing. `scripts/qwen35_paro_bench.py` now writes top-level `artifact_path` when `--json` is provided, matching the retained-bench/c-sweep self-binding precondition used for scaling references. Added an interoperability test that writes a GPU1/XTX-stamped c=1 baseline payload using `qwen35_paro_bench._artifact_path(...)` and verifies `retained_bench._scaling_reference(...)` accepts it with the expected `qwen35_paro_bench.py` command script and `HIP_VISIBLE_DEVICES=1` provenance. This is evidence hardening only; no retained c>N performance/scaling claim was added.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 -m compileall -q scripts/qwen35_paro_bench.py tests/test_generation_batch_scheduler.py && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_c1_baseline_artifact_path_self_binding_is_scaling_reference_compatible tests/test_generation_batch_scheduler.py::test_qwen35_c1_baseline_command_preserves_visible_hip_device_env -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue))
+print(count)
+assert count == 12
+PY
+HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+git diff --check
+```
+
+Result: focused c=1 self-binding/scaling-reference tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and generated-token equality requirements remain open/unchanged.

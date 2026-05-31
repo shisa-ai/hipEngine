@@ -92,6 +92,10 @@ def _command(argv: list[str] | None) -> str:
     return " ".join(shlex.quote(part) for part in parts)
 
 
+def _artifact_path(path: Path | None) -> str | None:
+    return str(path) if path is not None else None
+
+
 def _workload_summary(
     *,
     model: Path,
@@ -368,6 +372,7 @@ def main() -> int:
 
     output = {
         "schema": 1,
+        "artifact_path": _artifact_path(args.json),
         "model": str(model),
         "quant": "w4_paro",
         "backend": runner.backend,
