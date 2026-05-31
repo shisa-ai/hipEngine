@@ -507,7 +507,7 @@ reporting.
 
 ### P11 — Text-only c=1 decode runner
 
-- [ ] Add a Step GGUF runner that streams one-token decode for short prompts with
+- [~] Add a Step GGUF runner that streams one-token decode for short prompts with
   the Step tokenizer, split weight index, mixed GGUF quant dispatch, full/sliding
   attention, and Step MoE. 2026-05-29 progress: split-shard resident
   materialization now plans all 754 tensors / 95.46 GiB across all three shards,
@@ -557,6 +557,9 @@ reporting.
   `e2e_inference_ready=false`; it also records the current P0-P12
   open/partial checklist metric (`2`), lists next actions for the StepFun-capable
   oracle and KV-backed decode blockers, and supports `--fail-on-blocked` for CI/handoff checks.
+  This checklist item is partial rather than complete because the current runner
+  is host-composed/chunked and does not yet implement the final KV-backed
+  one-token decode path.
 - [x] Use short contexts first (for example <= 512) before exercising long
   context and sliding-window boundaries. `StepFunShortContextDecodePlanner`
   enforces the current c=1 bring-up default `max_context=512`,

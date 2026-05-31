@@ -23,11 +23,11 @@
     "open_or_partial_items_p0_p12": [
       {
         "line": 510,
-        "state": "open",
+        "state": "partial",
         "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
       },
       {
-        "line": 564,
+        "line": 567,
         "state": "partial",
         "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
       }

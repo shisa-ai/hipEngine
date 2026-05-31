@@ -27803,3 +27803,7 @@ python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
 ```
 
 Result: `3 passed`.
+
+## 2026-05-31 — StepFun P11 runner item marked partial
+
+Updated `docs/STEPFUN.md` to mark the P11 Step GGUF runner checklist item as partial (`[~]`) instead of open. The current evidence is substantial — all three Q3_K_L shards load/plan, the host-composed chunked runner executes a 23-token prompt through all 45 layers and emits a next-token candidate, and the correctness-status artifact captures `all_layer_prompt_smoke=true`. The item remains partial because the path is still host-composed/chunked rather than the final KV-backed one-token decode runner, and oracle parity is blocked on a StepFun/`step35`-capable llama.cpp or CPU oracle.
