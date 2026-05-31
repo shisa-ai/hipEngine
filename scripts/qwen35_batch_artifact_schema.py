@@ -2670,6 +2670,8 @@ def _validate_claimed_execution_seed_tokens(
     if not isinstance(seed_tokens, Mapping):
         errors.append("execution.seed_tokens must be an object when generated_token_equality.passed is true")
         return
+    if not seed_tokens:
+        return
     if concurrency is not None and len(seed_tokens) != concurrency:
         errors.append("execution.seed_tokens length must match workload.concurrency when generated_token_equality.passed is true")
     if concurrency is None:
