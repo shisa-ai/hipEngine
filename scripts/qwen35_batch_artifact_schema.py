@@ -2743,6 +2743,8 @@ def _validate_claimed_execution_generated_tokens(
     if not isinstance(generated_tokens, Mapping):
         errors.append("execution.generated_tokens must be an object when generated_token_equality.passed is true")
         return
+    if not generated_tokens:
+        return
     if concurrency is not None and len(generated_tokens) != concurrency:
         errors.append("execution.generated_tokens length must match workload.concurrency when generated_token_equality.passed is true")
     if concurrency is None:
