@@ -1102,6 +1102,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     ).hexdigest()
     assert f"--prompt-artifact {prompt}" in oracle_commands["status_refresh_command"]
     assert f"--oracle-artifact {oracle}" in oracle_commands["status_refresh_command"]
+    assert oracle_commands["status_refresh_command_nchars"] == len(
+        oracle_commands["status_refresh_command"]
+    )
+    assert oracle_commands["status_refresh_command_sha256"] == hashlib.sha256(
+        oracle_commands["status_refresh_command"].encode()
+    ).hexdigest()
     assert oracle_commands["gap_report_status"] == "blocked"
     assert oracle_commands["first_missing_precondition"] == "step35_not_rejected"
     assert oracle_commands["missing_evidence"] == [
@@ -1123,6 +1129,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         f"--kv-context-pages 1 --kv-page-size 512 --pretty > {resource}"
     )
     assert kv_commands["status_refresh_command"] == oracle_commands["status_refresh_command"]
+    assert kv_commands["status_refresh_command_nchars"] == oracle_commands[
+        "status_refresh_command_nchars"
+    ]
+    assert kv_commands["status_refresh_command_sha256"] == oracle_commands[
+        "status_refresh_command_sha256"
+    ]
     assert kv_commands["gap_report_status"] == "blocked"
     assert kv_commands["missing_evidence"] == [
         "streaming_runner_ready_flags",

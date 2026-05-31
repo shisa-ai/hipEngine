@@ -670,6 +670,14 @@ def _resource_plan_refresh_command(
     )
 
 
+def _command_length_hash(prefix: str, command: str) -> dict[str, object]:
+    return {
+        f"{prefix}_nchars": len(command),
+        f"{prefix}_sha256": hashlib.sha256(command.encode()).hexdigest(),
+    }
+
+
+
 def _oracle_helper_refresh_command(
     *,
     oracle_progress: dict[str, object],
@@ -733,6 +741,7 @@ def _next_action_commands(
                 oracle_helper_refresh.encode()
             ).hexdigest(),
             "status_refresh_command": status_refresh,
+            **_command_length_hash("status_refresh_command", status_refresh),
             "gap_report_status": oracle_gap_report.get("status"),
             "missing_preconditions": oracle_missing_preconditions,
             "first_missing_precondition": oracle_gap_report.get("first_missing_precondition"),
@@ -751,6 +760,7 @@ def _next_action_commands(
                 output_artifact=resource_artifact
             ),
             "status_refresh_command": status_refresh,
+            **_command_length_hash("status_refresh_command", status_refresh),
             "gap_report_status": kv_backed_decode_gap_report.get("status"),
             "missing_evidence": kv_missing_evidence,
             "first_missing_evidence": kv_backed_decode_gap_report.get("first_missing_evidence"),

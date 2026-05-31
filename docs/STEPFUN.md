@@ -658,7 +658,8 @@ reporting.
   checks those embedded hashes/sizes against the current files before a handoff is
   trusted. The status also includes `next_action_commands` for rerunning the
   oracle command shell, regenerating the oracle JSON via `scripts/stepfun_llamacpp_oracle.py`,
-  and refreshing the resource/status artifacts.
+  and refreshing the resource/status artifacts, with length/SHA-256 metadata for
+  the shared status-refresh command.
   Remaining implementation task: run a longer/faster
   StepFun-capable llama.cpp oracle and review/record the parsed result;
   KV-backed decode parity remains open too.

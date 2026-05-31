@@ -1033,6 +1033,8 @@
       ],
       "resource_plan_refresh_command": "python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan --kv-context-pages 1 --kv-page-size 512 --pretty > benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
       "status_refresh_command": "python3 scripts/stepfun_correctness_status.py --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --oracle-artifact benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json --resource-artifact benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json --docs docs/STEPFUN.md --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty",
+      "status_refresh_command_nchars": 431,
+      "status_refresh_command_sha256": "39b2253556baabf33c43a51b0dfef3b47742bd950d6d4a7538525169c5ca24a3",
       "streaming_runner_blocker_count": 3,
       "success_criteria": [
         "kv_backed_decode_gap_report.status is ready",
@@ -1057,6 +1059,8 @@
       "oracle_helper_refresh_command_sha256": "c535c06e68d7f2785e2312abcd6be19fb752fd5754a37e02f698e57405cdfa74",
       "rerun_command_shell": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --prompt '<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n' --predict 1 --temp 0 --top-k 1 --top-p 1 --min-p 0 --repeat-penalty 1 --seed 0 --no-display-prompt --simple-io --device none --gpu-layers 0",
       "status_refresh_command": "python3 scripts/stepfun_correctness_status.py --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --oracle-artifact benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json --resource-artifact benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json --docs docs/STEPFUN.md --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty",
+      "status_refresh_command_nchars": 431,
+      "status_refresh_command_sha256": "39b2253556baabf33c43a51b0dfef3b47742bd950d6d4a7538525169c5ca24a3",
       "success_criteria": [
         "oracle_gap_report.status is ready",
         "oracle_gap_report.missing_preconditions is empty",
@@ -1506,8 +1510,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "7ebd0a30a14227399f240d5a1395c131b9148f38dbffec393342137696dd835f",
-      "size_bytes": 53815
+      "sha256": "ed96ae353620f03d1f97f6f0fd7e5effa7fe29839f1059c9bb70d462db519b17",
+      "size_bytes": 53885
     },
     "oracle": {
       "exists": true,
