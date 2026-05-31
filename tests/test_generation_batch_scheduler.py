@@ -6957,6 +6957,14 @@ def test_batch_c_sweep_can_plan_int8_blocked_diagnostics(tmp_path: Path) -> None
         with pytest.raises(ValueError, match=rf"commands\[\]\.argv INT8 {flag} must match the c-specific output_dir artifact path"):
             c_sweep.validate_sweep_summary(tampered)
 
+    for flag in ("--rows", "--future-json", "--primitive-cpu-json", "--primitive-hip-json"):
+        tampered = json.loads(json.dumps(summary))
+        argv = tampered["commands"][int8_entry_index]["argv"]
+        argv.extend([flag, argv[argv.index(flag) + 1]])
+        tampered["commands"][int8_entry_index]["command"] = shlex.join(argv)
+        with pytest.raises(ValueError, match=r"commands\[\]\.argv must not repeat INT8 diagnostic flags"):
+            c_sweep.validate_sweep_summary(tampered)
+
 
 def test_batch_c_sweep_can_plan_gguf_blocked_diagnostics(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
