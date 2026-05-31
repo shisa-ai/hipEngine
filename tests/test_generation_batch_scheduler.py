@@ -7242,9 +7242,23 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     assert all(entry["argv"][entry["argv"].index("--backend") + 1] == "hip_gfx1100" for entry in gguf_entries)
     assert all(entry["argv"][entry["argv"].index("--max-new-tokens") + 1] == "4" for entry in gguf_entries)
 
-    int8_index = next(
+    int8_entry_indices = [
         index for index, entry in enumerate(summary["commands"]) if entry["category"] == "int8_native_diagnostic"
-    )
+    ]
+    for flag, stale_name in (
+        ("--primitive-cpu-json", "int8-primitive-cpu-stale.json"),
+        ("--primitive-hip-json", "int8-primitive-hip-stale.json"),
+    ):
+        tampered = json.loads(json.dumps(summary))
+        argv = tampered["commands"][int8_entry_indices[-1]]["argv"]
+        argv[argv.index(flag) + 1] = str(tmp_path / "artifacts" / stale_name)
+        tampered["commands"][int8_entry_indices[-1]]["command"] = shlex.join(argv)
+        with pytest.raises(
+            ValueError, match=rf"commands\[\]\.argv INT8 {flag} must match the c-specific output_dir artifact path"
+        ):
+            c_sweep.validate_sweep_summary(tampered)
+
+    int8_index = int8_entry_indices[0]
     first_gguf_index = next(
         index for index, entry in enumerate(summary["commands"]) if entry["category"] == "gguf_native_diagnostic"
     )
