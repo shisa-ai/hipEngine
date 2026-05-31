@@ -10097,6 +10097,22 @@ def test_gguf_and_int8_diagnostic_payload_json_reject_nonfinite() -> None:
     assert json.loads(int8_diagnostic._payload_json({"ok": 1.0})) == {"ok": 1.0}
 
 
+def test_gguf_diagnostic_load_fixture_rejects_nonfinite(tmp_path: Path) -> None:
+    fixture = tmp_path / "gguf-fixture.json"
+    fixture.write_text(
+        '{"model": "m", "prompt": "p", "prompt_ids": [1], "sampling": {}, "acceptance": {}, "bad": Infinity}',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="JSON contains non-finite constant 'Infinity'"):
+        gguf_diagnostic._load_fixture(fixture)
+
+    fixture.write_text(
+        json.dumps({"model": "m", "prompt": "p", "prompt_ids": [1], "sampling": {}, "acceptance": {}}),
+        encoding="utf-8",
+    )
+    assert gguf_diagnostic._load_fixture(fixture)["prompt_ids"] == [1]
+
+
 def test_correctness_smoke_payload_json_rejects_nonfinite() -> None:
     helpers = (
         serial_correctness._payload_json,
@@ -10107,6 +10123,23 @@ def test_correctness_smoke_payload_json_rejects_nonfinite() -> None:
         with pytest.raises(ValueError, match="Out of range float values"):
             payload_json({"bad": float("inf")})
         assert json.loads(payload_json({"ok": 1.0})) == {"ok": 1.0}
+
+
+def test_qwen35_prompt_slice_loaders_reject_nonfinite_fixture_json(tmp_path: Path) -> None:
+    fixture = tmp_path / "fixture.json"
+    loaders = (
+        serial_bench._load_prompt_slices,
+        serial_correctness._load_prompt_slices,
+        packed_prefill_correctness._load_prompt_slices,
+        retained_bench._load_prompt_slices,
+    )
+    for loader in loaders:
+        fixture.write_text('{"prompt_ids": [1, 2, 3, 4], "bad": -Infinity}', encoding="utf-8")
+        with pytest.raises(ValueError, match="JSON contains non-finite constant '-Infinity'"):
+            loader(fixture, prompt_length=2, batch_size=2)
+
+        fixture.write_text('{"prompt_ids": [1, 2, 3, 4]}', encoding="utf-8")
+        assert loader(fixture, prompt_length=2, batch_size=2) == [[1, 2], [3, 4]]
 
 
 def test_hidden_bisect_payload_json_rejects_nonfinite() -> None:

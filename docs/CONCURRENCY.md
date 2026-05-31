@@ -1472,7 +1472,7 @@ roll-up/status view.
       correctness, strict artifact/validation-summary JSON input and output,
       hidden-bisect diagnostics/output cloning,
       hidden-artifact comparison input/output/record canonicalization, INT8/GGUF
-      diagnostic templates, c-sweep and retained-bench input/output JSON,
+      diagnostic templates, c-sweep/retained-bench/fixture input/output JSON,
       serial/packed/sparse correctness smokes, and serial-bridge baseline JSON
       serializers now reject non-finite values instead of emitting `NaN`/`Infinity`; c-sweep, retained-bench, and
       accepted-artifact gates reject profiler/correctness command labels that

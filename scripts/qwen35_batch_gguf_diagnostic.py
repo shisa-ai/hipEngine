@@ -33,8 +33,16 @@ def _payload_json(payload: Any) -> str:
     return json.dumps(payload, indent=2, allow_nan=False)
 
 
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"JSON contains non-finite constant {value!r}")
+
+
+def _load_json_path(path: Path) -> Any:
+    return json.loads(path.read_text(encoding="utf-8"), parse_constant=_reject_json_constant)
+
+
 def _load_fixture(path: Path) -> dict[str, Any]:
-    fixture = json.loads(path.read_text())
+    fixture = _load_json_path(path)
     required = {"model", "prompt", "prompt_ids", "sampling", "acceptance"}
     missing = sorted(required - set(fixture))
     if missing:

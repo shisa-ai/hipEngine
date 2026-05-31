@@ -135,7 +135,7 @@ def _load_prompt_slices(path: Path, *, prompt_length: int, batch_size: int) -> l
         raise ValueError("prompt_length must be positive")
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
-    fixture = json.loads(path.read_text())
+    fixture = _load_json_path(path)
     tokens = [int(token) for token in fixture["prompt_ids"]]
     needed = int(prompt_length) * int(batch_size)
     if len(tokens) < needed:

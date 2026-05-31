@@ -46,6 +46,14 @@ def _payload_json(payload: Any) -> str:
     return json.dumps(payload, indent=2, ensure_ascii=False, allow_nan=False)
 
 
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"JSON contains non-finite constant {value!r}")
+
+
+def _load_json_path(path: Path) -> Any:
+    return json.loads(path.read_text(encoding="utf-8"), parse_constant=_reject_json_constant)
+
+
 def _command_env_prefix_parts() -> list[str]:
     assignments = [
         f"{key}={value}"
@@ -60,7 +68,7 @@ def _load_prompt_slices(path: Path, *, prompt_length: int, batch_size: int) -> l
         raise ValueError("prompt_length must be positive")
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
-    fixture = json.loads(path.read_text())
+    fixture = _load_json_path(path)
     tokens = [int(token) for token in fixture["prompt_ids"]]
     needed = int(prompt_length) * int(batch_size)
     if len(tokens) < needed:

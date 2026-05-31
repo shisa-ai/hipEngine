@@ -51439,3 +51439,25 @@ git diff --check
 ```
 
 Result: focused retained-bench finite-input/output tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed items were not changed, no retained c>N performance/scaling claim was added, and generated-token equality requirements remain open/unchanged.
+
+## 2026-05-31 — CONCURRENCY strict fixture JSON loaders
+
+Extended the finite-JSON hardening to fixture ingestion paths used by the c>N evidence scripts. `scripts/qwen35_batch_serial_bench.py`, `scripts/qwen35_batch_serial_correctness.py`, `scripts/qwen35_batch_packed_prefill_correctness.py`, and `scripts/qwen35_batch_gguf_diagnostic.py` now parse fixture JSON with `parse_constant` rejection, and retained bench now reuses its strict `_load_json_path` for prompt fixtures. Added focused tests proving GGUF fixture loads and serial/packed/retained prompt-slice loaders reject `Infinity` / `-Infinity` before consuming prompt IDs. Updated the `docs/CONCURRENCY.md` strict-JSON progress note to include fixture JSON. This is evidence hardening only; no queue item was closed and no retained c>N performance/scaling claim was added.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 -m compileall -q scripts/qwen35_batch_serial_bench.py scripts/qwen35_batch_serial_correctness.py scripts/qwen35_batch_packed_prefill_correctness.py scripts/qwen35_batch_gguf_diagnostic.py scripts/qwen35_batch_retained_bench.py tests/test_generation_batch_scheduler.py && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py::test_gguf_diagnostic_load_fixture_rejects_nonfinite tests/test_generation_batch_scheduler.py::test_qwen35_prompt_slice_loaders_reject_nonfinite_fixture_json tests/test_generation_batch_scheduler.py::test_gguf_and_int8_diagnostic_payload_json_reject_nonfinite tests/test_generation_batch_scheduler.py::test_correctness_smoke_payload_json_rejects_nonfinite tests/test_generation_batch_scheduler.py::test_qwen35_retained_load_json_path_rejects_nonfinite -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue))
+print(count)
+assert count == 12
+PY
+HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+git diff --check
+```
+
+Result: focused fixture finite-JSON tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed items were not changed, no retained c>N performance/scaling claim was added, and generated-token equality requirements remain open/unchanged.
