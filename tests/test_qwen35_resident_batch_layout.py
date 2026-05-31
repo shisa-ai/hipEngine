@@ -2616,6 +2616,7 @@ def test_qwen35_resident_linear_batch_decode_selected_c1_projection_state_is_non
     assert hidden.ptr == 0x1000
     assert kwargs["force_selected_c1_moe"] is False
     assert kwargs["force_selected_c1_linear_projections"] is True
+    assert kwargs["force_batch_gemv_linear_projections"] is False
     assert kwargs["force_selected_c1_linear_state"] is True
     assert kwargs["force_selected_c1_linear_out"] is None
     assert kwargs["force_batch_gemv_linear_out"] is False
@@ -2744,6 +2745,7 @@ def test_qwen35_resident_linear_batch_decode_output_diagnostics_are_non_native(
     assert kwargs["force_batch_gemv_linear_out"] is expected_batch_gemv
     assert kwargs["force_selected_c1_moe"] is False
     assert kwargs["force_selected_c1_linear_projections"] is False
+    assert kwargs["force_batch_gemv_linear_projections"] is False
     assert kwargs["force_selected_c1_linear_state"] is False
     assert kwargs["selected_c1_linear_state_pairs"] is None
     assert kwargs["conv_state"] is conv

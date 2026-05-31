@@ -377,6 +377,39 @@ def test_qwen35_decode_state_projects_linear_qkv_z_fp16_with_fused_rotation_when
     assert args[16] == scratch.rotate_fuse_barrier.ptr
 
 
+def test_qwen35_decode_state_projects_linear_qkv_z_fp16_batch_gemv(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _linear_weights())
+    scratch = state.reserve_linear_attention_scratch(tokens=2, activation_dtype="fp16")
+    calls = []
+
+    monkeypatch.setattr(
+        qwen_runtime,
+        "gemv_awq_pack8_transposed_fp16",
+        lambda *args, **kwargs: calls.append(("single", args, kwargs)),
+    )
+    monkeypatch.setattr(
+        qwen_runtime,
+        "awq_fusedw4_prefill_dual_fp16",
+        lambda *args, **kwargs: calls.append(("unexpected_fused", args, kwargs)),
+    )
+
+    qkv, z = state.project_linear_attention_qkv_z_fp16(scratch, tokens=2, force_gemv=True)
+
+    assert qkv is scratch.qkv
+    assert z is scratch.z
+    assert [kind for kind, _args, _kwargs in calls] == ["single", "single"]
+    assert calls[0][1][:5] == (scratch.qkv_rot.ptr, 0x9710, 0x9800, 0x9900, scratch.qkv.ptr)
+    assert calls[0][1][5] == 2
+    assert calls[0][1][6] == scratch.qkv_rot.shape[-1]
+    assert calls[0][1][8] == 128
+    assert calls[1][1][:5] == (scratch.z_rot.ptr, 0x9A10, 0x9B00, 0x9C00, scratch.z.ptr)
+    assert calls[1][1][5] == 2
+    assert calls[1][1][6] == scratch.z_rot.shape[-1]
+    assert calls[1][1][8] == 128
+    assert calls[0][2]["threads"] == 64
+    assert calls[1][2]["threads"] == 64
+
 
 def test_qwen35_decode_state_prepare_full_attention_qkv_fp16_tokens_uses_vector_positions(monkeypatch) -> None:
     runtime = FakeRuntime()

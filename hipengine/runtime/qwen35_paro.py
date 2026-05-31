@@ -4363,6 +4363,7 @@ class Qwen35ParoDecodeState:
         *,
         tokens: int = 1,
         group_size: int = 128,
+        force_gemv: bool = False,
         library=None,
         stream: int = 0,
     ) -> tuple[Tensor, Tensor]:
@@ -4426,6 +4427,38 @@ class Qwen35ParoDecodeState:
                     library=awq_library,
                     runtime=self.runtime,
                 )
+        elif force_gemv:
+            awq_library = _library_for(library, "awq")
+            gemv_awq_pack8_transposed_fp16(
+                scratch.qkv_rot.ptr,
+                qkv_qweight.ptr,
+                self.tensor(f"{qkv}.qzeros").ptr,
+                self.tensor(f"{qkv}.scales").ptr,
+                scratch.qkv.ptr,
+                tokens,
+                scratch.qkv_rot.shape[-1],
+                qkv_out_packed,
+                group_size,
+                threads=64,
+                stream=stream,
+                library=awq_library,
+                runtime=self.runtime,
+            )
+            gemv_awq_pack8_transposed_fp16(
+                scratch.z_rot.ptr,
+                z_qweight.ptr,
+                self.tensor(f"{z}.qzeros").ptr,
+                self.tensor(f"{z}.scales").ptr,
+                scratch.z.ptr,
+                tokens,
+                scratch.z_rot.shape[-1],
+                z_out_packed,
+                group_size,
+                threads=64,
+                stream=stream,
+                library=awq_library,
+                runtime=self.runtime,
+            )
         else:
             awq_fusedw4_prefill_dual_fp16(
                 scratch.qkv_rot.ptr,
@@ -5056,6 +5089,7 @@ class Qwen35ParoDecodeState:
         tokens: int,
         group_size: int = 128,
         force_selected_c1_projections: bool = False,
+        force_batch_gemv_projections: bool = False,
         force_selected_c1_state: bool = False,
         selected_c1_state_pairs: Sequence[tuple[Tensor, Tensor]] | None = None,
         library=None,
@@ -5073,7 +5107,14 @@ class Qwen35ParoDecodeState:
             )
         else:
             self.rotate_linear_attention_inputs_fp16(hidden, scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
-            self.project_linear_attention_qkv_z_fp16(scratch, tokens=tokens, group_size=group_size, library=library, stream=stream)
+            self.project_linear_attention_qkv_z_fp16(
+                scratch,
+                tokens=tokens,
+                group_size=group_size,
+                force_gemv=force_batch_gemv_projections,
+                library=library,
+                stream=stream,
+            )
             self.project_linear_attention_ab_fp16(hidden, scratch, tokens=tokens, library=library, stream=stream)
         if force_selected_c1_state:
             if selected_c1_state_pairs is None:
@@ -5110,6 +5151,7 @@ class Qwen35ParoDecodeState:
         tokens: int,
         group_size: int = 128,
         force_selected_c1_projections: bool = False,
+        force_batch_gemv_projections: bool = False,
         force_selected_c1_state: bool = False,
         selected_c1_state_pairs: Sequence[tuple[Tensor, Tensor]] | None = None,
         force_selected_c1_out: bool | None = None,
@@ -5129,6 +5171,7 @@ class Qwen35ParoDecodeState:
             tokens=tokens,
             group_size=group_size,
             force_selected_c1_projections=force_selected_c1_projections,
+            force_batch_gemv_projections=force_batch_gemv_projections,
             force_selected_c1_state=force_selected_c1_state,
             selected_c1_state_pairs=selected_c1_state_pairs,
             library=library,
@@ -5458,6 +5501,7 @@ class Qwen35ParoDecodeState:
         group_size: int = 128,
         force_selected_c1_moe: bool = False,
         force_selected_c1_linear_projections: bool = False,
+        force_batch_gemv_linear_projections: bool = False,
         force_selected_c1_linear_state: bool = False,
         selected_c1_linear_state_pairs: Sequence[tuple[Tensor, Tensor]] | None = None,
         force_selected_c1_linear_out: bool | None = None,
@@ -5491,6 +5535,7 @@ class Qwen35ParoDecodeState:
             tokens=tokens,
             group_size=group_size,
             force_selected_c1_projections=force_selected_c1_linear_projections,
+            force_batch_gemv_projections=force_batch_gemv_linear_projections,
             force_selected_c1_state=force_selected_c1_linear_state,
             selected_c1_state_pairs=selected_c1_linear_state_pairs,
             force_selected_c1_out=force_selected_c1_linear_out,

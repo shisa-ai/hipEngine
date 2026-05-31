@@ -49190,3 +49190,46 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: artifact assertions PASS; verify count remains `12`; full guard PASS with c=2/c=8 primitive A/A fields zero; diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, no benchmark rollup files changed, and C2.3 remains open pending native projection parity plus a non-diagnostic batch-GEMV output fallback decision.
+
+## 2026-05-31 — CONCURRENCY C2.3 batch-GEMV projection probe
+
+Added a diagnostic row-aware GEMV projection path for c>N linear-attention QKV/Z projections. `Qwen35ParoDecodeState.project_linear_attention_qkv_z_fp16(..., force_gemv=True)` now runs separate row-aware GEMV projections into planar QKV/Z buffers, `run_linear_attention_moe_decode_batch_layer_fp16(...)` can receive `force_batch_gemv_linear_projections`, and the resident runner exposes it through `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_LINEAR_PROJECTIONS`. Hidden-bisect now accepts `--batch-decode-linear-projection-path batch_gemv`, and retained-promotion deny lists treat that flag/env as diagnostic-only. `docs/ENVS.md` documents the new non-retained env var.
+
+The L8/512/16 c=2 probe with `--batch-decode-linear-projection-path batch_gemv --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path per_row` wrote `/tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-gemv-proj-state-out-perrow-full-atol4e-3-focus1269.json`. It remains `status=mismatch_found` but keeps generated tokens green; first hidden failure is still decode step 11 / row 0 (`max_abs=0.010431289672851562`). The useful reduction is at the first layer-0 linear stage: `qkv` drift drops from the native projection/output-control `max_abs=0.0078125` to `max_abs=0.0009765625` with `passed_under_atol=true` and only 5 bit mismatches. So batch-GEMV QKV/Z reduces the first-stage projection drift but does not close C2.3; the next target is residual projection exactness/amplification plus a non-diagnostic output fallback decision.
+
+Diagnostic command:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --batch-decode-linear-projection-path batch_gemv --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-gemv-proj-state-out-perrow-full-atol4e-3-focus1269.json
+```
+
+Validation:
+
+```bash
+python3 -m compileall -q hipengine/runtime/qwen35_paro.py hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_batch_hidden_bisect.py scripts/qwen35_batch_constants.py tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_qwen35_decode_state.py::test_qwen35_decode_state_projects_linear_qkv_z_fp16_batch_gemv tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_linear_batch_decode_selected_c1_projection_state_is_non_native tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_linear_batch_decode_output_diagnostics_are_non_native tests/test_generation_batch_scheduler.py::test_hidden_bisect_dry_run_records_layer_commands -q
+python3 - <<'PY'
+import json, pathlib
+path = pathlib.Path('/tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-gemv-proj-state-out-perrow-full-atol4e-3-focus1269.json')
+payload = json.loads(path.read_text())
+assert payload['status'] == 'mismatch_found'
+assert payload['correctness']['token_passed'] is True
+fh = payload['correctness']['first_hidden_mismatch']
+assert fh['decode_step'] == 11 and fh['row'] == 0
+assert abs(fh['max_abs'] - 0.010431289672851562) == 0.0
+stage = payload['correctness']['decode_linear_stage_bit_drift_summary']['first_bit_drift']
+assert stage['stage'] == 'qkv'
+assert stage['passed_under_atol'] is True
+assert abs(stage['max_abs'] - 0.0009765625) == 0.0
+assert stage['bit_mismatch'] == 5
+PY
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \[(?: |~)\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: targeted compile/pytest PASS; artifact assertions PASS (`status=mismatch_found`, tokens green, first-stage `qkv` drift under hidden tolerance with 5 bit mismatches); verify count remains `12`; full guard PASS with c=2/c=8 primitive A/A fields zero; diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, no benchmark rollup files changed, and the new batch-GEMV projection flag remains diagnostic-only.
