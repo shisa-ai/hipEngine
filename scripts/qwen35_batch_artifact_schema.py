@@ -2643,6 +2643,13 @@ def _validate_claimed_generated_token_equality(
         int(gen_tokens) if gen_tokens_valid else None,
         errors,
     )
+    _validate_claimed_execution_completed_tokens(
+        payload,
+        batch_sequences,
+        int(concurrency) if concurrency_valid else None,
+        int(gen_tokens) if gen_tokens_valid else None,
+        errors,
+    )
     mismatches = equality.get("mismatches")
     if not isinstance(mismatches, list):
         errors.append("correctness.generated_token_equality.mismatches must be a list when passed is true")
@@ -2727,6 +2734,51 @@ def _validate_claimed_execution_generated_tokens(
             expected_suffix = batch_sequences[row_index][-gen_tokens_per_request:]
             if token_ids != expected_suffix:
                 errors.append(f"execution.generated_tokens.{row_key} must match correctness.generated_token_equality.batch_sequences suffix when generated_token_equality.passed is true")
+
+
+def _validate_claimed_execution_completed_tokens(
+    payload: Mapping[str, Any],
+    batch_sequences: Any,
+    concurrency: int | None,
+    gen_tokens_per_request: int | None,
+    errors: list[str],
+) -> None:
+    execution = payload.get("execution")
+    completed = execution.get("completed") if isinstance(execution, Mapping) else None
+    if completed is None or completed == []:
+        return
+    if not isinstance(completed, list):
+        errors.append("execution.completed must be a list when generated_token_equality.passed is true")
+        return
+    for index, row in enumerate(completed):
+        if not isinstance(row, Mapping):
+            errors.append(f"execution.completed[{index}] must be an object when generated_token_equality.passed is true")
+            continue
+        request_id = row.get("request_id")
+        if not isinstance(request_id, int) or isinstance(request_id, bool):
+            errors.append(f"execution.completed[{index}].request_id must be an int when generated_token_equality.passed is true")
+            continue
+        if concurrency is not None and (request_id < 0 or request_id >= concurrency):
+            errors.append(f"execution.completed[{index}].request_id must be in workload.concurrency range when generated_token_equality.passed is true")
+            continue
+        token_ids = _extract_claimed_generated_token_ids(
+            row.get("generated_tokens"),
+            f"execution.completed[{index}].generated_tokens",
+            errors,
+        )
+        if token_ids is None:
+            continue
+        if gen_tokens_per_request is not None and len(token_ids) != gen_tokens_per_request:
+            errors.append(f"execution.completed[{index}].generated_tokens length must match workload.gen_tokens_per_request when generated_token_equality.passed is true")
+        if (
+            gen_tokens_per_request is not None
+            and isinstance(batch_sequences, list)
+            and request_id < len(batch_sequences)
+            and isinstance(batch_sequences[request_id], list)
+        ):
+            expected_suffix = batch_sequences[request_id][-gen_tokens_per_request:]
+            if token_ids != expected_suffix:
+                errors.append(f"execution.completed[{index}].generated_tokens must match correctness.generated_token_equality.batch_sequences suffix when generated_token_equality.passed is true")
 
 
 def _extract_claimed_generated_token_ids(row: Any, label: str, errors: list[str]) -> list[int] | None:

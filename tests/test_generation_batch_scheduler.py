@@ -11327,6 +11327,10 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
         "execution": {
             "seed_tokens": {"0": {"token_id": 10}, "1": {"token_id": 20}},
             "generated_tokens": {"0": [{"token_id": 11}, {"token_id": 12}], "1": [{"token_id": 21}, {"token_id": 22}]},
+            "completed": [
+                {"request_id": 0, "generated_tokens": [11, 12]},
+                {"request_id": 1, "generated_tokens": [21, 22]},
+            ],
             "batch_execution": {
                 "native_compact_prefill": True,
                 "native_caware_decode": False,
@@ -11379,6 +11383,11 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
     mismatched_generated_claim["execution"]["generated_tokens"]["0"][1]["token_id"] = 99
     with pytest.raises(ValueError, match="execution.generated_tokens.0 must match correctness.generated_token_equality.batch_sequences suffix"):
         validate_cn_diagnostic_artifact_payload(mismatched_generated_claim)
+
+    mismatched_completed_claim = json.loads(json.dumps(payload))
+    mismatched_completed_claim["execution"]["completed"][1]["generated_tokens"][0] = 99
+    with pytest.raises(ValueError, match=r"execution.completed\[1\].generated_tokens must match correctness.generated_token_equality.batch_sequences suffix"):
+        validate_cn_diagnostic_artifact_payload(mismatched_completed_claim)
 
     missing_shape_claim = json.loads(json.dumps(payload))
     missing_shape_claim["workload"].pop("concurrency")

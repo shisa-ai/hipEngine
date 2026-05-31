@@ -51660,3 +51660,25 @@ git diff --check
 ```
 
 Result: focused claimed-equality generated-token cross-check tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed items were not changed, no retained c>N performance/scaling claim was added, and generated-token equality claims with generated-token metadata now prove the metadata matches the native batch equality suffix.
+
+## 2026-05-31 — CONCURRENCY claimed equality completed-token cross-check
+
+Tightened generated-token equality evidence with a completion metadata cross-check: when an artifact claims `correctness.generated_token_equality.passed=true` and includes non-empty `execution.completed`, schema validation now verifies each completed request id is in range, its generated token ids are valid non-negative ids, match `workload.gen_tokens_per_request`, and equal the suffix of that request's claimed native batch equality sequence. Empty `execution.completed` remains tolerated as absent metadata for blocked/non-retained artifacts. This is evidence hardening only; no queue item was closed and no retained c>N performance/scaling claim was added.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 -m compileall -q scripts/qwen35_batch_artifact_schema.py tests/test_generation_batch_scheduler.py && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equality tests/test_generation_batch_scheduler.py::test_qwen35_retained_payload_mirrors_fallback_native_decode_label tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue))
+print(count)
+assert count == 12
+PY
+HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+git diff --check
+```
+
+Result: focused claimed-equality completed-token cross-check tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed items were not changed, no retained c>N performance/scaling claim was added, and generated-token equality claims with completion metadata now prove the completion rows match the native batch equality suffixes.
