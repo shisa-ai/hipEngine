@@ -7090,6 +7090,13 @@ def test_batch_c_sweep_can_plan_gguf_blocked_diagnostics(tmp_path: Path, monkeyp
     with pytest.raises(ValueError, match=r"commands\[\]\.argv GGUF --max-new-tokens must match the template decode length"):
         c_sweep.validate_sweep_summary(tampered_max_new_tokens)
 
+    tampered_rows = json.loads(json.dumps(summary))
+    rows_argv = tampered_rows["commands"][gguf_entry_index]["argv"]
+    rows_argv[rows_argv.index("--rows") + 1] = "4"
+    tampered_rows["commands"][gguf_entry_index]["command"] = shlex.join(rows_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.batch_size must match commands\[\]\.argv --batch-size/--rows"):
+        c_sweep.validate_sweep_summary(tampered_rows)
+
     for flag in ("--fixture", "--rows", "--backend", "--quant", "--max-new-tokens"):
         tampered = json.loads(json.dumps(summary))
         argv = tampered["commands"][gguf_entry_index]["argv"]
