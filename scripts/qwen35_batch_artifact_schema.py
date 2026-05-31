@@ -2629,6 +2629,8 @@ def _validate_claimed_generated_token_equality(
             errors.append("workload.prompt_tokens_aggregate must equal sum(workload.prompt_lengths) when generated_token_equality.passed is true")
         elif concurrency_valid and prompt_tokens_per_request_valid and prompt_tokens_aggregate != int(concurrency) * int(prompt_tokens_per_request):
             errors.append("workload.prompt_tokens_aggregate must equal workload.concurrency times workload.prompt_tokens_per_request when generated_token_equality.passed is true")
+        elif not prompt_lengths_valid and not (concurrency_valid and prompt_tokens_per_request_valid):
+            errors.append("workload.prompt_tokens_aggregate must be backed by workload.prompt_lengths or workload.prompt_tokens_per_request when generated_token_equality.passed is true")
     gen_tokens = workload.get("gen_tokens_per_request")
     gen_tokens_valid = isinstance(gen_tokens, int) and not isinstance(gen_tokens, bool) and gen_tokens > 0
     if not gen_tokens_valid:

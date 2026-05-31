@@ -11493,6 +11493,14 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
     with pytest.raises(ValueError, match="workload.prompt_tokens_aggregate must be a non-negative int"):
         validate_cn_diagnostic_artifact_payload(bad_prompt_aggregate_claim)
 
+    unbacked_prompt_aggregate_claim = json.loads(json.dumps(payload))
+    unbacked_prompt_aggregate_claim["workload"].pop("prompt_lengths")
+    unbacked_prompt_aggregate_claim["workload"].pop("prompt_tokens_per_request")
+    for completed in unbacked_prompt_aggregate_claim["execution"]["completed"]:
+        completed.pop("prompt_tokens")
+    with pytest.raises(ValueError, match="workload.prompt_tokens_aggregate must be backed by workload.prompt_lengths or workload.prompt_tokens_per_request"):
+        validate_cn_diagnostic_artifact_payload(unbacked_prompt_aggregate_claim)
+
     mismatched_gen_aggregate_claim = json.loads(json.dumps(payload))
     mismatched_gen_aggregate_claim["workload"]["gen_tokens_aggregate"] = 5
     with pytest.raises(ValueError, match="workload.gen_tokens_aggregate must equal workload.concurrency times workload.gen_tokens_per_request"):
