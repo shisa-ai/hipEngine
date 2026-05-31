@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from scripts.qwen35_batch_artifact_schema import _load_json_value
 from scripts.qwen35_batch_constants import (
     PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS,
     RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT,
@@ -86,12 +87,8 @@ _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS = RETAINED_ARTIFACT_REQUIRED_PRIMIT
 _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT = RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT
 
 
-def _reject_json_constant(value: str) -> None:
-    raise ValueError(f"JSON contains non-finite constant {value!r}")
-
-
 def _load_json_path(path: Path) -> Any:
-    return json.loads(path.read_text(encoding="utf-8"), parse_constant=_reject_json_constant)
+    return _load_json_value(path)
 
 
 def _is_python_executable(executable: str) -> bool:

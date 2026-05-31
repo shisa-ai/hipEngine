@@ -51483,3 +51483,25 @@ git diff --check
 ```
 
 Result: focused finite-JSON loader regression tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed items were not changed, no retained c>N performance/scaling claim was added, and generated-token equality requirements remain open/unchanged.
+
+## 2026-05-31 — CONCURRENCY shared JSON constant rejection helper
+
+Centralized the last duplicated qwen35 batch JSON constant-rejection loaders. `scripts/qwen35_batch_artifact_schema.py` now exposes `_load_json_value()` for strict JSON value parsing and has `_load_payload()` delegate through it. `scripts/qwen35_batch_c_sweep.py` now uses `_load_json_value()` so its `--validate-summary-json` non-object behavior stays unchanged while `NaN`/`Infinity` rejection is shared. `scripts/qwen35_batch_hidden_artifact_compare.py` now loads artifact objects through `_load_payload()` instead of carrying a private `parse_constant` helper. This is evidence-pipeline hardening/refactor only; no queue item was closed and no retained c>N performance/scaling claim was added.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 -m compileall -q scripts/qwen35_batch_artifact_schema.py scripts/qwen35_batch_c_sweep.py scripts/qwen35_batch_hidden_artifact_compare.py tests/test_generation_batch_scheduler.py && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py::test_batch_c_sweep_load_json_path_rejects_nonfinite tests/test_generation_batch_scheduler.py::test_hidden_artifact_compare_load_json_rejects_nonfinite tests/test_generation_batch_scheduler.py::test_qwen35_load_payload_rejects_nonfinite_json tests/test_generation_batch_scheduler.py::test_batch_c_sweep_validate_summary_rejects_unsafe_input_path tests/test_generation_batch_scheduler.py::test_hidden_artifact_compare_payload_json_rejects_nonfinite -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue))
+print(count)
+assert count == 12
+PY
+HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+git diff --check
+```
+
+Result: focused shared-loader regression tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed items were not changed, no retained c>N performance/scaling claim was added, and generated-token equality requirements remain open/unchanged.

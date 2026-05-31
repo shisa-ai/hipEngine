@@ -3274,8 +3274,12 @@ def _is_nonempty_string_list(value: Any) -> bool:
     return isinstance(value, list) and bool(value) and all(isinstance(item, str) and bool(item) for item in value)
 
 
+def _load_json_value(path: Path) -> Any:
+    return json.loads(path.read_text(encoding="utf-8"), parse_constant=_reject_json_constant)
+
+
 def _load_payload(path: Path) -> Mapping[str, Any]:
-    payload = json.loads(path.read_text(encoding="utf-8"), parse_constant=_reject_json_constant)
+    payload = _load_json_value(path)
     if not isinstance(payload, Mapping):
         raise ValueError("artifact root must be an object")
     return payload
