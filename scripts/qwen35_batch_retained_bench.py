@@ -1399,6 +1399,15 @@ def _batch_execution_blockers(
             blockers.append("execution.batch_execution.decode_execution.moe_decode_path must be grouped_compact for retained c>N MoE decode")
         if decode_execution.get("full_attention_decode_path") != "native_batch":
             blockers.append("execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch")
+        full_attention_input_path = decode_execution.get("full_attention_input_decode_path")
+        if full_attention_input_path not in {None, "native_batch"}:
+            blockers.append("execution.batch_execution.decode_execution.full_attention_input_decode_path must be native_batch or absent")
+        full_attention_context_path = decode_execution.get("full_attention_context_decode_path")
+        if full_attention_context_path not in {None, "native_batch"}:
+            blockers.append("execution.batch_execution.decode_execution.full_attention_context_decode_path must be native_batch or absent")
+        post_attention_path = decode_execution.get("post_attention_decode_path")
+        if post_attention_path not in {None, "native_batch"}:
+            blockers.append("execution.batch_execution.decode_execution.post_attention_decode_path must be native_batch or absent")
         linear_projection_path = decode_execution.get("linear_attention_projection_path")
         if linear_projection_path not in {None, "native_batch"}:
             blockers.append("execution.batch_execution.decode_execution.linear_attention_projection_path must be native_batch or absent")

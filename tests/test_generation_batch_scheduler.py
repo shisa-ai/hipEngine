@@ -11839,6 +11839,32 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
     assert retained_bench._batch_execution_blockers(valid, expected_max_layers=40, expected_concurrency=2, expected_prompt_length=512) == []
     for field, diagnostic_value, expected_message in (
         (
+            "full_attention_input_decode_path",
+            "per_row_rmsnorm_fallback",
+            "execution.batch_execution.decode_execution.full_attention_input_decode_path must be native_batch or absent",
+        ),
+        (
+            "full_attention_context_decode_path",
+            "per_row_context_gate_fallback",
+            "execution.batch_execution.decode_execution.full_attention_context_decode_path must be native_batch or absent",
+        ),
+        (
+            "post_attention_decode_path",
+            "per_row_add_rmsnorm_fallback",
+            "execution.batch_execution.decode_execution.post_attention_decode_path must be native_batch or absent",
+        ),
+    ):
+        top_level_full_diagnostic = json.loads(json.dumps(valid))
+        top_level_full_diagnostic["decode_execution"][field] = diagnostic_value
+        top_level_full_blockers = retained_bench._batch_execution_blockers(
+            top_level_full_diagnostic,
+            expected_max_layers=40,
+            expected_concurrency=2,
+            expected_prompt_length=512,
+        )
+        assert expected_message in top_level_full_blockers
+    for field, diagnostic_value, expected_message in (
+        (
             "linear_attention_projection_path",
             "selected_c1_forced",
             "execution.batch_execution.decode_execution.linear_attention_projection_path must be native_batch or absent",
@@ -14272,6 +14298,30 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         assert f"batch_execution.{diagnostic_field} must be absent for native retained decode" in str(
             diagnostic_batch_trace_error.value
         )
+
+    for field, diagnostic_value, expected_message in (
+        (
+            "full_attention_input_decode_path",
+            "per_row_rmsnorm_fallback",
+            "decode_execution.full_attention_input_decode_path must be native_batch or absent for accepted artifacts",
+        ),
+        (
+            "full_attention_context_decode_path",
+            "per_row_context_gate_fallback",
+            "decode_execution.full_attention_context_decode_path must be native_batch or absent for accepted artifacts",
+        ),
+        (
+            "post_attention_decode_path",
+            "per_row_add_rmsnorm_fallback",
+            "decode_execution.post_attention_decode_path must be native_batch or absent for accepted artifacts",
+        ),
+    ):
+        diagnostic_top_level_full = json.loads(json.dumps(accepted))
+        diagnostic_decode_execution = diagnostic_top_level_full["execution"]["batch_execution"]["decode_execution"]
+        diagnostic_decode_execution[field] = diagnostic_value
+        with pytest.raises(ValueError) as top_level_full_error:
+            validate_cn_diagnostic_artifact_payload(diagnostic_top_level_full)
+        assert expected_message in str(top_level_full_error.value)
 
     for field, diagnostic_value, expected_message in (
         (

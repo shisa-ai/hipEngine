@@ -1392,12 +1392,15 @@ roll-up/status view.
       still leaves native full-attention hidden-only red (`status=mismatch_found`,
       tokens green, first hidden failure step 6 / row 0 `max_abs=0.027099609375`).
       Decode-execution metadata now also lifts linear-attention projection,
-      state, and output route choices to top-level
-      `linear_attention_projection_path`, `linear_attention_state_path`, and
-      `linear_attention_output_path`; retained-bench and accepted-artifact gates
-      reject non-native top-level values, so a diagnostic fallback cannot hide
-      behind missing or stale per-layer traces. A context-only diagnostic switch
-      now exists for the next isolation step:
+      state, and output route choices plus full-attention input/context/post
+      boundary choices to top-level `linear_attention_projection_path`,
+      `linear_attention_state_path`, `linear_attention_output_path`,
+      `full_attention_input_decode_path`,
+      `full_attention_context_decode_path`, and `post_attention_decode_path`;
+      retained-bench and accepted-artifact gates reject non-native top-level
+      values, so a diagnostic fallback cannot hide behind missing or stale
+      per-layer traces. A context-only diagnostic switch now exists for the next
+      isolation step:
       hidden-bisect `--batch-decode-attn-context-path per_row` sets
       `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_CONTEXT`, routes the
       native-full context/gate stage through slot-specific c=1 spans, records

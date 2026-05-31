@@ -4023,6 +4023,13 @@ class Qwen35ParoResidentSession:
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_CONTEXT"
         )
         force_per_row_post_attention = rows > 1 and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN")
+        full_attention_input_decode_path = (
+            "per_row_rmsnorm_fallback" if force_per_row_full_attention_input else "native_batch"
+        )
+        full_attention_context_decode_path = (
+            "per_row_context_gate_fallback" if force_per_row_full_attention_context else "native_batch"
+        )
+        post_attention_decode_path = "per_row_add_rmsnorm_fallback" if force_per_row_post_attention else "native_batch"
         use_single_row_c1_linear = rows == 1 and not force_per_row_linear
         use_per_row_linear = force_per_row_linear or use_single_row_c1_linear
         moe_decode_path = "dense_mlp" if dense_mlp else ("selected_c1" if rows == 1 else ("selected_c1_forced" if force_selected_c1_moe else "grouped_compact"))
@@ -4333,11 +4340,11 @@ class Qwen35ParoResidentSession:
                         if isinstance(getattr(self, "_decode_full_attention_trace", None), list):
                             layer_execution["attn_context_trace_source"] = "attention_scratch.query_raw"
                         if force_per_row_full_attention_input:
-                            layer_execution["full_attention_input_decode_path"] = "per_row_rmsnorm_fallback"
+                            layer_execution["full_attention_input_decode_path"] = full_attention_input_decode_path
                         if force_per_row_full_attention_context:
-                            layer_execution["full_attention_context_decode_path"] = "per_row_context_gate_fallback"
+                            layer_execution["full_attention_context_decode_path"] = full_attention_context_decode_path
                         if force_per_row_post_attention:
-                            layer_execution["post_attention_decode_path"] = "per_row_add_rmsnorm_fallback"
+                            layer_execution["post_attention_decode_path"] = post_attention_decode_path
                         full_spans_metadata = getattr(self, "_last_batch_full_spans_metadata", None)
                         if isinstance(full_spans_metadata, dict):
                             layer_execution["full_attention_segment_metadata"] = full_spans_metadata
@@ -4469,6 +4476,9 @@ class Qwen35ParoResidentSession:
                 "max_full_attention_context": int(max_full_attention_context),
                 "native_full_attention_layers": int(native_full_attention_layers),
                 "full_attention_decode_path": full_attention_decode_path,
+                "full_attention_input_decode_path": full_attention_input_decode_path,
+                "full_attention_context_decode_path": full_attention_context_decode_path,
+                "post_attention_decode_path": post_attention_decode_path,
                 "native_caware_decode": full_attention_decode_path not in {"per_row_splitk_fallback", "per_row_context_fallback"}
                 and not force_selected_c1_moe
                 and not force_selected_c1_linear_projections

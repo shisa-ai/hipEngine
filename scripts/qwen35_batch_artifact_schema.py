@@ -1133,6 +1133,21 @@ def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[
             errors.append("execution.batch_execution.decode_execution.moe_decode_path must be grouped_compact for accepted artifacts")
         if decode_execution.get("full_attention_decode_path") != "native_batch":
             errors.append("execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch for accepted artifacts")
+        full_attention_input_path = decode_execution.get("full_attention_input_decode_path")
+        if full_attention_input_path not in {None, "native_batch"}:
+            errors.append(
+                "execution.batch_execution.decode_execution.full_attention_input_decode_path must be native_batch or absent for accepted artifacts"
+            )
+        full_attention_context_path = decode_execution.get("full_attention_context_decode_path")
+        if full_attention_context_path not in {None, "native_batch"}:
+            errors.append(
+                "execution.batch_execution.decode_execution.full_attention_context_decode_path must be native_batch or absent for accepted artifacts"
+            )
+        post_attention_path = decode_execution.get("post_attention_decode_path")
+        if post_attention_path not in {None, "native_batch"}:
+            errors.append(
+                "execution.batch_execution.decode_execution.post_attention_decode_path must be native_batch or absent for accepted artifacts"
+            )
         linear_projection_path = decode_execution.get("linear_attention_projection_path")
         if linear_projection_path not in {None, "native_batch"}:
             errors.append(

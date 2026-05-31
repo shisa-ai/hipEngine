@@ -50308,3 +50308,38 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: targeted metadata/schema tests PASS; verify count remains `12`; full guard PASS with c=2/c=8 primitive correctness and A/A fields zero; benchmark rollup files unchanged. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and this is diagnostic C2.3 gating/provenance evidence only.
+
+## 2026-05-31 — CONCURRENCY C2.3 top-level full-attention boundary route metadata on GPU1
+
+Switched validation commands for this iteration to GPU1 (`HIP_VISIBLE_DEVICES=1`) per handoff need to keep the 48GB W7900 free. `rocm-smi --showproductname --showbus --showdriverversion` reports GPU[1] as `AMD Radeon RX 7900 XTX`, `gfx1100`, PCI bus `0000:10:00.0`; `HIP_VISIBLE_DEVICES=1` exposes a single HIP device named `AMD Radeon RX 7900 XTX`. Do not combine `HIP_VISIBLE_DEVICES=1` with `ROCR_VISIBLE_DEVICES=1` in this shell: the combined filter returned zero HIP devices, while either filter alone exposed the XTX.
+
+Mirrored the top-level linear route provenance with full-attention boundary provenance in `decode_execution`: `full_attention_input_decode_path`, `full_attention_context_decode_path`, and `post_attention_decode_path`. Native runs record `native_batch`; diagnostic per-row input/context/post-attention probes record their explicit fallback paths at top level as well as per-layer. Retained-bench preconditions and accepted-artifact schema now reject non-native top-level full-attention boundary values before c>N promotion.
+
+Validation (all GPU-capable commands prefixed with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+rocm-smi --showproductname --showbus --showdriverversion
+HIP_VISIBLE_DEVICES=1 python3 - <<'PY'
+import ctypes
+hip = ctypes.CDLL('libamdhip64.so')
+count = ctypes.c_int()
+err = hip.hipGetDeviceCount(ctypes.byref(count))
+assert err == 0 and count.value == 1
+name = ctypes.create_string_buffer(256)
+assert hip.hipDeviceGetName(name, ctypes.c_int(len(name)), ctypes.c_int(0)) == 0
+assert '7900 XTX' in name.value.decode(errors='replace')
+PY
+HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine/runtime/qwen35_paro_runner.py scripts/qwen35_batch_retained_bench.py scripts/qwen35_batch_artifact_schema.py tests/test_generation_batch_scheduler.py tests/test_qwen35_resident_batch_layout.py && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_run_layers_batch_decode_reports_native_batch_for_short_context tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_run_layers_batch_decode_can_force_per_row_post_attention_probe tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_run_layers_batch_decode_can_force_per_row_full_attention_input_probe tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_run_layers_batch_decode_can_force_per_row_full_attention_context_probe tests/test_qwen35_resident_batch_layout.py::test_qwen35_resident_run_layers_batch_decode_combined_full_attention_boundary_probes_are_non_native tests/test_generation_batch_scheduler.py::test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_paths tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \[(?: |~)\]', queue))
+print(count)
+assert count == 12
+PY
+HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness-gpu1.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness-gpu1.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: GPU1/XTX visibility confirmed; targeted full-attention boundary metadata/schema tests PASS; verify count remains `12`; full guard PASS on GPU1 with c=2/c=8 primitive correctness and A/A fields zero; benchmark rollup files unchanged. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and this is C2.3 gating/provenance evidence only.
