@@ -103,6 +103,21 @@ def test_batch_shape_key_includes_context_bucket_mask_and_mode() -> None:
         replay_steps=2,
     )
 
+    int8_key = batch.shape_key(
+        mode=WorkKind.DECODE,
+        context_bucket_size=4,
+        kv_storage_dtype="int8_per_token_head",
+        layer_plan="max_layers=8",
+    )
+    assert int8_key.kv_storage_dtype == "int8_per_token_head"
+    assert int8_key.layer_plan == "max_layers=8"
+    assert int8_key != key
+
+    with pytest.raises(ValueError, match="kv_storage_dtype"):
+        BatchShapeKey(mode=WorkKind.DECODE, active_c=0, context_bucket=0, active_mask=(), kv_storage_dtype="")
+    with pytest.raises(ValueError, match="layer_plan"):
+        BatchShapeKey(mode=WorkKind.DECODE, active_c=0, context_bucket=0, active_mask=(), layer_plan="")
+
     verify_key = batch.shape_key(
         mode="verify_tree",
         context_bucket_size=4,

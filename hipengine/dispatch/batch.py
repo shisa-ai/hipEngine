@@ -144,13 +144,16 @@ class BatchShapeKey:
 
     This is intentionally richer than batch size: SpecDec verification and
     continuous batching need separate buckets for mode, context/page bucket,
-    masks, draft/tree shape, experts, and replay length.
+    masks, KV storage dtype, layer plan, draft/tree shape, experts, and replay
+    length.
     """
 
     mode: WorkKind
     active_c: int
     context_bucket: int
     active_mask: tuple[bool, ...]
+    kv_storage_dtype: str = "bf16"
+    layer_plan: str = "all"
     top_k: int = 0
     experts_per_token: int = 0
     replay_steps: int = 1
@@ -164,6 +167,10 @@ class BatchShapeKey:
             raise ValueError("context_bucket must be non-negative")
         if self.active_c != sum(1 for active in self.active_mask if active):
             raise ValueError("active_c must match active_mask")
+        if not isinstance(self.kv_storage_dtype, str) or not self.kv_storage_dtype.strip():
+            raise ValueError("kv_storage_dtype must be a non-empty string")
+        if not isinstance(self.layer_plan, str) or not self.layer_plan.strip():
+            raise ValueError("layer_plan must be a non-empty string")
         if self.top_k < 0 or self.experts_per_token < 0:
             raise ValueError("top_k and experts_per_token must be non-negative")
         if self.replay_steps <= 0:
@@ -295,6 +302,8 @@ class ActiveBatch:
         top_k: int = 0,
         experts_per_token: int = 0,
         replay_steps: int = 1,
+        kv_storage_dtype: str = "bf16",
+        layer_plan: str = "all",
         draft_depth: int = 0,
         tree_shape: Sequence[int] = (),
     ) -> BatchShapeKey:
@@ -307,6 +316,8 @@ class ActiveBatch:
             active_c=self.active_count,
             context_bucket=context_bucket,
             active_mask=self.active_mask,
+            kv_storage_dtype=str(kv_storage_dtype),
+            layer_plan=str(layer_plan),
             top_k=int(top_k),
             experts_per_token=int(experts_per_token),
             replay_steps=int(replay_steps),

@@ -1040,19 +1040,31 @@ class ResidentBatchScheduler:
             raise ValueError("committed KV accepted_counts must match speculative commit plan")
         return self.record_speculative_accept(plan.commit_plan.summary)
 
-    def shape_key(self, *, mode: WorkKind | str, top_k: int = 0, experts_per_token: int = 0, replay_steps: int = 1) -> BatchShapeKey:
+    def shape_key(
+        self,
+        *,
+        mode: WorkKind | str,
+        top_k: int = 0,
+        experts_per_token: int = 0,
+        replay_steps: int = 1,
+        kv_storage_dtype: str = "bf16",
+        layer_plan: str = "all",
+    ) -> BatchShapeKey:
         return self.active_batch.shape_key(
             mode=mode,
             context_bucket_size=self.context_bucket_size,
             top_k=top_k,
             experts_per_token=experts_per_token,
             replay_steps=replay_steps,
+            kv_storage_dtype=kv_storage_dtype,
+            layer_plan=layer_plan,
         )
 
     def _bucket_key(self, key: BatchShapeKey) -> str:
         mask = "".join("1" if active else "0" for active in key.active_mask)
         return (
             f"{key.mode.value}:c={key.active_c}:ctx={key.context_bucket}:mask={mask}:"
+            f"kv={key.kv_storage_dtype}:layers={key.layer_plan}:"
             f"top_k={key.top_k}:experts={key.experts_per_token}:replay={key.replay_steps}:"
             f"draft={key.draft_depth}"
         )

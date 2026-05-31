@@ -1769,11 +1769,13 @@ roll-up/status view.
       `entries`, `hits`, `misses`, `replay_hit_rate`, miss-reason counts, and typed-integer kernel-time
       histogram buckets from `GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS`; retained bench profiler summaries populate those buckets, invalid hit/miss/replay-rate stats plus missing or unknown-bucket histogram observations block promotion, and retained accepted-artifact schema requires non-empty known-bucket kernel-time
       histogram evidence plus those
-      observability fields plus accepted-schema-validated replay shape-key axes (`context_bucket`,
+      observability fields plus actual/accepted-schema-validated replay shape-key axes (`context_bucket`,
       `kv_storage_dtype`, `layer_plan`, `top_k`, `experts_per_token`,
       `replay_steps`, `draft_depth`, and `tree_shape`, with the context bucket
       covering the workload prompt length and the KV/layer axes matching the
-      retained workload), positive profiler `graph_replay` expected-kernel/duration/category/share evidence whenever replay hits are positive, and per-bucket histogram observation counts covering both replay hits and profiler kernel-duration evidence before a c>N row can be promoted; `/metrics` exposes a
+      retained workload; see `BatchShapeKey`, `_record_decode_graph_bucket_metadata`,
+      `test_batch_shape_key_includes_context_bucket_mask_and_mode`, and
+      `test_qwen35_retained_records_decode_graph_bucket_metadata`), positive profiler `graph_replay` expected-kernel/duration/category/share evidence whenever replay hits are positive, and per-bucket histogram observation counts covering both replay hits and profiler kernel-duration evidence before a c>N row can be promoted; `/metrics` exposes a
       hit/miss-derived replay-hit-rate gauge plus labeled miss-reason and known kernel-time-bucket counters for live runs.
 - [ ] **P3 remove residual serial loops.** Remove full-attention per-row
       fallback, per-row metadata allocation, per-row LM-head launches, and

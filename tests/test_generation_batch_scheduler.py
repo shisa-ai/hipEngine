@@ -12995,15 +12995,20 @@ def test_qwen35_retained_records_decode_graph_bucket_metadata() -> None:
     scheduler.next_compact_prefill_slabs(chunk_size=3, block_size=4)
     metadata: dict[str, object] = {}
 
-    retained_bench._record_decode_graph_bucket_metadata(scheduler, metadata)
+    retained_bench._record_decode_graph_bucket_metadata(
+        scheduler,
+        metadata,
+        kv_storage_dtype="int8_per_token_head",
+        layer_plan="max_layers=8",
+    )
 
     assert metadata["decode_shape_key"] == {
         "mode": "decode",
         "active_c": 2,
         "context_bucket": 4,
         "active_mask": [True, True],
-        "kv_storage_dtype": "bf16",
-        "layer_plan": "all",
+        "kv_storage_dtype": "int8_per_token_head",
+        "layer_plan": "max_layers=8",
         "top_k": 0,
         "experts_per_token": 0,
         "replay_steps": 1,
@@ -13018,6 +13023,16 @@ def test_qwen35_retained_records_decode_graph_bucket_metadata() -> None:
         "miss_reasons": {"cache_absent": 1},
         "kernel_time_histogram_ns": {"le_10us": 0, "le_100us": 0, "le_1ms": 0, "le_10ms": 0, "gt_10ms": 0},
     }
+
+    bf16_metadata: dict[str, object] = {}
+    retained_bench._record_decode_graph_bucket_metadata(
+        scheduler,
+        bf16_metadata,
+        kv_storage_dtype="bf16",
+        layer_plan="max_layers=8",
+    )
+    assert bf16_metadata["decode_shape_key"]["kv_storage_dtype"] == "bf16"
+    assert bf16_metadata["graph_bucket_stats"]["entries"] == 2
 
 
 def test_qwen35_retained_attaches_profiler_graph_kernel_time_histogram() -> None:

@@ -144,19 +144,14 @@ def _result_payload(result) -> dict[str, Any]:
     return {"token_id": int(result.token_id), "token_text": result.token_text, "logit": float(result.logit)}
 
 
-def _shape_key_payload(
-    key,
-    *,
-    kv_storage_dtype: str = "bf16",
-    layer_plan: str = "all",
-) -> dict[str, Any]:
+def _shape_key_payload(key) -> dict[str, Any]:
     return {
         "mode": key.mode.value,
         "active_c": key.active_c,
         "context_bucket": key.context_bucket,
         "active_mask": list(key.active_mask),
-        "kv_storage_dtype": str(kv_storage_dtype),
-        "layer_plan": str(layer_plan),
+        "kv_storage_dtype": key.kv_storage_dtype,
+        "layer_plan": key.layer_plan,
         "top_k": key.top_k,
         "experts_per_token": key.experts_per_token,
         "replay_steps": key.replay_steps,
@@ -172,16 +167,16 @@ def _record_decode_graph_bucket_metadata(
     kv_storage_dtype: str = "bf16",
     layer_plan: str = "all",
 ) -> None:
-    key = scheduler.shape_key(mode="decode", top_k=0, experts_per_token=0, replay_steps=1)
-    scheduler_metadata["decode_shape_key"] = _shape_key_payload(
-        key,
+    key = scheduler.shape_key(
+        mode="decode",
+        top_k=0,
+        experts_per_token=0,
+        replay_steps=1,
         kv_storage_dtype=kv_storage_dtype,
         layer_plan=layer_plan,
     )
-    scheduler.graph_buckets.get_or_create(
-        key,
-        lambda bucket: _shape_key_payload(bucket, kv_storage_dtype=kv_storage_dtype, layer_plan=layer_plan),
-    )
+    scheduler_metadata["decode_shape_key"] = _shape_key_payload(key)
+    scheduler.graph_buckets.get_or_create(key, _shape_key_payload)
     scheduler.graph_buckets.get(key)
     scheduler_metadata["graph_bucket_stats"] = scheduler.graph_buckets.stats.to_json_dict()
 
