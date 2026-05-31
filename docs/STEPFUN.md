@@ -595,8 +595,8 @@ reporting.
   emits just that handoff block for fast continuation checks, while `--blocker-work-queue-only`
   emits only the ordered queue (with a handoff-level queue count/schema version/SHA-256,
   per-item schema versions, explicit queue indices / first-item markers, and compact current-attempt
-  status) and `--first-blocker-only`
-  emits only the immediate work item
+  status), `--blocker-work-queue-sha-only` emits just the queue digest for drift polling,
+  and `--first-blocker-only` emits only the immediate work item
   (including the primary command kind/string plus length and SHA-256) for lightweight automation.
   It lists next actions for the
   StepFun-capable oracle and KV-backed decode blockers, and supports

@@ -111,6 +111,7 @@
     "blocker_work_queue_sha256": "6273ee66cbfe851ec3787d7273514fb05d1926fba4cf728e38008b026620a5c7",
     "compact_output_modes": {
       "blocker_work_queue_only": "handoff_summary.blocker_work_queue",
+      "blocker_work_queue_sha_only": "handoff_summary.blocker_work_queue_sha256",
       "fail_on_blocked_preserves_payload": true,
       "first_blocker_only": "handoff_summary.first_blocker_work_item",
       "summary_only": "handoff_summary"
@@ -1461,8 +1462,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "30a1ba8cc622efa26f33b9b4ada28876b8d205a67ee9ac25b7549dfb1e0bc41e",
-      "size_bytes": 53062
+      "sha256": "ec13b3ae880586c0638009da3583ce7b291deb8415d9883c009a411c4a03aba1",
+      "size_bytes": 53142
     },
     "oracle": {
       "exists": true,

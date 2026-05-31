@@ -51,11 +51,19 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--blocker-work-queue-sha-only",
+        action="store_true",
+        help=(
+            "Emit only handoff_summary.blocker_work_queue_sha256 for queue-drift polling. "
+            "Overrides --summary-only and --blocker-work-queue-only."
+        ),
+    )
+    parser.add_argument(
         "--first-blocker-only",
         action="store_true",
         help=(
             "Emit only handoff_summary.first_blocker_work_item for immediate routing. "
-            "Overrides --summary-only and --blocker-work-queue-only."
+            "Overrides --summary-only, --blocker-work-queue-only, and --blocker-work-queue-sha-only."
         ),
     )
     parser.add_argument(
@@ -967,6 +975,7 @@ def _handoff_summary(
         "compact_output_modes": {
             "summary_only": "handoff_summary",
             "blocker_work_queue_only": "handoff_summary.blocker_work_queue",
+            "blocker_work_queue_sha_only": "handoff_summary.blocker_work_queue_sha256",
             "first_blocker_only": "handoff_summary.first_blocker_work_item",
             "fail_on_blocked_preserves_payload": True,
         },
@@ -1246,6 +1255,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     if args.first_blocker_only:
         result = status["handoff_summary"]["first_blocker_work_item"]
+    elif args.blocker_work_queue_sha_only:
+        result = status["handoff_summary"]["blocker_work_queue_sha256"]
     elif args.blocker_work_queue_only:
         result = status["handoff_summary"]["blocker_work_queue"]
     elif args.summary_only:
