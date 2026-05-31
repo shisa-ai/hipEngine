@@ -23,10 +23,12 @@ from hipengine.loading.stepfun_gguf_materialize import (
     plan_stepfun_gguf_materialization,
 )
 from hipengine.runtime.stepfun_gguf_runner import (
+    StepFunShortContextDecodePlanner,
     StepFunTextDecodeResourcePlan,
     stepfun_kv_cache_layer_nbytes,
     stepfun_kv_cache_nbytes as runtime_stepfun_kv_cache_nbytes,
 )
+from hipengine.tokenization.gguf import StepFunGGUFTokenizer
 
 DEFAULT_MODEL_DIR = Path("/data/models/gguf")
 DEFAULT_PATTERN = "Step-3.7-flash-Q3_K_L-*.gguf"
@@ -107,6 +109,16 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Scan metadata and print the materialization/resource plan without HIP allocation.",
     )
+    parser.add_argument(
+        "--kv-run-plan-message",
+        default="hello",
+        help="Chat user message used for the metadata-only KV decode run plan when KV planning is enabled.",
+    )
+    parser.add_argument(
+        "--kv-run-plan-reasoning-effort",
+        default="low",
+        help="Reasoning-effort template value used for the metadata-only KV decode run plan.",
+    )
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output")
     args = parser.parse_args(argv)
 
@@ -161,6 +173,7 @@ def main(argv: list[str] | None = None) -> int:
     weights = None
     kv_buffers: list[DeviceBuffer] = []
     text_decode_resource_plan = None
+    kv_decode_run_plan = None
     if args.kv_context_pages:
         text_decode_resource_plan = StepFunTextDecodeResourcePlan.from_model_map(
             model_map,
@@ -168,6 +181,20 @@ def main(argv: list[str] | None = None) -> int:
             context_pages=args.kv_context_pages,
             page_size=args.kv_page_size,
         )
+        decode_planner = StepFunShortContextDecodePlanner(
+            info=info,
+            model_map=model_map,
+            tokenizer=StepFunGGUFTokenizer.from_gguf_info(info),
+            backend="hip_gfx1151",
+            max_context=args.kv_context_pages * args.kv_page_size,
+            max_new_tokens=1,
+        )
+        kv_decode_run_plan = decode_planner.plan_kv_decode_chat(
+            [{"role": "user", "content": args.kv_run_plan_message}],
+            reasoning_effort=args.kv_run_plan_reasoning_effort,
+            context_pages=args.kv_context_pages,
+            page_size=args.kv_page_size,
+        ).to_dict()
     kv_nbytes = _stepfun_kv_cache_nbytes(
         model_map.config,
         context_pages=args.kv_context_pages,
@@ -197,6 +224,7 @@ def main(argv: list[str] | None = None) -> int:
             "text_decode_resource_plan": None
             if text_decode_resource_plan is None
             else text_decode_resource_plan.to_dict(),
+            "kv_decode_run_plan": kv_decode_run_plan,
             "boot_config_path": str(BOOT_CONFIG),
             "boot_config_text": BOOT_CONFIG.read_text() if BOOT_CONFIG.exists() else None,
             "snapshots": snapshots,
@@ -273,6 +301,7 @@ def main(argv: list[str] | None = None) -> int:
         "text_decode_resource_plan": None
         if text_decode_resource_plan is None
         else text_decode_resource_plan.to_dict(),
+        "kv_decode_run_plan": kv_decode_run_plan,
         "boot_config_path": str(BOOT_CONFIG),
         "boot_config_text": BOOT_CONFIG.read_text() if BOOT_CONFIG.exists() else None,
         "snapshots": snapshots,

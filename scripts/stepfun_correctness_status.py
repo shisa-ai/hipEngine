@@ -248,6 +248,7 @@ def _kv_decode_dispatch_progress(resource: dict[str, object]) -> dict[str, objec
 
     plan = dict(resource.get("text_decode_resource_plan", {}))
     kv_plan = dict(plan.get("kv_decode_kernel_plan", {}))
+    run_plan = dict(resource.get("kv_decode_run_plan", {}))
     registered = dict(kv_plan.get("registered", {}))
     return {
         "source": "resource_artifact.text_decode_resource_plan.kv_decode_kernel_plan",
@@ -268,6 +269,9 @@ def _kv_decode_dispatch_progress(resource: dict[str, object]) -> dict[str, objec
         "prompt_span_shape_compatible": kv_plan.get("prompt_span_shape_compatible") is True,
         "span_shape_compatible": kv_plan.get("span_shape_compatible") is True,
         "launch_schedule": dict(plan.get("kv_decode_launch_schedule", {})),
+        "run_plan": run_plan,
+        "run_plan_prompt_fits_resource_plan": run_plan.get("prompt_fits_resource_plan") is True,
+        "run_plan_context_fits_resource_plan": run_plan.get("context_fits_resource_plan") is True,
         "dispatch_keys": dict(kv_plan.get("dispatch_keys", {})),
         "registered": registered,
         "all_registered": kv_plan.get("all_registered") is True and all(bool(v) for v in registered.values()),
@@ -392,6 +396,15 @@ def _readiness_gates(
                 "launch_schedule_streaming_ready": dict(
                     kv_decode_dispatch_progress.get("launch_schedule", {})
                 ).get("streaming_runner_ready"),
+                "run_plan_prompt_fits_resource_plan": kv_decode_dispatch_progress.get(
+                    "run_plan_prompt_fits_resource_plan"
+                ),
+                "run_plan_context_fits_resource_plan": kv_decode_dispatch_progress.get(
+                    "run_plan_context_fits_resource_plan"
+                ),
+                "run_plan_streaming_ready": dict(
+                    kv_decode_dispatch_progress.get("run_plan", {})
+                ).get("streaming_runner_ready"),
                 "resident_prompt_smoke": "host_composed_layer_prefix",
             },
         },
@@ -448,6 +461,9 @@ def _handoff_summary(
             "oracle_target_recorded": oracle_progress.get("expected_next_token_id") is not None,
             "kv_decode_dispatch_ready": kv_decode_dispatch_ready,
             "kv_launch_schedule_recorded": bool(launch_schedule.get("operation_count")),
+            "kv_decode_run_plan_recorded": bool(
+                dict(kv_decode_dispatch_progress.get("run_plan", {})).get("prompt_length")
+            ),
         },
         "blocked_signals": {
             "oracle_parity": "oracle_parity" in blocked_gates,

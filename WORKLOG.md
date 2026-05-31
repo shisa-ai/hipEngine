@@ -28196,3 +28196,31 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted decode-planner tests passed (`9 passed`), and the full StepFun guard passed (`106 passed` plus CPU-reference fixture checks).
+
+## 2026-05-31 — StepFun KV run plan propagated to artifacts
+
+Propagated the metadata-only StepFun KV decode run plan into the dry-run resource artifact and consolidated correctness status. `scripts/stepfun_gguf_load_smoke.py --dry-run-plan --kv-context-pages 1 --kv-page-size 512` now emits `kv_decode_run_plan` for the canonical short `hello` prompt, including prompt positions, decode position/live count, required context tokens, stop-token IDs, KV dispatch keys, launch operation count, and prompt/context resource-fit booleans. `scripts/stepfun_correctness_status.py` now surfaces that run plan under `kv_decode_dispatch_progress.run_plan` and carries run-plan fit/streaming-ready evidence into the KV-backed decode readiness gate. This is metadata-only evidence; it does not launch KV kernels and keeps `oracle_parity=false`, `kv_backed_decode_ready=false`, and `e2e_inference_ready=false`.
+
+Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json` and `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, updated load-smoke/status tests, and clarified `docs/STEPFUN.md`.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_load_smoke.py tests/test_stepfun_correctness_status.py tests/test_stepfun_decode_planner.py -q
+python3 - <<'PY'
+import json
+r=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json'))
+run=r['kv_decode_run_plan']
+assert run['prompt_positions'] == list(range(run['prompt_length']))
+assert run['decode_live_count'] == run['prompt_length']
+assert run['context_fits_resource_plan'] is True
+s=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+assert s['kv_decode_dispatch_progress']['run_plan_prompt_fits_resource_plan'] is True
+assert s['kv_decode_dispatch_progress']['run_plan_context_fits_resource_plan'] is True
+assert s['kv_backed_decode_ready'] is False
+print('stepfun kv run plan artifacts ok')
+PY
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted load-smoke/status/decode-planner tests passed (`14 passed`), artifact schema check printed `stepfun kv run plan artifacts ok`, and the full StepFun guard passed (`106 passed` plus CPU-reference fixture checks).

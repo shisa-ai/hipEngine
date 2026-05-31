@@ -99,6 +99,31 @@ def test_stepfun_load_smoke_dry_run_plan_emits_resource_json(capsys: pytest.Capt
         "layer_count": 45,
         "ready": True,
     }
+    run_plan = payload["kv_decode_run_plan"]
+    assert run_plan["prompt_length"] > 0
+    assert run_plan["max_new_tokens"] == 1
+    assert run_plan["required_context_tokens"] == run_plan["prompt_length"] + 1
+    assert run_plan["max_context"] == 512
+    assert run_plan["max_prompt_rows"] == 511
+    assert run_plan["prompt_positions"] == list(range(run_plan["prompt_length"]))
+    assert run_plan["decode_position"] == run_plan["prompt_length"]
+    assert run_plan["decode_live_count"] == run_plan["prompt_length"]
+    assert run_plan["prompt_fits_resource_plan"] is True
+    assert run_plan["context_fits_resource_plan"] is True
+    assert run_plan["stop_token_ids"] == [1, 2, 128007]
+    assert run_plan["kv_dispatch_keys"]["prompt_kv_write"] == {
+        "backend": "hip_gfx1151",
+        "layer": "paged_kv_write",
+        "quant": "gguf_step35",
+        "variant": "mixed_bf16_prompt_spans",
+    }
+    assert run_plan["kv_decode_launch_operation_count"] == 135
+    assert run_plan["kv_decode_launch_per_layer_order"] == [
+        "prompt_kv_write",
+        "decode_kv_write",
+        "decode_attention",
+    ]
+    assert run_plan["streaming_runner_ready"] is False
     assert plan["slot_paths"][:4] == [
         "root.token_embedding",
         "root.rope_freqs",

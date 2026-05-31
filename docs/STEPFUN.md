@@ -574,9 +574,11 @@ reporting.
   `42` host-reference router projection slots across all 45 layers), records
   `kv_decode_dispatch_ready=true` from the text resource plan's `gguf_step35`
   BF16 KV write/decode registry keys plus decode/prompt 256-token paged-attention
-  span contracts plus the planned per-layer KV launch schedule (45 layers ×
-  prompt KV write, decode KV write, gated attention = 135 planned operations),
-  and includes a compact `handoff_summary` with open blockers, blocked gates,
+  span contracts, a metadata-only `kv_decode_run_plan` for the canonical short
+  `hello` prompt (prompt positions, decode position/live-count, stop IDs, KV
+  dispatch keys, and resource-fit booleans), plus the planned per-layer KV launch
+  schedule (45 layers × prompt KV write, decode KV write, gated attention = 135
+  planned operations), and includes a compact `handoff_summary` with open blockers, blocked gates,
   ready signals, next-command coverage, and the no-performance/no-e2e-claim
   policy. `scripts/stepfun_correctness_status.py --summary-only` emits just that
   handoff block for fast continuation checks. It lists next actions for the

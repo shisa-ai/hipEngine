@@ -4,6 +4,75 @@
   "error": null,
   "kv_buffer_count": 90,
   "kv_context_pages": 1,
+  "kv_decode_run_plan": {
+    "context_fits_resource_plan": true,
+    "decode_live_count": 23,
+    "decode_position": 23,
+    "kv_decode_launch_operation_count": 135,
+    "kv_decode_launch_per_layer_order": [
+      "prompt_kv_write",
+      "decode_kv_write",
+      "decode_attention"
+    ],
+    "kv_dispatch_keys": {
+      "decode_attention": {
+        "backend": "hip_gfx1151",
+        "layer": "paged_attn_decode",
+        "quant": "gguf_step35",
+        "variant": "bf16_split_k_gate_f32_spans"
+      },
+      "decode_kv_write": {
+        "backend": "hip_gfx1151",
+        "layer": "paged_kv_write",
+        "quant": "gguf_step35",
+        "variant": "mixed_bf16_spans"
+      },
+      "prompt_kv_write": {
+        "backend": "hip_gfx1151",
+        "layer": "paged_kv_write",
+        "quant": "gguf_step35",
+        "variant": "mixed_bf16_prompt_spans"
+      }
+    },
+    "max_context": 512,
+    "max_new_tokens": 1,
+    "max_prompt_rows": 511,
+    "note": "Metadata-only prompt/resource binding for the future StepFun KV-backed decode runner. It does not launch KV kernels or claim oracle parity.",
+    "prompt_fits_resource_plan": true,
+    "prompt_length": 23,
+    "prompt_positions": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22
+    ],
+    "required_context_tokens": 24,
+    "stop_token_ids": [
+      1,
+      2,
+      128007
+    ],
+    "streaming_runner_ready": false
+  },
   "kv_gib": 0.087890625,
   "kv_nbytes": 94371840,
   "kv_page_size": 512,

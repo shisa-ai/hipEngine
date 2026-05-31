@@ -216,6 +216,46 @@ def _write_resource_artifact(path: Path) -> None:
                         },
                     },
                 },
+                "kv_decode_run_plan": {
+                    "context_fits_resource_plan": True,
+                    "decode_live_count": 23,
+                    "decode_position": 23,
+                    "kv_decode_launch_operation_count": 135,
+                    "kv_decode_launch_per_layer_order": [
+                        "prompt_kv_write",
+                        "decode_kv_write",
+                        "decode_attention",
+                    ],
+                    "kv_dispatch_keys": {
+                        "decode_attention": {
+                            "backend": "hip_gfx1151",
+                            "layer": "paged_attn_decode",
+                            "quant": "gguf_step35",
+                            "variant": "bf16_split_k_gate_f32_spans",
+                        },
+                        "decode_kv_write": {
+                            "backend": "hip_gfx1151",
+                            "layer": "paged_kv_write",
+                            "quant": "gguf_step35",
+                            "variant": "mixed_bf16_spans",
+                        },
+                        "prompt_kv_write": {
+                            "backend": "hip_gfx1151",
+                            "layer": "paged_kv_write",
+                            "quant": "gguf_step35",
+                            "variant": "mixed_bf16_prompt_spans",
+                        },
+                    },
+                    "max_context": 512,
+                    "max_new_tokens": 1,
+                    "max_prompt_rows": 511,
+                    "prompt_fits_resource_plan": True,
+                    "prompt_length": 23,
+                    "prompt_positions": list(range(23)),
+                    "required_context_tokens": 24,
+                    "stop_token_ids": [1, 2, 128007],
+                    "streaming_runner_ready": False,
+                },
             }
         )
     )
@@ -384,6 +424,16 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "span_contract": "prompt_span",
     }
     assert kv_dispatch["launch_schedule"]["streaming_runner_ready"] is False
+    assert kv_dispatch["run_plan"]["prompt_length"] == 23
+    assert kv_dispatch["run_plan"]["prompt_positions"] == list(range(23))
+    assert kv_dispatch["run_plan"]["decode_position"] == 23
+    assert kv_dispatch["run_plan"]["decode_live_count"] == 23
+    assert kv_dispatch["run_plan"]["required_context_tokens"] == 24
+    assert kv_dispatch["run_plan"]["prompt_fits_resource_plan"] is True
+    assert kv_dispatch["run_plan"]["context_fits_resource_plan"] is True
+    assert kv_dispatch["run_plan"]["streaming_runner_ready"] is False
+    assert kv_dispatch["run_plan_prompt_fits_resource_plan"] is True
+    assert kv_dispatch["run_plan_context_fits_resource_plan"] is True
     assert kv_dispatch["all_registered"] is True
     assert kv_dispatch["registered"] == {
         "decode_attention": True,
@@ -415,6 +465,9 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "launch_schedule_streaming_ready": False,
         "prompt_span_shape_compatible": True,
         "resident_prompt_smoke": "host_composed_layer_prefix",
+        "run_plan_context_fits_resource_plan": True,
+        "run_plan_prompt_fits_resource_plan": True,
+        "run_plan_streaming_ready": False,
     }
     assert gates["e2e_inference"]["ready"] is False
     assert gates["e2e_inference"]["blocked_by"] == ["oracle_parity", "kv_backed_decode"]
@@ -428,6 +481,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert handoff["ready_signals"] == {
         "all_layer_prompt_smoke": True,
         "kv_decode_dispatch_ready": True,
+        "kv_decode_run_plan_recorded": True,
         "kv_launch_schedule_recorded": True,
         "oracle_target_recorded": True,
     }
@@ -591,6 +645,7 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "kv_backed_decode_not_wired",
     ]
     assert payload["ready_signals"]["kv_decode_dispatch_ready"] is True
+    assert payload["ready_signals"]["kv_decode_run_plan_recorded"] is True
     assert payload["blocked_gates"] == ["oracle_parity", "kv_backed_decode", "e2e_inference"]
     assert payload["next_commands_available_for"] == [
         "oracle_parity_blocked",
