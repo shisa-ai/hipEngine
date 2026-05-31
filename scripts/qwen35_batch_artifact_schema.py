@@ -2602,6 +2602,7 @@ def _validate_claimed_generated_token_equality(
         if isinstance(c1_sequences, list) and len(c1_sequences) != concurrency:
             errors.append("correctness.generated_token_equality.c1_sequences length must match workload.concurrency when passed is true")
     prompt_lengths = workload.get("prompt_lengths")
+    prompt_lengths_valid = False
     if prompt_lengths is not None:
         if not isinstance(prompt_lengths, list):
             errors.append("workload.prompt_lengths must be a list when present and generated_token_equality.passed is true")
@@ -2609,6 +2610,14 @@ def _validate_claimed_generated_token_equality(
             errors.append("workload.prompt_lengths length must match workload.concurrency when generated_token_equality.passed is true")
         elif any(not isinstance(length, int) or isinstance(length, bool) or length < 0 for length in prompt_lengths):
             errors.append("workload.prompt_lengths entries must be non-negative ints when generated_token_equality.passed is true")
+        else:
+            prompt_lengths_valid = True
+    prompt_tokens_aggregate = workload.get("prompt_tokens_aggregate")
+    if prompt_tokens_aggregate is not None:
+        if not isinstance(prompt_tokens_aggregate, int) or isinstance(prompt_tokens_aggregate, bool) or prompt_tokens_aggregate < 0:
+            errors.append("workload.prompt_tokens_aggregate must be a non-negative int when present and generated_token_equality.passed is true")
+        elif prompt_lengths_valid and prompt_tokens_aggregate != sum(prompt_lengths):
+            errors.append("workload.prompt_tokens_aggregate must equal sum(workload.prompt_lengths) when generated_token_equality.passed is true")
     gen_tokens = workload.get("gen_tokens_per_request")
     gen_tokens_valid = isinstance(gen_tokens, int) and not isinstance(gen_tokens, bool) and gen_tokens > 0
     if not gen_tokens_valid:
