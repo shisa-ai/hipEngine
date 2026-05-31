@@ -1166,8 +1166,18 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
         errors.append("memory.kv_policy must be an object for accepted artifacts")
     elif isinstance(workload_kv_policy, Mapping) and dict(memory_kv_policy) != dict(workload_kv_policy):
         errors.append("memory.kv_policy must match workload.kv_policy for accepted artifacts")
-    if not _is_nonnegative_number(memory.get("allocator_reserved_peak_bytes")):
+    allocator_peak = memory.get("allocator_reserved_peak_bytes")
+    if not _is_nonnegative_number(allocator_peak):
         errors.append("memory.allocator_reserved_peak_bytes must be finite non-negative numeric for accepted artifacts")
+    allocator_stats = memory.get("allocator_memory_stats")
+    if not isinstance(allocator_stats, Mapping):
+        errors.append("memory.allocator_memory_stats must be an object for accepted artifacts")
+    else:
+        stats_peak = allocator_stats.get("peak_allocated_bytes")
+        if not _is_nonnegative_number(stats_peak):
+            errors.append("memory.allocator_memory_stats.peak_allocated_bytes must be finite non-negative numeric for accepted artifacts")
+        elif _is_nonnegative_number(allocator_peak) and int(stats_peak) != int(allocator_peak):
+            errors.append("memory.allocator_memory_stats.peak_allocated_bytes must match allocator_reserved_peak_bytes for accepted artifacts")
     for field in _REQUIRED_ACCEPTED_POOL_FIELDS:
         if not isinstance(memory.get(field), Mapping):
             errors.append(f"memory.{field} must be an object for accepted artifacts")

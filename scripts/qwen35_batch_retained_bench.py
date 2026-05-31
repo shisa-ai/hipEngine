@@ -2542,8 +2542,18 @@ def _sampler_execution_blockers(batch_execution: Mapping[str, Any], *, expected_
 
 def _memory_evidence_blockers(memory: Mapping[str, Any]) -> list[str]:
     blockers: list[str] = []
-    if not _is_finite_nonnegative_number(memory.get("allocator_reserved_peak_bytes")):
+    allocator_peak = memory.get("allocator_reserved_peak_bytes")
+    if not _is_finite_nonnegative_number(allocator_peak):
         blockers.append("memory.allocator_reserved_peak_bytes is unavailable or non-finite")
+    allocator_stats = memory.get("allocator_memory_stats")
+    if not isinstance(allocator_stats, Mapping):
+        blockers.append("memory.allocator_memory_stats is missing")
+    else:
+        stats_peak = allocator_stats.get("peak_allocated_bytes")
+        if not _is_finite_nonnegative_number(stats_peak):
+            blockers.append("memory.allocator_memory_stats.peak_allocated_bytes is unavailable or non-finite")
+        elif _is_finite_nonnegative_number(allocator_peak) and int(stats_peak) != int(allocator_peak):
+            blockers.append("memory.allocator_memory_stats.peak_allocated_bytes does not match allocator_reserved_peak_bytes")
     dynamic_pool = memory.get("dynamic_pool")
     if not isinstance(dynamic_pool, Mapping):
         blockers.append("memory.dynamic_pool evidence is missing")
