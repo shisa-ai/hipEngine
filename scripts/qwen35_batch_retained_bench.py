@@ -563,9 +563,6 @@ def _scaling_reference(
         reasons.extend(_scaling_reference_software_reasons(payload))
     aggregate, per_request = _extract_decode_rates(payload)
     throughput_missing = aggregate is None or per_request is None
-    if reasons:
-        aggregate = None
-        per_request = None
     workload = payload.get("workload")
     workload_concurrency = None
     prompt_tokens_per_request = None
@@ -593,6 +590,15 @@ def _scaling_reference(
     status = str(payload.get("status") or "loaded")
     if throughput_missing:
         reasons.append("decode throughput fields missing")
+    elif not _is_finite_positive_number(aggregate) or not _is_finite_positive_number(per_request):
+        reasons.append("decode throughput fields must be positive finite numbers")
+    elif workload_concurrency is not None:
+        expected_aggregate = float(per_request) * int(workload_concurrency)
+        if abs(float(aggregate) - expected_aggregate) > max(1e-9, expected_aggregate * 1e-6):
+            reasons.append("decode aggregate rate does not match per-request rate times concurrency")
+    if reasons:
+        aggregate = None
+        per_request = None
     reason = None if not reasons else "; ".join(reasons)
     return {
         "artifact_path": str(path),
