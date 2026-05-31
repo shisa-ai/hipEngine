@@ -886,6 +886,10 @@ def _handoff_summary(
                         ),
                     ),
                     "gap_report_status": oracle_gap_report.get("status"),
+                    "current_status": oracle_gap_report.get("oracle_status"),
+                    "current_returncode": oracle_gap_report.get("returncode"),
+                    "elapsed_s": oracle_gap_report.get("elapsed_s"),
+                    "timeout_s": oracle_gap_report.get("timeout_s"),
                     "first_missing_precondition": oracle_gap_report.get(
                         "first_missing_precondition"
                     ),
@@ -908,6 +912,10 @@ def _handoff_summary(
                         ),
                     ),
                     "gap_report_status": kv_backed_decode_gap_report.get("status"),
+                    "operation_count": kv_backed_decode_gap_report.get("operation_count"),
+                    "streaming_runner_blocker_count": kv_backed_decode_gap_report.get(
+                        "streaming_runner_blocker_count"
+                    ),
                     "first_missing_evidence": kv_backed_decode_gap_report.get(
                         "first_missing_evidence"
                     ),

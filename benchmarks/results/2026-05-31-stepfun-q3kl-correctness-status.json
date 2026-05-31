@@ -71,6 +71,9 @@
       {
         "blocker_kind": "oracle_parity_blocked",
         "command_available": true,
+        "current_returncode": null,
+        "current_status": "timeout",
+        "elapsed_s": 62.44178174599074,
         "first_missing_evidence": "oracle_completed_successfully",
         "first_missing_precondition": null,
         "gap_report_status": "blocked",
@@ -81,7 +84,8 @@
         "primary_command_kind": "rerun_command_shell",
         "primary_command_nchars": 406,
         "primary_command_sha256": "208ab046c8f418a9887d24250d71c8da168eec137efe2e9eba17fcfaa4a56507",
-        "queue_index": 0
+        "queue_index": 0,
+        "timeout_s": 60.0
       },
       {
         "blocker_kind": "kv_backed_decode_not_wired",
@@ -91,11 +95,13 @@
         "gap_report_status": "blocked",
         "gate": "kv_backed_decode",
         "is_first": false,
+        "operation_count": 135,
         "primary_command": "python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan --kv-context-pages 1 --kv-page-size 512 --pretty > benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
         "primary_command_kind": "resource_plan_refresh_command",
         "primary_command_nchars": 178,
         "primary_command_sha256": "c60294d60eda320d281299f48bc8f488d21aa35977f0e71498990cddd2518e30",
-        "queue_index": 1
+        "queue_index": 1,
+        "streaming_runner_blocker_count": 3
       }
     ],
     "compact_output_modes": {
@@ -113,6 +119,9 @@
     "first_blocker_work_item": {
       "blocker_kind": "oracle_parity_blocked",
       "command_available": true,
+      "current_returncode": null,
+      "current_status": "timeout",
+      "elapsed_s": 62.44178174599074,
       "first_missing_evidence": "oracle_completed_successfully",
       "first_missing_precondition": null,
       "gap_report_status": "blocked",
@@ -123,7 +132,8 @@
       "primary_command_kind": "rerun_command_shell",
       "primary_command_nchars": 406,
       "primary_command_sha256": "208ab046c8f418a9887d24250d71c8da168eec137efe2e9eba17fcfaa4a56507",
-      "queue_index": 0
+      "queue_index": 0,
+      "timeout_s": 60.0
     },
     "kv_backed_decode_gap_report": {
       "first_missing_evidence": "streaming_runner_ready_flags",
@@ -1445,8 +1455,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "f8fa00d32fd0cb9304eb971add680c022e845c8def379a602a9052e6b556a565",
-      "size_bytes": 52944
+      "sha256": "48ce092a27f6cf2a0c824e82e54eeb08e53f445895304ac0fb0afa761467801e",
+      "size_bytes": 52979
     },
     "oracle": {
       "exists": true,
