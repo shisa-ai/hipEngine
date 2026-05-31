@@ -263,6 +263,7 @@ def _oracle_progress(oracle: dict[str, object]) -> dict[str, object]:
     return {
         "source": "oracle_artifact",
         "status": oracle.get("status"),
+        "returncode": oracle.get("returncode"),
         "oracle_blocker_kind": oracle.get("oracle_blocker_kind"),
         "oracle_blocker_detail": oracle.get("oracle_blocker_detail"),
         "llama_cli": oracle.get("llama_cli"),
@@ -290,6 +291,107 @@ def _oracle_progress(oracle: dict[str, object]) -> dict[str, object]:
             "It is not oracle parity unless a comparable generated token matches the expected text/logit policy."
         ),
     }
+
+
+def _oracle_gap_report(oracle_progress: dict[str, object]) -> dict[str, object]:
+    """Return machine-readable remaining evidence for the oracle parity blocker."""
+
+    preconditions = [
+        {
+            "name": "deterministic_target_recorded",
+            "ready": oracle_progress.get("command_shell") is not None
+            and oracle_progress.get("expected_next_token_id") is not None
+            and oracle_progress.get("expected_next_token_text") is not None
+            and oracle_progress.get("prompt_length") is not None
+            and oracle_progress.get("n_predict") is not None,
+            "evidence": "oracle command, prompt length, n_predict, and expected token/text are recorded",
+        },
+        {
+            "name": "oracle_binary_recorded",
+            "ready": bool(oracle_progress.get("llama_cli"))
+            and bool(oracle_progress.get("llama_cpp_version"))
+            and bool(oracle_progress.get("model")),
+            "evidence": "llama-cli path/version and GGUF model path are recorded",
+        },
+        {
+            "name": "step35_not_rejected",
+            "ready": oracle_progress.get("step35_supported_by_oracle") is not False
+            and oracle_progress.get("oracle_blocker_kind")
+            != "llama_cpp_missing_step35_architecture",
+            "evidence": "current oracle blocker is not an explicit unknown step35 architecture rejection",
+        },
+    ]
+    remaining_evidence = [
+        {
+            "name": "oracle_completed_successfully",
+            "ready": oracle_progress.get("status") == "executed"
+            and oracle_progress.get("returncode") == 0,
+            "required_evidence": "llama.cpp/CPU oracle run must complete with status=executed and returncode=0",
+            "current": {
+                "status": oracle_progress.get("status"),
+                "returncode": oracle_progress.get("returncode"),
+                "oracle_blocker_kind": oracle_progress.get("oracle_blocker_kind"),
+                "elapsed_s": oracle_progress.get("elapsed_s"),
+                "timeout_s": oracle_progress.get("timeout_s"),
+            },
+        },
+        {
+            "name": "oracle_generated_comparable_text",
+            "ready": int(oracle_progress.get("generated_text_len") or 0) > 0,
+            "required_evidence": "oracle artifact must capture non-empty generated_text for the one-token run",
+            "current": {
+                "generated_text_len": oracle_progress.get("generated_text_len"),
+                "stdout_len": oracle_progress.get("stdout_len"),
+                "stderr_len": oracle_progress.get("stderr_len"),
+            },
+        },
+        {
+            "name": "oracle_exact_text_match",
+            "ready": oracle_progress.get("text_matches_expected_exact") is True,
+            "required_evidence": "oracle generated_text must exactly match expected_next_token_text",
+            "current": {
+                "expected_next_token_id": oracle_progress.get("expected_next_token_id"),
+                "expected_next_token_text": oracle_progress.get("expected_next_token_text"),
+                "text_matches_expected_exact": oracle_progress.get("text_matches_expected_exact"),
+                "text_matches_expected_stripped": oracle_progress.get("text_matches_expected_stripped"),
+            },
+        },
+    ]
+    missing_preconditions = [
+        str(item["name"]) for item in preconditions if item.get("ready") is not True
+    ]
+    missing_evidence = [
+        str(item["name"]) for item in remaining_evidence if item.get("ready") is not True
+    ]
+    return {
+        "source": "oracle_progress",
+        "status": "ready" if not missing_preconditions and not missing_evidence else "blocked",
+        "precondition_count": len(preconditions),
+        "validated_precondition_count": sum(1 for item in preconditions if item.get("ready") is True),
+        "validated_preconditions": [
+            str(item["name"]) for item in preconditions if item.get("ready") is True
+        ],
+        "missing_preconditions": missing_preconditions,
+        "missing_precondition_count": len(missing_preconditions),
+        "first_missing_precondition": missing_preconditions[0] if missing_preconditions else None,
+        "missing_evidence": missing_evidence,
+        "missing_evidence_count": len(missing_evidence),
+        "first_missing_evidence": missing_evidence[0] if missing_evidence else None,
+        "preconditions": preconditions,
+        "remaining_evidence": remaining_evidence,
+        "oracle_blocker_kind": oracle_progress.get("oracle_blocker_kind"),
+        "oracle_status": oracle_progress.get("status"),
+        "returncode": oracle_progress.get("returncode"),
+        "elapsed_s": oracle_progress.get("elapsed_s"),
+        "timeout_s": oracle_progress.get("timeout_s"),
+        "expected_next_token_id": oracle_progress.get("expected_next_token_id"),
+        "expected_next_token_text": oracle_progress.get("expected_next_token_text"),
+        "note": (
+            "This separates recorded deterministic oracle prerequisites from the evidence still needed "
+            "before oracle_parity can become true. It is not a performance or e2e-readiness claim."
+        ),
+    }
+
 
 
 def _kv_decode_dispatch_progress(resource: dict[str, object]) -> dict[str, object]:
@@ -469,6 +571,7 @@ def _resource_plan_refresh_command(
 def _next_action_commands(
     *,
     oracle_progress: dict[str, object],
+    oracle_gap_report: dict[str, object],
     kv_backed_decode_gap_report: dict[str, object],
     prompt_artifact: Path,
     oracle_artifact: Path,
@@ -483,13 +586,22 @@ def _next_action_commands(
         resource_artifact=resource_artifact,
         docs_path=docs_path,
     )
+    oracle_missing_preconditions = list(oracle_gap_report.get("missing_preconditions", []))
+    oracle_missing_evidence = list(oracle_gap_report.get("missing_evidence", []))
     kv_missing_evidence = list(kv_backed_decode_gap_report.get("missing_evidence", []))
     return {
         "oracle_parity_blocked": {
             "rerun_command_shell": oracle_progress.get("command_shell"),
             "status_refresh_command": status_refresh,
+            "gap_report_status": oracle_gap_report.get("status"),
+            "missing_preconditions": oracle_missing_preconditions,
+            "first_missing_precondition": oracle_gap_report.get("first_missing_precondition"),
+            "missing_evidence": oracle_missing_evidence,
+            "first_missing_evidence": oracle_gap_report.get("first_missing_evidence"),
             "success_criteria": [
-                "oracle_progress.status is executed",
+                "oracle_gap_report.status is ready",
+                "oracle_gap_report.missing_preconditions is empty",
+                "oracle_gap_report.missing_evidence is empty",
                 "oracle_parity is true",
                 "readiness_gates.oracle_parity.ready is true",
             ],
@@ -519,6 +631,7 @@ def _readiness_gates(
     kv_decode_dispatch_ready: bool,
     kv_backed_decode_ready: bool,
     oracle_progress: dict[str, object],
+    oracle_gap_report: dict[str, object],
     kv_decode_dispatch_progress: dict[str, object],
     kv_backed_decode_gap_report: dict[str, object],
 ) -> dict[str, object]:
@@ -535,6 +648,8 @@ def _readiness_gates(
             "expected_next_token_id": oracle_progress.get("expected_next_token_id"),
             "expected_next_token_text": oracle_progress.get("expected_next_token_text"),
             "current_oracle_status": oracle_progress.get("status"),
+            "current_oracle_returncode": oracle_progress.get("returncode"),
+            "gap_report": oracle_gap_report,
         },
         "kv_backed_decode": {
             "ready": kv_backed_decode_ready,
@@ -669,6 +784,7 @@ def _handoff_summary(
     next_action_commands: dict[str, object],
     all_layer_prompt_smoke: bool,
     oracle_progress: dict[str, object],
+    oracle_gap_report: dict[str, object],
     kv_decode_dispatch_ready: bool,
     kv_decode_dispatch_progress: dict[str, object],
     kv_backed_decode_gap_report: dict[str, object],
@@ -703,6 +819,26 @@ def _handoff_summary(
             "kv_decode_input_upload_plan_recorded": bool(
                 decode_input_upload_plan.get("entry_count")
             ),
+        },
+        "oracle_gap_report": {
+            "status": oracle_gap_report.get("status"),
+            "precondition_count": oracle_gap_report.get("precondition_count"),
+            "validated_precondition_count": oracle_gap_report.get(
+                "validated_precondition_count"
+            ),
+            "missing_precondition_count": oracle_gap_report.get(
+                "missing_precondition_count"
+            ),
+            "first_missing_precondition": oracle_gap_report.get("first_missing_precondition"),
+            "missing_evidence_count": oracle_gap_report.get("missing_evidence_count"),
+            "first_missing_evidence": oracle_gap_report.get("first_missing_evidence"),
+            "missing_evidence": list(oracle_gap_report.get("missing_evidence", [])),
+            "oracle_blocker_kind": oracle_gap_report.get("oracle_blocker_kind"),
+            "oracle_status": oracle_gap_report.get("oracle_status"),
+            "elapsed_s": oracle_gap_report.get("elapsed_s"),
+            "timeout_s": oracle_gap_report.get("timeout_s"),
+            "expected_next_token_id": oracle_gap_report.get("expected_next_token_id"),
+            "expected_next_token_text": oracle_gap_report.get("expected_next_token_text"),
         },
         "kv_decode_input_upload_plan": {
             "entry_count": decode_input_upload_plan.get("entry_count"),
@@ -769,12 +905,9 @@ def build_status(
         and prompt.get("memory_stats_after_free", {}).get("active_allocations") == 0
         and prompt.get("memory_stats_after_free", {}).get("current_allocated_bytes") == 0
     )
-    oracle_parity = (
-        oracle.get("status") == "executed"
-        and oracle.get("returncode") == 0
-        and oracle.get("text_matches_expected_exact") is True
-    )
     oracle_progress = _oracle_progress(oracle)
+    oracle_gap_report = _oracle_gap_report(oracle_progress)
+    oracle_parity = oracle_gap_report["status"] == "ready"
     kv_decode_dispatch_progress = _kv_decode_dispatch_progress(resource)
     kv_decode_dispatch_ready = kv_decode_dispatch_progress["all_registered"] is True
     kv_backed_decode_gap_report = _kv_backed_decode_gap_report(kv_decode_dispatch_progress)
@@ -785,11 +918,13 @@ def build_status(
         kv_decode_dispatch_ready=kv_decode_dispatch_ready,
         kv_backed_decode_ready=kv_backed_decode_ready,
         oracle_progress=oracle_progress,
+        oracle_gap_report=oracle_gap_report,
         kv_decode_dispatch_progress=kv_decode_dispatch_progress,
         kv_backed_decode_gap_report=kv_backed_decode_gap_report,
     )
     next_action_commands = _next_action_commands(
         oracle_progress=oracle_progress,
+        oracle_gap_report=oracle_gap_report,
         kv_backed_decode_gap_report=kv_backed_decode_gap_report,
         prompt_artifact=prompt_artifact,
         oracle_artifact=oracle_artifact,
@@ -809,6 +944,10 @@ def build_status(
                 "expected_next_token_text": oracle_progress.get("expected_next_token_text"),
                 "elapsed_s": oracle_progress.get("elapsed_s"),
                 "timeout_s": oracle_progress.get("timeout_s"),
+                "gap_report_status": oracle_gap_report.get("status"),
+                "first_missing_precondition": oracle_gap_report.get("first_missing_precondition"),
+                "missing_evidence": list(oracle_gap_report.get("missing_evidence", [])),
+                "first_missing_evidence": oracle_gap_report.get("first_missing_evidence"),
             }
         )
     if not kv_backed_decode_ready:
@@ -855,6 +994,7 @@ def build_status(
         next_action_commands=next_action_commands,
         all_layer_prompt_smoke=all_layer_prompt_smoke,
         oracle_progress=oracle_progress,
+        oracle_gap_report=oracle_gap_report,
         kv_decode_dispatch_ready=kv_decode_dispatch_ready,
         kv_decode_dispatch_progress=kv_decode_dispatch_progress,
         kv_backed_decode_gap_report=kv_backed_decode_gap_report,
@@ -885,6 +1025,7 @@ def build_status(
         "oracle_blocker_kind": oracle.get("oracle_blocker_kind"),
         "step35_supported_by_local_llama_cpp": oracle.get("step35_supported"),
         "oracle_progress": oracle_progress,
+        "oracle_gap_report": oracle_gap_report,
         "linear_projection_progress": _linear_projection_progress(prompt),
         "kv_decode_dispatch_progress": kv_decode_dispatch_progress,
         "kv_decode_dispatch_ready": kv_decode_dispatch_ready,

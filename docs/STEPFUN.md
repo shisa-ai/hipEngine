@@ -585,10 +585,10 @@ reporting.
   stop IDs, KV dispatch keys, and resource-fit booleans), plus the planned per-layer KV launch
   schedule (45 layers × prompt KV write, decode KV write, gated attention = 135
   planned operations), and includes a compact `handoff_summary` with open blockers, blocked gates,
-  ready signals, combined upload-plan order/bytes/consistency checks, a KV-backed
-  decode gap report that separates validated preconditions from missing streaming-runner
-  evidence, next-command coverage that names the first missing KV evidence item,
-  and the no-performance/no-e2e-claim policy.
+  ready signals, an oracle parity gap report, combined upload-plan order/bytes/consistency
+  checks, a KV-backed decode gap report that separates validated preconditions from missing
+  streaming-runner evidence, next-command coverage that names the first missing oracle/KV
+  evidence items, and the no-performance/no-e2e-claim policy.
   `scripts/stepfun_correctness_status.py --summary-only` emits just that
   handoff block for fast continuation checks. It lists next actions for the
   StepFun-capable oracle and KV-backed decode blockers, and supports
@@ -627,8 +627,9 @@ reporting.
   it exceeded the pi tool supervision window before helper JSON was produced, so
   the CPU/no-GPU timeout artifact remains the canonical machine-readable oracle
   blocker for now. The consolidated correctness-status artifact surfaces the oracle version,
-  elapsed time, stdout/stderr lengths, and `oracle_progress` fields for the exact
-  deterministic target (`prompt_length=23`, `n_predict=1`, expected token id 369 /
+  elapsed time, stdout/stderr lengths, `oracle_progress` fields, and an `oracle_gap_report`
+  that separates recorded deterministic-target prerequisites from missing run/match evidence
+  for the exact deterministic target (`prompt_length=23`, `n_predict=1`, expected token id 369 /
   text ` |`, top-5 expected tokens, timeout 60 s, elapsed 62.44 s, generated text
   length 0, and the llama.cpp command shell). It records both blockers
   (`oracle_parity_blocked`, `kv_backed_decode_not_wired`) for the current

@@ -11,7 +11,15 @@
       "elapsed_s": 62.44178174599074,
       "expected_next_token_id": 369,
       "expected_next_token_text": " |",
+      "first_missing_evidence": "oracle_completed_successfully",
+      "first_missing_precondition": null,
+      "gap_report_status": "blocked",
       "kind": "oracle_parity_blocked",
+      "missing_evidence": [
+        "oracle_completed_successfully",
+        "oracle_generated_comparable_text",
+        "oracle_exact_text_match"
+      ],
       "oracle_blocker_kind": "llama_cpp_oracle_timeout",
       "timeout_s": 60.0
     },
@@ -108,6 +116,26 @@
       "kv_backed_decode_not_wired"
     ],
     "open_or_partial_items_p0_p12": 2,
+    "oracle_gap_report": {
+      "elapsed_s": 62.44178174599074,
+      "expected_next_token_id": 369,
+      "expected_next_token_text": " |",
+      "first_missing_evidence": "oracle_completed_successfully",
+      "first_missing_precondition": null,
+      "missing_evidence": [
+        "oracle_completed_successfully",
+        "oracle_generated_comparable_text",
+        "oracle_exact_text_match"
+      ],
+      "missing_evidence_count": 3,
+      "missing_precondition_count": 0,
+      "oracle_blocker_kind": "llama_cpp_oracle_timeout",
+      "oracle_status": "timeout",
+      "precondition_count": 3,
+      "status": "blocked",
+      "timeout_s": 60.0,
+      "validated_precondition_count": 3
+    },
     "ready_gates": [],
     "ready_signals": {
       "all_layer_prompt_smoke": true,
@@ -833,10 +861,21 @@
       ]
     },
     "oracle_parity_blocked": {
+      "first_missing_evidence": "oracle_completed_successfully",
+      "first_missing_precondition": null,
+      "gap_report_status": "blocked",
+      "missing_evidence": [
+        "oracle_completed_successfully",
+        "oracle_generated_comparable_text",
+        "oracle_exact_text_match"
+      ],
+      "missing_preconditions": [],
       "rerun_command_shell": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --prompt '<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n' --predict 1 --temp 0 --top-k 1 --top-p 1 --min-p 0 --repeat-penalty 1 --seed 0 --no-display-prompt --simple-io --device none --gpu-layers 0",
       "status_refresh_command": "python3 scripts/stepfun_correctness_status.py --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --oracle-artifact benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json --resource-artifact benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json --docs docs/STEPFUN.md --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty",
       "success_criteria": [
-        "oracle_progress.status is executed",
+        "oracle_gap_report.status is ready",
+        "oracle_gap_report.missing_preconditions is empty",
+        "oracle_gap_report.missing_evidence is empty",
         "oracle_parity is true",
         "readiness_gates.oracle_parity.ready is true"
       ]
@@ -856,6 +895,87 @@
   "oracle_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
   "oracle_blocker_kind": "llama_cpp_oracle_timeout",
   "oracle_elapsed_s": 62.44178174599074,
+  "oracle_gap_report": {
+    "elapsed_s": 62.44178174599074,
+    "expected_next_token_id": 369,
+    "expected_next_token_text": " |",
+    "first_missing_evidence": "oracle_completed_successfully",
+    "first_missing_precondition": null,
+    "missing_evidence": [
+      "oracle_completed_successfully",
+      "oracle_generated_comparable_text",
+      "oracle_exact_text_match"
+    ],
+    "missing_evidence_count": 3,
+    "missing_precondition_count": 0,
+    "missing_preconditions": [],
+    "note": "This separates recorded deterministic oracle prerequisites from the evidence still needed before oracle_parity can become true. It is not a performance or e2e-readiness claim.",
+    "oracle_blocker_kind": "llama_cpp_oracle_timeout",
+    "oracle_status": "timeout",
+    "precondition_count": 3,
+    "preconditions": [
+      {
+        "evidence": "oracle command, prompt length, n_predict, and expected token/text are recorded",
+        "name": "deterministic_target_recorded",
+        "ready": true
+      },
+      {
+        "evidence": "llama-cli path/version and GGUF model path are recorded",
+        "name": "oracle_binary_recorded",
+        "ready": true
+      },
+      {
+        "evidence": "current oracle blocker is not an explicit unknown step35 architecture rejection",
+        "name": "step35_not_rejected",
+        "ready": true
+      }
+    ],
+    "remaining_evidence": [
+      {
+        "current": {
+          "elapsed_s": 62.44178174599074,
+          "oracle_blocker_kind": "llama_cpp_oracle_timeout",
+          "returncode": null,
+          "status": "timeout",
+          "timeout_s": 60.0
+        },
+        "name": "oracle_completed_successfully",
+        "ready": false,
+        "required_evidence": "llama.cpp/CPU oracle run must complete with status=executed and returncode=0"
+      },
+      {
+        "current": {
+          "generated_text_len": 0,
+          "stderr_len": 0,
+          "stdout_len": 0
+        },
+        "name": "oracle_generated_comparable_text",
+        "ready": false,
+        "required_evidence": "oracle artifact must capture non-empty generated_text for the one-token run"
+      },
+      {
+        "current": {
+          "expected_next_token_id": 369,
+          "expected_next_token_text": " |",
+          "text_matches_expected_exact": false,
+          "text_matches_expected_stripped": false
+        },
+        "name": "oracle_exact_text_match",
+        "ready": false,
+        "required_evidence": "oracle generated_text must exactly match expected_next_token_text"
+      }
+    ],
+    "returncode": null,
+    "source": "oracle_progress",
+    "status": "blocked",
+    "timeout_s": 60.0,
+    "validated_precondition_count": 3,
+    "validated_preconditions": [
+      "deterministic_target_recorded",
+      "oracle_binary_recorded",
+      "step35_not_rejected"
+    ]
+  },
   "oracle_llama_cpp_version": "version: 9197 (fcae601e4)\nbuilt with GNU 15.2.1 for Linux x86_64",
   "oracle_parity": false,
   "oracle_progress": {
@@ -917,6 +1037,7 @@
     "oracle_blocker_detail": "llama.cpp oracle timed out before producing a comparable token",
     "oracle_blocker_kind": "llama_cpp_oracle_timeout",
     "prompt_length": 23,
+    "returncode": null,
     "source": "oracle_artifact",
     "status": "timeout",
     "stderr_len": 0,
@@ -1049,9 +1170,91 @@
     },
     "oracle_parity": {
       "blocked_by": "llama_cpp_oracle_timeout",
+      "current_oracle_returncode": null,
       "current_oracle_status": "timeout",
       "expected_next_token_id": 369,
       "expected_next_token_text": " |",
+      "gap_report": {
+        "elapsed_s": 62.44178174599074,
+        "expected_next_token_id": 369,
+        "expected_next_token_text": " |",
+        "first_missing_evidence": "oracle_completed_successfully",
+        "first_missing_precondition": null,
+        "missing_evidence": [
+          "oracle_completed_successfully",
+          "oracle_generated_comparable_text",
+          "oracle_exact_text_match"
+        ],
+        "missing_evidence_count": 3,
+        "missing_precondition_count": 0,
+        "missing_preconditions": [],
+        "note": "This separates recorded deterministic oracle prerequisites from the evidence still needed before oracle_parity can become true. It is not a performance or e2e-readiness claim.",
+        "oracle_blocker_kind": "llama_cpp_oracle_timeout",
+        "oracle_status": "timeout",
+        "precondition_count": 3,
+        "preconditions": [
+          {
+            "evidence": "oracle command, prompt length, n_predict, and expected token/text are recorded",
+            "name": "deterministic_target_recorded",
+            "ready": true
+          },
+          {
+            "evidence": "llama-cli path/version and GGUF model path are recorded",
+            "name": "oracle_binary_recorded",
+            "ready": true
+          },
+          {
+            "evidence": "current oracle blocker is not an explicit unknown step35 architecture rejection",
+            "name": "step35_not_rejected",
+            "ready": true
+          }
+        ],
+        "remaining_evidence": [
+          {
+            "current": {
+              "elapsed_s": 62.44178174599074,
+              "oracle_blocker_kind": "llama_cpp_oracle_timeout",
+              "returncode": null,
+              "status": "timeout",
+              "timeout_s": 60.0
+            },
+            "name": "oracle_completed_successfully",
+            "ready": false,
+            "required_evidence": "llama.cpp/CPU oracle run must complete with status=executed and returncode=0"
+          },
+          {
+            "current": {
+              "generated_text_len": 0,
+              "stderr_len": 0,
+              "stdout_len": 0
+            },
+            "name": "oracle_generated_comparable_text",
+            "ready": false,
+            "required_evidence": "oracle artifact must capture non-empty generated_text for the one-token run"
+          },
+          {
+            "current": {
+              "expected_next_token_id": 369,
+              "expected_next_token_text": " |",
+              "text_matches_expected_exact": false,
+              "text_matches_expected_stripped": false
+            },
+            "name": "oracle_exact_text_match",
+            "ready": false,
+            "required_evidence": "oracle generated_text must exactly match expected_next_token_text"
+          }
+        ],
+        "returncode": null,
+        "source": "oracle_progress",
+        "status": "blocked",
+        "timeout_s": 60.0,
+        "validated_precondition_count": 3,
+        "validated_preconditions": [
+          "deterministic_target_recorded",
+          "oracle_binary_recorded",
+          "step35_not_rejected"
+        ]
+      },
       "ready": false,
       "required_evidence": "A StepFun/step35-capable oracle must generate a comparable token and match the expected next-token text/logit policy recorded in oracle_progress."
     }
@@ -1060,8 +1263,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "3ce8d01809052a25c1d0ba69923936452307acc423ed10845cca61d05f91d33e",
-      "size_bytes": 52107
+      "sha256": "ff1e96128e3dda11e726e8ec9dd7cadda61aae45b6c021146b0e48c52e99af66",
+      "size_bytes": 52261
     },
     "oracle": {
       "exists": true,

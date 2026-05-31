@@ -748,6 +748,22 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert gates["oracle_parity"]["expected_next_token_id"] == 369
     assert gates["oracle_parity"]["expected_next_token_text"] == " |"
     assert gates["oracle_parity"]["current_oracle_status"] == "executed"
+    assert gates["oracle_parity"]["current_oracle_returncode"] == 1
+    oracle_gap = status["oracle_gap_report"]
+    assert gates["oracle_parity"]["gap_report"] == oracle_gap
+    assert oracle_gap["status"] == "blocked"
+    assert oracle_gap["precondition_count"] == 3
+    assert oracle_gap["validated_precondition_count"] == 2
+    assert oracle_gap["missing_preconditions"] == ["step35_not_rejected"]
+    assert oracle_gap["first_missing_precondition"] == "step35_not_rejected"
+    assert oracle_gap["missing_evidence"] == [
+        "oracle_completed_successfully",
+        "oracle_generated_comparable_text",
+        "oracle_exact_text_match",
+    ]
+    assert oracle_gap["first_missing_evidence"] == "oracle_completed_successfully"
+    assert oracle_gap["oracle_blocker_kind"] == "llama_cpp_missing_step35_architecture"
+    assert oracle_gap["returncode"] == 1
     assert gates["kv_backed_decode"]["ready"] is False
     assert gates["kv_backed_decode"]["blocked_by"] == "kv_backed_decode_not_wired"
     assert gates["kv_backed_decode"]["dispatch_ready"] is True
@@ -813,6 +829,26 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "kv_launch_schedule_recorded": True,
         "oracle_target_recorded": True,
     }
+    assert handoff["oracle_gap_report"] == {
+        "elapsed_s": 62.4,
+        "expected_next_token_id": 369,
+        "expected_next_token_text": " |",
+        "first_missing_evidence": "oracle_completed_successfully",
+        "first_missing_precondition": "step35_not_rejected",
+        "missing_evidence": [
+            "oracle_completed_successfully",
+            "oracle_generated_comparable_text",
+            "oracle_exact_text_match",
+        ],
+        "missing_evidence_count": 3,
+        "missing_precondition_count": 1,
+        "oracle_blocker_kind": "llama_cpp_missing_step35_architecture",
+        "oracle_status": "executed",
+        "precondition_count": 3,
+        "status": "blocked",
+        "timeout_s": 60.0,
+        "validated_precondition_count": 2,
+    }
     assert handoff["kv_decode_input_upload_plan"] == {
         "entry_count": 6,
         "total_nbytes": 484,
@@ -869,6 +905,14 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert oracle_blocker["expected_next_token_text"] == " |"
     assert oracle_blocker["elapsed_s"] == 62.4
     assert oracle_blocker["timeout_s"] == 60.0
+    assert oracle_blocker["gap_report_status"] == "blocked"
+    assert oracle_blocker["first_missing_precondition"] == "step35_not_rejected"
+    assert oracle_blocker["missing_evidence"] == [
+        "oracle_completed_successfully",
+        "oracle_generated_comparable_text",
+        "oracle_exact_text_match",
+    ]
+    assert oracle_blocker["first_missing_evidence"] == "oracle_completed_successfully"
     kv_blocker = next(blocker for blocker in status["blockers"] if blocker["kind"] == "kv_backed_decode_not_wired")
     assert kv_blocker["resource_artifact"] == str(resource)
     assert kv_blocker["kv_decode_dispatch_ready"] is True
@@ -887,8 +931,18 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert oracle_commands["rerun_command_shell"].startswith("/tmp/llama-cli")
     assert f"--prompt-artifact {prompt}" in oracle_commands["status_refresh_command"]
     assert f"--oracle-artifact {oracle}" in oracle_commands["status_refresh_command"]
+    assert oracle_commands["gap_report_status"] == "blocked"
+    assert oracle_commands["first_missing_precondition"] == "step35_not_rejected"
+    assert oracle_commands["missing_evidence"] == [
+        "oracle_completed_successfully",
+        "oracle_generated_comparable_text",
+        "oracle_exact_text_match",
+    ]
+    assert oracle_commands["first_missing_evidence"] == "oracle_completed_successfully"
     assert oracle_commands["success_criteria"] == [
-        "oracle_progress.status is executed",
+        "oracle_gap_report.status is ready",
+        "oracle_gap_report.missing_preconditions is empty",
+        "oracle_gap_report.missing_evidence is empty",
         "oracle_parity is true",
         "readiness_gates.oracle_parity.ready is true",
     ]
@@ -955,6 +1009,52 @@ def test_stepfun_correctness_status_drops_kv_blocker_when_gap_report_is_ready(tm
 
 
 
+def test_stepfun_correctness_status_drops_oracle_blocker_when_gap_report_is_ready(tmp_path: Path) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+    oracle_payload = json.loads(oracle.read_text())
+    oracle_payload.update(
+        {
+            "status": "executed",
+            "returncode": 0,
+            "step35_supported": True,
+            "oracle_blocker_kind": None,
+            "oracle_blocker_detail": None,
+            "stdout": " |",
+            "generated_text": " |",
+            "text_matches_expected_exact": True,
+            "text_matches_expected_stripped": True,
+        }
+    )
+    oracle.write_text(json.dumps(oracle_payload))
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+
+    assert status["oracle_parity"] is True
+    assert status["e2e_inference_ready"] is False
+    assert status["oracle_gap_report"]["status"] == "ready"
+    assert status["oracle_gap_report"]["missing_preconditions"] == []
+    assert status["oracle_gap_report"]["missing_evidence"] == []
+    assert status["oracle_gap_report"]["first_missing_evidence"] is None
+    assert status["readiness_gates"]["oracle_parity"]["ready"] is True
+    assert status["handoff_summary"]["ready_gates"] == ["oracle_parity"]
+    assert status["handoff_summary"]["blocked_gates"] == ["kv_backed_decode", "e2e_inference"]
+    assert status["handoff_summary"]["blocked_signals"]["oracle_parity"] is False
+    assert [blocker["kind"] for blocker in status["blockers"]] == [
+        "kv_backed_decode_not_wired"
+    ]
+    assert [action["blocker_kind"] for action in status["next_actions"]] == [
+        "kv_backed_decode_not_wired"
+    ]
+
+
+
 def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
     prompt = tmp_path / "prompt.json"
     oracle = tmp_path / "oracle.json"
@@ -995,7 +1095,13 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
     assert payload["all_layer_prompt_smoke"] is True
     assert payload["e2e_inference_ready"] is False
     assert payload["oracle_progress"]["expected_next_token_id"] == 369
+    assert payload["oracle_progress"]["returncode"] == 1
     assert payload["oracle_progress"]["timeout_s"] == 60.0
+    assert payload["oracle_gap_report"]["first_missing_precondition"] == "step35_not_rejected"
+    assert payload["oracle_gap_report"]["first_missing_evidence"] == "oracle_completed_successfully"
+    assert payload["readiness_gates"]["oracle_parity"]["gap_report"] == payload[
+        "oracle_gap_report"
+    ]
     assert payload["linear_projection_progress"]["resident_linear_projection_slot_count"] == 487
     assert payload["kv_decode_dispatch_ready"] is True
     assert payload["readiness_gates"]["oracle_parity"]["ready"] is False
@@ -1022,9 +1128,11 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
         "e2e_inference",
     ]
     assert payload["handoff_summary"]["no_claim_policy"]["performance_claim_allowed"] is False
-    assert payload["next_action_commands"]["oracle_parity_blocked"]["rerun_command_shell"].startswith(
-        "/tmp/llama-cli"
-    )
+    oracle_command = payload["next_action_commands"]["oracle_parity_blocked"]
+    assert oracle_command["rerun_command_shell"].startswith("/tmp/llama-cli")
+    assert oracle_command["first_missing_precondition"] == "step35_not_rejected"
+    assert oracle_command["first_missing_evidence"] == "oracle_completed_successfully"
+    assert oracle_command["success_criteria"][0] == "oracle_gap_report.status is ready"
     kv_command = payload["next_action_commands"]["kv_backed_decode_not_wired"]
     assert kv_command["resource_plan_refresh_command"].endswith(f"> {resource}")
     assert kv_command["first_missing_evidence"] == "streaming_runner_ready_flags"
@@ -1076,6 +1184,26 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
     assert payload["ready_signals"]["kv_decode_run_plan_recorded"] is True
     assert payload["ready_signals"]["kv_decode_input_upload_plan_recorded"] is True
     assert payload["kv_decode_input_upload_plan"]["entry_count"] == 6
+    assert payload["oracle_gap_report"] == {
+        "elapsed_s": 62.4,
+        "expected_next_token_id": 369,
+        "expected_next_token_text": " |",
+        "first_missing_evidence": "oracle_completed_successfully",
+        "first_missing_precondition": "step35_not_rejected",
+        "missing_evidence": [
+            "oracle_completed_successfully",
+            "oracle_generated_comparable_text",
+            "oracle_exact_text_match",
+        ],
+        "missing_evidence_count": 3,
+        "missing_precondition_count": 1,
+        "oracle_blocker_kind": "llama_cpp_missing_step35_architecture",
+        "oracle_status": "executed",
+        "precondition_count": 3,
+        "status": "blocked",
+        "timeout_s": 60.0,
+        "validated_precondition_count": 2,
+    }
     assert payload["kv_backed_decode_gap_report"] == {
         "first_missing_evidence": "streaming_runner_ready_flags",
         "missing_evidence": [
