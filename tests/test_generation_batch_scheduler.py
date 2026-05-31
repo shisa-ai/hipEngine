@@ -14477,6 +14477,63 @@ def test_qwen35_retained_memory_evidence_blockers_cover_required_fields() -> Non
     )
 
 
+def test_qwen35_retained_memory_evidence_blockers_cover_shape_and_policy() -> None:
+    expected_policy = {"policy_class": "FixedPagedKVPolicy", "storage_dtype": "bf16"}
+    complete_memory = {
+        "max_batch_size": 2,
+        "max_sequence_length": 649,
+        "kv_policy": expected_policy,
+        "kv_storage_dtype": "bf16",
+        "allocator_reserved_peak_bytes": 8192,
+        "allocator_memory_stats": {
+            "current_allocated_bytes": 4096,
+            "peak_allocated_bytes": 8192,
+            "total_allocated_bytes": 16384,
+            "total_freed_bytes": 8192,
+            "active_allocations": 1,
+            "peak_allocations": 2,
+        },
+        "dynamic_pool": {
+            "enabled": True,
+            "evidence": "pool counters captured",
+            "grow_events": 0,
+            "shrink_events": 0,
+            "pool_counters": {
+                "current_bytes": 8192,
+                "high_water_observed_bytes": 8192,
+                "grow_events": 0,
+                "grow_failures": 0,
+                "shrink_events": 0,
+                "free_pages": 2,
+                "refcounted_pages": 0,
+            },
+        },
+        "stable_block_id": {"passed": True, "audit": "block ids stable"},
+        "prefix_sharing": {"enabled": False, "savings_bytes": 0},
+    }
+    expected_kwargs = {
+        "expected_batch_size": 2,
+        "expected_sequence_length": 649,
+        "expected_kv_policy": expected_policy,
+        "expected_kv_storage_dtype": "bf16",
+    }
+    assert retained_bench._memory_evidence_blockers(complete_memory, **expected_kwargs) == []
+
+    wrong_shape = json.loads(json.dumps(complete_memory))
+    wrong_shape["max_batch_size"] = 1
+    wrong_shape["max_sequence_length"] = 648
+    shape_blockers = retained_bench._memory_evidence_blockers(wrong_shape, **expected_kwargs)
+    assert "memory.max_batch_size does not match expected batch size" in shape_blockers
+    assert "memory.max_sequence_length does not cover expected sequence length" in shape_blockers
+
+    wrong_policy = json.loads(json.dumps(complete_memory))
+    wrong_policy["kv_storage_dtype"] = "int8"
+    wrong_policy["kv_policy"] = {"policy_class": "FixedPagedKVPolicy", "storage_dtype": "int8"}
+    policy_blockers = retained_bench._memory_evidence_blockers(wrong_policy, **expected_kwargs)
+    assert "memory.kv_storage_dtype does not match expected KV storage dtype" in policy_blockers
+    assert "memory.kv_policy does not match expected KV policy" in policy_blockers
+
+
 def test_qwen35_retained_decode_shape_key_blockers_require_concurrency_axes() -> None:
     valid = {
         "decode_shape_key": {

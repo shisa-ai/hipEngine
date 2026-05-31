@@ -2540,8 +2540,29 @@ def _sampler_execution_blockers(batch_execution: Mapping[str, Any], *, expected_
     return blockers
 
 
-def _memory_evidence_blockers(memory: Mapping[str, Any]) -> list[str]:
+def _memory_evidence_blockers(
+    memory: Mapping[str, Any],
+    *,
+    expected_batch_size: int | None = None,
+    expected_sequence_length: int | None = None,
+    expected_kv_policy: Mapping[str, Any] | None = None,
+    expected_kv_storage_dtype: str | None = None,
+) -> list[str]:
     blockers: list[str] = []
+    if expected_batch_size is not None and memory.get("max_batch_size") != expected_batch_size:
+        blockers.append("memory.max_batch_size does not match expected batch size")
+    max_sequence_length = memory.get("max_sequence_length")
+    if expected_sequence_length is not None:
+        if not isinstance(max_sequence_length, int) or isinstance(max_sequence_length, bool) or max_sequence_length < expected_sequence_length:
+            blockers.append("memory.max_sequence_length does not cover expected sequence length")
+    if expected_kv_storage_dtype is not None and memory.get("kv_storage_dtype") != expected_kv_storage_dtype:
+        blockers.append("memory.kv_storage_dtype does not match expected KV storage dtype")
+    memory_kv_policy = memory.get("kv_policy")
+    if expected_kv_policy is not None:
+        if not isinstance(memory_kv_policy, Mapping):
+            blockers.append("memory.kv_policy is missing")
+        elif dict(memory_kv_policy) != dict(expected_kv_policy):
+            blockers.append("memory.kv_policy does not match expected KV policy")
     allocator_peak = memory.get("allocator_reserved_peak_bytes")
     if not _is_finite_nonnegative_number(allocator_peak):
         blockers.append("memory.allocator_reserved_peak_bytes is unavailable or non-finite")
@@ -3229,7 +3250,13 @@ def _build_payload(
     sampler_blockers = _sampler_execution_blockers(batch_execution, expected_concurrency=args.batch_size)
     sampler_blockers.extend(_sampler_execution_profiler_blockers(batch_execution, profiler))
     memory = _retained_memory_payload(args, kv_policy, bench)
-    memory_blockers = _memory_evidence_blockers(memory)
+    memory_blockers = _memory_evidence_blockers(
+        memory,
+        expected_batch_size=args.batch_size,
+        expected_sequence_length=args.prompt_length + args.warmup_decode_tokens + args.decode_tokens + 1,
+        expected_kv_policy=kv_policy_json(kv_policy),
+        expected_kv_storage_dtype=kv_policy.storage_dtype.value,
+    )
     graph_bucket_blockers = _decode_shape_key_blockers(scheduler_metadata, concurrency=args.batch_size, prompt_length=args.prompt_length)
     graph_bucket_blockers.extend(_graph_bucket_evidence_blockers(scheduler_metadata))
     graph_bucket_blockers.extend(_graph_replay_profiler_evidence_blockers(scheduler_metadata, profiler))
