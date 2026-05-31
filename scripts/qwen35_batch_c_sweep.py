@@ -1099,7 +1099,11 @@ def _visible_device_env_assignments(payload: Mapping[str, Any]) -> tuple[dict[st
     return assignments, reasons
 
 
-def _scaling_reference_command_env_assignments(payload: Mapping[str, Any]) -> tuple[dict[str, str], list[str]]:
+def _scaling_reference_command_env_assignments(
+    payload: Mapping[str, Any],
+    *,
+    required_env: Mapping[str, str] | None = None,
+) -> tuple[dict[str, str], list[str]]:
     commands = payload.get("commands")
     command = commands.get("benchmark") if isinstance(commands, Mapping) else payload.get("command")
     if command is None:
@@ -1110,7 +1114,13 @@ def _scaling_reference_command_env_assignments(payload: Mapping[str, Any]) -> tu
         argv = shlex.split(command)
     except ValueError:
         return {}, ["commands.benchmark is not shell-parseable"]
-    return _command_device_env_assignments(argv), []
+    assignments = _command_device_env_assignments(argv)
+    reasons = [
+        f"commands.benchmark device env {key} is missing while retained command env sets it"
+        for key, value in (required_env or {}).items()
+        if value and key not in assignments
+    ]
+    return assignments, reasons
 
 
 def _scaling_reference_precondition(
@@ -1167,7 +1177,10 @@ def _scaling_reference_precondition(
             for key, value in reference_device_env.items():
                 if retained_device_env.get(key) != value:
                     reasons.append(f"hardware.visible_device.env.{key} does not match retained command env")
-        reference_command_env, reference_command_env_reasons = _scaling_reference_command_env_assignments(payload)
+        reference_command_env, reference_command_env_reasons = _scaling_reference_command_env_assignments(
+            payload,
+            required_env=retained_device_env,
+        )
         reasons.extend(reference_command_env_reasons)
         if reference_command_env:
             for key, value in reference_command_env.items():
