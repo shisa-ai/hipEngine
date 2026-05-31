@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shlex
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -103,6 +105,41 @@ def _blocker_fields(stderr: str) -> dict[str, object]:
     }
 
 
+def _run_with_timeout(
+    command: list[str],
+    timeout_s: float,
+) -> tuple[str, int | None, str, str, float]:
+    started = time.perf_counter()
+    proc = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout_s)
+        return (
+            "executed",
+            proc.returncode,
+            _as_text(stdout),
+            _as_text(stderr),
+            time.perf_counter() - started,
+        )
+    except subprocess.TimeoutExpired as exc:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:  # pragma: no cover - process exited during timeout handling
+            pass
+        try:
+            stdout, stderr = proc.communicate(timeout=10)
+        except subprocess.TimeoutExpired:  # pragma: no cover - defensive fallback
+            proc.kill()
+            stdout, stderr = proc.communicate()
+        stdout_text = _as_text(exc.stdout) + _as_text(stdout)
+        stderr_text = _as_text(exc.stderr) + _as_text(stderr)
+        return "timeout", None, stdout_text, stderr_text, time.perf_counter() - started
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     artifact = json.loads(args.artifact.read_text())
@@ -164,46 +201,36 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
     }
     if args.execute:
-        started = time.perf_counter()
-        try:
-            completed = subprocess.run(
-                command,
-                check=False,
-                capture_output=True,
-                timeout=args.timeout_s,
-            )
-        except subprocess.TimeoutExpired as exc:
-            stdout = _as_text(exc.stdout)
-            stderr = _as_text(exc.stderr)
+        status, returncode, stdout, stderr, elapsed_s = _run_with_timeout(command, args.timeout_s)
+        if status == "timeout":
+            blocker = _blocker_fields(stderr)
+            if blocker["oracle_blocker_kind"] is None:
+                blocker = {
+                    "oracle_blocker_kind": "llama_cpp_oracle_timeout",
+                    "oracle_blocker_detail": "llama.cpp oracle timed out before producing a comparable token",
+                    "step35_supported": None,
+                }
             result.update(
                 {
                     "status": "timeout",
                     "timeout_s": args.timeout_s,
-                    "elapsed_s": time.perf_counter() - started,
+                    "elapsed_s": elapsed_s,
                     "stdout": stdout,
                     "stderr": stderr,
                     **_comparison_fields(stdout, result.get("expected_next_token_text")),
-                    **(
-                        _blocker_fields(stderr)
-                        if _blocker_fields(stderr)["oracle_blocker_kind"] is not None
-                        else {
-                            "oracle_blocker_kind": "llama_cpp_oracle_timeout",
-                            "oracle_blocker_detail": "llama.cpp oracle timed out before producing a comparable token",
-                            "step35_supported": None,
-                        }
-                    ),
+                    **blocker,
                 }
             )
         else:
             result.update(
                 {
                     "status": "executed",
-                    "returncode": completed.returncode,
-                    "elapsed_s": time.perf_counter() - started,
-                    "stdout": _as_text(completed.stdout),
-                    "stderr": _as_text(completed.stderr),
-                    **_comparison_fields(_as_text(completed.stdout), result.get("expected_next_token_text")),
-                    **_blocker_fields(_as_text(completed.stderr)),
+                    "returncode": returncode,
+                    "elapsed_s": elapsed_s,
+                    "stdout": stdout,
+                    "stderr": stderr,
+                    **_comparison_fields(stdout, result.get("expected_next_token_text")),
+                    **_blocker_fields(stderr),
                 }
             )
     _emit_json(result, pretty=args.pretty, output=args.output)

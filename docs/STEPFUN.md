@@ -586,7 +586,11 @@ reporting.
   `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json`
   timed out after a bounded 60 s attempt (recorded `elapsed_s=62.44`) before
   producing a comparable token (`oracle_blocker_kind=llama_cpp_oracle_timeout`).
-  The consolidated correctness-status artifact surfaces the oracle version,
+  A default-device Vulkan oracle attempt is recorded separately in
+  `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-vulkan-harness-timeout.json`;
+  it exceeded the pi tool supervision window before helper JSON was produced, so
+  the CPU/no-GPU timeout artifact remains the canonical machine-readable oracle
+  blocker for now. The consolidated correctness-status artifact surfaces the oracle version,
   elapsed time, and stdout/stderr lengths, records both blockers
   (`oracle_parity_blocked`, `kv_backed_decode_not_wired`) for the current
   all-layer prompt smoke, and lists machine-readable next actions for each

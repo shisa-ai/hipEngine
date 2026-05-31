@@ -27847,3 +27847,17 @@ Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`
 ## 2026-05-31 — StepFun oracle docs wording clarified
 
 Clarified the P11 llama.cpp oracle checklist text so the older CPU llama.cpp artifact is described as historical planning/execution evidence, while the canonical current blocker is the newer StepFun/`step35`-capable Vulkan build timing out under the bounded CPU/no-GPU oracle run. This keeps the partial P11 oracle item aligned with `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json` and avoids implying the stale `4131` CPU build is still the current oracle target.
+
+## 2026-05-31 — StepFun default Vulkan oracle supervision blocker
+
+Attempted the StepFun-capable llama.cpp Vulkan oracle without CPU/no-GPU forcing. The attempt did not produce helper JSON before the pi tool timeout window; an orphaned `llama-cli` process was observed afterward and then exited/was killed. Recorded a manual blocker artifact at `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-vulkan-harness-timeout.json` with `oracle_blocker_kind=llama_cpp_vulkan_oracle_supervision_timeout`, the exact default-device command, llama.cpp version `9197 (fcae601e4)`, and the expected hipEngine token (`next_token_id=369`, decoded ` |`).
+
+Hardened `scripts/stepfun_llamacpp_oracle.py` by launching executions in a new process session and attempting process-group termination on timeout, while preserving structured timeout JSON for normal bounded attempts. The default-device Vulkan path still needs a safer/longer external runner before it can replace the canonical CPU/no-GPU timeout blocker in the correctness-status artifact.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_llamacpp_oracle.py -q
+```
+
+Result: `6 passed`.
