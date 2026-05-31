@@ -17388,6 +17388,17 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="kernel_time_histogram_ns bucket counts must cover profiler.kernel_durations_ns"):
         validate_cn_diagnostic_artifact_payload(wrong_bucket_profiler_histogram)
 
+    wrong_fixed_bucket_profiler_histogram = json.loads(json.dumps(accepted))
+    wrong_fixed_bucket_profiler_histogram["execution"]["scheduler_metadata"]["graph_bucket_stats"]["kernel_time_histogram_ns"] = {
+        "le_10us": 4,
+        "le_100us": 0,
+        "le_1ms": 0,
+        "le_10ms": 0,
+        "gt_10ms": 0,
+    }
+    with pytest.raises(ValueError, match="kernel_time_histogram_ns bucket counts must cover profiler.kernel_durations_ns"):
+        validate_cn_diagnostic_artifact_payload(wrong_fixed_bucket_profiler_histogram)
+
     missing_latency = dict(accepted)
     missing_latency["observability"] = {
         "admission_timestamps": {"0": 1.0},
