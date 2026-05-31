@@ -11517,6 +11517,40 @@ def test_qwen35_batch_serial_bench_command_preserves_visible_hip_device_env(monk
     ]
 
 
+def test_qwen35_batch_serial_shape_key_payloads_include_workload_axes() -> None:
+    scheduler = ResidentBatchScheduler(capacity=2, context_bucket_size=4)
+    scheduler.submit([1, 2, 3], max_new_tokens=1)
+    scheduler.submit([4, 5], max_new_tokens=1)
+    scheduler.admit_pending()
+    scheduler.next_prefill_work(chunk_size=3)
+    scheduler.next_prefill_work(chunk_size=3)
+
+    key = scheduler.shape_key(
+        mode="decode",
+        top_k=8,
+        experts_per_token=8,
+        replay_steps=1,
+        kv_storage_dtype="int8_per_token_head",
+        layer_plan="max_layers=12",
+    )
+    expected = {
+        "mode": "decode",
+        "active_c": 2,
+        "context_bucket": 4,
+        "active_mask": [True, True],
+        "kv_storage_dtype": "int8_per_token_head",
+        "layer_plan": "max_layers=12",
+        "top_k": 8,
+        "experts_per_token": 8,
+        "replay_steps": 1,
+        "draft_depth": 0,
+        "tree_shape": [],
+    }
+
+    assert serial_bench._shape_key_payload(key) == expected
+    assert serial_correctness._shape_key_payload(key) == expected
+
+
 def test_qwen35_batch_diagnostic_artifact_schema_requires_label_fields() -> None:
     payload = {
         "status": "blocked",

@@ -74,6 +74,8 @@ def _shape_key_payload(key) -> dict[str, Any]:
         "active_c": key.active_c,
         "context_bucket": key.context_bucket,
         "active_mask": list(key.active_mask),
+        "kv_storage_dtype": key.kv_storage_dtype,
+        "layer_plan": key.layer_plan,
         "top_k": key.top_k,
         "experts_per_token": key.experts_per_token,
         "replay_steps": key.replay_steps,
@@ -270,8 +272,15 @@ def _run_scheduler_serial_bench(
 
         scheduler_metadata["slot_to_request_at_decode"] = list(scheduler.active_batch.slot_to_request)
         scheduler_metadata["active_count_at_decode"] = scheduler.active_count
-        shape_key = scheduler.shape_key(mode="decode", top_k=8, experts_per_token=8, replay_steps=1)
-        scheduler.graph_buckets.get_or_create(shape_key, lambda bucket: _shape_key_payload(bucket))
+        shape_key = scheduler.shape_key(
+            mode="decode",
+            top_k=8,
+            experts_per_token=8,
+            replay_steps=1,
+            kv_storage_dtype=kv_policy.storage_dtype.value,
+            layer_plan=f"max_layers={int(max_layers)}",
+        )
+        scheduler.graph_buckets.get_or_create(shape_key, _shape_key_payload)
         scheduler.graph_buckets.get(shape_key)
         stats = scheduler.graph_buckets.stats
         scheduler_metadata["decode_shape_key"] = _shape_key_payload(shape_key)

@@ -53502,3 +53502,23 @@ HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts
 ```
 
 Result: focused graph-key axis tests PASS; docs diff check PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: no queue item was marked complete, P2 progress cites concrete code/test evidence, no retained c>N performance/scaling claim was added, and native c>N generated-token equality claims were not changed.
+
+## 2026-05-31 — CONCURRENCY serial graph axes
+
+Propagated the graph bucket workload axes into serial-bridge baseline/correctness artifact helpers. `scripts/qwen35_batch_serial_bench.py` and `scripts/qwen35_batch_serial_correctness.py` now emit `decode_shape_key.kv_storage_dtype` and `decode_shape_key.layer_plan`, and their scheduler-owned decode shape keys use the active KV policy's `storage_dtype.value` plus `max_layers=<N>`. `docs/CONCURRENCY.md` now cites the serial shape payload helper coverage. This keeps serial bridge references aligned with retained native graph metadata, but does not close P2 because real hipGraph replay capture/profiler evidence is still missing; no retained c>N performance/scaling claim was added.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 -m compileall -q scripts/qwen35_batch_serial_bench.py scripts/qwen35_batch_serial_correctness.py tests/test_generation_batch_scheduler.py && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_batch_serial_shape_key_payloads_include_workload_axes tests/test_generation_batch_scheduler.py::test_qwen35_batch_serial_bench_helpers_summarize_and_slice tests/test_generation_batch_scheduler.py::test_qwen35_retained_records_decode_graph_bucket_metadata -q
+git diff --check
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+```
+
+Result: focused serial graph-axis tests PASS; docs diff check PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: no queue item was marked complete, P2 progress cites concrete code/test evidence, no retained c>N performance/scaling claim was added, and native c>N generated-token equality claims were not changed.
