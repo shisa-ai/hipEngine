@@ -53,6 +53,37 @@ STEPFUN_KV_ATTENTION_BLOCK_SIZE = 256
 BF16_BYTES = 2
 
 
+def stepfun_streaming_runner_blockers() -> tuple[dict[str, object], ...]:
+    """Return current blockers for marking the StepFun streaming runner ready."""
+
+    return (
+        {
+            "name": "streaming_decode_loop_not_wired",
+            "ready": False,
+            "required_evidence": (
+                "A StepFunResidentSession decode loop must launch prompt KV writes, one-token "
+                "decode KV writes, and gated paged attention from resident buffers."
+            ),
+        },
+        {
+            "name": "kv_kernel_trace_artifact_missing",
+            "ready": False,
+            "required_evidence": (
+                "A retained rocprofv3 or equivalent trace must show the prompt KV write, "
+                "decode KV write, and gated decode-attention kernels for the canonical prompt."
+            ),
+        },
+        {
+            "name": "kv_backed_next_token_artifact_missing",
+            "ready": False,
+            "required_evidence": (
+                "A KV-backed one-token decode artifact must record the generated token/logit path "
+                "without host-composed layer-prefix outputs."
+            ),
+        },
+    )
+
+
 @dataclass(frozen=True)
 class StepFunDecodePlan:
     """Validated prompt-side plan for StepFun c=1 bring-up."""
@@ -422,11 +453,16 @@ class StepFunTextDecodeResourcePlan:
         return self.total_nbytes / 2**30
 
     @property
+    def streaming_runner_blockers(self) -> tuple[dict[str, object], ...]:
+        return stepfun_streaming_runner_blockers()
+
+    @property
     def kv_decode_launch_schedule(self) -> dict[str, object]:
         """Return the planned per-layer KV launch order for streaming decode."""
 
         layer_count = len(self.kv_layer_nbytes)
         per_layer_order = ["prompt_kv_write", "decode_kv_write", "decode_attention"]
+        streaming_runner_blockers = list(self.streaming_runner_blockers)
         return {
             "source": "text_decode_resource_plan",
             "layer_count": layer_count,
@@ -461,6 +497,11 @@ class StepFunTextDecodeResourcePlan:
             else [],
             "all_stage_dispatch_ready": self.kv_decode_kernel_plan.all_registered,
             "streaming_runner_ready": False,
+            "streaming_runner_blocker_count": len(streaming_runner_blockers),
+            "first_streaming_runner_blocker": (
+                str(streaming_runner_blockers[0]["name"]) if streaming_runner_blockers else None
+            ),
+            "streaming_runner_blockers": streaming_runner_blockers,
             "note": (
                 "Planned launch order for the future StepFun streaming KV-backed decode runner. "
                 "Current prompt smokes remain host-composed until streaming_runner_ready is true."
@@ -817,6 +858,10 @@ class StepFunKVDecodeRunPlan:
         return False
 
     @property
+    def streaming_runner_blockers(self) -> tuple[dict[str, object], ...]:
+        return self.resource_plan.streaming_runner_blockers
+
+    @property
     def decode_input_upload_plan(self) -> dict[str, object]:
         span_manifest = self.span_input_upload_manifest
         entries = [
@@ -879,6 +924,7 @@ class StepFunKVDecodeRunPlan:
 
     def to_dict(self) -> dict[str, object]:
         launch_schedule = self.resource_plan.kv_decode_launch_schedule
+        streaming_runner_blockers = list(self.streaming_runner_blockers)
         return {
             "prompt_length": self.prompt_length,
             "input_ids": list(self.input_ids),
@@ -913,6 +959,11 @@ class StepFunKVDecodeRunPlan:
             "kv_decode_launch_operation_count": launch_schedule["operation_count"],
             "kv_decode_launch_per_layer_order": list(launch_schedule["per_layer_order"]),
             "streaming_runner_ready": self.streaming_runner_ready,
+            "streaming_runner_blocker_count": len(streaming_runner_blockers),
+            "first_streaming_runner_blocker": (
+                str(streaming_runner_blockers[0]["name"]) if streaming_runner_blockers else None
+            ),
+            "streaming_runner_blockers": streaming_runner_blockers,
             "note": (
                 "Metadata-only prompt/resource binding for the future StepFun KV-backed decode runner. "
                 "It does not launch KV kernels or claim oracle parity."
@@ -2300,5 +2351,6 @@ __all__ = [
     "stepfun_layer_prefix_slot_paths",
     "stepfun_layer_slot_paths",
     "stepfun_slot_tensor",
+    "stepfun_streaming_runner_blockers",
     "stepfun_text_decode_slot_paths",
 ]

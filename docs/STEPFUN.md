@@ -584,10 +584,11 @@ reporting.
   and a metadata-only combined upload plan with cleanup order, decode position/live-count,
   stop IDs, KV dispatch keys, and resource-fit booleans), plus the planned per-layer KV launch
   schedule (45 layers × prompt KV write, decode KV write, gated attention = 135
-  planned operations), and includes a compact `handoff_summary` with open blockers, blocked gates,
-  ready signals, an oracle parity gap report, combined upload-plan order/bytes/consistency
-  checks, a KV-backed decode gap report that separates validated preconditions from missing
-  streaming-runner evidence, next-command coverage that names the first missing oracle/KV
+  planned operations plus source-level `streaming_runner_blockers` naming the still-missing
+  decode loop, kernel trace, and KV-backed next-token artifact), and includes a compact
+  `handoff_summary` with open blockers, blocked gates, ready signals, an oracle parity gap report,
+  combined upload-plan order/bytes/consistency checks, a KV-backed decode gap report that separates
+  validated preconditions from missing streaming-runner evidence, next-command coverage that names the first missing oracle/KV
   evidence items, and the no-performance/no-e2e-claim policy.
   `scripts/stepfun_correctness_status.py --summary-only` emits just that
   handoff block for fast continuation checks. It lists next actions for the

@@ -92,6 +92,13 @@ def test_stepfun_load_smoke_dry_run_plan_emits_resource_json(capsys: pytest.Capt
     ]
     assert launch_schedule["all_stage_dispatch_ready"] is True
     assert launch_schedule["streaming_runner_ready"] is False
+    assert launch_schedule["streaming_runner_blocker_count"] == 3
+    assert launch_schedule["first_streaming_runner_blocker"] == "streaming_decode_loop_not_wired"
+    assert [blocker["name"] for blocker in launch_schedule["streaming_runner_blockers"]] == [
+        "streaming_decode_loop_not_wired",
+        "kv_kernel_trace_artifact_missing",
+        "kv_backed_next_token_artifact_missing",
+    ]
     assert launch_schedule["stages"][2] == {
         "name": "one_token_gated_attention_decode",
         "dispatch_key": "decode_attention",
@@ -215,6 +222,13 @@ def test_stepfun_load_smoke_dry_run_plan_emits_resource_json(capsys: pytest.Capt
         "decode_attention",
     ]
     assert run_plan["streaming_runner_ready"] is False
+    assert run_plan["streaming_runner_blocker_count"] == 3
+    assert run_plan["first_streaming_runner_blocker"] == "streaming_decode_loop_not_wired"
+    assert [blocker["name"] for blocker in run_plan["streaming_runner_blockers"]] == [
+        "streaming_decode_loop_not_wired",
+        "kv_kernel_trace_artifact_missing",
+        "kv_backed_next_token_artifact_missing",
+    ]
     assert plan["slot_paths"][:4] == [
         "root.token_embedding",
         "root.rope_freqs",

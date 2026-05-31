@@ -139,6 +139,7 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
     assert run_plan.prompt_fits_resource_plan is True
     assert run_plan.context_fits_resource_plan is True
     assert run_plan.streaming_runner_ready is False
+    assert run_plan.streaming_runner_blockers[0]["name"] == "streaming_decode_loop_not_wired"
     payload = run_plan.to_dict()
     assert payload["prompt_length"] == run_plan.prompt_length
     assert payload["input_ids"] == list(run_plan.decode_plan.input_ids)
@@ -397,6 +398,14 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
         "decode_attention",
     ]
     assert payload["streaming_runner_ready"] is False
+    assert payload["streaming_runner_blocker_count"] == 3
+    assert payload["first_streaming_runner_blocker"] == "streaming_decode_loop_not_wired"
+    assert [blocker["name"] for blocker in payload["streaming_runner_blockers"]] == [
+        "streaming_decode_loop_not_wired",
+        "kv_kernel_trace_artifact_missing",
+        "kv_backed_next_token_artifact_missing",
+    ]
+    assert all(blocker["ready"] is False for blocker in payload["streaming_runner_blockers"])
 
 
 def test_stepfun_kv_decode_run_plan_frees_partial_uploads_after_copy_failure() -> None:
@@ -636,6 +645,13 @@ def test_stepfun_text_decode_resource_plan_estimates_weight_and_kv_bytes() -> No
     ]
     assert launch_schedule["all_stage_dispatch_ready"] is True
     assert launch_schedule["streaming_runner_ready"] is False
+    assert launch_schedule["streaming_runner_blocker_count"] == 3
+    assert launch_schedule["first_streaming_runner_blocker"] == "streaming_decode_loop_not_wired"
+    assert [blocker["name"] for blocker in launch_schedule["streaming_runner_blockers"]] == [
+        "streaming_decode_loop_not_wired",
+        "kv_kernel_trace_artifact_missing",
+        "kv_backed_next_token_artifact_missing",
+    ]
 
     with pytest.raises(ValueError, match="context_pages"):
         planner.text_decode_resource_plan(context_pages=0, page_size=512)

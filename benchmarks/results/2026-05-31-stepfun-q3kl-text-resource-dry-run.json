@@ -131,6 +131,7 @@
       "max_live_count": 23,
       "total_span_input_nbytes": 16
     },
+    "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
     "input_id_count": 23,
     "input_id_preview": [
       0,
@@ -472,6 +473,24 @@
       2,
       128007
     ],
+    "streaming_runner_blocker_count": 3,
+    "streaming_runner_blockers": [
+      {
+        "name": "streaming_decode_loop_not_wired",
+        "ready": false,
+        "required_evidence": "A StepFunResidentSession decode loop must launch prompt KV writes, one-token decode KV writes, and gated paged attention from resident buffers."
+      },
+      {
+        "name": "kv_kernel_trace_artifact_missing",
+        "ready": false,
+        "required_evidence": "A retained rocprofv3 or equivalent trace must show the prompt KV write, decode KV write, and gated decode-attention kernels for the canonical prompt."
+      },
+      {
+        "name": "kv_backed_next_token_artifact_missing",
+        "ready": false,
+        "required_evidence": "A KV-backed one-token decode artifact must record the generated token/logit path without host-composed layer-prefix outputs."
+      }
+    ],
     "streaming_runner_ready": false
   },
   "kv_gib": 0.087890625,
@@ -570,6 +589,7 @@
         "layers.0.decode_kv_write",
         "layers.0.decode_attention"
       ],
+      "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
       "last_layer_ops": [
         "layers.44.prompt_kv_write",
         "layers.44.decode_kv_write",
@@ -605,6 +625,24 @@
           "name": "one_token_gated_attention_decode",
           "ready": true,
           "span_contract": "decode_span"
+        }
+      ],
+      "streaming_runner_blocker_count": 3,
+      "streaming_runner_blockers": [
+        {
+          "name": "streaming_decode_loop_not_wired",
+          "ready": false,
+          "required_evidence": "A StepFunResidentSession decode loop must launch prompt KV writes, one-token decode KV writes, and gated paged attention from resident buffers."
+        },
+        {
+          "name": "kv_kernel_trace_artifact_missing",
+          "ready": false,
+          "required_evidence": "A retained rocprofv3 or equivalent trace must show the prompt KV write, decode KV write, and gated decode-attention kernels for the canonical prompt."
+        },
+        {
+          "name": "kv_backed_next_token_artifact_missing",
+          "ready": false,
+          "required_evidence": "A KV-backed one-token decode artifact must record the generated token/logit path without host-composed layer-prefix outputs."
         }
       ],
       "streaming_runner_ready": false
