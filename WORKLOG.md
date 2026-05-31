@@ -27627,3 +27627,13 @@ python3 scripts/stepfun_layer_prefix_smoke.py --layer-count 4 --message hello --
 ```
 
 Artifact summary: `execution_mode=chunked`, 4 layer chunks, peak resident weight bytes `3,531,578,496`, prompt length 23, `next_token_id=104939`, and zero active/current allocations after free. This is still partial prefix evidence only: all-45-layer chunked execution and oracle parity remain open.
+
+## 2026-05-31 — StepFun chunked prefix layer-4 artifact
+
+Recorded a deeper chunked text-only prefix smoke artifact at `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-0-4-prompt-smoke.json` using:
+
+```bash
+python3 scripts/stepfun_layer_prefix_smoke.py --layer-count 5 --message hello --max-resident-weight-gib 4 --stream-chunk-layers 1 --output benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-0-4-prompt-smoke.json --pretty
+```
+
+Artifact summary: `status=partial_prompt_smoke`, `execution_mode=chunked`, layers 0-4 executed (dense layers 0-2 plus sliding/MoE layers 3-4), prompt length 23, `next_token_id=67707`, peak resident weight bytes `3,531,578,496`, no vision/projector/MTP slots, and zero active/current allocations after free. This extends the partial prompt path one layer deeper than the previous layers 0-3 artifact, but remains partial evidence only because layers 5-44 and oracle parity remain open.

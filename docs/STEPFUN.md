@@ -528,8 +528,9 @@ reporting.
   prompt logits smoke binds chat rendering, embeddings, layer-0 prefill, and
   final `lm_head` rows while explicitly skipping layers 1-44; and a layer-prefix
   prompt logits probe now applies the contiguous layers 0-3
-  prefill bridge (dense layers 0-2 plus first sliding/MoE layer 3) before final
-  sampled `lm_head` checks while still skipping layers 4-44. A text-only decode
+  prefill bridge (dense layers 0-2 plus first sliding/MoE layer 3), and a
+  chunked prompt artifact extends that bridge through layer 4 before final
+  sampled `lm_head` checks while still skipping layers 5-44. A text-only decode
   slot planner covers all 754 validated GGUF slots, including root
   `rope_freqs.weight`, and has no vision/projector/MTP slot dependencies. The
   dense-MLP input bundle launches layer-0 `ffn_gate`/`ffn_up` projections vs CPU references,
@@ -587,8 +588,8 @@ probe (output RMSNorm + resident Q8_0 `lm_head` projection for sampled vocab
 rows), the root-only prompt logits smoke (chat prompt -> embedding -> final root
 logits), the first-layer prompt logits smoke (chat prompt -> embedding -> layer-0
 prefill -> final root logits, with layers 1-44 skipped), the layer-prefix prompt
-logits smoke (chat prompt -> embedding -> layers 0-3 prefill -> final root
-logits, with layers 4-44 skipped), resident KV-cache allocation/free, resident
+logits smoke (chat prompt -> embedding -> layers 0-4 chunked prefill -> final
+root logits, with layers 5-44 skipped), resident KV-cache allocation/free, resident
 memory cleanup
 (two/three/four active weight allocations before session free, zero after), and
 no torch import. Full next-token/logit parity remains open until the streaming
@@ -651,7 +652,10 @@ layer loop is wired.
   benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-prompt-smoke.json
   --pretty` and runs the resident text-only chat prompt through the layers 0-3
   prefix bridge with root tensors kept resident and each layer loaded/freed as a
-  one-layer chunk; it uses no vision/projector/MTP slots. The same
+  one-layer chunk; it uses no vision/projector/MTP slots. A deeper artifact
+  `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-0-4-prompt-smoke.json`
+  runs the same chunked path through layer 4 (`next_token_id=67707`, peak
+  resident weight bytes `3,531,578,496`) while still skipping layers 5-44. The same
   script's `--dry-run-plan --layer-count 45` mode now plans the all-layer text
   prefix slot/resource shape without initializing HIP, and `--output` writes the
   JSON artifact directly;
