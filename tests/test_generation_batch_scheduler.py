@@ -7345,6 +7345,15 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
             with pytest.raises(ValueError, match=error):
                 c_sweep.validate_sweep_summary(tampered_missing_flag)
 
+            tampered_blank_inline = json.loads(json.dumps(summary))
+            blank_inline_entry = tampered_blank_inline["commands"][index]
+            blank_inline_argv = blank_inline_entry["argv"]
+            inline_index = blank_inline_argv.index(flag)
+            blank_inline_argv[inline_index : inline_index + 2] = [f"{flag}="]
+            blank_inline_entry["command"] = shlex.join(blank_inline_argv)
+            with pytest.raises(ValueError, match=r"commands\[\]\.argv flag values must be non-empty"):
+                c_sweep.validate_sweep_summary(tampered_blank_inline)
+
         tampered_missing_json = json.loads(json.dumps(summary))
         missing_json_entry = tampered_missing_json["commands"][index]
         missing_json_argv = missing_json_entry["argv"]
