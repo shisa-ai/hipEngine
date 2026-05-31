@@ -404,6 +404,86 @@ def _write_resource_artifact(path: Path) -> None:
                         "note": "Deterministic little-endian host payload hashes for StepFun KV span inputs.",
                         "total_nbytes": 392,
                     },
+                    "decode_input_upload_plan": {
+                        "entries": [
+                            {
+                                "dtype": "int32",
+                                "name": "input_ids",
+                                "nbytes": 92,
+                                "sha256": "f" * 64,
+                                "shape": [23],
+                                "source": "input_ids",
+                                "upload_group": "input_tokens",
+                            },
+                            {
+                                "dtype": "int32",
+                                "name": "prompt_base_offsets",
+                                "nbytes": 184,
+                                "sha256": "a" * 64,
+                                "shape": [23, 2],
+                                "source": "prompt_span_inputs.base_offsets",
+                                "upload_group": "kv_span_inputs",
+                            },
+                            {
+                                "dtype": "int64",
+                                "name": "prompt_live_counts",
+                                "nbytes": 184,
+                                "sha256": "b" * 64,
+                                "shape": [23],
+                                "source": "prompt_span_inputs.live_counts",
+                                "upload_group": "kv_span_inputs",
+                            },
+                            {
+                                "dtype": "int32",
+                                "name": "decode_base_offsets",
+                                "nbytes": 8,
+                                "sha256": "c" * 64,
+                                "shape": [2],
+                                "source": "decode_span_inputs.base_offsets",
+                                "upload_group": "kv_span_inputs",
+                            },
+                            {
+                                "dtype": "int64",
+                                "name": "decode_kv_write_position",
+                                "nbytes": 8,
+                                "sha256": "d" * 64,
+                                "shape": [],
+                                "source": "decode_span_inputs.kv_write_position",
+                                "upload_group": "kv_span_inputs",
+                            },
+                            {
+                                "dtype": "int64",
+                                "name": "decode_attention_live_counts",
+                                "nbytes": 8,
+                                "sha256": "e" * 64,
+                                "shape": [1],
+                                "source": "decode_span_inputs.attention_live_counts",
+                                "upload_group": "kv_span_inputs",
+                            },
+                        ],
+                        "entry_count": 6,
+                        "upload_order": [
+                            "input_ids",
+                            "prompt_base_offsets",
+                            "prompt_live_counts",
+                            "decode_base_offsets",
+                            "decode_kv_write_position",
+                            "decode_attention_live_counts",
+                        ],
+                        "cleanup_order": [
+                            "decode_attention_live_counts",
+                            "decode_kv_write_position",
+                            "decode_base_offsets",
+                            "prompt_live_counts",
+                            "prompt_base_offsets",
+                            "input_ids",
+                        ],
+                        "input_token_nbytes": 92,
+                        "span_input_nbytes": 392,
+                        "total_nbytes": 484,
+                        "streaming_runner_ready": False,
+                        "note": "Metadata-only combined upload plan; no kernels are launched.",
+                    },
                     "stop_token_ids": [1, 2, 128007],
                     "streaming_runner_ready": False,
                 },
@@ -615,6 +695,21 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert host_payloads["entries"][0]["sha256"] == "a" * 64
     assert host_payloads["entries"][0]["preview_values"] == [0, 1, 0, 1, 0, 1, 0, 1]
     assert host_payloads["entries"][3]["preview_values"] == [23]
+    decode_upload_plan = kv_dispatch["run_plan"]["decode_input_upload_plan"]
+    assert decode_upload_plan["entry_count"] == 6
+    assert decode_upload_plan["upload_order"] == [
+        "input_ids",
+        "prompt_base_offsets",
+        "prompt_live_counts",
+        "decode_base_offsets",
+        "decode_kv_write_position",
+        "decode_attention_live_counts",
+    ]
+    assert decode_upload_plan["cleanup_order"] == list(reversed(decode_upload_plan["upload_order"]))
+    assert decode_upload_plan["input_token_nbytes"] == 92
+    assert decode_upload_plan["span_input_nbytes"] == 392
+    assert decode_upload_plan["total_nbytes"] == 484
+    assert decode_upload_plan["entries"][0]["sha256"] == "f" * 64
     assert kv_dispatch["run_plan"]["prompt_positions"] == list(range(23))
     assert kv_dispatch["run_plan"]["decode_position"] == 23
     assert kv_dispatch["run_plan"]["decode_live_count"] == 23
@@ -664,6 +759,8 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "run_plan_prompt_span_base_offsets_len": 46,
         "run_plan_rendered_prompt_sha256": "0" * 64,
         "run_plan_span_input_total_nbytes": 384,
+        "run_plan_decode_input_upload_entry_count": 6,
+        "run_plan_decode_input_upload_total_nbytes": 484,
         "run_plan_host_payload_entry_count": 5,
         "run_plan_host_payload_total_nbytes": 392,
         "run_plan_streaming_ready": False,

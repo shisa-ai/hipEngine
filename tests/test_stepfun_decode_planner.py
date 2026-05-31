@@ -308,6 +308,31 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
     }
     assert host_payloads["entries"][1]["sha256"] == hashlib.sha256(prompt_live_payload).hexdigest()
     assert host_payloads["entries"][3]["preview_values"] == [run_plan.prompt_length]
+    upload_plan = payload["decode_input_upload_plan"]
+    assert upload_plan["entry_count"] == 6
+    assert upload_plan["upload_order"] == [
+        "input_ids",
+        "prompt_base_offsets",
+        "prompt_live_counts",
+        "decode_base_offsets",
+        "decode_kv_write_position",
+        "decode_attention_live_counts",
+    ]
+    assert upload_plan["cleanup_order"] == list(reversed(upload_plan["upload_order"]))
+    assert upload_plan["input_token_nbytes"] == len(input_ids_payload)
+    assert upload_plan["span_input_nbytes"] == host_payloads["total_nbytes"]
+    assert upload_plan["total_nbytes"] == len(input_ids_payload) + host_payloads["total_nbytes"]
+    assert upload_plan["entries"][0] == {
+        "name": "input_ids",
+        "source": "input_ids",
+        "upload_group": "input_tokens",
+        "dtype": "int32",
+        "shape": [run_plan.prompt_length],
+        "nbytes": len(input_ids_payload),
+        "sha256": hashlib.sha256(input_ids_payload).hexdigest(),
+    }
+    assert upload_plan["entries"][1]["source"] == "prompt_span_inputs.base_offsets"
+    assert upload_plan["streaming_runner_ready"] is False
     fake_runtime = _FakeHipRuntime()
     device_upload = run_plan.upload_span_input_payloads(runtime=fake_runtime)
     try:

@@ -486,6 +486,16 @@ def _readiness_gates(
                         "span_input_upload_manifest", {}
                     )
                 ).get("entry_count"),
+                "run_plan_decode_input_upload_entry_count": dict(
+                    dict(kv_decode_dispatch_progress.get("run_plan", {})).get(
+                        "decode_input_upload_plan", {}
+                    )
+                ).get("entry_count"),
+                "run_plan_decode_input_upload_total_nbytes": dict(
+                    dict(kv_decode_dispatch_progress.get("run_plan", {})).get(
+                        "decode_input_upload_plan", {}
+                    )
+                ).get("total_nbytes"),
                 "run_plan_host_payload_total_nbytes": dict(
                     dict(kv_decode_dispatch_progress.get("run_plan", {})).get(
                         "span_input_host_payloads", {}
@@ -496,6 +506,16 @@ def _readiness_gates(
                         "span_input_host_payloads", {}
                     )
                 ).get("entry_count"),
+                "run_plan_decode_input_upload_entry_count": dict(
+                    dict(kv_decode_dispatch_progress.get("run_plan", {})).get(
+                        "decode_input_upload_plan", {}
+                    )
+                ).get("entry_count"),
+                "run_plan_decode_input_upload_total_nbytes": dict(
+                    dict(kv_decode_dispatch_progress.get("run_plan", {})).get(
+                        "decode_input_upload_plan", {}
+                    )
+                ).get("total_nbytes"),
                 "run_plan_streaming_ready": dict(
                     kv_decode_dispatch_progress.get("run_plan", {})
                 ).get("streaming_runner_ready"),

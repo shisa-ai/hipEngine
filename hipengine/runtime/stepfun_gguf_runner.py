@@ -816,6 +816,48 @@ class StepFunKVDecodeRunPlan:
     def streaming_runner_ready(self) -> bool:
         return False
 
+    @property
+    def decode_input_upload_plan(self) -> dict[str, object]:
+        span_manifest = self.span_input_upload_manifest
+        entries = [
+            {
+                "name": "input_ids",
+                "source": "input_ids",
+                "upload_group": "input_tokens",
+                "dtype": self.input_ids_dtype,
+                "shape": [self.prompt_length],
+                "nbytes": self.input_ids_nbytes,
+                "sha256": self.input_ids_sha256,
+            },
+            *[
+                {
+                    "name": str(entry["name"]),
+                    "source": str(entry["source"]),
+                    "upload_group": "kv_span_inputs",
+                    "dtype": str(entry["dtype"]),
+                    "shape": list(entry["shape"]),
+                    "nbytes": int(entry["nbytes"]),
+                    "sha256": str(payload_entry["sha256"]),
+                }
+                for entry, payload_entry in zip(
+                    span_manifest["entries"],
+                    self.span_input_host_payloads["entries"],
+                    strict=True,
+                )
+            ],
+        ]
+        return {
+            "entries": entries,
+            "entry_count": len(entries),
+            "upload_order": [str(entry["name"]) for entry in entries],
+            "cleanup_order": [str(entry["name"]) for entry in reversed(entries)],
+            "input_token_nbytes": self.input_ids_nbytes,
+            "span_input_nbytes": int(span_manifest["total_nbytes"]),
+            "total_nbytes": self.input_ids_nbytes + int(span_manifest["total_nbytes"]),
+            "streaming_runner_ready": self.streaming_runner_ready,
+            "note": "Metadata-only combined upload plan; no kernels are launched.",
+        }
+
     def to_dict(self) -> dict[str, object]:
         launch_schedule = self.resource_plan.kv_decode_launch_schedule
         return {
@@ -842,6 +884,7 @@ class StepFunKVDecodeRunPlan:
             "span_input_total_nbytes": self.span_input_total_nbytes,
             "span_input_upload_manifest": self.span_input_upload_manifest,
             "span_input_host_payloads": self.span_input_host_payloads,
+            "decode_input_upload_plan": self.decode_input_upload_plan,
             "prompt_fits_resource_plan": self.prompt_fits_resource_plan,
             "context_fits_resource_plan": self.context_fits_resource_plan,
             "stop_token_ids": list(self.decode_plan.stop_token_ids),

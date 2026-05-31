@@ -185,6 +185,97 @@
       "attention_block_size": 256,
       "attention_block_table_len": 2,
       "context_fits_resource_plan": true,
+      "decode_input_upload_plan": {
+        "cleanup_order": [
+          "decode_attention_live_counts",
+          "decode_kv_write_position",
+          "decode_base_offsets",
+          "prompt_live_counts",
+          "prompt_base_offsets",
+          "input_ids"
+        ],
+        "entries": [
+          {
+            "dtype": "int32",
+            "name": "input_ids",
+            "nbytes": 92,
+            "sha256": "a55394363b6fabbc3f7be06c4ebba992f706c9bc6cc64aac0c79ca9f573945ca",
+            "shape": [
+              23
+            ],
+            "source": "input_ids",
+            "upload_group": "input_tokens"
+          },
+          {
+            "dtype": "int32",
+            "name": "prompt_base_offsets",
+            "nbytes": 184,
+            "sha256": "8cd1157e2fa1a251ffd11f340d49cb9d20935865fd05b603a8857c93a020eb03",
+            "shape": [
+              23,
+              2
+            ],
+            "source": "prompt_span_inputs.base_offsets",
+            "upload_group": "kv_span_inputs"
+          },
+          {
+            "dtype": "int64",
+            "name": "prompt_live_counts",
+            "nbytes": 184,
+            "sha256": "632d419b42ca8862d252d5d083a4e61b18906b9eef31d2098744b69fd8ca9726",
+            "shape": [
+              23
+            ],
+            "source": "prompt_span_inputs.live_counts",
+            "upload_group": "kv_span_inputs"
+          },
+          {
+            "dtype": "int32",
+            "name": "decode_base_offsets",
+            "nbytes": 8,
+            "sha256": "01acecb507abfe1a354aa8064f4af5d3f1acd019e37db3c11c97523b71c76e9d",
+            "shape": [
+              2
+            ],
+            "source": "decode_span_inputs.base_offsets",
+            "upload_group": "kv_span_inputs"
+          },
+          {
+            "dtype": "int64",
+            "name": "decode_kv_write_position",
+            "nbytes": 8,
+            "sha256": "c69a9157638e69fb692d827383c3f27e586e0c98989cffdf8bd4c982ad837a4c",
+            "shape": [],
+            "source": "decode_span_inputs.kv_write_position",
+            "upload_group": "kv_span_inputs"
+          },
+          {
+            "dtype": "int64",
+            "name": "decode_attention_live_counts",
+            "nbytes": 8,
+            "sha256": "c69a9157638e69fb692d827383c3f27e586e0c98989cffdf8bd4c982ad837a4c",
+            "shape": [
+              1
+            ],
+            "source": "decode_span_inputs.attention_live_counts",
+            "upload_group": "kv_span_inputs"
+          }
+        ],
+        "entry_count": 6,
+        "input_token_nbytes": 92,
+        "note": "Metadata-only combined upload plan; no kernels are launched.",
+        "span_input_nbytes": 392,
+        "streaming_runner_ready": false,
+        "total_nbytes": 484,
+        "upload_order": [
+          "input_ids",
+          "prompt_base_offsets",
+          "prompt_live_counts",
+          "decode_base_offsets",
+          "decode_kv_write_position",
+          "decode_attention_live_counts"
+        ]
+      },
       "decode_live_count": 23,
       "decode_position": 23,
       "decode_span_inputs": {
@@ -721,6 +812,8 @@
         "prompt_span_shape_compatible": true,
         "resident_prompt_smoke": "host_composed_layer_prefix",
         "run_plan_context_fits_resource_plan": true,
+        "run_plan_decode_input_upload_entry_count": 6,
+        "run_plan_decode_input_upload_total_nbytes": 484,
         "run_plan_decode_span_base_offsets_len": 2,
         "run_plan_host_payload_entry_count": 5,
         "run_plan_host_payload_total_nbytes": 392,
@@ -752,8 +845,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "4539eb47369bedc5291261391394820477233eb3896bdd0213a3e530a69c09d8",
-      "size_bytes": 51864
+      "sha256": "a8a8c28f5ee3df1b239c53dba748bef97c50cd2932c30f61c8a49f934ba0d52d",
+      "size_bytes": 51893
     },
     "oracle": {
       "exists": true,
@@ -770,8 +863,8 @@
     "text_resource": {
       "exists": true,
       "path": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
-      "sha256": "1959ca6ab36069580e6d1770dfd89f4264427fb33120ceca45403acbe7987d07",
-      "size_bytes": 40849
+      "sha256": "71f6d70f0c028f4313a8eee06e00282e3b949413c55f14c87195a24ead2efe27",
+      "size_bytes": 43663
     }
   },
   "status": "blocked",

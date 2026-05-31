@@ -28528,3 +28528,37 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted decode-planner tests passed (`11 passed`), source-artifact verification passed, and the full StepFun guard passed (`110 passed` plus CPU-reference fixture checks).
+
+## 2026-05-31 — StepFun KV combined upload plan recorded
+
+Added a metadata-only `decode_input_upload_plan` to `StepFunKVDecodeRunPlan`. The dry-run resource/status artifacts now describe the combined upload order and cleanup order for input token IDs plus all KV span-input payloads, including per-entry source, upload group, dtype, shape, byte count, and SHA-256. This complements the pre-runner `upload_decode_inputs()` helper by making the combined staging plan inspectable without allocating device buffers. The consolidated correctness status carries combined upload entry count and total bytes into the KV-backed decode readiness gate. This remains metadata-only evidence: no StepFun KV write/attention kernels are launched, and `oracle_parity=false`, `kv_backed_decode_ready=false`, and `e2e_inference_ready=false` remain unchanged.
+
+Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json` and `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, updated decode-planner/load-smoke/status tests, and clarified `docs/STEPFUN.md`.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_decode_planner.py tests/test_stepfun_load_smoke.py tests/test_stepfun_correctness_status.py -q
+python3 - <<'PY'
+import json
+r=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json'))
+run=r['kv_decode_run_plan']
+plan=run['decode_input_upload_plan']
+assert plan['entry_count'] == 6
+assert plan['upload_order'][0] == 'input_ids'
+assert plan['cleanup_order'] == list(reversed(plan['upload_order']))
+assert plan['input_token_nbytes'] == run['input_ids_nbytes']
+assert plan['span_input_nbytes'] == run['span_input_upload_manifest']['total_nbytes']
+assert plan['total_nbytes'] == run['input_ids_nbytes'] + run['span_input_upload_manifest']['total_nbytes']
+s=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+e=s['readiness_gates']['kv_backed_decode']['current_evidence']
+assert e['run_plan_decode_input_upload_entry_count'] == 6
+assert e['run_plan_decode_input_upload_total_nbytes'] == plan['total_nbytes']
+assert s['kv_backed_decode_ready'] is False
+print('stepfun combined upload plan status ok')
+PY
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty --output /tmp/stepfun-source-verify.json
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted decode-planner/load-smoke/status tests passed (`18 passed`), combined upload-plan artifact/source verification passed, and the full StepFun guard passed (`110 passed` plus CPU-reference fixture checks).
