@@ -2845,6 +2845,9 @@ def _validate_claimed_execution_completed_tokens(
                 and len(prompt_token_ids) != prompt_lengths[request_id]
             ):
                 errors.append(f"execution.completed[{index}].prompt_tokens length must match workload.prompt_lengths when generated_token_equality.passed is true")
+        if "generated_tokens" not in row:
+            errors.append(f"execution.completed[{index}].generated_tokens must be present when generated_token_equality.passed is true")
+            continue
         token_ids = _extract_claimed_generated_token_ids(
             row.get("generated_tokens"),
             f"execution.completed[{index}].generated_tokens",
