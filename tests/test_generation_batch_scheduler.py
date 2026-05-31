@@ -11737,6 +11737,13 @@ def test_qwen35_retained_scaling_reference_requires_artifact_path(tmp_path: Path
     assert scaling["ratios"]["aggregate_vs_serial_bridge"] == 2.0
 
 
+def test_qwen35_batch_correctness_payload_json_rejects_nonfinite() -> None:
+    with pytest.raises(ValueError, match="Out of range float values"):
+        batch_correctness._payload_json({"bad": float("inf")})
+
+    assert json.loads(batch_correctness._payload_json({"ok": 1.0})) == {"ok": 1.0}
+
+
 def test_qwen35_primitive_correctness_passed_matches_retained_bounds() -> None:
     assert batch_correctness._REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA == RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SCHEMA
     assert batch_correctness._REQUIRED_PRIMITIVE_CORRECTNESS_SEED == RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SEED

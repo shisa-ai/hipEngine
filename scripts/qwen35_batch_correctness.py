@@ -45,6 +45,10 @@ _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS = RETAINED_ARTIFACT_REQUIRED_PRIMIT
 _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT = RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT
 
 
+def _payload_json(payload) -> str:
+    return json.dumps(payload, indent=2, allow_nan=False)
+
+
 def _bf16_to_f32(bits: np.ndarray) -> np.ndarray:
     return (bits.astype(np.uint32) << np.uint32(16)).view(np.float32)
 
@@ -500,7 +504,7 @@ def main() -> None:
     )
     if args.json is not None:
         result["artifact_path"] = str(args.json)
-    payload = json.dumps(result, indent=2)
+    payload = _payload_json(result)
     print(payload)
     if args.json is not None:
         args.json.write_text(payload + "\n")
