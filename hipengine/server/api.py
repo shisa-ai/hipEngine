@@ -930,7 +930,7 @@ def _pool_metric_values(engine: Any | None) -> dict[str, float]:
         return values
     data = _stats_to_mapping(stats)
     for key in values:
-        values[key] = float(data.get(key, 0) or 0)
+        values[key] = _non_negative_metric_value(data.get(key))
     return values
 
 

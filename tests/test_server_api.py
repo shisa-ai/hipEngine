@@ -527,6 +527,35 @@ def test_metrics_endpoint_filters_malformed_graph_bucket_scalars() -> None:
     assert _metric_value(partially_valid.text, "hipengine_graph_bucket_replay_hit_rate") == 1
 
 
+def test_metrics_endpoint_filters_malformed_kv_pool_scalars() -> None:
+    fake = FakeLLM()
+    fake.kv_pool_stats = SimpleNamespace(
+        current_bytes=True,
+        high_water_observed_bytes=float("nan"),
+        grow_events=float("inf"),
+        grow_failures=-1,
+        shrink_events="bad",
+        free_pages=3,
+        refcounted_pages=-4,
+    )
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False, metrics="prometheus"),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    metrics = client.get("/metrics")
+
+    assert metrics.status_code == 200
+    assert _metric_value(metrics.text, "hipengine_kv_pool_current_bytes") == 0
+    assert _metric_value(metrics.text, "hipengine_kv_pool_high_water_observed_bytes") == 0
+    assert _metric_value(metrics.text, "hipengine_kv_pool_grow_events_total") == 0
+    assert _metric_value(metrics.text, "hipengine_kv_pool_grow_failures_total") == 0
+    assert _metric_value(metrics.text, "hipengine_kv_pool_shrink_events_total") == 0
+    assert _metric_value(metrics.text, "hipengine_kv_pool_free_pages") == 3
+    assert _metric_value(metrics.text, "hipengine_kv_pool_refcounted_pages") == 0
+
+
 def test_streaming_chat_completion_lowers_n_to_seeded_rows() -> None:
     fake = FakeLLM(outputs=["alpha", "beta"])
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
