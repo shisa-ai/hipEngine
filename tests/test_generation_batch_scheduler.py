@@ -5590,10 +5590,18 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_postcondition_precondition_source["commands"][-1]["postconditions"][0]["profiler_precondition_source_artifact_path"] = str(output_dir / "other-profiler-c2.json")
     with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler_precondition_source_artifact_path must match profiler_summary precondition"):
         c_sweep.validate_sweep_summary(tampered_postcondition_precondition_source)
+    tampered_postcondition_missing_precondition_source = json.loads(json.dumps(persisted))
+    tampered_postcondition_missing_precondition_source["commands"][-1]["postconditions"][0].pop("profiler_precondition_source_artifact_path")
+    with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler_precondition_source_artifact_path must match profiler_summary precondition"):
+        c_sweep.validate_sweep_summary(tampered_postcondition_missing_precondition_source)
     tampered_postcondition_source = json.loads(json.dumps(persisted))
     tampered_postcondition_source["commands"][-1]["postconditions"][0]["profiler_source_artifact_path"] = str(output_dir / "other-profiler-c2.json")
     with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler_source_artifact_path must match profiler_summary precondition"):
         c_sweep.validate_sweep_summary(tampered_postcondition_source)
+    tampered_postcondition_missing_source = json.loads(json.dumps(persisted))
+    tampered_postcondition_missing_source["commands"][-1]["postconditions"][0].pop("profiler_source_artifact_path")
+    with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler_source_artifact_path must match profiler_summary precondition"):
+        c_sweep.validate_sweep_summary(tampered_postcondition_missing_source)
     tampered_postcondition_field_shape = json.loads(json.dumps(persisted))
     tampered_postcondition_field_shape["commands"][-1]["postconditions"][0]["profiler_synthesized_fields"] = [1]
     with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler synthesized fields must be string lists when passed"):
