@@ -1438,8 +1438,9 @@ roll-up/status view.
 - [ ] **C2.5 c=4/c=8 BF16 equality.** Extend the same gate to c=4 and c=8.
       Acceptance: generated-token equality passes for both shapes, with
       aggregate/per-request scaling fields recorded even if not yet optimized.
-      Progress: primitive GPU correctness now has a c=4 artifact at
-      `/tmp/hipengine-multiloop-c4-correctness.json` (`append_*_mismatch=0`,
+      Progress: primitive GPU correctness now has c=4 and c=8 artifacts at
+      `/tmp/hipengine-multiloop-c4-correctness.json` and
+      `/tmp/hipengine-multiloop-c8-correctness.json` (`append_*_mismatch=0`,
       `attn_batch_vs_c1_max_abs=0.0`, passed). The primitive script also re-runs
       the batched KV append and batched full-attention context kernels on the
       same inputs and emits A/A determinism fields (`append_batch_aa_*` and
