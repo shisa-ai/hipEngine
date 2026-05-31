@@ -11351,12 +11351,17 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
         validate_cn_diagnostic_artifact_payload(skipped_claim)
 
     empty_row_claim = json.loads(json.dumps(payload))
-    empty_row_claim["workload"].pop("warmup_decode_tokens")
-    empty_row_claim["workload"].pop("gen_tokens_per_request")
     empty_row_claim["correctness"]["generated_token_equality"]["batch_sequences"][0] = []
     empty_row_claim["correctness"]["generated_token_equality"]["c1_sequences"][0] = []
     with pytest.raises(ValueError, match="batch_sequences\\[0\\] must be a non-empty per-row token-id list"):
         validate_cn_diagnostic_artifact_payload(empty_row_claim)
+
+    missing_shape_claim = json.loads(json.dumps(payload))
+    missing_shape_claim["workload"].pop("concurrency")
+    missing_shape_claim["workload"].pop("warmup_decode_tokens")
+    missing_shape_claim["workload"].pop("gen_tokens_per_request")
+    with pytest.raises(ValueError, match="workload.concurrency must be an int > 1 when generated_token_equality.passed is true"):
+        validate_cn_diagnostic_artifact_payload(missing_shape_claim)
 
 
 def test_qwen35_retained_payload_json_rejects_nan() -> None:

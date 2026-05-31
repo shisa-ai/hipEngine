@@ -2585,22 +2585,23 @@ def _validate_claimed_generated_token_equality(
         errors.append("correctness.generated_token_equality.c1_sequences must be a list when passed is true")
     concurrency = workload.get("concurrency")
     concurrency_valid = isinstance(concurrency, int) and not isinstance(concurrency, bool) and concurrency > 1
-    if concurrency_valid:
+    if not concurrency_valid:
+        errors.append("workload.concurrency must be an int > 1 when generated_token_equality.passed is true")
+    else:
         if isinstance(batch_sequences, list) and len(batch_sequences) != concurrency:
             errors.append("correctness.generated_token_equality.batch_sequences length must match workload.concurrency when passed is true")
         if isinstance(c1_sequences, list) and len(c1_sequences) != concurrency:
             errors.append("correctness.generated_token_equality.c1_sequences length must match workload.concurrency when passed is true")
     gen_tokens = workload.get("gen_tokens_per_request")
+    gen_tokens_valid = isinstance(gen_tokens, int) and not isinstance(gen_tokens, bool) and gen_tokens > 0
+    if not gen_tokens_valid:
+        errors.append("workload.gen_tokens_per_request must be a positive int when generated_token_equality.passed is true")
     warmup_tokens = workload.get("warmup_decode_tokens")
+    warmup_tokens_valid = isinstance(warmup_tokens, int) and not isinstance(warmup_tokens, bool) and warmup_tokens >= 0
+    if not warmup_tokens_valid:
+        errors.append("workload.warmup_decode_tokens must be a non-negative int when generated_token_equality.passed is true")
     expected_tokens = None
-    if (
-        isinstance(gen_tokens, int)
-        and not isinstance(gen_tokens, bool)
-        and gen_tokens > 0
-        and isinstance(warmup_tokens, int)
-        and not isinstance(warmup_tokens, bool)
-        and warmup_tokens >= 0
-    ):
+    if gen_tokens_valid and warmup_tokens_valid:
         expected_tokens = 1 + int(warmup_tokens) + int(gen_tokens)
     for label, sequences in (
         ("correctness.generated_token_equality.batch_sequences", batch_sequences),
