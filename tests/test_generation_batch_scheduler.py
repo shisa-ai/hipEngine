@@ -7341,6 +7341,11 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.category must be a non-empty string"):
             c_sweep.validate_sweep_summary(tampered_missing_category)
 
+        tampered_unknown_category = json.loads(json.dumps(summary))
+        tampered_unknown_category["commands"][index]["category"] = "unexpected_category"
+        with pytest.raises(ValueError, match=r"commands\[\]\.category must be a known c-sweep command category"):
+            c_sweep.validate_sweep_summary(tampered_unknown_category)
+
         for bad_batch_size in ("2", True, 0):
             tampered_bad_batch_size = json.loads(json.dumps(summary))
             tampered_bad_batch_size["commands"][index]["batch_size"] = bad_batch_size

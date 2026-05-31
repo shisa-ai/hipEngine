@@ -2130,6 +2130,13 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         "duration_seconds",
         "output_tail",
     }
+    expected_command_categories = {
+        _PRIMITIVE_COMMAND_CATEGORY,
+        _SERIAL_BRIDGE_COMMAND_CATEGORY,
+        _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY,
+        _INT8_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY,
+        _GGUF_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY,
+    }
     expected_minimal_failed_condition_keys = {
         "kind",
         "artifact_path",
@@ -2298,6 +2305,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 break
             if not isinstance(entry.get("category"), str) or not entry.get("category").strip():
                 errors.append("commands[].category must be a non-empty string")
+                break
+            if entry.get("category") not in expected_command_categories:
+                errors.append("commands[].category must be a known c-sweep command category")
                 break
             if not isinstance(entry.get("batch_size"), int) or isinstance(entry.get("batch_size"), bool) or entry.get("batch_size") <= 0:
                 errors.append("commands[].batch_size must be a positive int")
