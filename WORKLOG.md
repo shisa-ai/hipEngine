@@ -27761,3 +27761,17 @@ Marked the P12 HIP-visible memory snapshot checklist item complete. Evidence spa
 ## 2026-05-31 — StepFun P8 attention profiling deferred
 
 Closed the P8 AOTriton/native attention profiling checkbox as an explicit post-correctness deferral rather than an active P0-P12 correctness gate. Rationale: the current StepFun path has CPU-reference full/sliding attention correctness and an all-layer host-composed prompt smoke, but KV-backed decode and StepFun-capable oracle parity remain open; profiling AOTriton/native kernels before those gates would be misleading and outside the correctness-first loop. Added the profiling task to the Deferred tracks section so it remains visible after P11/P13 correctness and benchmark gates are ready.
+
+## 2026-05-31 — StepFun consolidated correctness status
+
+Added `scripts/stepfun_correctness_status.py`, a torch-free status summarizer over the all-layer prompt artifact and llama.cpp oracle execution artifact. It reports the current state as `status=blocked`: `all_layer_prompt_smoke=true`, `oracle_parity=false`, `kv_backed_decode_ready=false`, and `e2e_inference_ready=false`. The blocker list is machine-checkable: `oracle_parity_blocked` points to the structured StepFun/`step35` llama.cpp architecture blocker, and `kv_backed_decode_not_wired` points to the current host-composed prompt artifact.
+
+Generated `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json` and added `tests/test_stepfun_correctness_status.py` with fixture-based coverage for the blocked status and JSON output path. This artifact is a status/handoff aid, not a new parity or performance claim.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+```
+
+Result: `2 passed`.

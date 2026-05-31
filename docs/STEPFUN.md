@@ -550,7 +550,11 @@ reporting.
   prompt logits smoke now renders/tokenizes a Step chat prompt, embeds it, and
   runs final root logits from the last prompt embedding row. Remaining
   implementation task is replacing the host-composed layer-prefix bridge with
-  the KV-backed decode path and recording llama.cpp/CPU oracle parity.
+  the KV-backed decode path and recording llama.cpp/CPU oracle parity. Status
+  artifact `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`
+  machine-checks this state as `all_layer_prompt_smoke=true`,
+  `oracle_parity=false`, `kv_backed_decode_ready=false`, and
+  `e2e_inference_ready=false`.
 - [x] Use short contexts first (for example <= 512) before exercising long
   context and sliding-window boundaries. `StepFunShortContextDecodePlanner`
   enforces the current c=1 bring-up default `max_context=512`,
@@ -575,7 +579,9 @@ reporting.
   `oracle_blocker_kind=llama_cpp_missing_step35_architecture` and
   `step35_supported=false` for machine-checkable blocker handling. Remaining implementation
   task: use/build a StepFun-capable llama.cpp oracle and review/record the
-  parsed result; KV-backed decode parity remains open too.
+  parsed result; KV-backed decode parity remains open too. The consolidated
+  correctness-status artifact records both blockers (`oracle_parity_blocked`,
+  `kv_backed_decode_not_wired`) for the current all-layer prompt smoke.
 - [x] Preserve multi-EOS stopping and the chat assistant prefix. The short
   context planner renders the Step chat template with assistant `<think>` prefix
   and carries stop IDs `(1, 2, 128007)` with `should_stop()` checks.

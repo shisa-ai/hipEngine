@@ -1,0 +1,30 @@
+{
+  "all_layer_prompt_next_token_id": 369,
+  "all_layer_prompt_next_token_text": " |",
+  "all_layer_prompt_peak_resident_weight_nbytes": 3531578496,
+  "all_layer_prompt_smoke": true,
+  "backend": "hip_gfx1151",
+  "blockers": [
+    {
+      "artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-oracle-exec-attempt.json",
+      "detail": "local llama.cpp build reports unknown model architecture: 'step35'",
+      "kind": "oracle_parity_blocked",
+      "oracle_blocker_kind": "llama_cpp_missing_step35_architecture"
+    },
+    {
+      "artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json",
+      "detail": "Current all-layer prompt smoke is host-composed prefill/logits; final KV-backed one-token decode runner remains open.",
+      "kind": "kv_backed_decode_not_wired"
+    }
+  ],
+  "e2e_inference_ready": false,
+  "kv_backed_decode_ready": false,
+  "model": "Step-3.7-flash-Q3_K_L",
+  "note": "Host-composed all-layer prompt smoke is present; true e2e inference still needs oracle parity and KV-backed decode.",
+  "oracle_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-oracle-exec-attempt.json",
+  "oracle_blocker_kind": "llama_cpp_missing_step35_architecture",
+  "oracle_parity": false,
+  "prompt_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json",
+  "status": "blocked",
+  "step35_supported_by_local_llama_cpp": false
+}
