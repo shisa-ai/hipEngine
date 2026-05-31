@@ -102,6 +102,11 @@ def main(argv: list[str] | None = None) -> int:
         default=512,
         help="Tokens per synthetic KV page when --kv-context-pages is non-zero.",
     )
+    parser.add_argument(
+        "--dry-run-plan",
+        action="store_true",
+        help="Scan metadata and print the materialization/resource plan without HIP allocation.",
+    )
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output")
     args = parser.parse_args(argv)
 
@@ -114,11 +119,13 @@ def main(argv: list[str] | None = None) -> int:
     if not paths:
         raise FileNotFoundError(f"no GGUF shards matching {args.model_dir / args.pattern}")
 
-    runtime = get_hip_runtime()
     started = time.perf_counter()
     snapshots: list[dict[str, object]] = []
+    runtime = None
 
     def snap(label: str) -> dict[str, object]:
+        if runtime is None:  # pragma: no cover - guarded by non-dry-run flow
+            raise RuntimeError("HIP runtime is not initialized")
         free_bytes, total_bytes = runtime.mem_get_info()
         stats = memory_stats()
         usage = resource.getrusage(resource.RUSAGE_SELF)
@@ -133,15 +140,22 @@ def main(argv: list[str] | None = None) -> int:
             "elapsed_s": time.perf_counter() - started,
         }
         snapshots.append(row)
-        print(f"[{label}] hip_free={row['hip_free_gib']:.3f} GiB hip_total={row['hip_total_gib']:.3f} GiB", file=sys.stderr, flush=True)
+        print(
+            f"[{label}] hip_free={row['hip_free_gib']:.3f} GiB hip_total={row['hip_total_gib']:.3f} GiB",
+            file=sys.stderr,
+            flush=True,
+        )
         return row
 
-    reset_memory_stats()
-    snap("before_scan")
+    if not args.dry_run_plan:
+        runtime = get_hip_runtime()
+        reset_memory_stats()
+        snap("before_scan")
     info = scan_gguf_splits(paths)
     model_map = build_stepfun_gguf_tensor_map(info)
     plan = plan_stepfun_gguf_materialization(model_map)
-    snap("after_plan")
+    if not args.dry_run_plan:
+        snap("after_plan")
 
     selected_slots = None if args.selected_slot is None else tuple(args.selected_slot)
     weights = None
@@ -159,6 +173,37 @@ def main(argv: list[str] | None = None) -> int:
         context_pages=args.kv_context_pages,
         page_size=args.kv_page_size,
     )
+    if args.dry_run_plan:
+        result = {
+            "status": "planned",
+            "error": None,
+            "model_dir": str(args.model_dir),
+            "pattern": args.pattern,
+            "paths": [str(path) for path in paths],
+            "split_count": info.split_count,
+            "tensor_count": len(info.tensors),
+            "plan_tensor_count": len(plan.specs),
+            "plan_total_nbytes": plan.total_nbytes,
+            "plan_total_gib": plan.total_nbytes / 2**30,
+            "quant_counts": dict(plan.quant_counts),
+            "selected_slots": selected_slots,
+            "loaded_weight_count": 0,
+            "loaded_nbytes": 0,
+            "kv_context_pages": args.kv_context_pages,
+            "kv_page_size": args.kv_page_size,
+            "kv_buffer_count": 0 if not args.kv_context_pages else model_map.config.block_count * 2,
+            "kv_nbytes": kv_nbytes,
+            "kv_gib": kv_nbytes / 2**30,
+            "text_decode_resource_plan": None
+            if text_decode_resource_plan is None
+            else text_decode_resource_plan.to_dict(),
+            "boot_config_path": str(BOOT_CONFIG),
+            "boot_config_text": BOOT_CONFIG.read_text() if BOOT_CONFIG.exists() else None,
+            "snapshots": snapshots,
+        }
+        print(json.dumps(result, indent=2 if args.pretty else None, sort_keys=True))
+        return 0
+
     status = "unknown"
     error: dict[str, object] | None = None
     try:

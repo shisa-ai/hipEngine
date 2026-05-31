@@ -612,8 +612,9 @@ layer loop is wired.
   ties the full 754-slot text plan to `102,499,149,312` resident-weight bytes
   and a 512-token BF16 KV estimate of `94,371,840` bytes (`0.0879 GiB`) across
   90 K/V buffers for backend `hip_gfx1151`; the load-smoke JSON now embeds that
-  resource-plan dictionary when KV allocation is requested. Generation snapshots
-  remain open.
+  resource-plan dictionary when KV allocation is requested and offers
+  `--dry-run-plan` for metadata-only resource artifacts without HIP allocation.
+  Generation snapshots remain open.
 - [x] If the model does not fit, keep the failure artifact and decide between
   offload/tiering, lower context/KV footprint, or slice-only correctness. No
   current fit failure is claimed from VIS_VRAM/`hipMemGetInfo` alone; decision
@@ -631,7 +632,8 @@ Current materialization coverage is validated by
 `python3 -m pytest -q tests/test_stepfun_materialize.py` for all-tensor
 quant/layout planning (`Q3_K`, `Q5_K`, `Q8_0`, `F32`), split-shard payload
 access on first/last shard tensors, selected-slot HIP loading/freeing with
-memory stats, and torch-free imports. This is still not a throughput benchmark.
+memory stats, and torch-free imports; `python3 -m pytest -q tests/test_stepfun_load_smoke.py`
+validates metadata-only dry-run load-smoke JSON. This is still not a throughput benchmark.
 
 ### P13 — Benchmark and rollup only after correctness
 

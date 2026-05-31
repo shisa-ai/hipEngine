@@ -1,0 +1,67 @@
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+
+import pytest
+
+from scripts.stepfun_gguf_load_smoke import main
+
+DEFAULT_STEPFUN_GGUF_DIR = Path("/data/models/gguf")
+
+
+def _stepfun_gguf_dir() -> Path:
+    root = Path(os.environ.get("HIPENGINE_STEPFUN_GGUF_DIR", DEFAULT_STEPFUN_GGUF_DIR))
+    paths = tuple(sorted(root.glob("Step-3.7-flash-Q3_K_L-*.gguf")))
+    if len(paths) != 3:
+        pytest.skip(
+            "StepFun GGUF Q3_K_L shards not found; set HIPENGINE_STEPFUN_GGUF_DIR "
+            "to a directory containing Step-3.7-flash-Q3_K_L-00001..00003.gguf"
+        )
+    return root
+
+
+def test_stepfun_load_smoke_dry_run_plan_emits_resource_json(capsys: pytest.CaptureFixture[str]) -> None:
+    root = _stepfun_gguf_dir()
+
+    rc = main(
+        [
+            "--dry-run-plan",
+            "--model-dir",
+            str(root),
+            "--kv-context-pages",
+            "1",
+            "--kv-page-size",
+            "512",
+        ]
+    )
+
+    assert rc == 0
+    output = capsys.readouterr()
+    assert output.err == ""
+    payload = json.loads(output.out)
+    assert payload["status"] == "planned"
+    assert payload["snapshots"] == []
+    assert payload["loaded_weight_count"] == 0
+    assert payload["loaded_nbytes"] == 0
+    assert payload["tensor_count"] == 754
+    assert payload["plan_total_nbytes"] == 102_499_149_312
+    assert payload["kv_nbytes"] == 94_371_840
+    plan = payload["text_decode_resource_plan"]
+    assert plan["backend"] == "hip_gfx1151"
+    assert plan["slot_count"] == 754
+    assert plan["resident_weight_nbytes"] == payload["plan_total_nbytes"]
+    assert plan["kv_buffer_count"] == 90
+    assert plan["kv_layer_nbytes"][0] == {
+        "layer": 0,
+        "key_nbytes": 1_048_576,
+        "value_nbytes": 1_048_576,
+    }
+    assert plan["kv_nbytes"] == payload["kv_nbytes"]
+    assert plan["slot_paths"][:4] == [
+        "root.token_embedding",
+        "root.rope_freqs",
+        "root.output_norm",
+        "root.lm_head",
+    ]

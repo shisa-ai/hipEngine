@@ -27495,3 +27495,17 @@ python3 -m pytest -q tests/test_stepfun_decode_planner.py -q
 ```
 
 Result: `5 passed`.
+
+## 2026-05-31 — StepFun load-smoke dry-run resource artifacts
+
+Added `--dry-run-plan` to `scripts/stepfun_gguf_load_smoke.py`. Dry-run mode scans split-GGUF metadata, builds the materialization/resource plan, and prints the same JSON planning fields without initializing HIP or allocating resident weights/KV buffers. The normal load path still records HIP snapshots and allocation/free evidence separately.
+
+Added `tests/test_stepfun_load_smoke.py` to exercise dry-run mode against the real Q3_K_L split metadata. The test asserts `status=planned`, no HIP snapshots/allocations, 754 tensors, `102,499,149,312` planned resident bytes, `94,371,840` requested KV bytes for a 512-token BF16 cache, and the embedded text-decode resource-plan schema.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_load_smoke.py tests/test_stepfun_decode_planner.py -q
+```
+
+Result: `6 passed`.
