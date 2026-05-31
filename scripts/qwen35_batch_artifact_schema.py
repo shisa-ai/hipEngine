@@ -2793,6 +2793,7 @@ def _validate_claimed_execution_completed_tokens(
         errors.append("execution.completed length must match workload.concurrency when generated_token_equality.passed is true")
     workload = payload.get("workload")
     prompt_lengths = workload.get("prompt_lengths") if isinstance(workload, Mapping) else None
+    has_any_completed_prompt_tokens = any(isinstance(row, Mapping) and "prompt_tokens" in row for row in completed)
     seen_request_ids: set[int] = set()
     for index, row in enumerate(completed):
         if not isinstance(row, Mapping):
@@ -2814,6 +2815,8 @@ def _validate_claimed_execution_completed_tokens(
         finish_reason = row.get("finish_reason")
         if not isinstance(finish_reason, str) or not finish_reason:
             errors.append(f"execution.completed[{index}].finish_reason must be a non-empty string when generated_token_equality.passed is true")
+        if "prompt_tokens" not in row and has_any_completed_prompt_tokens:
+            errors.append(f"execution.completed[{index}].prompt_tokens must be present when any completed prompt metadata is present and generated_token_equality.passed is true")
         if "prompt_tokens" in row:
             prompt_token_ids = _extract_claimed_generated_token_ids(
                 row.get("prompt_tokens"),

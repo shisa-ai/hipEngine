@@ -11436,6 +11436,16 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
     with pytest.raises(ValueError, match=r"execution.completed\[1\].prompt_tokens length must match workload.prompt_lengths"):
         validate_cn_diagnostic_artifact_payload(mismatched_completed_prompt_claim)
 
+    partial_completed_prompt_claim = json.loads(json.dumps(payload))
+    partial_completed_prompt_claim["execution"]["completed"][1].pop("prompt_tokens")
+    with pytest.raises(ValueError, match=r"execution.completed\[1\].prompt_tokens must be present when any completed prompt metadata is present"):
+        validate_cn_diagnostic_artifact_payload(partial_completed_prompt_claim)
+
+    all_absent_completed_prompt_claim = json.loads(json.dumps(payload))
+    for completed in all_absent_completed_prompt_claim["execution"]["completed"]:
+        completed.pop("prompt_tokens")
+    validate_cn_diagnostic_artifact_payload(all_absent_completed_prompt_claim)
+
     partial_prompt_lengths_claim = json.loads(json.dumps(payload))
     partial_prompt_lengths_claim["workload"]["prompt_lengths"] = [2]
     with pytest.raises(ValueError, match="workload.prompt_lengths length must match workload.concurrency"):
