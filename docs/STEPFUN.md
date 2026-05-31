@@ -622,12 +622,15 @@ layer loop is wired.
   current fit failure is claimed from VIS_VRAM/`hipMemGetInfo` alone; decision
   policy is to continue implementation and only choose offload/tiering after a
   real allocation/load attempt fails under the configured GTT setup.
-- [ ] If it fits, run a tiny text-only prompt and confirm no vision/projector/MTP
+- [~] If it fits, run a tiny text-only prompt and confirm no vision/projector/MTP
   path is required. 2026-05-31 planning progress: `stepfun_text_decode_slot_paths()`
   covers all 754 validated text GGUF slots, including root RoPE frequencies, and
   the decode-planner test asserts there are no vision/projector/MTP slot
-  dependencies. Actual full-model prompt execution remains open until the
-  KV-backed runner or all-layer prefix bridge is validated.
+  dependencies. Partial prompt artifact
+  `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-prompt-smoke.json`
+  runs the resident text-only chat prompt through the layers 0-3 prefix bridge
+  with no vision/projector/MTP slots; actual full-model prompt execution remains
+  open until the KV-backed runner or all-layer prefix bridge is validated.
 
 **Acceptance:** full-model smoke produces token(s) or a documented fit failure.
 Current materialization coverage is validated by

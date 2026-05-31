@@ -27519,3 +27519,9 @@ python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan --kv-context-pages 1 -
 ```
 
 Artifact summary: `status=planned`, 3 GGUF splits, 754 tensors/slots, `102,499,149,312` planned resident-weight bytes (`95.4598 GiB`), 512-token BF16 KV estimate `94,371,840` bytes (`0.0879 GiB`) across 90 K/V buffers, `hip_gfx1151` backend, and no HIP allocation snapshots because this was intentionally metadata-only. This is a reproducibility/resource-planning artifact, not generation correctness or throughput evidence.
+
+## 2026-05-31 — StepFun layer-prefix prompt smoke artifact
+
+Recorded a resident text-only prompt smoke artifact at `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-prompt-smoke.json`. The artifact uses the existing `StepFunResidentSession.layer_prefix_prompt_logits_probe_bf16()` bridge on prompt `hello` with `layer_count=4`, materializing root text tensors plus layers 0-3 (dense layers 0-2 and sliding/MoE layer 3). It records 56 selected resident slots, `3,910,240,384` resident weight bytes, prompt length 23, sampled final logits, `next_token_id=104939`, and allocation cleanup (`active_allocations=0`, `current_allocated_bytes=0` after free).
+
+This is partial text-only prompt evidence only: it confirms the validated prefix path uses no vision/projector/MTP slots, but layers 4-44 and KV-backed decode remain open, so it is not full next-token parity or throughput evidence. `hipMemGetInfo` total/free readings remain diagnostic under the configured Strix Halo GTT setup; the artifact includes a note to rely on hipEngine allocation counters and relative snapshots instead.
