@@ -49710,3 +49710,51 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: targeted and full guards PASS; c=2/c=8 primitive correctness still PASS with A/A fields zero; verify count remains `12`; benchmark rollup files unchanged. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and the added rollup is diagnostic C2.3 evidence only.
+
+## 2026-05-31 — CONCURRENCY C2.3 first over-atol projection layer
+
+Ran the new per-layer-limit QKV/Z projection rollup on a narrow L1/L2 selected-A/B diagnostic probe to locate where projection drift first becomes over-tolerance. Artifact `/tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-batch-gemv-qkvz-selected-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json` is `status=eq_ok` (hidden/token green) but the projection summary is not bit-exact: `layer_limit=1` reports QKV/Z drift under hidden atol only, while `layer_limit=2` reports QKV/Z over-atol drift. `first_bit_drift` is `layer_limit=1` / `qkv` / layer 0 / step 0 / row 0 and `first_over_atol_drift` is `layer_limit=2` / `qkv` / layer 1 / step 0 / row 0. This confirms the batch-GEMV QKV/Z path starts over-tolerance amplification at the second retained linear layer before it becomes an end-to-end hidden mismatch at L8.
+
+Diagnostic command:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 1,2 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --batch-decode-linear-projection-path batch_gemv_selected_ab --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-batch-gemv-qkvz-selected-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json
+```
+
+Validation:
+
+```bash
+python3 - <<'PY'
+import json, pathlib
+path = pathlib.Path('/tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-batch-gemv-qkvz-selected-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json')
+payload = json.loads(path.read_text())
+assert payload['status'] == 'eq_ok'
+assert payload['correctness']['hidden_passed'] is True
+assert payload['correctness']['token_passed'] is True
+projection = payload['correctness']['decode_linear_projection_bit_drift_summary']
+assert projection['drift_stages'] == ['qkv', 'z']
+assert projection['over_atol_drift_stages'] == ['qkv', 'z']
+assert projection['first_bit_drift']['layer_limit'] == 1
+assert projection['first_bit_drift']['passed_under_atol'] is True
+assert projection['first_over_atol_drift']['layer_limit'] == 2
+assert projection['first_over_atol_drift']['stage'] == 'qkv'
+assert projection['first_over_atol_drift']['layer_index'] == 1
+assert projection['first_over_atol_drift']['passed_under_atol'] is False
+assert projection['layer_limits'] == [
+    {'layer_limit': 1, 'drift_stages': ['qkv', 'z'], 'under_atol_drift_stages': ['qkv', 'z'], 'over_atol_drift_stages': []},
+    {'layer_limit': 2, 'drift_stages': ['qkv', 'z'], 'under_atol_drift_stages': [], 'over_atol_drift_stages': ['qkv', 'z']},
+]
+PY
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \[(?: |~)\]', queue))
+print(count)
+assert count == 12
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: L1/L2 artifact assertions PASS; verify count remains `12`; full guard PASS with c=2/c=8 primitive correctness and A/A fields zero; benchmark rollup files unchanged. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and this is diagnostic C2.3 evidence only.

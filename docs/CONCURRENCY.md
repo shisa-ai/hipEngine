@@ -1342,7 +1342,13 @@ roll-up/status view.
       `layer_limits=[{"layer_limit": 8, ...}]`, plus the first over-tolerance
       projection drift (`qkv`, layer 1, step 0, row 0), separating the layer-0
       under-tolerance first bit drift from later over-tolerance projection
-      amplification. Together with the green selected-all projection
+      amplification. A narrow multi-limit probe at
+      `/tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-batch-gemv-qkvz-selected-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json`
+      is hidden/token green (`status=eq_ok`) while reporting
+      `layer_limit=1` QKV/Z under-atol drift only and `layer_limit=2` QKV/Z
+      over-atol drift, confirming projection amplification begins at the second
+      retained linear layer before it becomes an end-to-end hidden mismatch.
+      Together with the green selected-all projection
       control, this means both QKV/Z bit exactness and A/B exactness are still
       required for this controlled path; do not promote the batch-GEMV QKV/Z
       path just because an early direct stage max error is under hidden tolerance.
