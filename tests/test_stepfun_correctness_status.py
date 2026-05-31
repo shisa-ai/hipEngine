@@ -100,7 +100,28 @@ def _write_resource_artifact(path: Path) -> None:
                         "attention_capacity_tokens": 512,
                         "backend": "hip_gfx1151",
                         "decode_attention_kind": "splitk_gate_f32",
+                        "decode_span": {
+                            "block_size": 256,
+                            "block_table_len": 2,
+                            "capacity_tokens": 512,
+                            "live_counts_len": 1,
+                            "max_live_count": 511,
+                            "shape_compatible": True,
+                        },
+                        "decode_span_shape_compatible": True,
                         "max_context": 512,
+                        "max_new_tokens": 1,
+                        "max_prompt_rows": 511,
+                        "prompt_span": {
+                            "base_offsets_len_formula": "rows * 2",
+                            "block_size": 256,
+                            "block_table_len_per_row": 2,
+                            "live_counts_len_formula": "rows",
+                            "max_prompt_rows": 511,
+                            "row_positions_required": True,
+                            "shape_compatible": True,
+                        },
+                        "prompt_span_shape_compatible": True,
                         "span_shape_compatible": True,
                         "dispatch_keys": {
                             "decode_attention": {
@@ -201,9 +222,30 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert kv_dispatch["kv_storage_dtype"] == "bf16"
     assert kv_dispatch["decode_attention_kind"] == "splitk_gate_f32"
     assert kv_dispatch["max_context"] == 512
+    assert kv_dispatch["max_new_tokens"] == 1
+    assert kv_dispatch["max_prompt_rows"] == 511
     assert kv_dispatch["attention_block_size"] == 256
     assert kv_dispatch["attention_block_table_len"] == 2
     assert kv_dispatch["attention_capacity_tokens"] == 512
+    assert kv_dispatch["decode_span"] == {
+        "block_size": 256,
+        "block_table_len": 2,
+        "capacity_tokens": 512,
+        "live_counts_len": 1,
+        "max_live_count": 511,
+        "shape_compatible": True,
+    }
+    assert kv_dispatch["prompt_span"] == {
+        "base_offsets_len_formula": "rows * 2",
+        "block_size": 256,
+        "block_table_len_per_row": 2,
+        "live_counts_len_formula": "rows",
+        "max_prompt_rows": 511,
+        "row_positions_required": True,
+        "shape_compatible": True,
+    }
+    assert kv_dispatch["decode_span_shape_compatible"] is True
+    assert kv_dispatch["prompt_span_shape_compatible"] is True
     assert kv_dispatch["span_shape_compatible"] is True
     assert kv_dispatch["all_registered"] is True
     assert kv_dispatch["registered"] == {

@@ -141,6 +141,7 @@ def test_stepfun_text_decode_resource_plan_estimates_weight_and_kv_bytes() -> No
     assert payload["resident_weight_nbytes"] == 102_499_149_312
     assert payload["context_pages"] == 1
     assert payload["page_size"] == 512
+    assert payload["max_new_tokens"] == 1
     assert payload["kv_buffer_count"] == 90
     assert payload["kv_layer_nbytes"][0] == {
         "layer": 0,
@@ -154,9 +155,30 @@ def test_stepfun_text_decode_resource_plan_estimates_weight_and_kv_bytes() -> No
     assert kv_kernel_plan["kv_storage_dtype"] == "bf16"
     assert kv_kernel_plan["decode_attention_kind"] == "splitk_gate_f32"
     assert kv_kernel_plan["max_context"] == 512
+    assert kv_kernel_plan["max_new_tokens"] == 1
+    assert kv_kernel_plan["max_prompt_rows"] == 511
     assert kv_kernel_plan["attention_block_size"] == STEPFUN_KV_ATTENTION_BLOCK_SIZE == 256
     assert kv_kernel_plan["attention_block_table_len"] == 2
     assert kv_kernel_plan["attention_capacity_tokens"] == 512
+    assert kv_kernel_plan["decode_span"] == {
+        "block_size": 256,
+        "block_table_len": 2,
+        "live_counts_len": 1,
+        "max_live_count": 511,
+        "capacity_tokens": 512,
+        "shape_compatible": True,
+    }
+    assert kv_kernel_plan["prompt_span"] == {
+        "block_size": 256,
+        "max_prompt_rows": 511,
+        "block_table_len_per_row": 2,
+        "base_offsets_len_formula": "rows * 2",
+        "live_counts_len_formula": "rows",
+        "row_positions_required": True,
+        "shape_compatible": True,
+    }
+    assert kv_kernel_plan["decode_span_shape_compatible"] is True
+    assert kv_kernel_plan["prompt_span_shape_compatible"] is True
     assert kv_kernel_plan["span_shape_compatible"] is True
     assert kv_kernel_plan["all_registered"] is True
     assert kv_kernel_plan["dispatch_keys"]["prompt_kv_write"] == {
@@ -183,9 +205,31 @@ def test_stepfun_kv_decode_kernel_plan_resolves_step35_registry_keys() -> None:
     assert plan.kv_storage_dtype == "bf16"
     assert plan.decode_attention_kind == "splitk_gate_f32"
     assert plan.max_context == 512
+    assert plan.max_new_tokens == 1
+    assert plan.max_prompt_rows == 511
+    assert plan.decode_max_live_count == 511
     assert plan.attention_block_size == STEPFUN_KV_ATTENTION_BLOCK_SIZE == 256
     assert plan.attention_block_table_len == 2
     assert plan.attention_capacity_tokens == 512
+    assert plan.decode_span_contract == {
+        "block_size": 256,
+        "block_table_len": 2,
+        "live_counts_len": 1,
+        "max_live_count": 511,
+        "capacity_tokens": 512,
+        "shape_compatible": True,
+    }
+    assert plan.prompt_span_contract == {
+        "block_size": 256,
+        "max_prompt_rows": 511,
+        "block_table_len_per_row": 2,
+        "base_offsets_len_formula": "rows * 2",
+        "live_counts_len_formula": "rows",
+        "row_positions_required": True,
+        "shape_compatible": True,
+    }
+    assert plan.decode_span_shape_compatible is True
+    assert plan.prompt_span_shape_compatible is True
     assert plan.span_shape_compatible is True
     assert plan.all_registered is True
     assert plan.registered == {
@@ -203,11 +247,18 @@ def test_stepfun_kv_decode_kernel_plan_rounds_block_table_to_attention_block_siz
 
     assert plan.attention_block_size == STEPFUN_KV_ATTENTION_BLOCK_SIZE
     assert plan.attention_block_table_len == 3
+    assert plan.max_prompt_rows == 512
+    assert plan.decode_max_live_count == 512
     assert plan.attention_capacity_tokens == 768
+    assert plan.prompt_span_contract["base_offsets_len_formula"] == "rows * 3"
     assert plan.span_shape_compatible is True
 
     with pytest.raises(ValueError, match="max_context"):
         stepfun_kv_decode_kernel_plan(backend="hip_gfx1151", max_context=0)
+    with pytest.raises(ValueError, match="max_new_tokens"):
+        stepfun_kv_decode_kernel_plan(backend="hip_gfx1151", max_context=512, max_new_tokens=0)
+    with pytest.raises(ValueError, match="at least one prompt token"):
+        stepfun_kv_decode_kernel_plan(backend="hip_gfx1151", max_context=1, max_new_tokens=1)
 
 
 def test_stepfun_decode_planner_does_not_import_torch() -> None:

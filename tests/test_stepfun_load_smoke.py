@@ -64,9 +64,16 @@ def test_stepfun_load_smoke_dry_run_plan_emits_resource_json(capsys: pytest.Capt
     assert kv_plan["kv_storage_dtype"] == "bf16"
     assert kv_plan["decode_attention_kind"] == "splitk_gate_f32"
     assert kv_plan["max_context"] == 512
+    assert kv_plan["max_new_tokens"] == 1
+    assert kv_plan["max_prompt_rows"] == 511
     assert kv_plan["attention_block_size"] == 256
     assert kv_plan["attention_block_table_len"] == 2
     assert kv_plan["attention_capacity_tokens"] == 512
+    assert kv_plan["decode_span"]["max_live_count"] == 511
+    assert kv_plan["prompt_span"]["block_table_len_per_row"] == 2
+    assert kv_plan["prompt_span"]["base_offsets_len_formula"] == "rows * 2"
+    assert kv_plan["decode_span_shape_compatible"] is True
+    assert kv_plan["prompt_span_shape_compatible"] is True
     assert kv_plan["span_shape_compatible"] is True
     assert kv_plan["all_registered"] is True
     assert kv_plan["dispatch_keys"]["decode_attention"] == {

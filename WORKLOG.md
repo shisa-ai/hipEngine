@@ -27945,3 +27945,33 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted planner/load-smoke/status tests passed (`11 passed`), artifact schema check printed `stepfun kv span geometry artifacts ok`, and the full StepFun guard passed (`103 passed` plus CPU-reference fixture checks).
+
+## 2026-05-31 — StepFun KV prompt/decode span contracts recorded
+
+Separated the StepFun GGUF KV span metadata into decode and prompt contracts. The resource/status artifacts now record the decode span as a single live-count tensor with `block_table_len=2`, `max_live_count=511`, and 512-token capacity, while the prompt KV writer contract records row-wise position metadata (`live_counts_len_formula="rows"`) and per-row block tables (`base_offsets_len_formula="rows * 2"`) for up to 511 prompt rows before the one-token decode step. This fixes the prior handoff ambiguity where the decode attention block table alone did not describe the prompt writer's per-row block-table shape.
+
+Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json` and `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`; both still preserve `kv_backed_decode_ready=false`, `oracle_parity=false`, and `e2e_inference_ready=false`. Updated `docs/STEPFUN.md` and planner/load-smoke/status tests to cover the machine-readable prompt/decode span contracts.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_decode_planner.py tests/test_stepfun_load_smoke.py tests/test_stepfun_correctness_status.py -q
+python3 - <<'PY'
+import json
+r=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json'))
+kp=r['text_decode_resource_plan']['kv_decode_kernel_plan']
+assert kp['decode_span']['block_table_len'] == 2
+assert kp['decode_span']['max_live_count'] == 511
+assert kp['prompt_span']['max_prompt_rows'] == 511
+assert kp['prompt_span']['base_offsets_len_formula'] == 'rows * 2'
+assert kp['prompt_span_shape_compatible'] is True
+s=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+assert s['kv_decode_dispatch_progress']['prompt_span']['live_counts_len_formula'] == 'rows'
+assert s['kv_decode_dispatch_progress']['decode_span']['live_counts_len'] == 1
+assert s['kv_backed_decode_ready'] is False
+print('stepfun kv prompt/decode span contracts ok')
+PY
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted planner/load-smoke/status tests passed (`11 passed`), artifact schema check printed `stepfun kv prompt/decode span contracts ok`, and the full StepFun guard passed (`103 passed` plus CPU-reference fixture checks).

@@ -29,7 +29,7 @@
         "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
       },
       {
-        "line": 578,
+        "line": 582,
         "state": "partial",
         "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
       }
@@ -44,6 +44,15 @@
     "attention_capacity_tokens": 512,
     "backend": "hip_gfx1151",
     "decode_attention_kind": "splitk_gate_f32",
+    "decode_span": {
+      "block_size": 256,
+      "block_table_len": 2,
+      "capacity_tokens": 512,
+      "live_counts_len": 1,
+      "max_live_count": 511,
+      "shape_compatible": true
+    },
+    "decode_span_shape_compatible": true,
     "dispatch_keys": {
       "decode_attention": {
         "backend": "hip_gfx1151",
@@ -66,8 +75,20 @@
     },
     "kv_storage_dtype": "bf16",
     "max_context": 512,
+    "max_new_tokens": 1,
+    "max_prompt_rows": 511,
     "model_quant": "gguf_step35",
     "note": "Derived from the text resource dry-run artifact. Registry dispatch readiness does not mean the streaming KV-backed runner or oracle parity is complete.",
+    "prompt_span": {
+      "base_offsets_len_formula": "rows * 2",
+      "block_size": 256,
+      "block_table_len_per_row": 2,
+      "live_counts_len_formula": "rows",
+      "max_prompt_rows": 511,
+      "row_positions_required": true,
+      "shape_compatible": true
+    },
+    "prompt_span_shape_compatible": true,
     "registered": {
       "decode_attention": true,
       "decode_kv_write": true,
