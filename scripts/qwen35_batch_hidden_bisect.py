@@ -2841,7 +2841,9 @@ def _decode_linear_projection_bit_drift_rollup(layer_summaries: Sequence[dict[st
                             seen_rows.add(row_index)
                             rollup["bit_drift_row_count"] = len(rollup["bit_drift_rows"])
     drift_stages = [
-        stage for stage in DECODE_LINEAR_PROJECTION_BIT_EXACT_STAGES if not bool(stage_rollups[stage]["bit_exact"])
+        stage
+        for stage in DECODE_LINEAR_PROJECTION_BIT_EXACT_STAGES
+        if not bool(stage_rollups[stage]["bit_exact"])
     ]
     under_atol_drift_stages = [
         stage for stage in drift_stages if bool(stage_rollups[stage]["passed_under_atol"])
@@ -2851,6 +2853,47 @@ def _decode_linear_projection_bit_drift_rollup(layer_summaries: Sequence[dict[st
         for stage in drift_stages
         if int(stage_rollups[stage]["total_elements_over_atol"]) > 0
     ]
+    layer_limits: list[dict[str, Any]] = []
+    for summary in layer_summaries:
+        trace = summary.get("decode_linear_stages")
+        stage_has_bit_drift = {stage: False for stage in DECODE_LINEAR_PROJECTION_BIT_EXACT_STAGES}
+        stage_has_over_atol_drift = {stage: False for stage in DECODE_LINEAR_PROJECTION_BIT_EXACT_STAGES}
+        if isinstance(trace, dict):
+            for step_summary in trace.get("steps", []):
+                for layer in step_summary.get("layers", []):
+                    for stage in DECODE_LINEAR_PROJECTION_BIT_EXACT_STAGES:
+                        stage_summary = layer.get("stages", {}).get(stage)
+                        if not isinstance(stage_summary, dict):
+                            continue
+                        for row_summary in stage_summary.get("rows", []):
+                            comparison = row_summary.get("hidden_comparison", {})
+                            bit_mismatch = (
+                                int(comparison.get("bit_mismatch", 0)) if isinstance(comparison, dict) else 0
+                            )
+                            if bit_mismatch <= 0:
+                                continue
+                            stage_has_bit_drift[stage] = True
+                            elements_over_atol = (
+                                int(comparison.get("elements_over_atol", 0)) if isinstance(comparison, dict) else 0
+                            )
+                            if elements_over_atol > 0:
+                                stage_has_over_atol_drift[stage] = True
+        limit_drift_stages = [
+            stage for stage in DECODE_LINEAR_PROJECTION_BIT_EXACT_STAGES if stage_has_bit_drift[stage]
+        ]
+        limit_over_atol_stages = [
+            stage for stage in limit_drift_stages if stage_has_over_atol_drift[stage]
+        ]
+        layer_limits.append(
+            {
+                "layer_limit": int(summary.get("layer_limit", 0)),
+                "drift_stages": limit_drift_stages,
+                "under_atol_drift_stages": [
+                    stage for stage in limit_drift_stages if not stage_has_over_atol_drift[stage]
+                ],
+                "over_atol_drift_stages": limit_over_atol_stages,
+            }
+        )
     return {
         "projection_stages": list(DECODE_LINEAR_PROJECTION_BIT_EXACT_STAGES),
         "bit_exact": not drift_stages,
@@ -2864,6 +2907,7 @@ def _decode_linear_projection_bit_drift_rollup(layer_summaries: Sequence[dict[st
         "first_bit_drift": first_bit_drift,
         "first_over_atol_drift": first_over_atol_drift,
         "stages": stage_rollups,
+        "layer_limits": layer_limits,
     }
 
 

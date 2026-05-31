@@ -1330,7 +1330,7 @@ roll-up/status view.
       batch-GEMV QKV/Z override) keeps generated tokens green but is also
       hidden-only red at step 11 / row 0
       (`/tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-gemv-qkvz-selected-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json`,
-      current rerun `max_abs=0.010406494140625`); layer-0 `qkv`/`z` drift is
+      current rerun `max_abs=0.010467529296875`); layer-0 `qkv`/`z` drift is
       under 0.004
       but still bit-different (`qkv` `max_abs=0.0009765625`, `bit_mismatch=5`),
       and the first red stage is the same large `recurrent_out` amplification.
@@ -1338,10 +1338,11 @@ roll-up/status view.
       strict QKV/Z bit-exactness rollup; the same batch-GEMV-QKVZ/selected-A-B
       probe records `bit_exact=false`, `drift_stages=["qkv", "z"]`, and
       `passed_under_atol=false` once all decode steps/layers are considered;
-      it also records `over_atol_drift_stages=["qkv", "z"]` plus the first
-      over-tolerance projection drift (`qkv`, layer 1, step 0, row 0), separating
-      the layer-0 under-tolerance first bit drift from later over-tolerance
-      projection amplification. Together with the green selected-all projection
+      it also records `over_atol_drift_stages=["qkv", "z"]`, the same lists in
+      `layer_limits=[{"layer_limit": 8, ...}]`, plus the first over-tolerance
+      projection drift (`qkv`, layer 1, step 0, row 0), separating the layer-0
+      under-tolerance first bit drift from later over-tolerance projection
+      amplification. Together with the green selected-all projection
       control, this means both QKV/Z bit exactness and A/B exactness are still
       required for this controlled path; do not promote the batch-GEMV QKV/Z
       path just because an early direct stage max error is under hidden tolerance.
