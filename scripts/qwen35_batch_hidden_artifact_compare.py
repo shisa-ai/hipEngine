@@ -341,6 +341,41 @@ def _layer_limit_by_value(comparison: dict[str, Any], layer_limit: int) -> dict[
     return None
 
 
+def _expectation_metadata(args: argparse.Namespace) -> dict[str, Any] | None:
+    metadata: dict[str, Any] = {}
+    expected_route_classification = getattr(args, "expect_route_classification", None)
+    if expected_route_classification is not None:
+        metadata["route_classification"] = str(expected_route_classification)
+    expected_kinds = _parse_expected_kinds(getattr(args, "expect_route_difference_kinds", None))
+    if expected_kinds is not None:
+        metadata["route_difference_kinds"] = expected_kinds
+    expected_first_diverging = getattr(args, "expect_first_diverging_layer_limit", None)
+    if expected_first_diverging is not None:
+        metadata["first_diverging_layer_limit"] = int(expected_first_diverging)
+    layer_classifications: dict[str, str] = {}
+    for raw_expectation in getattr(args, "expect_layer_route_classification", None) or []:
+        layer_limit, expected = _parse_layer_expectation(str(raw_expectation))
+        layer_classifications[str(layer_limit)] = expected
+    if layer_classifications:
+        metadata["layer_route_classifications"] = layer_classifications
+    layer_difference_kinds: dict[str, list[str]] = {}
+    for raw_expectation in getattr(args, "expect_layer_route_difference_kinds", None) or []:
+        layer_limit, raw_expected = _parse_layer_expectation(str(raw_expectation))
+        layer_difference_kinds[str(layer_limit)] = _parse_expected_kinds(raw_expected) or []
+    if layer_difference_kinds:
+        metadata["layer_route_difference_kinds"] = layer_difference_kinds
+    required_booleans: dict[str, bool] = {}
+    if getattr(args, "expect_hidden_passed_all", False):
+        required_booleans["hidden_passed_all"] = True
+    if getattr(args, "expect_token_passed_all", False):
+        required_booleans["token_passed_all"] = True
+    if getattr(args, "expect_all_statuses_eq_ok", False):
+        required_booleans["all_statuses_eq_ok"] = True
+    if required_booleans:
+        metadata["required_booleans"] = required_booleans
+    return metadata or None
+
+
 def _validate_expectations(payload: dict[str, Any], args: argparse.Namespace) -> None:
     comparison = payload.get("comparison", {})
     if not isinstance(comparison, dict):
@@ -488,7 +523,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         label, path = _parse_artifact_arg(str(raw))
         parsed.append((label, path, _load_json(path)))
     payload = compare_artifacts(parsed)
+    expectation_metadata = _expectation_metadata(args)
+    if expectation_metadata is not None:
+        payload["expectations"] = expectation_metadata
     _validate_expectations(payload, args)
+    if expectation_metadata is not None:
+        payload["expectations"]["passed"] = True
     json_path = getattr(args, "json", None)
     if json_path is not None:
         path = Path(json_path)

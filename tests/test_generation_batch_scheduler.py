@@ -7825,6 +7825,29 @@ def test_hidden_bisect_projection_artifact_compare_spots_limit_drift_delta(tmp_p
 
     assert out.exists()
     assert json.loads(out.read_text()) == payload
+    assert payload["expectations"] == {
+        "route_classification": "same_first_over_atol_location_with_record_and_drift_delta",
+        "route_difference_kinds": [
+            "drift_stages",
+            "first_over_atol_record",
+            "first_over_atol_bit_mismatch",
+        ],
+        "layer_route_classifications": {
+            "1": "no_over_atol_with_drift_delta",
+            "2": "same_first_over_atol_location_with_record_delta",
+        },
+        "layer_route_difference_kinds": {
+            "1": ["drift_stages"],
+            "2": ["first_over_atol_record", "first_over_atol_bit_mismatch"],
+        },
+        "first_diverging_layer_limit": 1,
+        "required_booleans": {
+            "hidden_passed_all": True,
+            "token_passed_all": True,
+            "all_statuses_eq_ok": True,
+        },
+        "passed": True,
+    }
     assert payload["comparison"]["common_layer_limits"] == [1, 2]
     assert payload["comparison"]["first_over_atol_layer_limits_by_label"] == {
         "selected_ab": 2,

@@ -50102,3 +50102,39 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: targeted tests PASS; per-layer expectation-enabled comparison PASS; verify count remains `12`; full guard PASS with c=2/c=8 primitive correctness and A/A fields zero; benchmark rollup files unchanged. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and this is diagnostic C2.3 evidence only.
+
+## 2026-05-31 — CONCURRENCY C2.3 projection comparator expectation metadata
+
+Made `scripts/qwen35_batch_hidden_artifact_compare.py` write the active expectation set into the comparison JSON under `expectations` after validation succeeds. This makes the L1/L2 projection-route artifact self-describing: it now records the top-level classification expectation, per-layer classification/kind expectations, required all-green booleans, and `passed=true` in the artifact itself instead of relying only on the shell command.
+
+Regenerated `/tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-projection-route-compare.json` with top-level and per-layer expectations enabled. The artifact now includes `expectations.passed=true`, `expectations.route_classification=same_first_over_atol_location_with_record_and_drift_delta`, L1/L2 layer expectation maps, and required booleans for `hidden_passed_all`, `token_passed_all`, and `all_statuses_eq_ok`.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_hidden_artifact_compare.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_projection_artifact_compare_spots_limit_drift_delta tests/test_generation_batch_scheduler.py::test_hidden_bisect_projection_bit_drift_rollup_reports_first_over_atol_drift -q
+python3 scripts/qwen35_batch_hidden_artifact_compare.py --artifact selected_qkvz=/tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-selected-qkvz-native-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json --artifact selected_ab=/tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-batch-gemv-qkvz-selected-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json --json /tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-projection-route-compare.json --expect-route-classification same_first_over_atol_location_with_record_and_drift_delta --expect-route-difference-kinds drift_stages,first_over_atol_record,first_over_atol_bit_mismatch --expect-layer-route-classification 1=no_over_atol_with_drift_delta --expect-layer-route-classification 2=same_first_over_atol_location_with_record_delta --expect-layer-route-difference-kinds 1=drift_stages --expect-layer-route-difference-kinds 2=first_over_atol_record,first_over_atol_bit_mismatch --expect-first-diverging-layer-limit 1 --expect-hidden-passed-all --expect-token-passed-all --expect-all-statuses-eq-ok
+python3 - <<'PY'
+import json, pathlib
+path = pathlib.Path('/tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-projection-route-compare.json')
+payload = json.loads(path.read_text())
+assert payload['expectations']['passed'] is True
+assert payload['expectations']['route_classification'] == 'same_first_over_atol_location_with_record_and_drift_delta'
+assert payload['expectations']['route_difference_kinds'] == ['drift_stages', 'first_over_atol_record', 'first_over_atol_bit_mismatch']
+assert payload['expectations']['layer_route_classifications'] == {'1': 'no_over_atol_with_drift_delta', '2': 'same_first_over_atol_location_with_record_delta'}
+assert payload['expectations']['layer_route_difference_kinds'] == {'1': ['drift_stages'], '2': ['first_over_atol_record', 'first_over_atol_bit_mismatch']}
+assert payload['expectations']['required_booleans'] == {'hidden_passed_all': True, 'token_passed_all': True, 'all_statuses_eq_ok': True}
+PY
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \[(?: |~)\]', queue))
+print(count)
+assert count == 12
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: targeted tests PASS; expectation metadata assertions PASS; verify count remains `12`; full guard PASS with c=2/c=8 primitive correctness and A/A fields zero; benchmark rollup files unchanged. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and this is diagnostic C2.3 evidence only.
