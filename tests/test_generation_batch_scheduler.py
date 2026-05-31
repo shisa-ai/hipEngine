@@ -13651,6 +13651,8 @@ def test_qwen35_retained_request_observability_blockers_cover_row_evidence() -> 
     assert retained_bench._request_observability_blockers(
         valid,
         expected_concurrency=2,
+        expected_context_bucket=512,
+        expected_active_mask="11",
         expected_kv_storage_dtype="bf16",
         expected_layer_plan="max_layers=40",
     ) == []
@@ -13675,15 +13677,20 @@ def test_qwen35_retained_request_observability_blockers_cover_row_evidence() -> 
 
     mismatched_bucket_key_axes = json.loads(json.dumps(valid))
     mismatched_bucket_key_axes["0"]["bucket_key"] = (
-        "decode:c=2:ctx=512:mask=11:kv=int8_per_token_head:layers=max_layers=8:"
+        "decode:c=3:ctx=1024:mask=101:kv=int8_per_token_head:layers=max_layers=8:"
         "top_k=0:experts=0:replay=1:draft=0"
     )
     blockers = retained_bench._request_observability_blockers(
         mismatched_bucket_key_axes,
         expected_concurrency=2,
+        expected_context_bucket=512,
+        expected_active_mask="11",
         expected_kv_storage_dtype="bf16",
         expected_layer_plan="max_layers=40",
     )
+    assert "observability.per_request.0.bucket_key c axis must match expected concurrency" in blockers
+    assert "observability.per_request.0.bucket_key context axis must match scheduler decode shape key" in blockers
+    assert "observability.per_request.0.bucket_key active-mask axis must match scheduler decode shape key" in blockers
     assert "observability.per_request.0.bucket_key kv axis must match expected KV storage dtype" in blockers
     assert "observability.per_request.0.bucket_key layer-plan axis must match expected layer plan" in blockers
 
@@ -16821,6 +16828,18 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     )
     with pytest.raises(ValueError, match=r"observability.per_request.\*.bucket_key layer-plan axis must match workload.max_layers"):
         validate_cn_diagnostic_artifact_payload(mismatched_observed_bucket_key_layers)
+
+    mismatched_observed_bucket_key_shape = json.loads(json.dumps(accepted))
+    mismatched_observed_bucket_key_shape["observability"]["per_request"]["0"]["bucket_key"] = (
+        "decode:c=3:ctx=1024:mask=101:kv=bf16:layers=max_layers=40:"
+        "top_k=0:experts=0:replay=1:draft=0"
+    )
+    with pytest.raises(ValueError, match=r"observability.per_request.\*.bucket_key c axis must match workload.concurrency"):
+        validate_cn_diagnostic_artifact_payload(mismatched_observed_bucket_key_shape)
+    with pytest.raises(ValueError, match=r"observability.per_request.\*.bucket_key context axis must match scheduler decode_shape_key.context_bucket"):
+        validate_cn_diagnostic_artifact_payload(mismatched_observed_bucket_key_shape)
+    with pytest.raises(ValueError, match=r"observability.per_request.\*.bucket_key active-mask axis must match scheduler decode_shape_key.active_mask"):
+        validate_cn_diagnostic_artifact_payload(mismatched_observed_bucket_key_shape)
 
     blank_observed_admission_blocker = json.loads(json.dumps(accepted))
     blank_observed_admission_blocker["observability"]["per_request"]["0"]["admission_blocked_reason"] = " "

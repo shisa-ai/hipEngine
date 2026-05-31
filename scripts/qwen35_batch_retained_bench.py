@@ -2838,6 +2838,8 @@ def _request_observability_blockers(
     per_request: Any,
     *,
     expected_concurrency: int,
+    expected_context_bucket: int | None = None,
+    expected_active_mask: str | None = None,
     expected_kv_storage_dtype: str | None = None,
     expected_layer_plan: str | None = None,
 ) -> list[str]:
@@ -2906,8 +2908,20 @@ def _request_observability_blockers(
         if bucket_key is not None and (not isinstance(bucket_key, str) or not bucket_key.strip()):
             blockers.append(f"{label}.bucket_key is not a non-empty string or null")
         elif isinstance(bucket_key, str):
+            c_axis = _bucket_key_axis(bucket_key, "c")
+            ctx_axis = _bucket_key_axis(bucket_key, "ctx")
+            mask_axis = _bucket_key_axis(bucket_key, "mask")
             kv_axis = _bucket_key_axis(bucket_key, "kv")
             layer_axis = _bucket_key_axis(bucket_key, "layers")
+            if c_axis is None or ctx_axis is None or mask_axis is None:
+                blockers.append(f"{label}.bucket_key must include c, context, and active-mask axes")
+            else:
+                if c_axis != str(expected_concurrency):
+                    blockers.append(f"{label}.bucket_key c axis must match expected concurrency")
+                if expected_context_bucket is not None and ctx_axis != str(expected_context_bucket):
+                    blockers.append(f"{label}.bucket_key context axis must match scheduler decode shape key")
+                if expected_active_mask is not None and mask_axis != str(expected_active_mask):
+                    blockers.append(f"{label}.bucket_key active-mask axis must match scheduler decode shape key")
             if kv_axis is None or layer_axis is None:
                 blockers.append(f"{label}.bucket_key must include kv and layer-plan axes")
             else:
@@ -3748,9 +3762,21 @@ def _build_payload(
         if isinstance(raw_per_request_observability, Mapping)
         else raw_per_request_observability
     )
+    decode_shape_key = scheduler_metadata.get("decode_shape_key")
+    expected_context_bucket = None
+    expected_active_mask = None
+    if isinstance(decode_shape_key, Mapping):
+        context_bucket = decode_shape_key.get("context_bucket")
+        if isinstance(context_bucket, int) and not isinstance(context_bucket, bool):
+            expected_context_bucket = int(context_bucket)
+        active_mask = decode_shape_key.get("active_mask")
+        if isinstance(active_mask, list) and all(isinstance(active, bool) for active in active_mask):
+            expected_active_mask = "".join("1" if active else "0" for active in active_mask)
     observability_blockers = _request_observability_blockers(
         per_request_observability,
         expected_concurrency=args.batch_size,
+        expected_context_bucket=expected_context_bucket,
+        expected_active_mask=expected_active_mask,
         expected_kv_storage_dtype=kv_policy.storage_dtype.value,
         expected_layer_plan=f"max_layers={int(args.max_layers)}",
     )

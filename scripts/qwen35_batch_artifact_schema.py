@@ -1157,6 +1157,19 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
                     if component_total - request_latency > max(1e-9, request_latency * 1e-6):
                         errors.append("observability.per_request timing components must not exceed completion minus admission for accepted artifacts")
                         break
+        expected_active_c = int(concurrency) if concurrency_valid else None
+        expected_context_bucket = None
+        expected_active_mask = None
+        execution = payload.get("execution")
+        scheduler_metadata = execution.get("scheduler_metadata") if isinstance(execution, Mapping) else None
+        decode_shape_key = scheduler_metadata.get("decode_shape_key") if isinstance(scheduler_metadata, Mapping) else None
+        if isinstance(decode_shape_key, Mapping):
+            context_bucket = decode_shape_key.get("context_bucket")
+            if isinstance(context_bucket, int) and not isinstance(context_bucket, bool):
+                expected_context_bucket = int(context_bucket)
+            active_mask = decode_shape_key.get("active_mask")
+            if isinstance(active_mask, list) and all(isinstance(active, bool) for active in active_mask):
+                expected_active_mask = "".join("1" if active else "0" for active in active_mask)
         workload_kv_dtype = workload.get("kv_storage_dtype")
         expected_kv_storage_dtype = workload_kv_dtype if isinstance(workload_kv_dtype, str) else None
         max_layers = workload.get("max_layers")
@@ -1165,6 +1178,9 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
             _valid_request_observability(
                 row,
                 errors,
+                expected_active_c=expected_active_c,
+                expected_context_bucket=expected_context_bucket,
+                expected_active_mask=expected_active_mask,
                 expected_kv_storage_dtype=expected_kv_storage_dtype,
                 expected_layer_plan=expected_layer_plan,
             )
@@ -3721,6 +3737,9 @@ def _valid_request_observability(
     row: Any,
     errors: list[str],
     *,
+    expected_active_c: int | None = None,
+    expected_context_bucket: int | None = None,
+    expected_active_mask: str | None = None,
     expected_kv_storage_dtype: str | None = None,
     expected_layer_plan: str | None = None,
 ) -> bool:
@@ -3759,8 +3778,24 @@ def _valid_request_observability(
             errors.append("observability.per_request.*.bucket_key must be a non-empty string or null for accepted artifacts")
             ok = False
         else:
+            c_axis = _bucket_key_axis(bucket_key, "c")
+            ctx_axis = _bucket_key_axis(bucket_key, "ctx")
+            mask_axis = _bucket_key_axis(bucket_key, "mask")
             kv_axis = _bucket_key_axis(bucket_key, "kv")
             layer_axis = _bucket_key_axis(bucket_key, "layers")
+            if c_axis is None or ctx_axis is None or mask_axis is None:
+                errors.append("observability.per_request.*.bucket_key must include c, context, and active-mask axes for accepted artifacts")
+                ok = False
+            else:
+                if expected_active_c is not None and c_axis != str(expected_active_c):
+                    errors.append("observability.per_request.*.bucket_key c axis must match workload.concurrency for accepted artifacts")
+                    ok = False
+                if expected_context_bucket is not None and ctx_axis != str(expected_context_bucket):
+                    errors.append("observability.per_request.*.bucket_key context axis must match scheduler decode_shape_key.context_bucket for accepted artifacts")
+                    ok = False
+                if expected_active_mask is not None and mask_axis != expected_active_mask:
+                    errors.append("observability.per_request.*.bucket_key active-mask axis must match scheduler decode_shape_key.active_mask for accepted artifacts")
+                    ok = False
             if kv_axis is None or layer_axis is None:
                 errors.append("observability.per_request.*.bucket_key must include kv and layer-plan axes for accepted artifacts")
                 ok = False
