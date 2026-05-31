@@ -11388,6 +11388,11 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
     with pytest.raises(ValueError, match="execution.seed_tokens length must match workload.concurrency"):
         validate_cn_diagnostic_artifact_payload(partial_seed_claim)
 
+    stale_seed_row_claim = json.loads(json.dumps(payload))
+    stale_seed_row_claim["execution"]["seed_tokens"] = {"0": {"token_id": 10}, "2": {"token_id": 99}}
+    with pytest.raises(ValueError, match="execution.seed_tokens keys must match workload.concurrency row ids"):
+        validate_cn_diagnostic_artifact_payload(stale_seed_row_claim)
+
     all_empty_seed_claim = json.loads(json.dumps(payload))
     all_empty_seed_claim["execution"]["seed_tokens"] = {}
     validate_cn_diagnostic_artifact_payload(all_empty_seed_claim)

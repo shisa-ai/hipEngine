@@ -2712,6 +2712,9 @@ def _validate_claimed_execution_seed_tokens(
         errors.append("execution.seed_tokens length must match workload.concurrency when generated_token_equality.passed is true")
     if concurrency is None:
         return
+    expected_row_keys = {str(row_index) for row_index in range(concurrency)}
+    if set(seed_tokens.keys()) != expected_row_keys:
+        errors.append("execution.seed_tokens keys must match workload.concurrency row ids when generated_token_equality.passed is true")
     for row_index in range(concurrency):
         row_key = str(row_index)
         token_id = _extract_claimed_token_id(
