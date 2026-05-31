@@ -14433,7 +14433,7 @@ def test_qwen35_retained_memory_evidence_blockers_cover_required_fields() -> Non
     assert "memory.allocator_memory_stats.active_allocations is not a non-negative int" in blockers
     assert "memory.dynamic_pool.enabled is not bool" in blockers
     assert "memory.dynamic_pool.evidence is missing" in blockers
-    assert "memory.dynamic_pool.pool_counters.free_pages is unavailable or non-finite" in blockers
+    assert "memory.dynamic_pool.pool_counters.free_pages is not a non-negative int" in blockers
     assert "memory.dynamic_pool.pool_counters.high_water_observed_bytes is below current_bytes" in blockers
     assert "memory.stable_block_id.passed is not true" in blockers
     assert "memory.stable_block_id.audit is missing" in blockers
@@ -17013,13 +17013,18 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
 
     nonfinite_pool_counter = json.loads(json.dumps(accepted))
     nonfinite_pool_counter["memory"]["dynamic_pool"]["pool_counters"]["current_bytes"] = float("inf")
-    with pytest.raises(ValueError, match="pool_counters.current_bytes must be finite non-negative numeric"):
+    with pytest.raises(ValueError, match="pool_counters.current_bytes must be a non-negative int"):
         validate_cn_diagnostic_artifact_payload(nonfinite_pool_counter)
 
     negative_pool_counter = json.loads(json.dumps(accepted))
     negative_pool_counter["memory"]["dynamic_pool"]["pool_counters"]["free_pages"] = -1
-    with pytest.raises(ValueError, match="pool_counters.free_pages must be finite non-negative numeric"):
+    with pytest.raises(ValueError, match="pool_counters.free_pages must be a non-negative int"):
         validate_cn_diagnostic_artifact_payload(negative_pool_counter)
+
+    fractional_pool_counter = json.loads(json.dumps(accepted))
+    fractional_pool_counter["memory"]["dynamic_pool"]["pool_counters"]["grow_failures"] = 0.5
+    with pytest.raises(ValueError, match="pool_counters.grow_failures must be a non-negative int"):
+        validate_cn_diagnostic_artifact_payload(fractional_pool_counter)
 
     inconsistent_pool_high_water = json.loads(json.dumps(accepted))
     inconsistent_pool_high_water["memory"]["dynamic_pool"]["pool_counters"]["high_water_observed_bytes"] = 1

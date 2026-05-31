@@ -1218,8 +1218,9 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
             errors.append("memory.dynamic_pool.pool_counters must be an object for accepted artifacts")
         else:
             for field in _REQUIRED_ACCEPTED_POOL_COUNTER_FIELDS:
-                if not _is_nonnegative_number(pool_counters.get(field)):
-                    errors.append(f"memory.dynamic_pool.pool_counters.{field} must be finite non-negative numeric for accepted artifacts")
+                value = pool_counters.get(field)
+                if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                    errors.append(f"memory.dynamic_pool.pool_counters.{field} must be a non-negative int for accepted artifacts")
             current_bytes = pool_counters.get("current_bytes")
             high_water_bytes = pool_counters.get("high_water_observed_bytes")
             if (

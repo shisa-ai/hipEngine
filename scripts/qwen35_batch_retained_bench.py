@@ -2602,8 +2602,9 @@ def _memory_evidence_blockers(memory: Mapping[str, Any]) -> list[str]:
             blockers.append("memory.dynamic_pool.pool_counters is missing")
         else:
             for field in required_counters:
-                if not _is_finite_nonnegative_number(pool_counters.get(field)):
-                    blockers.append(f"memory.dynamic_pool.pool_counters.{field} is unavailable or non-finite")
+                value = pool_counters.get(field)
+                if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                    blockers.append(f"memory.dynamic_pool.pool_counters.{field} is not a non-negative int")
             current_bytes = pool_counters.get("current_bytes")
             high_water_bytes = pool_counters.get("high_water_observed_bytes")
             if (
