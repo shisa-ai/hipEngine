@@ -1455,8 +1455,8 @@ roll-up/status view.
       missing/empty/blank/stale primitive command text/argv, wrong device env,
       missing/blank/wrong script/category, missing/malformed `batch_size`,
       invalid planned-row status/returncode/duration/output-tail/conditions,
-      unknown command schema keys, duplicate `--rows`/`--seed`/`--json` labels,
-      blank inline/missing `--json`,
+      unknown command schema keys, stale `git_dirty`, duplicate
+      `--rows`/`--seed`/`--json` labels, blank inline/missing `--json`,
       blank inline/missing/non-integer `--rows`/`--seed` values,
       parent-directory/symlinked/symlink-parent `output_dir`, missing/blank/non-string
       `artifact_path`, direct-symlink, symlink-parent, parent-directory, or
