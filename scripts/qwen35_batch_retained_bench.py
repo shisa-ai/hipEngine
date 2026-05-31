@@ -69,6 +69,7 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_REQUIRED_PROFILER_KERNEL_DURATION_CATEGORIES,
     RETAINED_ARTIFACT_REQUIRED_SCALING_BASELINES,
     RETAINED_ARTIFACT_REQUIRED_SCALING_RATIOS,
+    RETAINED_ARTIFACT_UNUSABLE_SCALING_BASELINE_STATUSES,
 )
 from scripts.qwen35_kv_policy_args import add_kv_policy_args, kv_policy_json, resolve_args_kv_policy
 
@@ -97,6 +98,7 @@ _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = PROFILER_DISALLOWED_DIAGNOSTIC_KERN
 _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS = RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS
 _REQUIRED_PRIMITIVE_CORRECTNESS_SEED = RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SEED
 _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT = RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT
+_UNUSABLE_SCALING_REFERENCE_STATUSES = RETAINED_ARTIFACT_UNUSABLE_SCALING_BASELINE_STATUSES
 _COMMAND_ENV_KEYS = ("HIP_VISIBLE_DEVICES",)
 
 
@@ -588,6 +590,8 @@ def _scaling_reference(
     if workload_concurrency is None and default_workload_concurrency is not None:
         workload_concurrency = int(default_workload_concurrency)
     status = str(payload.get("status") or "loaded")
+    if status in _UNUSABLE_SCALING_REFERENCE_STATUSES:
+        reasons.append(f"status={status!r} is not usable as a scaling reference")
     if throughput_missing:
         reasons.append("decode throughput fields missing")
     elif not _is_finite_positive_number(aggregate) or not _is_finite_positive_number(per_request):
