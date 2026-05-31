@@ -14,6 +14,7 @@ import argparse
 import csv
 import json
 import math
+import os
 import shlex
 import subprocess
 import sys
@@ -115,6 +116,22 @@ def _strip_command_env_prefix(argv: Sequence[str]) -> list[str]:
     if idx == 0:
         return list(argv)
     return list(argv[idx:])
+
+
+_COMMAND_ENV_KEYS = ("HIP_VISIBLE_DEVICES",)
+
+
+def _command_env_prefix_parts() -> tuple[str, ...]:
+    assignments = tuple(
+        f"{key}={value}"
+        for key in _COMMAND_ENV_KEYS
+        if (value := os.environ.get(key))
+    )
+    return ("env", *assignments) if assignments else ()
+
+
+def _python_command_prefix() -> tuple[str, ...]:
+    return (*_command_env_prefix_parts(), sys.executable)
 
 
 def _required_primitive_context_lens(rows: int) -> list[int]:
@@ -236,7 +253,7 @@ def build_sweep_commands(args: argparse.Namespace) -> tuple[SweepCommand, ...]:
                 batch_size=c,
                 artifact_path=primitive_json,
                 argv=(
-                    sys.executable,
+                    *_python_command_prefix(),
                     _PRIMITIVE_CORRECTNESS_SCRIPT,
                     "--rows",
                     str(c),
@@ -268,7 +285,7 @@ def build_sweep_commands(args: argparse.Namespace) -> tuple[SweepCommand, ...]:
         if c == 1:
             native_json = output_dir / "native-baseline-c1.json"
             native_argv = [
-                sys.executable,
+                *_python_command_prefix(),
                 _LEGACY_NATIVE_BENCH_SCRIPT,
                 "--model",
                 str(args.model),
@@ -332,7 +349,7 @@ def build_sweep_commands(args: argparse.Namespace) -> tuple[SweepCommand, ...]:
                     batch_size=c,
                     artifact_path=int8_json,
                     argv=(
-                        sys.executable,
+                        *_python_command_prefix(),
                         _INT8_DIAGNOSTIC_SCRIPT,
                         "--model",
                         str(args.model),
@@ -364,7 +381,7 @@ def _batch_bench_argv(
     artifact_path: Path,
 ) -> list[str]:
     argv = [
-        sys.executable,
+        *_python_command_prefix(),
         script,
         "--model",
         str(args.model),
@@ -2087,7 +2104,8 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if command_text != shlex.join(argv):
                 errors.append("commands[].command must match shlex.join(commands[].argv)")
                 break
-            if len(argv) < 2 or not _is_python_executable(argv[0]):
+            launch_argv = _strip_command_env_prefix(argv)
+            if len(launch_argv) < 2 or not _is_python_executable(launch_argv[0]):
                 errors.append("commands[].argv must start with a python executable")
                 break
             command_category = entry.get("category")
@@ -2245,7 +2263,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 _INT8_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY: {_INT8_DIAGNOSTIC_SCRIPT},
             }
             expected_scripts = expected_scripts_by_category.get(entry.get("category"))
-            if expected_scripts is not None and (len(argv) < 2 or argv[1] not in expected_scripts):
+            if expected_scripts is not None and (len(launch_argv) < 2 or launch_argv[1] not in expected_scripts):
                 errors.append("commands[].category must match commands[].argv script")
                 break
             if entry.get("category") == _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY and entry.get("batch_size") != 1:

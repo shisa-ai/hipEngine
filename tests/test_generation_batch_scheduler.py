@@ -2248,6 +2248,48 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
         c_sweep.validate_sweep_summary(c1_projection_flag)
 
 
+def test_batch_c_sweep_records_visible_hip_device_env_in_commands(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
+    summary_path = tmp_path / "summary.json"
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--dry-run",
+            "--batch-sizes",
+            "1,2",
+            "--output-dir",
+            str(tmp_path / "artifacts"),
+            "--summary-json",
+            str(summary_path),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+            "--warmup-decode-tokens",
+            "1",
+            "--max-layers",
+            "3",
+        ]
+    )
+
+    planned = build_sweep_commands(args)
+    summary = run_sweep(args)
+    persisted = json.loads(summary_path.read_text())
+
+    assert all(item.argv[:2] == ("env", "HIP_VISIBLE_DEVICES=1") for item in planned)
+    assert all(entry["argv"][:2] == ["env", "HIP_VISIBLE_DEVICES=1"] for entry in persisted["commands"])
+    assert all(entry["command"].startswith("env HIP_VISIBLE_DEVICES=1 ") for entry in persisted["commands"])
+    assert all(c_sweep._strip_command_env_prefix(entry["argv"])[1].startswith("scripts/") for entry in persisted["commands"])
+    assert summary["status"] == "planned"
+    c_sweep.validate_sweep_summary(persisted)
+
+
 def test_retained_bench_projection_dispatch_artifact_env_and_payload(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     artifact_dir = tmp_path / "benchmarks" / "results"
     artifact_dir.mkdir(parents=True)
@@ -2910,7 +2952,7 @@ def test_batch_c_sweep_stops_and_counts_failed_command(tmp_path: Path, monkeypat
     with pytest.raises(ValueError, match=r"commands\[\] failed/skipped row must be final"):
         c_sweep.validate_sweep_summary(tampered_stop_on_failure)
     assert len(calls) == 1
-    assert calls[0][1] == "scripts/qwen35_batch_correctness.py"
+    assert c_sweep._strip_command_env_prefix(calls[0])[1] == "scripts/qwen35_batch_correctness.py"
 
 
 def test_batch_c_sweep_no_stop_counts_failed_and_skipped_rows(tmp_path: Path, monkeypatch) -> None:
@@ -3001,8 +3043,8 @@ def test_batch_c_sweep_no_stop_counts_failed_and_skipped_rows(tmp_path: Path, mo
     with pytest.raises(ValueError, match=r"commands\[\] simple executed rows must contain exactly executed command keys"):
         c_sweep.validate_sweep_summary(tampered_simple_passed_keys)
     assert len(calls) == 2
-    assert calls[0][1] == "scripts/qwen35_batch_correctness.py"
-    assert calls[1][1] == "scripts/qwen35_batch_serial_bench.py"
+    assert c_sweep._strip_command_env_prefix(calls[0])[1] == "scripts/qwen35_batch_correctness.py"
+    assert c_sweep._strip_command_env_prefix(calls[1])[1] == "scripts/qwen35_batch_serial_bench.py"
 
 
 def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: Path, monkeypatch) -> None:
@@ -4343,7 +4385,8 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
 
     def fake_run(argv, **kwargs):
         calls.append(list(argv))
-        if len(argv) > 1 and argv[1] == "scripts/qwen35_batch_retained_bench.py":
+        launch_argv = c_sweep._strip_command_env_prefix(argv)
+        if len(launch_argv) > 1 and launch_argv[1] == "scripts/qwen35_batch_retained_bench.py":
             (output_dir / "native-diagnostic-c2.json").write_text(
                 json.dumps(
                     {
@@ -4380,7 +4423,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     assert summary["failed_postconditions"] == []
     assert [entry["status"] for entry in summary["commands"]] == ["passed", "passed", "passed"]
     assert len(calls) == 3
-    assert calls[-1][1] == "scripts/qwen35_batch_retained_bench.py"
+    assert c_sweep._strip_command_env_prefix(calls[-1])[1] == "scripts/qwen35_batch_retained_bench.py"
     native = summary["commands"][-1]
     assert native["category"] == "native_diagnostic"
     assert [item["kind"] for item in native["preconditions"]] == [
@@ -6002,7 +6045,8 @@ def test_batch_c_sweep_fails_retained_row_on_profiler_synthesis_mismatch(tmp_pat
         stdout = "ok"
 
     def fake_run(argv, **kwargs):
-        if len(argv) > 1 and argv[1] == "scripts/qwen35_batch_retained_bench.py":
+        launch_argv = c_sweep._strip_command_env_prefix(argv)
+        if len(launch_argv) > 1 and launch_argv[1] == "scripts/qwen35_batch_retained_bench.py":
             (output_dir / "native-diagnostic-c2.json").write_text(
                 json.dumps(
                     {
