@@ -7091,6 +7091,75 @@ def test_batch_c_sweep_can_plan_gguf_blocked_diagnostics(tmp_path: Path, monkeyp
         c_sweep.validate_sweep_summary(tampered_artifact)
 
 
+def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--dry-run",
+            "--include-int8",
+            "--include-gguf",
+            "--batch-sizes",
+            "1,2",
+            "--output-dir",
+            str(tmp_path / "artifacts"),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+        ]
+    )
+    expected_plan = [
+        ("primitive", 1),
+        ("serial_bridge", 1),
+        ("native_diagnostic", 1),
+        ("primitive", 2),
+        ("serial_bridge", 2),
+        ("native_diagnostic", 2),
+        ("int8_native_diagnostic", 2),
+        ("gguf_native_diagnostic", 2),
+        ("gguf_native_diagnostic", 2),
+        ("gguf_native_diagnostic", 2),
+        ("gguf_native_diagnostic", 2),
+    ]
+
+    planned = build_sweep_commands(args)
+    summary = run_sweep(args)
+
+    assert [(item.category, item.batch_size) for item in planned] == expected_plan
+    assert [(entry["category"], entry["batch_size"]) for entry in summary["commands"]] == expected_plan
+    assert summary["status"] == "planned"
+    assert summary["options"]["include_int8"] is True
+    assert summary["options"]["include_gguf"] is True
+    assert summary["command_count"] == 11
+    assert summary["completed_command_count"] == 11
+    assert summary["status_counts"] == {"planned": 11}
+    assert summary["category_status_counts"] == {
+        "primitive": {"planned": 2},
+        "serial_bridge": {"planned": 2},
+        "native_diagnostic": {"planned": 2},
+        "int8_native_diagnostic": {"planned": 1},
+        "gguf_native_diagnostic": {"planned": 4},
+    }
+
+    int8_index = next(
+        index for index, entry in enumerate(summary["commands"]) if entry["category"] == "int8_native_diagnostic"
+    )
+    first_gguf_index = next(
+        index for index, entry in enumerate(summary["commands"]) if entry["category"] == "gguf_native_diagnostic"
+    )
+    tampered_order = json.loads(json.dumps(summary))
+    tampered_order["commands"][int8_index], tampered_order["commands"][first_gguf_index] = (
+        tampered_order["commands"][first_gguf_index],
+        tampered_order["commands"][int8_index],
+    )
+    with pytest.raises(
+        ValueError, match=r"commands\[\] category/batch_size order must match batch_sizes/options\.include_int8/include_gguf"
+    ):
+        c_sweep.validate_sweep_summary(tampered_order)
+
+
 def test_projection_dispatch_keeps_c1_on_row_gemv_even_with_fast_candidate() -> None:
     row_gemv = ProjectionKernelSelection("linear", "w4_paro", "row_gemv")
     wmma = ProjectionDispatchCandidate(

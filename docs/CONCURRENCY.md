@@ -1539,7 +1539,9 @@ roll-up/status view.
       `--include-int8` rows now bind c-specific future-retained, CPU primitive,
       and HIP primitive JSON paths and reject stale path labels, duplicate
       INT8 diagnostic flags, or summaries where the `int8_native_diagnostic`
-      rows no longer agree with `options.include_int8`. The future
+      rows no longer agree with `options.include_int8`; combined
+      `--include-int8 --include-gguf` dry-run coverage locks the INT8 row before
+      the GGUF quant fan-out. The future
       retained-bench command now carries `--int8-kv-primitive-cpu-json` and
       `--int8-kv-primitive-hip-json`, `scripts/qwen35_kv_int8_accuracy.py`
       self-describes written JSON paths, and accepted c>N artifact schema
@@ -1605,7 +1607,8 @@ roll-up/status view.
       and rejects stale GGUF fixture/backend/decode-length labels, duplicate
       GGUF diagnostic flags, duplicate/unsupported quant order, artifact
       filename metadata, or summaries where GGUF diagnostic rows no longer
-      agree with `options.include_gguf`;
+      agree with `options.include_gguf`; combined `--include-int8 --include-gguf`
+      dry-run coverage locks the four-quant fan-out after the INT8 row;
       covered by `test_gguf_cN_diagnostic_template_records_blocked_c2_command`
       and `test_batch_c_sweep_can_plan_gguf_blocked_diagnostics` in
       `pytest -q tests/test_generation_batch_scheduler.py -q`.
