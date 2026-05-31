@@ -3590,8 +3590,8 @@ def _valid_request_observability(row: Any, errors: list[str]) -> bool:
             errors.append(f"observability.per_request.*.{field} must be finite non-negative numeric for accepted artifacts")
             ok = False
     for field in ("kv_pages_owned", "kv_pages_peak"):
-        if field in row and not isinstance(row.get(field), int):
-            errors.append(f"observability.per_request.*.{field} must be an int for accepted artifacts")
+        if field in row and (not isinstance(row.get(field), int) or isinstance(row.get(field), bool) or row.get(field) < 0):
+            errors.append(f"observability.per_request.*.{field} must be a non-negative int for accepted artifacts")
             ok = False
     if "bucket_key" in row and row.get("bucket_key") is not None and (not isinstance(row.get("bucket_key"), str) or not row.get("bucket_key").strip()):
         errors.append("observability.per_request.*.bucket_key must be a non-empty string or null for accepted artifacts")

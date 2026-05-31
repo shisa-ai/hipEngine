@@ -15809,6 +15809,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match=r"observability.per_request.\*.admission_blocked_reason must be a non-empty string or null"):
         validate_cn_diagnostic_artifact_payload(blank_observed_admission_blocker)
 
+    negative_observed_kv_pages = json.loads(json.dumps(accepted))
+    negative_observed_kv_pages["observability"]["per_request"]["0"]["kv_pages_owned"] = -1
+    with pytest.raises(ValueError, match=r"observability.per_request.\*.kv_pages_owned must be a non-negative int"):
+        validate_cn_diagnostic_artifact_payload(negative_observed_kv_pages)
+
+    bool_observed_kv_pages = json.loads(json.dumps(accepted))
+    bool_observed_kv_pages["observability"]["per_request"]["0"]["kv_pages_peak"] = True
+    with pytest.raises(ValueError, match=r"observability.per_request.\*.kv_pages_peak must be a non-negative int"):
+        validate_cn_diagnostic_artifact_payload(bool_observed_kv_pages)
+
     missing_warmup_decode_tokens = json.loads(json.dumps(accepted))
     missing_warmup_decode_tokens["workload"].pop("warmup_decode_tokens")
     with pytest.raises(ValueError, match="warmup_decode_tokens must be a non-negative int"):
