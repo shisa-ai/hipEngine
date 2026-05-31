@@ -1005,6 +1005,7 @@ def validate_cn_diagnostic_artifact_payload(payload: Mapping[str, Any]) -> None:
     correctness = _mapping_at(payload, "correctness", errors)
     if not isinstance(correctness.get("passed"), bool):
         errors.append("correctness.passed must be a bool")
+    _validate_claimed_generated_token_equality(correctness, workload, errors)
 
     execution = _mapping_at(payload, "execution", errors)
     batch_execution = execution.get("batch_execution")
@@ -2564,6 +2565,64 @@ def _validate_int8_kv_primitive_layer_accuracy_gates(
                 errors.append(f"commands.{command_field} must include {flag} for accepted int8_per_token_head artifacts")
             elif isinstance(artifact_path, str) and artifact_path and flag_value != artifact_path:
                 errors.append(f"commands.{command_field} {flag} must match correctness.int8_kv_primitive_layer_accuracy.{label}.artifact_path for accepted int8_per_token_head artifacts")
+
+
+def _validate_claimed_generated_token_equality(
+    correctness: Mapping[str, Any],
+    workload: Mapping[str, Any],
+    errors: list[str],
+) -> None:
+    equality = correctness.get("generated_token_equality")
+    if not isinstance(equality, Mapping) or equality.get("passed") is not True:
+        return
+    if equality.get("skipped") is not False:
+        errors.append("correctness.generated_token_equality.skipped must be false when passed is true")
+    batch_sequences = equality.get("batch_sequences")
+    c1_sequences = equality.get("c1_sequences")
+    if not isinstance(batch_sequences, list):
+        errors.append("correctness.generated_token_equality.batch_sequences must be a list when passed is true")
+    if not isinstance(c1_sequences, list):
+        errors.append("correctness.generated_token_equality.c1_sequences must be a list when passed is true")
+    concurrency = workload.get("concurrency")
+    concurrency_valid = isinstance(concurrency, int) and not isinstance(concurrency, bool) and concurrency > 1
+    if concurrency_valid:
+        if isinstance(batch_sequences, list) and len(batch_sequences) != concurrency:
+            errors.append("correctness.generated_token_equality.batch_sequences length must match workload.concurrency when passed is true")
+        if isinstance(c1_sequences, list) and len(c1_sequences) != concurrency:
+            errors.append("correctness.generated_token_equality.c1_sequences length must match workload.concurrency when passed is true")
+    gen_tokens = workload.get("gen_tokens_per_request")
+    warmup_tokens = workload.get("warmup_decode_tokens")
+    expected_tokens = None
+    if (
+        isinstance(gen_tokens, int)
+        and not isinstance(gen_tokens, bool)
+        and gen_tokens > 0
+        and isinstance(warmup_tokens, int)
+        and not isinstance(warmup_tokens, bool)
+        and warmup_tokens >= 0
+    ):
+        expected_tokens = 1 + int(warmup_tokens) + int(gen_tokens)
+    for label, sequences in (
+        ("correctness.generated_token_equality.batch_sequences", batch_sequences),
+        ("correctness.generated_token_equality.c1_sequences", c1_sequences),
+    ):
+        if not isinstance(sequences, list):
+            continue
+        for index, sequence in enumerate(sequences):
+            if not isinstance(sequence, list):
+                errors.append(f"{label}[{index}] must be a per-row token-id list when passed is true")
+                continue
+            if expected_tokens is not None and len(sequence) != expected_tokens:
+                errors.append(f"{label}[{index}] length must match seed plus workload.warmup_decode_tokens plus workload.gen_tokens_per_request when passed is true")
+            if any(not isinstance(token, int) or isinstance(token, bool) for token in sequence):
+                errors.append(f"{label}[{index}] must contain only token ids when passed is true")
+    if isinstance(batch_sequences, list) and isinstance(c1_sequences, list) and batch_sequences != c1_sequences:
+        errors.append("correctness.generated_token_equality.batch_sequences must equal c1_sequences when passed is true")
+    mismatches = equality.get("mismatches")
+    if not isinstance(mismatches, list):
+        errors.append("correctness.generated_token_equality.mismatches must be a list when passed is true")
+    elif mismatches:
+        errors.append("correctness.generated_token_equality.mismatches must be empty when passed is true")
 
 
 def _validate_primitive_device_metadata(device: Any, errors: list[str]) -> None:

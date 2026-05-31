@@ -11302,6 +11302,55 @@ def test_qwen35_batch_diagnostic_artifact_schema_requires_label_fields() -> None
         validate_cn_diagnostic_artifact_payload(missing)
 
 
+def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equality() -> None:
+    payload = {
+        "status": "blocked",
+        "performance_claim": False,
+        "workload": {
+            "native_compact_prefill": True,
+            "native_caware_decode": False,
+            "concurrency": 2,
+            "warmup_decode_tokens": 0,
+            "gen_tokens_per_request": 2,
+        },
+        "correctness": {
+            "passed": False,
+            "generated_token_equality": {
+                "passed": True,
+                "skipped": False,
+                "batch_sequences": [[10, 11, 12], [20, 21, 22]],
+                "c1_sequences": [[10, 11, 12], [20, 21, 22]],
+                "mismatches": [],
+            },
+        },
+        "execution": {
+            "batch_execution": {
+                "native_compact_prefill": True,
+                "native_caware_decode": False,
+                "throughput_claim_eligible": False,
+            }
+        },
+        "decision": {"accepted": False},
+    }
+
+    validate_cn_diagnostic_artifact_payload(payload)
+
+    missing_c1 = json.loads(json.dumps(payload))
+    missing_c1["correctness"]["generated_token_equality"].pop("c1_sequences")
+    with pytest.raises(ValueError, match="c1_sequences must be a list when passed is true"):
+        validate_cn_diagnostic_artifact_payload(missing_c1)
+
+    mismatched_c1 = json.loads(json.dumps(payload))
+    mismatched_c1["correctness"]["generated_token_equality"]["c1_sequences"][1][2] = 99
+    with pytest.raises(ValueError, match="batch_sequences must equal c1_sequences when passed is true"):
+        validate_cn_diagnostic_artifact_payload(mismatched_c1)
+
+    skipped_claim = json.loads(json.dumps(payload))
+    skipped_claim["correctness"]["generated_token_equality"]["skipped"] = True
+    with pytest.raises(ValueError, match="skipped must be false when passed is true"):
+        validate_cn_diagnostic_artifact_payload(skipped_claim)
+
+
 def test_qwen35_retained_payload_json_rejects_nan() -> None:
     with pytest.raises(ValueError, match="Out of range float values"):
         retained_bench._payload_json({"bad": float("nan")})
@@ -12765,7 +12814,7 @@ def test_qwen35_retained_payload_mirrors_fallback_native_decode_label(monkeypatc
         ["--batch-size", "2"],
         bench,
         [512, 512],
-        {"passed": True, "skipped": False, "batch_sequences": [[10], [20]], "c1_sequences": [[10], [20]], "mismatches": []},
+        {"passed": True, "skipped": False, "batch_sequences": [[10, *([11] * 128)], [20, *([21] * 128)]], "c1_sequences": [[10, *([11] * 128)], [20, *([21] * 128)]], "mismatches": []},
     )
 
     assert payload["status"] == "blocked"
@@ -14314,7 +14363,7 @@ def test_qwen35_retained_payload_blocks_acceptance_without_graph_histogram_evide
         ["--batch-size", "2"],
         bench,
         [512, 512],
-        {"passed": True, "skipped": False, "batch_sequences": [[10], [20]], "c1_sequences": [[10], [20]], "mismatches": []},
+        {"passed": True, "skipped": False, "batch_sequences": [[10, *([11] * 128)], [20, *([21] * 128)]], "c1_sequences": [[10, *([11] * 128)], [20, *([21] * 128)]], "mismatches": []},
     )
 
     assert payload["status"] == "blocked"
@@ -14406,7 +14455,7 @@ def test_qwen35_retained_payload_blocks_acceptance_without_memory_evidence(monke
         ["--batch-size", "2"],
         bench,
         [512, 512],
-        {"passed": True, "skipped": False, "batch_sequences": [[10], [20]], "c1_sequences": [[10], [20]], "mismatches": []},
+        {"passed": True, "skipped": False, "batch_sequences": [[10, *([11] * 128)], [20, *([21] * 128)]], "c1_sequences": [[10, *([11] * 128)], [20, *([21] * 128)]], "mismatches": []},
     )
 
     assert payload["status"] == "blocked"
