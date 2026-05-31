@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import struct
 from dataclasses import dataclass
 from importlib import import_module
 from pathlib import Path
@@ -568,6 +569,46 @@ class StepFunKVDecodeRunPlan:
             "note": "Host-side upload manifest for metadata-only StepFun KV decode planning.",
         }
 
+    def _span_input_values_for_source(self, source: str) -> list[int]:
+        if source == "prompt_span_inputs.base_offsets":
+            return list(self.prompt_span_base_offsets)
+        if source == "prompt_span_inputs.live_counts":
+            return list(self.prompt_positions)
+        if source == "decode_span_inputs.base_offsets":
+            return list(self.decode_span_base_offsets)
+        if source == "decode_span_inputs.kv_write_position":
+            return [self.decode_position]
+        if source == "decode_span_inputs.attention_live_counts":
+            return [self.decode_live_count]
+        raise KeyError(f"unknown StepFun KV upload source: {source}")
+
+    @property
+    def span_input_host_payloads(self) -> dict[str, object]:
+        entries: list[dict[str, object]] = []
+        for manifest_entry in self.span_input_upload_manifest["entries"]:
+            source = str(manifest_entry["source"])
+            dtype = str(manifest_entry["dtype"])
+            values = self._span_input_values_for_source(source)
+            payload = _pack_integer_payload(dtype, values)
+            entries.append(
+                {
+                    "name": manifest_entry["name"],
+                    "source": source,
+                    "dtype": dtype,
+                    "byte_order": "little",
+                    "value_count": len(values),
+                    "nbytes": len(payload),
+                    "sha256": hashlib.sha256(payload).hexdigest(),
+                    "preview_values": values[:8],
+                }
+            )
+        return {
+            "entries": entries,
+            "entry_count": len(entries),
+            "total_nbytes": sum(int(entry["nbytes"]) for entry in entries),
+            "note": "Deterministic little-endian host payload hashes for StepFun KV span inputs.",
+        }
+
     @property
     def prompt_fits_resource_plan(self) -> bool:
         return self.prompt_length <= self.max_prompt_rows
@@ -601,6 +642,7 @@ class StepFunKVDecodeRunPlan:
             "decode_span_inputs": self.decode_span_inputs,
             "span_input_total_nbytes": self.span_input_total_nbytes,
             "span_input_upload_manifest": self.span_input_upload_manifest,
+            "span_input_host_payloads": self.span_input_host_payloads,
             "prompt_fits_resource_plan": self.prompt_fits_resource_plan,
             "context_fits_resource_plan": self.context_fits_resource_plan,
             "stop_token_ids": list(self.decode_plan.stop_token_ids),
@@ -1818,6 +1860,16 @@ def _planning_bf16_kv_spans(
 
 def _ceil_div(value: int, divisor: int) -> int:
     return (int(value) + int(divisor) - 1) // int(divisor)
+
+
+def _pack_integer_payload(dtype: str, values: Sequence[int]) -> bytes:
+    if dtype == "int32":
+        code = "i"
+    elif dtype == "int64":
+        code = "q"
+    else:
+        raise ValueError(f"unsupported StepFun KV span payload dtype: {dtype}")
+    return struct.pack("<" + code * len(values), *[int(value) for value in values])
 
 
 def _can_resolve_kernel_key(key: KernelKey) -> bool:

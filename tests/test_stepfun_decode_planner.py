@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import struct
 import sys
 from pathlib import Path
 
@@ -204,6 +205,29 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
         "total_nbytes": prompt_base_offsets_nbytes + prompt_live_counts_nbytes + 24,
         "note": "Host-side upload manifest for metadata-only StepFun KV decode planning.",
     }
+    prompt_base_payload = struct.pack(
+        "<" + "i" * prompt_base_offsets_len,
+        *[value for _ in range(run_plan.prompt_length) for value in (0, 1)],
+    )
+    prompt_live_payload = struct.pack(
+        "<" + "q" * run_plan.prompt_length,
+        *range(run_plan.prompt_length),
+    )
+    host_payloads = payload["span_input_host_payloads"]
+    assert host_payloads["entry_count"] == 5
+    assert host_payloads["total_nbytes"] == prompt_base_offsets_nbytes + prompt_live_counts_nbytes + 24
+    assert host_payloads["entries"][0] == {
+        "name": "prompt_base_offsets",
+        "source": "prompt_span_inputs.base_offsets",
+        "dtype": "int32",
+        "byte_order": "little",
+        "value_count": prompt_base_offsets_len,
+        "nbytes": prompt_base_offsets_nbytes,
+        "sha256": hashlib.sha256(prompt_base_payload).hexdigest(),
+        "preview_values": [0, 1, 0, 1, 0, 1, 0, 1],
+    }
+    assert host_payloads["entries"][1]["sha256"] == hashlib.sha256(prompt_live_payload).hexdigest()
+    assert host_payloads["entries"][3]["preview_values"] == [run_plan.prompt_length]
     assert payload["stop_token_ids"] == [1, 2, 128007]
     assert payload["kv_dispatch_keys"]["decode_attention"] == {
         "backend": "hip_gfx1151",

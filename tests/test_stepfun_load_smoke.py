@@ -162,6 +162,14 @@ def test_stepfun_load_smoke_dry_run_plan_emits_resource_json(capsys: pytest.Capt
         "shape": [],
         "nbytes": 8,
     }
+    host_payloads = run_plan["span_input_host_payloads"]
+    assert host_payloads["entry_count"] == 5
+    assert host_payloads["total_nbytes"] == upload_manifest["total_nbytes"]
+    assert host_payloads["entries"][0]["byte_order"] == "little"
+    assert host_payloads["entries"][0]["value_count"] == run_plan["prompt_length"] * 2
+    assert host_payloads["entries"][0]["preview_values"] == [0, 1, 0, 1, 0, 1, 0, 1]
+    assert len(host_payloads["entries"][0]["sha256"]) == 64
+    assert host_payloads["entries"][3]["preview_values"] == [run_plan["prompt_length"]]
     assert run_plan["prompt_fits_resource_plan"] is True
     assert run_plan["context_fits_resource_plan"] is True
     assert run_plan["stop_token_ids"] == [1, 2, 128007]

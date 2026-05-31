@@ -343,6 +343,63 @@ def _write_resource_artifact(path: Path) -> None:
                         "note": "Host-side upload manifest for metadata-only StepFun KV decode planning.",
                         "total_nbytes": 392,
                     },
+                    "span_input_host_payloads": {
+                        "entries": [
+                            {
+                                "byte_order": "little",
+                                "dtype": "int32",
+                                "name": "prompt_base_offsets",
+                                "nbytes": 184,
+                                "preview_values": [0, 1, 0, 1, 0, 1, 0, 1],
+                                "sha256": "a" * 64,
+                                "source": "prompt_span_inputs.base_offsets",
+                                "value_count": 46,
+                            },
+                            {
+                                "byte_order": "little",
+                                "dtype": "int64",
+                                "name": "prompt_live_counts",
+                                "nbytes": 184,
+                                "preview_values": list(range(8)),
+                                "sha256": "b" * 64,
+                                "source": "prompt_span_inputs.live_counts",
+                                "value_count": 23,
+                            },
+                            {
+                                "byte_order": "little",
+                                "dtype": "int32",
+                                "name": "decode_base_offsets",
+                                "nbytes": 8,
+                                "preview_values": [0, 1],
+                                "sha256": "c" * 64,
+                                "source": "decode_span_inputs.base_offsets",
+                                "value_count": 2,
+                            },
+                            {
+                                "byte_order": "little",
+                                "dtype": "int64",
+                                "name": "decode_kv_write_position",
+                                "nbytes": 8,
+                                "preview_values": [23],
+                                "sha256": "d" * 64,
+                                "source": "decode_span_inputs.kv_write_position",
+                                "value_count": 1,
+                            },
+                            {
+                                "byte_order": "little",
+                                "dtype": "int64",
+                                "name": "decode_attention_live_counts",
+                                "nbytes": 8,
+                                "preview_values": [23],
+                                "sha256": "e" * 64,
+                                "source": "decode_span_inputs.attention_live_counts",
+                                "value_count": 1,
+                            },
+                        ],
+                        "entry_count": 5,
+                        "note": "Deterministic little-endian host payload hashes for StepFun KV span inputs.",
+                        "total_nbytes": 392,
+                    },
                     "stop_token_ids": [1, 2, 128007],
                     "streaming_runner_ready": False,
                 },
@@ -544,6 +601,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "source": "prompt_span_inputs.base_offsets",
     }
     assert upload_manifest["entries"][3]["source"] == "decode_span_inputs.kv_write_position"
+    host_payloads = kv_dispatch["run_plan"]["span_input_host_payloads"]
+    assert host_payloads["entry_count"] == 5
+    assert host_payloads["total_nbytes"] == 392
+    assert host_payloads["entries"][0]["sha256"] == "a" * 64
+    assert host_payloads["entries"][0]["preview_values"] == [0, 1, 0, 1, 0, 1, 0, 1]
+    assert host_payloads["entries"][3]["preview_values"] == [23]
     assert kv_dispatch["run_plan"]["prompt_positions"] == list(range(23))
     assert kv_dispatch["run_plan"]["decode_position"] == 23
     assert kv_dispatch["run_plan"]["decode_live_count"] == 23
@@ -591,6 +654,8 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "run_plan_prompt_span_base_offsets_len": 46,
         "run_plan_rendered_prompt_sha256": "0" * 64,
         "run_plan_span_input_total_nbytes": 384,
+        "run_plan_host_payload_entry_count": 5,
+        "run_plan_host_payload_total_nbytes": 392,
         "run_plan_streaming_ready": False,
         "run_plan_upload_manifest_entry_count": 5,
         "run_plan_upload_manifest_total_nbytes": 392,
