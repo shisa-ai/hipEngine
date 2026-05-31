@@ -28035,3 +28035,32 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted status tests passed (`3 passed`), artifact schema check printed `stepfun readiness gates status ok`, and the full StepFun guard passed (`103 passed` plus CPU-reference fixture checks).
+
+## 2026-05-31 — StepFun source artifact provenance recorded
+
+Extended the consolidated StepFun Q3_K_L correctness-status helper with `source_artifacts` provenance for the prompt-smoke artifact, llama.cpp oracle artifact, text-resource dry-run artifact, and `docs/STEPFUN.md`. The regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json` now records each input path, existence bit, byte size, and SHA-256 digest so future handoffs can verify exactly which blocker/source inputs produced the summary. This is provenance/status evidence only; `oracle_parity=false`, `kv_backed_decode_ready=false`, and `e2e_inference_ready=false` remain unchanged.
+
+Updated `tests/test_stepfun_correctness_status.py` to assert digest/size propagation and clarified the P11 status paragraph in `docs/STEPFUN.md`.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 - <<'PY'
+import hashlib, json
+from pathlib import Path
+p=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+for name, path in [('prompt', p['prompt_artifact']), ('oracle', p['oracle_artifact']), ('text_resource', p['text_resource_artifact']), ('docs', 'docs/STEPFUN.md')]:
+    rec=p['source_artifacts'][name]
+    data=Path(path).read_bytes()
+    assert rec['exists'] is True
+    assert rec['size_bytes'] == len(data)
+    assert rec['sha256'] == hashlib.sha256(data).hexdigest()
+assert p['oracle_parity'] is False
+assert p['kv_backed_decode_ready'] is False
+print('stepfun source artifact provenance ok')
+PY
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted status tests passed (`3 passed`), artifact provenance check printed `stepfun source artifact provenance ok`, and the full StepFun guard passed (`103 passed` plus CPU-reference fixture checks).

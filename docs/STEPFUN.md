@@ -615,7 +615,9 @@ reporting.
   all-layer prompt smoke, lists machine-readable next actions for each blocker,
   and now includes `readiness_gates` for `oracle_parity`, `kv_backed_decode`,
   and `e2e_inference` so each false readiness boolean carries required evidence
-  and current blocker state. Remaining implementation task: run a longer/faster
+  and current blocker state. The same status artifact records `source_artifacts`
+  path/size/SHA-256 provenance for the prompt, oracle, resource-plan, and docs
+  inputs used to compute the summary. Remaining implementation task: run a longer/faster
   StepFun-capable llama.cpp oracle and review/record the parsed result;
   KV-backed decode parity remains open too.
 - [x] Preserve multi-EOS stopping and the chat assistant prefix. The short

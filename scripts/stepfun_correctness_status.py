@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -39,6 +40,40 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 def _load(path: Path) -> dict[str, object]:
     return json.loads(path.read_text())
+
+
+def _artifact_record(path: Path) -> dict[str, object]:
+    """Return stable provenance metadata for an input artifact."""
+
+    if not path.exists():
+        return {
+            "path": str(path),
+            "exists": False,
+            "size_bytes": None,
+            "sha256": None,
+        }
+    data = path.read_bytes()
+    return {
+        "path": str(path),
+        "exists": True,
+        "size_bytes": len(data),
+        "sha256": hashlib.sha256(data).hexdigest(),
+    }
+
+
+def _source_artifacts(
+    *,
+    prompt_artifact: Path,
+    oracle_artifact: Path,
+    resource_artifact: Path,
+    docs_path: Path,
+) -> dict[str, object]:
+    return {
+        "prompt": _artifact_record(prompt_artifact),
+        "oracle": _artifact_record(oracle_artifact),
+        "text_resource": _artifact_record(resource_artifact),
+        "docs": _artifact_record(docs_path),
+    }
 
 
 def _docs_checklist_status(docs_path: Path) -> dict[str, object]:
@@ -380,6 +415,12 @@ def build_status(
     return {
         "status": "blocked" if blockers else "ready",
         "model": "Step-3.7-flash-Q3_K_L",
+        "source_artifacts": _source_artifacts(
+            prompt_artifact=prompt_artifact,
+            oracle_artifact=oracle_artifact,
+            resource_artifact=resource_artifact,
+            docs_path=docs_path,
+        ),
         "backend": prompt.get("backend", "hip_gfx1151"),
         "prompt_artifact": str(prompt_artifact),
         "oracle_artifact": str(oracle_artifact),

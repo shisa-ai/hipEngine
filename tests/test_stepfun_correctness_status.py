@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -204,6 +205,31 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     status = build_status(prompt, oracle, docs, resource_artifact=resource)
 
     assert status["status"] == "blocked"
+    source_artifacts = status["source_artifacts"]
+    assert source_artifacts["prompt"] == {
+        "path": str(prompt),
+        "exists": True,
+        "size_bytes": len(prompt.read_bytes()),
+        "sha256": hashlib.sha256(prompt.read_bytes()).hexdigest(),
+    }
+    assert source_artifacts["oracle"] == {
+        "path": str(oracle),
+        "exists": True,
+        "size_bytes": len(oracle.read_bytes()),
+        "sha256": hashlib.sha256(oracle.read_bytes()).hexdigest(),
+    }
+    assert source_artifacts["text_resource"] == {
+        "path": str(resource),
+        "exists": True,
+        "size_bytes": len(resource.read_bytes()),
+        "sha256": hashlib.sha256(resource.read_bytes()).hexdigest(),
+    }
+    assert source_artifacts["docs"] == {
+        "path": str(docs),
+        "exists": True,
+        "size_bytes": len(docs.read_bytes()),
+        "sha256": hashlib.sha256(docs.read_bytes()).hexdigest(),
+    }
     assert status["all_layer_prompt_smoke"] is True
     assert status["all_layer_prompt_next_token_id"] == 369
     assert status["oracle_parity"] is False
@@ -380,6 +406,10 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
     assert captured.err == ""
     payload = json.loads(output.read_text())
     assert payload["status"] == "blocked"
+    assert payload["source_artifacts"]["prompt"]["sha256"] == hashlib.sha256(prompt.read_bytes()).hexdigest()
+    assert payload["source_artifacts"]["oracle"]["size_bytes"] == len(oracle.read_bytes())
+    assert payload["source_artifacts"]["text_resource"]["exists"] is True
+    assert payload["source_artifacts"]["docs"]["path"] == str(docs)
     assert payload["all_layer_prompt_smoke"] is True
     assert payload["e2e_inference_ready"] is False
     assert payload["oracle_progress"]["expected_next_token_id"] == 369

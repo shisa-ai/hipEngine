@@ -257,6 +257,32 @@
       "required_evidence": "A StepFun/step35-capable oracle must generate a comparable token and match the expected next-token text/logit policy recorded in oracle_progress."
     }
   },
+  "source_artifacts": {
+    "docs": {
+      "exists": true,
+      "path": "docs/STEPFUN.md",
+      "sha256": "b547340b2aa394c60146971f275cb86049903b600ece247bd6e1ebce56802813",
+      "size_bytes": 50165
+    },
+    "oracle": {
+      "exists": true,
+      "path": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
+      "sha256": "20e4827c088946bc85ea5502f7eef120da7ba198b81159c238e82eee89899c21",
+      "size_bytes": 3402
+    },
+    "prompt": {
+      "exists": true,
+      "path": "benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json",
+      "sha256": "006fe48c5c6303e023a5f6be2920b4c13afe22be023e84fa9dc089e1d5b0e905",
+      "size_bytes": 33153
+    },
+    "text_resource": {
+      "exists": true,
+      "path": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
+      "sha256": "3677953e6aa6b9957f0389598cde0e7f82c518fdaa6dd921ce527dd38bc70a69",
+      "size_bytes": 31029
+    }
+  },
   "status": "blocked",
   "step35_supported_by_local_llama_cpp": null,
   "text_resource_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json"
