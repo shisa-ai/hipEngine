@@ -13344,6 +13344,10 @@ def test_qwen35_retained_artifact_paths_reject_symlink_escapes(
 
     assert retained_bench._is_retained_artifact_path("benchmarks/results/source.json")
     assert retained_bench._retained_output_artifact_blockers("benchmarks/results/source.json") == []
+    assert retained_bench._retained_json_artifact_path_blockers(
+        "primitive_correctness_json",
+        "benchmarks/results/primitive-c2.json",
+    ) == []
     assert not retained_bench._is_retained_artifact_path("/tmp/source.json")
     assert retained_bench._retained_output_artifact_blockers("/tmp/source.json") == [
         "artifact_path must be a repo-relative path under benchmarks/results"
@@ -13351,6 +13355,9 @@ def test_qwen35_retained_artifact_paths_reject_symlink_escapes(
     assert not retained_bench._is_retained_artifact_path("benchmarks/results/../source.json")
     assert retained_bench._retained_output_artifact_blockers(None) == [
         "artifact_path must be provided under benchmarks/results"
+    ]
+    assert retained_bench._retained_json_artifact_path_blockers("primitive_correctness_json", None) == [
+        "primitive_correctness_json must be provided under benchmarks/results"
     ]
     assert retained_bench._retained_output_artifact_blockers("benchmarks/results/source.txt") == [
         "artifact_path must point to a .json artifact"
@@ -15089,6 +15096,7 @@ def test_qwen35_retained_payload_blocks_acceptance_without_memory_evidence(monke
     assert payload["decision"]["accepted"] is False
     assert "memory.allocator_reserved_peak_bytes" in payload["decision"]["reason"]
     assert "memory.stable_block_id.passed" in payload["decision"]["reason"]
+    assert "primitive_correctness_json must be provided under benchmarks/results" in payload["decision"]["reason"]
 
 
 def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(

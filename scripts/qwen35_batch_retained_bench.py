@@ -948,16 +948,20 @@ def _is_retained_artifact_path(value: Any) -> bool:
         return False
 
 
-def _retained_output_artifact_blockers(path: Any) -> list[str]:
+def _retained_json_artifact_path_blockers(label: str, path: Any) -> list[str]:
     if path is None:
-        return ["artifact_path must be provided under benchmarks/results"]
+        return [f"{label} must be provided under benchmarks/results"]
     path_text = str(path)
     blockers: list[str] = []
     if not _is_retained_artifact_path(path_text):
-        blockers.append("artifact_path must be a repo-relative path under benchmarks/results")
+        blockers.append(f"{label} must be a repo-relative path under benchmarks/results")
     if Path(path_text).suffix.lower() != ".json":
-        blockers.append("artifact_path must point to a .json artifact")
+        blockers.append(f"{label} must point to a .json artifact")
     return blockers
+
+
+def _retained_output_artifact_blockers(path: Any) -> list[str]:
+    return _retained_json_artifact_path_blockers("artifact_path", path)
 
 
 def _synthesized_profiler_total_kernel_duration(profiler: Mapping[str, Any]) -> float | None:
@@ -3549,6 +3553,10 @@ def _build_payload(
         expected_warmup_decode_tokens=args.warmup_decode_tokens,
     )
     output_artifact_blockers = _retained_output_artifact_blockers(getattr(args, "json", None))
+    primitive_path_blockers = _retained_json_artifact_path_blockers(
+        "primitive_correctness_json",
+        primitive_correctness_path,
+    )
     batch_execution = dict(bench["batch_execution"])
     throughput_claim_eligible = bool(batch_execution.get("throughput_claim_eligible"))
     native_caware_decode = bool(batch_execution.get("native_caware_decode"))
@@ -3619,6 +3627,7 @@ def _build_payload(
         and equality_passed
         and not equality_structure_blockers
         and not output_artifact_blockers
+        and not primitive_path_blockers
         and primitive_passed
         and protocol_shape
         and scaling_complete
@@ -3645,6 +3654,7 @@ def _build_payload(
         blocked_reasons.append("generated-token equality vs independent c=1 did not pass")
     blocked_reasons.extend(equality_structure_blockers)
     blocked_reasons.extend(output_artifact_blockers)
+    blocked_reasons.extend(primitive_path_blockers)
     if not primitive_passed:
         blocked_reasons.append(f"primitive c>N correctness gate did not pass: {primitive_correctness.get('reason')}")
     if args.prompt_length < 512 or args.decode_tokens < 128:
