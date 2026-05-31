@@ -2562,6 +2562,66 @@ def _token_payload_ids(value: Any) -> list[int] | None:
     return ids
 
 
+def _execution_token_evidence_blockers(
+    seed_tokens: Any,
+    generated_tokens: Any,
+    equality: Mapping[str, Any],
+    *,
+    expected_concurrency: int,
+    expected_decode_tokens: int,
+) -> list[str]:
+    blockers: list[str] = []
+    expected_keys = {str(request_id) for request_id in range(expected_concurrency)}
+    batch_sequences = equality.get("batch_sequences")
+    if not isinstance(seed_tokens, Mapping):
+        blockers.append("execution.seed_tokens is missing")
+    else:
+        if set(seed_tokens.keys()) != expected_keys:
+            blockers.append("execution.seed_tokens keys do not match expected row ids")
+        for request_id in range(expected_concurrency):
+            row = seed_tokens.get(str(request_id))
+            label = f"execution.seed_tokens.{request_id}"
+            if not isinstance(row, Mapping):
+                blockers.append(f"{label} is not an object")
+                continue
+            token_id = row.get("token_id")
+            if not isinstance(token_id, int) or isinstance(token_id, bool) or token_id < 0:
+                blockers.append(f"{label}.token_id is not a non-negative int")
+                continue
+            if (
+                isinstance(batch_sequences, list)
+                and request_id < len(batch_sequences)
+                and isinstance(batch_sequences[request_id], list)
+                and batch_sequences[request_id]
+                and token_id != batch_sequences[request_id][0]
+            ):
+                blockers.append(f"{label}.token_id does not match generated-token equality seed")
+    if not isinstance(generated_tokens, Mapping):
+        blockers.append("execution.generated_tokens is missing")
+    else:
+        if set(generated_tokens.keys()) != expected_keys:
+            blockers.append("execution.generated_tokens keys do not match expected row ids")
+        for request_id in range(expected_concurrency):
+            label = f"execution.generated_tokens.{request_id}"
+            token_ids = _token_payload_ids(generated_tokens.get(str(request_id)))
+            if token_ids is None:
+                blockers.append(f"{label} is not a token payload list")
+                continue
+            if len(token_ids) != expected_decode_tokens:
+                blockers.append(f"{label} length does not match expected decode tokens")
+            if (
+                isinstance(batch_sequences, list)
+                and request_id < len(batch_sequences)
+                and isinstance(batch_sequences[request_id], list)
+                and len(batch_sequences[request_id]) >= expected_decode_tokens
+            ):
+                expected_suffix = batch_sequences[request_id][-expected_decode_tokens:]
+                suffix_is_ints = all(isinstance(token, int) and not isinstance(token, bool) for token in expected_suffix)
+                if suffix_is_ints and token_ids != [int(token) for token in expected_suffix]:
+                    blockers.append(f"{label} does not match generated-token equality decode suffix")
+    return blockers
+
+
 def _request_observability_blockers(per_request: Any, *, expected_concurrency: int) -> list[str]:
     if not isinstance(per_request, Mapping):
         return ["observability.per_request is missing"]
@@ -3415,6 +3475,13 @@ def _build_payload(
         per_request_observability,
         expected_concurrency=args.batch_size,
     )
+    token_evidence_blockers = _execution_token_evidence_blockers(
+        bench.get("seed_tokens"),
+        bench.get("generated_tokens"),
+        equality,
+        expected_concurrency=args.batch_size,
+        expected_decode_tokens=args.decode_tokens,
+    )
     completed_blockers = _completed_execution_blockers(
         bench.get("completed"),
         expected_concurrency=args.batch_size,
@@ -3445,6 +3512,7 @@ def _build_payload(
         and not sampler_blockers
         and not memory_blockers
         and not observability_blockers
+        and not token_evidence_blockers
         and not completed_blockers
         and not graph_bucket_blockers
         and not int8_kv_primitive_blockers
@@ -3475,6 +3543,7 @@ def _build_payload(
     blocked_reasons.extend(sampler_blockers)
     blocked_reasons.extend(memory_blockers)
     blocked_reasons.extend(observability_blockers)
+    blocked_reasons.extend(token_evidence_blockers)
     blocked_reasons.extend(completed_blockers)
     blocked_reasons.extend(graph_bucket_blockers)
     blocked_reasons.extend(int8_kv_primitive_blockers)

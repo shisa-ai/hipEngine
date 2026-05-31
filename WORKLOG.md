@@ -52672,3 +52672,25 @@ git diff --check
 ```
 
 Result: focused retained completed-request blocker tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed items were not changed, no retained c>N performance/scaling claim was added, and retained preflight now rejects malformed completed-request execution evidence before promotion.
+
+## 2026-05-31 — CONCURRENCY retained execution-token blockers
+
+Tightened retained execution-token preflight: `scripts/qwen35_batch_retained_bench.py` now rejects retained promotion when `execution.seed_tokens` or `execution.generated_tokens` evidence has wrong row ids, missing/non-integer token ids, seed tokens that disagree with generated-token equality rows, or decode-token payloads that do not match the generated-token equality suffix. This moves accepted-artifact seed/generated-token evidence requirements into the retained decision path so malformed execution token evidence becomes a blocked artifact instead of an accepted-row schema failure. This is evidence hardening only; no queue item was closed and no retained c>N performance/scaling claim was added.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 -m compileall -q scripts/qwen35_batch_retained_bench.py tests/test_generation_batch_scheduler.py && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_retained_execution_token_evidence_blockers_cover_seed_and_decode_suffix tests/test_generation_batch_scheduler.py::test_qwen35_retained_completed_execution_blockers_cover_row_evidence tests/test_generation_batch_scheduler.py::test_qwen35_retained_request_observability_blockers_cover_row_evidence tests/test_generation_batch_scheduler.py::test_qwen35_retained_payload_blocks_acceptance_without_memory_evidence -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue))
+print(count)
+assert count == 12
+PY
+HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+git diff --check
+```
+
+Result: focused retained execution-token blocker tests PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed items were not changed, no retained c>N performance/scaling claim was added, and retained preflight now rejects malformed seed/generated token evidence before promotion.

@@ -13112,6 +13112,43 @@ def test_qwen35_retained_payload_orders_latency_samples_by_admission_row(monkeyp
     assert payload["observability"]["request_latency_seconds"]["p95"] == 2.5
 
 
+def test_qwen35_retained_execution_token_evidence_blockers_cover_seed_and_decode_suffix() -> None:
+    seed_tokens = {"0": {"token_id": 0}, "1": {"token_id": 100}}
+    generated_tokens = {
+        "0": [{"token_id": 9}, {"token_id": 10}],
+        "1": [{"token_id": 109}, {"token_id": 110}],
+    }
+    equality = {
+        "batch_sequences": [[0, 1, 2, 9, 10], [100, 101, 102, 109, 110]],
+    }
+    assert retained_bench._execution_token_evidence_blockers(
+        seed_tokens,
+        generated_tokens,
+        equality,
+        expected_concurrency=2,
+        expected_decode_tokens=2,
+    ) == []
+
+    invalid_seed_tokens = json.loads(json.dumps(seed_tokens))
+    invalid_generated_tokens = json.loads(json.dumps(generated_tokens))
+    invalid_seed_tokens["1"]["token_id"] = 101
+    invalid_generated_tokens.pop("1")
+    invalid_generated_tokens["2"] = [{"token_id": 209}, {"token_id": 210}]
+    invalid_generated_tokens["0"] = [{"token_id": 9}]
+    blockers = retained_bench._execution_token_evidence_blockers(
+        invalid_seed_tokens,
+        invalid_generated_tokens,
+        equality,
+        expected_concurrency=2,
+        expected_decode_tokens=2,
+    )
+    assert "execution.seed_tokens.1.token_id does not match generated-token equality seed" in blockers
+    assert "execution.generated_tokens keys do not match expected row ids" in blockers
+    assert "execution.generated_tokens.0 length does not match expected decode tokens" in blockers
+    assert "execution.generated_tokens.0 does not match generated-token equality decode suffix" in blockers
+    assert "execution.generated_tokens.1 is not a token payload list" in blockers
+
+
 def test_qwen35_retained_request_observability_blockers_cover_row_evidence() -> None:
     valid = {
         "0": {
