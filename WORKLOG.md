@@ -27675,3 +27675,17 @@ python3 -m pytest -q tests/test_stepfun_layer_prefix_smoke.py -q
 ```
 
 Result: `4 passed`.
+
+## 2026-05-31 — StepFun all-layer prompt top tokens
+
+Updated `scripts/stepfun_layer_prefix_smoke.py` to include `top_tokens` in non-dry-run JSON artifacts: rank, token id, decoded token text, and logit for the highest-logit tokens (default top-5). This supplements `next_token_text`/`sampled_token_text` for future llama.cpp oracle comparison without changing the execution path or claiming parity.
+
+Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json` with the same all-layer chunked command. The top-5 tokens are: rank 1 token 369 text ` |` logit `19.158626556396484`, rank 2 token 5 text `#` logit `18.343582153320312`, rank 3 token 15251 text BOM logit `16.907772064208984`, rank 4 token 223 text space logit `16.793684005737305`, and rank 5 token 201 text newline logit `15.653017044067383`.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_layer_prefix_smoke.py -q
+```
+
+Result: `4 passed`.

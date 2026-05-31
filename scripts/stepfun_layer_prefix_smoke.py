@@ -55,6 +55,12 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Token id to include in sampled final logits; may be repeated.",
     )
     parser.add_argument(
+        "--top-k-output",
+        type=int,
+        default=5,
+        help="Number of highest-logit tokens to include in non-dry-run JSON output.",
+    )
+    parser.add_argument(
         "--max-resident-weight-gib",
         type=float,
         default=None,
@@ -103,6 +109,8 @@ def _command(args: argparse.Namespace, *, dry_run: bool) -> str:
     parts.extend(
         ["--layer-count", str(args.layer_count), "--message", json.dumps(args.message)]
     )
+    if args.top_k_output != 5:
+        parts.extend(["--top-k-output", str(args.top_k_output)])
     if args.max_resident_weight_gib is not None:
         parts.extend(["--max-resident-weight-gib", f"{args.max_resident_weight_gib:g}"])
     if args.stream_chunk_layers is not None:
@@ -362,9 +370,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise ValueError(
             f"sample token ids out of range for vocab_size={model_map.config.vocab_size}: {sample_ids}"
         )
+    if args.top_k_output <= 0:
+        raise ValueError("--top-k-output must be positive")
     sampled_token_text = {
         str(token_id): tokenizer.decode([token_id], skip_special=False) for token_id in sample_ids
     }
+    top_k = min(int(args.top_k_output), int(probe.logits.shape[-1]))
+    top_token_ids = np.argsort(probe.logits[-1])[-top_k:][::-1]
+    top_tokens = [
+        {
+            "rank": rank,
+            "token_id": int(token_id),
+            "token_text": tokenizer.decode([int(token_id)], skip_special=False),
+            "logit": float(probe.logits[-1, int(token_id)]),
+        }
+        for rank, token_id in enumerate(top_token_ids, start=1)
+    ]
     if free_after_generation is None:
         free_after_generation, _ = runtime.mem_get_info()
     try:
@@ -400,6 +421,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "next_token_id": probe.next_token_id,
             "next_token_text": tokenizer.decode([probe.next_token_id], skip_special=False),
             "next_token_logit": probe.next_token_logit,
+            "top_tokens": top_tokens,
             "hip_total_gib": total / 2**30,
             "hip_free_before_gib": free_before / 2**30,
             "hip_free_after_load_gib": free_after_load / 2**30,

@@ -187,6 +187,11 @@ def test_stepfun_layer_prefix_smoke_outputs_chunked_partial_prompt_json(
     assert set(payload["sampled_logits"]) == {"0", "1", "128007", "128895"}
     assert set(payload["sampled_token_text"]) == {"0", "1", "128007", "128895"}
     assert isinstance(payload["next_token_text"], str)
+    assert len(payload["top_tokens"]) == 5
+    assert payload["top_tokens"][0]["rank"] == 1
+    assert payload["top_tokens"][0]["token_id"] == payload["next_token_id"]
+    assert payload["top_tokens"][0]["token_text"] == payload["next_token_text"]
+    assert payload["top_tokens"][0]["logit"] == payload["next_token_logit"]
     assert payload["resident_weight_nbytes"] > 0
     assert payload["peak_resident_weight_nbytes"] == payload["resident_weight_nbytes"]
     assert payload["all_resident_weight_nbytes"] == payload["resident_weight_nbytes"]

@@ -637,8 +637,8 @@ layer loop is wired.
   records the dry-run plan for the same 512-token KV shape. 2026-05-31
   host-composed all-layer prompt smoke artifact
   `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json`
-  records sampled token text for future llama.cpp output comparison and
-  HIP-visible free memory before execution (`119.9961 GiB`), after
+  records sampled token text plus top-5 token/logit rows for future llama.cpp
+  output comparison and HIP-visible free memory before execution (`119.9961 GiB`), after
   generation before final root free (`118.8083 GiB`), and after final free
   (`119.8571 GiB`) for backend `hip_gfx1151`. KV-backed generation snapshots
   remain open.
@@ -664,8 +664,9 @@ layer loop is wired.
   resident weight bytes `3,531,578,496`). Full-layer artifact
   `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json`
   runs the chunked host-composed path through layers 0-44 (`next_token_id=369`,
-  decoded token text ` |`, peak resident weight bytes `3,531,578,496`, prompt length 23) with no
-  vision/projector/MTP slots and no skipped layers; it records HIP-visible free
+  decoded token text ` |`, peak resident weight bytes `3,531,578,496`, prompt
+  length 23) with no vision/projector/MTP slots and no skipped layers; it records
+  sampled token text plus top-5 token/logit rows and HIP-visible free
   memory before execution (`119.9961 GiB`), after generation before final root
   free (`118.8083 GiB`), and after final free (`119.8571 GiB`). The same
   script's `--dry-run-plan --layer-count 45` mode now plans the all-layer text
@@ -691,9 +692,10 @@ access on first/last shard tensors, selected-slot HIP loading/freeing with
 memory stats, and torch-free imports; `python3 -m pytest -q tests/test_stepfun_load_smoke.py`
 validates metadata-only dry-run load-smoke JSON; `python3 -m pytest -q
 tests/test_stepfun_layer_prefix_smoke.py` validates the reusable partial prompt
-smoke script, native output-file writing, memory-budget guard, all-layer dry-run
-prefix planning, root-plus-one-layer streaming memory estimates, and a chunked
-layer-0 prompt execution. This is still not a throughput benchmark.
+smoke script, native output-file writing, memory-budget guard, top-token JSON
+schema, all-layer dry-run prefix planning, root-plus-one-layer streaming memory
+estimates, and a chunked layer-0 prompt execution. This is still not a
+throughput benchmark.
 
 ### P13 — Benchmark and rollup only after correctness
 

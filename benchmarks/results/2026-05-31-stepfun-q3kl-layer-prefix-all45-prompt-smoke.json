@@ -319,7 +319,7 @@
     }
   ],
   "command": "python3 scripts/stepfun_layer_prefix_smoke.py --layer-count 45 --message \"hello\" --max-resident-weight-gib 4 --stream-chunk-layers 1 --output benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --pretty",
-  "elapsed_s": 72.24973056092858,
+  "elapsed_s": 56.25071957404725,
   "execution_mode": "chunked",
   "hip_free_after_free_gib": 119.85709762573242,
   "hip_free_after_generation_before_free_gib": 118.80826950073242,
@@ -1165,5 +1165,37 @@
   "split_count": 3,
   "status": "partial_prompt_smoke",
   "stream_chunk_layers": 1,
-  "tensor_count": 754
+  "tensor_count": 754,
+  "top_tokens": [
+    {
+      "logit": 19.158626556396484,
+      "rank": 1,
+      "token_id": 369,
+      "token_text": " |"
+    },
+    {
+      "logit": 18.343582153320312,
+      "rank": 2,
+      "token_id": 5,
+      "token_text": "#"
+    },
+    {
+      "logit": 16.907772064208984,
+      "rank": 3,
+      "token_id": 15251,
+      "token_text": "\ufeff"
+    },
+    {
+      "logit": 16.793684005737305,
+      "rank": 4,
+      "token_id": 223,
+      "token_text": " "
+    },
+    {
+      "logit": 15.653017044067383,
+      "rank": 5,
+      "token_id": 201,
+      "token_text": "\n"
+    }
+  ]
 }
