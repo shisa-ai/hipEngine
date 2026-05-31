@@ -403,6 +403,76 @@ class StepFunTextDecodeResourcePlan:
 
 
 @dataclass(frozen=True)
+class StepFunKVDecodeRunPlan:
+    """Metadata-only prompt/resource binding for StepFun KV decode bring-up."""
+
+    decode_plan: StepFunDecodePlan
+    resource_plan: StepFunTextDecodeResourcePlan
+
+    @property
+    def prompt_length(self) -> int:
+        return self.decode_plan.prompt_length
+
+    @property
+    def prompt_positions(self) -> tuple[int, ...]:
+        return tuple(range(self.prompt_length))
+
+    @property
+    def decode_position(self) -> int:
+        return self.prompt_length
+
+    @property
+    def decode_live_count(self) -> int:
+        return self.prompt_length
+
+    @property
+    def required_context_tokens(self) -> int:
+        return self.prompt_length + self.decode_plan.max_new_tokens
+
+    @property
+    def max_prompt_rows(self) -> int:
+        return self.resource_plan.kv_decode_kernel_plan.max_prompt_rows
+
+    @property
+    def prompt_fits_resource_plan(self) -> bool:
+        return self.prompt_length <= self.max_prompt_rows
+
+    @property
+    def context_fits_resource_plan(self) -> bool:
+        return self.required_context_tokens <= self.resource_plan.kv_decode_kernel_plan.max_context
+
+    @property
+    def streaming_runner_ready(self) -> bool:
+        return False
+
+    def to_dict(self) -> dict[str, object]:
+        launch_schedule = self.resource_plan.kv_decode_launch_schedule
+        return {
+            "prompt_length": self.prompt_length,
+            "max_new_tokens": self.decode_plan.max_new_tokens,
+            "required_context_tokens": self.required_context_tokens,
+            "max_context": self.resource_plan.kv_decode_kernel_plan.max_context,
+            "max_prompt_rows": self.max_prompt_rows,
+            "prompt_positions": list(self.prompt_positions),
+            "decode_position": self.decode_position,
+            "decode_live_count": self.decode_live_count,
+            "prompt_fits_resource_plan": self.prompt_fits_resource_plan,
+            "context_fits_resource_plan": self.context_fits_resource_plan,
+            "stop_token_ids": list(self.decode_plan.stop_token_ids),
+            "kv_dispatch_keys": {
+                name: _kernel_key_to_dict(key) for name, key in self.decode_plan.kv_dispatch_keys.items()
+            },
+            "kv_decode_launch_operation_count": launch_schedule["operation_count"],
+            "kv_decode_launch_per_layer_order": list(launch_schedule["per_layer_order"]),
+            "streaming_runner_ready": self.streaming_runner_ready,
+            "note": (
+                "Metadata-only prompt/resource binding for the future StepFun KV-backed decode runner. "
+                "It does not launch KV kernels or claim oracle parity."
+            ),
+        }
+
+
+@dataclass(frozen=True)
 class StepFunShortContextDecodePlanner:
     """Pre-run planner for StepFun text-only c=1 decode.
 
@@ -469,6 +539,43 @@ class StepFunShortContextDecodePlanner:
             quant_dispatch_keys=self.resolve_quant_dispatch_keys(),
             kv_dispatch_keys=self.resolve_kv_dispatch_keys(),
         )
+
+    def plan_kv_decode_chat(
+        self,
+        messages: Sequence[Mapping[str, object]],
+        *,
+        reasoning_effort: str | None = "low",
+        add_generation_prompt: bool = True,
+        context_pages: int = 1,
+        page_size: int | None = None,
+    ) -> StepFunKVDecodeRunPlan:
+        """Plan the prompt/resource inputs for the future KV-backed decode runner."""
+
+        decode_plan = self.plan_chat(
+            messages,
+            reasoning_effort=reasoning_effort,
+            add_generation_prompt=add_generation_prompt,
+        )
+        resource_plan = self.text_decode_resource_plan(
+            context_pages=context_pages,
+            page_size=page_size,
+        )
+        run_plan = StepFunKVDecodeRunPlan(
+            decode_plan=decode_plan,
+            resource_plan=resource_plan,
+        )
+        if not run_plan.prompt_fits_resource_plan:
+            raise ValueError(
+                "StepFun prompt does not fit KV prompt span: "
+                f"prompt_length={run_plan.prompt_length} max_prompt_rows={run_plan.max_prompt_rows}"
+            )
+        if not run_plan.context_fits_resource_plan:
+            raise ValueError(
+                "StepFun prompt+decode does not fit KV context span: "
+                f"required_context_tokens={run_plan.required_context_tokens} "
+                f"max_context={resource_plan.kv_decode_kernel_plan.max_context}"
+            )
+        return run_plan
 
     def text_decode_resource_plan(
         self,
@@ -1717,6 +1824,7 @@ __all__ = [
     "StepFunDecodePlan",
     "StepFunKVCacheAllocation",
     "StepFunKVDecodeKernelPlan",
+    "StepFunKVDecodeRunPlan",
     "StepFunLayerPrefixLogitsProbe",
     "StepFunMoERouterResult",
     "StepFunOneLayerLogitsProbe",

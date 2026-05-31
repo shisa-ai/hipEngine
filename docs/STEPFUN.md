@@ -543,8 +543,12 @@ reporting.
   also records the parent paged-attention span geometry for the 512-token bring-up
   window (`attention_block_size=256`, decode `block_table_len=2`, decode live-count
   capacity 511 tokens, and prompt KV writes requiring per-row position/live-count
-  metadata with `base_offsets_len_formula="rows * 2"` up to 511 prompt rows);
-  this is dispatch/span-readiness evidence only, not a completed streaming runner. The
+  metadata with `base_offsets_len_formula="rows * 2"` up to 511 prompt rows).
+  `StepFunShortContextDecodePlanner.plan_kv_decode_chat()` now binds the rendered
+  prompt to that resource plan by recording prompt positions, decode live count,
+  decode position, stop-token IDs, KV dispatch keys, and the planned launch-order
+  operation count; this is dispatch/span/run-plan readiness evidence only, not a
+  completed streaming runner. The
   dense-MLP input bundle launches layer-0 `ffn_gate`/`ffn_up` projections vs CPU references,
   and a dense-MLP correctness probe composes gate/up, host SwiGLU BF16 rounding,
   and resident `ffn_down` vs CPU reference. The resident session also owns a

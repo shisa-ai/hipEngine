@@ -28181,3 +28181,18 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted status tests passed (`4 passed`), summary-only schema check passed, and the full StepFun guard passed (`104 passed` plus CPU-reference fixture checks).
+
+## 2026-05-31 — StepFun KV decode run plan recorded
+
+Added a metadata-only `StepFunKVDecodeRunPlan` and `StepFunShortContextDecodePlanner.plan_kv_decode_chat()` to bind a rendered prompt to the existing StepFun text resource plan before any streaming KV kernels are launched. The run plan records prompt positions, decode position/live count, required context tokens, stop-token IDs, KV dispatch keys, and the planned KV launch operation count; it validates that the prompt fits the resource plan's prompt span and context capacity. This is run-plan/status evidence only: it does not launch KV kernels and does not change `oracle_parity=false`, `kv_backed_decode_ready=false`, or `e2e_inference_ready=false`.
+
+Updated `tests/test_stepfun_decode_planner.py` to cover the run-plan payload and resource-span rejection path, and clarified the P11 status paragraph in `docs/STEPFUN.md`.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_decode_planner.py -q
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted decode-planner tests passed (`9 passed`), and the full StepFun guard passed (`106 passed` plus CPU-reference fixture checks).

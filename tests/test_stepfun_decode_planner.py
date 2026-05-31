@@ -67,6 +67,69 @@ def test_stepfun_short_context_decode_plan_preserves_chat_prefix_and_multi_eos()
     )
 
 
+def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
+    planner = StepFunShortContextDecodePlanner.from_gguf_paths(
+        _stepfun_gguf_paths(),
+        max_context=512,
+        max_new_tokens=1,
+    )
+
+    run_plan = planner.plan_kv_decode_chat(
+        [{"role": "user", "content": "hello"}],
+        reasoning_effort="low",
+        context_pages=1,
+        page_size=512,
+    )
+
+    assert run_plan.prompt_length == run_plan.decode_plan.prompt_length > 0
+    assert run_plan.prompt_positions == tuple(range(run_plan.prompt_length))
+    assert run_plan.decode_position == run_plan.prompt_length
+    assert run_plan.decode_live_count == run_plan.prompt_length
+    assert run_plan.required_context_tokens == run_plan.prompt_length + 1
+    assert run_plan.max_prompt_rows == 511
+    assert run_plan.prompt_fits_resource_plan is True
+    assert run_plan.context_fits_resource_plan is True
+    assert run_plan.streaming_runner_ready is False
+    payload = run_plan.to_dict()
+    assert payload["prompt_length"] == run_plan.prompt_length
+    assert payload["prompt_positions"] == list(range(run_plan.prompt_length))
+    assert payload["decode_position"] == run_plan.prompt_length
+    assert payload["decode_live_count"] == run_plan.prompt_length
+    assert payload["required_context_tokens"] == run_plan.required_context_tokens
+    assert payload["max_context"] == 512
+    assert payload["max_prompt_rows"] == 511
+    assert payload["stop_token_ids"] == [1, 2, 128007]
+    assert payload["kv_dispatch_keys"]["decode_attention"] == {
+        "backend": "hip_gfx1151",
+        "layer": "paged_attn_decode",
+        "quant": STEPFUN_GGUF_KERNEL_QUANT,
+        "variant": "bf16_split_k_gate_f32_spans",
+    }
+    assert payload["kv_decode_launch_operation_count"] == 135
+    assert payload["kv_decode_launch_per_layer_order"] == [
+        "prompt_kv_write",
+        "decode_kv_write",
+        "decode_attention",
+    ]
+    assert payload["streaming_runner_ready"] is False
+
+
+def test_stepfun_kv_decode_run_plan_rejects_resource_span_too_small() -> None:
+    planner = StepFunShortContextDecodePlanner.from_gguf_paths(
+        _stepfun_gguf_paths(),
+        max_context=512,
+        max_new_tokens=1,
+    )
+
+    with pytest.raises(ValueError, match="KV prompt span"):
+        planner.plan_kv_decode_chat(
+            [{"role": "user", "content": "hello"}],
+            reasoning_effort="low",
+            context_pages=1,
+            page_size=16,
+        )
+
+
 def test_stepfun_short_context_decode_plan_rejects_long_prompts() -> None:
     planner = StepFunShortContextDecodePlanner.from_gguf_paths(
         _stepfun_gguf_paths(),
