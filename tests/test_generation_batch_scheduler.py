@@ -7246,6 +7246,7 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         index for index, entry in enumerate(summary["commands"]) if entry["category"] == "int8_native_diagnostic"
     ]
     for flag, stale_name in (
+        ("--future-json", "int8-native-retained-future-stale.json"),
         ("--primitive-cpu-json", "int8-primitive-cpu-stale.json"),
         ("--primitive-hip-json", "int8-primitive-hip-stale.json"),
     ):
