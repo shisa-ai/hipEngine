@@ -1032,6 +1032,8 @@
         "kv_backed_next_token_artifact"
       ],
       "resource_plan_refresh_command": "python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan --kv-context-pages 1 --kv-page-size 512 --pretty > benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
+      "resource_plan_refresh_command_nchars": 178,
+      "resource_plan_refresh_command_sha256": "c60294d60eda320d281299f48bc8f488d21aa35977f0e71498990cddd2518e30",
       "status_refresh_command": "python3 scripts/stepfun_correctness_status.py --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --oracle-artifact benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json --resource-artifact benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json --docs docs/STEPFUN.md --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty",
       "status_refresh_command_nchars": 431,
       "status_refresh_command_sha256": "39b2253556baabf33c43a51b0dfef3b47742bd950d6d4a7538525169c5ca24a3",
@@ -1510,8 +1512,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "ed96ae353620f03d1f97f6f0fd7e5effa7fe29839f1059c9bb70d462db519b17",
-      "size_bytes": 53885
+      "sha256": "1c93310af98b291ec42b4a066060a8533dba3212a82275ebd69af0df6ea7fe86",
+      "size_bytes": 53926
     },
     "oracle": {
       "exists": true,

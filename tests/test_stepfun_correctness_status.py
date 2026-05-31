@@ -1128,6 +1128,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan "
         f"--kv-context-pages 1 --kv-page-size 512 --pretty > {resource}"
     )
+    assert kv_commands["resource_plan_refresh_command_nchars"] == len(
+        kv_commands["resource_plan_refresh_command"]
+    )
+    assert kv_commands["resource_plan_refresh_command_sha256"] == hashlib.sha256(
+        kv_commands["resource_plan_refresh_command"].encode()
+    ).hexdigest()
     assert kv_commands["status_refresh_command"] == oracle_commands["status_refresh_command"]
     assert kv_commands["status_refresh_command_nchars"] == oracle_commands[
         "status_refresh_command_nchars"

@@ -732,6 +732,7 @@ def _next_action_commands(
         prompt_artifact=prompt_artifact,
         oracle_artifact=oracle_artifact,
     )
+    resource_plan_refresh = _resource_plan_refresh_command(output_artifact=resource_artifact)
     return {
         "oracle_parity_blocked": {
             "rerun_command_shell": oracle_progress.get("command_shell"),
@@ -756,9 +757,8 @@ def _next_action_commands(
             ],
         },
         "kv_backed_decode_not_wired": {
-            "resource_plan_refresh_command": _resource_plan_refresh_command(
-                output_artifact=resource_artifact
-            ),
+            "resource_plan_refresh_command": resource_plan_refresh,
+            **_command_length_hash("resource_plan_refresh_command", resource_plan_refresh),
             "status_refresh_command": status_refresh,
             **_command_length_hash("status_refresh_command", status_refresh),
             "gap_report_status": kv_backed_decode_gap_report.get("status"),
