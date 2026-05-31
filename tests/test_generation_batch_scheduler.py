@@ -6897,7 +6897,8 @@ def test_batch_c_sweep_fails_retained_row_on_profiler_synthesis_mismatch(tmp_pat
         c_sweep.validate_sweep_summary(tampered_postcondition_output_tail)
 
 
-def test_batch_c_sweep_can_plan_int8_blocked_diagnostics(tmp_path: Path) -> None:
+def test_batch_c_sweep_can_plan_int8_blocked_diagnostics(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
     args = build_c_sweep_parser().parse_args(
         [
             "--dry-run",
@@ -6921,6 +6922,7 @@ def test_batch_c_sweep_can_plan_int8_blocked_diagnostics(tmp_path: Path) -> None
     assert "scripts/qwen35_batch_int8_diagnostic.py" in int8.command
     assert "--rows 2" in int8.command
     assert int8.artifact_path.name == "int8-native-diagnostic-c2.json"
+    assert int8.argv[:2] == ("env", "HIP_VISIBLE_DEVICES=1")
     assert int8.argv[int8.argv.index("--future-json") + 1].endswith("/int8-native-retained-future-c2.json")
     assert int8.argv[int8.argv.index("--primitive-cpu-json") + 1].endswith("/int8-primitive-cpu-c2.json")
     assert int8.argv[int8.argv.index("--primitive-hip-json") + 1].endswith("/int8-primitive-hip-c2.json")
@@ -6972,6 +6974,12 @@ def test_batch_c_sweep_can_plan_int8_blocked_diagnostics(tmp_path: Path) -> None
         tampered["commands"][int8_entry_index]["command"] = shlex.join(argv)
         with pytest.raises(ValueError, match=expected_error):
             c_sweep.validate_sweep_summary(tampered)
+    tampered_int8_env = json.loads(json.dumps(summary))
+    int8_env_argv = tampered_int8_env["commands"][int8_entry_index]["argv"]
+    int8_env_argv[1] = "HIP_VISIBLE_DEVICES=0"
+    tampered_int8_env["commands"][int8_entry_index]["command"] = shlex.join(int8_env_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv device env prefix must match the first command"):
+        c_sweep.validate_sweep_summary(tampered_int8_env)
 
     for flag in ("--model", "--fixture", "--rows", "--future-json", "--primitive-cpu-json", "--primitive-hip-json"):
         tampered = json.loads(json.dumps(summary))
