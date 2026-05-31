@@ -11433,6 +11433,16 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
     with pytest.raises(ValueError, match=r"execution.completed\[1\].prompt_tokens length must match workload.prompt_lengths"):
         validate_cn_diagnostic_artifact_payload(mismatched_completed_prompt_claim)
 
+    partial_prompt_lengths_claim = json.loads(json.dumps(payload))
+    partial_prompt_lengths_claim["workload"]["prompt_lengths"] = [2]
+    with pytest.raises(ValueError, match="workload.prompt_lengths length must match workload.concurrency"):
+        validate_cn_diagnostic_artifact_payload(partial_prompt_lengths_claim)
+
+    bad_prompt_lengths_claim = json.loads(json.dumps(payload))
+    bad_prompt_lengths_claim["workload"]["prompt_lengths"] = [2, -1]
+    with pytest.raises(ValueError, match="workload.prompt_lengths entries must be non-negative ints"):
+        validate_cn_diagnostic_artifact_payload(bad_prompt_lengths_claim)
+
     missing_shape_claim = json.loads(json.dumps(payload))
     missing_shape_claim["workload"].pop("concurrency")
     missing_shape_claim["workload"].pop("warmup_decode_tokens")
