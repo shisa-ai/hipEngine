@@ -49,7 +49,7 @@
         "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
       },
       {
-        "line": 618,
+        "line": 619,
         "state": "partial",
         "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
       }
@@ -129,6 +129,7 @@
       "first_blocker_only": "handoff_summary.first_blocker_work_item",
       "first_blocker_sha_only": "handoff_summary.first_blocker_work_item_sha256",
       "oracle_helper_command_only": "next_action_commands.oracle_parity_blocked.oracle_helper_refresh_command",
+      "oracle_helper_command_sha_only": "next_action_commands.oracle_parity_blocked.oracle_helper_refresh_command_sha256",
       "readiness_summary_only": "readiness_summary",
       "readiness_summary_sha_only": "readiness_summary_sha256",
       "summary_only": "handoff_summary"
@@ -1052,6 +1053,8 @@
       ],
       "missing_preconditions": [],
       "oracle_helper_refresh_command": "python3 scripts/stepfun_llamacpp_oracle.py --artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --llama-cli /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --n-predict 1 --timeout-s 60.0 --llama-arg=--device --llama-arg=none --llama-arg=--gpu-layers --llama-arg=0 --execute --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
+      "oracle_helper_refresh_command_nchars": 478,
+      "oracle_helper_refresh_command_sha256": "c535c06e68d7f2785e2312abcd6be19fb752fd5754a37e02f698e57405cdfa74",
       "rerun_command_shell": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --prompt '<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n' --predict 1 --temp 0 --top-k 1 --top-p 1 --min-p 0 --repeat-penalty 1 --seed 0 --no-display-prompt --simple-io --device none --gpu-layers 0",
       "status_refresh_command": "python3 scripts/stepfun_correctness_status.py --prompt-artifact benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --oracle-artifact benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json --resource-artifact benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json --docs docs/STEPFUN.md --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty",
       "success_criteria": [
@@ -1503,8 +1506,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "e1b28f2c3e0bc68fa3f3d39b759282d97cb8105a991b33b1d3b98eba416945d9",
-      "size_bytes": 53746
+      "sha256": "8f7a2e880dbf947ce006e28ddcec683226bc91c64c5c1c25d0246450107c1a13",
+      "size_bytes": 53801
     },
     "oracle": {
       "exists": true,
