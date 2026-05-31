@@ -594,7 +594,8 @@ reporting.
   and the no-performance/no-e2e-claim policy. `scripts/stepfun_correctness_status.py --summary-only`
   emits just that handoff block for fast continuation checks, while `--blocker-work-queue-only`
   emits only the ordered queue and `--first-blocker-only` emits only the immediate work item
-  (including the primary command kind/string) for lightweight automation. It lists next actions for the
+  (including the primary command kind/string plus length and SHA-256) for lightweight automation.
+  It lists next actions for the
   StepFun-capable oracle and KV-backed decode blockers, and supports
   `--fail-on-blocked` for CI/handoff checks.
   This checklist item is partial rather than complete because the current runner

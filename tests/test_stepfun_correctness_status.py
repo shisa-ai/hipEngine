@@ -7,6 +7,18 @@ from pathlib import Path
 from scripts.stepfun_correctness_status import build_status, main
 
 
+def _primary_command_fields(kind: str | None, command: str | None) -> dict[str, object]:
+    return {
+        "primary_command_kind": kind,
+        "primary_command": command,
+        "primary_command_nchars": len(command) if command is not None else 0,
+        "primary_command_sha256": (
+            hashlib.sha256(command.encode()).hexdigest() if command is not None else None
+        ),
+    }
+
+
+
 def _streaming_runner_blockers() -> list[dict[str, object]]:
     return [
         {
@@ -858,8 +870,10 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         {
             "blocker_kind": "oracle_parity_blocked",
             "command_available": True,
-            "primary_command_kind": "rerun_command_shell",
-            "primary_command": "/tmp/llama-cli --model stepfun.gguf --predict 1 --temp 0",
+            **_primary_command_fields(
+                "rerun_command_shell",
+                "/tmp/llama-cli --model stepfun.gguf --predict 1 --temp 0",
+            ),
             "first_missing_evidence": "oracle_completed_successfully",
             "first_missing_precondition": "step35_not_rejected",
             "gap_report_status": "blocked",
@@ -869,10 +883,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         {
             "blocker_kind": "kv_backed_decode_not_wired",
             "command_available": True,
-            "primary_command_kind": "resource_plan_refresh_command",
-            "primary_command": (
-                "python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan "
-                f"--kv-context-pages 1 --kv-page-size 512 --pretty > {resource}"
+            **_primary_command_fields(
+                "resource_plan_refresh_command",
+                (
+                    "python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan "
+                    f"--kv-context-pages 1 --kv-page-size 512 --pretty > {resource}"
+                ),
             ),
             "first_missing_evidence": "streaming_runner_ready_flags",
             "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
@@ -1260,8 +1276,10 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         {
             "blocker_kind": "oracle_parity_blocked",
             "command_available": True,
-            "primary_command_kind": "rerun_command_shell",
-            "primary_command": "/tmp/llama-cli --model stepfun.gguf --predict 1 --temp 0",
+            **_primary_command_fields(
+                "rerun_command_shell",
+                "/tmp/llama-cli --model stepfun.gguf --predict 1 --temp 0",
+            ),
             "first_missing_evidence": "oracle_completed_successfully",
             "first_missing_precondition": "step35_not_rejected",
             "gap_report_status": "blocked",
@@ -1271,10 +1289,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         {
             "blocker_kind": "kv_backed_decode_not_wired",
             "command_available": True,
-            "primary_command_kind": "resource_plan_refresh_command",
-            "primary_command": (
-                "python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan "
-                f"--kv-context-pages 1 --kv-page-size 512 --pretty > {resource}"
+            **_primary_command_fields(
+                "resource_plan_refresh_command",
+                (
+                    "python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan "
+                    f"--kv-context-pages 1 --kv-page-size 512 --pretty > {resource}"
+                ),
             ),
             "first_missing_evidence": "streaming_runner_ready_flags",
             "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
@@ -1375,8 +1395,10 @@ def test_stepfun_correctness_status_blocker_work_queue_only(capsys, tmp_path: Pa
         {
             "blocker_kind": "oracle_parity_blocked",
             "command_available": True,
-            "primary_command_kind": "rerun_command_shell",
-            "primary_command": "/tmp/llama-cli --model stepfun.gguf --predict 1 --temp 0",
+            **_primary_command_fields(
+                "rerun_command_shell",
+                "/tmp/llama-cli --model stepfun.gguf --predict 1 --temp 0",
+            ),
             "first_missing_evidence": "oracle_completed_successfully",
             "first_missing_precondition": "step35_not_rejected",
             "gap_report_status": "blocked",
@@ -1386,10 +1408,12 @@ def test_stepfun_correctness_status_blocker_work_queue_only(capsys, tmp_path: Pa
         {
             "blocker_kind": "kv_backed_decode_not_wired",
             "command_available": True,
-            "primary_command_kind": "resource_plan_refresh_command",
-            "primary_command": (
-                "python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan "
-                f"--kv-context-pages 1 --kv-page-size 512 --pretty > {resource}"
+            **_primary_command_fields(
+                "resource_plan_refresh_command",
+                (
+                    "python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan "
+                    f"--kv-context-pages 1 --kv-page-size 512 --pretty > {resource}"
+                ),
             ),
             "first_missing_evidence": "streaming_runner_ready_flags",
             "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
@@ -1437,8 +1461,10 @@ def test_stepfun_correctness_status_first_blocker_only(capsys, tmp_path: Path) -
     assert payload == {
         "blocker_kind": "oracle_parity_blocked",
         "command_available": True,
-        "primary_command_kind": "rerun_command_shell",
-        "primary_command": "/tmp/llama-cli --model stepfun.gguf --predict 1 --temp 0",
+        **_primary_command_fields(
+            "rerun_command_shell",
+            "/tmp/llama-cli --model stepfun.gguf --predict 1 --temp 0",
+        ),
         "first_missing_evidence": "oracle_completed_successfully",
         "first_missing_precondition": "step35_not_rejected",
         "gap_report_status": "blocked",
