@@ -27775,3 +27775,17 @@ python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
 ```
 
 Result: `2 passed`.
+
+## 2026-05-31 — StepFun correctness status next actions
+
+Extended `scripts/stepfun_correctness_status.py` with machine-readable `next_actions` for the two remaining blockers and a `--fail-on-blocked` CLI mode that returns exit code 2 when `status != ready`. The regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json` now points the oracle blocker to a StepFun/`step35`-capable llama.cpp or CPU oracle run, and the decode blocker to replacing the host-composed layer-prefix smoke with a KV-backed one-token decode runner.
+
+Updated `tests/test_stepfun_correctness_status.py` to cover `next_actions` and the nonzero `--fail-on-blocked` exit. This is a handoff/CI-readiness improvement only; it preserves `e2e_inference_ready=false` and makes no parity or performance claim.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+```
+
+Result: `3 passed`.

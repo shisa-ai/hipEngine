@@ -21,6 +21,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--prompt-artifact", type=Path, default=DEFAULT_PROMPT_ARTIFACT)
     parser.add_argument("--oracle-artifact", type=Path, default=DEFAULT_ORACLE_ARTIFACT)
     parser.add_argument("--output", type=Path, default=None, help="Write JSON output to this path instead of stdout.")
+    parser.add_argument(
+        "--fail-on-blocked",
+        action="store_true",
+        help="Return exit code 2 when the summarized status is not ready.",
+    )
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output")
     return parser.parse_args(argv)
 
@@ -67,6 +72,22 @@ def build_status(prompt_artifact: Path, oracle_artifact: Path) -> dict[str, obje
             "artifact": str(prompt_artifact),
         }
     )
+    next_actions = [
+        {
+            "blocker_kind": "oracle_parity_blocked",
+            "action": (
+                "Build or locate a StepFun/step35-capable llama.cpp or CPU oracle, rerun "
+                "scripts/stepfun_llamacpp_oracle.py --execute, and record exact token/logit comparison."
+            ),
+        },
+        {
+            "blocker_kind": "kv_backed_decode_not_wired",
+            "action": (
+                "Replace the host-composed layer-prefix prompt smoke with a KV-backed one-token decode runner "
+                "using StepFunResidentSession weight/KV ownership and the validated layer probes."
+            ),
+        },
+    ]
     return {
         "status": "blocked" if blockers else "ready",
         "model": "Step-3.7-flash-Q3_K_L",
@@ -83,6 +104,7 @@ def build_status(prompt_artifact: Path, oracle_artifact: Path) -> dict[str, obje
         "kv_backed_decode_ready": False,
         "e2e_inference_ready": False,
         "blockers": blockers,
+        "next_actions": next_actions,
         "note": (
             "Host-composed all-layer prompt smoke is present; true e2e inference still needs "
             "oracle parity and KV-backed decode."
@@ -101,11 +123,14 @@ def _emit_json(result: dict[str, object], *, pretty: bool, output: Path | None) 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
+    status = build_status(args.prompt_artifact, args.oracle_artifact)
     _emit_json(
-        build_status(args.prompt_artifact, args.oracle_artifact),
+        status,
         pretty=args.pretty,
         output=args.output,
     )
+    if args.fail_on_blocked and status["status"] != "ready":
+        return 2
     return 0
 
 

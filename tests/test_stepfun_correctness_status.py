@@ -63,6 +63,10 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "oracle_parity_blocked",
         "kv_backed_decode_not_wired",
     }
+    assert {action["blocker_kind"] for action in status["next_actions"]} == {
+        "oracle_parity_blocked",
+        "kv_backed_decode_not_wired",
+    }
 
 
 def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
@@ -91,4 +95,32 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
     payload = json.loads(output.read_text())
     assert payload["status"] == "blocked"
     assert payload["all_layer_prompt_smoke"] is True
+    assert payload["e2e_inference_ready"] is False
+    assert len(payload["next_actions"]) == 2
+
+
+def test_stepfun_correctness_status_fail_on_blocked_returns_nonzero(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--fail-on-blocked",
+        ]
+    )
+
+    assert rc == 2
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert captured.err == ""
+    assert payload["status"] == "blocked"
     assert payload["e2e_inference_ready"] is False

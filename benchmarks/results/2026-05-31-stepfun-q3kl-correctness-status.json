@@ -20,6 +20,16 @@
   "e2e_inference_ready": false,
   "kv_backed_decode_ready": false,
   "model": "Step-3.7-flash-Q3_K_L",
+  "next_actions": [
+    {
+      "action": "Build or locate a StepFun/step35-capable llama.cpp or CPU oracle, rerun scripts/stepfun_llamacpp_oracle.py --execute, and record exact token/logit comparison.",
+      "blocker_kind": "oracle_parity_blocked"
+    },
+    {
+      "action": "Replace the host-composed layer-prefix prompt smoke with a KV-backed one-token decode runner using StepFunResidentSession weight/KV ownership and the validated layer probes.",
+      "blocker_kind": "kv_backed_decode_not_wired"
+    }
+  ],
   "note": "Host-composed all-layer prompt smoke is present; true e2e inference still needs oracle parity and KV-backed decode.",
   "oracle_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-oracle-exec-attempt.json",
   "oracle_blocker_kind": "llama_cpp_missing_step35_architecture",

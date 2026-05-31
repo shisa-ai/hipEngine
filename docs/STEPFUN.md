@@ -554,7 +554,8 @@ reporting.
   artifact `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`
   machine-checks this state as `all_layer_prompt_smoke=true`,
   `oracle_parity=false`, `kv_backed_decode_ready=false`, and
-  `e2e_inference_ready=false`.
+  `e2e_inference_ready=false`; it also lists next actions for the StepFun-capable
+  oracle and KV-backed decode blockers and supports `--fail-on-blocked` for CI/handoff checks.
 - [x] Use short contexts first (for example <= 512) before exercising long
   context and sliding-window boundaries. `StepFunShortContextDecodePlanner`
   enforces the current c=1 bring-up default `max_context=512`,
@@ -581,7 +582,8 @@ reporting.
   task: use/build a StepFun-capable llama.cpp oracle and review/record the
   parsed result; KV-backed decode parity remains open too. The consolidated
   correctness-status artifact records both blockers (`oracle_parity_blocked`,
-  `kv_backed_decode_not_wired`) for the current all-layer prompt smoke.
+  `kv_backed_decode_not_wired`) for the current all-layer prompt smoke plus
+  machine-readable next actions for each blocker.
 - [x] Preserve multi-EOS stopping and the chat assistant prefix. The short
   context planner renders the Step chat template with assistant `<think>` prefix
   and carries stop IDs `(1, 2, 128007)` with `should_stop()` checks.
