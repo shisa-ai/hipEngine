@@ -49,7 +49,7 @@
         "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
       },
       {
-        "line": 611,
+        "line": 612,
         "state": "partial",
         "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
       }
@@ -85,7 +85,8 @@
         "primary_command_nchars": 406,
         "primary_command_sha256": "208ab046c8f418a9887d24250d71c8da168eec137efe2e9eba17fcfaa4a56507",
         "queue_index": 0,
-        "timeout_s": 60.0
+        "timeout_s": 60.0,
+        "work_item_schema_version": 1
       },
       {
         "blocker_kind": "kv_backed_decode_not_wired",
@@ -101,12 +102,13 @@
         "primary_command_nchars": 178,
         "primary_command_sha256": "c60294d60eda320d281299f48bc8f488d21aa35977f0e71498990cddd2518e30",
         "queue_index": 1,
-        "streaming_runner_blocker_count": 3
+        "streaming_runner_blocker_count": 3,
+        "work_item_schema_version": 1
       }
     ],
     "blocker_work_queue_count": 2,
     "blocker_work_queue_schema_version": 1,
-    "blocker_work_queue_sha256": "f9341af8a8bb1f2fb0e6655e7b38579404188e95d9fc494140e985adfc5fce2b",
+    "blocker_work_queue_sha256": "6273ee66cbfe851ec3787d7273514fb05d1926fba4cf728e38008b026620a5c7",
     "compact_output_modes": {
       "blocker_work_queue_only": "handoff_summary.blocker_work_queue",
       "fail_on_blocked_preserves_payload": true,
@@ -136,7 +138,8 @@
       "primary_command_nchars": 406,
       "primary_command_sha256": "208ab046c8f418a9887d24250d71c8da168eec137efe2e9eba17fcfaa4a56507",
       "queue_index": 0,
-      "timeout_s": 60.0
+      "timeout_s": 60.0,
+      "work_item_schema_version": 1
     },
     "kv_backed_decode_gap_report": {
       "first_missing_evidence": "streaming_runner_ready_flags",
@@ -1458,8 +1461,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "c506f9eaf431ec0662f8a66f49911351e225c33577c13774ee2e0a081f26f168",
-      "size_bytes": 53034
+      "sha256": "30a1ba8cc622efa26f33b9b4ada28876b8d205a67ee9ac25b7549dfb1e0bc41e",
+      "size_bytes": 53062
     },
     "oracle": {
       "exists": true,

@@ -882,6 +882,7 @@ def _handoff_summary(
             blocker_work_queue.append(
                 {
                     "blocker_kind": blocker_kind,
+                    "work_item_schema_version": 1,
                     "queue_index": queue_index,
                     "is_first": queue_index == 0,
                     "gate": "oracle_parity",
@@ -908,6 +909,7 @@ def _handoff_summary(
             blocker_work_queue.append(
                 {
                     "blocker_kind": blocker_kind,
+                    "work_item_schema_version": 1,
                     "queue_index": queue_index,
                     "is_first": queue_index == 0,
                     "gate": "kv_backed_decode",
@@ -935,6 +937,7 @@ def _handoff_summary(
             blocker_work_queue.append(
                 {
                     "blocker_kind": blocker_kind,
+                    "work_item_schema_version": 1,
                     "queue_index": queue_index,
                     "is_first": queue_index == 0,
                     "gate": None,
