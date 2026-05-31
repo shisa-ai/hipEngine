@@ -2612,6 +2612,8 @@ def _validate_claimed_generated_token_equality(
             if not isinstance(sequence, list):
                 errors.append(f"{label}[{index}] must be a per-row token-id list when passed is true")
                 continue
+            if not sequence:
+                errors.append(f"{label}[{index}] must be a non-empty per-row token-id list when passed is true")
             if expected_tokens is not None and len(sequence) != expected_tokens:
                 errors.append(f"{label}[{index}] length must match seed plus workload.warmup_decode_tokens plus workload.gen_tokens_per_request when passed is true")
             if any(not isinstance(token, int) or isinstance(token, bool) for token in sequence):
