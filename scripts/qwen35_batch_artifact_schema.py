@@ -3729,9 +3729,14 @@ def _valid_request_observability(row: Any, errors: list[str]) -> bool:
     ):
         errors.append("observability.per_request.*.kv_pages_peak must be >= kv_pages_owned for accepted artifacts")
         ok = False
-    if "bucket_key" in row and row.get("bucket_key") is not None and (not isinstance(row.get("bucket_key"), str) or not row.get("bucket_key").strip()):
-        errors.append("observability.per_request.*.bucket_key must be a non-empty string or null for accepted artifacts")
-        ok = False
+    if "bucket_key" in row and row.get("bucket_key") is not None:
+        bucket_key = row.get("bucket_key")
+        if not isinstance(bucket_key, str) or not bucket_key.strip():
+            errors.append("observability.per_request.*.bucket_key must be a non-empty string or null for accepted artifacts")
+            ok = False
+        elif ":kv=" not in bucket_key or ":layers=" not in bucket_key:
+            errors.append("observability.per_request.*.bucket_key must include kv and layer-plan axes for accepted artifacts")
+            ok = False
     if "admission_blocked_reason" in row and row.get("admission_blocked_reason") is not None and (not isinstance(row.get("admission_blocked_reason"), str) or not row.get("admission_blocked_reason").strip()):
         errors.append("observability.per_request.*.admission_blocked_reason must be a non-empty string or null for accepted artifacts")
         ok = False

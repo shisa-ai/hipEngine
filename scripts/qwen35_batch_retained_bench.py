@@ -2890,6 +2890,8 @@ def _request_observability_blockers(per_request: Any, *, expected_concurrency: i
         bucket_key = row.get("bucket_key")
         if bucket_key is not None and (not isinstance(bucket_key, str) or not bucket_key.strip()):
             blockers.append(f"{label}.bucket_key is not a non-empty string or null")
+        elif isinstance(bucket_key, str) and (":kv=" not in bucket_key or ":layers=" not in bucket_key):
+            blockers.append(f"{label}.bucket_key must include kv and layer-plan axes")
         admission_blocked_reason = row.get("admission_blocked_reason")
         if admission_blocked_reason is not None and (not isinstance(admission_blocked_reason, str) or not admission_blocked_reason.strip()):
             blockers.append(f"{label}.admission_blocked_reason is not a non-empty string or null")

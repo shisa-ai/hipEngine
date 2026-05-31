@@ -13451,7 +13451,7 @@ def test_qwen35_retained_payload_orders_latency_samples_by_admission_row(monkeyp
                 "decode_seconds": 0.3,
                 "kv_pages_owned": 2,
                 "kv_pages_peak": 2,
-                "bucket_key": "decode:c=2:ctx=512:mask=11",
+                "bucket_key": "decode:c=2:ctx=512:mask=11:kv=bf16:layers=all:top_k=0:experts=0:replay=1:draft=0",
                 "admission_blocked_reason": None,
                 "finish_reason": "length",
                 "submitted_timestamp": 0.0,
@@ -13464,7 +13464,7 @@ def test_qwen35_retained_payload_orders_latency_samples_by_admission_row(monkeyp
                 "decode_seconds": 0.3,
                 "kv_pages_owned": 2,
                 "kv_pages_peak": 2,
-                "bucket_key": "decode:c=2:ctx=512:mask=11",
+                "bucket_key": "decode:c=2:ctx=512:mask=11:kv=bf16:layers=all:top_k=0:experts=0:replay=1:draft=0",
                 "admission_blocked_reason": None,
                 "finish_reason": "length",
                 "submitted_timestamp": 0.0,
@@ -13608,7 +13608,7 @@ def test_qwen35_retained_request_observability_blockers_cover_row_evidence() -> 
             "decode_seconds": 0.3,
             "kv_pages_owned": 2,
             "kv_pages_peak": 3,
-            "bucket_key": "decode:c=2:ctx=512:mask=11",
+            "bucket_key": "decode:c=2:ctx=512:mask=11:kv=bf16:layers=all:top_k=0:experts=0:replay=1:draft=0",
             "admission_blocked_reason": None,
             "finish_reason": "length",
             "admitted_timestamp": 10.0,
@@ -13620,7 +13620,7 @@ def test_qwen35_retained_request_observability_blockers_cover_row_evidence() -> 
             "decode_seconds": 0.3,
             "kv_pages_owned": 2,
             "kv_pages_peak": 3,
-            "bucket_key": "decode:c=2:ctx=512:mask=11",
+            "bucket_key": "decode:c=2:ctx=512:mask=11:kv=bf16:layers=all:top_k=0:experts=0:replay=1:draft=0",
             "admission_blocked_reason": None,
             "finish_reason": "length",
             "admitted_timestamp": 20.0,
@@ -13641,6 +13641,11 @@ def test_qwen35_retained_request_observability_blockers_cover_row_evidence() -> 
     assert "observability.per_request.0.completion_timestamp is not greater than admitted_timestamp" in blockers
     assert "observability.per_request.0.kv_pages_peak is below kv_pages_owned" in blockers
     assert "observability.per_request.0.bucket_key is not a non-empty string or null" in blockers
+
+    stale_bucket_key = json.loads(json.dumps(valid))
+    stale_bucket_key["0"]["bucket_key"] = "decode:c=2:ctx=512:mask=11"
+    blockers = retained_bench._request_observability_blockers(stale_bucket_key, expected_concurrency=2)
+    assert "observability.per_request.0.bucket_key must include kv and layer-plan axes" in blockers
 
     invalid_timing = json.loads(json.dumps(valid))
     invalid_timing["1"]["queue_seconds"] = 1.0
@@ -15883,7 +15888,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                     "decode_seconds": 0.3,
                     "kv_pages_owned": 2,
                     "kv_pages_peak": 3,
-                    "bucket_key": "decode:c=2:ctx=512:mask=11",
+                    "bucket_key": "decode:c=2:ctx=512:mask=11:kv=bf16:layers=all:top_k=0:experts=0:replay=1:draft=0",
                     "admission_blocked_reason": None,
                     "finish_reason": "length",
                 },
@@ -15893,7 +15898,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                     "decode_seconds": 0.35,
                     "kv_pages_owned": 2,
                     "kv_pages_peak": 3,
-                    "bucket_key": "decode:c=2:ctx=512:mask=11",
+                    "bucket_key": "decode:c=2:ctx=512:mask=11:kv=bf16:layers=all:top_k=0:experts=0:replay=1:draft=0",
                     "admission_blocked_reason": None,
                     "finish_reason": "length",
                 },
@@ -16750,6 +16755,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     blank_observed_bucket_key["observability"]["per_request"]["0"]["bucket_key"] = " "
     with pytest.raises(ValueError, match=r"observability.per_request.\*.bucket_key must be a non-empty string or null"):
         validate_cn_diagnostic_artifact_payload(blank_observed_bucket_key)
+
+    stale_observed_bucket_key = json.loads(json.dumps(accepted))
+    stale_observed_bucket_key["observability"]["per_request"]["0"]["bucket_key"] = "decode:c=2:ctx=512:mask=11"
+    with pytest.raises(ValueError, match=r"observability.per_request.\*.bucket_key must include kv and layer-plan axes"):
+        validate_cn_diagnostic_artifact_payload(stale_observed_bucket_key)
 
     blank_observed_admission_blocker = json.loads(json.dumps(accepted))
     blank_observed_admission_blocker["observability"]["per_request"]["0"]["admission_blocked_reason"] = " "
