@@ -6962,6 +6962,17 @@ def test_batch_c_sweep_can_plan_int8_blocked_diagnostics(tmp_path: Path) -> None
         with pytest.raises(ValueError, match=rf"commands\[\]\.argv INT8 {flag} must match the c-specific output_dir artifact path"):
             c_sweep.validate_sweep_summary(tampered)
 
+    for flag, stale_value, expected_error in (
+        ("--model", "/tmp/other-model", r"commands\[\]\.argv --model must match options\.model"),
+        ("--fixture", "/tmp/other-fixture.json", r"commands\[\]\.argv --fixture must match options\.fixture"),
+    ):
+        tampered = json.loads(json.dumps(summary))
+        argv = tampered["commands"][int8_entry_index]["argv"]
+        argv[argv.index(flag) + 1] = stale_value
+        tampered["commands"][int8_entry_index]["command"] = shlex.join(argv)
+        with pytest.raises(ValueError, match=expected_error):
+            c_sweep.validate_sweep_summary(tampered)
+
     for flag in ("--model", "--fixture", "--rows", "--future-json", "--primitive-cpu-json", "--primitive-hip-json"):
         tampered = json.loads(json.dumps(summary))
         argv = tampered["commands"][int8_entry_index]["argv"]

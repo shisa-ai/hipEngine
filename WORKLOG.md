@@ -54202,3 +54202,23 @@ HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts
 ```
 
 Result: focused combined INT8 c8 model/fixture-label tamper test PASS; docs diff check PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed queue items still cite concrete tests/code, no item was marked complete for partial/planning-only work, no retained c>N performance/scaling claim was added, native c>N generated-token equality claims were not changed, and scaling claims were not changed.
+
+## 2026-05-31 — CONCURRENCY standalone INT8 c2 model/fixture label rejection
+
+Added negative validation coverage for stale INT8 diagnostic model/fixture labels in the standalone `--include-int8` sweep. `test_batch_c_sweep_can_plan_int8_blocked_diagnostics` now tampers the c=2 INT8 diagnostic row `--model` to `/tmp/other-model` and `--fixture` to `/tmp/other-fixture.json` and proves `validate_sweep_summary(...)` rejects both stale labels. This complements the combined c=8 coverage so both standalone and combined INT8 diagnostic summaries bind model/fixture labels before any future retained artifact is promoted. `docs/CONCURRENCY.md` C3.1 progress records standalone+combined model/fixture label binding. This remains planning/provenance hardening only; no generated-token equality or performance claim was added.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+python3 -m compileall -q tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_batch_c_sweep_can_plan_int8_blocked_diagnostics tests/test_generation_batch_scheduler.py::test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics -q
+git diff --check
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+```
+
+Result: focused standalone/combined INT8 model/fixture-label tamper tests PASS; docs diff check PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: completed queue items still cite concrete tests/code, no item was marked complete for partial/planning-only work, no retained c>N performance/scaling claim was added, native c>N generated-token equality claims were not changed, and scaling claims were not changed.

@@ -1536,10 +1536,11 @@ roll-up/status view.
       `scripts/qwen35_kv_int8_accuracy.py` for prompt/context-boundary
       `512,513`, so C3.1 handoff artifacts name both the generated-token gate
       and the lower-level INT8 KV accuracy gate before promotion; c-sweep
-      `--include-int8` rows now bind model/fixture labels plus c-specific
-      future-retained, CPU primitive, and HIP primitive JSON paths and reject
-      stale labels, duplicate INT8 model/fixture/diagnostic flags, or summaries
-      where the `int8_native_diagnostic` rows no longer agree with
+      standalone and combined `--include-int8` rows now bind model/fixture
+      labels plus c-specific future-retained, CPU primitive, and HIP primitive
+      JSON paths and reject stale labels, duplicate INT8 model/fixture/
+      diagnostic flags, or summaries where the `int8_native_diagnostic` rows no
+      longer agree with
       `options.include_int8`;
       combined
       `--include-int8 --include-gguf` dry-run coverage locks the c=2/c=4/c=8
