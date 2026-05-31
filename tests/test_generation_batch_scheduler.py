@@ -1822,7 +1822,7 @@ def test_batch_c_sweep_profiler_precondition_rejects_nonfinite_kernel_duration(t
         "kind": "profiler_summary",
         "artifact_path": str(profiler_path),
         "passed": False,
-        "reason": "kernel_durations_ns.qwen35_batch_decode is missing or non-positive finite numeric",
+        "reason": "profiler summary artifact is invalid JSON: ValueError: JSON contains non-finite constant 'NaN'",
     }
 
 
@@ -2001,7 +2001,7 @@ def test_batch_c_sweep_profiler_precondition_rejects_nonfinite_kernel_category_d
         "kind": "profiler_summary",
         "artifact_path": str(profiler_path),
         "passed": False,
-        "reason": "kernel_duration_categories_ns.other is missing or negative/non-finite numeric",
+        "reason": "profiler summary artifact is invalid JSON: ValueError: JSON contains non-finite constant 'NaN'",
     }
 
 
@@ -2037,7 +2037,7 @@ def test_batch_c_sweep_profiler_precondition_rejects_nonfinite_cpu_bottleneck_du
         "kind": "profiler_summary",
         "artifact_path": str(profiler_path),
         "passed": False,
-        "reason": "cpu_side_bottlenecks_seconds.decode is missing or negative/non-finite numeric",
+        "reason": "profiler summary artifact is invalid JSON: ValueError: JSON contains non-finite constant 'NaN'",
     }
 
 
@@ -2082,6 +2082,16 @@ def test_batch_c_sweep_summary_json_rejects_nonfinite() -> None:
         c_sweep._summary_json({"bad": float("inf")})
 
     assert json.loads(c_sweep._summary_json({"ok": 1.0})) == {"ok": 1.0}
+
+
+def test_batch_c_sweep_load_json_path_rejects_nonfinite(tmp_path: Path) -> None:
+    payload_path = tmp_path / "payload.json"
+    payload_path.write_text('{"bad": -Infinity}', encoding="utf-8")
+    with pytest.raises(ValueError, match="JSON contains non-finite constant '-Infinity'"):
+        c_sweep._load_json_path(payload_path)
+
+    payload_path.write_text('{"ok": 1.0}', encoding="utf-8")
+    assert c_sweep._load_json_path(payload_path) == {"ok": 1.0}
 
 
 def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) -> None:
@@ -2834,6 +2844,12 @@ def test_batch_c_sweep_validate_summary_rejects_unsafe_input_path(tmp_path: Path
     assert c_sweep.main(["--validate-summary-json", str(non_object_summary)]) == 1
     captured = capsys.readouterr()
     assert "summary must be an object" in captured.err
+
+    nonfinite_summary = tmp_path / "summary-nonfinite.json"
+    nonfinite_summary.write_text('{"bad": NaN}', encoding="utf-8")
+    assert c_sweep.main(["--validate-summary-json", str(nonfinite_summary)]) == 1
+    captured = capsys.readouterr()
+    assert "JSON contains non-finite constant 'NaN'" in captured.err
 
     parent_component_summary = tmp_path / "summary-parent" / ".." / "summary.json"
     assert c_sweep.main(["--validate-summary-json", str(parent_component_summary)]) == 1
@@ -3913,7 +3929,7 @@ def test_batch_c_sweep_primitive_precondition_requires_numpy_oracle(tmp_path: Pa
         "kind": "primitive_correctness",
         "artifact_path": str(primitive_path),
         "passed": False,
-        "reason": expected_reason,
+        "reason": "primitive correctness artifact is invalid JSON: ValueError: JSON contains non-finite constant 'NaN'",
     }
     assert negative_numpy == {
         "kind": "primitive_correctness",
@@ -4673,9 +4689,9 @@ def test_batch_c_sweep_scaling_reference_rejects_nonfinite_rates(tmp_path: Path)
     )
 
     assert precondition["passed"] is False
-    assert precondition["reason"] == "decode throughput fields must be positive finite numbers"
-    assert math.isnan(precondition["decode_tok_s_aggregate"])
-    assert precondition["decode_tok_s_per_request"] == 10.0
+    assert precondition["reason"] == "scaling reference artifact is invalid JSON: ValueError: JSON contains non-finite constant 'NaN'"
+    assert "decode_tok_s_aggregate" not in precondition
+    assert "decode_tok_s_per_request" not in precondition
 
 
 def test_batch_c_sweep_skips_retained_when_scaling_reference_rate_arithmetic_mismatches(

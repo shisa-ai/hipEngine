@@ -86,6 +86,14 @@ _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS = RETAINED_ARTIFACT_REQUIRED_PRIMIT
 _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT = RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT
 
 
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"JSON contains non-finite constant {value!r}")
+
+
+def _load_json_path(path: Path) -> Any:
+    return json.loads(path.read_text(encoding="utf-8"), parse_constant=_reject_json_constant)
+
+
 def _is_python_executable(executable: str) -> bool:
     name = Path(executable).name
     if name == "python":
@@ -492,7 +500,7 @@ def _primitive_correctness_precondition(command: SweepCommand) -> dict[str, Any]
             "reason": "primitive correctness artifact does not exist",
         }
     try:
-        payload = json.loads(primitive_path.read_text())
+        payload = _load_json_path(primitive_path)
     except Exception as exc:
         return {
             "kind": _RETAINED_PRECONDITION_KINDS[0],
@@ -1180,7 +1188,7 @@ def _scaling_reference_precondition(
             "reason": "scaling reference artifact does not exist",
         }
     try:
-        payload = json.loads(path.read_text())
+        payload = _load_json_path(path)
     except Exception as exc:
         return {
             "kind": kind,
@@ -1311,7 +1319,7 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
             "reason": "profiler summary artifact does not exist",
         }
     try:
-        payload = json.loads(profiler_path.read_text())
+        payload = _load_json_path(profiler_path)
     except Exception as exc:
         return {
             "kind": _RETAINED_PRECONDITION_KINDS[3],
@@ -1660,7 +1668,7 @@ def _retained_profiler_synthesis_postcondition(
         result["reason"] = "profiler precondition synthesized fields are missing or malformed"
         return result
     try:
-        payload = json.loads(command.artifact_path.read_text())
+        payload = _load_json_path(command.artifact_path)
     except Exception as exc:
         result["reason"] = f"retained artifact is invalid JSON: {type(exc).__name__}: {exc}"
         return result
@@ -3821,7 +3829,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.validate_summary_json is not None:
         try:
             _validate_cli_path_option("--validate-summary-json", args.validate_summary_json)
-            summary = json.loads(Path(args.validate_summary_json).read_text())
+            summary = _load_json_path(Path(args.validate_summary_json))
             validate_sweep_summary(summary)
         except Exception as exc:
             print(f"invalid c-sweep summary: {exc}", file=sys.stderr)
