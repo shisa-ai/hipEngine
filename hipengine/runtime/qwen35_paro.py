@@ -2779,12 +2779,47 @@ class Qwen35ParoDecodeState:
         library=None,
         stream: int = 0,
     ) -> Tensor:
-        """Replay linear-attention output projection with token-1 kernels per row."""
+        """Replay linear-attention output projection with token-1 kernels per row.
+
+        This path matches token-1 decode state replay: ``scratch.recurrent_out``
+        already contains the post-GDN/RMSNorm/gate FP32 row and must be cast to
+        lowp before rotation/output projection.
+        """
 
         if tokens <= 0:
             raise ValueError("tokens must be positive")
         for row in range(tokens):
             self.project_linear_attention_out_fp16(
+                self._decode_row_linear_attention_planar_scratch(scratch, row),
+                tokens=1,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        return scratch.out_proj
+
+    def project_linear_attention_prefill_rows_out_fp16(
+        self,
+        scratch: Qwen35ParoLinearAttentionScratch,
+        *,
+        tokens: int,
+        group_size: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        """Replay output projection per row from segmented-state lowp output.
+
+        Segment-aware state replay writes raw recurrent state to
+        ``scratch.recurrent_out`` and the post-GDN/RMSNorm/gate activation to
+        ``scratch.recurrent_bf16``.  Per-row output diagnostics for that state
+        path must therefore consume ``recurrent_bf16`` directly instead of
+        recasting the raw recurrent tensor as token-1 decode does.
+        """
+
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        for row in range(tokens):
+            self.project_linear_attention_prefill_out_fp16(
                 self._decode_row_linear_attention_planar_scratch(scratch, row),
                 tokens=1,
                 group_size=group_size,
@@ -5102,7 +5137,15 @@ class Qwen35ParoDecodeState:
         if force_selected_c1_out is None:
             force_selected_c1_out = force_selected_c1_state
         if force_selected_c1_out:
-            return self.project_linear_attention_decode_rows_out_fp16(
+            if force_selected_c1_state:
+                return self.project_linear_attention_decode_rows_out_fp16(
+                    scratch,
+                    tokens=tokens,
+                    group_size=group_size,
+                    library=library,
+                    stream=stream,
+                )
+            return self.project_linear_attention_prefill_rows_out_fp16(
                 scratch,
                 tokens=tokens,
                 group_size=group_size,

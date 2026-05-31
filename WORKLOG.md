@@ -49103,3 +49103,47 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: verify count remains `12`; full guard PASS; c=2/c=8 primitive correctness artifacts pass with zero append/A-A mismatches and zero batch-vs-c1 attention error; diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, no benchmark rollup files changed, and C2.3 remains open pending retained native segmented state/output parity plus generated-token equality.
+
+## 2026-05-31 — CONCURRENCY C2.3 selected-output replay source fix
+
+Fixed a diagnostic-source bug in the C2.3 selected-c1 output probe. Segment-aware linear state replay writes raw recurrent values to `scratch.recurrent_out` and the gated lowp activation to `scratch.recurrent_bf16`; the token-1 output replay path was recasting raw `recurrent_out`, so selected-output + native segmented-state probes could report a false immediate failure. `Qwen35ParoDecodeState.project_linear_attention_prefill_rows_out_fp16(...)` now replays selected output per row from `recurrent_bf16` when `force_selected_c1_out=true` and native segmented state is used; selected-c1 state replay still uses the token-1 `recurrent_out` path. Targeted CPU coverage: `tests/test_qwen35_decode_state.py::test_qwen35_decode_state_selected_output_uses_prefill_lowp_after_segment_state`.
+
+Diagnostic results:
+
+```bash
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 4 --max-layers 1 --layer-limits 1 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --batch-decode-linear-projection-path selected_c1 --batch-decode-linear-output-path selected_c1 --json /tmp/hipengine-hidden-bisect-L1-512-4-c2-selected-proj-native-state-selected-out-fixed-focus1269.json
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 4 --max-layers 1 --layer-limits 1 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --batch-decode-linear-projection-path selected_c1 --batch-decode-linear-output-path batch --json /tmp/hipengine-hidden-bisect-L1-512-4-c2-selected-proj-native-state-native-out-focus1269.json
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --batch-decode-linear-projection-path selected_c1 --batch-decode-linear-output-path selected_c1 --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-selected-out-fixed-perrow-full-atol4e-3-focus1269.json
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --batch-decode-linear-projection-path selected_c1 --batch-decode-linear-output-path batch --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-native-out-perrow-full-atol4e-3-focus1269.json
+```
+
+The fixed selected-output probes are `status=eq_ok`: L1 selected projection/native state/selected output, L1 selected projection/native state/native output, and L8 selected projection/native state/selected output + per-row full attention. The matched L8 selected projection/native state/native output + per-row full attention probe remains `status=mismatch_found` with the old row-0 token idx-13 boundary and first hidden failure at decode step 6 / row 1 (`max_abs=0.01242828369140625`). This shifts C2.3 away from native segmented-state as the immediate blocker and back to native batched output projection/post-attention amplification plus remaining native projection coverage. The raw `recurrent_out` stage summary in segmented-state runs is not equivalent to token-1 decode's post-gate `recurrent_out` and is no longer treated as the closure/blocker signal.
+
+Validation:
+
+```bash
+python3 -m compileall -q hipengine/runtime/qwen35_paro.py tests/test_qwen35_decode_state.py && pytest -q tests/test_qwen35_decode_state.py::test_qwen35_decode_state_selected_output_uses_prefill_lowp_after_segment_state -q
+python3 - <<'PY'
+import json, pathlib
+fixed = json.loads(pathlib.Path('/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-selected-out-fixed-perrow-full-atol4e-3-focus1269.json').read_text())
+red = json.loads(pathlib.Path('/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-native-out-perrow-full-atol4e-3-focus1269.json').read_text())
+assert fixed['status'] == 'eq_ok'
+assert fixed['correctness']['hidden_passed'] is True and fixed['correctness']['token_passed'] is True
+assert red['status'] == 'mismatch_found'
+assert red['correctness']['first_token_mismatch']['row'] == 0
+assert red['correctness']['first_token_mismatch']['first_index'] == 13
+fh = red['correctness']['first_hidden_mismatch']
+assert fh['decode_step'] == 6 and fh['row'] == 1
+assert abs(fh['max_abs'] - 0.01242828369140625) == 0.0
+PY
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: targeted selected-output routing test PASS; artifact assertions PASS; verify count remains `12`; full guard PASS with c=2/c=8 primitive A/A fields zero; diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, no benchmark rollup files changed, and C2.3 remains open pending native output/projection parity plus generated-token equality.

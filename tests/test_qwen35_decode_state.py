@@ -2439,6 +2439,71 @@ def test_qwen35_decode_state_runs_linear_attention_fp16_out_proj_chain(monkeypat
     assert order == ["rotate2", "dual_pack8", "dense_dual", "conv", "gdn", "cast", "rotate1", "pack8"]
 
 
+def test_qwen35_decode_state_selected_output_uses_prefill_lowp_after_segment_state(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _linear_weights())
+    hidden = _tensor(0xC000, (2, 4096), "fp16")
+    conv_state = _tensor(0xC100, (2, 8192, 4), "fp32")
+    recurrent_state = _tensor(0xC200, (2, 32, 128, 128), "fp32")
+    cu_seqlens = _tensor(0xC300, (3,), "int32")
+    state_indices = _tensor(0xC400, (2,), "int64")
+    scratch = state.reserve_linear_attention_scratch(tokens=2, activation_dtype="fp16")
+    state_pairs = ((conv_state, recurrent_state), (conv_state, recurrent_state))
+    calls = []
+
+    def fake_state_segments(*args, **kwargs):
+        calls.append(("state_segments", kwargs["force_selected_c1_state"]))
+        assert args == (hidden,)
+        assert kwargs["scratch"] is scratch
+        assert kwargs["tokens"] == 2
+        return scratch.recurrent_bf16
+
+    def fake_decode_rows_out(*args, **kwargs):
+        calls.append(("decode_rows_out", kwargs["tokens"]))
+        return scratch.out_proj
+
+    def fake_prefill_rows_out(*args, **kwargs):
+        calls.append(("prefill_rows_out", kwargs["tokens"]))
+        return scratch.out_proj
+
+    monkeypatch.setattr(state, "run_linear_attention_prefill_state_segments_fp16", fake_state_segments)
+    monkeypatch.setattr(state, "project_linear_attention_decode_rows_out_fp16", fake_decode_rows_out)
+    monkeypatch.setattr(state, "project_linear_attention_prefill_rows_out_fp16", fake_prefill_rows_out)
+
+    out = state.run_linear_attention_prefill_out_proj_segments_fp16(
+        hidden,
+        conv_state=conv_state,
+        recurrent_state=recurrent_state,
+        cu_seqlens=cu_seqlens,
+        state_indices=state_indices,
+        segments=2,
+        scratch=scratch,
+        tokens=2,
+        force_selected_c1_out=True,
+    )
+
+    assert out is scratch.out_proj
+    assert calls == [("state_segments", False), ("prefill_rows_out", 2)]
+
+    calls.clear()
+    out = state.run_linear_attention_prefill_out_proj_segments_fp16(
+        hidden,
+        conv_state=conv_state,
+        recurrent_state=recurrent_state,
+        cu_seqlens=cu_seqlens,
+        state_indices=state_indices,
+        segments=2,
+        scratch=scratch,
+        tokens=2,
+        force_selected_c1_state=True,
+        selected_c1_state_pairs=state_pairs,
+        force_selected_c1_out=True,
+    )
+
+    assert out is scratch.out_proj
+    assert calls == [("state_segments", True), ("decode_rows_out", 2)]
+
+
 def test_qwen35_decode_state_runs_moe_c1_fp16_chain_in_parent_order(monkeypatch) -> None:
     runtime = FakeRuntime()
     state = _state(runtime, _prepared_moe_weights())
