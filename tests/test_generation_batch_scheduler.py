@@ -7095,12 +7095,13 @@ def test_batch_c_sweep_can_plan_gguf_blocked_diagnostics(tmp_path: Path, monkeyp
             c_sweep.validate_sweep_summary(tampered_rows)
 
     for flag in ("--fixture", "--rows", "--backend", "--quant", "--max-new-tokens"):
-        tampered = json.loads(json.dumps(summary))
-        argv = tampered["commands"][gguf_entry_index]["argv"]
-        argv.extend([flag, argv[argv.index(flag) + 1]])
-        tampered["commands"][gguf_entry_index]["command"] = shlex.join(argv)
-        with pytest.raises(ValueError, match=r"commands\[\]\.argv must not repeat GGUF diagnostic flags"):
-            c_sweep.validate_sweep_summary(tampered)
+        for index in gguf_entry_indices:
+            tampered = json.loads(json.dumps(summary))
+            argv = tampered["commands"][index]["argv"]
+            argv.extend([flag, argv[argv.index(flag) + 1]])
+            tampered["commands"][index]["command"] = shlex.join(argv)
+            with pytest.raises(ValueError, match=r"commands\[\]\.argv must not repeat GGUF diagnostic flags"):
+                c_sweep.validate_sweep_summary(tampered)
     for index in gguf_entry_indices:
         tampered_gguf_env = json.loads(json.dumps(summary))
         gguf_env_argv = tampered_gguf_env["commands"][index]["argv"]

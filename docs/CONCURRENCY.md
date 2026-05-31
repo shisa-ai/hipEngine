@@ -1613,10 +1613,10 @@ roll-up/status view.
       Q4_K_M/Q5_K_M/Q6_K/Q8_0 at c>1 while preserving and binding the visible
       HIP device env, and rejects stale GGUF fixture/backend/quant/decode-length/row
       labels plus stale env-prefix labels across all four standalone quant rows,
-      duplicate GGUF diagnostic flags, duplicate/unsupported quant order,
-      artifact filename metadata across all four standalone quant rows, or
-      summaries where GGUF diagnostic rows no longer agree with
-      `options.include_gguf`; combined
+      duplicate GGUF diagnostic flags across all four standalone quant rows,
+      duplicate/unsupported quant order, artifact filename metadata across all
+      four standalone quant rows, or summaries where GGUF diagnostic rows no
+      longer agree with `options.include_gguf`; combined
       `--include-int8 --include-gguf` dry-run coverage locks the c=2/c=4/c=8
       four-quant artifact filenames, HIP device env prefixes, fixture/backend
       labels, and decode-length labels
