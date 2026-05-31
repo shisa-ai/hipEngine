@@ -11210,6 +11210,44 @@ def test_qwen35_retained_scaling_comparison_uses_c1_and_serial_artifacts(tmp_pat
     }
 
 
+def test_qwen35_retained_scaling_comparison_rejects_wrong_shape_reference(tmp_path: Path) -> None:
+    c1 = tmp_path / "native-baseline-c1.json"
+    c1.write_text(
+        json.dumps(
+            {
+                "artifact_path": str(c1),
+                "prompt_length": 512,
+                "decode_tokens": 128,
+                "throughput": {"warmed_decode_tok_s": 5.0},
+            }
+        )
+    )
+    serial = tmp_path / "serial-bridge-c2.json"
+    serial.write_text(
+        json.dumps(
+            {
+                "artifact_path": str(serial),
+                "status": "blocked",
+                "workload": {"concurrency": 2, "prompt_tokens_per_request": 512, "gen_tokens_per_request": 64},
+                "measurements": {"decode_tok_s_aggregate": 8.0, "decode_tok_s_per_request": 4.0},
+            }
+        )
+    )
+    args = argparse.Namespace(c1_baseline_json=c1, serial_bridge_json=serial, prompt_length=512, decode_tokens=128)
+
+    scaling = retained_bench._build_scaling_comparison(
+        args,
+        native_decode_tok_s_aggregate=16.0,
+        native_decode_tok_s_per_request=8.0,
+    )
+
+    assert scaling["complete"] is False
+    assert scaling["serial_bridge_baseline"]["reason"] == "decode token count label does not match retained workload"
+    assert scaling["serial_bridge_baseline"]["decode_tok_s_aggregate"] is None
+    assert scaling["ratios"]["aggregate_vs_serial_bridge"] is None
+    assert scaling["ratios"]["aggregate_vs_c1"] == 16.0 / 5.0
+
+
 def test_qwen35_retained_scaling_reference_rejects_mismatched_visible_device_env(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

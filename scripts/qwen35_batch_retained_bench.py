@@ -1270,6 +1270,37 @@ def _profiled_command(args: argparse.Namespace, argv: Sequence[str] | None) -> s
     )
 
 
+def _reference_with_retained_workload_shape(
+    reference: Mapping[str, Any],
+    *,
+    prompt_tokens_per_request: int | None,
+    gen_tokens_per_request: int | None,
+) -> dict[str, Any]:
+    reasons: list[str] = []
+    if prompt_tokens_per_request is not None:
+        value = reference.get("prompt_tokens_per_request")
+        if not isinstance(value, int) or isinstance(value, bool):
+            reasons.append("prompt token count label is missing")
+        elif value != prompt_tokens_per_request:
+            reasons.append("prompt token count label does not match retained workload")
+    if gen_tokens_per_request is not None:
+        value = reference.get("gen_tokens_per_request")
+        if not isinstance(value, int) or isinstance(value, bool):
+            reasons.append("decode token count label is missing")
+        elif value != gen_tokens_per_request:
+            reasons.append("decode token count label does not match retained workload")
+    if not reasons:
+        return dict(reference)
+    result = dict(reference)
+    prior_reason = result.get("reason")
+    reason_parts = [str(prior_reason)] if prior_reason else []
+    reason_parts.extend(reasons)
+    result["reason"] = "; ".join(reason_parts)
+    result["decode_tok_s_aggregate"] = None
+    result["decode_tok_s_per_request"] = None
+    return result
+
+
 def _build_scaling_comparison(
     args: argparse.Namespace,
     *,
@@ -1282,6 +1313,22 @@ def _build_scaling_comparison(
         expected_command_script=_LEGACY_NATIVE_BENCH_SCRIPT,
     )
     serial = _scaling_reference(getattr(args, "serial_bridge_json", None), expected_command_script=_SERIAL_BRIDGE_SCRIPT)
+    prompt_tokens_per_request = getattr(args, "prompt_length", None)
+    if isinstance(prompt_tokens_per_request, bool) or not isinstance(prompt_tokens_per_request, int):
+        prompt_tokens_per_request = None
+    gen_tokens_per_request = getattr(args, "decode_tokens", None)
+    if isinstance(gen_tokens_per_request, bool) or not isinstance(gen_tokens_per_request, int):
+        gen_tokens_per_request = None
+    c1 = _reference_with_retained_workload_shape(
+        c1,
+        prompt_tokens_per_request=prompt_tokens_per_request,
+        gen_tokens_per_request=gen_tokens_per_request,
+    )
+    serial = _reference_with_retained_workload_shape(
+        serial,
+        prompt_tokens_per_request=prompt_tokens_per_request,
+        gen_tokens_per_request=gen_tokens_per_request,
+    )
     ratios = {
         "aggregate_vs_c1": _safe_ratio(native_decode_tok_s_aggregate, c1.get("decode_tok_s_aggregate")),
         "per_request_vs_c1": _safe_ratio(native_decode_tok_s_per_request, c1.get("decode_tok_s_per_request")),
