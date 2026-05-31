@@ -13348,6 +13348,14 @@ def test_qwen35_retained_artifact_paths_reject_symlink_escapes(
         "primitive_correctness_json",
         "benchmarks/results/primitive-c2.json",
     ) == []
+    assert retained_bench._retained_json_artifact_path_blockers(
+        "c1_baseline_json",
+        "benchmarks/results/c1.json",
+    ) == []
+    assert retained_bench._retained_json_artifact_path_blockers(
+        "serial_bridge_json",
+        "benchmarks/results/serial-c2.json",
+    ) == []
     assert not retained_bench._is_retained_artifact_path("/tmp/source.json")
     assert retained_bench._retained_output_artifact_blockers("/tmp/source.json") == [
         "artifact_path must be a repo-relative path under benchmarks/results"
@@ -15097,6 +15105,8 @@ def test_qwen35_retained_payload_blocks_acceptance_without_memory_evidence(monke
     assert "memory.allocator_reserved_peak_bytes" in payload["decision"]["reason"]
     assert "memory.stable_block_id.passed" in payload["decision"]["reason"]
     assert "primitive_correctness_json must be provided under benchmarks/results" in payload["decision"]["reason"]
+    assert "c1_baseline_json must be provided under benchmarks/results" in payload["decision"]["reason"]
+    assert "serial_bridge_json must be provided under benchmarks/results" in payload["decision"]["reason"]
 
 
 def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
