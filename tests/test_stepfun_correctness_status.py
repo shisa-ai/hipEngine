@@ -1622,3 +1622,42 @@ def test_stepfun_correctness_status_fail_on_blocked_returns_nonzero(
     assert captured.err == ""
     assert payload["status"] == "blocked"
     assert payload["e2e_inference_ready"] is False
+
+
+
+def test_stepfun_correctness_status_first_blocker_fail_on_blocked_returns_nonzero(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--first-blocker-only",
+            "--fail-on-blocked",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 2
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert captured.err == ""
+    assert payload["blocker_kind"] == "oracle_parity_blocked"
+    assert payload["primary_command_kind"] == "rerun_command_shell"
+    assert payload["first_missing_evidence"] == "oracle_completed_successfully"
