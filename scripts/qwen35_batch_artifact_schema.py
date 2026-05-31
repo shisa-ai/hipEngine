@@ -1127,6 +1127,19 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
                     if expected_latency > 0.0 and abs(float(latency_sample) - expected_latency) > tolerance:
                         errors.append("observability.request_latency_seconds.samples must match completion_timestamps minus admission_timestamps for accepted artifacts")
                         break
+        if isinstance(admission_timestamps, Mapping) and isinstance(completion_timestamps, Mapping):
+            for request_id, row in per_request.items():
+                admission_timestamp = admission_timestamps.get(request_id)
+                completion_timestamp = completion_timestamps.get(request_id)
+                if not isinstance(row, Mapping) or not _is_finite_number(admission_timestamp) or not _is_finite_number(completion_timestamp):
+                    continue
+                request_latency = float(completion_timestamp) - float(admission_timestamp)
+                timing_fields = (row.get("queue_seconds"), row.get("prefill_seconds"), row.get("decode_seconds"))
+                if request_latency > 0.0 and all(_is_nonnegative_number(value) for value in timing_fields):
+                    component_total = sum(float(value) for value in timing_fields)
+                    if component_total - request_latency > max(1e-9, request_latency * 1e-6):
+                        errors.append("observability.per_request timing components must not exceed completion minus admission for accepted artifacts")
+                        break
         for row in per_request.values():
             _valid_request_observability(row, errors)
 

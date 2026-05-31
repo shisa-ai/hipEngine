@@ -15794,6 +15794,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="execution.completed request_id 0 finish_reason must match observability.per_request"):
         validate_cn_diagnostic_artifact_payload(mismatched_completion_finish_reason)
 
+    impossible_observed_request_timing = json.loads(json.dumps(accepted))
+    impossible_observed_request_timing["observability"]["per_request"]["0"]["decode_seconds"] = 2.0
+    with pytest.raises(ValueError, match="observability.per_request timing components must not exceed completion minus admission"):
+        validate_cn_diagnostic_artifact_payload(impossible_observed_request_timing)
+
     blank_observed_finish_reason = json.loads(json.dumps(accepted))
     blank_observed_finish_reason["observability"]["per_request"]["0"]["finish_reason"] = " "
     with pytest.raises(ValueError, match=r"observability.per_request.\*.finish_reason must be a non-empty string"):
