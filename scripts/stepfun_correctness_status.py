@@ -331,6 +331,110 @@ def _kv_decode_dispatch_progress(resource: dict[str, object]) -> dict[str, objec
     }
 
 
+def _kv_backed_decode_gap_report(
+    kv_decode_dispatch_progress: dict[str, object],
+) -> dict[str, object]:
+    """Return machine-readable remaining evidence for the KV-backed runner blocker."""
+
+    launch_schedule = dict(kv_decode_dispatch_progress.get("launch_schedule", {}))
+    run_plan = dict(kv_decode_dispatch_progress.get("run_plan", {}))
+    decode_input_upload_plan = dict(run_plan.get("decode_input_upload_plan", {}))
+    preconditions = [
+        {
+            "name": "dispatch_keys_registered",
+            "ready": kv_decode_dispatch_progress.get("all_registered") is True,
+            "evidence": "prompt/decode KV write and decode-attention registry keys resolve",
+        },
+        {
+            "name": "span_shapes_compatible",
+            "ready": kv_decode_dispatch_progress.get("span_shape_compatible") is True,
+            "evidence": "prompt and decode KVLiveSpans geometry matches the 512-token bring-up window",
+        },
+        {
+            "name": "launch_schedule_recorded",
+            "ready": bool(launch_schedule.get("operation_count")),
+            "evidence": f"{launch_schedule.get('operation_count')} planned KV operations",
+        },
+        {
+            "name": "run_plan_fits_resource_plan",
+            "ready": kv_decode_dispatch_progress.get("run_plan_prompt_fits_resource_plan") is True
+            and kv_decode_dispatch_progress.get("run_plan_context_fits_resource_plan") is True,
+            "evidence": "prompt rows and prompt+decode context fit the text resource plan",
+        },
+        {
+            "name": "decode_input_upload_plan_consistent",
+            "ready": decode_input_upload_plan.get("all_consistency_checks_passed") is True,
+            "evidence": (
+                f"{decode_input_upload_plan.get('entry_count')} staged input entries / "
+                f"{decode_input_upload_plan.get('total_nbytes')} bytes"
+            ),
+        },
+    ]
+    remaining_evidence = [
+        {
+            "name": "streaming_runner_ready_flags",
+            "ready": launch_schedule.get("streaming_runner_ready") is True
+            and run_plan.get("streaming_runner_ready") is True,
+            "required_evidence": (
+                "text_decode_resource_plan.kv_decode_launch_schedule.streaming_runner_ready "
+                "and kv_decode_run_plan.streaming_runner_ready must both be true"
+            ),
+            "current": {
+                "launch_schedule_streaming_runner_ready": launch_schedule.get(
+                    "streaming_runner_ready"
+                ),
+                "run_plan_streaming_runner_ready": run_plan.get("streaming_runner_ready"),
+            },
+        },
+        {
+            "name": "kv_kernel_launch_trace",
+            "ready": bool(run_plan.get("kv_kernel_trace_artifact")),
+            "required_evidence": (
+                "A retained rocprofv3 or equivalent trace must show the prompt KV write, "
+                "decode KV write, and gated decode-attention kernels launching for the canonical prompt"
+            ),
+            "current": run_plan.get("kv_kernel_trace_artifact"),
+        },
+        {
+            "name": "kv_backed_next_token_artifact",
+            "ready": bool(run_plan.get("kv_backed_next_token_artifact")),
+            "required_evidence": (
+                "A KV-backed one-token decode artifact must record the generated token/logit path "
+                "without host-composed layer-prefix outputs"
+            ),
+            "current": run_plan.get("kv_backed_next_token_artifact"),
+        },
+    ]
+    missing_preconditions = [
+        str(item["name"]) for item in preconditions if item.get("ready") is not True
+    ]
+    missing_evidence = [
+        str(item["name"]) for item in remaining_evidence if item.get("ready") is not True
+    ]
+    return {
+        "source": "kv_decode_dispatch_progress",
+        "status": "ready" if not missing_preconditions and not missing_evidence else "blocked",
+        "precondition_count": len(preconditions),
+        "validated_precondition_count": sum(1 for item in preconditions if item.get("ready") is True),
+        "validated_preconditions": [
+            str(item["name"]) for item in preconditions if item.get("ready") is True
+        ],
+        "missing_preconditions": missing_preconditions,
+        "missing_precondition_count": len(missing_preconditions),
+        "missing_evidence": missing_evidence,
+        "missing_evidence_count": len(missing_evidence),
+        "preconditions": preconditions,
+        "remaining_evidence": remaining_evidence,
+        "operation_count": launch_schedule.get("operation_count"),
+        "upload_entry_count": decode_input_upload_plan.get("entry_count"),
+        "upload_total_nbytes": decode_input_upload_plan.get("total_nbytes"),
+        "note": (
+            "This separates validated metadata/input prerequisites from the evidence still needed "
+            "before kv_backed_decode_ready can become true. It is not a performance or parity claim."
+        ),
+    }
+
+
 def _status_refresh_command(
     *,
     prompt_artifact: Path,
@@ -407,6 +511,7 @@ def _readiness_gates(
     kv_backed_decode_ready: bool,
     oracle_progress: dict[str, object],
     kv_decode_dispatch_progress: dict[str, object],
+    kv_backed_decode_gap_report: dict[str, object],
 ) -> dict[str, object]:
     """Return explicit readiness gates for the remaining StepFun blockers."""
 
@@ -527,6 +632,7 @@ def _readiness_gates(
                 ).get("streaming_runner_ready"),
                 "resident_prompt_smoke": "host_composed_layer_prefix",
             },
+            "gap_report": kv_backed_decode_gap_report,
         },
         "e2e_inference": {
             "ready": oracle_parity and kv_backed_decode_ready,
@@ -556,6 +662,7 @@ def _handoff_summary(
     oracle_progress: dict[str, object],
     kv_decode_dispatch_ready: bool,
     kv_decode_dispatch_progress: dict[str, object],
+    kv_backed_decode_gap_report: dict[str, object],
 ) -> dict[str, object]:
     """Return a compact status summary for cross-session handoff."""
 
@@ -597,6 +704,22 @@ def _handoff_summary(
                 "all_consistency_checks_passed"
             )
             is True,
+        },
+        "kv_backed_decode_gap_report": {
+            "status": kv_backed_decode_gap_report.get("status"),
+            "precondition_count": kv_backed_decode_gap_report.get("precondition_count"),
+            "validated_precondition_count": kv_backed_decode_gap_report.get(
+                "validated_precondition_count"
+            ),
+            "missing_precondition_count": kv_backed_decode_gap_report.get(
+                "missing_precondition_count"
+            ),
+            "missing_evidence_count": kv_backed_decode_gap_report.get(
+                "missing_evidence_count"
+            ),
+            "missing_evidence": list(kv_backed_decode_gap_report.get("missing_evidence", [])),
+            "operation_count": kv_backed_decode_gap_report.get("operation_count"),
+            "upload_total_nbytes": kv_backed_decode_gap_report.get("upload_total_nbytes"),
         },
         "blocked_signals": {
             "oracle_parity": "oracle_parity" in blocked_gates,
@@ -644,7 +767,8 @@ def build_status(
     oracle_progress = _oracle_progress(oracle)
     kv_decode_dispatch_progress = _kv_decode_dispatch_progress(resource)
     kv_decode_dispatch_ready = kv_decode_dispatch_progress["all_registered"] is True
-    kv_backed_decode_ready = False
+    kv_backed_decode_gap_report = _kv_backed_decode_gap_report(kv_decode_dispatch_progress)
+    kv_backed_decode_ready = kv_backed_decode_gap_report["status"] == "ready"
     e2e_inference_ready = oracle_parity and kv_backed_decode_ready
     readiness_gates = _readiness_gates(
         oracle_parity=oracle_parity,
@@ -652,6 +776,7 @@ def build_status(
         kv_backed_decode_ready=kv_backed_decode_ready,
         oracle_progress=oracle_progress,
         kv_decode_dispatch_progress=kv_decode_dispatch_progress,
+        kv_backed_decode_gap_report=kv_backed_decode_gap_report,
     )
     next_action_commands = _next_action_commands(
         oracle_progress=oracle_progress,
@@ -675,35 +800,43 @@ def build_status(
                 "timeout_s": oracle_progress.get("timeout_s"),
             }
         )
-    blockers.append(
-        {
-            "kind": "kv_backed_decode_not_wired",
-            "detail": (
-                "KV dispatch registry keys are recorded as ready in the text resource plan; "
-                "current all-layer prompt smoke is still host-composed prefill/logits, so the "
-                "final KV-backed one-token decode runner remains open."
-            ),
-            "artifact": str(prompt_artifact),
-            "resource_artifact": str(resource_artifact),
-            "kv_decode_dispatch_ready": kv_decode_dispatch_ready,
-        }
-    )
-    next_actions = [
-        {
-            "blocker_kind": "oracle_parity_blocked",
-            "action": (
-                "Build or locate a StepFun/step35-capable llama.cpp or CPU oracle, rerun "
-                "scripts/stepfun_llamacpp_oracle.py --execute, and record exact token/logit comparison."
-            ),
-        },
-        {
-            "blocker_kind": "kv_backed_decode_not_wired",
-            "action": (
-                "Replace the host-composed layer-prefix prompt smoke with a KV-backed one-token decode runner "
-                "using StepFunResidentSession weight/KV ownership and the validated layer probes."
-            ),
-        },
-    ]
+    if not kv_backed_decode_ready:
+        blockers.append(
+            {
+                "kind": "kv_backed_decode_not_wired",
+                "detail": (
+                    "KV dispatch registry keys are recorded as ready in the text resource plan; "
+                    "current all-layer prompt smoke is still host-composed prefill/logits, so the "
+                    "final KV-backed one-token decode runner remains open."
+                ),
+                "artifact": str(prompt_artifact),
+                "resource_artifact": str(resource_artifact),
+                "kv_decode_dispatch_ready": kv_decode_dispatch_ready,
+                "gap_report_status": kv_backed_decode_gap_report.get("status"),
+                "missing_evidence": list(kv_backed_decode_gap_report.get("missing_evidence", [])),
+            }
+        )
+    next_actions = []
+    if not oracle_parity:
+        next_actions.append(
+            {
+                "blocker_kind": "oracle_parity_blocked",
+                "action": (
+                    "Build or locate a StepFun/step35-capable llama.cpp or CPU oracle, rerun "
+                    "scripts/stepfun_llamacpp_oracle.py --execute, and record exact token/logit comparison."
+                ),
+            }
+        )
+    if not kv_backed_decode_ready:
+        next_actions.append(
+            {
+                "blocker_kind": "kv_backed_decode_not_wired",
+                "action": (
+                    "Replace the host-composed layer-prefix prompt smoke with a KV-backed one-token decode runner "
+                    "using StepFunResidentSession weight/KV ownership and the validated layer probes."
+                ),
+            }
+        )
     handoff_summary = _handoff_summary(
         docs_status=docs_status,
         blockers=blockers,
@@ -713,6 +846,7 @@ def build_status(
         oracle_progress=oracle_progress,
         kv_decode_dispatch_ready=kv_decode_dispatch_ready,
         kv_decode_dispatch_progress=kv_decode_dispatch_progress,
+        kv_backed_decode_gap_report=kv_backed_decode_gap_report,
     )
     return {
         "status": "blocked" if blockers else "ready",
@@ -743,6 +877,7 @@ def build_status(
         "linear_projection_progress": _linear_projection_progress(prompt),
         "kv_decode_dispatch_progress": kv_decode_dispatch_progress,
         "kv_decode_dispatch_ready": kv_decode_dispatch_ready,
+        "kv_backed_decode_gap_report": kv_backed_decode_gap_report,
         "kv_backed_decode_ready": kv_backed_decode_ready,
         "e2e_inference_ready": e2e_inference_ready,
         "readiness_gates": readiness_gates,

@@ -18,8 +18,14 @@
     {
       "artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json",
       "detail": "KV dispatch registry keys are recorded as ready in the text resource plan; current all-layer prompt smoke is still host-composed prefill/logits, so the final KV-backed one-token decode runner remains open.",
+      "gap_report_status": "blocked",
       "kind": "kv_backed_decode_not_wired",
       "kv_decode_dispatch_ready": true,
+      "missing_evidence": [
+        "streaming_runner_ready_flags",
+        "kv_kernel_launch_trace",
+        "kv_backed_next_token_artifact"
+      ],
       "resource_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json"
     }
   ],
@@ -33,7 +39,7 @@
         "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
       },
       {
-        "line": 601,
+        "line": 602,
         "state": "partial",
         "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
       }
@@ -50,6 +56,20 @@
       "e2e_inference": true,
       "kv_backed_decode": true,
       "oracle_parity": true
+    },
+    "kv_backed_decode_gap_report": {
+      "missing_evidence": [
+        "streaming_runner_ready_flags",
+        "kv_kernel_launch_trace",
+        "kv_backed_next_token_artifact"
+      ],
+      "missing_evidence_count": 3,
+      "missing_precondition_count": 0,
+      "operation_count": 135,
+      "precondition_count": 5,
+      "status": "blocked",
+      "upload_total_nbytes": 484,
+      "validated_precondition_count": 5
     },
     "kv_decode_input_upload_plan": {
       "all_consistency_checks_passed": true,
@@ -97,6 +117,81 @@
       "oracle_target_recorded": true
     },
     "status": "blocked"
+  },
+  "kv_backed_decode_gap_report": {
+    "missing_evidence": [
+      "streaming_runner_ready_flags",
+      "kv_kernel_launch_trace",
+      "kv_backed_next_token_artifact"
+    ],
+    "missing_evidence_count": 3,
+    "missing_precondition_count": 0,
+    "missing_preconditions": [],
+    "note": "This separates validated metadata/input prerequisites from the evidence still needed before kv_backed_decode_ready can become true. It is not a performance or parity claim.",
+    "operation_count": 135,
+    "precondition_count": 5,
+    "preconditions": [
+      {
+        "evidence": "prompt/decode KV write and decode-attention registry keys resolve",
+        "name": "dispatch_keys_registered",
+        "ready": true
+      },
+      {
+        "evidence": "prompt and decode KVLiveSpans geometry matches the 512-token bring-up window",
+        "name": "span_shapes_compatible",
+        "ready": true
+      },
+      {
+        "evidence": "135 planned KV operations",
+        "name": "launch_schedule_recorded",
+        "ready": true
+      },
+      {
+        "evidence": "prompt rows and prompt+decode context fit the text resource plan",
+        "name": "run_plan_fits_resource_plan",
+        "ready": true
+      },
+      {
+        "evidence": "6 staged input entries / 484 bytes",
+        "name": "decode_input_upload_plan_consistent",
+        "ready": true
+      }
+    ],
+    "remaining_evidence": [
+      {
+        "current": {
+          "launch_schedule_streaming_runner_ready": false,
+          "run_plan_streaming_runner_ready": false
+        },
+        "name": "streaming_runner_ready_flags",
+        "ready": false,
+        "required_evidence": "text_decode_resource_plan.kv_decode_launch_schedule.streaming_runner_ready and kv_decode_run_plan.streaming_runner_ready must both be true"
+      },
+      {
+        "current": null,
+        "name": "kv_kernel_launch_trace",
+        "ready": false,
+        "required_evidence": "A retained rocprofv3 or equivalent trace must show the prompt KV write, decode KV write, and gated decode-attention kernels launching for the canonical prompt"
+      },
+      {
+        "current": null,
+        "name": "kv_backed_next_token_artifact",
+        "ready": false,
+        "required_evidence": "A KV-backed one-token decode artifact must record the generated token/logit path without host-composed layer-prefix outputs"
+      }
+    ],
+    "source": "kv_decode_dispatch_progress",
+    "status": "blocked",
+    "upload_entry_count": 6,
+    "upload_total_nbytes": 484,
+    "validated_precondition_count": 5,
+    "validated_preconditions": [
+      "dispatch_keys_registered",
+      "span_shapes_compatible",
+      "launch_schedule_recorded",
+      "run_plan_fits_resource_plan",
+      "decode_input_upload_plan_consistent"
+    ]
   },
   "kv_backed_decode_ready": false,
   "kv_decode_dispatch_progress": {
@@ -860,6 +955,81 @@
         "run_plan_upload_manifest_total_nbytes": 392
       },
       "dispatch_ready": true,
+      "gap_report": {
+        "missing_evidence": [
+          "streaming_runner_ready_flags",
+          "kv_kernel_launch_trace",
+          "kv_backed_next_token_artifact"
+        ],
+        "missing_evidence_count": 3,
+        "missing_precondition_count": 0,
+        "missing_preconditions": [],
+        "note": "This separates validated metadata/input prerequisites from the evidence still needed before kv_backed_decode_ready can become true. It is not a performance or parity claim.",
+        "operation_count": 135,
+        "precondition_count": 5,
+        "preconditions": [
+          {
+            "evidence": "prompt/decode KV write and decode-attention registry keys resolve",
+            "name": "dispatch_keys_registered",
+            "ready": true
+          },
+          {
+            "evidence": "prompt and decode KVLiveSpans geometry matches the 512-token bring-up window",
+            "name": "span_shapes_compatible",
+            "ready": true
+          },
+          {
+            "evidence": "135 planned KV operations",
+            "name": "launch_schedule_recorded",
+            "ready": true
+          },
+          {
+            "evidence": "prompt rows and prompt+decode context fit the text resource plan",
+            "name": "run_plan_fits_resource_plan",
+            "ready": true
+          },
+          {
+            "evidence": "6 staged input entries / 484 bytes",
+            "name": "decode_input_upload_plan_consistent",
+            "ready": true
+          }
+        ],
+        "remaining_evidence": [
+          {
+            "current": {
+              "launch_schedule_streaming_runner_ready": false,
+              "run_plan_streaming_runner_ready": false
+            },
+            "name": "streaming_runner_ready_flags",
+            "ready": false,
+            "required_evidence": "text_decode_resource_plan.kv_decode_launch_schedule.streaming_runner_ready and kv_decode_run_plan.streaming_runner_ready must both be true"
+          },
+          {
+            "current": null,
+            "name": "kv_kernel_launch_trace",
+            "ready": false,
+            "required_evidence": "A retained rocprofv3 or equivalent trace must show the prompt KV write, decode KV write, and gated decode-attention kernels launching for the canonical prompt"
+          },
+          {
+            "current": null,
+            "name": "kv_backed_next_token_artifact",
+            "ready": false,
+            "required_evidence": "A KV-backed one-token decode artifact must record the generated token/logit path without host-composed layer-prefix outputs"
+          }
+        ],
+        "source": "kv_decode_dispatch_progress",
+        "status": "blocked",
+        "upload_entry_count": 6,
+        "upload_total_nbytes": 484,
+        "validated_precondition_count": 5,
+        "validated_preconditions": [
+          "dispatch_keys_registered",
+          "span_shapes_compatible",
+          "launch_schedule_recorded",
+          "run_plan_fits_resource_plan",
+          "decode_input_upload_plan_consistent"
+        ]
+      },
       "ready": false,
       "required_evidence": "A streaming runner must materialize prompt KV rows, launch one-token decode KV write and gated paged attention from the resident cache, then feed final logits without host-composed layer outputs."
     },
@@ -876,8 +1046,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "ba61d96d9acf7afa45a50e1aa4070763af7ba98fa9c6e30a289b71151b5440c1",
-      "size_bytes": 51948
+      "sha256": "e8151c35bb70112bdc42e784f4abe6d10802cd87cd2d0c345e1f11ccb6241b48",
+      "size_bytes": 52059
     },
     "oracle": {
       "exists": true,

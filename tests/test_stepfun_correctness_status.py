@@ -776,6 +776,25 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "run_plan_upload_manifest_entry_count": 5,
         "run_plan_upload_manifest_total_nbytes": 392,
     }
+    gap_report = status["kv_backed_decode_gap_report"]
+    assert gates["kv_backed_decode"]["gap_report"] == gap_report
+    assert gap_report["status"] == "blocked"
+    assert gap_report["precondition_count"] == 5
+    assert gap_report["validated_precondition_count"] == 5
+    assert gap_report["missing_preconditions"] == []
+    assert gap_report["missing_evidence"] == [
+        "streaming_runner_ready_flags",
+        "kv_kernel_launch_trace",
+        "kv_backed_next_token_artifact",
+    ]
+    assert gap_report["missing_evidence_count"] == 3
+    assert gap_report["operation_count"] == 135
+    assert gap_report["upload_entry_count"] == 6
+    assert gap_report["upload_total_nbytes"] == 484
+    assert gap_report["remaining_evidence"][0]["current"] == {
+        "launch_schedule_streaming_runner_ready": False,
+        "run_plan_streaming_runner_ready": False,
+    }
     assert gates["e2e_inference"]["ready"] is False
     assert gates["e2e_inference"]["blocked_by"] == ["oracle_parity", "kv_backed_decode"]
     handoff = status["handoff_summary"]
@@ -814,6 +833,20 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         ],
         "all_consistency_checks_passed": True,
     }
+    assert handoff["kv_backed_decode_gap_report"] == {
+        "missing_evidence": [
+            "streaming_runner_ready_flags",
+            "kv_kernel_launch_trace",
+            "kv_backed_next_token_artifact",
+        ],
+        "missing_evidence_count": 3,
+        "missing_precondition_count": 0,
+        "operation_count": 135,
+        "precondition_count": 5,
+        "status": "blocked",
+        "upload_total_nbytes": 484,
+        "validated_precondition_count": 5,
+    }
     assert handoff["blocked_signals"] == {
         "e2e_inference": True,
         "kv_backed_decode": True,
@@ -837,6 +870,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     kv_blocker = next(blocker for blocker in status["blockers"] if blocker["kind"] == "kv_backed_decode_not_wired")
     assert kv_blocker["resource_artifact"] == str(resource)
     assert kv_blocker["kv_decode_dispatch_ready"] is True
+    assert kv_blocker["gap_report_status"] == "blocked"
+    assert kv_blocker["missing_evidence"] == [
+        "streaming_runner_ready_flags",
+        "kv_kernel_launch_trace",
+        "kv_backed_next_token_artifact",
+    ]
     assert {action["blocker_kind"] for action in status["next_actions"]} == {
         "oracle_parity_blocked",
         "kv_backed_decode_not_wired",
@@ -863,6 +902,41 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "open",
         "partial",
     ]
+
+
+def test_stepfun_correctness_status_drops_kv_blocker_when_gap_report_is_ready(tmp_path: Path) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+    resource_payload = json.loads(resource.read_text())
+    schedule = resource_payload["text_decode_resource_plan"]["kv_decode_launch_schedule"]
+    schedule["streaming_runner_ready"] = True
+    run_plan = resource_payload["kv_decode_run_plan"]
+    run_plan["streaming_runner_ready"] = True
+    run_plan["kv_kernel_trace_artifact"] = "benchmarks/results/test-kv-kernel-trace.json"
+    run_plan["kv_backed_next_token_artifact"] = "benchmarks/results/test-kv-next-token.json"
+    resource.write_text(json.dumps(resource_payload))
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+
+    assert status["kv_backed_decode_ready"] is True
+    assert status["e2e_inference_ready"] is False
+    assert status["kv_backed_decode_gap_report"]["status"] == "ready"
+    assert status["kv_backed_decode_gap_report"]["missing_evidence"] == []
+    assert status["readiness_gates"]["kv_backed_decode"]["ready"] is True
+    assert status["handoff_summary"]["ready_gates"] == ["kv_backed_decode"]
+    assert status["handoff_summary"]["blocked_gates"] == ["oracle_parity", "e2e_inference"]
+    assert status["handoff_summary"]["blocked_signals"]["kv_backed_decode"] is False
+    assert [blocker["kind"] for blocker in status["blockers"]] == ["oracle_parity_blocked"]
+    assert [action["blocker_kind"] for action in status["next_actions"]] == [
+        "oracle_parity_blocked"
+    ]
+
 
 
 def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
@@ -910,6 +984,14 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
     assert payload["kv_decode_dispatch_ready"] is True
     assert payload["readiness_gates"]["oracle_parity"]["ready"] is False
     assert payload["readiness_gates"]["kv_backed_decode"]["dispatch_ready"] is True
+    assert payload["kv_backed_decode_gap_report"]["missing_evidence"] == [
+        "streaming_runner_ready_flags",
+        "kv_kernel_launch_trace",
+        "kv_backed_next_token_artifact",
+    ]
+    assert payload["readiness_gates"]["kv_backed_decode"]["gap_report"] == payload[
+        "kv_backed_decode_gap_report"
+    ]
     assert payload["readiness_gates"]["e2e_inference"]["blocked_by"] == [
         "oracle_parity",
         "kv_backed_decode",
@@ -977,6 +1059,20 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
     assert payload["ready_signals"]["kv_decode_run_plan_recorded"] is True
     assert payload["ready_signals"]["kv_decode_input_upload_plan_recorded"] is True
     assert payload["kv_decode_input_upload_plan"]["entry_count"] == 6
+    assert payload["kv_backed_decode_gap_report"] == {
+        "missing_evidence": [
+            "streaming_runner_ready_flags",
+            "kv_kernel_launch_trace",
+            "kv_backed_next_token_artifact",
+        ],
+        "missing_evidence_count": 3,
+        "missing_precondition_count": 0,
+        "operation_count": 135,
+        "precondition_count": 5,
+        "status": "blocked",
+        "upload_total_nbytes": 484,
+        "validated_precondition_count": 5,
+    }
     assert payload["kv_decode_input_upload_plan"]["upload_order"][0] == "input_ids"
     assert payload["kv_decode_input_upload_plan"]["cleanup_order"][-1] == "input_ids"
     assert payload["kv_decode_input_upload_plan"]["all_consistency_checks_passed"] is True
