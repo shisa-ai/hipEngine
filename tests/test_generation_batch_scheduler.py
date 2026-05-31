@@ -7249,6 +7249,10 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     assert summary["command_count"] == 27
     assert summary["completed_command_count"] == 27
     assert summary["status_counts"] == {"planned": 27}
+    parent_component_output_dir_summary = json.loads(json.dumps(summary))
+    parent_component_output_dir_summary["output_dir"] = str(tmp_path / "output-dir-parent" / ".." / "artifacts")
+    with pytest.raises(ValueError, match="output_dir must not contain parent-directory components"):
+        c_sweep.validate_sweep_summary(parent_component_output_dir_summary)
     if hasattr(os, "symlink"):
         output_dir_link = tmp_path / "artifacts-output-link"
         output_dir_parent_link = tmp_path / "artifacts-output-parent-link"
