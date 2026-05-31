@@ -33,6 +33,7 @@ from hipengine.runtime.stepfun_gguf_runner import (
     StepFunShortContextDecodePlanner,
     stepfun_layer_prefix_slot_paths,
     stepfun_layer_slot_paths,
+    stepfun_text_decode_slot_paths,
 )
 from hipengine.runtime.qwen35_paro_runner import (
     Qwen35ParoAutoregressiveStepResult,
@@ -76,6 +77,7 @@ __all__ = [
     "StepFunShortContextDecodePlanner",
     "stepfun_layer_prefix_slot_paths",
     "stepfun_layer_slot_paths",
+    "stepfun_text_decode_slot_paths",
     "launch_gguf_linear",
     "resolve_gguf_linear_dispatch",
     "WorkspaceAllocation",

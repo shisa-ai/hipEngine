@@ -511,8 +511,10 @@ reporting.
   final `lm_head` rows while explicitly skipping layers 1-44; and a layer-prefix
   prompt logits probe now applies the contiguous layers 0-3
   prefill bridge (dense layers 0-2 plus first sliding/MoE layer 3) before final
-  sampled `lm_head` checks while still skipping layers 4-44. The dense-MLP input
-  bundle launches layer-0 `ffn_gate`/`ffn_up` projections vs CPU references,
+  sampled `lm_head` checks while still skipping layers 4-44. A text-only decode
+  slot planner covers all 754 validated GGUF slots, including root
+  `rope_freqs.weight`, and has no vision/projector/MTP slot dependencies. The
+  dense-MLP input bundle launches layer-0 `ffn_gate`/`ffn_up` projections vs CPU references,
   and a dense-MLP correctness probe composes gate/up, host SwiGLU BF16 rounding,
   and resident `ffn_down` vs CPU reference. The resident session also owns a
   BF16 KV-cache allocation/free helper, a layer-3 MoE router probe that
@@ -545,7 +547,8 @@ reporting.
 
 **Acceptance:** `python3 -m pytest -q tests/test_stepfun_decode_planner.py`
 passes for short-context limits, mixed-quant dispatch-key validation,
-assistant-prefix rendering, multi-EOS stopping, and torch-free imports.
+assistant-prefix rendering, multi-EOS stopping, text-only full-model slot
+planning, and torch-free imports.
 `python3 -m pytest -q tests/test_stepfun_resident_session.py` passes for real
 resident Q8_0 token embedding of a rendered Step chat prompt and `[0, BOS, EOS,
 128007, vocab-1, EOS]` plus real layer-0 `Q3_K` `attn_q` and `Q5_K`
@@ -612,7 +615,11 @@ layer loop is wired.
   policy is to continue implementation and only choose offload/tiering after a
   real allocation/load attempt fails under the configured GTT setup.
 - [ ] If it fits, run a tiny text-only prompt and confirm no vision/projector/MTP
-  path is required.
+  path is required. 2026-05-31 planning progress: `stepfun_text_decode_slot_paths()`
+  covers all 754 validated text GGUF slots, including root RoPE frequencies, and
+  the decode-planner test asserts there are no vision/projector/MTP slot
+  dependencies. Actual full-model prompt execution remains open until the
+  KV-backed runner or all-layer prefix bridge is validated.
 
 **Acceptance:** full-model smoke produces token(s) or a documented fit failure.
 Current materialization coverage is validated by

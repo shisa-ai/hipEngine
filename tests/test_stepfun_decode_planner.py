@@ -7,7 +7,10 @@ from pathlib import Path
 import pytest
 
 from hipengine.kernels.registry import KernelKey
-from hipengine.runtime.stepfun_gguf_runner import StepFunShortContextDecodePlanner
+from hipengine.runtime.stepfun_gguf_runner import (
+    StepFunShortContextDecodePlanner,
+    stepfun_text_decode_slot_paths,
+)
 
 DEFAULT_STEPFUN_GGUF_DIR = Path("/data/models/gguf")
 
@@ -60,6 +63,35 @@ def test_stepfun_short_context_decode_plan_rejects_long_prompts() -> None:
 
     with pytest.raises(ValueError, match="max_context"):
         planner.plan_chat([{"role": "user", "content": "hello " * 128}], reasoning_effort="low")
+
+
+def test_stepfun_text_decode_slot_paths_cover_validated_text_model_without_extra_modal_slots() -> None:
+    planner = StepFunShortContextDecodePlanner.from_gguf_paths(_stepfun_gguf_paths())
+
+    slots = stepfun_text_decode_slot_paths(planner.model_map)
+
+    assert slots[:4] == (
+        "root.token_embedding",
+        "root.rope_freqs",
+        "root.output_norm",
+        "root.lm_head",
+    )
+    assert len(slots) == len(set(slots)) == planner.info.tensor_count
+    assert "layers.0.ffn_down" in slots
+    assert "layers.3.ffn_gate_inp" in slots
+    assert "layers.44.ffn_down_shexp" in slots
+    forbidden_fragments = ("vision", "projector", "mmproj", "mtp", "nextn")
+    assert not any(fragment in slot for slot in slots for fragment in forbidden_fragments)
+
+    tensor_names: list[str] = []
+    for slot in slots:
+        parts = slot.split(".")
+        if parts[0] == "root":
+            tensor_names.append(planner.model_map.root(parts[1]).name)
+        else:
+            assert parts[0] == "layers"
+            tensor_names.append(planner.model_map.layer(int(parts[1])).tensor(parts[2]).name)
+    assert set(tensor_names) == set(planner.model_map.tensor_names)
 
 
 def test_stepfun_decode_planner_does_not_import_torch() -> None:

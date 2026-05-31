@@ -27453,3 +27453,17 @@ python3 -m pytest -q tests/test_stepfun_resident_session.py -q
 ```
 
 Result: `21 passed`.
+
+## 2026-05-31 — StepFun text-only decode slot planner
+
+Added `stepfun_text_decode_slot_paths()` and exported it from `hipengine.runtime`. The planner returns the full resident slot set required by the text-only StepFun path: root token embedding, root RoPE frequencies, output norm, lm-head, and every validated dense/MoE layer slot. This is separate from the shorter layer-prefix prompt-logits probe, which derives RoPE from metadata and can skip `rope_freqs.weight` during partial smoke tests.
+
+Extended `tests/test_stepfun_decode_planner.py` to assert the full text-only slot plan covers all 754 split-GGUF tensors with no duplicates, includes dense and MoE terminal slots, maps exactly back to `StepFunGGUFModelMap.tensor_names`, and has no vision/projector/MTP/nextn slot dependencies. This is planning evidence only; actual full prompt execution still needs the KV-backed runner or validated all-layer prefix bridge.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_decode_planner.py -q
+```
+
+Result: `4 passed`.

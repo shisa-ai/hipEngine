@@ -1220,6 +1220,25 @@ def stepfun_layer_prefix_slot_paths(model_map: StepFunGGUFModelMap, layer_count:
     return tuple(slots)
 
 
+def stepfun_text_decode_slot_paths(model_map: StepFunGGUFModelMap) -> tuple[str, ...]:
+    """Return every resident GGUF slot needed by the text-only Step runner.
+
+    This full-model slot plan is intentionally separate from the shorter
+    layer-prefix prompt-logits probe: native text decode also owns the GGUF root
+    RoPE-frequency table even though the current host-composed probes derive
+    RoPE frequencies from metadata.
+    """
+
+    root_slots = ("token_embedding", "rope_freqs", "output_norm", "lm_head")
+    missing_roots = [slot for slot in root_slots if slot not in model_map.root_tensors]
+    if missing_roots:
+        raise RuntimeError(f"model is missing required Step root slots: {missing_roots}")
+    slots: list[str] = [f"root.{slot}" for slot in root_slots]
+    for layer_id in range(model_map.config.block_count):
+        slots.extend(stepfun_layer_slot_paths(model_map, layer_id))
+    return tuple(slots)
+
+
 def _swiglu_bf16_bits(gate, up, limit: float):
     import numpy as np
     from hipengine.loading.materialize import float_array_to_bf16_bits
@@ -1258,4 +1277,5 @@ __all__ = [
     "StepFunShortContextDecodePlanner",
     "stepfun_layer_prefix_slot_paths",
     "stepfun_layer_slot_paths",
+    "stepfun_text_decode_slot_paths",
 ]
