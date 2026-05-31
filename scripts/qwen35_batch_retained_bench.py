@@ -969,6 +969,8 @@ def _cached_build_provenance_blockers(args: argparse.Namespace) -> list[str]:
     compiler_version_file = getattr(args, "compiler_version_file", None)
     if compiler_version_file is None or not str(compiler_version_file).strip():
         blockers.append("compiler_version_file must be provided for retained promotion")
+    elif not _is_retained_artifact_path(str(compiler_version_file)):
+        blockers.append("compiler_version_file must be a repo-relative path under benchmarks/results")
     if getattr(args, "require_cached_build", False) is not True:
         blockers.append("require_cached_build must be true for retained promotion")
     return blockers
