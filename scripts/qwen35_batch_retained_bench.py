@@ -964,6 +964,16 @@ def _retained_output_artifact_blockers(path: Any) -> list[str]:
     return _retained_json_artifact_path_blockers("artifact_path", path)
 
 
+def _cached_build_provenance_blockers(args: argparse.Namespace) -> list[str]:
+    blockers: list[str] = []
+    compiler_version_file = getattr(args, "compiler_version_file", None)
+    if compiler_version_file is None or not str(compiler_version_file).strip():
+        blockers.append("compiler_version_file must be provided for retained promotion")
+    if getattr(args, "require_cached_build", False) is not True:
+        blockers.append("require_cached_build must be true for retained promotion")
+    return blockers
+
+
 def _synthesized_profiler_total_kernel_duration(profiler: Mapping[str, Any]) -> float | None:
     kernel_durations = profiler.get("kernel_durations_ns")
     if not isinstance(kernel_durations, Mapping):
@@ -3571,6 +3581,7 @@ def _build_payload(
         "profiler_json",
         getattr(args, "profiler_json", None),
     )
+    cached_build_blockers = _cached_build_provenance_blockers(args)
     batch_execution = dict(bench["batch_execution"])
     throughput_claim_eligible = bool(batch_execution.get("throughput_claim_eligible"))
     native_caware_decode = bool(batch_execution.get("native_caware_decode"))
@@ -3644,6 +3655,7 @@ def _build_payload(
         and not primitive_path_blockers
         and not scaling_path_blockers
         and not profiler_path_blockers
+        and not cached_build_blockers
         and primitive_passed
         and protocol_shape
         and scaling_complete
@@ -3673,6 +3685,7 @@ def _build_payload(
     blocked_reasons.extend(primitive_path_blockers)
     blocked_reasons.extend(scaling_path_blockers)
     blocked_reasons.extend(profiler_path_blockers)
+    blocked_reasons.extend(cached_build_blockers)
     if not primitive_passed:
         blocked_reasons.append(f"primitive c>N correctness gate did not pass: {primitive_correctness.get('reason')}")
     if args.prompt_length < 512 or args.decode_tokens < 128:

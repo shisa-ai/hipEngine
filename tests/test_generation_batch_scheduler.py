@@ -13374,6 +13374,18 @@ def test_qwen35_retained_artifact_paths_reject_symlink_escapes(
     assert retained_bench._retained_json_artifact_path_blockers("profiler_json", None) == [
         "profiler_json must be provided under benchmarks/results"
     ]
+    assert retained_bench._cached_build_provenance_blockers(
+        argparse.Namespace(
+            compiler_version_file=Path("benchmarks/results/hipcc-version.txt"),
+            require_cached_build=True,
+        )
+    ) == []
+    assert retained_bench._cached_build_provenance_blockers(
+        argparse.Namespace(compiler_version_file=None, require_cached_build=False)
+    ) == [
+        "compiler_version_file must be provided for retained promotion",
+        "require_cached_build must be true for retained promotion",
+    ]
     assert retained_bench._retained_output_artifact_blockers("benchmarks/results/source.txt") == [
         "artifact_path must point to a .json artifact"
     ]
