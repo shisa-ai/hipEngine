@@ -136,6 +136,7 @@ from scripts.qwen35_batch_hidden_bisect import (
     _decode_linear_handoff_rollup,
     _decode_linear_handoff_summary,
     _decode_linear_input_bit_drift_rollup,
+    _decode_linear_projection_bit_drift_rollup,
     _decode_linear_stage_bit_drift_rollup,
     _decode_linear_stage_summary,
     _first_failing_layer_transition,
@@ -7613,6 +7614,17 @@ def test_hidden_bisect_linear_stage_summary_rolls_up_first_bit_drift() -> None:
     assert rollup["first_bit_drift"]["stage"] == "qkv"
     assert rollup["stages"]["qkv"]["bit_drift_rows"] == [0]
     assert rollup["stages"]["conv_out"]["first_bit_drift"]["comparison_kind"] == "fp32"
+
+    projection_rollup = _decode_linear_projection_bit_drift_rollup([{"layer_limit": 8, "decode_linear_stages": summary}])
+    assert projection_rollup["projection_stages"] == ["qkv", "z"]
+    assert projection_rollup["bit_exact"] is False
+    assert projection_rollup["passed_under_atol"] is True
+    assert projection_rollup["drift_stages"] == ["qkv"]
+    assert projection_rollup["under_atol_drift_stages"] == ["qkv"]
+    assert projection_rollup["first_bit_drift"]["stage"] == "qkv"
+    assert projection_rollup["stages"]["qkv"]["total_bit_mismatch"] == 1
+    assert projection_rollup["stages"]["qkv"]["total_elements_over_atol"] == 0
+    assert projection_rollup["stages"]["z"]["bit_exact"] is True
 
 
 def test_hidden_bisect_linear_handoff_summary_distinguishes_copy_from_producer_drift() -> None:

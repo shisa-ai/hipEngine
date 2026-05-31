@@ -69,6 +69,7 @@ DECODE_LINEAR_TRACE_STAGES = (
     "mlp_input",
     "output",
 )
+DECODE_LINEAR_PROJECTION_BIT_EXACT_STAGES = ("qkv", "z")
 DECODE_FULL_CONTEXT_ORACLE_ATOL = 3.0e-5
 KV_PREFIX_MISMATCH_POSITION_LIMIT = 8
 KV_PREFIX_TAIL_WINDOW = 16
@@ -2765,6 +2766,89 @@ def _decode_linear_stage_bit_drift_rollup(layer_summaries: Sequence[dict[str, An
         "drift_stage_count": len(drift_stages),
         "first_bit_drift": first_bit_drift,
         "stages": {stage: stage_rollups[stage] for stage in DECODE_LINEAR_TRACE_STAGES if stage in stage_rollups},
+    }
+
+
+def _decode_linear_projection_bit_drift_rollup(layer_summaries: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    """Strict bit-exactness rollup for linear-attention QKV/Z projections."""
+
+    stage_rollups: dict[str, dict[str, Any]] = {
+        stage: {
+            "bit_exact": True,
+            "passed_under_atol": True,
+            "bit_drift_rows": [],
+            "bit_drift_row_count": 0,
+            "total_bit_mismatch": 0,
+            "total_elements_over_atol": 0,
+            "first_bit_drift": None,
+        }
+        for stage in DECODE_LINEAR_PROJECTION_BIT_EXACT_STAGES
+    }
+    first_bit_drift: dict[str, Any] | None = None
+    for summary in layer_summaries:
+        layer_limit = int(summary.get("layer_limit", 0))
+        trace = summary.get("decode_linear_stages")
+        if not isinstance(trace, dict):
+            continue
+        for step_summary in trace.get("steps", []):
+            for layer in step_summary.get("layers", []):
+                for stage in DECODE_LINEAR_PROJECTION_BIT_EXACT_STAGES:
+                    stage_summary = layer.get("stages", {}).get(stage)
+                    if not isinstance(stage_summary, dict):
+                        continue
+                    rollup = stage_rollups[stage]
+                    seen_rows = set(rollup.get("bit_drift_rows", []))
+                    for row_summary in stage_summary.get("rows", []):
+                        comparison = row_summary.get("hidden_comparison", {})
+                        bit_mismatch = int(comparison.get("bit_mismatch", 0)) if isinstance(comparison, dict) else 0
+                        if bit_mismatch <= 0:
+                            continue
+                        elements_over_atol = int(comparison.get("elements_over_atol", 0)) if isinstance(comparison, dict) else 0
+                        max_abs_flat_index = comparison.get("max_abs_flat_index") if isinstance(comparison, dict) else None
+                        record = {
+                            "layer_limit": layer_limit,
+                            "decode_step": int(step_summary.get("decode_step", 0)),
+                            "generated_index": int(step_summary.get("generated_index", int(step_summary.get("decode_step", 0)) + 1)),
+                            "layer_index": int(layer.get("layer_index", -1)),
+                            "stage": stage,
+                            "row": int(row_summary.get("row", -1)),
+                            "comparison_kind": str(row_summary.get("comparison_kind", "unknown")),
+                            "passed_under_atol": bool(row_summary.get("passed", False)),
+                            "bit_mismatch": bit_mismatch,
+                            "max_abs": float(comparison.get("max_abs", 0.0)) if isinstance(comparison, dict) else 0.0,
+                            "max_abs_flat_index": None if max_abs_flat_index is None else int(max_abs_flat_index),
+                            "max_abs_index": comparison.get("max_abs_index", []) if isinstance(comparison, dict) else [],
+                            "elements_over_atol": elements_over_atol,
+                        }
+                        rollup["bit_exact"] = False
+                        rollup["passed_under_atol"] = bool(rollup["passed_under_atol"]) and elements_over_atol == 0
+                        rollup["total_bit_mismatch"] = int(rollup["total_bit_mismatch"]) + bit_mismatch
+                        rollup["total_elements_over_atol"] = int(rollup["total_elements_over_atol"]) + elements_over_atol
+                        if rollup["first_bit_drift"] is None:
+                            rollup["first_bit_drift"] = record
+                        if first_bit_drift is None:
+                            first_bit_drift = record
+                        row_index = int(row_summary.get("row", -1))
+                        if row_index >= 0 and row_index not in seen_rows:
+                            rollup["bit_drift_rows"].append(row_index)
+                            seen_rows.add(row_index)
+                            rollup["bit_drift_row_count"] = len(rollup["bit_drift_rows"])
+    drift_stages = [
+        stage for stage in DECODE_LINEAR_PROJECTION_BIT_EXACT_STAGES if not bool(stage_rollups[stage]["bit_exact"])
+    ]
+    under_atol_drift_stages = [
+        stage for stage in drift_stages if bool(stage_rollups[stage]["passed_under_atol"])
+    ]
+    return {
+        "projection_stages": list(DECODE_LINEAR_PROJECTION_BIT_EXACT_STAGES),
+        "bit_exact": not drift_stages,
+        "passed_under_atol": all(bool(stage_rollups[stage]["passed_under_atol"]) for stage in drift_stages),
+        "drift_stages": drift_stages,
+        "drift_stage_count": len(drift_stages),
+        "under_atol_drift_stages": under_atol_drift_stages,
+        "under_atol_drift_stage_count": len(under_atol_drift_stages),
+        "first_bit_drift": first_bit_drift,
+        "stages": stage_rollups,
     }
 
 
@@ -5670,6 +5754,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "row_failure_summary": _row_failure_summary(layer_summaries),
             "decode_linear_handoff_summary": _decode_linear_handoff_rollup(layer_summaries),
             "decode_linear_stage_bit_drift_summary": _decode_linear_stage_bit_drift_rollup(layer_summaries),
+            "decode_linear_projection_bit_drift_summary": _decode_linear_projection_bit_drift_rollup(layer_summaries),
             "decode_linear_input_bit_drift_summary": _decode_linear_input_bit_drift_rollup(layer_summaries),
             "decode_full_attention_stage_failure_summary": _decode_full_attention_stage_rollup(layer_summaries),
             "decode_full_attention_bit_drift_summary": _decode_full_attention_bit_drift_rollup(layer_summaries),

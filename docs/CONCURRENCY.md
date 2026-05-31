@@ -1333,9 +1333,13 @@ roll-up/status view.
       `max_abs=0.010435104370117188`); layer-0 `qkv`/`z` drift is under 0.004
       but still bit-different (`qkv` `max_abs=0.0009765625`, `bit_mismatch=5`),
       and the first red stage is the same large `recurrent_out` amplification.
+      Hidden-bisect now emits `decode_linear_projection_bit_drift_summary` as a
+      strict QKV/Z bit-exactness rollup; the same batch-GEMV-QKVZ/selected-A-B
+      probe records `bit_exact=false`, `drift_stages=["qkv", "z"]`, and
+      `passed_under_atol=false` once all decode steps/layers are considered.
       Together with the green selected-all projection control, this means both
       QKV/Z bit exactness and A/B exactness are still required for this controlled
-      path; do not promote the batch-GEMV QKV/Z path just because its direct
+      path; do not promote the batch-GEMV QKV/Z path just because an early direct
       stage max error is under hidden tolerance. Re-enabling native full-attention decode
       on the selected-projection/native-state/batch-GEMV-output control at
       `/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-batch-gemv-out-native-full-atol4e-3-focus1269.json`
