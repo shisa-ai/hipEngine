@@ -1448,7 +1448,9 @@ roll-up/status view.
       `HIP_VISIBLE_DEVICES=1`) so GPU re-baseline runs carry hardware provenance
       directly in the JSON; retained-bench loading, accepted-artifact schema,
       and c-sweep retained preconditions now reject accepted/passing primitive
-      gates without valid device metadata. This does not close C2.5
+      gates without valid device metadata, and accepted artifacts require that
+      primitive device name to match `hardware.gpu` (with retained-bench hardware
+      context resolved from the visible HIP device). This does not close C2.5
       because generated-token equality vs independent c=1 for c=4/c=8 is still
       missing.
 - [x] **C2.6 slot-validation and long-context fallback guards.** Add CPU

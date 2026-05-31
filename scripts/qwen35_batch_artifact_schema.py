@@ -687,6 +687,10 @@ def _looks_like_amd_gpu_label(value: str) -> bool:
     return any(marker in lower for marker in ("amd", "radeon", "instinct"))
 
 
+def _normalized_gpu_label(value: str) -> str:
+    return " ".join(value.lower().split())
+
+
 def _validate_capture_context(
     field: str,
     value: Any,
@@ -2561,7 +2565,19 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
         errors.append("correctness.primitive_batch_correctness.attn_batch_aa_max_abs must be 0.0 for accepted artifacts")
     if primitive.get("aa_passed") is not True:
         errors.append("correctness.primitive_batch_correctness.aa_passed must be true for accepted artifacts")
-    _validate_primitive_device_metadata(primitive.get("device"), errors)
+    primitive_device = primitive.get("device")
+    _validate_primitive_device_metadata(primitive_device, errors)
+    hardware = payload.get("hardware")
+    hardware_gpu = hardware.get("gpu") if isinstance(hardware, Mapping) else None
+    primitive_device_name = primitive_device.get("device_name") if isinstance(primitive_device, Mapping) else None
+    if (
+        isinstance(hardware_gpu, str)
+        and hardware_gpu
+        and isinstance(primitive_device_name, str)
+        and primitive_device_name
+        and _normalized_gpu_label(hardware_gpu) != _normalized_gpu_label(primitive_device_name)
+    ):
+        errors.append("correctness.primitive_batch_correctness.device.device_name must match hardware.gpu for accepted artifacts")
     attn_vs_c1 = primitive.get("attn_batch_vs_c1_max_abs")
     if not _is_number(attn_vs_c1):
         errors.append("correctness.primitive_batch_correctness.attn_batch_vs_c1_max_abs must be numeric for accepted artifacts")
