@@ -53522,3 +53522,23 @@ HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts
 ```
 
 Result: focused serial graph-axis tests PASS; docs diff check PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: no queue item was marked complete, P2 progress cites concrete code/test evidence, no retained c>N performance/scaling claim was added, and native c>N generated-token equality claims were not changed.
+
+## 2026-05-31 — CONCURRENCY bucket-key observability axes
+
+Tightened P2 graph bucket observability by asserting per-request completion `bucket_key` strings include the same KV storage dtype and layer-plan axes as `BatchShapeKey`. `test_resident_scheduler_completion_observability_and_pool_counters` now expects the default `kv=bf16:layers=all` fields in the emitted bucket label, and the shape-key graph-bucket test asserts the default typed axes. `docs/CONCURRENCY.md` now names the per-request bucket-key evidence alongside retained/serial graph-axis coverage. This is observability/schema hardening only; no queue item was closed and no retained c>N performance/scaling claim was added.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine/generation/batch_scheduler.py tests/test_generation_batch_scheduler.py && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py::test_resident_scheduler_completion_observability_and_pool_counters tests/test_generation_batch_scheduler.py::test_resident_batch_scheduler_shape_key_graph_bucket_and_completion -q
+git diff --check
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+```
+
+Result: focused bucket-key observability tests PASS; docs diff check PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1`; c=2/c=8 primitive JSONs pass with `device.env.HIP_VISIBLE_DEVICES=1` and `device_name=AMD Radeon RX 7900 XTX`. Prompt-verifier self-check passes: no queue item was marked complete, P2 progress cites concrete code/test evidence, no retained c>N performance/scaling claim was added, and native c>N generated-token equality claims were not changed.

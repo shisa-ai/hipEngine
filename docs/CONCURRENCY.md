@@ -1773,9 +1773,11 @@ roll-up/status view.
       `kv_storage_dtype`, `layer_plan`, `top_k`, `experts_per_token`,
       `replay_steps`, `draft_depth`, and `tree_shape`, with the context bucket
       covering the workload prompt length and the KV/layer axes matching the
-      retained workload; see `BatchShapeKey`, `_record_decode_graph_bucket_metadata`,
-      the serial-bridge shape payload helpers,
-      `test_batch_shape_key_includes_context_bucket_mask_and_mode`,
+      retained workload; per-request `bucket_key` observability strings include
+      the same KV/layer axes; see `BatchShapeKey`,
+      `_record_decode_graph_bucket_metadata`, the serial-bridge shape payload
+      helpers, `test_batch_shape_key_includes_context_bucket_mask_and_mode`,
+      `test_resident_scheduler_completion_observability_and_pool_counters`,
       `test_qwen35_retained_records_decode_graph_bucket_metadata`, and
       `test_qwen35_batch_serial_shape_key_payloads_include_workload_axes`), positive profiler `graph_replay` expected-kernel/duration/category/share evidence whenever replay hits are positive, and per-bucket histogram observation counts covering both replay hits and profiler kernel-duration evidence before a c>N row can be promoted; `/metrics` exposes a
       hit/miss-derived replay-hit-rate gauge plus labeled miss-reason and known kernel-time-bucket counters for live runs.

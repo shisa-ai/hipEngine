@@ -10624,7 +10624,10 @@ def test_resident_scheduler_completion_observability_and_pool_counters() -> None
     assert observed["decode_seconds"] == 0.5
     assert observed["kv_pages_owned"] == 1
     assert observed["kv_pages_peak"] == 1
-    assert str(observed["bucket_key"]).startswith("decode:c=1:ctx=8")
+    assert observed["bucket_key"] == (
+        "decode:c=1:ctx=8:mask=1:kv=bf16:layers=all:"
+        "top_k=0:experts=0:replay=1:draft=0"
+    )
     assert observed["admission_blocked_reason"] is None
     assert observed["finish_reason"] == "length"
     assert observed["completion_timestamp"] == 102.0
@@ -11323,6 +11326,8 @@ def test_resident_batch_scheduler_shape_key_graph_bucket_and_completion() -> Non
     assert key.active_c == 2
     assert key.context_bucket == 4
     assert key.active_mask == (True, True, False, False)
+    assert key.kv_storage_dtype == "bf16"
+    assert key.layer_plan == "all"
     assert key.top_k == 8
     assert key.experts_per_token == 8
     assert key.replay_steps == 2
