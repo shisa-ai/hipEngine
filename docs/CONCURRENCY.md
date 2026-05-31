@@ -1598,7 +1598,7 @@ roll-up/status view.
       for GPU1/XTX re-baseline runs. The c-sweep planner now has
       `--include-gguf`, which adds blocked GGUF c>N diagnostic commands for
       Q4_K_M/Q5_K_M/Q6_K/Q8_0 at c>1 while preserving the visible HIP device env
-      and rejects stale GGUF fixture/quant/artifact filename metadata in sweep summaries;
+      and rejects stale GGUF fixture, duplicate/unsupported quant order, or artifact filename metadata in sweep summaries;
       covered by `test_gguf_cN_diagnostic_template_records_blocked_c2_command`
       and `test_batch_c_sweep_can_plan_gguf_blocked_diagnostics` in
       `pytest -q tests/test_generation_batch_scheduler.py -q`.
@@ -2050,7 +2050,7 @@ matrix has at least one green retained c>N cell on the 512/128 protocol.
       Progress: `scripts/qwen35_batch_c_sweep.py --include-gguf` now plans
       blocked GGUF c>N diagnostics for all four template quants at c>1 with
       `HIP_VISIBLE_DEVICES` preserved in the command labels, and validates that
-      summaries keep the template fixture, quant set, and artifact filenames bound to those commands; this is planning
+      summaries keep the template fixture, exact per-c quant order/set, and artifact filenames bound to those commands; this is planning
       coverage only and does not close the item because generated-token equality
       artifacts for c=2/4/8 are still missing.
 - [ ] Native row-aware LM-head + sampler: replace the per-row argmax loop

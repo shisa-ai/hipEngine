@@ -7003,6 +7003,24 @@ def test_batch_c_sweep_can_plan_gguf_blocked_diagnostics(tmp_path: Path, monkeyp
     with pytest.raises(ValueError, match=r"commands\[\]\.argv GGUF --quant must be one of the template quants"):
         c_sweep.validate_sweep_summary(tampered_quant)
 
+    gguf_entry_indices = [
+        index for index, entry in enumerate(summary["commands"]) if entry["category"] == "gguf_native_diagnostic"
+    ]
+    tampered_duplicate_quant = json.loads(json.dumps(summary))
+    duplicate_index = gguf_entry_indices[1]
+    duplicate_path = str(
+        Path(tampered_duplicate_quant["commands"][duplicate_index]["artifact_path"]).with_name(
+            "gguf-native-diagnostic-c2-gguf_q4_k_m.json"
+        )
+    )
+    duplicate_argv = tampered_duplicate_quant["commands"][duplicate_index]["argv"]
+    duplicate_argv[duplicate_argv.index("--quant") + 1] = "gguf_q4_k_m"
+    duplicate_argv[duplicate_argv.index("--json") + 1] = duplicate_path
+    tampered_duplicate_quant["commands"][duplicate_index]["artifact_path"] = duplicate_path
+    tampered_duplicate_quant["commands"][duplicate_index]["command"] = shlex.join(duplicate_argv)
+    with pytest.raises(ValueError, match=r"commands\[\] GGUF quant order must match the template quant set for each c>1"):
+        c_sweep.validate_sweep_summary(tampered_duplicate_quant)
+
     tampered_artifact = json.loads(json.dumps(summary))
     stale_artifact_path = str(Path(tampered_artifact["commands"][gguf_entry_index]["artifact_path"]).with_name("gguf-native-diagnostic-c2-stale.json"))
     tampered_artifact["commands"][gguf_entry_index]["artifact_path"] = stale_artifact_path

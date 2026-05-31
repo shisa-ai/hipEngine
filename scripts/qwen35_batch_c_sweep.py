@@ -3533,6 +3533,21 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             errors.append("command_count must match batch_sizes/options.include_int8/include_gguf")
         elif [(entry.get("category"), entry.get("batch_size")) for entry in entries] != expected_plan[: len(entries)]:
             errors.append("commands[] category/batch_size order must match batch_sizes/options.include_int8/include_gguf")
+        elif options["include_gguf"]:
+            expected_gguf_quant_plan: list[tuple[int, str]] = []
+            for c in batch_sizes:
+                if c != 1:
+                    expected_gguf_quant_plan.extend((c, quant) for quant in _GGUF_DIAGNOSTIC_QUANTS)
+            actual_gguf_quant_plan = [
+                (int(entry["batch_size"]), str(_argv_value(entry["argv"], "--quant")))
+                for entry in entries
+                if entry.get("category") == _GGUF_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY
+                and isinstance(entry.get("batch_size"), int)
+                and not isinstance(entry.get("batch_size"), bool)
+                and isinstance(entry.get("argv"), list)
+            ]
+            if actual_gguf_quant_plan != expected_gguf_quant_plan[: len(actual_gguf_quant_plan)]:
+                errors.append("commands[] GGUF quant order must match the template quant set for each c>1")
     if isinstance(options, Mapping) and options.get("stop_on_failure") is True:
         for index, entry in enumerate(entries[:-1]):
             if entry.get("status") in {_FAILED_COMMAND_STATUS, _SKIPPED_COMMAND_STATUS}:
