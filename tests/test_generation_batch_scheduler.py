@@ -11315,6 +11315,7 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
         },
         "correctness": {
             "passed": False,
+            "oracle": "generated-token equality vs independent c=1 resident runs",
             "generated_token_equality": {
                 "passed": True,
                 "skipped": False,
@@ -11349,6 +11350,11 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
     skipped_claim["correctness"]["generated_token_equality"]["skipped"] = True
     with pytest.raises(ValueError, match="skipped must be false when passed is true"):
         validate_cn_diagnostic_artifact_payload(skipped_claim)
+
+    missing_oracle_claim = json.loads(json.dumps(payload))
+    missing_oracle_claim["correctness"].pop("oracle")
+    with pytest.raises(ValueError, match="correctness.oracle must name generated-token equality vs independent c=1"):
+        validate_cn_diagnostic_artifact_payload(missing_oracle_claim)
 
     empty_row_claim = json.loads(json.dumps(payload))
     empty_row_claim["correctness"]["generated_token_equality"]["batch_sequences"][0] = []
@@ -14610,6 +14616,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         },
         "correctness": {
             "passed": True,
+            "oracle": "generated-token equality vs independent c=1 resident runs",
             "generated_token_equality": {
                 "passed": True,
                 "skipped": False,

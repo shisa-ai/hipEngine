@@ -2577,6 +2577,14 @@ def _validate_claimed_generated_token_equality(
         return
     if equality.get("skipped") is not False:
         errors.append("correctness.generated_token_equality.skipped must be false when passed is true")
+    oracle = correctness.get("oracle")
+    oracle_lower = oracle.lower() if isinstance(oracle, str) else ""
+    if (
+        "generated-token" not in oracle_lower
+        or "independent c=1" not in oracle_lower
+        or ("equal" not in oracle_lower and "equality" not in oracle_lower)
+    ):
+        errors.append("correctness.oracle must name generated-token equality vs independent c=1 when generated_token_equality.passed is true")
     batch_sequences = equality.get("batch_sequences")
     c1_sequences = equality.get("c1_sequences")
     if not isinstance(batch_sequences, list):
