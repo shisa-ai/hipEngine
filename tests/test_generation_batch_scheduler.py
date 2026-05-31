@@ -4191,6 +4191,61 @@ def test_batch_c_sweep_scaling_reference_rejects_mismatched_visible_device_env(
     assert "hardware.visible_device.env.HIP_VISIBLE_DEVICES does not match retained command env" in precondition["reason"]
 
 
+def test_batch_c_sweep_scaling_reference_rejects_mismatched_visible_device_name(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    reference_path = output_dir / "serial-bridge-c2.json"
+    reference_path.write_text(
+        json.dumps(
+            {
+                "artifact_path": str(reference_path),
+                "schema": 2,
+                "status": "blocked",
+                "hardware": {
+                    "gpu": "AMD Radeon Pro W7900",
+                    "visible_device": {"env": {"HIP_VISIBLE_DEVICES": "1"}, "device_name": "AMD Radeon RX 7900 XTX"},
+                },
+                "commands": {
+                    "benchmark": f"env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_serial_bench.py --json {reference_path}"
+                },
+                "workload": {"concurrency": 2, "prompt_tokens_per_request": 16, "gen_tokens_per_request": 2},
+                "measurements": {"decode_tok_s_aggregate": 20.0, "decode_tok_s_per_request": 10.0},
+            }
+        )
+    )
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._scaling_reference_precondition(
+        native,
+        flag="--serial-bridge-json",
+        kind="serial_bridge",
+        expected_concurrency=2,
+    )
+
+    assert precondition["passed"] is False
+    assert "hardware.gpu does not match hardware.visible_device.device_name" in precondition["reason"]
+
+
 def test_batch_c_sweep_scaling_reference_rejects_mismatched_command_device_env(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -11071,6 +11126,35 @@ def test_qwen35_retained_scaling_reference_rejects_mismatched_visible_device_env
     reference = retained_bench._scaling_reference(serial)
 
     assert reference["reason"] == "hardware.visible_device.env.HIP_VISIBLE_DEVICES does not match retained command env"
+    assert reference["decode_tok_s_aggregate"] is None
+    assert reference["decode_tok_s_per_request"] is None
+
+
+def test_qwen35_retained_scaling_reference_rejects_mismatched_visible_device_name(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
+    serial = tmp_path / "serial-bridge-c2.json"
+    serial.write_text(
+        json.dumps(
+            {
+                "artifact_path": str(serial),
+                "status": "blocked",
+                "hardware": {
+                    "gpu": "AMD Radeon Pro W7900",
+                    "visible_device": {"env": {"HIP_VISIBLE_DEVICES": "1"}, "device_name": "AMD Radeon RX 7900 XTX"},
+                },
+                "commands": {"benchmark": f"env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_serial_bench.py --json {serial}"},
+                "workload": {"concurrency": 2, "prompt_tokens_per_request": 512, "gen_tokens_per_request": 128},
+                "measurements": {"decode_tok_s_aggregate": 8.0, "decode_tok_s_per_request": 4.0},
+            }
+        )
+    )
+
+    reference = retained_bench._scaling_reference(serial)
+
+    assert reference["reason"] == "hardware.gpu does not match hardware.visible_device.device_name"
     assert reference["decode_tok_s_aggregate"] is None
     assert reference["decode_tok_s_per_request"] is None
 

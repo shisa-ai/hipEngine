@@ -1084,10 +1084,14 @@ def _visible_device_env_assignments(payload: Mapping[str, Any]) -> tuple[dict[st
     hardware = payload.get("hardware")
     visible_device = hardware.get("visible_device") if isinstance(hardware, Mapping) else None
     env = visible_device.get("env") if isinstance(visible_device, Mapping) else None
-    if not isinstance(env, Mapping):
-        return {}, []
     assignments: dict[str, str] = {}
     reasons: list[str] = []
+    gpu_name = hardware.get("gpu") if isinstance(hardware, Mapping) else None
+    device_name = visible_device.get("device_name") if isinstance(visible_device, Mapping) else None
+    if isinstance(gpu_name, str) and gpu_name and isinstance(device_name, str) and device_name and gpu_name != device_name:
+        reasons.append("hardware.gpu does not match hardware.visible_device.device_name")
+    if not isinstance(env, Mapping):
+        return assignments, reasons
     for key in _COMMAND_ENV_KEYS:
         value = env.get(key)
         if value is None:
