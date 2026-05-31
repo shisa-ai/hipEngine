@@ -326,6 +326,14 @@ def _parse_layer_expectation(value: str) -> tuple[int, str]:
     return layer_limit, expected
 
 
+def _parse_layer_int_expectation(value: str) -> tuple[int, int]:
+    layer_limit, raw_expected = _parse_layer_expectation(value)
+    try:
+        return layer_limit, int(raw_expected)
+    except ValueError as exc:
+        raise ValueError(f"layer expectation {value!r} has non-integer expected value") from exc
+
+
 def _layer_limit_by_value(comparison: dict[str, Any], layer_limit: int) -> dict[str, Any] | None:
     entries = comparison.get("layer_limits", [])
     if not isinstance(entries, list):
@@ -352,6 +360,9 @@ def _expectation_metadata(args: argparse.Namespace) -> dict[str, Any] | None:
     expected_first_diverging = getattr(args, "expect_first_diverging_layer_limit", None)
     if expected_first_diverging is not None:
         metadata["first_diverging_layer_limit"] = int(expected_first_diverging)
+    expected_bit_mismatch_delta = getattr(args, "expect_first_over_atol_bit_mismatch_delta", None)
+    if expected_bit_mismatch_delta is not None:
+        metadata["first_over_atol_bit_mismatch_delta"] = int(expected_bit_mismatch_delta)
     layer_classifications: dict[str, str] = {}
     for raw_expectation in getattr(args, "expect_layer_route_classification", None) or []:
         layer_limit, expected = _parse_layer_expectation(str(raw_expectation))
@@ -364,6 +375,12 @@ def _expectation_metadata(args: argparse.Namespace) -> dict[str, Any] | None:
         layer_difference_kinds[str(layer_limit)] = _parse_expected_kinds(raw_expected) or []
     if layer_difference_kinds:
         metadata["layer_route_difference_kinds"] = layer_difference_kinds
+    layer_bit_mismatch_deltas: dict[str, int] = {}
+    for raw_expectation in getattr(args, "expect_layer_first_over_atol_bit_mismatch_delta", None) or []:
+        layer_limit, expected = _parse_layer_int_expectation(str(raw_expectation))
+        layer_bit_mismatch_deltas[str(layer_limit)] = expected
+    if layer_bit_mismatch_deltas:
+        metadata["layer_first_over_atol_bit_mismatch_deltas"] = layer_bit_mismatch_deltas
     required_booleans: dict[str, bool] = {}
     if getattr(args, "expect_hidden_passed_all", False):
         required_booleans["hidden_passed_all"] = True
@@ -399,6 +416,15 @@ def _validate_expectations(payload: dict[str, Any], args: argparse.Namespace) ->
             "first_diverging_layer_limit expected "
             f"{expected_first_diverging!r} but found {comparison.get('first_diverging_layer_limit')!r}"
         )
+    expected_bit_mismatch_delta = getattr(args, "expect_first_over_atol_bit_mismatch_delta", None)
+    if (
+        expected_bit_mismatch_delta is not None
+        and comparison.get("first_over_atol_bit_mismatch_delta") != expected_bit_mismatch_delta
+    ):
+        errors.append(
+            "first_over_atol_bit_mismatch_delta expected "
+            f"{expected_bit_mismatch_delta!r} but found {comparison.get('first_over_atol_bit_mismatch_delta')!r}"
+        )
     for raw_expectation in getattr(args, "expect_layer_route_classification", None) or []:
         layer_limit, expected = _parse_layer_expectation(str(raw_expectation))
         entry = _layer_limit_by_value(comparison, layer_limit)
@@ -415,6 +441,14 @@ def _validate_expectations(payload: dict[str, Any], args: argparse.Namespace) ->
         if found != expected:
             errors.append(
                 f"layer {layer_limit} route_difference_kinds expected {expected!r} but found {found!r}"
+            )
+    for raw_expectation in getattr(args, "expect_layer_first_over_atol_bit_mismatch_delta", None) or []:
+        layer_limit, expected = _parse_layer_int_expectation(str(raw_expectation))
+        entry = _layer_limit_by_value(comparison, layer_limit)
+        found = None if entry is None else entry.get("first_over_atol_bit_mismatch_delta")
+        if found != expected:
+            errors.append(
+                f"layer {layer_limit} first_over_atol_bit_mismatch_delta expected {expected!r} but found {found!r}"
             )
     if getattr(args, "expect_hidden_passed_all", False) and comparison.get("hidden_passed_all") is not True:
         errors.append(f"hidden_passed_all expected True but found {comparison.get('hidden_passed_all')!r}")
@@ -560,6 +594,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--expect-layer-route-difference-kinds",
         action="append",
         help="Fail unless a layer limit has exact comma-separated route difference kinds, as LAYER=KIND[,KIND...]",
+    )
+    parser.add_argument(
+        "--expect-first-over-atol-bit-mismatch-delta",
+        type=int,
+        help="Fail unless comparison.first_over_atol_bit_mismatch_delta matches",
+    )
+    parser.add_argument(
+        "--expect-layer-first-over-atol-bit-mismatch-delta",
+        action="append",
+        help="Fail unless a layer limit has the expected first-over-atol bit-mismatch delta, as LAYER=INT",
     )
     parser.add_argument("--expect-first-diverging-layer-limit", type=int, help="Fail unless first_diverging_layer_limit matches")
     parser.add_argument("--expect-hidden-passed-all", action="store_true", help="Fail unless hidden_passed_all is true")

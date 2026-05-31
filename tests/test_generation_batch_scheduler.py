@@ -7816,6 +7816,8 @@ def test_hidden_bisect_projection_artifact_compare_spots_limit_drift_delta(tmp_p
                 "1=drift_stages",
                 "2=first_over_atol_record,first_over_atol_bit_mismatch",
             ],
+            expect_first_over_atol_bit_mismatch_delta=1,
+            expect_layer_first_over_atol_bit_mismatch_delta=["2=1"],
             expect_first_diverging_layer_limit=1,
             expect_hidden_passed_all=True,
             expect_token_passed_all=True,
@@ -7840,6 +7842,8 @@ def test_hidden_bisect_projection_artifact_compare_spots_limit_drift_delta(tmp_p
             "1": ["drift_stages"],
             "2": ["first_over_atol_record", "first_over_atol_bit_mismatch"],
         },
+        "first_over_atol_bit_mismatch_delta": 1,
+        "layer_first_over_atol_bit_mismatch_deltas": {"2": 1},
         "first_diverging_layer_limit": 1,
         "required_booleans": {
             "hidden_passed_all": True,
@@ -7901,6 +7905,14 @@ def test_hidden_bisect_projection_artifact_compare_spots_limit_drift_delta(tmp_p
                 artifact=artifact_args,
                 json=None,
                 expect_layer_route_classification=["2=projection_rollups_match"],
+            )
+        )
+    with pytest.raises(ValueError, match="first_over_atol_bit_mismatch_delta expected"):
+        hidden_artifact_compare.run(
+            argparse.Namespace(
+                artifact=artifact_args,
+                json=None,
+                expect_first_over_atol_bit_mismatch_delta=2,
             )
         )
 
