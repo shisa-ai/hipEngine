@@ -1774,10 +1774,11 @@ roll-up/status view.
       `replay_steps`, `draft_depth`, and `tree_shape`, with the context bucket
       covering the workload prompt length and the KV/layer axes matching the
       retained workload; per-request `bucket_key` observability strings include
-      the same C/context/mask and KV/layer axes, stale pre-axis strings block
-      promotion, and retained/schema gates reject bucket-key shape, KV dtype, or
-      layer-plan values that differ from the workload/scheduler shape; see
-      `BatchShapeKey`, `_record_decode_graph_bucket_metadata`, the serial-bridge shape payload
+      the same mode/C/context/mask, KV/layer, and top-k/expert/replay/draft
+      axes, stale pre-axis strings block promotion, and retained/schema gates
+      reject bucket-key shape, KV dtype, layer-plan, or decode-axis values that
+      differ from the workload/scheduler shape; see `BatchShapeKey`,
+      `_record_decode_graph_bucket_metadata`, the serial-bridge shape payload
       helpers,
       `test_batch_shape_key_includes_context_bucket_mask_and_mode`,
       `test_resident_scheduler_completion_observability_and_pool_counters`,

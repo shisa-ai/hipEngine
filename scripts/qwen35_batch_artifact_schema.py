@@ -1158,18 +1158,38 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
                         errors.append("observability.per_request timing components must not exceed completion minus admission for accepted artifacts")
                         break
         expected_active_c = int(concurrency) if concurrency_valid else None
+        expected_mode = None
         expected_context_bucket = None
         expected_active_mask = None
+        expected_top_k = None
+        expected_experts_per_token = None
+        expected_replay_steps = None
+        expected_draft_depth = None
         execution = payload.get("execution")
         scheduler_metadata = execution.get("scheduler_metadata") if isinstance(execution, Mapping) else None
         decode_shape_key = scheduler_metadata.get("decode_shape_key") if isinstance(scheduler_metadata, Mapping) else None
         if isinstance(decode_shape_key, Mapping):
+            mode = decode_shape_key.get("mode")
+            if isinstance(mode, str) and mode:
+                expected_mode = mode
             context_bucket = decode_shape_key.get("context_bucket")
             if isinstance(context_bucket, int) and not isinstance(context_bucket, bool):
                 expected_context_bucket = int(context_bucket)
             active_mask = decode_shape_key.get("active_mask")
             if isinstance(active_mask, list) and all(isinstance(active, bool) for active in active_mask):
                 expected_active_mask = "".join("1" if active else "0" for active in active_mask)
+            top_k = decode_shape_key.get("top_k")
+            if isinstance(top_k, int) and not isinstance(top_k, bool):
+                expected_top_k = int(top_k)
+            experts_per_token = decode_shape_key.get("experts_per_token")
+            if isinstance(experts_per_token, int) and not isinstance(experts_per_token, bool):
+                expected_experts_per_token = int(experts_per_token)
+            replay_steps = decode_shape_key.get("replay_steps")
+            if isinstance(replay_steps, int) and not isinstance(replay_steps, bool):
+                expected_replay_steps = int(replay_steps)
+            draft_depth = decode_shape_key.get("draft_depth")
+            if isinstance(draft_depth, int) and not isinstance(draft_depth, bool):
+                expected_draft_depth = int(draft_depth)
         workload_kv_dtype = workload.get("kv_storage_dtype")
         expected_kv_storage_dtype = workload_kv_dtype if isinstance(workload_kv_dtype, str) else None
         max_layers = workload.get("max_layers")
@@ -1179,10 +1199,15 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
                 row,
                 errors,
                 expected_active_c=expected_active_c,
+                expected_mode=expected_mode,
                 expected_context_bucket=expected_context_bucket,
                 expected_active_mask=expected_active_mask,
                 expected_kv_storage_dtype=expected_kv_storage_dtype,
                 expected_layer_plan=expected_layer_plan,
+                expected_top_k=expected_top_k,
+                expected_experts_per_token=expected_experts_per_token,
+                expected_replay_steps=expected_replay_steps,
+                expected_draft_depth=expected_draft_depth,
             )
 
     memory = _mapping_at(payload, "memory", errors)
@@ -3738,10 +3763,15 @@ def _valid_request_observability(
     errors: list[str],
     *,
     expected_active_c: int | None = None,
+    expected_mode: str | None = None,
     expected_context_bucket: int | None = None,
     expected_active_mask: str | None = None,
     expected_kv_storage_dtype: str | None = None,
     expected_layer_plan: str | None = None,
+    expected_top_k: int | None = None,
+    expected_experts_per_token: int | None = None,
+    expected_replay_steps: int | None = None,
+    expected_draft_depth: int | None = None,
 ) -> bool:
     if not isinstance(row, Mapping):
         errors.append("observability.per_request entries must be objects for accepted artifacts")
@@ -3778,11 +3808,19 @@ def _valid_request_observability(
             errors.append("observability.per_request.*.bucket_key must be a non-empty string or null for accepted artifacts")
             ok = False
         else:
+            mode_axis = bucket_key.split(":", 1)[0]
             c_axis = _bucket_key_axis(bucket_key, "c")
             ctx_axis = _bucket_key_axis(bucket_key, "ctx")
             mask_axis = _bucket_key_axis(bucket_key, "mask")
             kv_axis = _bucket_key_axis(bucket_key, "kv")
             layer_axis = _bucket_key_axis(bucket_key, "layers")
+            top_k_axis = _bucket_key_axis(bucket_key, "top_k")
+            experts_axis = _bucket_key_axis(bucket_key, "experts")
+            replay_axis = _bucket_key_axis(bucket_key, "replay")
+            draft_axis = _bucket_key_axis(bucket_key, "draft")
+            if expected_mode is not None and mode_axis != expected_mode:
+                errors.append("observability.per_request.*.bucket_key mode must match scheduler decode_shape_key.mode for accepted artifacts")
+                ok = False
             if c_axis is None or ctx_axis is None or mask_axis is None:
                 errors.append("observability.per_request.*.bucket_key must include c, context, and active-mask axes for accepted artifacts")
                 ok = False
@@ -3805,6 +3843,22 @@ def _valid_request_observability(
                     ok = False
                 if expected_layer_plan is not None and layer_axis != expected_layer_plan:
                     errors.append("observability.per_request.*.bucket_key layer-plan axis must match workload.max_layers for accepted artifacts")
+                    ok = False
+            if top_k_axis is None or experts_axis is None or replay_axis is None or draft_axis is None:
+                errors.append("observability.per_request.*.bucket_key must include top-k, experts, replay, and draft axes for accepted artifacts")
+                ok = False
+            else:
+                if expected_top_k is not None and top_k_axis != str(expected_top_k):
+                    errors.append("observability.per_request.*.bucket_key top-k axis must match scheduler decode_shape_key.top_k for accepted artifacts")
+                    ok = False
+                if expected_experts_per_token is not None and experts_axis != str(expected_experts_per_token):
+                    errors.append("observability.per_request.*.bucket_key experts axis must match scheduler decode_shape_key.experts_per_token for accepted artifacts")
+                    ok = False
+                if expected_replay_steps is not None and replay_axis != str(expected_replay_steps):
+                    errors.append("observability.per_request.*.bucket_key replay axis must match scheduler decode_shape_key.replay_steps for accepted artifacts")
+                    ok = False
+                if expected_draft_depth is not None and draft_axis != str(expected_draft_depth):
+                    errors.append("observability.per_request.*.bucket_key draft axis must match scheduler decode_shape_key.draft_depth for accepted artifacts")
                     ok = False
     if "admission_blocked_reason" in row and row.get("admission_blocked_reason") is not None and (not isinstance(row.get("admission_blocked_reason"), str) or not row.get("admission_blocked_reason").strip()):
         errors.append("observability.per_request.*.admission_blocked_reason must be a non-empty string or null for accepted artifacts")

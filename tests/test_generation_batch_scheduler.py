@@ -13651,10 +13651,15 @@ def test_qwen35_retained_request_observability_blockers_cover_row_evidence() -> 
     assert retained_bench._request_observability_blockers(
         valid,
         expected_concurrency=2,
+        expected_mode="decode",
         expected_context_bucket=512,
         expected_active_mask="11",
         expected_kv_storage_dtype="bf16",
         expected_layer_plan="max_layers=40",
+        expected_top_k=0,
+        expected_experts_per_token=0,
+        expected_replay_steps=1,
+        expected_draft_depth=0,
     ) == []
 
     invalid = json.loads(json.dumps(valid))
@@ -13677,22 +13682,32 @@ def test_qwen35_retained_request_observability_blockers_cover_row_evidence() -> 
 
     mismatched_bucket_key_axes = json.loads(json.dumps(valid))
     mismatched_bucket_key_axes["0"]["bucket_key"] = (
-        "decode:c=3:ctx=1024:mask=101:kv=int8_per_token_head:layers=max_layers=8:"
-        "top_k=0:experts=0:replay=1:draft=0"
+        "prefill:c=3:ctx=1024:mask=101:kv=int8_per_token_head:layers=max_layers=8:"
+        "top_k=1:experts=2:replay=2:draft=3"
     )
     blockers = retained_bench._request_observability_blockers(
         mismatched_bucket_key_axes,
         expected_concurrency=2,
+        expected_mode="decode",
         expected_context_bucket=512,
         expected_active_mask="11",
         expected_kv_storage_dtype="bf16",
         expected_layer_plan="max_layers=40",
+        expected_top_k=0,
+        expected_experts_per_token=0,
+        expected_replay_steps=1,
+        expected_draft_depth=0,
     )
+    assert "observability.per_request.0.bucket_key mode must match scheduler decode shape key" in blockers
     assert "observability.per_request.0.bucket_key c axis must match expected concurrency" in blockers
     assert "observability.per_request.0.bucket_key context axis must match scheduler decode shape key" in blockers
     assert "observability.per_request.0.bucket_key active-mask axis must match scheduler decode shape key" in blockers
     assert "observability.per_request.0.bucket_key kv axis must match expected KV storage dtype" in blockers
     assert "observability.per_request.0.bucket_key layer-plan axis must match expected layer plan" in blockers
+    assert "observability.per_request.0.bucket_key top-k axis must match scheduler decode shape key" in blockers
+    assert "observability.per_request.0.bucket_key experts axis must match scheduler decode shape key" in blockers
+    assert "observability.per_request.0.bucket_key replay axis must match scheduler decode shape key" in blockers
+    assert "observability.per_request.0.bucket_key draft axis must match scheduler decode shape key" in blockers
 
     invalid_timing = json.loads(json.dumps(valid))
     invalid_timing["1"]["queue_seconds"] = 1.0
@@ -16840,6 +16855,22 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         validate_cn_diagnostic_artifact_payload(mismatched_observed_bucket_key_shape)
     with pytest.raises(ValueError, match=r"observability.per_request.\*.bucket_key active-mask axis must match scheduler decode_shape_key.active_mask"):
         validate_cn_diagnostic_artifact_payload(mismatched_observed_bucket_key_shape)
+
+    mismatched_observed_bucket_key_decode_axes = json.loads(json.dumps(accepted))
+    mismatched_observed_bucket_key_decode_axes["observability"]["per_request"]["0"]["bucket_key"] = (
+        "prefill:c=2:ctx=512:mask=11:kv=bf16:layers=max_layers=40:"
+        "top_k=1:experts=2:replay=2:draft=3"
+    )
+    with pytest.raises(ValueError, match=r"observability.per_request.\*.bucket_key mode must match scheduler decode_shape_key.mode"):
+        validate_cn_diagnostic_artifact_payload(mismatched_observed_bucket_key_decode_axes)
+    with pytest.raises(ValueError, match=r"observability.per_request.\*.bucket_key top-k axis must match scheduler decode_shape_key.top_k"):
+        validate_cn_diagnostic_artifact_payload(mismatched_observed_bucket_key_decode_axes)
+    with pytest.raises(ValueError, match=r"observability.per_request.\*.bucket_key experts axis must match scheduler decode_shape_key.experts_per_token"):
+        validate_cn_diagnostic_artifact_payload(mismatched_observed_bucket_key_decode_axes)
+    with pytest.raises(ValueError, match=r"observability.per_request.\*.bucket_key replay axis must match scheduler decode_shape_key.replay_steps"):
+        validate_cn_diagnostic_artifact_payload(mismatched_observed_bucket_key_decode_axes)
+    with pytest.raises(ValueError, match=r"observability.per_request.\*.bucket_key draft axis must match scheduler decode_shape_key.draft_depth"):
+        validate_cn_diagnostic_artifact_payload(mismatched_observed_bucket_key_decode_axes)
 
     blank_observed_admission_blocker = json.loads(json.dumps(accepted))
     blank_observed_admission_blocker["observability"]["per_request"]["0"]["admission_blocked_reason"] = " "

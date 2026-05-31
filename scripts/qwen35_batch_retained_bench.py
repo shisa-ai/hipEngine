@@ -2838,10 +2838,15 @@ def _request_observability_blockers(
     per_request: Any,
     *,
     expected_concurrency: int,
+    expected_mode: str | None = None,
     expected_context_bucket: int | None = None,
     expected_active_mask: str | None = None,
     expected_kv_storage_dtype: str | None = None,
     expected_layer_plan: str | None = None,
+    expected_top_k: int | None = None,
+    expected_experts_per_token: int | None = None,
+    expected_replay_steps: int | None = None,
+    expected_draft_depth: int | None = None,
 ) -> list[str]:
     if not isinstance(per_request, Mapping):
         return ["observability.per_request is missing"]
@@ -2908,11 +2913,18 @@ def _request_observability_blockers(
         if bucket_key is not None and (not isinstance(bucket_key, str) or not bucket_key.strip()):
             blockers.append(f"{label}.bucket_key is not a non-empty string or null")
         elif isinstance(bucket_key, str):
+            mode_axis = bucket_key.split(":", 1)[0]
             c_axis = _bucket_key_axis(bucket_key, "c")
             ctx_axis = _bucket_key_axis(bucket_key, "ctx")
             mask_axis = _bucket_key_axis(bucket_key, "mask")
             kv_axis = _bucket_key_axis(bucket_key, "kv")
             layer_axis = _bucket_key_axis(bucket_key, "layers")
+            top_k_axis = _bucket_key_axis(bucket_key, "top_k")
+            experts_axis = _bucket_key_axis(bucket_key, "experts")
+            replay_axis = _bucket_key_axis(bucket_key, "replay")
+            draft_axis = _bucket_key_axis(bucket_key, "draft")
+            if expected_mode is not None and mode_axis != str(expected_mode):
+                blockers.append(f"{label}.bucket_key mode must match scheduler decode shape key")
             if c_axis is None or ctx_axis is None or mask_axis is None:
                 blockers.append(f"{label}.bucket_key must include c, context, and active-mask axes")
             else:
@@ -2929,6 +2941,17 @@ def _request_observability_blockers(
                     blockers.append(f"{label}.bucket_key kv axis must match expected KV storage dtype")
                 if expected_layer_plan is not None and layer_axis != str(expected_layer_plan):
                     blockers.append(f"{label}.bucket_key layer-plan axis must match expected layer plan")
+            if top_k_axis is None or experts_axis is None or replay_axis is None or draft_axis is None:
+                blockers.append(f"{label}.bucket_key must include top-k, experts, replay, and draft axes")
+            else:
+                if expected_top_k is not None and top_k_axis != str(expected_top_k):
+                    blockers.append(f"{label}.bucket_key top-k axis must match scheduler decode shape key")
+                if expected_experts_per_token is not None and experts_axis != str(expected_experts_per_token):
+                    blockers.append(f"{label}.bucket_key experts axis must match scheduler decode shape key")
+                if expected_replay_steps is not None and replay_axis != str(expected_replay_steps):
+                    blockers.append(f"{label}.bucket_key replay axis must match scheduler decode shape key")
+                if expected_draft_depth is not None and draft_axis != str(expected_draft_depth):
+                    blockers.append(f"{label}.bucket_key draft axis must match scheduler decode shape key")
         admission_blocked_reason = row.get("admission_blocked_reason")
         if admission_blocked_reason is not None and (not isinstance(admission_blocked_reason, str) or not admission_blocked_reason.strip()):
             blockers.append(f"{label}.admission_blocked_reason is not a non-empty string or null")
@@ -3763,22 +3786,47 @@ def _build_payload(
         else raw_per_request_observability
     )
     decode_shape_key = scheduler_metadata.get("decode_shape_key")
+    expected_mode = None
     expected_context_bucket = None
     expected_active_mask = None
+    expected_top_k = None
+    expected_experts_per_token = None
+    expected_replay_steps = None
+    expected_draft_depth = None
     if isinstance(decode_shape_key, Mapping):
+        mode = decode_shape_key.get("mode")
+        if isinstance(mode, str) and mode:
+            expected_mode = mode
         context_bucket = decode_shape_key.get("context_bucket")
         if isinstance(context_bucket, int) and not isinstance(context_bucket, bool):
             expected_context_bucket = int(context_bucket)
         active_mask = decode_shape_key.get("active_mask")
         if isinstance(active_mask, list) and all(isinstance(active, bool) for active in active_mask):
             expected_active_mask = "".join("1" if active else "0" for active in active_mask)
+        top_k = decode_shape_key.get("top_k")
+        if isinstance(top_k, int) and not isinstance(top_k, bool):
+            expected_top_k = int(top_k)
+        experts_per_token = decode_shape_key.get("experts_per_token")
+        if isinstance(experts_per_token, int) and not isinstance(experts_per_token, bool):
+            expected_experts_per_token = int(experts_per_token)
+        replay_steps = decode_shape_key.get("replay_steps")
+        if isinstance(replay_steps, int) and not isinstance(replay_steps, bool):
+            expected_replay_steps = int(replay_steps)
+        draft_depth = decode_shape_key.get("draft_depth")
+        if isinstance(draft_depth, int) and not isinstance(draft_depth, bool):
+            expected_draft_depth = int(draft_depth)
     observability_blockers = _request_observability_blockers(
         per_request_observability,
         expected_concurrency=args.batch_size,
+        expected_mode=expected_mode,
         expected_context_bucket=expected_context_bucket,
         expected_active_mask=expected_active_mask,
         expected_kv_storage_dtype=kv_policy.storage_dtype.value,
         expected_layer_plan=f"max_layers={int(args.max_layers)}",
+        expected_top_k=expected_top_k,
+        expected_experts_per_token=expected_experts_per_token,
+        expected_replay_steps=expected_replay_steps,
+        expected_draft_depth=expected_draft_depth,
     )
     token_evidence_blockers = _execution_token_evidence_blockers(
         bench.get("seed_tokens"),
