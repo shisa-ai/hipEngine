@@ -7399,6 +7399,16 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match category/batch-size filename"):
             c_sweep.validate_sweep_summary(tampered_artifact_filename)
 
+        tampered_artifact_output_dir = json.loads(json.dumps(summary))
+        artifact_output_dir_entry = tampered_artifact_output_dir["commands"][index]
+        outside_artifact_path = str(tmp_path / "outside" / Path(artifact_output_dir_entry["artifact_path"]).name)
+        artifact_output_dir_entry["artifact_path"] = outside_artifact_path
+        artifact_output_dir_argv = artifact_output_dir_entry["argv"]
+        artifact_output_dir_argv[artifact_output_dir_argv.index("--json") + 1] = outside_artifact_path
+        artifact_output_dir_entry["command"] = shlex.join(artifact_output_dir_argv)
+        with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must be under output_dir"):
+            c_sweep.validate_sweep_summary(tampered_artifact_output_dir)
+
         tampered_rows = json.loads(json.dumps(summary))
         rows_argv = tampered_rows["commands"][index]["argv"]
         rows_argv[rows_argv.index("--rows") + 1] = "9"
