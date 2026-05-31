@@ -164,6 +164,45 @@ def _linear_projection_progress(prompt: dict[str, object]) -> dict[str, object]:
     }
 
 
+def _oracle_progress(oracle: dict[str, object]) -> dict[str, object]:
+    """Summarize the current deterministic oracle target and blocker."""
+
+    stdout = str(oracle.get("stdout", ""))
+    stderr = str(oracle.get("stderr", ""))
+    generated = str(oracle.get("generated_text", ""))
+    expected_top_tokens = oracle.get("expected_top_tokens", [])
+    return {
+        "source": "oracle_artifact",
+        "status": oracle.get("status"),
+        "oracle_blocker_kind": oracle.get("oracle_blocker_kind"),
+        "oracle_blocker_detail": oracle.get("oracle_blocker_detail"),
+        "llama_cli": oracle.get("llama_cli"),
+        "llama_cpp_version": oracle.get("llama_cpp_version"),
+        "model": oracle.get("model"),
+        "prompt_length": oracle.get("prompt_length"),
+        "n_predict": oracle.get("n_predict"),
+        "timeout_s": oracle.get("timeout_s"),
+        "elapsed_s": oracle.get("elapsed_s"),
+        "extra_llama_args": list(oracle.get("extra_llama_args", [])),
+        "command_shell": oracle.get("command_shell"),
+        "expected_next_token_id": oracle.get("expected_next_token_id"),
+        "expected_next_token_text": oracle.get("expected_next_token_text"),
+        "expected_next_token_logit": oracle.get("expected_next_token_logit"),
+        "expected_top_tokens": expected_top_tokens if isinstance(expected_top_tokens, list) else [],
+        "generated_text_len": len(generated),
+        "stdout_len": len(stdout),
+        "stderr_len": len(stderr),
+        "text_matches_expected_exact": oracle.get("text_matches_expected_exact") is True,
+        "text_matches_expected_stripped": oracle.get("text_matches_expected_stripped") is True,
+        "comparison_policy": dict(oracle.get("comparison_policy", {})),
+        "step35_supported_by_oracle": oracle.get("step35_supported"),
+        "note": (
+            "This records the deterministic oracle target and current blocker only. "
+            "It is not oracle parity unless a comparable generated token matches the expected text/logit policy."
+        ),
+    }
+
+
 def _kv_decode_dispatch_progress(resource: dict[str, object]) -> dict[str, object]:
     """Summarize KV dispatch coverage from the text resource artifact."""
 
@@ -222,6 +261,7 @@ def build_status(
         and oracle.get("returncode") == 0
         and oracle.get("text_matches_expected_exact") is True
     )
+    oracle_progress = _oracle_progress(oracle)
     kv_decode_dispatch_progress = _kv_decode_dispatch_progress(resource)
     kv_decode_dispatch_ready = kv_decode_dispatch_progress["all_registered"] is True
     blockers: list[dict[str, object]] = []
@@ -233,6 +273,10 @@ def build_status(
                 or "llama.cpp/CPU oracle result has not matched the StepFun artifact yet",
                 "artifact": str(oracle_artifact),
                 "oracle_blocker_kind": oracle.get("oracle_blocker_kind"),
+                "expected_next_token_id": oracle_progress.get("expected_next_token_id"),
+                "expected_next_token_text": oracle_progress.get("expected_next_token_text"),
+                "elapsed_s": oracle_progress.get("elapsed_s"),
+                "timeout_s": oracle_progress.get("timeout_s"),
             }
         )
     blockers.append(
@@ -283,6 +327,7 @@ def build_status(
         "oracle_stderr_len": len(str(oracle.get("stderr", ""))),
         "oracle_blocker_kind": oracle.get("oracle_blocker_kind"),
         "step35_supported_by_local_llama_cpp": oracle.get("step35_supported"),
+        "oracle_progress": oracle_progress,
         "linear_projection_progress": _linear_projection_progress(prompt),
         "kv_decode_dispatch_progress": kv_decode_dispatch_progress,
         "kv_decode_dispatch_ready": kv_decode_dispatch_ready,

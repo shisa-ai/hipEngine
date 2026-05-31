@@ -78,6 +78,28 @@ def _write_oracle_artifact(path: Path) -> None:
                 "llama_cpp_version": "version: test (deadbeef)",
                 "stdout": "",
                 "stderr": "unknown model architecture: 'step35'",
+                "generated_text": "",
+                "llama_cli": "/tmp/llama-cli",
+                "model": "/data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf",
+                "prompt_length": 23,
+                "n_predict": 1,
+                "timeout_s": 60.0,
+                "extra_llama_args": ["--device", "none", "--gpu-layers", "0"],
+                "command_shell": "/tmp/llama-cli --model stepfun.gguf --predict 1 --temp 0",
+                "expected_next_token_id": 369,
+                "expected_next_token_text": " |",
+                "expected_next_token_logit": 19.158626556396484,
+                "expected_top_tokens": [
+                    {"rank": 1, "token_id": 369, "token_text": " |", "logit": 19.158626556396484},
+                    {"rank": 2, "token_id": 5, "token_text": "#", "logit": 18.343582153320312},
+                ],
+                "comparison_policy": {
+                    "generated_text_source": "llama-cli stdout with --no-display-prompt --simple-io",
+                    "exact_text_match_field": "text_matches_expected_exact",
+                    "stripped_text_match_field": "text_matches_expected_stripped",
+                    "expected_text_field": "expected_next_token_text",
+                },
+                "text_matches_expected_stripped": False,
                 "oracle_blocker_kind": "llama_cpp_missing_step35_architecture",
                 "oracle_blocker_detail": "local llama.cpp build reports unknown model architecture: 'step35'",
                 "step35_supported": False,
@@ -192,6 +214,29 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert status["oracle_stderr_len"] == len("unknown model architecture: 'step35'")
     assert status["oracle_blocker_kind"] == "llama_cpp_missing_step35_architecture"
     assert status["step35_supported_by_local_llama_cpp"] is False
+    oracle_progress = status["oracle_progress"]
+    assert oracle_progress["source"] == "oracle_artifact"
+    assert oracle_progress["status"] == "executed"
+    assert oracle_progress["oracle_blocker_kind"] == "llama_cpp_missing_step35_architecture"
+    assert oracle_progress["llama_cli"] == "/tmp/llama-cli"
+    assert oracle_progress["model"].endswith("Step-3.7-flash-Q3_K_L-00001-of-00003.gguf")
+    assert oracle_progress["prompt_length"] == 23
+    assert oracle_progress["n_predict"] == 1
+    assert oracle_progress["timeout_s"] == 60.0
+    assert oracle_progress["elapsed_s"] == 62.4
+    assert oracle_progress["extra_llama_args"] == ["--device", "none", "--gpu-layers", "0"]
+    assert oracle_progress["command_shell"].startswith("/tmp/llama-cli")
+    assert oracle_progress["expected_next_token_id"] == 369
+    assert oracle_progress["expected_next_token_text"] == " |"
+    assert oracle_progress["expected_next_token_logit"] == 19.158626556396484
+    assert oracle_progress["expected_top_tokens"][0]["token_id"] == 369
+    assert oracle_progress["generated_text_len"] == 0
+    assert oracle_progress["stdout_len"] == 0
+    assert oracle_progress["stderr_len"] == len("unknown model architecture: 'step35'")
+    assert oracle_progress["text_matches_expected_exact"] is False
+    assert oracle_progress["text_matches_expected_stripped"] is False
+    assert oracle_progress["comparison_policy"]["expected_text_field"] == "expected_next_token_text"
+    assert oracle_progress["step35_supported_by_oracle"] is False
     projections = status["linear_projection_progress"]
     assert projections["source"] == "prompt_artifact.selected_slots"
     assert projections["execution_mode"] == "chunked"
@@ -266,6 +311,11 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "oracle_parity_blocked",
         "kv_backed_decode_not_wired",
     }
+    oracle_blocker = next(blocker for blocker in status["blockers"] if blocker["kind"] == "oracle_parity_blocked")
+    assert oracle_blocker["expected_next_token_id"] == 369
+    assert oracle_blocker["expected_next_token_text"] == " |"
+    assert oracle_blocker["elapsed_s"] == 62.4
+    assert oracle_blocker["timeout_s"] == 60.0
     kv_blocker = next(blocker for blocker in status["blockers"] if blocker["kind"] == "kv_backed_decode_not_wired")
     assert kv_blocker["resource_artifact"] == str(resource)
     assert kv_blocker["kv_decode_dispatch_ready"] is True
@@ -315,6 +365,8 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
     assert payload["status"] == "blocked"
     assert payload["all_layer_prompt_smoke"] is True
     assert payload["e2e_inference_ready"] is False
+    assert payload["oracle_progress"]["expected_next_token_id"] == 369
+    assert payload["oracle_progress"]["timeout_s"] == 60.0
     assert payload["linear_projection_progress"]["resident_linear_projection_slot_count"] == 487
     assert payload["kv_decode_dispatch_ready"] is True
     assert len(payload["next_actions"]) == 2

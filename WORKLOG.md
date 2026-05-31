@@ -27975,3 +27975,34 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted planner/load-smoke/status tests passed (`11 passed`), artifact schema check printed `stepfun kv prompt/decode span contracts ok`, and the full StepFun guard passed (`103 passed` plus CPU-reference fixture checks).
+
+## 2026-05-31 — StepFun oracle progress status recorded
+
+Extended the consolidated StepFun Q3_K_L correctness-status helper with `oracle_progress`, sourced from `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json`. The regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json` now records the deterministic oracle target and blocker in machine-readable form: llama.cpp CLI/version/model, prompt length 23, `n_predict=1`, expected token id `369` / text ` |`, expected top tokens/logits, comparison policy, timeout 60 s, elapsed 62.44 s, generated text length 0, and `oracle_blocker_kind=llama_cpp_oracle_timeout`. This is blocker/status evidence only; `oracle_parity=false`, `kv_backed_decode_ready=false`, and `e2e_inference_ready=false` remain unchanged.
+
+Updated `tests/test_stepfun_correctness_status.py` to cover the oracle-progress summary and enriched oracle blocker metadata, and clarified the P11 oracle paragraph in `docs/STEPFUN.md`.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 - <<'PY'
+import json
+p=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+op=p['oracle_progress']
+assert op['status'] == 'timeout'
+assert op['oracle_blocker_kind'] == 'llama_cpp_oracle_timeout'
+assert op['expected_next_token_id'] == 369
+assert op['expected_next_token_text'] == ' |'
+assert op['prompt_length'] == 23
+assert op['n_predict'] == 1
+assert op['timeout_s'] == 60.0
+assert op['generated_text_len'] == 0
+assert p['oracle_parity'] is False
+assert p['kv_backed_decode_ready'] is False
+print('stepfun oracle progress status ok')
+PY
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted status tests passed (`3 passed`), artifact schema check printed `stepfun oracle progress status ok`, and the full StepFun guard passed (`103 passed` plus CPU-reference fixture checks).

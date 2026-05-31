@@ -607,7 +607,10 @@ reporting.
   it exceeded the pi tool supervision window before helper JSON was produced, so
   the CPU/no-GPU timeout artifact remains the canonical machine-readable oracle
   blocker for now. The consolidated correctness-status artifact surfaces the oracle version,
-  elapsed time, and stdout/stderr lengths, records both blockers
+  elapsed time, stdout/stderr lengths, and `oracle_progress` fields for the exact
+  deterministic target (`prompt_length=23`, `n_predict=1`, expected token id 369 /
+  text ` |`, top-5 expected tokens, timeout 60 s, elapsed 62.44 s, generated text
+  length 0, and the llama.cpp command shell). It records both blockers
   (`oracle_parity_blocked`, `kv_backed_decode_not_wired`) for the current
   all-layer prompt smoke, and lists machine-readable next actions for each
   blocker. Remaining implementation task: run a longer/faster StepFun-capable
