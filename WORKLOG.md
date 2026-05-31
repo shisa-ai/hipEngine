@@ -28417,3 +28417,19 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted decode-planner/load-smoke/status tests passed (`16 passed`), artifact schema and source-artifact verification passed, and the full StepFun guard passed (`108 passed` plus CPU-reference fixture checks).
+
+## 2026-05-31 — StepFun KV host payload bytes helper recorded
+
+Added `StepFunKVDecodeRunPlan.span_input_host_payload_bytes`, a bytes-producing helper for the deterministic little-endian payloads already described by the metadata-only KV span upload manifest. Future streaming-runner wiring can now consume the exact packed bytes for prompt base offsets, prompt live counts, decode base offsets, decode KV-write position, and decode attention live counts instead of reimplementing packing from JSON metadata. The serialized resource/status artifacts continue to expose hashes/previews, not raw bytes. This remains metadata-only/host-payload evidence: no KV kernels are launched, and `oracle_parity=false`, `kv_backed_decode_ready=false`, and `e2e_inference_ready=false` remain unchanged.
+
+Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json` after the P11 docs update so source-artifact verification stays current, updated decode-planner coverage for exact packed bytes, and clarified `docs/STEPFUN.md`.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_decode_planner.py -q
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty --output /tmp/stepfun-source-verify.json
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted decode-planner tests passed (`9 passed`), source-artifact verification passed, and the full StepFun guard passed (`108 passed` plus CPU-reference fixture checks).

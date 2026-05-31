@@ -213,6 +213,22 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
         "<" + "q" * run_plan.prompt_length,
         *range(run_plan.prompt_length),
     )
+    host_payload_bytes = run_plan.span_input_host_payload_bytes
+    assert set(host_payload_bytes) == {
+        "prompt_base_offsets",
+        "prompt_live_counts",
+        "decode_base_offsets",
+        "decode_kv_write_position",
+        "decode_attention_live_counts",
+    }
+    assert host_payload_bytes["prompt_base_offsets"] == prompt_base_payload
+    assert host_payload_bytes["prompt_live_counts"] == prompt_live_payload
+    assert host_payload_bytes["decode_base_offsets"] == struct.pack("<ii", 0, 1)
+    assert host_payload_bytes["decode_kv_write_position"] == struct.pack("<q", run_plan.prompt_length)
+    assert host_payload_bytes["decode_attention_live_counts"] == struct.pack("<q", run_plan.prompt_length)
+    assert sum(len(payload_bytes) for payload_bytes in host_payload_bytes.values()) == (
+        prompt_base_offsets_nbytes + prompt_live_counts_nbytes + 24
+    )
     host_payloads = payload["span_input_host_payloads"]
     assert host_payloads["entry_count"] == 5
     assert host_payloads["total_nbytes"] == prompt_base_offsets_nbytes + prompt_live_counts_nbytes + 24

@@ -583,13 +583,26 @@ class StepFunKVDecodeRunPlan:
         raise KeyError(f"unknown StepFun KV upload source: {source}")
 
     @property
-    def span_input_host_payloads(self) -> dict[str, object]:
-        entries: list[dict[str, object]] = []
+    def span_input_host_payload_bytes(self) -> dict[str, bytes]:
+        """Return little-endian host bytes for each planned KV span upload."""
+
+        payloads: dict[str, bytes] = {}
         for manifest_entry in self.span_input_upload_manifest["entries"]:
             source = str(manifest_entry["source"])
             dtype = str(manifest_entry["dtype"])
             values = self._span_input_values_for_source(source)
-            payload = _pack_integer_payload(dtype, values)
+            payloads[str(manifest_entry["name"])] = _pack_integer_payload(dtype, values)
+        return payloads
+
+    @property
+    def span_input_host_payloads(self) -> dict[str, object]:
+        entries: list[dict[str, object]] = []
+        payload_bytes = self.span_input_host_payload_bytes
+        for manifest_entry in self.span_input_upload_manifest["entries"]:
+            source = str(manifest_entry["source"])
+            dtype = str(manifest_entry["dtype"])
+            values = self._span_input_values_for_source(source)
+            payload = payload_bytes[str(manifest_entry["name"])]
             entries.append(
                 {
                     "name": manifest_entry["name"],

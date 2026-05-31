@@ -548,8 +548,8 @@ reporting.
   prompt to that resource plan by recording token IDs, rendered-prompt SHA-256,
   prompt positions, explicit prompt/decode span inputs (`base_offsets`/live-count
   arrays with dtype and byte-count metadata), a small host upload manifest mapping
-  those arrays/scalars to future kernel arguments, deterministic little-endian
-  host payload SHA-256 hashes for each upload, decode live count, decode position, stop-token IDs, KV dispatch keys,
+  those arrays/scalars to future kernel arguments, a bytes-producing host payload
+  helper with deterministic little-endian SHA-256 hashes for each upload, decode live count, decode position, stop-token IDs, KV dispatch keys,
   and the planned launch-order operation count; this is dispatch/span/run-plan readiness evidence only, not a
   completed streaming runner. The
   dense-MLP input bundle launches layer-0 `ffn_gate`/`ffn_up` projections vs CPU references,
