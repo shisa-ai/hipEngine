@@ -13181,7 +13181,7 @@ def test_qwen35_retained_memory_payload_uses_bench_evidence() -> None:
         {
             "memory": {
                 "allocator_reserved_peak_bytes": 16384,
-                "allocator_memory_stats": {"current_allocated_bytes": 8192, "peak_allocated_bytes": 16384, "active_allocations": 2, "peak_allocations": 4},
+                "allocator_memory_stats": {"current_allocated_bytes": 8192, "peak_allocated_bytes": 16384, "total_allocated_bytes": 32768, "total_freed_bytes": 16384, "active_allocations": 2, "peak_allocations": 4},
                 "dynamic_pool": {
                     "enabled": True,
                     "evidence": "pool counters captured",
@@ -13196,6 +13196,8 @@ def test_qwen35_retained_memory_payload_uses_bench_evidence() -> None:
     assert memory["allocator_reserved_peak_bytes"] == 16384
     assert memory["allocator_memory_stats"]["current_allocated_bytes"] == 8192
     assert memory["allocator_memory_stats"]["peak_allocated_bytes"] == 16384
+    assert memory["allocator_memory_stats"]["total_allocated_bytes"] == 32768
+    assert memory["allocator_memory_stats"]["total_freed_bytes"] == 16384
     assert memory["allocator_memory_stats"]["active_allocations"] == 2
     assert memory["allocator_memory_stats"]["peak_allocations"] == 4
     assert memory["dynamic_pool"]["enabled"] is True
@@ -14388,7 +14390,7 @@ def test_qwen35_retained_sampler_execution_blockers_require_native_lm_head_evide
 def test_qwen35_retained_memory_evidence_blockers_cover_required_fields() -> None:
     complete_memory = {
         "allocator_reserved_peak_bytes": 8192,
-        "allocator_memory_stats": {"current_allocated_bytes": 4096, "peak_allocated_bytes": 8192, "active_allocations": 1, "peak_allocations": 2},
+        "allocator_memory_stats": {"current_allocated_bytes": 4096, "peak_allocated_bytes": 8192, "total_allocated_bytes": 16384, "total_freed_bytes": 8192, "active_allocations": 1, "peak_allocations": 2},
         "dynamic_pool": {
             "enabled": True,
             "evidence": "pool counters captured",
@@ -14411,6 +14413,8 @@ def test_qwen35_retained_memory_evidence_blockers_cover_required_fields() -> Non
     incomplete_memory["allocator_reserved_peak_bytes"] = float("inf")
     incomplete_memory["allocator_memory_stats"]["current_allocated_bytes"] = -1
     incomplete_memory["allocator_memory_stats"]["peak_allocated_bytes"] = -1
+    incomplete_memory["allocator_memory_stats"]["total_allocated_bytes"] = -1
+    incomplete_memory["allocator_memory_stats"]["total_freed_bytes"] = True
     incomplete_memory["allocator_memory_stats"]["active_allocations"] = -1
     incomplete_memory["dynamic_pool"]["enabled"] = "true"
     incomplete_memory["dynamic_pool"]["evidence"] = " "
@@ -14424,6 +14428,8 @@ def test_qwen35_retained_memory_evidence_blockers_cover_required_fields() -> Non
     assert "memory.allocator_reserved_peak_bytes is unavailable or non-finite" in blockers
     assert "memory.allocator_memory_stats.current_allocated_bytes is unavailable or non-finite" in blockers
     assert "memory.allocator_memory_stats.peak_allocated_bytes is unavailable or non-finite" in blockers
+    assert "memory.allocator_memory_stats.total_allocated_bytes is not a non-negative int" in blockers
+    assert "memory.allocator_memory_stats.total_freed_bytes is not a non-negative int" in blockers
     assert "memory.allocator_memory_stats.active_allocations is not a non-negative int" in blockers
     assert "memory.dynamic_pool.enabled is not bool" in blockers
     assert "memory.dynamic_pool.evidence is missing" in blockers
@@ -14631,7 +14637,7 @@ def test_qwen35_retained_payload_blocks_acceptance_without_graph_histogram_evide
     )
     complete_memory = {
         "allocator_reserved_peak_bytes": 8192,
-        "allocator_memory_stats": {"current_allocated_bytes": 4096, "peak_allocated_bytes": 8192, "active_allocations": 1, "peak_allocations": 2},
+        "allocator_memory_stats": {"current_allocated_bytes": 4096, "peak_allocated_bytes": 8192, "total_allocated_bytes": 16384, "total_freed_bytes": 8192, "active_allocations": 1, "peak_allocations": 2},
         "dynamic_pool": {
             "enabled": True,
             "evidence": "pool counters captured",
@@ -15153,7 +15159,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             "kv_policy": {"policy_class": "FixedPagedKVPolicy", "storage_dtype": "bf16"},
             "kv_storage_dtype": "bf16",
             "allocator_reserved_peak_bytes": 8192,
-            "allocator_memory_stats": {"current_allocated_bytes": 4096, "peak_allocated_bytes": 8192, "active_allocations": 1, "peak_allocations": 2},
+            "allocator_memory_stats": {"current_allocated_bytes": 4096, "peak_allocated_bytes": 8192, "total_allocated_bytes": 16384, "total_freed_bytes": 8192, "active_allocations": 1, "peak_allocations": 2},
             "dynamic_pool": {
                 "enabled": True,
                 "evidence": "initial chunk sufficed",
@@ -16958,6 +16964,12 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     active_above_allocator_peak["memory"]["allocator_memory_stats"]["active_allocations"] = 3
     with pytest.raises(ValueError, match="allocator_memory_stats.active_allocations must be <= peak_allocations"):
         validate_cn_diagnostic_artifact_payload(active_above_allocator_peak)
+
+    invalid_total_counters = json.loads(json.dumps(accepted))
+    invalid_total_counters["memory"]["allocator_memory_stats"]["total_allocated_bytes"] = -1
+    invalid_total_counters["memory"]["allocator_memory_stats"]["total_freed_bytes"] = True
+    with pytest.raises(ValueError, match="allocator_memory_stats.total_allocated_bytes must be a non-negative int"):
+        validate_cn_diagnostic_artifact_payload(invalid_total_counters)
 
     missing_dynamic_pool_evidence = json.loads(json.dumps(accepted))
     missing_dynamic_pool_evidence["memory"]["dynamic_pool"].pop("evidence")

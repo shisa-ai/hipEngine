@@ -1183,6 +1183,11 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
             errors.append("memory.allocator_memory_stats.peak_allocated_bytes must match allocator_reserved_peak_bytes for accepted artifacts")
         if _is_nonnegative_number(stats_current) and _is_nonnegative_number(stats_peak) and float(stats_current) > float(stats_peak):
             errors.append("memory.allocator_memory_stats.current_allocated_bytes must be <= peak_allocated_bytes for accepted artifacts")
+        total_allocated = allocator_stats.get("total_allocated_bytes")
+        total_freed = allocator_stats.get("total_freed_bytes")
+        for field, value in (("total_allocated_bytes", total_allocated), ("total_freed_bytes", total_freed)):
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                errors.append(f"memory.allocator_memory_stats.{field} must be a non-negative int for accepted artifacts")
         active_allocations = allocator_stats.get("active_allocations")
         peak_allocations = allocator_stats.get("peak_allocations")
         for field, value in (("active_allocations", active_allocations), ("peak_allocations", peak_allocations)):
