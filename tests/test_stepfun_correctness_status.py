@@ -1625,6 +1625,50 @@ def test_stepfun_correctness_status_fail_on_blocked_returns_nonzero(
 
 
 
+def test_stepfun_correctness_status_blocker_work_queue_fail_on_blocked_returns_nonzero(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--blocker-work-queue-only",
+            "--fail-on-blocked",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 2
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert captured.err == ""
+    assert [item["blocker_kind"] for item in payload] == [
+        "oracle_parity_blocked",
+        "kv_backed_decode_not_wired",
+    ]
+    assert payload[0]["primary_command_kind"] == "rerun_command_shell"
+    assert payload[0]["first_missing_evidence"] == "oracle_completed_successfully"
+    assert payload[1]["primary_command_kind"] == "resource_plan_refresh_command"
+    assert payload[1]["first_streaming_runner_blocker"] == "streaming_decode_loop_not_wired"
+
+
+
 def test_stepfun_correctness_status_first_blocker_fail_on_blocked_returns_nonzero(
     capsys,
     tmp_path: Path,

@@ -597,7 +597,7 @@ reporting.
   (including the primary command kind/string plus length and SHA-256) for lightweight automation.
   It lists next actions for the
   StepFun-capable oracle and KV-backed decode blockers, and supports
-  `--fail-on-blocked` for CI/handoff checks.
+  `--fail-on-blocked` for CI/handoff checks, including compact queue/first-blocker outputs.
   This checklist item is partial rather than complete because the current runner
   is host-composed/chunked and does not yet implement the final KV-backed
   one-token decode path.

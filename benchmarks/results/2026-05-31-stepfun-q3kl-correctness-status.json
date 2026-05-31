@@ -1427,8 +1427,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "8c489e14eb3b089789e9bf91f7994e78f891a5cfe545378d183b7371cdc1df5f",
-      "size_bytes": 52759
+      "sha256": "22f1403bf045da449225f075fdd534b14af5f7d10b02885e8dee9d7088530069",
+      "size_bytes": 52806
     },
     "oracle": {
       "exists": true,
