@@ -305,6 +305,45 @@ def _limit_comparison(labels: Sequence[str], summaries: dict[str, dict[str, Any]
     }
 
 
+def _parse_expected_kinds(value: str | None) -> list[str] | None:
+    if value is None:
+        return None
+    return [part.strip() for part in value.split(",") if part.strip()]
+
+
+def _validate_expectations(payload: dict[str, Any], args: argparse.Namespace) -> None:
+    comparison = payload.get("comparison", {})
+    if not isinstance(comparison, dict):
+        raise ValueError("comparison payload is missing or malformed")
+    errors: list[str] = []
+    expected_route_classification = getattr(args, "expect_route_classification", None)
+    if expected_route_classification is not None and comparison.get("route_classification") != expected_route_classification:
+        errors.append(
+            "route_classification expected "
+            f"{expected_route_classification!r} but found {comparison.get('route_classification')!r}"
+        )
+    expected_kinds = _parse_expected_kinds(getattr(args, "expect_route_difference_kinds", None))
+    if expected_kinds is not None and comparison.get("route_difference_kinds") != expected_kinds:
+        errors.append(
+            "route_difference_kinds expected "
+            f"{expected_kinds!r} but found {comparison.get('route_difference_kinds')!r}"
+        )
+    expected_first_diverging = getattr(args, "expect_first_diverging_layer_limit", None)
+    if expected_first_diverging is not None and comparison.get("first_diverging_layer_limit") != expected_first_diverging:
+        errors.append(
+            "first_diverging_layer_limit expected "
+            f"{expected_first_diverging!r} but found {comparison.get('first_diverging_layer_limit')!r}"
+        )
+    if getattr(args, "expect_hidden_passed_all", False) and comparison.get("hidden_passed_all") is not True:
+        errors.append(f"hidden_passed_all expected True but found {comparison.get('hidden_passed_all')!r}")
+    if getattr(args, "expect_token_passed_all", False) and comparison.get("token_passed_all") is not True:
+        errors.append(f"token_passed_all expected True but found {comparison.get('token_passed_all')!r}")
+    if getattr(args, "expect_all_statuses_eq_ok", False) and comparison.get("all_statuses_eq_ok") is not True:
+        errors.append(f"all_statuses_eq_ok expected True but found {comparison.get('all_statuses_eq_ok')!r}")
+    if errors:
+        raise ValueError("; ".join(errors))
+
+
 def compare_artifacts(artifacts: Sequence[tuple[str, Path, dict[str, Any]]]) -> dict[str, Any]:
     if len(artifacts) < 2:
         raise ValueError("at least two artifacts are required for comparison")
@@ -402,6 +441,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         label, path = _parse_artifact_arg(str(raw))
         parsed.append((label, path, _load_json(path)))
     payload = compare_artifacts(parsed)
+    _validate_expectations(payload, args)
     json_path = getattr(args, "json", None)
     if json_path is not None:
         path = Path(json_path)
@@ -419,13 +459,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="Artifact to compare, as LABEL=PATH or PATH. Repeat at least twice.",
     )
     parser.add_argument("--json", type=Path, help="Optional output JSON path")
+    parser.add_argument("--expect-route-classification", help="Fail unless comparison.route_classification matches")
+    parser.add_argument(
+        "--expect-route-difference-kinds",
+        help="Comma-separated exact comparison.route_difference_kinds expectation",
+    )
+    parser.add_argument("--expect-first-diverging-layer-limit", type=int, help="Fail unless first_diverging_layer_limit matches")
+    parser.add_argument("--expect-hidden-passed-all", action="store_true", help="Fail unless hidden_passed_all is true")
+    parser.add_argument("--expect-token-passed-all", action="store_true", help="Fail unless token_passed_all is true")
+    parser.add_argument("--expect-all-statuses-eq-ok", action="store_true", help="Fail unless all_statuses_eq_ok is true")
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
-    payload = run(args)
+    try:
+        payload = run(args)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     if args.json is None:
         print(json.dumps(payload, indent=2, sort_keys=True))
 

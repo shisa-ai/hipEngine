@@ -7801,10 +7801,17 @@ def test_hidden_bisect_projection_artifact_compare_spots_limit_drift_delta(tmp_p
     write_artifact(selected_qkvz, first_limit_drift=False, first_over_bit_mismatch=3722)
     out = tmp_path / "compare.json"
 
+    artifact_args = [f"selected_ab={selected_ab}", f"selected_qkvz={selected_qkvz}"]
     payload = hidden_artifact_compare.run(
         argparse.Namespace(
-            artifact=[f"selected_ab={selected_ab}", f"selected_qkvz={selected_qkvz}"],
+            artifact=artifact_args,
             json=out,
+            expect_route_classification="same_first_over_atol_location_with_record_and_drift_delta",
+            expect_route_difference_kinds="drift_stages,first_over_atol_record,first_over_atol_bit_mismatch",
+            expect_first_diverging_layer_limit=1,
+            expect_hidden_passed_all=True,
+            expect_token_passed_all=True,
+            expect_all_statuses_eq_ok=True,
         )
     )
 
@@ -7848,6 +7855,15 @@ def test_hidden_bisect_projection_artifact_compare_spots_limit_drift_delta(tmp_p
     assert payload["comparison"]["hidden_passed_all"] is True
     assert payload["comparison"]["token_passed_all"] is True
     assert payload["comparison"]["all_statuses_eq_ok"] is True
+
+    with pytest.raises(ValueError, match="route_classification expected"):
+        hidden_artifact_compare.run(
+            argparse.Namespace(
+                artifact=artifact_args,
+                json=None,
+                expect_route_classification="projection_rollups_match",
+            )
+        )
 
 
 def test_hidden_bisect_linear_handoff_summary_distinguishes_copy_from_producer_drift() -> None:
