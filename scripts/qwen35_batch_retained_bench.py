@@ -46,6 +46,7 @@ from scripts.qwen35_batch_artifact_schema import (
 from scripts.qwen35_batch_constants import (
     PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS,
     RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT,
+    RETAINED_ARTIFACT_LEGACY_NATIVE_BENCH_SCRIPT,
     RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_SCRIPT,
     RETAINED_ARTIFACT_PROFILER_TRACE_DURATION_COLUMNS,
     RETAINED_ARTIFACT_PROFILER_TRACE_END_COLUMNS,
@@ -60,6 +61,7 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_RETAINED_GATE_LABELS,
     RETAINED_ARTIFACT_RETAINED_KV_POLICY_FLAGS,
     RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS,
+    RETAINED_ARTIFACT_SERIAL_BRIDGE_SCRIPT,
     RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS,
     RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SEED,
     RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS,
@@ -87,6 +89,8 @@ _RETAINED_GATE_FLAGS = RETAINED_ARTIFACT_RETAINED_GATE_FLAGS
 _RETAINED_GATE_LABELS = RETAINED_ARTIFACT_RETAINED_GATE_LABELS
 _RETAINED_KV_POLICY_FLAGS = RETAINED_ARTIFACT_RETAINED_KV_POLICY_FLAGS
 _PRIMITIVE_CORRECTNESS_SCRIPT = RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_SCRIPT
+_LEGACY_NATIVE_BENCH_SCRIPT = RETAINED_ARTIFACT_LEGACY_NATIVE_BENCH_SCRIPT
+_SERIAL_BRIDGE_SCRIPT = RETAINED_ARTIFACT_SERIAL_BRIDGE_SCRIPT
 _RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS = RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS
 _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS
 _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS
@@ -433,6 +437,7 @@ def _scaling_reference_command_env_assignments(
     *,
     required_env: Mapping[str, str] | None = None,
     require_command_label: bool = False,
+    expected_command_script: str | None = None,
 ) -> tuple[dict[str, str], list[str]]:
     commands = payload.get("commands")
     command = commands.get("benchmark") if isinstance(commands, Mapping) else payload.get("command")
@@ -455,10 +460,19 @@ def _scaling_reference_command_env_assignments(
         for key, value in (required_env or {}).items()
         if value and key not in assignments
     ]
+    if expected_command_script is not None:
+        launch = _strip_command_env_prefix(argv)
+        if len(launch) < 2 or not Path(launch[0]).name.startswith("python") or launch[1] != expected_command_script:
+            reasons.append(f"commands.benchmark must launch {expected_command_script}")
     return assignments, reasons
 
 
-def _scaling_reference(path: Path | None, *, default_workload_concurrency: int | None = None) -> dict[str, Any]:
+def _scaling_reference(
+    path: Path | None,
+    *,
+    default_workload_concurrency: int | None = None,
+    expected_command_script: str | None = None,
+) -> dict[str, Any]:
     if path is None:
         return {
             "artifact_path": None,
@@ -515,6 +529,7 @@ def _scaling_reference(path: Path | None, *, default_workload_concurrency: int |
         payload,
         required_env=retained_device_env,
         require_command_label=bool(reference_device_env),
+        expected_command_script=expected_command_script,
     )
     reasons.extend(reference_command_env_reasons)
     if reference_command_env:
@@ -1236,8 +1251,12 @@ def _build_scaling_comparison(
     native_decode_tok_s_aggregate: float | None,
     native_decode_tok_s_per_request: float | None,
 ) -> dict[str, Any]:
-    c1 = _scaling_reference(getattr(args, "c1_baseline_json", None), default_workload_concurrency=1)
-    serial = _scaling_reference(getattr(args, "serial_bridge_json", None))
+    c1 = _scaling_reference(
+        getattr(args, "c1_baseline_json", None),
+        default_workload_concurrency=1,
+        expected_command_script=_LEGACY_NATIVE_BENCH_SCRIPT,
+    )
+    serial = _scaling_reference(getattr(args, "serial_bridge_json", None), expected_command_script=_SERIAL_BRIDGE_SCRIPT)
     ratios = {
         "aggregate_vs_c1": _safe_ratio(native_decode_tok_s_aggregate, c1.get("decode_tok_s_aggregate")),
         "per_request_vs_c1": _safe_ratio(native_decode_tok_s_per_request, c1.get("decode_tok_s_per_request")),

@@ -1104,6 +1104,7 @@ def _scaling_reference_command_env_assignments(
     *,
     required_env: Mapping[str, str] | None = None,
     require_command_label: bool = False,
+    expected_command_script: str | None = None,
 ) -> tuple[dict[str, str], list[str]]:
     commands = payload.get("commands")
     command = commands.get("benchmark") if isinstance(commands, Mapping) else payload.get("command")
@@ -1126,7 +1127,19 @@ def _scaling_reference_command_env_assignments(
         for key, value in (required_env or {}).items()
         if value and key not in assignments
     ]
+    if expected_command_script is not None:
+        launch = _strip_command_env_prefix(argv)
+        if len(launch) < 2 or not _is_python_executable(launch[0]) or launch[1] != expected_command_script:
+            reasons.append(f"commands.benchmark must launch {expected_command_script}")
     return assignments, reasons
+
+
+def _scaling_reference_expected_command_script(kind: str) -> str | None:
+    if kind == _RETAINED_PRECONDITION_KINDS[1]:
+        return _LEGACY_NATIVE_BENCH_SCRIPT
+    if kind == _RETAINED_PRECONDITION_KINDS[2]:
+        return _SERIAL_BRIDGE_SCRIPT
+    return None
 
 
 def _scaling_reference_precondition(
@@ -1187,6 +1200,7 @@ def _scaling_reference_precondition(
             payload,
             required_env=retained_device_env,
             require_command_label=bool(reference_device_env),
+            expected_command_script=_scaling_reference_expected_command_script(kind),
         )
         reasons.extend(reference_command_env_reasons)
         if reference_command_env:
