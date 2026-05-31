@@ -2146,6 +2146,7 @@ def test_batch_c_sweep_dry_run_records_commands_and_artifacts(tmp_path: Path) ->
         "seed": 1234,
         "stop_on_failure": True,
         "include_int8": False,
+        "include_gguf": False,
         "require_cached_build": False,
         "compiler_version_file": None,
         "projection_dispatch_artifact": "benchmarks/results/projection-candidates.json",
@@ -2665,7 +2666,7 @@ def test_batch_c_sweep_rejects_invalid_option_bools_before_creating_artifacts(tm
         "run",
         lambda *args, **kwargs: pytest.fail("invalid option bools should fail before launching subprocesses"),
     )
-    for option, bad_value in (("dry_run", "yes"), ("stop_on_failure", "yes"), ("include_int8", 1), ("require_cached_build", "false")):
+    for option, bad_value in (("dry_run", "yes"), ("stop_on_failure", "yes"), ("include_int8", 1), ("include_gguf", 1), ("require_cached_build", "false")):
         output_dir = tmp_path / f"artifacts-{option}"
         args = build_c_sweep_parser().parse_args(
             ["--dry-run", "--batch-sizes", "2", "--output-dir", str(output_dir)]
@@ -5296,7 +5297,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_options["options"]["stop_on_failure"] = "yes"
     with pytest.raises(ValueError, match="options.stop_on_failure must be a bool"):
         c_sweep.validate_sweep_summary(tampered_options)
-    for option in ("include_int8", "require_cached_build"):
+    for option in ("include_int8", "include_gguf", "require_cached_build"):
         tampered_bool_option = json.loads(json.dumps(persisted))
         tampered_bool_option["options"][option] = "yes"
         with pytest.raises(ValueError, match=rf"options\.{option} must be a bool"):
@@ -5671,14 +5672,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         c_sweep.validate_sweep_summary(tampered_completed_count)
     tampered_command_count = json.loads(json.dumps(persisted))
     tampered_command_count["command_count"] = 4
-    with pytest.raises(ValueError, match=r"command_count must match batch_sizes/options\.include_int8"):
+    with pytest.raises(ValueError, match=r"command_count must match batch_sizes/options\.include_int8/include_gguf"):
         c_sweep.validate_sweep_summary(tampered_command_count)
     tampered_command_order = json.loads(json.dumps(persisted))
     tampered_command_order["commands"][0], tampered_command_order["commands"][1] = (
         tampered_command_order["commands"][1],
         tampered_command_order["commands"][0],
     )
-    with pytest.raises(ValueError, match=r"commands\[\] category/batch_size order must match batch_sizes/options\.include_int8"):
+    with pytest.raises(ValueError, match=r"commands\[\] category/batch_size order must match batch_sizes/options\.include_int8/include_gguf"):
         c_sweep.validate_sweep_summary(tampered_command_order)
     tampered_status_counts = json.loads(json.dumps(persisted))
     tampered_status_counts["status_counts"] = {}
@@ -6925,6 +6926,7 @@ def test_batch_c_sweep_can_plan_int8_blocked_diagnostics(tmp_path: Path) -> None
 
     assert summary["status"] == "planned"
     assert summary["options"]["include_int8"] is True
+    assert summary["options"]["include_gguf"] is False
     assert summary["command_count"] == 7
     assert summary["completed_command_count"] == 7
     assert summary["status_counts"] == {"planned": 7}
@@ -6936,6 +6938,53 @@ def test_batch_c_sweep_can_plan_int8_blocked_diagnostics(tmp_path: Path) -> None
     }
     assert summary["retained_precondition_counts"] == {}
     assert summary["skipped_preconditions"] == []
+
+
+def test_batch_c_sweep_can_plan_gguf_blocked_diagnostics(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--dry-run",
+            "--include-gguf",
+            "--batch-sizes",
+            "1,2",
+            "--output-dir",
+            str(tmp_path / "artifacts"),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+        ]
+    )
+
+    planned = build_sweep_commands(args)
+    gguf_planned = [item for item in planned if item.category == "gguf_native_diagnostic"]
+
+    assert len(gguf_planned) == 4
+    assert ("gguf_native_diagnostic", 1) not in [(item.category, item.batch_size) for item in planned]
+    assert {item.artifact_path.name for item in gguf_planned} == {
+        "gguf-native-diagnostic-c2-gguf_q4_k_m.json",
+        "gguf-native-diagnostic-c2-gguf_q5_k_m.json",
+        "gguf-native-diagnostic-c2-gguf_q6_k.json",
+        "gguf-native-diagnostic-c2-gguf_q8_0.json",
+    }
+    assert all(item.argv[:2] == ("env", "HIP_VISIBLE_DEVICES=1") for item in gguf_planned)
+    assert all(c_sweep._strip_command_env_prefix(item.argv)[1] == RETAINED_ARTIFACT_GGUF_DIAGNOSTIC_SCRIPT for item in gguf_planned)
+    assert all("--rows 2" in item.command for item in gguf_planned)
+
+    summary = run_sweep(args)
+
+    assert summary["status"] == "planned"
+    assert summary["options"]["include_gguf"] is True
+    assert summary["command_count"] == 10
+    assert summary["completed_command_count"] == 10
+    assert summary["status_counts"] == {"planned": 10}
+    assert summary["category_status_counts"] == {
+        "primitive": {"planned": 2},
+        "serial_bridge": {"planned": 2},
+        "native_diagnostic": {"planned": 2},
+        "gguf_native_diagnostic": {"planned": 4},
+    }
 
 
 def test_projection_dispatch_keeps_c1_on_row_gemv_even_with_fast_candidate() -> None:

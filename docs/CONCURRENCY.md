@@ -1595,8 +1595,11 @@ roll-up/status view.
       emitted `/tmp/hipengine-gguf-c2-diagnostic.json` with `status=blocked`
       and exact command `python3 scripts/qwen35_batch_gguf_diagnostic.py --fixture tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json --rows 2 --backend hip_gfx1100 --quant gguf_q4_k_m --max-new-tokens 4`; the template also preserves
       `HIP_VISIBLE_DEVICES` in its native c>N and independent c=1 command labels
-      for GPU1/XTX re-baseline runs; covered by
-      `test_gguf_cN_diagnostic_template_records_blocked_c2_command` in
+      for GPU1/XTX re-baseline runs. The c-sweep planner now has
+      `--include-gguf`, which adds blocked GGUF c>N diagnostic commands for
+      Q4_K_M/Q5_K_M/Q6_K/Q8_0 at c>1 while preserving the visible HIP device env;
+      covered by `test_gguf_cN_diagnostic_template_records_blocked_c2_command`
+      and `test_batch_c_sweep_can_plan_gguf_blocked_diagnostics` in
       `pytest -q tests/test_generation_batch_scheduler.py -q`.
 - [ ] **C3.6 native LM-head/sampler launch.** Replace the per-row
       `serial_lm_head` loop with a native row-aware LM-head/argmax only after
@@ -2041,6 +2044,11 @@ matrix has at least one green retained c>N cell on the 512/128 protocol.
       projection throughput claim; covered by
       `pytest -q tests/test_generation_batch_scheduler.py -q`.
 - [ ] Validate GGUF Q4_K/Q5_K/Q6_K/Q8_0 c=2/4/8 with the same gates.
+      Progress: `scripts/qwen35_batch_c_sweep.py --include-gguf` now plans
+      blocked GGUF c>N diagnostics for all four template quants at c>1 with
+      `HIP_VISIBLE_DEVICES` preserved in the command labels; this is planning
+      coverage only and does not close the item because generated-token equality
+      artifacts for c=2/4/8 are still missing.
 - [ ] Native row-aware LM-head + sampler: replace the per-row argmax loop
       and prepare for per-row sampling params (C5 finishes this).
 

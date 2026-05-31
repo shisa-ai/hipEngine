@@ -47,6 +47,7 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS,
     RETAINED_ARTIFACT_RETAINED_CONDITION_STATUS_LABELS,
     RETAINED_ARTIFACT_RETAINED_GATE_FLAGS,
+    RETAINED_ARTIFACT_GGUF_DIAGNOSTIC_SCRIPT,
     RETAINED_ARTIFACT_INT8_DIAGNOSTIC_SCRIPT,
     RETAINED_ARTIFACT_LEGACY_NATIVE_BENCH_SCRIPT,
     RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT,
@@ -207,6 +208,7 @@ _PROFILER_SYNTHESIZED_FIELDS = RETAINED_ARTIFACT_PROFILER_TRACE_SYNTHESIZED_FIEL
 _SERIAL_BRIDGE_SCRIPT = RETAINED_ARTIFACT_SERIAL_BRIDGE_SCRIPT
 _LEGACY_NATIVE_BENCH_SCRIPT = RETAINED_ARTIFACT_LEGACY_NATIVE_BENCH_SCRIPT
 _INT8_DIAGNOSTIC_SCRIPT = RETAINED_ARTIFACT_INT8_DIAGNOSTIC_SCRIPT
+_GGUF_DIAGNOSTIC_SCRIPT = RETAINED_ARTIFACT_GGUF_DIAGNOSTIC_SCRIPT
 _RETAINED_BENCH_SCRIPT = RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT
 _RETAINED_BENCH_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS
 _RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS = RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS
@@ -225,6 +227,7 @@ _SWEEP_COMMAND_STATUS_LABELS = RETAINED_ARTIFACT_SWEEP_COMMAND_STATUS_LABELS
     _SERIAL_BRIDGE_COMMAND_CATEGORY,
     _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY,
     _INT8_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY,
+    _GGUF_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY,
 ) = _SWEEP_COMMAND_CATEGORIES
 (
     _PLANNED_COMMAND_STATUS,
@@ -233,6 +236,8 @@ _SWEEP_COMMAND_STATUS_LABELS = RETAINED_ARTIFACT_SWEEP_COMMAND_STATUS_LABELS
     _FAILED_COMMAND_STATUS,
 ) = _SWEEP_COMMAND_STATUS_LABELS
 _SWEEP_COMMAND_KNOWN_FLAGS = tuple(dict.fromkeys(_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS + _PRIMITIVE_CORRECTNESS_UNIQUE_FLAGS))
+_GGUF_DIAGNOSTIC_FIXTURE = "tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json"
+_GGUF_DIAGNOSTIC_QUANTS = ("gguf_q4_k_m", "gguf_q5_k_m", "gguf_q6_k", "gguf_q8_0")
 
 
 @dataclass(frozen=True, slots=True)
@@ -398,6 +403,28 @@ def build_sweep_commands(args: argparse.Namespace) -> tuple[SweepCommand, ...]:
                     ),
                 )
             )
+        if getattr(args, "include_gguf", False):
+            for quant in _GGUF_DIAGNOSTIC_QUANTS:
+                gguf_json = output_dir / f"gguf-native-diagnostic-c{c}-{quant}.json"
+                commands.append(
+                    SweepCommand(
+                        category=_GGUF_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY,
+                        batch_size=c,
+                        artifact_path=gguf_json,
+                        argv=(
+                            *_python_command_prefix(),
+                            _GGUF_DIAGNOSTIC_SCRIPT,
+                            "--fixture",
+                            _GGUF_DIAGNOSTIC_FIXTURE,
+                            "--rows",
+                            str(c),
+                            "--quant",
+                            quant,
+                            "--json",
+                            str(gguf_json),
+                        ),
+                    )
+                )
     return tuple(commands)
 
 
@@ -1902,13 +1929,14 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             "seed",
             "stop_on_failure",
             "include_int8",
+            "include_gguf",
             "require_cached_build",
             "compiler_version_file",
             "projection_dispatch_artifact",
         }
         if set(options) != expected_option_keys:
             errors.append("options must contain exactly the c-sweep schema keys")
-        for option in ("stop_on_failure", "include_int8", "require_cached_build"):
+        for option in ("stop_on_failure", "include_int8", "include_gguf", "require_cached_build"):
             if not isinstance(options.get(option), bool):
                 errors.append(f"options.{option} must be a bool")
         for option in ("model", "fixture"):
@@ -2298,6 +2326,13 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if fixture_required and option_fixture is not None and _argv_value(argv, "--fixture") != option_fixture:
                 errors.append("commands[].argv --fixture must match options.fixture")
                 break
+            if command_category == _GGUF_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY:
+                if _argv_value(argv, "--fixture") != _GGUF_DIAGNOSTIC_FIXTURE:
+                    errors.append("commands[].argv GGUF --fixture must match the template fixture")
+                    break
+                if _argv_value(argv, "--quant") not in _GGUF_DIAGNOSTIC_QUANTS:
+                    errors.append("commands[].argv GGUF --quant must be one of the template quants")
+                    break
             duplicated_retained_flags = _duplicate_flags(argv, _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS)
             if duplicated_retained_flags:
                 errors.append("commands[].argv must not repeat retained benchmark flags")
@@ -2349,6 +2384,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     expected_artifact_name = "native-baseline-c1.json" if batch_size == 1 else f"native-diagnostic-c{batch_size}.json"
                 elif category == _INT8_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY:
                     expected_artifact_name = f"int8-native-diagnostic-c{batch_size}.json"
+                elif category == _GGUF_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY:
+                    quant = _argv_value(argv, "--quant")
+                    if quant in _GGUF_DIAGNOSTIC_QUANTS:
+                        expected_artifact_name = f"gguf-native-diagnostic-c{batch_size}-{quant}.json"
                 if expected_artifact_name is not None and artifact_abs != (output_dir_abs / expected_artifact_name).resolve():
                     errors.append("commands[].artifact_path must match category/batch-size filename")
                     break
@@ -2436,6 +2475,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 _SERIAL_BRIDGE_COMMAND_CATEGORY: {_SERIAL_BRIDGE_SCRIPT},
                 _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY: {_LEGACY_NATIVE_BENCH_SCRIPT, _RETAINED_BENCH_SCRIPT},
                 _INT8_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY: {_INT8_DIAGNOSTIC_SCRIPT},
+                _GGUF_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY: {_GGUF_DIAGNOSTIC_SCRIPT},
             }
             expected_scripts = expected_scripts_by_category.get(entry.get("category"))
             if expected_scripts is not None and (len(launch_argv) < 2 or launch_argv[1] not in expected_scripts):
@@ -3477,7 +3517,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         errors.append("dry-run summaries must include all planned commands")
     elif isinstance(options, Mapping) and options.get("stop_on_failure") is False and command_count != len(entries):
         errors.append("non-stop summaries must include all planned commands")
-    elif isinstance(options, Mapping) and isinstance(options.get("include_int8"), bool) and batch_sizes:
+    elif isinstance(options, Mapping) and isinstance(options.get("include_int8"), bool) and isinstance(options.get("include_gguf"), bool) and batch_sizes:
         expected_plan: list[tuple[str, int]] = []
         for c in batch_sizes:
             expected_plan.extend([
@@ -3487,10 +3527,12 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             ])
             if options["include_int8"] and c != 1:
                 expected_plan.append((_INT8_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY, c))
+            if options["include_gguf"] and c != 1:
+                expected_plan.extend((_GGUF_NATIVE_DIAGNOSTIC_COMMAND_CATEGORY, c) for _ in _GGUF_DIAGNOSTIC_QUANTS)
         if command_count != len(expected_plan):
-            errors.append("command_count must match batch_sizes/options.include_int8")
+            errors.append("command_count must match batch_sizes/options.include_int8/include_gguf")
         elif [(entry.get("category"), entry.get("batch_size")) for entry in entries] != expected_plan[: len(entries)]:
-            errors.append("commands[] category/batch_size order must match batch_sizes/options.include_int8")
+            errors.append("commands[] category/batch_size order must match batch_sizes/options.include_int8/include_gguf")
     if isinstance(options, Mapping) and options.get("stop_on_failure") is True:
         for index, entry in enumerate(entries[:-1]):
             if entry.get("status") in {_FAILED_COMMAND_STATUS, _SKIPPED_COMMAND_STATUS}:
@@ -3602,7 +3644,7 @@ def _validate_run_options(args: argparse.Namespace) -> None:
         if not isinstance(value, str) or not value.strip():
             flag = "--" + option.replace("_", "-")
             raise ValueError(f"{flag} must be a non-empty string")
-    for option in ("dry_run", "stop_on_failure", "include_int8", "require_cached_build"):
+    for option in ("dry_run", "stop_on_failure", "include_int8", "include_gguf", "require_cached_build"):
         if not isinstance(getattr(args, option, None), bool):
             flag = "--" + option.replace("_", "-")
             raise ValueError(f"{flag} must be a typed bool")
@@ -3647,6 +3689,7 @@ def _summary_options(args: argparse.Namespace) -> dict[str, Any]:
         "seed": int(args.seed),
         "stop_on_failure": bool(args.stop_on_failure),
         "include_int8": bool(getattr(args, "include_int8", False)),
+        "include_gguf": bool(getattr(args, "include_gguf", False)),
         "require_cached_build": bool(args.require_cached_build),
         "compiler_version_file": None if args.compiler_version_file is None else str(args.compiler_version_file),
         "projection_dispatch_artifact": None
@@ -3866,6 +3909,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional benchmarks/results JSON with projection_dispatch_candidates passed to retained native commands",
     )
     parser.add_argument("--include-int8", action="store_true", help="Plan blocked INT8 KV c>N diagnostics for c>1 rows")
+    parser.add_argument("--include-gguf", action="store_true", help="Plan blocked GGUF c>N diagnostics for c>1 rows and all template quants")
     parser.add_argument("--output-dir", type=parse_cli_path, default=Path("/tmp/hipengine-batch-c-sweep"))
     parser.add_argument("--summary-json", type=parse_cli_path)
     parser.add_argument("--validate-summary-json", type=parse_cli_path, help="Validate an existing c-sweep summary JSON and exit")

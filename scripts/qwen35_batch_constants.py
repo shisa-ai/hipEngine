@@ -144,6 +144,7 @@ RETAINED_ARTIFACT_SWEEP_COMMAND_CATEGORIES = (
     "serial_bridge",
     "native_diagnostic",
     "int8_native_diagnostic",
+    "gguf_native_diagnostic",
 )
 RETAINED_ARTIFACT_SWEEP_COMMAND_STATUS_LABELS = (
     "planned",
