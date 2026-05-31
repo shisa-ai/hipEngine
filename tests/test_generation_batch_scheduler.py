@@ -11242,6 +11242,10 @@ def test_qwen35_retained_scaling_comparison_rejects_bad_native_rates(tmp_path: P
     )
 
     assert scaling["complete"] is False
+    assert scaling["native"] == {
+        "decode_tok_s_aggregate": None,
+        "decode_tok_s_per_request": None,
+    }
     assert scaling["c1_baseline"]["reason"] is None
     assert scaling["serial_bridge_baseline"]["reason"] is None
     assert scaling["ratios"] == {

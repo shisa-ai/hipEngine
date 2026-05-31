@@ -385,12 +385,17 @@ def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
-def _safe_ratio(numerator: Any, denominator: Any) -> float | None:
-    if not (_is_number(numerator) and _is_number(denominator)):
+def _positive_finite_rate_or_none(value: Any) -> float | None:
+    if not _is_number(value):
         return None
-    num = float(numerator)
-    denom = float(denominator)
-    if not math.isfinite(num) or num <= 0.0 or not math.isfinite(denom) or denom <= 0.0:
+    rate = float(value)
+    return rate if math.isfinite(rate) and rate > 0.0 else None
+
+
+def _safe_ratio(numerator: Any, denominator: Any) -> float | None:
+    num = _positive_finite_rate_or_none(numerator)
+    denom = _positive_finite_rate_or_none(denominator)
+    if num is None or denom is None:
         return None
     return num / denom
 
@@ -1355,6 +1360,8 @@ def _build_scaling_comparison(
         prompt_tokens_per_request=prompt_tokens_per_request,
         gen_tokens_per_request=gen_tokens_per_request,
     )
+    native_decode_tok_s_aggregate = _positive_finite_rate_or_none(native_decode_tok_s_aggregate)
+    native_decode_tok_s_per_request = _positive_finite_rate_or_none(native_decode_tok_s_per_request)
     ratios = {
         "aggregate_vs_c1": _safe_ratio(native_decode_tok_s_aggregate, c1.get("decode_tok_s_aggregate")),
         "per_request_vs_c1": _safe_ratio(native_decode_tok_s_per_request, c1.get("decode_tok_s_per_request")),
