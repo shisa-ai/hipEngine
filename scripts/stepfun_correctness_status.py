@@ -48,6 +48,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--first-blocker-only",
+        action="store_true",
+        help=(
+            "Emit only handoff_summary.first_blocker_work_item for immediate routing. "
+            "Overrides --summary-only and --blocker-work-queue-only."
+        ),
+    )
+    parser.add_argument(
         "--verify-source-artifacts",
         type=Path,
         default=None,
@@ -1163,7 +1171,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.docs,
         resource_artifact=args.resource_artifact,
     )
-    if args.blocker_work_queue_only:
+    if args.first_blocker_only:
+        result = status["handoff_summary"]["first_blocker_work_item"]
+    elif args.blocker_work_queue_only:
         result = status["handoff_summary"]["blocker_work_queue"]
     elif args.summary_only:
         result = status["handoff_summary"]
