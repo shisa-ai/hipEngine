@@ -118,27 +118,45 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
     assert payload["max_prompt_rows"] == 511
     assert payload["attention_block_size"] == 256
     assert payload["attention_block_table_len"] == 2
+    prompt_base_offsets_len = run_plan.prompt_length * 2
+    prompt_base_offsets_nbytes = prompt_base_offsets_len * 4
+    prompt_live_counts_nbytes = run_plan.prompt_length * 8
     assert payload["prompt_span_inputs"] == {
         "rows": run_plan.prompt_length,
         "block_size": 256,
         "block_table_len_per_row": 2,
         "base_offsets": [value for _ in range(run_plan.prompt_length) for value in (0, 1)],
-        "base_offsets_len": run_plan.prompt_length * 2,
+        "base_offsets_dtype": "int32",
+        "base_offsets_len": prompt_base_offsets_len,
+        "base_offsets_nbytes": prompt_base_offsets_nbytes,
         "live_counts": list(range(run_plan.prompt_length)),
+        "live_counts_dtype": "int64",
         "live_counts_len": run_plan.prompt_length,
+        "live_counts_nbytes": prompt_live_counts_nbytes,
         "position_tensor_role": "prompt_row_positions",
         "max_live_count": run_plan.prompt_length - 1,
+        "total_span_input_nbytes": prompt_base_offsets_nbytes + prompt_live_counts_nbytes,
     }
     assert payload["decode_span_inputs"] == {
         "block_size": 256,
         "block_table_len": 2,
         "base_offsets": [0, 1],
+        "base_offsets_dtype": "int32",
         "base_offsets_len": 2,
+        "base_offsets_nbytes": 8,
         "kv_write_position": run_plan.prompt_length,
+        "kv_write_position_dtype": "int64",
+        "kv_write_position_nbytes": 8,
         "attention_live_counts": [run_plan.prompt_length],
+        "attention_live_counts_dtype": "int64",
         "attention_live_counts_len": 1,
+        "attention_live_counts_nbytes": 8,
         "max_live_count": run_plan.prompt_length,
+        "total_span_input_nbytes": 16,
     }
+    assert payload["span_input_total_nbytes"] == (
+        prompt_base_offsets_nbytes + prompt_live_counts_nbytes + 16
+    )
     assert payload["stop_token_ids"] == [1, 2, 128007]
     assert payload["kv_dispatch_keys"]["decode_attention"] == {
         "backend": "hip_gfx1151",

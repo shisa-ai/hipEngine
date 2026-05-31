@@ -191,16 +191,23 @@
         "attention_live_counts": [
           23
         ],
+        "attention_live_counts_dtype": "int64",
         "attention_live_counts_len": 1,
+        "attention_live_counts_nbytes": 8,
         "base_offsets": [
           0,
           1
         ],
+        "base_offsets_dtype": "int32",
         "base_offsets_len": 2,
+        "base_offsets_nbytes": 8,
         "block_size": 256,
         "block_table_len": 2,
         "kv_write_position": 23,
-        "max_live_count": 23
+        "kv_write_position_dtype": "int64",
+        "kv_write_position_nbytes": 8,
+        "max_live_count": 23,
+        "total_span_input_nbytes": 16
       },
       "input_id_count": 23,
       "input_ids": [
@@ -334,7 +341,9 @@
           0,
           1
         ],
+        "base_offsets_dtype": "int32",
         "base_offsets_len": 46,
+        "base_offsets_nbytes": 184,
         "block_size": 256,
         "block_table_len_per_row": 2,
         "live_counts": [
@@ -362,14 +371,18 @@
           21,
           22
         ],
+        "live_counts_dtype": "int64",
         "live_counts_len": 23,
+        "live_counts_nbytes": 184,
         "max_live_count": 22,
         "position_tensor_role": "prompt_row_positions",
-        "rows": 23
+        "rows": 23,
+        "total_span_input_nbytes": 368
       },
       "rendered_prompt_nchars": 130,
       "rendered_prompt_sha256": "6a7c9a3ac59b006a1ac8f658f10321602edc5e85a69d23a777e655717e95291c",
       "required_context_tokens": 24,
+      "span_input_total_nbytes": 384,
       "stop_token_ids": [
         1,
         2,
@@ -551,6 +564,7 @@
         "run_plan_prompt_fits_resource_plan": true,
         "run_plan_prompt_span_base_offsets_len": 46,
         "run_plan_rendered_prompt_sha256": "6a7c9a3ac59b006a1ac8f658f10321602edc5e85a69d23a777e655717e95291c",
+        "run_plan_span_input_total_nbytes": 384,
         "run_plan_streaming_ready": false
       },
       "dispatch_ready": true,
@@ -570,8 +584,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "a64f995839c67ef18d29cf2372bbf4050e22c88edda1be2f079cb12b306210d6",
-      "size_bytes": 51468
+      "sha256": "8edc8c5a23b4f471f793628ddc2a39598e9d48e62a5732203254eb6f118b81d1",
+      "size_bytes": 51503
     },
     "oracle": {
       "exists": true,
@@ -588,8 +602,8 @@
     "text_resource": {
       "exists": true,
       "path": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
-      "sha256": "98d4aaa5460873e2286d2dbf6ab940b9f476ea5181e19f5da36af9232d54f1f5",
-      "size_bytes": 35985
+      "sha256": "c25bfeb1f8b8ec9165a47b16a55b6762fec8deb116628e2ec64fed63502b6953",
+      "size_bytes": 36471
     }
   },
   "status": "blocked",

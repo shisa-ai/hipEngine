@@ -117,19 +117,32 @@ def test_stepfun_load_smoke_dry_run_plan_emits_resource_json(capsys: pytest.Capt
     assert run_plan["attention_block_size"] == 256
     assert run_plan["attention_block_table_len"] == 2
     assert run_plan["prompt_span_inputs"]["rows"] == run_plan["prompt_length"]
+    assert run_plan["prompt_span_inputs"]["base_offsets_dtype"] == "int32"
     assert run_plan["prompt_span_inputs"]["base_offsets_len"] == run_plan["prompt_length"] * 2
+    assert run_plan["prompt_span_inputs"]["base_offsets_nbytes"] == run_plan["prompt_length"] * 8
     assert run_plan["prompt_span_inputs"]["live_counts"] == run_plan["prompt_positions"]
+    assert run_plan["prompt_span_inputs"]["live_counts_dtype"] == "int64"
+    assert run_plan["prompt_span_inputs"]["live_counts_nbytes"] == run_plan["prompt_length"] * 8
+    assert run_plan["prompt_span_inputs"]["total_span_input_nbytes"] == run_plan["prompt_length"] * 16
     assert run_plan["prompt_span_inputs"]["position_tensor_role"] == "prompt_row_positions"
     assert run_plan["decode_span_inputs"] == {
         "block_size": 256,
         "block_table_len": 2,
         "base_offsets": [0, 1],
+        "base_offsets_dtype": "int32",
         "base_offsets_len": 2,
+        "base_offsets_nbytes": 8,
         "kv_write_position": run_plan["prompt_length"],
+        "kv_write_position_dtype": "int64",
+        "kv_write_position_nbytes": 8,
         "attention_live_counts": [run_plan["prompt_length"]],
+        "attention_live_counts_dtype": "int64",
         "attention_live_counts_len": 1,
+        "attention_live_counts_nbytes": 8,
         "max_live_count": run_plan["prompt_length"],
+        "total_span_input_nbytes": 16,
     }
+    assert run_plan["span_input_total_nbytes"] == run_plan["prompt_length"] * 16 + 16
     assert run_plan["prompt_fits_resource_plan"] is True
     assert run_plan["context_fits_resource_plan"] is True
     assert run_plan["stop_token_ids"] == [1, 2, 128007]

@@ -14,16 +14,23 @@
       "attention_live_counts": [
         23
       ],
+      "attention_live_counts_dtype": "int64",
       "attention_live_counts_len": 1,
+      "attention_live_counts_nbytes": 8,
       "base_offsets": [
         0,
         1
       ],
+      "base_offsets_dtype": "int32",
       "base_offsets_len": 2,
+      "base_offsets_nbytes": 8,
       "block_size": 256,
       "block_table_len": 2,
       "kv_write_position": 23,
-      "max_live_count": 23
+      "kv_write_position_dtype": "int64",
+      "kv_write_position_nbytes": 8,
+      "max_live_count": 23,
+      "total_span_input_nbytes": 16
     },
     "input_id_count": 23,
     "input_ids": [
@@ -157,7 +164,9 @@
         0,
         1
       ],
+      "base_offsets_dtype": "int32",
       "base_offsets_len": 46,
+      "base_offsets_nbytes": 184,
       "block_size": 256,
       "block_table_len_per_row": 2,
       "live_counts": [
@@ -185,14 +194,18 @@
         21,
         22
       ],
+      "live_counts_dtype": "int64",
       "live_counts_len": 23,
+      "live_counts_nbytes": 184,
       "max_live_count": 22,
       "position_tensor_role": "prompt_row_positions",
-      "rows": 23
+      "rows": 23,
+      "total_span_input_nbytes": 368
     },
     "rendered_prompt_nchars": 130,
     "rendered_prompt_sha256": "6a7c9a3ac59b006a1ac8f658f10321602edc5e85a69d23a777e655717e95291c",
     "required_context_tokens": 24,
+    "span_input_total_nbytes": 384,
     "stop_token_ids": [
       1,
       2,

@@ -467,6 +467,9 @@ def _readiness_gates(
                         "decode_span_inputs", {}
                     )
                 ).get("base_offsets_len"),
+                "run_plan_span_input_total_nbytes": dict(
+                    kv_decode_dispatch_progress.get("run_plan", {})
+                ).get("span_input_total_nbytes"),
                 "run_plan_streaming_ready": dict(
                     kv_decode_dispatch_progress.get("run_plan", {})
                 ).get("streaming_runner_ready"),

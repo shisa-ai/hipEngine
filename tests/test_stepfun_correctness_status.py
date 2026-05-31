@@ -224,13 +224,20 @@ def _write_resource_artifact(path: Path) -> None:
                     "decode_position": 23,
                     "decode_span_inputs": {
                         "attention_live_counts": [23],
+                        "attention_live_counts_dtype": "int64",
                         "attention_live_counts_len": 1,
+                        "attention_live_counts_nbytes": 8,
                         "base_offsets": [0, 1],
+                        "base_offsets_dtype": "int32",
                         "base_offsets_len": 2,
+                        "base_offsets_nbytes": 8,
                         "block_size": 256,
                         "block_table_len": 2,
                         "kv_write_position": 23,
+                        "kv_write_position_dtype": "int64",
+                        "kv_write_position_nbytes": 8,
                         "max_live_count": 23,
+                        "total_span_input_nbytes": 16,
                     },
                     "input_id_count": 23,
                     "input_ids": list(range(100, 123)),
@@ -268,18 +275,24 @@ def _write_resource_artifact(path: Path) -> None:
                     "prompt_positions": list(range(23)),
                     "prompt_span_inputs": {
                         "base_offsets": [value for _ in range(23) for value in (0, 1)],
+                        "base_offsets_dtype": "int32",
                         "base_offsets_len": 46,
+                        "base_offsets_nbytes": 184,
                         "block_size": 256,
                         "block_table_len_per_row": 2,
                         "live_counts": list(range(23)),
+                        "live_counts_dtype": "int64",
                         "live_counts_len": 23,
+                        "live_counts_nbytes": 184,
                         "max_live_count": 22,
                         "position_tensor_role": "prompt_row_positions",
                         "rows": 23,
+                        "total_span_input_nbytes": 368,
                     },
                     "rendered_prompt_nchars": 123,
                     "rendered_prompt_sha256": "0" * 64,
                     "required_context_tokens": 24,
+                    "span_input_total_nbytes": 384,
                     "stop_token_ids": [1, 2, 128007],
                     "streaming_runner_ready": False,
                 },
@@ -459,9 +472,16 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert kv_dispatch["run_plan"]["attention_block_size"] == 256
     assert kv_dispatch["run_plan"]["attention_block_table_len"] == 2
     assert kv_dispatch["run_plan"]["prompt_span_inputs"]["base_offsets_len"] == 46
+    assert kv_dispatch["run_plan"]["prompt_span_inputs"]["base_offsets_nbytes"] == 184
     assert kv_dispatch["run_plan"]["prompt_span_inputs"]["live_counts"] == list(range(23))
+    assert kv_dispatch["run_plan"]["prompt_span_inputs"]["live_counts_nbytes"] == 184
+    assert kv_dispatch["run_plan"]["prompt_span_inputs"]["total_span_input_nbytes"] == 368
     assert kv_dispatch["run_plan"]["decode_span_inputs"]["base_offsets"] == [0, 1]
+    assert kv_dispatch["run_plan"]["decode_span_inputs"]["base_offsets_nbytes"] == 8
     assert kv_dispatch["run_plan"]["decode_span_inputs"]["kv_write_position"] == 23
+    assert kv_dispatch["run_plan"]["decode_span_inputs"]["attention_live_counts_nbytes"] == 8
+    assert kv_dispatch["run_plan"]["decode_span_inputs"]["total_span_input_nbytes"] == 16
+    assert kv_dispatch["run_plan"]["span_input_total_nbytes"] == 384
     assert kv_dispatch["run_plan"]["prompt_positions"] == list(range(23))
     assert kv_dispatch["run_plan"]["decode_position"] == 23
     assert kv_dispatch["run_plan"]["decode_live_count"] == 23
@@ -508,6 +528,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "run_plan_prompt_fits_resource_plan": True,
         "run_plan_prompt_span_base_offsets_len": 46,
         "run_plan_rendered_prompt_sha256": "0" * 64,
+        "run_plan_span_input_total_nbytes": 384,
         "run_plan_streaming_ready": False,
     }
     assert gates["e2e_inference"]["ready"] is False

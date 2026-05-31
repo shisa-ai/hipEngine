@@ -465,30 +465,55 @@ class StepFunKVDecodeRunPlan:
 
     @property
     def prompt_span_inputs(self) -> dict[str, object]:
+        base_offsets_len = len(self.prompt_span_base_offsets)
+        live_counts_len = self.prompt_length
+        base_offsets_nbytes = base_offsets_len * 4
+        live_counts_nbytes = live_counts_len * 8
         return {
             "rows": self.prompt_length,
             "block_size": self.attention_block_size,
             "block_table_len_per_row": self.attention_block_table_len,
             "base_offsets": list(self.prompt_span_base_offsets),
-            "base_offsets_len": len(self.prompt_span_base_offsets),
+            "base_offsets_dtype": "int32",
+            "base_offsets_len": base_offsets_len,
+            "base_offsets_nbytes": base_offsets_nbytes,
             "live_counts": list(self.prompt_positions),
-            "live_counts_len": self.prompt_length,
+            "live_counts_dtype": "int64",
+            "live_counts_len": live_counts_len,
+            "live_counts_nbytes": live_counts_nbytes,
             "position_tensor_role": "prompt_row_positions",
             "max_live_count": max(self.prompt_positions) if self.prompt_positions else 0,
+            "total_span_input_nbytes": base_offsets_nbytes + live_counts_nbytes,
         }
 
     @property
     def decode_span_inputs(self) -> dict[str, object]:
+        base_offsets_len = len(self.decode_span_base_offsets)
+        base_offsets_nbytes = base_offsets_len * 4
+        attention_live_counts_nbytes = 8
         return {
             "block_size": self.attention_block_size,
             "block_table_len": self.attention_block_table_len,
             "base_offsets": list(self.decode_span_base_offsets),
-            "base_offsets_len": len(self.decode_span_base_offsets),
+            "base_offsets_dtype": "int32",
+            "base_offsets_len": base_offsets_len,
+            "base_offsets_nbytes": base_offsets_nbytes,
             "kv_write_position": self.decode_position,
+            "kv_write_position_dtype": "int64",
+            "kv_write_position_nbytes": 8,
             "attention_live_counts": [self.decode_live_count],
+            "attention_live_counts_dtype": "int64",
             "attention_live_counts_len": 1,
+            "attention_live_counts_nbytes": attention_live_counts_nbytes,
             "max_live_count": self.decode_live_count,
+            "total_span_input_nbytes": base_offsets_nbytes + attention_live_counts_nbytes,
         }
+
+    @property
+    def span_input_total_nbytes(self) -> int:
+        return int(self.prompt_span_inputs["total_span_input_nbytes"]) + int(
+            self.decode_span_inputs["total_span_input_nbytes"]
+        )
 
     @property
     def prompt_fits_resource_plan(self) -> bool:
@@ -521,6 +546,7 @@ class StepFunKVDecodeRunPlan:
             "decode_live_count": self.decode_live_count,
             "prompt_span_inputs": self.prompt_span_inputs,
             "decode_span_inputs": self.decode_span_inputs,
+            "span_input_total_nbytes": self.span_input_total_nbytes,
             "prompt_fits_resource_plan": self.prompt_fits_resource_plan,
             "context_fits_resource_plan": self.context_fits_resource_plan,
             "stop_token_ids": list(self.decode_plan.stop_token_ids),
