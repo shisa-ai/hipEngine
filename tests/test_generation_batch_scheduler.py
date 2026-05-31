@@ -7352,6 +7352,11 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.batch_size must be a positive int"):
             c_sweep.validate_sweep_summary(tampered_missing_batch_size)
 
+        tampered_unlisted_batch_size = json.loads(json.dumps(summary))
+        tampered_unlisted_batch_size["commands"][index]["batch_size"] = 16
+        with pytest.raises(ValueError, match=r"commands\[\]\.batch_size must be listed in batch_sizes"):
+            c_sweep.validate_sweep_summary(tampered_unlisted_batch_size)
+
         tampered_status = json.loads(json.dumps(summary))
         tampered_status["commands"][index]["status"] = "passed"
         with pytest.raises(ValueError, match=r"commands\[\]\.status must be planned for dry-run summaries"):
