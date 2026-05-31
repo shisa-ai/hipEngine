@@ -81,6 +81,47 @@ def _small_drift_record(record: Any) -> dict[str, Any] | None:
     return compact
 
 
+def _drift_location(record: dict[str, Any] | None) -> dict[str, Any] | None:
+    if record is None:
+        return None
+    return {
+        key: record[key]
+        for key in (
+            "layer_limit",
+            "decode_step",
+            "generated_index",
+            "layer_index",
+            "stage",
+            "row",
+            "comparison_kind",
+            "max_abs_flat_index",
+            "max_abs_index",
+            "elements_over_atol",
+        )
+        if key in record
+    }
+
+
+def _drift_bit_mismatch(record: dict[str, Any] | None) -> int | None:
+    if record is None or "bit_mismatch" not in record:
+        return None
+    try:
+        return int(record["bit_mismatch"])
+    except (TypeError, ValueError):
+        return None
+
+
+def _records_agree(records: Sequence[dict[str, Any] | None]) -> bool:
+    return len({json.dumps(record, sort_keys=True) for record in records}) <= 1
+
+
+def _int_delta(values: Sequence[int | None]) -> int | None:
+    present = [value for value in values if value is not None]
+    if not present:
+        return None
+    return max(present) - min(present)
+
+
 def _projection_rollup(payload: dict[str, Any]) -> dict[str, Any]:
     correctness = payload.get("correctness", {})
     if not isinstance(correctness, dict):
@@ -149,6 +190,9 @@ def _limit_comparison(labels: Sequence[str], summaries: dict[str, dict[str, Any]
     per_artifact: dict[str, dict[str, Any]] = {}
     drift_signatures: dict[str, tuple[str, ...]] = {}
     over_atol_signatures: dict[str, tuple[str, ...]] = {}
+    first_over_records: dict[str, dict[str, Any] | None] = {}
+    first_over_locations: dict[str, dict[str, Any] | None] = {}
+    first_over_bit_mismatches: dict[str, int | None] = {}
     for label in labels:
         projection = summaries[label]["projection"]
         entries = {
@@ -161,6 +205,9 @@ def _limit_comparison(labels: Sequence[str], summaries: dict[str, dict[str, Any]
         under_atol_stages = _stage_list(entry, "under_atol_drift_stages")
         over_atol_stages = _stage_list(entry, "over_atol_drift_stages")
         first_over = _small_drift_record(entry.get("first_over_atol_drift")) if isinstance(entry, dict) else None
+        first_over_records[label] = first_over
+        first_over_locations[label] = _drift_location(first_over)
+        first_over_bit_mismatches[label] = _drift_bit_mismatch(first_over)
         per_artifact[label] = {
             "drift_stages": drift_stages,
             "under_atol_drift_stages": under_atol_stages,
@@ -176,6 +223,12 @@ def _limit_comparison(labels: Sequence[str], summaries: dict[str, dict[str, Any]
         "per_artifact": per_artifact,
         "drift_agrees": drift_agrees,
         "over_atol_agrees": over_atol_agrees,
+        "first_over_atol_drift_by_label": first_over_records,
+        "first_over_atol_drift_location_by_label": first_over_locations,
+        "first_over_atol_drift_locations_agree": _records_agree(tuple(first_over_locations.values())),
+        "first_over_atol_drift_records_agree": _records_agree(tuple(first_over_records.values())),
+        "first_over_atol_bit_mismatch_by_label": first_over_bit_mismatches,
+        "first_over_atol_bit_mismatch_delta": _int_delta(tuple(first_over_bit_mismatches.values())),
     }
 
 
@@ -210,6 +263,11 @@ def compare_artifacts(artifacts: Sequence[tuple[str, Path, dict[str, Any]]]) -> 
         label: summaries[label]["projection"].get("first_over_atol_layer_limit") for label in labels
     }
     first_over_values = tuple(first_over_by_label.values())
+    first_over_records = {
+        label: summaries[label]["projection"].get("first_over_atol_drift") for label in labels
+    }
+    first_over_locations = {label: _drift_location(record) for label, record in first_over_records.items()}
+    first_over_bit_mismatches = {label: _drift_bit_mismatch(record) for label, record in first_over_records.items()}
     projection_drift_agreement = all(entry["drift_agrees"] for entry in per_limit)
     projection_over_atol_agreement = all(entry["over_atol_agrees"] for entry in per_limit)
     return {
@@ -224,6 +282,12 @@ def compare_artifacts(artifacts: Sequence[tuple[str, Path, dict[str, Any]]]) -> 
             "all_layer_limits": all_limits,
             "first_over_atol_layer_limits_by_label": first_over_by_label,
             "labels_agree_on_first_over_atol_layer_limit": len(set(first_over_values)) <= 1,
+            "first_over_atol_drift_by_label": first_over_records,
+            "first_over_atol_drift_location_by_label": first_over_locations,
+            "labels_agree_on_first_over_atol_drift_location": _records_agree(tuple(first_over_locations.values())),
+            "labels_agree_on_first_over_atol_drift_record": _records_agree(tuple(first_over_records.values())),
+            "first_over_atol_bit_mismatch_by_label": first_over_bit_mismatches,
+            "first_over_atol_bit_mismatch_delta": _int_delta(tuple(first_over_bit_mismatches.values())),
             "projection_drift_agreement": projection_drift_agreement,
             "projection_over_atol_agreement": projection_over_atol_agreement,
             "first_diverging_layer_limit": first_diverging,

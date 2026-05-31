@@ -7756,7 +7756,8 @@ def test_hidden_bisect_projection_artifact_compare_spots_limit_drift_delta(tmp_p
         "elements_over_atol": 2,
     }
 
-    def write_artifact(path: Path, *, first_limit_drift: bool) -> None:
+    def write_artifact(path: Path, *, first_limit_drift: bool, first_over_bit_mismatch: int) -> None:
+        artifact_first_over = {**first_over, "bit_mismatch": first_over_bit_mismatch}
         layer_one = {
             "layer_limit": 1,
             "drift_stages": ["qkv", "z"] if first_limit_drift else [],
@@ -7775,7 +7776,7 @@ def test_hidden_bisect_projection_artifact_compare_spots_limit_drift_delta(tmp_p
             "under_atol_drift_stage_count": 0,
             "over_atol_drift_stages": ["qkv", "z"],
             "over_atol_drift_stage_count": 2,
-            "first_over_atol_drift": first_over,
+            "first_over_atol_drift": artifact_first_over,
         }
         payload = {
             "status": "eq_ok",
@@ -7789,15 +7790,15 @@ def test_hidden_bisect_projection_artifact_compare_spots_limit_drift_delta(tmp_p
                     "under_atol_drift_stages": [] if not first_limit_drift else ["qkv", "z"],
                     "over_atol_drift_stages": ["qkv", "z"],
                     "first_over_atol_layer_limit": layer_two,
-                    "first_over_atol_drift": first_over,
+                    "first_over_atol_drift": artifact_first_over,
                     "layer_limits": [layer_one, layer_two],
                 },
             },
         }
         path.write_text(json.dumps(payload), encoding="utf-8")
 
-    write_artifact(selected_ab, first_limit_drift=True)
-    write_artifact(selected_qkvz, first_limit_drift=False)
+    write_artifact(selected_ab, first_limit_drift=True, first_over_bit_mismatch=3721)
+    write_artifact(selected_qkvz, first_limit_drift=False, first_over_bit_mismatch=3722)
     out = tmp_path / "compare.json"
 
     payload = hidden_artifact_compare.run(
@@ -7817,12 +7818,23 @@ def test_hidden_bisect_projection_artifact_compare_spots_limit_drift_delta(tmp_p
     assert payload["comparison"]["labels_agree_on_first_over_atol_layer_limit"] is True
     assert payload["comparison"]["projection_over_atol_agreement"] is True
     assert payload["comparison"]["projection_drift_agreement"] is False
+    assert payload["comparison"]["labels_agree_on_first_over_atol_drift_location"] is True
+    assert payload["comparison"]["labels_agree_on_first_over_atol_drift_record"] is False
+    assert payload["comparison"]["first_over_atol_bit_mismatch_by_label"] == {
+        "selected_ab": 3721,
+        "selected_qkvz": 3722,
+    }
+    assert payload["comparison"]["first_over_atol_bit_mismatch_delta"] == 1
     assert payload["comparison"]["first_diverging_layer_limit"] == 1
     layer_one = payload["comparison"]["layer_limits"][0]
     assert layer_one["per_artifact"]["selected_ab"]["drift_stages"] == ["qkv", "z"]
     assert layer_one["per_artifact"]["selected_qkvz"]["drift_stages"] == []
     layer_two = payload["comparison"]["layer_limits"][1]
     assert layer_two["per_artifact"]["selected_ab"]["first_over_atol_drift"]["bit_mismatch"] == 3721
+    assert layer_two["first_over_atol_drift_locations_agree"] is True
+    assert layer_two["first_over_atol_drift_records_agree"] is False
+    assert layer_two["first_over_atol_bit_mismatch_by_label"] == {"selected_ab": 3721, "selected_qkvz": 3722}
+    assert layer_two["first_over_atol_bit_mismatch_delta"] == 1
     assert payload["comparison"]["hidden_passed_all"] is True
     assert payload["comparison"]["token_passed_all"] is True
     assert payload["comparison"]["all_statuses_eq_ok"] is True
