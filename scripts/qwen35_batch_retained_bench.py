@@ -1286,10 +1286,17 @@ def _profiled_command(args: argparse.Namespace, argv: Sequence[str] | None) -> s
 def _reference_with_retained_workload_shape(
     reference: Mapping[str, Any],
     *,
+    expected_workload_concurrency: int | None,
     prompt_tokens_per_request: int | None,
     gen_tokens_per_request: int | None,
 ) -> dict[str, Any]:
     reasons: list[str] = []
+    if expected_workload_concurrency is not None:
+        value = reference.get("workload_concurrency")
+        if not isinstance(value, int) or isinstance(value, bool):
+            reasons.append("workload concurrency label is missing")
+        elif value != expected_workload_concurrency:
+            reasons.append("workload concurrency label does not match retained workload")
     if prompt_tokens_per_request is not None:
         value = reference.get("prompt_tokens_per_request")
         if not isinstance(value, int) or isinstance(value, bool):
@@ -1332,13 +1339,18 @@ def _build_scaling_comparison(
     gen_tokens_per_request = getattr(args, "decode_tokens", None)
     if isinstance(gen_tokens_per_request, bool) or not isinstance(gen_tokens_per_request, int):
         gen_tokens_per_request = None
+    batch_size = getattr(args, "batch_size", None)
+    if isinstance(batch_size, bool) or not isinstance(batch_size, int):
+        batch_size = None
     c1 = _reference_with_retained_workload_shape(
         c1,
+        expected_workload_concurrency=1,
         prompt_tokens_per_request=prompt_tokens_per_request,
         gen_tokens_per_request=gen_tokens_per_request,
     )
     serial = _reference_with_retained_workload_shape(
         serial,
+        expected_workload_concurrency=batch_size,
         prompt_tokens_per_request=prompt_tokens_per_request,
         gen_tokens_per_request=gen_tokens_per_request,
     )

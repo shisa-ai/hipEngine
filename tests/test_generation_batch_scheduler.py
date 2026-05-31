@@ -11233,7 +11233,7 @@ def test_qwen35_retained_scaling_comparison_rejects_wrong_shape_reference(tmp_pa
             }
         )
     )
-    args = argparse.Namespace(c1_baseline_json=c1, serial_bridge_json=serial, prompt_length=512, decode_tokens=128)
+    args = argparse.Namespace(c1_baseline_json=c1, serial_bridge_json=serial, batch_size=2, prompt_length=512, decode_tokens=128)
 
     scaling = retained_bench._build_scaling_comparison(
         args,
@@ -11243,6 +11243,44 @@ def test_qwen35_retained_scaling_comparison_rejects_wrong_shape_reference(tmp_pa
 
     assert scaling["complete"] is False
     assert scaling["serial_bridge_baseline"]["reason"] == "decode token count label does not match retained workload"
+    assert scaling["serial_bridge_baseline"]["decode_tok_s_aggregate"] is None
+    assert scaling["ratios"]["aggregate_vs_serial_bridge"] is None
+    assert scaling["ratios"]["aggregate_vs_c1"] == 16.0 / 5.0
+
+
+def test_qwen35_retained_scaling_comparison_rejects_wrong_concurrency_reference(tmp_path: Path) -> None:
+    c1 = tmp_path / "native-baseline-c1.json"
+    c1.write_text(
+        json.dumps(
+            {
+                "artifact_path": str(c1),
+                "prompt_length": 512,
+                "decode_tokens": 128,
+                "throughput": {"warmed_decode_tok_s": 5.0},
+            }
+        )
+    )
+    serial = tmp_path / "serial-bridge-c4.json"
+    serial.write_text(
+        json.dumps(
+            {
+                "artifact_path": str(serial),
+                "status": "blocked",
+                "workload": {"concurrency": 4, "prompt_tokens_per_request": 512, "gen_tokens_per_request": 128},
+                "measurements": {"decode_tok_s_aggregate": 16.0, "decode_tok_s_per_request": 4.0},
+            }
+        )
+    )
+    args = argparse.Namespace(c1_baseline_json=c1, serial_bridge_json=serial, batch_size=2, prompt_length=512, decode_tokens=128)
+
+    scaling = retained_bench._build_scaling_comparison(
+        args,
+        native_decode_tok_s_aggregate=16.0,
+        native_decode_tok_s_per_request=8.0,
+    )
+
+    assert scaling["complete"] is False
+    assert scaling["serial_bridge_baseline"]["reason"] == "workload concurrency label does not match retained workload"
     assert scaling["serial_bridge_baseline"]["decode_tok_s_aggregate"] is None
     assert scaling["ratios"]["aggregate_vs_serial_bridge"] is None
     assert scaling["ratios"]["aggregate_vs_c1"] == 16.0 / 5.0
