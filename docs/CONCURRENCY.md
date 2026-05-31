@@ -1440,8 +1440,11 @@ roll-up/status view.
       aggregate/per-request scaling fields recorded even if not yet optimized.
       Progress: primitive GPU correctness now has c=4 and c=8 artifacts at
       `/tmp/hipengine-multiloop-c4-correctness.json` and
-      `/tmp/hipengine-multiloop-c8-correctness.json` (`append_*_mismatch=0`,
-      `attn_batch_vs_c1_max_abs=0.0`, passed). The primitive script also re-runs
+      `/tmp/hipengine-multiloop-c8-correctness.json` (`rows=8`,
+      `context_lens=[1,2,3,4,1,2,3,4]`, `append_*_mismatch=0`,
+      `append_batch_aa_*_mismatch=0`, `attn_batch_vs_c1_max_abs=0.0`,
+      `attn_batch_aa_max_abs=0.0`, `device.env.HIP_VISIBLE_DEVICES=1`,
+      `device_name=AMD Radeon RX 7900 XTX`, passed). The primitive script also re-runs
       the batched KV append and batched full-attention context kernels on the
       same inputs and emits A/A determinism fields (`append_batch_aa_*` and
       `attn_batch_aa_max_abs`) that must be zero for `passed=true`; retained
