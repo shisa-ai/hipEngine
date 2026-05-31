@@ -7305,6 +7305,25 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.argv device env prefix must match the first command"):
             c_sweep.validate_sweep_summary(tampered_device_env)
 
+        for duplicate_flag in ("--rows", "--seed"):
+            tampered_duplicate_flag = json.loads(json.dumps(summary))
+            duplicate_flag_entry = tampered_duplicate_flag["commands"][index]
+            duplicate_flag_argv = duplicate_flag_entry["argv"]
+            duplicate_flag_argv.extend(
+                [duplicate_flag, duplicate_flag_argv[duplicate_flag_argv.index(duplicate_flag) + 1]]
+            )
+            duplicate_flag_entry["command"] = shlex.join(duplicate_flag_argv)
+            with pytest.raises(ValueError, match=r"commands\[\]\.argv must not repeat primitive correctness flags"):
+                c_sweep.validate_sweep_summary(tampered_duplicate_flag)
+
+        tampered_duplicate_json = json.loads(json.dumps(summary))
+        duplicate_json_entry = tampered_duplicate_json["commands"][index]
+        duplicate_json_argv = duplicate_json_entry["argv"]
+        duplicate_json_argv.extend(["--json", duplicate_json_argv[duplicate_json_argv.index("--json") + 1]])
+        duplicate_json_entry["command"] = shlex.join(duplicate_json_argv)
+        with pytest.raises(ValueError, match=r"commands\[\]\.argv must not repeat retained benchmark flags"):
+            c_sweep.validate_sweep_summary(tampered_duplicate_json)
+
         for tamper_argv_json in (False, True):
             tampered_artifact_link = json.loads(json.dumps(summary))
             entry = tampered_artifact_link["commands"][index]
