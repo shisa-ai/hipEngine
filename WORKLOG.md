@@ -27861,3 +27861,18 @@ python3 -m pytest -q tests/test_stepfun_llamacpp_oracle.py -q
 ```
 
 Result: `6 passed`.
+
+## 2026-05-31 — StepFun linear projection progress recorded
+
+Extended `scripts/stepfun_correctness_status.py` so the consolidated Q3_K_L status artifact now derives `linear_projection_progress` from the all-layer prompt-smoke `selected_slots`. The regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json` records all 45 selected layers with complete attention Q/K/V/gate/output projection slots, 3 dense-MLP gate/up/down projection layers, 42 MoE expert gate/up/down projection layers, 42 MoE shared-expert gate/up/down projection layers, root `lm_head`, and 42 router projection slots that remain host-reference in the current probes. This is progress/status evidence only: the artifact still reports `oracle_parity=false`, `kv_backed_decode_ready=false`, and `e2e_inference_ready=false`.
+
+Updated `tests/test_stepfun_correctness_status.py` to assert the machine-readable projection counts (`487` resident GGUF linear projection slots plus `42` host-reference router slots) and clarified the P11 wording in `docs/STEPFUN.md`.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted status tests passed (`3 passed`); full StepFun guard passed (`101 passed` plus fixture checks).

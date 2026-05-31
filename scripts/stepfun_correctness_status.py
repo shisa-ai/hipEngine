@@ -59,6 +59,107 @@ def _docs_checklist_status(docs_path: Path) -> dict[str, object]:
     }
 
 
+_ATTENTION_LINEAR_SUFFIXES = ("attn_q", "attn_k", "attn_v", "attn_gate", "attn_output")
+_DENSE_MLP_LINEAR_SUFFIXES = ("ffn_gate", "ffn_up", "ffn_down")
+_MOE_ROUTER_SUFFIXES = ("ffn_gate_inp",)
+_MOE_EXPERT_LINEAR_SUFFIXES = ("ffn_gate_exps", "ffn_up_exps", "ffn_down_exps")
+_MOE_SHARED_LINEAR_SUFFIXES = ("ffn_gate_shexp", "ffn_up_shexp", "ffn_down_shexp")
+_RESIDENT_LINEAR_SUFFIXES = (
+    *_ATTENTION_LINEAR_SUFFIXES,
+    *_DENSE_MLP_LINEAR_SUFFIXES,
+    *_MOE_EXPERT_LINEAR_SUFFIXES,
+    *_MOE_SHARED_LINEAR_SUFFIXES,
+)
+
+
+def _linear_projection_progress(prompt: dict[str, object]) -> dict[str, object]:
+    """Summarize resident linear projection coverage from a prompt artifact."""
+
+    slots = [slot for slot in prompt.get("selected_slots", []) if isinstance(slot, str)]
+    layer_suffixes: dict[int, set[str]] = {}
+    for slot in slots:
+        if not slot.startswith("layers."):
+            continue
+        parts = slot.split(".")
+        if len(parts) != 3:
+            continue
+        try:
+            layer_id = int(parts[1])
+        except ValueError:
+            continue
+        layer_suffixes.setdefault(layer_id, set()).add(parts[2])
+
+    suffix_counts: dict[str, int] = {}
+    for suffixes in layer_suffixes.values():
+        for suffix in suffixes:
+            suffix_counts[suffix] = suffix_counts.get(suffix, 0) + 1
+
+    def suffix_count(suffixes: Sequence[str]) -> int:
+        return sum(suffix_counts.get(suffix, 0) for suffix in suffixes)
+
+    def complete_layers(suffixes: Sequence[str]) -> int:
+        required = set(suffixes)
+        return sum(1 for layer_slots in layer_suffixes.values() if required <= layer_slots)
+
+    try:
+        layer_count = int(prompt.get("layer_count", 0))
+    except (TypeError, ValueError):
+        layer_count = 0
+    selected_layer_count = len(layer_suffixes)
+    expected_layer_count = layer_count or selected_layer_count
+    root_lm_head_present = "root.lm_head" in slots
+    attention_slot_count = suffix_count(_ATTENTION_LINEAR_SUFFIXES)
+    dense_slot_count = suffix_count(_DENSE_MLP_LINEAR_SUFFIXES)
+    moe_router_slot_count = suffix_count(_MOE_ROUTER_SUFFIXES)
+    moe_expert_slot_count = suffix_count(_MOE_EXPERT_LINEAR_SUFFIXES)
+    moe_shared_slot_count = suffix_count(_MOE_SHARED_LINEAR_SUFFIXES)
+    resident_linear_projection_slot_count = int(root_lm_head_present) + suffix_count(_RESIDENT_LINEAR_SUFFIXES)
+    attention_expected = expected_layer_count * len(_ATTENTION_LINEAR_SUFFIXES)
+    return {
+        "source": "prompt_artifact.selected_slots",
+        "execution_mode": prompt.get("execution_mode"),
+        "prompt_status": prompt.get("status"),
+        "layer_count": layer_count,
+        "selected_layer_count": selected_layer_count,
+        "selected_slot_count": prompt.get("selected_slot_count", len(slots)),
+        "root_lm_head_present": root_lm_head_present,
+        "resident_linear_projection_slot_count": resident_linear_projection_slot_count,
+        "host_reference_router_projection_slot_count": moe_router_slot_count,
+        "attention": {
+            "slot_count": attention_slot_count,
+            "expected_slot_count": attention_expected,
+            "complete_layer_count": complete_layers(_ATTENTION_LINEAR_SUFFIXES),
+            "all_selected_layers_complete": (
+                selected_layer_count == expected_layer_count
+                and attention_slot_count == attention_expected
+                and complete_layers(_ATTENTION_LINEAR_SUFFIXES) == expected_layer_count
+            ),
+        },
+        "dense_mlp": {
+            "slot_count": dense_slot_count,
+            "complete_layer_count": complete_layers(_DENSE_MLP_LINEAR_SUFFIXES),
+        },
+        "moe_router": {
+            "slot_count": moe_router_slot_count,
+            "complete_layer_count": complete_layers(_MOE_ROUTER_SUFFIXES),
+            "execution_note": "router weights are copied to the host CPU-reference router in current probes",
+        },
+        "moe_expert": {
+            "slot_count": moe_expert_slot_count,
+            "complete_layer_count": complete_layers(_MOE_EXPERT_LINEAR_SUFFIXES),
+        },
+        "moe_shared_expert": {
+            "slot_count": moe_shared_slot_count,
+            "complete_layer_count": complete_layers(_MOE_SHARED_LINEAR_SUFFIXES),
+        },
+        "note": (
+            "Derived from selected slots in the all-layer host-composed prompt smoke. "
+            "This records GGUF linear projection coverage only; it is not KV-backed decode, "
+            "oracle parity, or performance evidence."
+        ),
+    }
+
+
 def build_status(
     prompt_artifact: Path,
     oracle_artifact: Path,
@@ -136,6 +237,7 @@ def build_status(
         "oracle_stderr_len": len(str(oracle.get("stderr", ""))),
         "oracle_blocker_kind": oracle.get("oracle_blocker_kind"),
         "step35_supported_by_local_llama_cpp": oracle.get("step35_supported"),
+        "linear_projection_progress": _linear_projection_progress(prompt),
         "kv_backed_decode_ready": False,
         "e2e_inference_ready": False,
         "blockers": blockers,

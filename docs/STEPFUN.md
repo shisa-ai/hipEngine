@@ -555,8 +555,11 @@ reporting.
   machine-checks this state as `all_layer_prompt_smoke=true`,
   `oracle_parity=false`, `kv_backed_decode_ready=false`, and
   `e2e_inference_ready=false`; it also records the current P0-P12
-  open/partial checklist metric (`2`), lists next actions for the StepFun-capable
-  oracle and KV-backed decode blockers, and supports `--fail-on-blocked` for CI/handoff checks.
+  open/partial checklist metric (`2`), summarizes resident GGUF linear projection
+  coverage from the all-layer prompt artifact (`487` resident projection slots plus
+  `42` host-reference router projection slots across all 45 layers), lists next
+  actions for the StepFun-capable oracle and KV-backed decode blockers, and
+  supports `--fail-on-blocked` for CI/handoff checks.
   This checklist item is partial rather than complete because the current runner
   is host-composed/chunked and does not yet implement the final KV-backed
   one-token decode path.

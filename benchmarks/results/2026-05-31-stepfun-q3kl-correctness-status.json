@@ -35,6 +35,41 @@
   },
   "e2e_inference_ready": false,
   "kv_backed_decode_ready": false,
+  "linear_projection_progress": {
+    "attention": {
+      "all_selected_layers_complete": true,
+      "complete_layer_count": 45,
+      "expected_slot_count": 225,
+      "slot_count": 225
+    },
+    "dense_mlp": {
+      "complete_layer_count": 3,
+      "slot_count": 9
+    },
+    "execution_mode": "chunked",
+    "host_reference_router_projection_slot_count": 42,
+    "layer_count": 45,
+    "moe_expert": {
+      "complete_layer_count": 42,
+      "slot_count": 126
+    },
+    "moe_router": {
+      "complete_layer_count": 42,
+      "execution_note": "router weights are copied to the host CPU-reference router in current probes",
+      "slot_count": 42
+    },
+    "moe_shared_expert": {
+      "complete_layer_count": 42,
+      "slot_count": 126
+    },
+    "note": "Derived from selected slots in the all-layer host-composed prompt smoke. This records GGUF linear projection coverage only; it is not KV-backed decode, oracle parity, or performance evidence.",
+    "prompt_status": "partial_prompt_smoke",
+    "resident_linear_projection_slot_count": 487,
+    "root_lm_head_present": true,
+    "selected_layer_count": 45,
+    "selected_slot_count": 753,
+    "source": "prompt_artifact.selected_slots"
+  },
   "model": "Step-3.7-flash-Q3_K_L",
   "next_actions": [
     {
