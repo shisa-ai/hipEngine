@@ -13107,6 +13107,8 @@ def test_qwen35_retained_memory_payload_uses_bench_evidence() -> None:
 
     assert memory["allocator_reserved_peak_bytes"] == 16384
     assert memory["dynamic_pool"]["enabled"] is True
+    assert memory["dynamic_pool"]["grow_events"] == 0
+    assert memory["dynamic_pool"]["shrink_events"] == 0
     assert memory["dynamic_pool"]["pool_counters"]["current_bytes"] == 16384
     assert memory["dynamic_pool"]["pool_counters"]["grow_events"] == 0
     assert memory["stable_block_id"] == {"passed": True, "audit": "block ids stable"}
@@ -16814,6 +16816,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     blank_dynamic_pool_evidence["memory"]["dynamic_pool"]["evidence"] = "  "
     with pytest.raises(ValueError, match="dynamic_pool.evidence must be a non-empty string"):
         validate_cn_diagnostic_artifact_payload(blank_dynamic_pool_evidence)
+
+    missing_dynamic_pool_grow_events = json.loads(json.dumps(accepted))
+    missing_dynamic_pool_grow_events["memory"]["dynamic_pool"].pop("grow_events")
+    with pytest.raises(ValueError, match="dynamic_pool.grow_events must be a non-negative int"):
+        validate_cn_diagnostic_artifact_payload(missing_dynamic_pool_grow_events)
+
+    mismatched_dynamic_pool_shrink_events = json.loads(json.dumps(accepted))
+    mismatched_dynamic_pool_shrink_events["memory"]["dynamic_pool"]["shrink_events"] = 1
+    with pytest.raises(ValueError, match="dynamic_pool.shrink_events must match memory.dynamic_pool.pool_counters.shrink_events"):
+        validate_cn_diagnostic_artifact_payload(mismatched_dynamic_pool_shrink_events)
 
     missing_stable_block_audit = json.loads(json.dumps(accepted))
     missing_stable_block_audit["memory"]["stable_block_id"].pop("audit")

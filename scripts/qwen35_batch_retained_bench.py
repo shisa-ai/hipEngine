@@ -1426,6 +1426,8 @@ def _retained_memory_payload(args: argparse.Namespace, kv_policy: ResolvedKVPoli
         "dynamic_pool": {
             "enabled": False,
             "evidence": "resident retained bench still uses fixed session allocation; C4 pool counters are unavailable here",
+            "grow_events": 0,
+            "shrink_events": 0,
             "pool_counters": {
                 "current_bytes": 0,
                 "high_water_observed_bytes": 0,
