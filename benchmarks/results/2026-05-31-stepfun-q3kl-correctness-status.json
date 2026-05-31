@@ -49,7 +49,12 @@
   "note": "Host-composed all-layer prompt smoke is present; true e2e inference still needs oracle parity and KV-backed decode.",
   "oracle_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
   "oracle_blocker_kind": "llama_cpp_oracle_timeout",
+  "oracle_elapsed_s": 62.44178174599074,
+  "oracle_llama_cpp_version": "version: 9197 (fcae601e4)\nbuilt with GNU 15.2.1 for Linux x86_64",
   "oracle_parity": false,
+  "oracle_status": "timeout",
+  "oracle_stderr_len": 0,
+  "oracle_stdout_len": 0,
   "prompt_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json",
   "status": "blocked",
   "step35_supported_by_local_llama_cpp": null

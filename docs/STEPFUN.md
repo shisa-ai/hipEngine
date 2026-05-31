@@ -582,15 +582,18 @@ reporting.
   `/home/lhl/ai/llama.cpp-cpu/llama-cli` does not support GGUF architecture
   `step35` (`unknown model architecture: 'step35'`). A newer local Vulkan
   llama.cpp build (`/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli`,
-  version `5479`) accepts `step35` but the bounded CPU/no-GPU oracle attempt in
+  version `9197 (fcae601e4)`) accepts `step35` but the bounded CPU/no-GPU oracle
+  attempt in
   `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json`
   timed out after a bounded 60 s attempt (recorded `elapsed_s=62.44`) before
   producing a comparable token (`oracle_blocker_kind=llama_cpp_oracle_timeout`).
-  Remaining implementation task: run a longer/faster StepFun-capable llama.cpp
-  oracle and review/record the parsed result; KV-backed decode parity remains open too. The consolidated
-  correctness-status artifact records both blockers (`oracle_parity_blocked`,
-  `kv_backed_decode_not_wired`) for the current all-layer prompt smoke plus
-  machine-readable next actions for each blocker.
+  The consolidated correctness-status artifact surfaces the oracle version,
+  elapsed time, and stdout/stderr lengths, records both blockers
+  (`oracle_parity_blocked`, `kv_backed_decode_not_wired`) for the current
+  all-layer prompt smoke, and lists machine-readable next actions for each
+  blocker. Remaining implementation task: run a longer/faster StepFun-capable
+  llama.cpp oracle and review/record the parsed result; KV-backed decode parity
+  remains open too.
 - [x] Preserve multi-EOS stopping and the chat assistant prefix. The short
   context planner renders the Step chat template with assistant `<think>` prefix
   and carries stop IDs `(1, 2, 128007)` with `should_stop()` checks.

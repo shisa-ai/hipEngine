@@ -35,6 +35,10 @@ def _write_oracle_artifact(path: Path) -> None:
                 "status": "executed",
                 "returncode": 1,
                 "text_matches_expected_exact": False,
+                "elapsed_s": 62.4,
+                "llama_cpp_version": "version: test (deadbeef)",
+                "stdout": "",
+                "stderr": "unknown model architecture: 'step35'",
                 "oracle_blocker_kind": "llama_cpp_missing_step35_architecture",
                 "oracle_blocker_detail": "local llama.cpp build reports unknown model architecture: 'step35'",
                 "step35_supported": False,
@@ -69,6 +73,11 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert status["all_layer_prompt_smoke"] is True
     assert status["all_layer_prompt_next_token_id"] == 369
     assert status["oracle_parity"] is False
+    assert status["oracle_status"] == "executed"
+    assert status["oracle_elapsed_s"] == 62.4
+    assert status["oracle_llama_cpp_version"] == "version: test (deadbeef)"
+    assert status["oracle_stdout_len"] == 0
+    assert status["oracle_stderr_len"] == len("unknown model architecture: 'step35'")
     assert status["oracle_blocker_kind"] == "llama_cpp_missing_step35_architecture"
     assert status["step35_supported_by_local_llama_cpp"] is False
     assert status["kv_backed_decode_ready"] is False

@@ -27837,3 +27837,9 @@ python3 -m pytest -q tests/test_stepfun_llamacpp_oracle.py -q
 ```
 
 Result: `6 passed`.
+
+## 2026-05-31 — StepFun oracle timeout status metadata
+
+Extended `scripts/stepfun_correctness_status.py` to surface oracle execution metadata from the current blocker artifact: `oracle_status`, `oracle_elapsed_s`, `oracle_llama_cpp_version`, `oracle_stdout_len`, and `oracle_stderr_len`. This corrects the handoff view for the newer local StepFun-capable llama.cpp build: `/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-cli` now reports `version: 9197 (fcae601e4)`, and the bounded CPU/no-GPU oracle artifact has `status=timeout`, `elapsed_s=62.44178174599074`, empty stdout/stderr, and `oracle_blocker_kind=llama_cpp_oracle_timeout`.
+
+Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json` so it includes those oracle metadata fields alongside the existing P0-P12 checklist metric and blocker next actions. This is a status/audit improvement only; oracle parity and KV-backed decode remain open.
