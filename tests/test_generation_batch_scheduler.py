@@ -7101,7 +7101,7 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
             "--include-int8",
             "--include-gguf",
             "--batch-sizes",
-            "1,2,4",
+            "1,2,4,8",
             "--output-dir",
             str(tmp_path / "artifacts"),
             "--model",
@@ -7130,6 +7130,14 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         ("gguf_native_diagnostic", 4),
         ("gguf_native_diagnostic", 4),
         ("gguf_native_diagnostic", 4),
+        ("primitive", 8),
+        ("serial_bridge", 8),
+        ("native_diagnostic", 8),
+        ("int8_native_diagnostic", 8),
+        ("gguf_native_diagnostic", 8),
+        ("gguf_native_diagnostic", 8),
+        ("gguf_native_diagnostic", 8),
+        ("gguf_native_diagnostic", 8),
     ]
     expected_optional_artifact_names = [
         "int8-native-diagnostic-c2.json",
@@ -7142,6 +7150,11 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         "gguf-native-diagnostic-c4-gguf_q5_k_m.json",
         "gguf-native-diagnostic-c4-gguf_q6_k.json",
         "gguf-native-diagnostic-c4-gguf_q8_0.json",
+        "int8-native-diagnostic-c8.json",
+        "gguf-native-diagnostic-c8-gguf_q4_k_m.json",
+        "gguf-native-diagnostic-c8-gguf_q5_k_m.json",
+        "gguf-native-diagnostic-c8-gguf_q6_k.json",
+        "gguf-native-diagnostic-c8-gguf_q8_0.json",
     ]
 
     planned = build_sweep_commands(args)
@@ -7152,15 +7165,15 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     assert summary["status"] == "planned"
     assert summary["options"]["include_int8"] is True
     assert summary["options"]["include_gguf"] is True
-    assert summary["command_count"] == 19
-    assert summary["completed_command_count"] == 19
-    assert summary["status_counts"] == {"planned": 19}
+    assert summary["command_count"] == 27
+    assert summary["completed_command_count"] == 27
+    assert summary["status_counts"] == {"planned": 27}
     assert summary["category_status_counts"] == {
-        "primitive": {"planned": 3},
-        "serial_bridge": {"planned": 3},
-        "native_diagnostic": {"planned": 3},
-        "int8_native_diagnostic": {"planned": 2},
-        "gguf_native_diagnostic": {"planned": 8},
+        "primitive": {"planned": 4},
+        "serial_bridge": {"planned": 4},
+        "native_diagnostic": {"planned": 4},
+        "int8_native_diagnostic": {"planned": 3},
+        "gguf_native_diagnostic": {"planned": 12},
     }
     optional_planned = [item for item in planned if item.category in {"int8_native_diagnostic", "gguf_native_diagnostic"}]
     optional_entries = [
@@ -7176,15 +7189,17 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     assert [c_sweep._strip_command_env_prefix(entry["argv"])[1] for entry in int8_entries] == [
         RETAINED_ARTIFACT_INT8_DIAGNOSTIC_SCRIPT,
         RETAINED_ARTIFACT_INT8_DIAGNOSTIC_SCRIPT,
+        RETAINED_ARTIFACT_INT8_DIAGNOSTIC_SCRIPT,
     ]
     assert all(
         c_sweep._strip_command_env_prefix(entry["argv"])[1] == RETAINED_ARTIFACT_GGUF_DIAGNOSTIC_SCRIPT
         for entry in gguf_entries
     )
-    assert [entry["argv"][entry["argv"].index("--rows") + 1] for entry in int8_entries] == ["2", "4"]
+    assert [entry["argv"][entry["argv"].index("--rows") + 1] for entry in int8_entries] == ["2", "4", "8"]
     assert [entry["argv"][entry["argv"].index("--future-json") + 1] for entry in int8_entries] == [
         str(tmp_path / "artifacts" / "int8-native-retained-future-c2.json"),
         str(tmp_path / "artifacts" / "int8-native-retained-future-c4.json"),
+        str(tmp_path / "artifacts" / "int8-native-retained-future-c8.json"),
     ]
     assert [entry["argv"][entry["argv"].index("--rows") + 1] for entry in gguf_entries] == [
         "2",
@@ -7195,8 +7210,16 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         "4",
         "4",
         "4",
+        "8",
+        "8",
+        "8",
+        "8",
     ]
     assert [entry["argv"][entry["argv"].index("--quant") + 1] for entry in gguf_entries] == [
+        "gguf_q4_k_m",
+        "gguf_q5_k_m",
+        "gguf_q6_k",
+        "gguf_q8_0",
         "gguf_q4_k_m",
         "gguf_q5_k_m",
         "gguf_q6_k",
