@@ -319,9 +319,10 @@
     }
   ],
   "command": "python3 scripts/stepfun_layer_prefix_smoke.py --layer-count 45 --message \"hello\" --max-resident-weight-gib 4 --stream-chunk-layers 1 --output benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json --pretty",
-  "elapsed_s": 68.9501460059546,
+  "elapsed_s": 71.50490431208163,
   "execution_mode": "chunked",
   "hip_free_after_free_gib": 119.85709762573242,
+  "hip_free_after_generation_before_free_gib": 118.80826950073242,
   "hip_free_after_load_gib": 119.85709762573242,
   "hip_free_before_gib": 119.99605941772461,
   "hip_mem_get_info_note": "hipMemGetInfo total/free are known to be contradictory under the configured Strix Halo GTT setup; use hipEngine allocation stats and relative before/load/free readings as diagnostic only.",

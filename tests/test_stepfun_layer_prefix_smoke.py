@@ -197,6 +197,7 @@ def test_stepfun_layer_prefix_smoke_outputs_chunked_partial_prompt_json(
             "peak_with_roots_nbytes": 1_235_614_720,
         }
     ]
+    assert "hip_free_after_generation_before_free_gib" in payload
     assert payload["memory_stats_before_free"]["active_allocations"] == 3
     assert payload["memory_stats_after_free"]["active_allocations"] == 0
     assert payload["memory_stats_after_free"]["current_allocated_bytes"] == 0

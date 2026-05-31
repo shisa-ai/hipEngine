@@ -613,7 +613,7 @@ layer loop is wired.
   after weight load; final-logits projection is covered for synthetic hidden
   states, but full generation is still open because resident Step layer
   execution is not wired yet.
-- [ ] Record HIP-visible memory before load, after load, after KV allocation, and
+- [~] Record HIP-visible memory before load, after load, after KV allocation, and
   after generation; include UMA/GTT setting and backend (`hip_gfx1151`). Weight
   load evidence from
   `benchmarks/results/2026-05-29-stepfun-q3kl-full-load-smoke-task20.json`:
@@ -634,7 +634,12 @@ layer loop is wired.
   resource-plan dictionary when KV allocation is requested and offers
   `--dry-run-plan` for metadata-only resource artifacts without HIP allocation.
   Artifact `benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json`
-  records the dry-run plan for the same 512-token KV shape. Generation snapshots
+  records the dry-run plan for the same 512-token KV shape. 2026-05-31
+  host-composed all-layer prompt smoke artifact
+  `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json`
+  records HIP-visible free memory before execution (`119.9961 GiB`), after
+  generation before final root free (`118.8083 GiB`), and after final free
+  (`119.8571 GiB`) for backend `hip_gfx1151`. KV-backed generation snapshots
   remain open.
 - [x] If the model does not fit, keep the failure artifact and decide between
   offload/tiering, lower context/KV footprint, or slice-only correctness. No
@@ -659,7 +664,9 @@ layer loop is wired.
   `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json`
   runs the chunked host-composed path through layers 0-44 (`next_token_id=369`,
   peak resident weight bytes `3,531,578,496`, prompt length 23) with no
-  vision/projector/MTP slots and no skipped layers. The same
+  vision/projector/MTP slots and no skipped layers; it records HIP-visible free
+  memory before execution (`119.9961 GiB`), after generation before final root
+  free (`118.8083 GiB`), and after final free (`119.8571 GiB`). The same
   script's `--dry-run-plan --layer-count 45` mode now plans the all-layer text
   prefix slot/resource shape without initializing HIP, and `--output` writes the
   JSON artifact directly;

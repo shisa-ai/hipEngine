@@ -27647,3 +27647,17 @@ python3 scripts/stepfun_layer_prefix_smoke.py --layer-count 45 --message hello -
 ```
 
 Artifact summary: `status=partial_prompt_smoke`, `execution_mode=chunked`, all layers 0-44 executed with no skipped layers, prompt length 23, `next_token_id=369`, peak resident weight bytes `3,531,578,496`, no vision/projector/MTP slots, and zero active/current allocations after free. This completes the tiny text-only prompt/no-modal P12 item for the host-composed layer-prefix path, but it is still not llama.cpp/CPU oracle parity and not the final KV-backed streaming decode runner.
+
+## 2026-05-31 — StepFun all-layer prompt HIP snapshot field
+
+Updated `scripts/stepfun_layer_prefix_smoke.py` to record `hip_free_after_generation_before_free_gib` before freeing resident root tensors. In chunked mode this captures the HIP-visible state after the full prompt/logits computation while the root text tensors are still resident, complementing the existing before-execution and after-free snapshots.
+
+Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json` with the same all-layer chunked command. Artifact summary remains `next_token_id=369`, peak resident weight bytes `3,531,578,496`, and zero active/current allocations after free; the new HIP-visible free-memory snapshots are before execution `119.9961 GiB`, after generation before final root free `118.8083 GiB`, and after final free `119.8571 GiB`. This advances P12 memory evidence for the host-composed all-layer prompt path; KV-backed generation snapshots remain open.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_layer_prefix_smoke.py -q
+```
+
+Result: `4 passed`.

@@ -170,7 +170,7 @@ def _run_chunked_prefix(
     model_map,
     args: argparse.Namespace,
     runtime,
-) -> tuple[SimpleNamespace, list[dict[str, object]], int, dict[str, object]]:
+) -> tuple[SimpleNamespace, list[dict[str, object]], int, dict[str, object], int]:
     root_slots = ("root.token_embedding", "root.output_norm", "root.lm_head")
     positions = None
     chunk_records: list[dict[str, object]] = []
@@ -232,7 +232,14 @@ def _run_chunked_prefix(
             next_token_id=next_token_id,
             next_token_logit=float(logits[-1, next_token_id]),
         )
-        return probe, chunk_records, int(peak_resident_nbytes), memory_stats()
+        free_after_generation, _ = runtime.mem_get_info()
+        return (
+            probe,
+            chunk_records,
+            int(peak_resident_nbytes),
+            memory_stats(),
+            int(free_after_generation),
+        )
     finally:
         root_session.free(runtime=runtime)
 
@@ -309,6 +316,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     chunk_records: list[dict[str, object]] = []
     peak_resident_weight_nbytes = execution_resident_nbytes
     stats_before_free = None
+    free_after_generation = None
     if args.stream_chunk_layers is None:
         session = StepFunResidentSession.from_gguf_paths(
             paths,
@@ -329,7 +337,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             session = None
             raise
     else:
-        probe, chunk_records, peak_resident_weight_nbytes, stats_before_free = _run_chunked_prefix(
+        (
+            probe,
+            chunk_records,
+            peak_resident_weight_nbytes,
+            stats_before_free,
+            free_after_generation,
+        ) = _run_chunked_prefix(
             paths=paths,
             model_map=model_map,
             args=args,
@@ -346,6 +360,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise ValueError(
             f"sample token ids out of range for vocab_size={model_map.config.vocab_size}: {sample_ids}"
         )
+    if free_after_generation is None:
+        free_after_generation, _ = runtime.mem_get_info()
     try:
         result = {
             "status": "partial_prompt_smoke",
@@ -380,6 +396,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "hip_total_gib": total / 2**30,
             "hip_free_before_gib": free_before / 2**30,
             "hip_free_after_load_gib": free_after_load / 2**30,
+            "hip_free_after_generation_before_free_gib": free_after_generation / 2**30,
             "elapsed_s": time.perf_counter() - started,
             "memory_stats_before_free": stats_before_free or memory_stats(),
             "hip_mem_get_info_note": (
