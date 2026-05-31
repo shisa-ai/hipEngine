@@ -1,0 +1,83 @@
+{
+  "artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json",
+  "command": [
+    "/home/lhl/ai/llama.cpp-cpu/llama-cli",
+    "--model",
+    "/data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf",
+    "--prompt",
+    "<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n",
+    "--predict",
+    "1",
+    "--temp",
+    "0",
+    "--top-k",
+    "1",
+    "--top-p",
+    "1",
+    "--min-p",
+    "0",
+    "--repeat-penalty",
+    "1",
+    "--seed",
+    "0",
+    "--no-display-prompt",
+    "--simple-io"
+  ],
+  "command_shell": "/home/lhl/ai/llama.cpp-cpu/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --prompt '<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n' --predict 1 --temp 0 --top-k 1 --top-p 1 --min-p 0 --repeat-penalty 1 --seed 0 --no-display-prompt --simple-io",
+  "comparison_policy": {
+    "exact_text_match_field": "text_matches_expected_exact",
+    "expected_text_field": "expected_next_token_text",
+    "generated_text_source": "llama-cli stdout with --no-display-prompt --simple-io",
+    "stripped_text_match_field": "text_matches_expected_stripped"
+  },
+  "diagnostic_logs": true,
+  "expected_next_token_id": 369,
+  "expected_next_token_logit": 19.158626556396484,
+  "expected_next_token_text": " |",
+  "expected_top_tokens": [
+    {
+      "logit": 19.158626556396484,
+      "rank": 1,
+      "token_id": 369,
+      "token_text": " |"
+    },
+    {
+      "logit": 18.343582153320312,
+      "rank": 2,
+      "token_id": 5,
+      "token_text": "#"
+    },
+    {
+      "logit": 16.907772064208984,
+      "rank": 3,
+      "token_id": 15251,
+      "token_text": "\ufeff"
+    },
+    {
+      "logit": 16.793684005737305,
+      "rank": 4,
+      "token_id": 223,
+      "token_text": " "
+    },
+    {
+      "logit": 15.653017044067383,
+      "rank": 5,
+      "token_id": 201,
+      "token_text": "\n"
+    }
+  ],
+  "generated_text": "",
+  "llama_cli": "/home/lhl/ai/llama.cpp-cpu/llama-cli",
+  "llama_cpp_version": "version: 4131 (8e752a77)\nbuilt with cc (GCC) 14.2.1 20240910 for x86_64-pc-linux-gnu",
+  "model": "/data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf",
+  "n_predict": 1,
+  "note": "Dry-run oracle plan by default. Use --execute only when the machine can afford a llama.cpp one-token run over the StepFun Q3_K_L GGUF shards; compare output/tokenization manually or with a follow-up parser before claiming parity.",
+  "prompt": "<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n",
+  "prompt_length": 23,
+  "returncode": 1,
+  "status": "executed",
+  "stderr": "build: 4131 (8e752a77) with cc (GCC) 14.2.1 20240910 for x86_64-pc-linux-gnu\nmain: llama backend init\nmain: load the model and apply lora adapter, if any\nllama_model_loader: additional 2 GGUFs metadata loaded.\nllama_model_loader: loaded meta data with 49 key-value pairs and 754 tensors from /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf (version GGUF V3 (latest))\nllama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.\nllama_model_loader: - kv   0:                       general.architecture str              = step35\nllama_model_loader: - kv   1:                               general.type str              = model\nllama_model_loader: - kv   2:                               general.name str              = Step-3.7\nllama_model_loader: - kv   3:                         general.size_label str              = 288x7.4B\nllama_model_loader: - kv   4:                         step35.block_count u32              = 45\nllama_model_loader: - kv   5:                      step35.context_length u32              = 262144\nllama_model_loader: - kv   6:                    step35.embedding_length u32              = 4096\nllama_model_loader: - kv   7:                 step35.feed_forward_length u32              = 11264\nllama_model_loader: - kv   8:                step35.attention.head_count arr[i32,45]      = [64, 96, 96, 96, 64, 96, 96, 96, 64, ...\nllama_model_loader: - kv   9:                      step35.rope.freq_base f32              = 5000000.000000\nllama_model_loader: - kv  10:                  step35.rope.freq_base_swa f32              = 10000.000000\nllama_model_loader: - kv  11:                  step35.expert_gating_func u32              = 2\nllama_model_loader: - kv  12:                step35.attention.key_length u32              = 128\nllama_model_loader: - kv  13:              step35.attention.value_length u32              = 128\nllama_model_loader: - kv  14:             step35.attention.head_count_kv arr[i32,45]      = [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, ...\nllama_model_loader: - kv  15:            step35.attention.sliding_window u32              = 512\nllama_model_loader: - kv  16:    step35.attention.sliding_window_pattern arr[bool,45]     = [false, true, true, true, false, true...\nllama_model_loader: - kv  17:                        step35.expert_count u32              = 288\nllama_model_loader: - kv  18:                   step35.expert_used_count u32              = 8\nllama_model_loader: - kv  19:          step35.expert_feed_forward_length u32              = 1280\nllama_model_loader: - kv  20:   step35.expert_shared_feed_forward_length u32              = 1280\nllama_model_loader: - kv  21:                step35.expert_weights_scale f32              = 3.000000\nllama_model_loader: - kv  22:                 step35.expert_weights_norm bool             = true\nllama_model_loader: - kv  23:           step35.leading_dense_block_count u32              = 3\nllama_model_loader: - kv  24:                  step35.moe_every_n_layers u32              = 1\nllama_model_loader: - kv  25:    step35.attention.layer_norm_rms_epsilon f32              = 0.000010\nllama_model_loader: - kv  26:                    step35.swiglu_clamp_exp arr[f32,45]      = [0.000000, 0.000000, 0.000000, 0.0000...\nllama_model_loader: - kv  27:                  step35.swiglu_clamp_shexp arr[f32,45]      = [0.000000, 0.000000, 0.000000, 0.0000...\nllama_model_loader: - kv  28:                       tokenizer.ggml.model str              = gpt2\nllama_model_loader: - kv  29:                         tokenizer.ggml.pre str              = deepseek-v3\nllama_model_loader: - kv  30:                      tokenizer.ggml.tokens arr[str,128896]  = [\"<\uff5cbegin\u2581of\u2581sentence\uff5c>\", \"<\ufffd...\nllama_model_loader: - kv  31:                  tokenizer.ggml.token_type arr[i32,128896]  = [3, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, ...\nllama_model_loader: - kv  32:                      tokenizer.ggml.merges arr[str,127741]  = [\"\u0120 t\", \"\u0120 a\", \"i n\", \"\u0120 \u0120\", \"h e...\nllama_model_loader: - kv  33:                tokenizer.ggml.bos_token_id u32              = 0\nllama_model_loader: - kv  34:                tokenizer.ggml.eos_token_id u32              = 128007\nllama_model_loader: - kv  35:            tokenizer.ggml.padding_token_id u32              = 1\nllama_model_loader: - kv  36:               tokenizer.ggml.add_bos_token bool             = true\nllama_model_loader: - kv  37:               tokenizer.ggml.add_sep_token bool             = false\nllama_model_loader: - kv  38:               tokenizer.ggml.add_eos_token bool             = false\nllama_model_loader: - kv  39:                    tokenizer.chat_template str              = {% macro render_message_content(messa...\nllama_model_loader: - kv  40:               general.quantization_version u32              = 2\nllama_model_loader: - kv  41:                          general.file_type u32              = 13\nllama_model_loader: - kv  42:                      quantize.imatrix.file str              = /mnt/lvyichen/step3.6_final_model_bf1...\nllama_model_loader: - kv  43:                   quantize.imatrix.dataset str              = /mnt/lvyichen/step3.6_final_model_bf1...\nllama_model_loader: - kv  44:             quantize.imatrix.entries_count u32              = 528\nllama_model_loader: - kv  45:              quantize.imatrix.chunks_count u32              = 4868\nllama_model_loader: - kv  46:                                   split.no u16              = 0\nllama_model_loader: - kv  47:                        split.tensors.count i32              = 754\nllama_model_loader: - kv  48:                                split.count u16              = 3\nllama_model_loader: - type  f32:  266 tensors\nllama_model_loader: - type q8_0:    2 tensors\nllama_model_loader: - type q3_K:  309 tensors\nllama_model_loader: - type q5_K:  177 tensors\nllama_model_load: error loading model: error loading model architecture: unknown model architecture: 'step35'\nllama_load_model_from_file: failed to load model\ncommon_init_from_params: failed to load model '/data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf'\nmain: error: unable to load model\n",
+  "stdout": "",
+  "text_matches_expected_exact": false,
+  "text_matches_expected_stripped": false
+}

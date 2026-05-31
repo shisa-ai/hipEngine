@@ -25,6 +25,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--n-predict", type=int, default=1)
     parser.add_argument("--timeout-s", type=float, default=900.0)
     parser.add_argument("--execute", action="store_true", help="Run llama-cli instead of only emitting the plan.")
+    parser.add_argument(
+        "--diagnostic-logs",
+        action="store_true",
+        help="Do not pass --log-disable, so llama.cpp load errors are captured in stderr.",
+    )
     parser.add_argument("--output", type=Path, default=None, help="Write JSON output to this path instead of stdout.")
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output")
     return parser.parse_args(argv)
@@ -103,8 +108,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         "0",
         "--no-display-prompt",
         "--simple-io",
-        "--log-disable",
     ]
+    if not args.diagnostic_logs:
+        command.append("--log-disable")
     result: dict[str, object] = {
         "status": "planned",
         "artifact": str(args.artifact),
@@ -112,6 +118,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "llama_cpp_version": _llama_version(args.llama_cli),
         "model": str(args.model),
         "n_predict": args.n_predict,
+        "diagnostic_logs": bool(args.diagnostic_logs),
         "command": command,
         "command_shell": shlex.join(command),
         "prompt": prompt,
@@ -121,7 +128,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "expected_next_token_logit": artifact.get("next_token_logit"),
         "expected_top_tokens": artifact.get("top_tokens"),
         "comparison_policy": {
-            "generated_text_source": "llama-cli stdout with --no-display-prompt --simple-io --log-disable",
+            "generated_text_source": "llama-cli stdout with --no-display-prompt --simple-io",
             "exact_text_match_field": "text_matches_expected_exact",
             "stripped_text_match_field": "text_matches_expected_stripped",
             "expected_text_field": "expected_next_token_text",
@@ -138,7 +145,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 command,
                 check=False,
                 capture_output=True,
-                text=True,
                 timeout=args.timeout_s,
             )
         except subprocess.TimeoutExpired as exc:
@@ -158,9 +164,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 {
                     "status": "executed",
                     "returncode": completed.returncode,
-                    "stdout": completed.stdout,
-                    "stderr": completed.stderr,
-                    **_comparison_fields(completed.stdout, result.get("expected_next_token_text")),
+                    "stdout": _as_text(completed.stdout),
+                    "stderr": _as_text(completed.stderr),
+                    **_comparison_fields(_as_text(completed.stdout), result.get("expected_next_token_text")),
                 }
             )
     _emit_json(result, pretty=args.pretty, output=args.output)

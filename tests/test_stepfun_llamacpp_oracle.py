@@ -70,6 +70,7 @@ def test_stepfun_llamacpp_oracle_dry_run_builds_command(
     assert "--no-display-prompt" in command
     assert "--simple-io" in command
     assert "--log-disable" in command
+    assert payload["diagnostic_logs"] is False
     assert payload["comparison_policy"]["expected_text_field"] == "expected_next_token_text"
     assert "llama.cpp one-token run" in payload["note"]
 
@@ -117,3 +118,37 @@ def test_stepfun_llamacpp_oracle_execute_compares_stdout(
     assert payload["generated_text"] == " |"
     assert payload["text_matches_expected_exact"] is True
     assert payload["text_matches_expected_stripped"] is True
+
+
+def test_stepfun_llamacpp_oracle_diagnostic_logs_omit_log_disable(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "artifact.json"
+    _write_artifact(artifact)
+    llama_cli = tmp_path / "llama-cli"
+    llama_cli.write_text("#!/usr/bin/env bash\necho 'version: test (deadbeef)'\n")
+    llama_cli.chmod(0o755)
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"fake")
+
+    rc = main(
+        [
+            "--artifact",
+            str(artifact),
+            "--llama-cli",
+            str(llama_cli),
+            "--model",
+            str(model),
+            "--diagnostic-logs",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    output = capsys.readouterr()
+    assert output.err == ""
+    payload = json.loads(output.out)
+    assert payload["status"] == "planned"
+    assert payload["diagnostic_logs"] is True
+    assert "--log-disable" not in payload["command"]

@@ -566,9 +566,13 @@ reporting.
   The helper now records a comparison policy and, when run with `--execute`,
   captures llama.cpp stdout as `generated_text` plus exact/stripped text-match
   booleans against the host-composed artifact (`next_token_id=369`, decoded
-  ` |`). Remaining implementation task: execute the expensive llama.cpp oracle
-  run and review/record the parsed result; KV-backed decode parity remains open
-  too.
+  ` |`). 2026-05-31 execution attempt artifact
+  `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-oracle-exec-attempt.json`
+  uses diagnostic logs and fails before generation because the local
+  `/home/lhl/ai/llama.cpp-cpu/llama-cli` does not support GGUF architecture
+  `step35` (`unknown model architecture: 'step35'`). Remaining implementation
+  task: use/build a StepFun-capable llama.cpp oracle and review/record the
+  parsed result; KV-backed decode parity remains open too.
 - [x] Preserve multi-EOS stopping and the chat assistant prefix. The short
   context planner renders the Step chat template with assistant `<think>` prefix
   and carries stop IDs `(1, 2, 128007)` with `should_stop()` checks.

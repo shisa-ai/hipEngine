@@ -28,9 +28,10 @@
   "comparison_policy": {
     "exact_text_match_field": "text_matches_expected_exact",
     "expected_text_field": "expected_next_token_text",
-    "generated_text_source": "llama-cli stdout with --no-display-prompt --simple-io --log-disable",
+    "generated_text_source": "llama-cli stdout with --no-display-prompt --simple-io",
     "stripped_text_match_field": "text_matches_expected_stripped"
   },
+  "diagnostic_logs": false,
   "expected_next_token_id": 369,
   "expected_next_token_logit": 19.158626556396484,
   "expected_next_token_text": " |",

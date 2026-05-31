@@ -27721,3 +27721,21 @@ python3 -m pytest -q tests/test_stepfun_llamacpp_oracle.py -q
 ```
 
 Result: `2 passed`.
+
+## 2026-05-31 — StepFun llama.cpp oracle execution blocker
+
+Attempted the planned one-token llama.cpp oracle with diagnostic logs enabled:
+
+```bash
+python3 scripts/stepfun_llamacpp_oracle.py --execute --diagnostic-logs --timeout-s 180 --output benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-oracle-exec-attempt.json --pretty
+```
+
+The helper now supports `--diagnostic-logs` (omits `--log-disable`) and decodes raw subprocess bytes with replacement, so llama.cpp loader errors are captured even when metadata contains non-UTF8 fragments. The execution artifact reports `status=executed`, `returncode=1`, empty stdout, and stderr ending with `unknown model architecture: 'step35'`; exact/stripped text comparisons are both false because generation never started. This documents the current oracle blocker: `/home/lhl/ai/llama.cpp-cpu/llama-cli` (`version: 4131 (8e752a77)`) is not StepFun/`step35` capable. We need a StepFun-capable llama.cpp build or another oracle before claiming P11 parity.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_llamacpp_oracle.py -q
+```
+
+Result: `3 passed`.
