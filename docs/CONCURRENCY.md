@@ -1458,7 +1458,7 @@ roll-up/status view.
       label/hardware metadata preserve the same visible GPU1/XTX provenance;
       retained-bench scaling and c-sweep
       preconditions reject scaling references whose visible-device name conflicts
-      with `hardware.gpu`, whose visible-device env conflicts, whose device-stamped artifact lacks software provenance, whose benchmark command label is absent, whose benchmark command env is missing/conflicts with the retained command env, or whose command launches the wrong baseline script. Schema and c-sweep launch validators
+      with `hardware.gpu`, whose visible-device env is absent despite a matching benchmark command env, whose visible-device env conflicts, whose device-stamped artifact lacks software provenance, whose benchmark command label is absent, whose benchmark command env is missing/conflicts with the retained command env, or whose command launches the wrong baseline script. Schema and c-sweep launch validators
       accept that prefix while still requiring the retained benchmark script
       after it. Accepted artifact validation now also
       requires those command prefixes whenever retained hardware/primitive device

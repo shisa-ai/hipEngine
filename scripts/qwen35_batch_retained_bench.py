@@ -555,6 +555,10 @@ def _scaling_reference(
         for key, value in reference_command_env.items():
             if retained_device_env.get(key) != value:
                 reasons.append(f"commands.benchmark device env {key} does not match retained command env")
+        if not reasons:
+            for key, value in reference_command_env.items():
+                if retained_device_env.get(key) == value and key not in reference_device_env:
+                    reasons.append(f"hardware.visible_device.env.{key} is missing while benchmark command env sets it")
     if reference_device_env and not reasons:
         reasons.extend(_scaling_reference_software_reasons(payload))
     aggregate, per_request = _extract_decode_rates(payload)
