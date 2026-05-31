@@ -28224,3 +28224,37 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted load-smoke/status/decode-planner tests passed (`14 passed`), artifact schema check printed `stepfun kv run plan artifacts ok`, and the full StepFun guard passed (`106 passed` plus CPU-reference fixture checks).
+
+## 2026-05-31 — StepFun KV run plan token inputs recorded
+
+Extended the metadata-only `StepFunKVDecodeRunPlan` with prompt token IDs and rendered-prompt provenance. The run plan now records `input_ids`, `input_id_count`, `rendered_prompt_nchars`, and `rendered_prompt_sha256` alongside prompt positions, decode position/live count, stop-token IDs, KV dispatch keys, launch operation count, and resource-fit booleans. Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json` and `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`; the consolidated status surfaces the token/provenance fields under `kv_decode_dispatch_progress.run_plan` and carries input-count/hash evidence into the KV-backed decode readiness gate. This remains metadata-only evidence: no KV kernels are launched, and `oracle_parity=false`, `kv_backed_decode_ready=false`, and `e2e_inference_ready=false` remain unchanged.
+
+Updated decode-planner/load-smoke/status tests and clarified `docs/STEPFUN.md` so the P11 status notes token IDs and rendered-prompt SHA-256 provenance.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_decode_planner.py tests/test_stepfun_load_smoke.py tests/test_stepfun_correctness_status.py -q
+python3 - <<'PY'
+import json
+r=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json'))
+run=r['kv_decode_run_plan']
+assert run['input_id_count'] == len(run['input_ids']) == run['prompt_length']
+assert run['prompt_positions'] == list(range(run['prompt_length']))
+assert len(run['rendered_prompt_sha256']) == 64
+int(run['rendered_prompt_sha256'], 16)
+assert run['rendered_prompt_nchars'] > 0
+assert run['decode_live_count'] == run['prompt_length']
+assert run['context_fits_resource_plan'] is True
+s=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+progress=s['kv_decode_dispatch_progress']
+assert progress['run_plan']['input_id_count'] == run['input_id_count']
+assert progress['run_plan']['rendered_prompt_sha256'] == run['rendered_prompt_sha256']
+assert s['readiness_gates']['kv_backed_decode']['current_evidence']['run_plan_input_id_count'] == run['input_id_count']
+assert s['kv_backed_decode_ready'] is False
+print('stepfun kv run plan token inputs artifacts ok')
+PY
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted decode-planner/load-smoke/status tests passed (`14 passed`), artifact schema check printed `stepfun kv run plan token inputs artifacts ok`, and the full StepFun guard passed (`106 passed` plus CPU-reference fixture checks).

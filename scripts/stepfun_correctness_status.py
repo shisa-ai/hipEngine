@@ -402,6 +402,12 @@ def _readiness_gates(
                 "run_plan_context_fits_resource_plan": kv_decode_dispatch_progress.get(
                     "run_plan_context_fits_resource_plan"
                 ),
+                "run_plan_input_id_count": dict(
+                    kv_decode_dispatch_progress.get("run_plan", {})
+                ).get("input_id_count"),
+                "run_plan_rendered_prompt_sha256": dict(
+                    kv_decode_dispatch_progress.get("run_plan", {})
+                ).get("rendered_prompt_sha256"),
                 "run_plan_streaming_ready": dict(
                     kv_decode_dispatch_progress.get("run_plan", {})
                 ).get("streaming_runner_ready"),

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import sys
 from pathlib import Path
@@ -82,6 +83,11 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
     )
 
     assert run_plan.prompt_length == run_plan.decode_plan.prompt_length > 0
+    assert run_plan.input_ids == run_plan.decode_plan.input_ids
+    assert run_plan.rendered_prompt_nchars == len(run_plan.decode_plan.rendered_prompt)
+    assert run_plan.rendered_prompt_sha256 == hashlib.sha256(
+        run_plan.decode_plan.rendered_prompt.encode("utf-8")
+    ).hexdigest()
     assert run_plan.prompt_positions == tuple(range(run_plan.prompt_length))
     assert run_plan.decode_position == run_plan.prompt_length
     assert run_plan.decode_live_count == run_plan.prompt_length
@@ -92,6 +98,12 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
     assert run_plan.streaming_runner_ready is False
     payload = run_plan.to_dict()
     assert payload["prompt_length"] == run_plan.prompt_length
+    assert payload["input_ids"] == list(run_plan.decode_plan.input_ids)
+    assert payload["input_id_count"] == run_plan.prompt_length
+    assert payload["rendered_prompt_nchars"] == len(run_plan.decode_plan.rendered_prompt)
+    assert payload["rendered_prompt_sha256"] == hashlib.sha256(
+        run_plan.decode_plan.rendered_prompt.encode("utf-8")
+    ).hexdigest()
     assert payload["prompt_positions"] == list(range(run_plan.prompt_length))
     assert payload["decode_position"] == run_plan.prompt_length
     assert payload["decode_live_count"] == run_plan.prompt_length

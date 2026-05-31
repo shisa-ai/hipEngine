@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from importlib import import_module
 from pathlib import Path
@@ -414,6 +415,18 @@ class StepFunKVDecodeRunPlan:
         return self.decode_plan.prompt_length
 
     @property
+    def input_ids(self) -> tuple[int, ...]:
+        return self.decode_plan.input_ids
+
+    @property
+    def rendered_prompt_nchars(self) -> int:
+        return len(self.decode_plan.rendered_prompt)
+
+    @property
+    def rendered_prompt_sha256(self) -> str:
+        return hashlib.sha256(self.decode_plan.rendered_prompt.encode("utf-8")).hexdigest()
+
+    @property
     def prompt_positions(self) -> tuple[int, ...]:
         return tuple(range(self.prompt_length))
 
@@ -449,6 +462,10 @@ class StepFunKVDecodeRunPlan:
         launch_schedule = self.resource_plan.kv_decode_launch_schedule
         return {
             "prompt_length": self.prompt_length,
+            "input_ids": list(self.input_ids),
+            "input_id_count": len(self.input_ids),
+            "rendered_prompt_nchars": self.rendered_prompt_nchars,
+            "rendered_prompt_sha256": self.rendered_prompt_sha256,
             "max_new_tokens": self.decode_plan.max_new_tokens,
             "required_context_tokens": self.required_context_tokens,
             "max_context": self.resource_plan.kv_decode_kernel_plan.max_context,

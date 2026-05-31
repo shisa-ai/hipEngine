@@ -101,6 +101,12 @@ def test_stepfun_load_smoke_dry_run_plan_emits_resource_json(capsys: pytest.Capt
     }
     run_plan = payload["kv_decode_run_plan"]
     assert run_plan["prompt_length"] > 0
+    assert run_plan["input_id_count"] == run_plan["prompt_length"]
+    assert len(run_plan["input_ids"]) == run_plan["input_id_count"]
+    assert all(isinstance(token_id, int) for token_id in run_plan["input_ids"])
+    assert run_plan["rendered_prompt_nchars"] > 0
+    assert len(run_plan["rendered_prompt_sha256"]) == 64
+    assert int(run_plan["rendered_prompt_sha256"], 16) >= 0
     assert run_plan["max_new_tokens"] == 1
     assert run_plan["required_context_tokens"] == run_plan["prompt_length"] + 1
     assert run_plan["max_context"] == 512

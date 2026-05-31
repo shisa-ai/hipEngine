@@ -220,6 +220,8 @@ def _write_resource_artifact(path: Path) -> None:
                     "context_fits_resource_plan": True,
                     "decode_live_count": 23,
                     "decode_position": 23,
+                    "input_id_count": 23,
+                    "input_ids": list(range(100, 123)),
                     "kv_decode_launch_operation_count": 135,
                     "kv_decode_launch_per_layer_order": [
                         "prompt_kv_write",
@@ -252,6 +254,8 @@ def _write_resource_artifact(path: Path) -> None:
                     "prompt_fits_resource_plan": True,
                     "prompt_length": 23,
                     "prompt_positions": list(range(23)),
+                    "rendered_prompt_nchars": 123,
+                    "rendered_prompt_sha256": "0" * 64,
                     "required_context_tokens": 24,
                     "stop_token_ids": [1, 2, 128007],
                     "streaming_runner_ready": False,
@@ -425,6 +429,10 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     }
     assert kv_dispatch["launch_schedule"]["streaming_runner_ready"] is False
     assert kv_dispatch["run_plan"]["prompt_length"] == 23
+    assert kv_dispatch["run_plan"]["input_id_count"] == 23
+    assert kv_dispatch["run_plan"]["input_ids"] == list(range(100, 123))
+    assert kv_dispatch["run_plan"]["rendered_prompt_nchars"] == 123
+    assert kv_dispatch["run_plan"]["rendered_prompt_sha256"] == "0" * 64
     assert kv_dispatch["run_plan"]["prompt_positions"] == list(range(23))
     assert kv_dispatch["run_plan"]["decode_position"] == 23
     assert kv_dispatch["run_plan"]["decode_live_count"] == 23
@@ -466,7 +474,9 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "prompt_span_shape_compatible": True,
         "resident_prompt_smoke": "host_composed_layer_prefix",
         "run_plan_context_fits_resource_plan": True,
+        "run_plan_input_id_count": 23,
         "run_plan_prompt_fits_resource_plan": True,
+        "run_plan_rendered_prompt_sha256": "0" * 64,
         "run_plan_streaming_ready": False,
     }
     assert gates["e2e_inference"]["ready"] is False
