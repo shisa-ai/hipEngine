@@ -650,9 +650,11 @@ layer loop is wired.
   --message hello --pretty` and runs the resident text-only chat prompt through
   the layers 0-3 prefix bridge with no vision/projector/MTP slots. The same
   script's `--dry-run-plan --layer-count 45` mode now plans the all-layer text
-  prefix slot/resource shape without initializing HIP, so full prompt execution
-  remains open until the KV-backed runner or all-layer prefix bridge is
-  allocated and validated.
+  prefix slot/resource shape without initializing HIP, and artifact
+  `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-dry-run.json`
+  records that 753-slot/45-layer metadata plan. Full prompt execution remains
+  open until the KV-backed runner or all-layer prefix bridge is allocated and
+  validated.
 
 **Acceptance:** full-model smoke produces token(s) or a documented fit failure.
 Current materialization coverage is validated by
