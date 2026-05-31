@@ -505,7 +505,8 @@ reporting.
   RMSNorm, RoPE, causal GQA, head-wise gating, BF16 rounding, and resident
   `attn_output` vs CPU reference, a layer-0 dense-layer prefill probe composes
   attention residual, `ffn_norm`, dense SwiGLU MLP, and final residual vs CPU
-  reference, the dense-MLP input
+  reference, and the same layer wrapper is exercised on a layer-3 sliding/MoE
+  block by composing the attention and MoE probes through `ffn_norm`, the dense-MLP input
   bundle launches layer-0 `ffn_gate`/`ffn_up` projections vs CPU references,
   and a dense-MLP correctness probe composes gate/up, host SwiGLU BF16 rounding,
   and resident `ffn_down` vs CPU reference. The resident session also owns a
@@ -548,7 +549,8 @@ prefill dispatch, the resident attention-input Q/K/V/gate projection bundle,
 the layer-0 attention prefill/output probe (resident Q/K/V/gate and `attn_output`
 with host Q/K RMSNorm, RoPE, causal GQA, and head-wise gate), the layer-0
 dense-layer prefill probe (attention residual + `ffn_norm` + dense MLP + final
-residual), the dense-MLP gate/up projection bundle, the dense MLP correctness probe
+residual), the layer-3 sliding/MoE branch of the layer prefill wrapper, the
+dense-MLP gate/up projection bundle, the dense MLP correctness probe
 (gate/up + host SwiGLU/BF16 + resident down projection), the layer-3 MoE router
 probe (resident F32 router/bias weights -> CPU top-k routing), selected-expert
 `Q3_K` gate projection via existing selected GEMV kernels, the MoE expert-input

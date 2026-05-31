@@ -505,6 +505,68 @@ def test_stepfun_resident_session_layer_prefill_probe_matches_dense_cpu_referenc
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_stepfun_resident_session_layer_prefill_probe_composes_sliding_moe_branch() -> None:
+    paths = _stepfun_gguf_paths()
+    info = scan_gguf_splits(paths)
+    model_map = build_stepfun_gguf_tensor_map(info)
+    layer_id = 3
+    layer = model_map.layer(layer_id)
+    assert layer.attention_type == "sliding_attention"
+    assert layer.mlp_type == "moe"
+    selected_slots = (
+        "layers.3.attn_norm",
+        "layers.3.attn_q_norm",
+        "layers.3.attn_k_norm",
+        "layers.3.attn_q",
+        "layers.3.attn_k",
+        "layers.3.attn_v",
+        "layers.3.attn_gate",
+        "layers.3.attn_output",
+        "layers.3.ffn_norm",
+        "layers.3.ffn_gate_inp",
+        "layers.3.exp_probs_bias",
+        "layers.3.ffn_gate_exps",
+        "layers.3.ffn_up_exps",
+        "layers.3.ffn_down_exps",
+        "layers.3.ffn_gate_shexp",
+        "layers.3.ffn_up_shexp",
+        "layers.3.ffn_down_shexp",
+    )
+    x = ((np.arange(4096, dtype=np.float32).reshape(1, 4096) % 79) - 39) / 352.0
+    x_bits = float_array_to_bf16_bits(x)
+    hidden = bf16_to_float32(x_bits)
+    ffn_norm_tensor = layer.tensor("ffn_norm")
+    ffn_norm_weight = GGUFReader(ffn_norm_tensor.source_path).tensor_data(ffn_norm_tensor.name)
+    runtime = get_hip_runtime()
+    reset_memory_stats()
+    session = StepFunResidentSession.from_gguf_paths(
+        paths,
+        selected_slots=selected_slots,
+        runtime=runtime,
+    )
+    try:
+        attention = session.attention_prefill_probe_bf16(layer_id, x_bits, runtime=runtime)
+        attention_residual = (hidden + attention).astype(np.float32)
+        ffn_norm_bits = float_array_to_bf16_bits(
+            step_rmsnorm(attention_residual, ffn_norm_weight, eps=model_map.config.rms_norm_eps)
+        )
+        moe = session.moe_mlp_probe_bf16(layer_id, ffn_norm_bits, runtime=runtime)
+        expected = (attention_residual + moe).astype(np.float32)
+        actual = session.layer_prefill_probe_bf16(layer_id, x_bits, runtime=runtime)
+        assert actual.shape == expected.shape == (1, model_map.config.hidden_size)
+        np.testing.assert_allclose(actual, expected, rtol=5.0e-3, atol=5.0e-3)
+        expected_nbytes = sum(session.weight_for_slot(slot).spec.source.nbytes for slot in selected_slots)
+        assert session.weights.allocated_nbytes == expected_nbytes
+        assert memory_stats()["current_allocated_bytes"] == expected_nbytes
+        assert memory_stats()["active_allocations"] == len(selected_slots)
+    finally:
+        session.free(runtime=runtime)
+
+    assert memory_stats()["current_allocated_bytes"] == 0
+    assert memory_stats()["active_allocations"] == 0
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 def test_stepfun_resident_session_projects_dense_mlp_inputs() -> None:
     paths = _stepfun_gguf_paths()
     info = scan_gguf_splits(paths)

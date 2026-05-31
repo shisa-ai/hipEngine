@@ -27411,3 +27411,17 @@ python3 -m pytest -q tests/test_stepfun_resident_session.py -q
 ```
 
 Result: `18 passed`.
+
+## 2026-05-30 — StepFun resident sliding MoE layer wrapper probe
+
+Extended the `StepFunResidentSession.layer_prefill_probe_bf16()` coverage to a real layer-3 sliding-attention MoE block. The test materializes attention norms/projections/output, `ffn_norm`, router/bias, selected expert tensors, and shared expert tensors, then checks the layer wrapper composes the attention prefill probe, `ffn_norm`, MoE MLP probe, and residuals consistently for the sliding/MoE branch.
+
+This is still a correctness bridge, not full model decode: attention and MoE components remain host-composed, and next-token/logit parity still requires sequencing layer blocks over prompt embeddings and KV state.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_resident_session.py -q
+```
+
+Result: `19 passed`.
