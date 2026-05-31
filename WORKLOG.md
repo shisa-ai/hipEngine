@@ -24456,3 +24456,57 @@ Docs/rollup updated:
 Next multiloop focus: validate this exact route on longer horizons (D128/D160)
 or look for a deployable route-history mechanism.  Do not default threshold=4
 or the expanded W4 site mask from this D64-only evidence.
+
+## 2026-05-31 — DFlash multiloop iter22 threshold4 regenerated route
+
+Active loop: `dflash-27b-w7900/run-20260531-102747`.  Iteration 22 regenerated
+the threshold=4 profile route from all-chain row evidence instead of only
+forcing json-YAML to AR.  The all-chain threshold=4 profile remained globally
+non-exact because `code:json_yaml_continuation` diverged, but it showed
+`code:function_continuation` is exact and profitable at `1.078x` chain speed;
+`code:humaneval_sort_third` stayed exact but unprofitable at `0.899x`.
+
+Profile/build commands:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD=4 HIPENGINE_W4_MULTI_ROW_PACK8_SITES=full_qk,linear_qkv_z,dense_gate_up,single_full_o,single_full_v,single_linear_out,single_shared_down,single_dense_down PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --verifier-graph auto --full-attn-chain-mode batched --canonical-commit-mode bulk_direct --drafter-query-mode budget_prefix --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/multiloop-dflash-27b-w7900-threshold4-allchain-profile.json
+python3 scripts/dflash_build_profile_route_manifest.py --input /tmp/multiloop-dflash-27b-w7900-threshold4-allchain-profile.json --output /tmp/multiloop-dflash-27b-w7900-threshold4-regenerated-manifest.json --min-chain-speedup 1.0 --default-route ar
+```
+
+Final route command:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD=4 HIPENGINE_W4_MULTI_ROW_PACK8_SITES=full_qk,linear_qkv_z,dense_gate_up,single_full_o,single_full_v,single_linear_out,single_shared_down,single_dense_down PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --verifier-graph auto --full-attn-chain-mode batched --canonical-commit-mode bulk_direct --profile-route-manifest /tmp/multiloop-dflash-27b-w7900-threshold4-regenerated-manifest.json --drafter-query-mode budget_prefix --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/multiloop-dflash-27b-w7900.json
+```
+
+Result: exact `9/9`, DFlash/spec `40.94 tok/s`, AR `32.38 tok/s`, `1.2646x`
+AR.  This improves the retained threshold4 json→AR route from `1.2533x ->
+1.2646x` and `40.69 -> 40.94 tok/s` (+0.6% spec tok/s).  Route mix is now 7
+chain / 2 AR: function-continuation joins the chain set; json-YAML and
+sort-third remain AR fallbacks.  Chain-row verifier graph validation passes.
+
+This is **not defaulted**.  The stack is still profile-history routing + opt-in
+verifier graph + `bulk_direct` + `budget_prefix` + expanded W4 site mask +
+threshold=4.  Threshold=4 has a known non-exact chain row, so this is only a
+retained diagnostic route for this W7900 27B B=4/D64 gate.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/dflash_chain_e2e_bench.py scripts/dflash_build_profile_route_manifest.py hipengine/runtime/qwen35_paro.py
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_paro_awq_gemv_multi_row_decode.py tests/test_dflash_profile_route_manifest.py tests/test_dflash_draft_confidence.py tests/test_speculative_benchmark.py
+python3 -m json.tool benchmarks/results/2026-05-31-hipengine-dflash-27b-threshold4-regenerated-route.json >/tmp/hipengine-dflash-27b-threshold4-regenerated-artifact-check.json
+```
+
+Result: targeted pytest `17 passed`; artifact JSON valid.
+
+Retained artifact:
+- `benchmarks/results/2026-05-31-hipengine-dflash-27b-threshold4-regenerated-route.json`
+
+Docs/rollup updated:
+- `docs/DFLASH.md` table now includes threshold4 regenerated route.
+- `benchmarks/README.md` and `benchmarks/CHANGELOG.md` retained diagnostic row.
+
+Next multiloop focus: validate this best route on longer horizons (D128/D160)
+or build a deployable route-history mechanism.  Do not default threshold=4 or
+the expanded W4 site mask from this D64-only evidence.
