@@ -869,6 +869,8 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert handoff["blocker_work_queue"] == [
         {
             "blocker_kind": "oracle_parity_blocked",
+            "queue_index": 0,
+            "is_first": True,
             "command_available": True,
             **_primary_command_fields(
                 "rerun_command_shell",
@@ -882,6 +884,8 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         },
         {
             "blocker_kind": "kv_backed_decode_not_wired",
+            "queue_index": 1,
+            "is_first": False,
             "command_available": True,
             **_primary_command_fields(
                 "resource_plan_refresh_command",
@@ -1291,6 +1295,8 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
     assert payload["blocker_work_queue"] == [
         {
             "blocker_kind": "oracle_parity_blocked",
+            "queue_index": 0,
+            "is_first": True,
             "command_available": True,
             **_primary_command_fields(
                 "rerun_command_shell",
@@ -1304,6 +1310,8 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         },
         {
             "blocker_kind": "kv_backed_decode_not_wired",
+            "queue_index": 1,
+            "is_first": False,
             "command_available": True,
             **_primary_command_fields(
                 "resource_plan_refresh_command",
@@ -1422,6 +1430,8 @@ def test_stepfun_correctness_status_blocker_work_queue_only(capsys, tmp_path: Pa
     assert payload == [
         {
             "blocker_kind": "oracle_parity_blocked",
+            "queue_index": 0,
+            "is_first": True,
             "command_available": True,
             **_primary_command_fields(
                 "rerun_command_shell",
@@ -1435,6 +1445,8 @@ def test_stepfun_correctness_status_blocker_work_queue_only(capsys, tmp_path: Pa
         },
         {
             "blocker_kind": "kv_backed_decode_not_wired",
+            "queue_index": 1,
+            "is_first": False,
             "command_available": True,
             **_primary_command_fields(
                 "resource_plan_refresh_command",
@@ -1488,6 +1500,8 @@ def test_stepfun_correctness_status_first_blocker_only(capsys, tmp_path: Path) -
     payload = json.loads(output.read_text())
     assert payload == {
         "blocker_kind": "oracle_parity_blocked",
+        "queue_index": 0,
+        "is_first": True,
         "command_available": True,
         **_primary_command_fields(
             "rerun_command_shell",

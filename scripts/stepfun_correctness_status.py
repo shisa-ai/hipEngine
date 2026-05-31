@@ -870,11 +870,13 @@ def _handoff_summary(
     run_plan = dict(kv_decode_dispatch_progress.get("run_plan", {}))
     decode_input_upload_plan = dict(run_plan.get("decode_input_upload_plan", {}))
     blocker_work_queue: list[dict[str, object]] = []
-    for blocker_kind in blocker_kinds:
+    for queue_index, blocker_kind in enumerate(blocker_kinds):
         if blocker_kind == "oracle_parity_blocked":
             blocker_work_queue.append(
                 {
                     "blocker_kind": blocker_kind,
+                    "queue_index": queue_index,
+                    "is_first": queue_index == 0,
                     "gate": "oracle_parity",
                     "command_available": blocker_kind in next_action_commands,
                     **_primary_command_metadata(
@@ -895,6 +897,8 @@ def _handoff_summary(
             blocker_work_queue.append(
                 {
                     "blocker_kind": blocker_kind,
+                    "queue_index": queue_index,
+                    "is_first": queue_index == 0,
                     "gate": "kv_backed_decode",
                     "command_available": blocker_kind in next_action_commands,
                     **_primary_command_metadata(
@@ -916,6 +920,8 @@ def _handoff_summary(
             blocker_work_queue.append(
                 {
                     "blocker_kind": blocker_kind,
+                    "queue_index": queue_index,
+                    "is_first": queue_index == 0,
                     "gate": None,
                     "command_available": blocker_kind in next_action_commands,
                     **_primary_command_metadata(None, None),
