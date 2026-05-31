@@ -605,14 +605,18 @@ layer loop is wired.
 > fit/fail proxies for full GTT. The next load path should attempt and measure
 > real allocations; do not block implementation solely on those readouts.
 
-- [ ] Load all three GGUF shards on the Strix Halo target with a small context
+- [x] Load all three GGUF shards on the Strix Halo target with a small context
   and `max_new_tokens` (for example 1-8). 2026-05-29: resident weight load now
   succeeds for all 754 tensors / `95.4598 GiB` under the configured 120 GB GTT
   (`benchmarks/results/2026-05-29-stepfun-q3kl-full-load-smoke-task20.json`),
   and the load smoke can allocate/free a synthetic 512-token BF16 KV footprint
-  after weight load; final-logits projection is covered for synthetic hidden
-  states, but full generation is still open because resident Step layer
-  execution is not wired yet.
+  after weight load. 2026-05-31 completion evidence for the host-composed text
+  path: `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json`
+  scans all three Q3_K_L shards, runs a 23-token Step chat prompt through all 45
+  layers in chunked resident mode with no vision/projector/MTP slots, and emits
+  one next-token candidate (`next_token_id=369`, decoded text ` |`). This closes
+  the P12 load/small-context token smoke item, but not P11 llama.cpp/CPU oracle
+  parity or the final KV-backed decode runner.
 - [~] Record HIP-visible memory before load, after load, after KV allocation, and
   after generation; include UMA/GTT setting and backend (`hip_gfx1151`). Weight
   load evidence from
