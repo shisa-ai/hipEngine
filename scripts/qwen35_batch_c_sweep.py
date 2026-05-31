@@ -484,6 +484,14 @@ def _primitive_correctness_precondition(command: SweepCommand) -> dict[str, Any]
         if not _is_bounded_primitive_numpy_oracle(attn_vs_numpy):
             reasons.append("attn_batch_vs_numpy_max_abs is missing, non-finite, negative, or above 2e-5")
         if not reasons:
+            for field in ("append_batch_aa_key_mismatch", "append_batch_aa_value_mismatch"):
+                if not _is_zero_int(payload.get(field)):
+                    reasons.append(f"{field} is missing or not integer zero")
+            if not _is_exact_zero_number(payload.get("attn_batch_aa_max_abs")):
+                reasons.append("attn_batch_aa_max_abs is missing or not 0.0")
+            if payload.get("aa_passed") is not True:
+                reasons.append("aa_passed is not true")
+        if not reasons:
             reasons.extend(_primitive_device_metadata_blockers(payload.get("device")))
     result: dict[str, Any] = {
         "kind": _RETAINED_PRECONDITION_KINDS[0],
@@ -506,6 +514,10 @@ def _primitive_correctness_precondition(command: SweepCommand) -> dict[str, Any]
                 "primitive_device": dict(payload["device"]),
                 "append_key_mismatch": int(payload["append_key_mismatch"]),
                 "append_value_mismatch": int(payload["append_value_mismatch"]),
+                "append_batch_aa_key_mismatch": int(payload["append_batch_aa_key_mismatch"]),
+                "append_batch_aa_value_mismatch": int(payload["append_batch_aa_value_mismatch"]),
+                "attn_batch_aa_max_abs": float(payload["attn_batch_aa_max_abs"]),
+                "aa_passed": bool(payload["aa_passed"]),
                 "attn_batch_vs_c1_max_abs": float(payload["attn_batch_vs_c1_max_abs"]),
                 "attn_batch_vs_numpy_max_abs": float(payload["attn_batch_vs_numpy_max_abs"]),
             }
@@ -1892,6 +1904,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         "primitive_device",
         "append_key_mismatch",
         "append_value_mismatch",
+        "append_batch_aa_key_mismatch",
+        "append_batch_aa_value_mismatch",
+        "attn_batch_aa_max_abs",
+        "aa_passed",
         "attn_batch_vs_c1_max_abs",
         "attn_batch_vs_numpy_max_abs",
     }
@@ -1963,6 +1979,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         "primitive_device",
         "append_key_mismatch",
         "append_value_mismatch",
+        "append_batch_aa_key_mismatch",
+        "append_batch_aa_value_mismatch",
+        "attn_batch_aa_max_abs",
+        "aa_passed",
         "attn_batch_vs_c1_max_abs",
         "attn_batch_vs_numpy_max_abs",
         "reference_artifact_path",
@@ -2471,6 +2491,15 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         break
                     if not _is_zero_int(primitive_precondition.get("append_key_mismatch")) or not _is_zero_int(primitive_precondition.get("append_value_mismatch")):
                         errors.append("commands[].preconditions[].primitive append mismatches must be typed integer zeros when passed")
+                        break
+                    if not _is_zero_int(primitive_precondition.get("append_batch_aa_key_mismatch")) or not _is_zero_int(primitive_precondition.get("append_batch_aa_value_mismatch")):
+                        errors.append("commands[].preconditions[].primitive append A/A mismatches must be typed integer zeros when passed")
+                        break
+                    if not _is_exact_zero_number(primitive_precondition.get("attn_batch_aa_max_abs")):
+                        errors.append("commands[].preconditions[].attn_batch_aa_max_abs must be exactly 0.0 when primitive passed")
+                        break
+                    if primitive_precondition.get("aa_passed") is not True:
+                        errors.append("commands[].preconditions[].aa_passed must be true when primitive passed")
                         break
                     attn_vs_c1 = primitive_precondition.get("attn_batch_vs_c1_max_abs")
                     if not _is_exact_zero_number(attn_vs_c1):

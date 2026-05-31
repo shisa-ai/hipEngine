@@ -564,8 +564,12 @@ def _write_c_sweep_primitive_summary(output_dir: Path, *, rows: int = 2) -> None
                 "passed": True,
                 "append_key_mismatch": 0,
                 "append_value_mismatch": 0,
+                "append_batch_aa_key_mismatch": 0,
+                "append_batch_aa_value_mismatch": 0,
                 "attn_batch_vs_c1_max_abs": 0.0,
                 "attn_batch_vs_numpy_max_abs": 5.0e-8,
+                "attn_batch_aa_max_abs": 0.0,
+                "aa_passed": True,
                 "device": _c_sweep_primitive_device_metadata(),
             }
         )
@@ -3149,6 +3153,10 @@ def test_batch_c_sweep_skips_retained_when_primitive_artifact_missing(tmp_path: 
             "primitive_device": _c_sweep_primitive_device_metadata(),
             "append_key_mismatch": 0,
             "append_value_mismatch": 0,
+            "append_batch_aa_key_mismatch": 0,
+            "append_batch_aa_value_mismatch": 0,
+            "attn_batch_aa_max_abs": 0.0,
+            "aa_passed": True,
             "attn_batch_vs_c1_max_abs": 0.0,
             "attn_batch_vs_numpy_max_abs": 5.0e-8,
         }
@@ -3643,6 +3651,82 @@ def test_batch_c_sweep_primitive_precondition_requires_typed_append_counters(tmp
     }
 
 
+def test_batch_c_sweep_primitive_precondition_requires_aa_determinism_fields(tmp_path: Path) -> None:
+    primitive_path = tmp_path / "primitive-c2.json"
+    command = c_sweep.SweepCommand(
+        category="native_diagnostic",
+        batch_size=2,
+        artifact_path=tmp_path / "native-diagnostic-c2.json",
+        argv=(
+            "python3",
+            "scripts/qwen35_batch_retained_bench.py",
+            "--primitive-correctness-json",
+            str(primitive_path),
+        ),
+    )
+    primitive_payload = {
+        "artifact_path": str(primitive_path),
+        "schema": 1,
+        "seed": 1234,
+        "rows": 2,
+        "block_size": 256,
+        "max_context_len": 4,
+        "num_q_heads": 4,
+        "num_kv_heads": 1,
+        "head_dim": 8,
+        "context_lens": [1, 2],
+        "passed": True,
+        "append_key_mismatch": 0,
+        "append_value_mismatch": 0,
+        "attn_batch_vs_c1_max_abs": 0.0,
+        "attn_batch_vs_numpy_max_abs": 5.0e-8,
+    }
+    primitive_path.write_text(json.dumps(primitive_payload))
+    missing_aa_fields = c_sweep._primitive_correctness_precondition(command)
+    primitive_payload.update(
+        {
+            "append_batch_aa_key_mismatch": 1,
+            "append_batch_aa_value_mismatch": 0,
+            "attn_batch_aa_max_abs": 0.0,
+            "aa_passed": True,
+        }
+    )
+    primitive_path.write_text(json.dumps(primitive_payload))
+    mismatched_append_aa = c_sweep._primitive_correctness_precondition(command)
+    primitive_payload.update(
+        {
+            "append_batch_aa_key_mismatch": 0,
+            "attn_batch_aa_max_abs": 1e-8,
+            "aa_passed": False,
+        }
+    )
+    primitive_path.write_text(json.dumps(primitive_payload))
+    mismatched_attn_aa = c_sweep._primitive_correctness_precondition(command)
+    primitive_payload.update(
+        {
+            "attn_batch_aa_max_abs": 0.0,
+            "aa_passed": True,
+            "device": _c_sweep_primitive_device_metadata(),
+        }
+    )
+    primitive_path.write_text(json.dumps(primitive_payload))
+    passed = c_sweep._primitive_correctness_precondition(command)
+
+    assert missing_aa_fields["passed"] is False
+    assert "append_batch_aa_key_mismatch is missing or not integer zero" in missing_aa_fields["reason"]
+    assert "attn_batch_aa_max_abs is missing or not 0.0" in missing_aa_fields["reason"]
+    assert mismatched_append_aa["passed"] is False
+    assert "append_batch_aa_key_mismatch is missing or not integer zero" in mismatched_append_aa["reason"]
+    assert mismatched_attn_aa["passed"] is False
+    assert "attn_batch_aa_max_abs is missing or not 0.0" in mismatched_attn_aa["reason"]
+    assert "aa_passed is not true" in mismatched_attn_aa["reason"]
+    assert passed["passed"] is True
+    assert passed["append_batch_aa_key_mismatch"] == 0
+    assert passed["append_batch_aa_value_mismatch"] == 0
+    assert passed["attn_batch_aa_max_abs"] == 0.0
+    assert passed["aa_passed"] is True
+
+
 def test_batch_c_sweep_primitive_precondition_requires_numpy_oracle(tmp_path: Path) -> None:
     primitive_path = tmp_path / "primitive-c2.json"
     command = c_sweep.SweepCommand(
@@ -3738,8 +3822,12 @@ def test_batch_c_sweep_primitive_precondition_requires_device_metadata(tmp_path:
         "passed": True,
         "append_key_mismatch": 0,
         "append_value_mismatch": 0,
+        "append_batch_aa_key_mismatch": 0,
+        "append_batch_aa_value_mismatch": 0,
         "attn_batch_vs_c1_max_abs": 0.0,
         "attn_batch_vs_numpy_max_abs": 5.0e-8,
+        "attn_batch_aa_max_abs": 0.0,
+        "aa_passed": True,
     }
     primitive_path.write_text(json.dumps(primitive_payload))
     missing_device = c_sweep._primitive_correctness_precondition(command)
@@ -5622,6 +5710,18 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_primitive_precondition_bool_mismatch["commands"][-1]["preconditions"][0]["append_key_mismatch"] = False
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive append mismatches must be typed integer zeros when passed"):
         c_sweep.validate_sweep_summary(tampered_primitive_precondition_bool_mismatch)
+    tampered_primitive_precondition_aa_mismatch = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_aa_mismatch["commands"][-1]["preconditions"][0]["append_batch_aa_key_mismatch"] = 1
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive append A/A mismatches must be typed integer zeros when passed"):
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_aa_mismatch)
+    tampered_primitive_precondition_attn_aa = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_attn_aa["commands"][-1]["preconditions"][0]["attn_batch_aa_max_abs"] = 1e-8
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.attn_batch_aa_max_abs must be exactly 0\.0 when primitive passed"):
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_attn_aa)
+    tampered_primitive_precondition_aa_passed = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_aa_passed["commands"][-1]["preconditions"][0]["aa_passed"] = False
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.aa_passed must be true when primitive passed"):
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_aa_passed)
     tampered_primitive_precondition_attn = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_attn["commands"][-1]["preconditions"][0]["attn_batch_vs_c1_max_abs"] = 1e-3
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.attn_batch_vs_c1_max_abs must be exactly 0\.0 when primitive passed"):
@@ -5657,6 +5757,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         "primitive_device": _c_sweep_primitive_device_metadata(),
         "append_key_mismatch": 0,
         "append_value_mismatch": 0,
+        "append_batch_aa_key_mismatch": 0,
+        "append_batch_aa_value_mismatch": 0,
+        "attn_batch_aa_max_abs": 0.0,
+        "aa_passed": True,
         "attn_batch_vs_c1_max_abs": 0.0,
         "attn_batch_vs_numpy_max_abs": 5.0e-8,
     }

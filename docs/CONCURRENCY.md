@@ -1441,8 +1441,9 @@ roll-up/status view.
       the batched KV append and batched full-attention context kernels on the
       same inputs and emits A/A determinism fields (`append_batch_aa_*` and
       `attn_batch_aa_max_abs`) that must be zero for `passed=true`; retained
-      bench loading and accepted-artifact schema validation now reject primitive
-      gate artifacts missing those zero A/A fields. Primitive correctness
+      bench loading, accepted-artifact schema validation, and c-sweep retained
+      preconditions now reject primitive gate artifacts missing those zero A/A
+      fields. Primitive correctness
       artifacts also stamp the visible HIP device/env (for example GPU1/XTX via
       `HIP_VISIBLE_DEVICES=1`) so GPU re-baseline runs carry hardware provenance
       directly in the JSON; retained-bench loading, accepted-artifact schema,
