@@ -49,6 +49,12 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Token id to include in sampled final logits; may be repeated.",
     )
     parser.add_argument(
+        "--max-resident-weight-gib",
+        type=float,
+        default=None,
+        help="Refuse non-dry-run execution if selected resident weights exceed this GiB budget.",
+    )
+    parser.add_argument(
         "--dry-run-plan",
         action="store_true",
         help="Scan metadata and print the layer-prefix slot/resource plan without HIP allocation.",
@@ -109,6 +115,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         }
         print(json.dumps(result, indent=2 if args.pretty else None, sort_keys=True))
         return 0
+
+    if args.max_resident_weight_gib is not None:
+        budget_nbytes = int(args.max_resident_weight_gib * 2**30)
+        if resident_weight_nbytes > budget_nbytes:
+            raise MemoryError(
+                "layer-prefix smoke selected "
+                f"{resident_weight_nbytes / 2**30:.3f} GiB of resident weights, "
+                f"which exceeds --max-resident-weight-gib={args.max_resident_weight_gib:.3f}; "
+                "rerun with --dry-run-plan or a larger explicit budget"
+            )
 
     runtime = get_hip_runtime()
     reset_memory_stats()

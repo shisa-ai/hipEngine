@@ -73,6 +73,30 @@ def test_stepfun_layer_prefix_smoke_dry_run_plans_all_layers_without_hip(
     assert "no HIP runtime was initialized" in payload["note"]
 
 
+def test_stepfun_layer_prefix_smoke_budget_guard_blocks_before_hip(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = _stepfun_gguf_dir()
+
+    with pytest.raises(MemoryError, match="max-resident-weight-gib"):
+        main(
+            [
+                "--model-dir",
+                str(root),
+                "--layer-count",
+                "1",
+                "--message",
+                "hello",
+                "--max-resident-weight-gib",
+                "0.001",
+            ]
+        )
+
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert output.err == ""
+
+
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 def test_stepfun_layer_prefix_smoke_outputs_partial_prompt_json(capsys: pytest.CaptureFixture[str]) -> None:
     root = _stepfun_gguf_dir()
@@ -85,6 +109,8 @@ def test_stepfun_layer_prefix_smoke_outputs_partial_prompt_json(capsys: pytest.C
             "1",
             "--message",
             "hello",
+            "--max-resident-weight-gib",
+            "200",
             "--pretty",
         ]
     )

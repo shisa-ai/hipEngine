@@ -27567,3 +27567,17 @@ python3 scripts/stepfun_layer_prefix_smoke.py --dry-run-plan --layer-count 45 --
 ```
 
 Artifact summary: `status=planned`, scope `layers_0_44_prefix_no_skipped_layers`, 753 selected resident slots (root text tensors plus all layer weights; root RoPE remains metadata-derived in the host-composed prefix probe), `102,499,149,056` resident-weight bytes, no vision/projector/MTP/nextn slots, and no HIP runtime/allocation because this is a dry-run plan. Full prompt execution and parity remain blocked on allocating/validating the all-layer prefix bridge or the KV-backed decode runner.
+
+## 2026-05-31 — StepFun layer-prefix memory budget guard
+
+Added `--max-resident-weight-gib` to `scripts/stepfun_layer_prefix_smoke.py` for non-dry-run executions. The script now computes selected resident-weight bytes from GGUF metadata before initializing HIP and raises `MemoryError` if the caller's explicit budget is too small. This keeps all-layer `--dry-run-plan` safe as the default inspection path and prevents accidental 45-layer HIP allocation attempts while full decode remains unvalidated.
+
+Extended `tests/test_stepfun_layer_prefix_smoke.py` with a no-HIP budget-guard check that blocks a layer-1 prompt smoke before runtime initialization, and kept the real HIP prompt smoke on an explicit large budget to cover the allowed path.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_layer_prefix_smoke.py -q
+```
+
+Result: `3 passed`.

@@ -652,9 +652,11 @@ layer loop is wired.
   script's `--dry-run-plan --layer-count 45` mode now plans the all-layer text
   prefix slot/resource shape without initializing HIP, and artifact
   `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-dry-run.json`
-  records that 753-slot/45-layer metadata plan. Full prompt execution remains
-  open until the KV-backed runner or all-layer prefix bridge is allocated and
-  validated.
+  records that 753-slot/45-layer metadata plan. Non-dry-run prefix smokes now
+  support `--max-resident-weight-gib` so accidental all-layer HIP allocation
+  attempts fail before runtime initialization unless an explicit memory budget is
+  supplied. Full prompt execution remains open until the KV-backed runner or
+  all-layer prefix bridge is allocated and validated.
 
 **Acceptance:** full-model smoke produces token(s) or a documented fit failure.
 Current materialization coverage is validated by
@@ -664,8 +666,8 @@ access on first/last shard tensors, selected-slot HIP loading/freeing with
 memory stats, and torch-free imports; `python3 -m pytest -q tests/test_stepfun_load_smoke.py`
 validates metadata-only dry-run load-smoke JSON; `python3 -m pytest -q
 tests/test_stepfun_layer_prefix_smoke.py` validates the reusable partial prompt
-smoke script plus all-layer dry-run prefix planning. This is still not a
-throughput benchmark.
+smoke script, memory-budget guard, and all-layer dry-run prefix planning. This
+is still not a throughput benchmark.
 
 ### P13 — Benchmark and rollup only after correctness
 
