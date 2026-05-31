@@ -27693,3 +27693,17 @@ Result: `4 passed`.
 ## 2026-05-31 — StepFun P12 load/token smoke item closed
 
 Marked the P12 "load all three GGUF shards with a small context/max_new_tokens" checklist item complete for the host-composed chunked text path. Evidence is `benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json`: it scans all three Q3_K_L shards, runs the 23-token Step chat prompt through all 45 layers in chunked resident mode, uses no vision/projector/MTP slots, emits one next-token candidate (`next_token_id=369`, decoded ` |`), and frees all hipEngine allocations. This is explicitly not P11 llama.cpp/CPU oracle parity and not the final KV-backed decode runner; those checklist items remain open.
+
+## 2026-05-31 — StepFun llama.cpp oracle command plan
+
+Added `scripts/stepfun_llamacpp_oracle.py`, a dry-run-by-default helper that reads the all-layer chunked prompt artifact and emits the deterministic one-token llama.cpp command plus expected hipEngine artifact token/logit fields. The helper records the local llama.cpp version (`version: 4131 (8e752a77)`) and builds a command using `/home/lhl/ai/llama.cpp-cpu/llama-cli`, the first Q3_K_L GGUF shard, `--predict 1`, `--temp 0`, `--top-k 1`, `--top-p 1`, `--min-p 0`, `--repeat-penalty 1`, `--seed 0`, `--no-display-prompt`, `--simple-io`, and `--log-disable`.
+
+Recorded the oracle command plan artifact at `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-oracle-plan.json`. It references the current all-layer chunked prompt artifact expected result (`next_token_id=369`, decoded ` |`, top-token rows) but does not execute llama.cpp, so oracle parity remains open.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_llamacpp_oracle.py -q
+```
+
+Result: `1 passed`.

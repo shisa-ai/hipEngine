@@ -554,12 +554,19 @@ reporting.
   context and sliding-window boundaries. `StepFunShortContextDecodePlanner`
   enforces the current c=1 bring-up default `max_context=512`,
   `max_new_tokens=1`, and rejects overlong prompts.
-- [ ] Compare greedy next tokens and/or logits against llama.cpp for a small set
-  of deterministic prompts. Remaining implementation task: requires the
-  streaming Step GGUF runner or a smaller exported activation/logit fixture. The
-  current Strix boot config is intended to expose 120 GB GTT, so memory should
-  be validated by actual allocation/load evidence rather than treated as a hard
-  blocker from readouts alone.
+- [~] Compare greedy next tokens and/or logits against llama.cpp for a small set
+  of deterministic prompts. 2026-05-31 oracle-planning progress:
+  `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-oracle-plan.json`
+  records the exact llama.cpp command for the all-layer chunked `hello` prompt
+  artifact using `/home/lhl/ai/llama.cpp-cpu/llama-cli` version
+  `4131 (8e752a77)`, model shard
+  `Step-3.7-flash-Q3_K_L-00001-of-00003.gguf`, `--predict 1`, `--temp 0`,
+  `--top-k 1`, `--top-p 1`, `--min-p 0`, `--repeat-penalty 1`, `--seed 0`,
+  `--no-display-prompt`, `--simple-io`, and `--log-disable`.
+  Remaining implementation task: execute/parse the expensive llama.cpp oracle
+  run and compare its greedy token/logit result with the current host-composed
+  artifact (`next_token_id=369`, decoded ` |`); KV-backed decode parity remains
+  open too.
 - [x] Preserve multi-EOS stopping and the chat assistant prefix. The short
   context planner renders the Step chat template with assistant `<think>` prefix
   and carries stop IDs `(1, 2, 128007)` with `should_stop()` checks.

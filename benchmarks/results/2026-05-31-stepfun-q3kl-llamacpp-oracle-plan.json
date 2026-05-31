@@ -1,0 +1,71 @@
+{
+  "artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-layer-prefix-all45-prompt-smoke.json",
+  "command": [
+    "/home/lhl/ai/llama.cpp-cpu/llama-cli",
+    "--model",
+    "/data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf",
+    "--prompt",
+    "<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n",
+    "--predict",
+    "1",
+    "--temp",
+    "0",
+    "--top-k",
+    "1",
+    "--top-p",
+    "1",
+    "--min-p",
+    "0",
+    "--repeat-penalty",
+    "1",
+    "--seed",
+    "0",
+    "--no-display-prompt",
+    "--simple-io",
+    "--log-disable"
+  ],
+  "command_shell": "/home/lhl/ai/llama.cpp-cpu/llama-cli --model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf --prompt '<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n' --predict 1 --temp 0 --top-k 1 --top-p 1 --min-p 0 --repeat-penalty 1 --seed 0 --no-display-prompt --simple-io --log-disable",
+  "expected_next_token_id": 369,
+  "expected_next_token_logit": 19.158626556396484,
+  "expected_next_token_text": " |",
+  "expected_top_tokens": [
+    {
+      "logit": 19.158626556396484,
+      "rank": 1,
+      "token_id": 369,
+      "token_text": " |"
+    },
+    {
+      "logit": 18.343582153320312,
+      "rank": 2,
+      "token_id": 5,
+      "token_text": "#"
+    },
+    {
+      "logit": 16.907772064208984,
+      "rank": 3,
+      "token_id": 15251,
+      "token_text": "\ufeff"
+    },
+    {
+      "logit": 16.793684005737305,
+      "rank": 4,
+      "token_id": 223,
+      "token_text": " "
+    },
+    {
+      "logit": 15.653017044067383,
+      "rank": 5,
+      "token_id": 201,
+      "token_text": "\n"
+    }
+  ],
+  "llama_cli": "/home/lhl/ai/llama.cpp-cpu/llama-cli",
+  "llama_cpp_version": "version: 4131 (8e752a77)\nbuilt with cc (GCC) 14.2.1 20240910 for x86_64-pc-linux-gnu",
+  "model": "/data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf",
+  "n_predict": 1,
+  "note": "Dry-run oracle plan by default. Use --execute only when the machine can afford a llama.cpp one-token run over the StepFun Q3_K_L GGUF shards; compare output/tokenization manually or with a follow-up parser before claiming parity.",
+  "prompt": "<\uff5cbegin\u2581of\u2581sentence\uff5c><|im_start|>system\nReasoning: low\n\n<|im_end|>\n<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n",
+  "prompt_length": 23,
+  "status": "planned"
+}
