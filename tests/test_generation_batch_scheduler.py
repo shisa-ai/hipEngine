@@ -13223,6 +13223,18 @@ def test_qwen35_retained_request_observability_blockers_cover_row_evidence() -> 
     assert "observability.per_request.0.kv_pages_peak is below kv_pages_owned" in blockers
     assert "observability.per_request.0.bucket_key is not a non-empty string or null" in blockers
 
+    invalid_timing = json.loads(json.dumps(valid))
+    invalid_timing["1"]["queue_seconds"] = 1.0
+    invalid_timing["1"]["prefill_seconds"] = 1.0
+    invalid_timing["1"]["decode_seconds"] = 1.0
+    invalid_timing["1"]["admitted_timestamp"] = 20.0
+    invalid_timing["1"]["completion_timestamp"] = 22.5
+    blockers = retained_bench._request_observability_blockers(
+        invalid_timing,
+        expected_concurrency=2,
+    )
+    assert "observability.per_request.1.timing components exceed completion latency" in blockers
+
 
 def test_qwen35_retained_completed_execution_blockers_cover_row_evidence() -> None:
     completed = [

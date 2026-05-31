@@ -2690,12 +2690,20 @@ def _request_observability_blockers(per_request: Any, *, expected_concurrency: i
                 blockers.append(f"{label}.{field} is unavailable or non-finite")
         admitted_timestamp = row.get("admitted_timestamp")
         completion_timestamp = row.get("completion_timestamp")
-        if (
-            _is_finite_nonnegative_number(admitted_timestamp)
-            and _is_finite_nonnegative_number(completion_timestamp)
-            and float(completion_timestamp) <= float(admitted_timestamp)
-        ):
-            blockers.append(f"{label}.completion_timestamp is not greater than admitted_timestamp")
+        if _is_finite_nonnegative_number(admitted_timestamp) and _is_finite_nonnegative_number(completion_timestamp):
+            latency = float(completion_timestamp) - float(admitted_timestamp)
+            if latency <= 0.0:
+                blockers.append(f"{label}.completion_timestamp is not greater than admitted_timestamp")
+            else:
+                timing_components = (
+                    row.get("queue_seconds"),
+                    row.get("prefill_seconds"),
+                    row.get("decode_seconds"),
+                )
+                if all(_is_finite_nonnegative_number(component) for component in timing_components):
+                    component_total = sum(float(component) for component in timing_components)
+                    if component_total - latency > max(1e-9, latency * 1e-6):
+                        blockers.append(f"{label}.timing components exceed completion latency")
         for field in ("kv_pages_owned", "kv_pages_peak"):
             value = row.get(field)
             if field in row and (not isinstance(value, int) or isinstance(value, bool) or value < 0):
