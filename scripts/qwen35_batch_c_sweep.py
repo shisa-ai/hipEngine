@@ -3948,11 +3948,12 @@ def _skipped_preconditions(entries: Sequence[dict[str, Any]]) -> list[dict[str, 
 
 
 def _summary_status(entries: Sequence[dict[str, Any]]) -> str:
-    if any(entry["status"] == _FAILED_COMMAND_STATUS for entry in entries):
+    statuses = [entry.get("status") for entry in entries]
+    if any(status == _FAILED_COMMAND_STATUS for status in statuses):
         return "failed"
-    if any(entry["status"] == _SKIPPED_COMMAND_STATUS for entry in entries):
+    if any(status == _SKIPPED_COMMAND_STATUS for status in statuses):
         return "blocked"
-    if all(entry["status"] == _PLANNED_COMMAND_STATUS for entry in entries):
+    if statuses and all(status == _PLANNED_COMMAND_STATUS for status in statuses):
         return "planned"
     return "passed"
 

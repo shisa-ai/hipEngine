@@ -7367,6 +7367,11 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.batch_size must be listed in batch_sizes"):
             c_sweep.validate_sweep_summary(tampered_unlisted_batch_size)
 
+        tampered_missing_status = json.loads(json.dumps(summary))
+        del tampered_missing_status["commands"][index]["status"]
+        with pytest.raises(ValueError, match=r"commands\[\]\.status must be planned, passed, skipped, or failed"):
+            c_sweep.validate_sweep_summary(tampered_missing_status)
+
         tampered_unknown_status = json.loads(json.dumps(summary))
         tampered_unknown_status["commands"][index]["status"] = "blocked"
         with pytest.raises(ValueError, match=r"commands\[\]\.status must be planned, passed, skipped, or failed"):
