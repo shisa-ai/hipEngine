@@ -15100,6 +15100,20 @@ def test_qwen35_retained_graph_histogram_blockers_reject_unknown_buckets() -> No
     assert "execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns observation count must cover graph_bucket_stats.hits" in short_histogram
     assert any("kernel_time_histogram_ns must include exactly the fixed buckets" in blocker for blocker in short_histogram)
 
+    bool_count_histogram = {bucket: 0 for bucket in GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS}
+    bool_count_histogram["le_10us"] = True
+    bool_count = retained_bench._graph_kernel_time_histogram_blockers(
+        {"graph_bucket_stats": {"hits": 1, "kernel_time_histogram_ns": bool_count_histogram}}
+    )
+    assert "execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns.le_10us is unavailable or non-integer" in bool_count
+
+    fractional_count_histogram = {bucket: 0 for bucket in GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS}
+    fractional_count_histogram["le_100us"] = 1.5
+    fractional_count = retained_bench._graph_kernel_time_histogram_blockers(
+        {"graph_bucket_stats": {"hits": 1, "kernel_time_histogram_ns": fractional_count_histogram}}
+    )
+    assert "execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns.le_100us is unavailable or non-integer" in fractional_count
+
 
 def test_qwen35_retained_graph_replay_profiler_evidence_blockers_require_graph_duration() -> None:
     scheduler_metadata = {
