@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ctypes
 import hashlib
 import struct
 from dataclasses import dataclass
@@ -18,6 +19,7 @@ from hipengine.core.memory import (
     copy_host_to_device,
     free,
     host_array_ptr,
+    host_buffer_ptr,
     malloc,
 )
 from hipengine.core.tensor import Tensor
@@ -174,6 +176,41 @@ class StepFunKVCacheAllocation:
 
     def free(self, *, runtime: HipRuntime | None = None) -> None:
         for buffer in reversed(self.buffers):
+            free(buffer, runtime=runtime)
+
+
+@dataclass(frozen=True)
+class StepFunKVSpanInputDeviceUpload:
+    """Owned device buffers for planned StepFun KV span-input uploads."""
+
+    buffers: Mapping[str, DeviceBuffer]
+    payload_sha256: Mapping[str, str]
+    total_nbytes: int
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        return tuple(self.buffers.keys())
+
+    @property
+    def buffer_count(self) -> int:
+        return len(self.buffers)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "buffer_count": self.buffer_count,
+            "total_nbytes": self.total_nbytes,
+            "buffers": {
+                name: {
+                    "ptr": buffer.ptr,
+                    "nbytes": buffer.nbytes,
+                    "sha256": self.payload_sha256[name],
+                }
+                for name, buffer in self.buffers.items()
+            },
+        }
+
+    def free(self, *, runtime: HipRuntime | None = None) -> None:
+        for buffer in reversed(tuple(self.buffers.values())):
             free(buffer, runtime=runtime)
 
 
@@ -621,6 +658,38 @@ class StepFunKVDecodeRunPlan:
             "total_nbytes": sum(int(entry["nbytes"]) for entry in entries),
             "note": "Deterministic little-endian host payload hashes for StepFun KV span inputs.",
         }
+
+    def upload_span_input_payloads(
+        self,
+        *,
+        runtime: HipRuntime | None = None,
+    ) -> StepFunKVSpanInputDeviceUpload:
+        """Allocate/copy planned span-input payloads to device buffers."""
+
+        payloads = self.span_input_host_payload_bytes
+        buffers: dict[str, DeviceBuffer] = {}
+        payload_sha256: dict[str, str] = {}
+        try:
+            for name, payload in payloads.items():
+                buffer = malloc(len(payload), runtime=runtime)
+                buffers[name] = buffer
+                host_payload = ctypes.create_string_buffer(payload, len(payload))
+                copy_host_to_device(
+                    buffer,
+                    host_buffer_ptr(host_payload),
+                    len(payload),
+                    runtime=runtime,
+                )
+                payload_sha256[name] = hashlib.sha256(payload).hexdigest()
+        except Exception:
+            for buffer in reversed(tuple(buffers.values())):
+                free(buffer, runtime=runtime)
+            raise
+        return StepFunKVSpanInputDeviceUpload(
+            buffers=buffers,
+            payload_sha256=payload_sha256,
+            total_nbytes=sum(len(payload) for payload in payloads.values()),
+        )
 
     @property
     def prompt_fits_resource_plan(self) -> bool:
@@ -2035,6 +2104,7 @@ __all__ = [
     "StepFunKVCacheAllocation",
     "StepFunKVDecodeKernelPlan",
     "StepFunKVDecodeRunPlan",
+    "StepFunKVSpanInputDeviceUpload",
     "StepFunLayerPrefixLogitsProbe",
     "StepFunMoERouterResult",
     "StepFunOneLayerLogitsProbe",

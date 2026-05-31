@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import hashlib
 import os
 import struct
@@ -30,6 +31,28 @@ def _stepfun_gguf_paths() -> tuple[Path, ...]:
             "to a directory containing Step-3.7-flash-Q3_K_L-00001..00003.gguf"
         )
     return paths
+
+
+class _FakeHipRuntime:
+    def __init__(self) -> None:
+        self.next_ptr = 0x1000
+        self.allocations: dict[int, int] = {}
+        self.copies: dict[int, bytes] = {}
+        self.freed: list[int] = []
+
+    def malloc(self, nbytes: int) -> int:
+        ptr = self.next_ptr
+        self.next_ptr += int(nbytes) + 0x100
+        self.allocations[ptr] = int(nbytes)
+        return ptr
+
+    def memcpy(self, dst: int, src: int, nbytes: int, kind: int) -> None:
+        assert int(kind) == 1
+        assert self.allocations[int(dst)] >= int(nbytes)
+        self.copies[int(dst)] = ctypes.string_at(int(src), int(nbytes))
+
+    def free(self, ptr: int) -> None:
+        self.freed.append(int(ptr))
 
 
 def test_stepfun_short_context_decode_plan_preserves_chat_prefix_and_multi_eos() -> None:
@@ -244,6 +267,29 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
     }
     assert host_payloads["entries"][1]["sha256"] == hashlib.sha256(prompt_live_payload).hexdigest()
     assert host_payloads["entries"][3]["preview_values"] == [run_plan.prompt_length]
+    fake_runtime = _FakeHipRuntime()
+    device_upload = run_plan.upload_span_input_payloads(runtime=fake_runtime)
+    try:
+        assert device_upload.names == (
+            "prompt_base_offsets",
+            "prompt_live_counts",
+            "decode_base_offsets",
+            "decode_kv_write_position",
+            "decode_attention_live_counts",
+        )
+        assert device_upload.buffer_count == 5
+        assert device_upload.total_nbytes == host_payloads["total_nbytes"]
+        for name, buffer in device_upload.buffers.items():
+            assert buffer.nbytes == len(host_payload_bytes[name])
+            assert fake_runtime.copies[buffer.ptr] == host_payload_bytes[name]
+            assert device_upload.payload_sha256[name] == hashlib.sha256(host_payload_bytes[name]).hexdigest()
+        upload_payload = device_upload.to_dict()
+        assert upload_payload["buffer_count"] == 5
+        assert upload_payload["total_nbytes"] == host_payloads["total_nbytes"]
+        assert upload_payload["buffers"]["prompt_base_offsets"]["nbytes"] == prompt_base_offsets_nbytes
+    finally:
+        device_upload.free(runtime=fake_runtime)
+    assert fake_runtime.freed == [buffer.ptr for buffer in reversed(tuple(device_upload.buffers.values()))]
     assert payload["stop_token_ids"] == [1, 2, 128007]
     assert payload["kv_dispatch_keys"]["decode_attention"] == {
         "backend": "hip_gfx1151",
