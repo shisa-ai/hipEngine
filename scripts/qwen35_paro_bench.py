@@ -84,6 +84,8 @@ def _hardware_context() -> dict[str, Any]:
         "arch": "gfx1100",
         "default_hardware": gpu_name == "AMD Radeon Pro W7900",
         "visible_device": visible_device,
+        "rocminfo": _run_capture(["bash", "-lc", "rocminfo | grep -E 'Name:|gfx' | head -4"], timeout=10.0),
+        "rocm_smi": _run_capture(["rocm-smi", "--showmeminfo", "vram", "--showuse", "--showtemp"], timeout=10.0),
     }
 
 

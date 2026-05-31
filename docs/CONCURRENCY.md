@@ -1454,7 +1454,7 @@ roll-up/status view.
       labels also preserve `HIP_VISIBLE_DEVICES=1` as an `env` prefix for the
       benchmark, primitive correctness reference, and profiled command; the c=1
       baseline artifact self-binds `artifact_path` and its benchmark label,
-      hardware metadata, and software dirty-state plus the serial-bridge baseline benchmark
+      HIP/ROCm hardware metadata, and software dirty-state plus the serial-bridge baseline benchmark
       label/hardware metadata preserve the same visible GPU1/XTX provenance;
       retained-bench scaling and c-sweep
       preconditions reject scaling references whose visible-device env conflicts,

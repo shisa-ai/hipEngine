@@ -11425,8 +11425,13 @@ def test_qwen35_c1_baseline_hardware_context_uses_visible_hip_device(monkeypatch
             name_buffer.value = b"AMD Radeon RX 7900 XTX"
             return 0
 
+    def fake_run_capture(argv, *, timeout):
+        command = " ".join(str(part) for part in argv)
+        return {"command": command, "returncode": 0, "output": "Name: gfx1100\nGPU[0] VRAM Total Memory"}
+
     monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
     monkeypatch.setattr(paro_bench.ctypes, "CDLL", lambda _path: FakeHipLibrary())
+    monkeypatch.setattr(paro_bench, "_run_capture", fake_run_capture)
 
     hardware = paro_bench._hardware_context()
 
@@ -11434,6 +11439,8 @@ def test_qwen35_c1_baseline_hardware_context_uses_visible_hip_device(monkeypatch
     assert hardware["default_hardware"] is False
     assert hardware["visible_device"]["env"] == {"HIP_VISIBLE_DEVICES": "1"}
     assert hardware["visible_device"]["device_name"] == "AMD Radeon RX 7900 XTX"
+    assert "rocminfo" in hardware
+    assert "rocm_smi" in hardware
 
 
 def test_qwen35_c1_baseline_command_preserves_visible_hip_device_env(monkeypatch: pytest.MonkeyPatch) -> None:
