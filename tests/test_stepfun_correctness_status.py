@@ -854,6 +854,26 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert handoff["open_or_partial_items_p0_p12"] == 2
     assert handoff["open_blocker_count"] == 2
     assert handoff["open_blockers"] == ["oracle_parity_blocked", "kv_backed_decode_not_wired"]
+    assert handoff["blocker_work_queue"] == [
+        {
+            "blocker_kind": "oracle_parity_blocked",
+            "command_available": True,
+            "first_missing_evidence": "oracle_completed_successfully",
+            "first_missing_precondition": "step35_not_rejected",
+            "gap_report_status": "blocked",
+            "gate": "oracle_parity",
+            "oracle_blocker_kind": "llama_cpp_missing_step35_architecture",
+        },
+        {
+            "blocker_kind": "kv_backed_decode_not_wired",
+            "command_available": True,
+            "first_missing_evidence": "streaming_runner_ready_flags",
+            "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
+            "gap_report_status": "blocked",
+            "gate": "kv_backed_decode",
+        },
+    ]
+    assert handoff["first_blocker_work_item"] == handoff["blocker_work_queue"][0]
     assert handoff["ready_gates"] == []
     assert handoff["blocked_gates"] == ["oracle_parity", "kv_backed_decode", "e2e_inference"]
     assert handoff["ready_signals"] == {
@@ -1163,6 +1183,12 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
         "oracle_parity_blocked",
         "kv_backed_decode_not_wired",
     ]
+    assert payload["handoff_summary"]["first_blocker_work_item"]["blocker_kind"] == (
+        "oracle_parity_blocked"
+    )
+    assert payload["handoff_summary"]["blocker_work_queue"][1][
+        "first_streaming_runner_blocker"
+    ] == "streaming_decode_loop_not_wired"
     assert payload["handoff_summary"]["blocked_gates"] == [
         "oracle_parity",
         "kv_backed_decode",
@@ -1223,6 +1249,26 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "oracle_parity_blocked",
         "kv_backed_decode_not_wired",
     ]
+    assert payload["blocker_work_queue"] == [
+        {
+            "blocker_kind": "oracle_parity_blocked",
+            "command_available": True,
+            "first_missing_evidence": "oracle_completed_successfully",
+            "first_missing_precondition": "step35_not_rejected",
+            "gap_report_status": "blocked",
+            "gate": "oracle_parity",
+            "oracle_blocker_kind": "llama_cpp_missing_step35_architecture",
+        },
+        {
+            "blocker_kind": "kv_backed_decode_not_wired",
+            "command_available": True,
+            "first_missing_evidence": "streaming_runner_ready_flags",
+            "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
+            "gap_report_status": "blocked",
+            "gate": "kv_backed_decode",
+        },
+    ]
+    assert payload["first_blocker_work_item"] == payload["blocker_work_queue"][0]
     assert payload["ready_signals"]["kv_decode_dispatch_ready"] is True
     assert payload["ready_signals"]["kv_decode_run_plan_recorded"] is True
     assert payload["ready_signals"]["kv_decode_input_upload_plan_recorded"] is True

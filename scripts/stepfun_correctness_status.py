@@ -834,11 +834,53 @@ def _handoff_summary(
     launch_schedule = dict(kv_decode_dispatch_progress.get("launch_schedule", {}))
     run_plan = dict(kv_decode_dispatch_progress.get("run_plan", {}))
     decode_input_upload_plan = dict(run_plan.get("decode_input_upload_plan", {}))
+    blocker_work_queue: list[dict[str, object]] = []
+    for blocker_kind in blocker_kinds:
+        if blocker_kind == "oracle_parity_blocked":
+            blocker_work_queue.append(
+                {
+                    "blocker_kind": blocker_kind,
+                    "gate": "oracle_parity",
+                    "command_available": blocker_kind in next_action_commands,
+                    "gap_report_status": oracle_gap_report.get("status"),
+                    "first_missing_precondition": oracle_gap_report.get(
+                        "first_missing_precondition"
+                    ),
+                    "first_missing_evidence": oracle_gap_report.get("first_missing_evidence"),
+                    "oracle_blocker_kind": oracle_gap_report.get("oracle_blocker_kind"),
+                }
+            )
+        elif blocker_kind == "kv_backed_decode_not_wired":
+            blocker_work_queue.append(
+                {
+                    "blocker_kind": blocker_kind,
+                    "gate": "kv_backed_decode",
+                    "command_available": blocker_kind in next_action_commands,
+                    "gap_report_status": kv_backed_decode_gap_report.get("status"),
+                    "first_missing_evidence": kv_backed_decode_gap_report.get(
+                        "first_missing_evidence"
+                    ),
+                    "first_streaming_runner_blocker": kv_backed_decode_gap_report.get(
+                        "first_streaming_runner_blocker"
+                    ),
+                }
+            )
+        else:
+            blocker_work_queue.append(
+                {
+                    "blocker_kind": blocker_kind,
+                    "gate": None,
+                    "command_available": blocker_kind in next_action_commands,
+                    "gap_report_status": None,
+                }
+            )
     return {
         "status": "blocked" if blocker_kinds else "ready",
         "open_or_partial_items_p0_p12": docs_status.get("open_or_partial_count_p0_p12"),
         "open_blocker_count": len(blocker_kinds),
         "open_blockers": blocker_kinds,
+        "blocker_work_queue": blocker_work_queue,
+        "first_blocker_work_item": blocker_work_queue[0] if blocker_work_queue else None,
         "ready_gates": ready_gates,
         "blocked_gates": blocked_gates,
         "ready_signals": {

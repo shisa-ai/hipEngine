@@ -67,6 +67,34 @@
       "kv_backed_decode": true,
       "oracle_parity": true
     },
+    "blocker_work_queue": [
+      {
+        "blocker_kind": "oracle_parity_blocked",
+        "command_available": true,
+        "first_missing_evidence": "oracle_completed_successfully",
+        "first_missing_precondition": null,
+        "gap_report_status": "blocked",
+        "gate": "oracle_parity",
+        "oracle_blocker_kind": "llama_cpp_oracle_timeout"
+      },
+      {
+        "blocker_kind": "kv_backed_decode_not_wired",
+        "command_available": true,
+        "first_missing_evidence": "streaming_runner_ready_flags",
+        "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
+        "gap_report_status": "blocked",
+        "gate": "kv_backed_decode"
+      }
+    ],
+    "first_blocker_work_item": {
+      "blocker_kind": "oracle_parity_blocked",
+      "command_available": true,
+      "first_missing_evidence": "oracle_completed_successfully",
+      "first_missing_precondition": null,
+      "gap_report_status": "blocked",
+      "gate": "oracle_parity",
+      "oracle_blocker_kind": "llama_cpp_oracle_timeout"
+    },
     "kv_backed_decode_gap_report": {
       "first_missing_evidence": "streaming_runner_ready_flags",
       "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
@@ -1387,8 +1415,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "42ef67c2e84e51dbd1d364583d59294cf91e374b01975026d1e801c59046c46a",
-      "size_bytes": 52501
+      "sha256": "bd3f4ccb096020e9d03cf4862abe21be334dc9b1c8148089e81baeef7c96e400",
+      "size_bytes": 52532
     },
     "oracle": {
       "exists": true,
