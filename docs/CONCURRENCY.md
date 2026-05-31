@@ -1455,7 +1455,7 @@ roll-up/status view.
       stale primitive command text/argv, wrong device env, wrong-script/category,
       duplicate `--rows`/`--seed`/`--json` labels, blank inline/missing
       `--json`, blank inline/missing/non-integer `--rows`/`--seed` values,
-      parent-directory/symlinked/symlink-parent `output_dir`, blank/non-string
+      parent-directory/symlinked/symlink-parent `output_dir`, missing/blank/non-string
       `artifact_path`, direct-symlink, symlink-parent, parent-directory, or
       outside-output-dir artifacts, wrong artifact filenames,
       artifact-path/argv `--json`, `--rows`, or `--seed` labels in
