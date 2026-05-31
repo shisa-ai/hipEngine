@@ -7281,6 +7281,19 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         index for index, entry in enumerate(summary["commands"]) if entry["category"] == "primitive"
     ]
     for index in primitive_entry_indices:
+        for tamper_argv_json in (False, True):
+            tampered_artifact_link = json.loads(json.dumps(summary))
+            entry = tampered_artifact_link["commands"][index]
+            stale_artifact_path = str(Path(entry["artifact_path"]).with_name("primitive-stale.json"))
+            if tamper_argv_json:
+                artifact_link_argv = entry["argv"]
+                artifact_link_argv[artifact_link_argv.index("--json") + 1] = stale_artifact_path
+                entry["command"] = shlex.join(artifact_link_argv)
+            else:
+                entry["artifact_path"] = stale_artifact_path
+            with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match commands\[\]\.argv --json"):
+                c_sweep.validate_sweep_summary(tampered_artifact_link)
+
         tampered_rows = json.loads(json.dumps(summary))
         rows_argv = tampered_rows["commands"][index]["argv"]
         rows_argv[rows_argv.index("--rows") + 1] = "9"
