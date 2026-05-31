@@ -2231,8 +2231,12 @@ Establish these before optimizing anything:
 - [ ] Backpressure and fairness policies once the scheduler is continuous:
   - max active requests, max queued requests, max prefill chunk tokens;
     progress: `ResidentBatchScheduler(max_pending_requests=...)` now enforces
-    a bounded pending queue and rejects excess submissions before admission,
-    covered by `test_resident_batch_scheduler_enforces_pending_queue_limit`.
+    a bounded pending queue, `ResidentEngineLoop` wires it through
+    `EngineLoopConfig` / `HIPENGINE_MAX_PENDING_REQUESTS` /
+    `--max-pending-requests`, and excess submissions are rejected before
+    admission; covered by `test_resident_batch_scheduler_enforces_pending_queue_limit`,
+    `test_engine_loop_cli_env_defaults_match_docs`, and
+    `test_engine_loop_cli_env_overrides`.
   - prefill-vs-decode policy to protect decode latency (default
     `protect_decode`, see §Engine-loop contract);
   - sampling-parameter grouping without starving incompatible requests

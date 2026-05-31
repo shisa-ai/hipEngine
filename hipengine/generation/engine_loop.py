@@ -36,6 +36,7 @@ class EngineLoopConfig:
     kv_pool_high_water_pages: int | None = None
     kv_pool_chunk_pages: int = DEFAULT_KV_POOL_CHUNK_PAGES
     kv_pool_idle_grace_seconds: float = DEFAULT_KV_POOL_IDLE_GRACE_SECONDS
+    max_pending_requests: int | None = None
 
     def __post_init__(self) -> None:
         if self.prefill_decode_policy not in PREFILL_DECODE_POLICIES:
@@ -52,6 +53,8 @@ class EngineLoopConfig:
             raise ValueError("kv_pool_chunk_pages must be positive")
         if self.kv_pool_idle_grace_seconds < 0:
             raise ValueError("kv_pool_idle_grace_seconds must be non-negative")
+        if self.max_pending_requests is not None and self.max_pending_requests <= 0:
+            raise ValueError("max_pending_requests must be positive when set")
 
 
 @dataclass(frozen=True, slots=True)
@@ -239,6 +242,12 @@ def add_engine_loop_config_args(
         ),
         help="Seconds before idle tail chunks can shrink (env HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS; default: 30.0)",
     )
+    parser.add_argument(
+        "--max-pending-requests",
+        type=_positive_int_arg,
+        default=_env_optional_positive_int(env, "HIPENGINE_MAX_PENDING_REQUESTS"),
+        help="Optional pending request queue cap (env HIPENGINE_MAX_PENDING_REQUESTS; default: unset)",
+    )
 
 
 def engine_loop_config_from_args(args: object) -> EngineLoopConfig:
@@ -255,6 +264,11 @@ def engine_loop_config_from_args(args: object) -> EngineLoopConfig:
         ),
         kv_pool_chunk_pages=int(getattr(args, "kv_pool_chunk_pages")),
         kv_pool_idle_grace_seconds=float(getattr(args, "kv_pool_idle_grace_seconds")),
+        max_pending_requests=(
+            None
+            if getattr(args, "max_pending_requests") is None
+            else int(getattr(args, "max_pending_requests"))
+        ),
     )
 
 
@@ -320,19 +334,27 @@ class ResidentEngineLoop:
         prefill_chunk_size: int = 256,
         context_bucket_size: int = 256,
         prefill_decode_policy: str = "protect_decode",
+        max_pending_requests: int | None = None,
         config: EngineLoopConfig | None = None,
     ) -> None:
         if prefill_chunk_size <= 0:
             raise ValueError("prefill_chunk_size must be positive")
-        if config is not None and prefill_decode_policy != "protect_decode":
-            raise ValueError("pass either config or prefill_decode_policy override, not both")
-        resolved_config = config or EngineLoopConfig(prefill_decode_policy=prefill_decode_policy)
+        if config is not None and (prefill_decode_policy != "protect_decode" or max_pending_requests is not None):
+            raise ValueError("pass either config or direct engine-loop overrides, not both")
+        resolved_config = config or EngineLoopConfig(
+            prefill_decode_policy=prefill_decode_policy,
+            max_pending_requests=max_pending_requests,
+        )
         self.runner = runner
         self.prefill_chunk_size = int(prefill_chunk_size)
         self.config = resolved_config
         self.prefill_decode_policy = resolved_config.prefill_decode_policy
         self._last_work_kind: WorkKind | None = None
-        self.scheduler = ResidentBatchScheduler(capacity=capacity, context_bucket_size=context_bucket_size)
+        self.scheduler = ResidentBatchScheduler(
+            capacity=capacity,
+            context_bucket_size=context_bucket_size,
+            max_pending_requests=resolved_config.max_pending_requests,
+        )
 
     @property
     def pending_count(self) -> int:

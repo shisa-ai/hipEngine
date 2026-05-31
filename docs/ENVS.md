@@ -169,6 +169,7 @@ when an adapter/parser calls `add_engine_loop_config_args(...)`.
 | `HIPENGINE_KV_POOL_HIGH_WATER_PAGES` | unset | `--kv-pool-high-water-pages` | Optional grow-on-admission page cap; unset means no scaffold cap. |
 | `HIPENGINE_KV_POOL_CHUNK_PAGES` | `128` | `--kv-pool-chunk-pages` | Pages per grow/shrink chunk; must be > 0. |
 | `HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS` | `30.0` | `--kv-pool-idle-grace-seconds` | Seconds before fully-free tail chunks are eligible to shrink; must be ≥ 0. |
+| `HIPENGINE_MAX_PENDING_REQUESTS` | unset | `--max-pending-requests` | Optional pending request queue cap for the resident scheduler; must be > 0 when set. |
 
 ## PARO variables
 

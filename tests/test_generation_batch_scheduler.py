@@ -10504,6 +10504,7 @@ def test_engine_loop_cli_env_defaults_match_docs() -> None:
     assert config.kv_pool_high_water_pages is None
     assert config.kv_pool_chunk_pages == 128
     assert config.kv_pool_idle_grace_seconds == 30.0
+    assert config.max_pending_requests is None
 
     docs = Path("docs/ENVS.md").read_text()
     for text in [
@@ -10513,6 +10514,7 @@ def test_engine_loop_cli_env_defaults_match_docs() -> None:
         "HIPENGINE_KV_POOL_HIGH_WATER_PAGES",
         "HIPENGINE_KV_POOL_CHUNK_PAGES",
         "HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS",
+        "HIPENGINE_MAX_PENDING_REQUESTS",
         "protect_decode",
         "128",
         "30.0",
@@ -10528,6 +10530,7 @@ def test_engine_loop_cli_env_overrides() -> None:
         "HIPENGINE_KV_POOL_HIGH_WATER_PAGES": "64",
         "HIPENGINE_KV_POOL_CHUNK_PAGES": "4",
         "HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS": "1.5",
+        "HIPENGINE_MAX_PENDING_REQUESTS": "6",
     }
     env_config = engine_loop_config_from_env(env)
     assert env_config == EngineLoopConfig(
@@ -10537,6 +10540,7 @@ def test_engine_loop_cli_env_overrides() -> None:
         kv_pool_high_water_pages=64,
         kv_pool_chunk_pages=4,
         kv_pool_idle_grace_seconds=1.5,
+        max_pending_requests=6,
     )
 
     parser = argparse.ArgumentParser()
@@ -10556,6 +10560,8 @@ def test_engine_loop_cli_env_overrides() -> None:
                 "8",
                 "--kv-pool-idle-grace-seconds",
                 "2.5",
+                "--max-pending-requests",
+                "9",
             ]
         )
     )
@@ -10565,6 +10571,10 @@ def test_engine_loop_cli_env_overrides() -> None:
     assert cli_config.kv_pool_high_water_pages == 96
     assert cli_config.kv_pool_chunk_pages == 8
     assert cli_config.kv_pool_idle_grace_seconds == 2.5
+    assert cli_config.max_pending_requests == 9
+
+    with pytest.raises(ValueError, match="max_pending_requests"):
+        EngineLoopConfig(max_pending_requests=0)
 
 
 def test_resident_scheduler_completion_observability_and_pool_counters() -> None:
@@ -10875,8 +10885,29 @@ def test_resident_engine_loop_prefill_decode_policies() -> None:
         (WorkKind.PREFILL, (r1,)),
     ]
 
+    capped_loop = ResidentEngineLoop(_FakeSerialBridgeRunner(), capacity=1, max_pending_requests=1)
+    capped_loop.submit([10], max_new_tokens=1)
+    with pytest.raises(ValueError, match="pending request queue is full"):
+        capped_loop.submit([20], max_new_tokens=1)
+
+    configured_loop = ResidentEngineLoop(
+        _FakeSerialBridgeRunner(),
+        capacity=1,
+        config=EngineLoopConfig(max_pending_requests=1),
+    )
+    configured_loop.submit([30], max_new_tokens=1)
+    with pytest.raises(ValueError, match="pending request queue is full"):
+        configured_loop.submit([40], max_new_tokens=1)
+
     with pytest.raises(ValueError, match="prefill_decode_policy"):
         ResidentEngineLoop(_FakeSerialBridgeRunner(), capacity=1, prefill_decode_policy="unknown")
+    with pytest.raises(ValueError, match="direct engine-loop overrides"):
+        ResidentEngineLoop(
+            _FakeSerialBridgeRunner(),
+            capacity=1,
+            config=EngineLoopConfig(),
+            max_pending_requests=1,
+        )
 
 
 def test_resident_batch_scheduler_admits_compacts_and_routes_decode() -> None:
