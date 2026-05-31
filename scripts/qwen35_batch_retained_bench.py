@@ -2622,6 +2622,42 @@ def _execution_token_evidence_blockers(
     return blockers
 
 
+def _timing_measurement_blockers(
+    bench: Mapping[str, Any],
+    *,
+    expected_decode_tokens: int,
+    expected_warmup_decode_tokens: int,
+) -> list[str]:
+    blockers: list[str] = []
+    for field in ("prefill_seconds", "decode_seconds"):
+        if not _is_finite_positive_number(bench.get(field)):
+            blockers.append(f"measurements.{field} is not positive")
+    for field in ("load_seconds", "warmup_seconds"):
+        if not _is_finite_nonnegative_number(bench.get(field)):
+            blockers.append(f"measurements.{field} is not finite non-negative")
+
+    def _validate_samples(field: str, expected_len: int, parent_seconds: str) -> None:
+        samples = bench.get(field)
+        if not isinstance(samples, list):
+            blockers.append(f"measurements.{field} is not a list")
+            return
+        if len(samples) != expected_len:
+            blockers.append(f"measurements.{field} length does not match expected token count")
+        if any(not _is_finite_positive_number(sample) for sample in samples):
+            blockers.append(f"measurements.{field} samples are not all positive")
+            return
+        parent_value = bench.get(parent_seconds)
+        if _is_finite_nonnegative_number(parent_value):
+            parent_float = float(parent_value)
+            sample_sum = sum(float(sample) for sample in samples)
+            if sample_sum - parent_float > max(1e-9, parent_float * 1e-6):
+                blockers.append(f"measurements.{field} samples exceed {parent_seconds}")
+
+    _validate_samples("decode_step_seconds", expected_decode_tokens, "decode_seconds")
+    _validate_samples("warmup_step_seconds", expected_warmup_decode_tokens, "warmup_seconds")
+    return blockers
+
+
 def _request_observability_blockers(per_request: Any, *, expected_concurrency: int) -> list[str]:
     if not isinstance(per_request, Mapping):
         return ["observability.per_request is missing"]
@@ -3482,6 +3518,11 @@ def _build_payload(
         expected_concurrency=args.batch_size,
         expected_decode_tokens=args.decode_tokens,
     )
+    measurement_blockers = _timing_measurement_blockers(
+        bench,
+        expected_decode_tokens=args.decode_tokens,
+        expected_warmup_decode_tokens=args.warmup_decode_tokens,
+    )
     completed_blockers = _completed_execution_blockers(
         bench.get("completed"),
         expected_concurrency=args.batch_size,
@@ -3513,6 +3554,7 @@ def _build_payload(
         and not memory_blockers
         and not observability_blockers
         and not token_evidence_blockers
+        and not measurement_blockers
         and not completed_blockers
         and not graph_bucket_blockers
         and not int8_kv_primitive_blockers
@@ -3544,6 +3586,7 @@ def _build_payload(
     blocked_reasons.extend(memory_blockers)
     blocked_reasons.extend(observability_blockers)
     blocked_reasons.extend(token_evidence_blockers)
+    blocked_reasons.extend(measurement_blockers)
     blocked_reasons.extend(completed_blockers)
     blocked_reasons.extend(graph_bucket_blockers)
     blocked_reasons.extend(int8_kv_primitive_blockers)

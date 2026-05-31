@@ -13149,6 +13149,38 @@ def test_qwen35_retained_execution_token_evidence_blockers_cover_seed_and_decode
     assert "execution.generated_tokens.1 is not a token payload list" in blockers
 
 
+def test_qwen35_retained_timing_measurement_blockers_cover_step_samples() -> None:
+    valid = {
+        "load_seconds": 0.1,
+        "prefill_seconds": 1.0,
+        "warmup_seconds": 0.2,
+        "decode_seconds": 0.5,
+        "warmup_step_seconds": [0.1, 0.1],
+        "decode_step_seconds": [0.2, 0.3],
+    }
+    assert retained_bench._timing_measurement_blockers(
+        valid,
+        expected_decode_tokens=2,
+        expected_warmup_decode_tokens=2,
+    ) == []
+
+    invalid = json.loads(json.dumps(valid))
+    invalid["prefill_seconds"] = 0.0
+    invalid["warmup_seconds"] = 0.1
+    invalid["decode_seconds"] = 0.1
+    invalid["warmup_step_seconds"] = [0.0, 0.2]
+    invalid["decode_step_seconds"] = [0.2]
+    blockers = retained_bench._timing_measurement_blockers(
+        invalid,
+        expected_decode_tokens=2,
+        expected_warmup_decode_tokens=2,
+    )
+    assert "measurements.prefill_seconds is not positive" in blockers
+    assert "measurements.decode_step_seconds length does not match expected token count" in blockers
+    assert "measurements.decode_step_seconds samples exceed decode_seconds" in blockers
+    assert "measurements.warmup_step_seconds samples are not all positive" in blockers
+
+
 def test_qwen35_retained_request_observability_blockers_cover_row_evidence() -> None:
     valid = {
         "0": {
