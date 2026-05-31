@@ -779,9 +779,30 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert handoff["ready_signals"] == {
         "all_layer_prompt_smoke": True,
         "kv_decode_dispatch_ready": True,
+        "kv_decode_input_upload_plan_recorded": True,
         "kv_decode_run_plan_recorded": True,
         "kv_launch_schedule_recorded": True,
         "oracle_target_recorded": True,
+    }
+    assert handoff["kv_decode_input_upload_plan"] == {
+        "entry_count": 6,
+        "total_nbytes": 484,
+        "upload_order": [
+            "input_ids",
+            "prompt_base_offsets",
+            "prompt_live_counts",
+            "decode_base_offsets",
+            "decode_kv_write_position",
+            "decode_attention_live_counts",
+        ],
+        "cleanup_order": [
+            "decode_attention_live_counts",
+            "decode_kv_write_position",
+            "decode_base_offsets",
+            "prompt_live_counts",
+            "prompt_base_offsets",
+            "input_ids",
+        ],
     }
     assert handoff["blocked_signals"] == {
         "e2e_inference": True,
@@ -944,6 +965,10 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
     ]
     assert payload["ready_signals"]["kv_decode_dispatch_ready"] is True
     assert payload["ready_signals"]["kv_decode_run_plan_recorded"] is True
+    assert payload["ready_signals"]["kv_decode_input_upload_plan_recorded"] is True
+    assert payload["kv_decode_input_upload_plan"]["entry_count"] == 6
+    assert payload["kv_decode_input_upload_plan"]["upload_order"][0] == "input_ids"
+    assert payload["kv_decode_input_upload_plan"]["cleanup_order"][-1] == "input_ids"
     assert payload["blocked_gates"] == ["oracle_parity", "kv_backed_decode", "e2e_inference"]
     assert payload["next_commands_available_for"] == [
         "oracle_parity_blocked",

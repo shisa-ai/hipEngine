@@ -563,6 +563,8 @@ def _handoff_summary(
         else:
             blocked_gates.append(str(name))
     launch_schedule = dict(kv_decode_dispatch_progress.get("launch_schedule", {}))
+    run_plan = dict(kv_decode_dispatch_progress.get("run_plan", {}))
+    decode_input_upload_plan = dict(run_plan.get("decode_input_upload_plan", {}))
     return {
         "status": "blocked" if blocker_kinds else "ready",
         "open_or_partial_items_p0_p12": docs_status.get("open_or_partial_count_p0_p12"),
@@ -575,9 +577,16 @@ def _handoff_summary(
             "oracle_target_recorded": oracle_progress.get("expected_next_token_id") is not None,
             "kv_decode_dispatch_ready": kv_decode_dispatch_ready,
             "kv_launch_schedule_recorded": bool(launch_schedule.get("operation_count")),
-            "kv_decode_run_plan_recorded": bool(
-                dict(kv_decode_dispatch_progress.get("run_plan", {})).get("prompt_length")
+            "kv_decode_run_plan_recorded": bool(run_plan.get("prompt_length")),
+            "kv_decode_input_upload_plan_recorded": bool(
+                decode_input_upload_plan.get("entry_count")
             ),
+        },
+        "kv_decode_input_upload_plan": {
+            "entry_count": decode_input_upload_plan.get("entry_count"),
+            "total_nbytes": decode_input_upload_plan.get("total_nbytes"),
+            "upload_order": list(decode_input_upload_plan.get("upload_order", [])),
+            "cleanup_order": list(decode_input_upload_plan.get("cleanup_order", [])),
         },
         "blocked_signals": {
             "oracle_parity": "oracle_parity" in blocked_gates,

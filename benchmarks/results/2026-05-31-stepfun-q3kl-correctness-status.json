@@ -51,6 +51,26 @@
       "kv_backed_decode": true,
       "oracle_parity": true
     },
+    "kv_decode_input_upload_plan": {
+      "cleanup_order": [
+        "decode_attention_live_counts",
+        "decode_kv_write_position",
+        "decode_base_offsets",
+        "prompt_live_counts",
+        "prompt_base_offsets",
+        "input_ids"
+      ],
+      "entry_count": 6,
+      "total_nbytes": 484,
+      "upload_order": [
+        "input_ids",
+        "prompt_base_offsets",
+        "prompt_live_counts",
+        "decode_base_offsets",
+        "decode_kv_write_position",
+        "decode_attention_live_counts"
+      ]
+    },
     "next_commands_available_for": [
       "oracle_parity_blocked",
       "kv_backed_decode_not_wired"
@@ -70,6 +90,7 @@
     "ready_signals": {
       "all_layer_prompt_smoke": true,
       "kv_decode_dispatch_ready": true,
+      "kv_decode_input_upload_plan_recorded": true,
       "kv_decode_run_plan_recorded": true,
       "kv_launch_schedule_recorded": true,
       "oracle_target_recorded": true
@@ -845,8 +866,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "a8a8c28f5ee3df1b239c53dba748bef97c50cd2932c30f61c8a49f934ba0d52d",
-      "size_bytes": 51893
+      "sha256": "14bce7ec11550813d28d07764585c86fd1fb6f417f1edd3ce40f5f39ccc2d5d9",
+      "size_bytes": 51927
     },
     "oracle": {
       "exists": true,

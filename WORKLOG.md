@@ -28562,3 +28562,33 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: targeted decode-planner/load-smoke/status tests passed (`18 passed`), combined upload-plan artifact/source verification passed, and the full StepFun guard passed (`110 passed` plus CPU-reference fixture checks).
+
+## 2026-05-31 — StepFun handoff upload-plan summary recorded
+
+Surfaced the metadata-only combined StepFun KV decode input upload plan in the compact correctness-status handoff. The `handoff_summary` now includes `kv_decode_input_upload_plan_recorded=true` plus upload order, cleanup order, entry count, and total bytes for input-token and KV span-input staging, so continuation agents can confirm the combined staging metadata without parsing the full `kv_decode_run_plan`. The full status and summary-only output still preserve the blockers: `oracle_parity=false`, `kv_backed_decode_ready=false`, and `e2e_inference_ready=false`.
+
+Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, updated status tests, and clarified `docs/STEPFUN.md`.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 - <<'PY'
+import json
+p=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+h=p['handoff_summary']
+assert h['ready_signals']['kv_decode_input_upload_plan_recorded'] is True
+plan=h['kv_decode_input_upload_plan']
+assert plan['entry_count'] == 6
+assert plan['upload_order'][0] == 'input_ids'
+assert plan['cleanup_order'] == list(reversed(plan['upload_order']))
+assert plan['total_nbytes'] == p['kv_decode_dispatch_progress']['run_plan']['decode_input_upload_plan']['total_nbytes']
+assert p['kv_backed_decode_ready'] is False
+print('stepfun handoff upload plan summary ok')
+PY
+python3 scripts/stepfun_correctness_status.py --summary-only --pretty --output /tmp/stepfun-handoff-summary.json
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty --output /tmp/stepfun-source-verify.json
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: targeted status tests passed (`6 passed`), handoff-summary/source-artifact checks passed, and the full StepFun guard passed (`110 passed` plus CPU-reference fixture checks).
