@@ -1612,7 +1612,7 @@ roll-up/status view.
       `--include-gguf`, which adds blocked GGUF c>N diagnostic commands for
       Q4_K_M/Q5_K_M/Q6_K/Q8_0 at c>1 while preserving and binding the visible
       HIP device env, and rejects stale GGUF fixture/backend/decode-length/row
-      labels across all four standalone quant rows plus stale env-prefix labels,
+      labels plus stale env-prefix labels across all four standalone quant rows,
       duplicate GGUF diagnostic flags, duplicate/unsupported quant order,
       artifact filename metadata across all four standalone quant rows, or
       summaries where GGUF diagnostic rows no longer agree with
