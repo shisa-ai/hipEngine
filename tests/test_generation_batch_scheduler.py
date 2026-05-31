@@ -49,6 +49,7 @@ from hipengine.generation import (
 from hipengine.kvcache import ChunkedKVPool, FixedPagedKVPolicy
 from hipengine.speculative import AcceptResult, DraftBatch, TargetAcceptSummary, TargetStateCommitBuffers, TargetVerifyBuffers
 from scripts import qwen35_batch_artifact_schema as artifact_schema
+from scripts import qwen35_batch_hidden_artifact_compare as hidden_artifact_compare
 from scripts import qwen35_batch_c_sweep as c_sweep
 from scripts import qwen35_batch_correctness as batch_correctness
 from scripts import qwen35_batch_gguf_diagnostic as gguf_diagnostic
@@ -7734,6 +7735,97 @@ def test_hidden_bisect_projection_bit_drift_rollup_reports_first_over_atol_drift
         }
     ]
     assert rollup["first_over_atol_layer_limit"] == rollup["layer_limits"][0]
+
+
+def test_hidden_bisect_projection_artifact_compare_spots_limit_drift_delta(tmp_path: Path) -> None:
+    selected_ab = tmp_path / "selected-ab.json"
+    selected_qkvz = tmp_path / "selected-qkvz.json"
+    first_over = {
+        "layer_limit": 2,
+        "decode_step": 0,
+        "generated_index": 1,
+        "layer_index": 1,
+        "stage": "qkv",
+        "row": 0,
+        "comparison_kind": "fp16_bits",
+        "passed_under_atol": False,
+        "bit_mismatch": 3721,
+        "max_abs": 0.0078125,
+        "max_abs_flat_index": 857,
+        "max_abs_index": [0, 857],
+        "elements_over_atol": 2,
+    }
+
+    def write_artifact(path: Path, *, first_limit_drift: bool) -> None:
+        layer_one = {
+            "layer_limit": 1,
+            "drift_stages": ["qkv", "z"] if first_limit_drift else [],
+            "drift_stage_count": 2 if first_limit_drift else 0,
+            "under_atol_drift_stages": ["qkv", "z"] if first_limit_drift else [],
+            "under_atol_drift_stage_count": 2 if first_limit_drift else 0,
+            "over_atol_drift_stages": [],
+            "over_atol_drift_stage_count": 0,
+            "first_over_atol_drift": None,
+        }
+        layer_two = {
+            "layer_limit": 2,
+            "drift_stages": ["qkv", "z"],
+            "drift_stage_count": 2,
+            "under_atol_drift_stages": [],
+            "under_atol_drift_stage_count": 0,
+            "over_atol_drift_stages": ["qkv", "z"],
+            "over_atol_drift_stage_count": 2,
+            "first_over_atol_drift": first_over,
+        }
+        payload = {
+            "status": "eq_ok",
+            "correctness": {
+                "hidden_passed": True,
+                "token_passed": True,
+                "decode_linear_projection_bit_drift_summary": {
+                    "bit_exact": False,
+                    "passed_under_atol": False,
+                    "drift_stages": ["qkv", "z"],
+                    "under_atol_drift_stages": [] if not first_limit_drift else ["qkv", "z"],
+                    "over_atol_drift_stages": ["qkv", "z"],
+                    "first_over_atol_layer_limit": layer_two,
+                    "first_over_atol_drift": first_over,
+                    "layer_limits": [layer_one, layer_two],
+                },
+            },
+        }
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+    write_artifact(selected_ab, first_limit_drift=True)
+    write_artifact(selected_qkvz, first_limit_drift=False)
+    out = tmp_path / "compare.json"
+
+    payload = hidden_artifact_compare.run(
+        argparse.Namespace(
+            artifact=[f"selected_ab={selected_ab}", f"selected_qkvz={selected_qkvz}"],
+            json=out,
+        )
+    )
+
+    assert out.exists()
+    assert json.loads(out.read_text()) == payload
+    assert payload["comparison"]["common_layer_limits"] == [1, 2]
+    assert payload["comparison"]["first_over_atol_layer_limits_by_label"] == {
+        "selected_ab": 2,
+        "selected_qkvz": 2,
+    }
+    assert payload["comparison"]["labels_agree_on_first_over_atol_layer_limit"] is True
+    assert payload["comparison"]["projection_over_atol_agreement"] is True
+    assert payload["comparison"]["projection_drift_agreement"] is False
+    assert payload["comparison"]["first_diverging_layer_limit"] == 1
+    layer_one = payload["comparison"]["layer_limits"][0]
+    assert layer_one["per_artifact"]["selected_ab"]["drift_stages"] == ["qkv", "z"]
+    assert layer_one["per_artifact"]["selected_qkvz"]["drift_stages"] == []
+    layer_two = payload["comparison"]["layer_limits"][1]
+    assert layer_two["per_artifact"]["selected_ab"]["first_over_atol_drift"]["bit_mismatch"] == 3721
+    assert payload["comparison"]["hidden_passed_all"] is True
+    assert payload["comparison"]["token_passed_all"] is True
+    assert payload["comparison"]["all_statuses_eq_ok"] is True
 
 
 def test_hidden_bisect_linear_handoff_summary_distinguishes_copy_from_producer_drift() -> None:

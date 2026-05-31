@@ -49882,3 +49882,47 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: targeted tests PASS; L1/L2 artifact assertions PASS; verify count remains `12`; full guard PASS with c=2/c=8 primitive correctness and A/A fields zero; benchmark rollup files unchanged. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and this is diagnostic C2.3 evidence only.
+
+## 2026-05-31 — CONCURRENCY C2.3 projection route comparison helper
+
+Added `scripts/qwen35_batch_hidden_artifact_compare.py`, a compact JSON helper that compares hidden-bisect projection bit-drift rollups across two or more large artifacts. The first use compares the L1/L2 selected-QKV/Z/native-A-B probe with the complementary batch-GEMV-QKVZ/selected-A-B probe and writes `/tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-projection-route-compare.json`.
+
+Result from the comparison: both input artifacts are `status=eq_ok` with hidden/token equality, and both agree that the first over-tolerance projection limit is L2 with QKV/Z over-atol drift. They differ at L1: the selected-QKV/Z/native-A-B route has no QKV/Z projection drift, while the A/B-selected route has under-tolerance QKV/Z drift. This keeps the C2.3 handoff pointed at exact QKV/Z plus A/B projection parity rather than promoting the batch-GEMV QKV/Z route on an under-atol direct-stage result.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_hidden_artifact_compare.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_projection_artifact_compare_spots_limit_drift_delta tests/test_generation_batch_scheduler.py::test_hidden_bisect_projection_bit_drift_rollup_reports_first_over_atol_drift -q
+python3 scripts/qwen35_batch_hidden_artifact_compare.py --artifact selected_qkvz=/tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-selected-qkvz-native-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json --artifact selected_ab=/tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-batch-gemv-qkvz-selected-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json --json /tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-projection-route-compare.json
+python3 - <<'PY'
+import json, pathlib
+path = pathlib.Path('/tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-projection-route-compare.json')
+payload = json.loads(path.read_text())
+comparison = payload['comparison']
+assert comparison['hidden_passed_all'] is True
+assert comparison['token_passed_all'] is True
+assert comparison['all_statuses_eq_ok'] is True
+assert comparison['common_layer_limits'] == [1, 2]
+assert comparison['first_over_atol_layer_limits_by_label'] == {'selected_qkvz': 2, 'selected_ab': 2}
+assert comparison['labels_agree_on_first_over_atol_layer_limit'] is True
+assert comparison['projection_over_atol_agreement'] is True
+assert comparison['projection_drift_agreement'] is False
+assert comparison['first_diverging_layer_limit'] == 1
+assert comparison['layer_limits'][0]['per_artifact']['selected_qkvz']['drift_stages'] == []
+assert comparison['layer_limits'][0]['per_artifact']['selected_ab']['drift_stages'] == ['qkv', 'z']
+assert comparison['layer_limits'][1]['per_artifact']['selected_qkvz']['over_atol_drift_stages'] == ['qkv', 'z']
+assert comparison['layer_limits'][1]['per_artifact']['selected_ab']['over_atol_drift_stages'] == ['qkv', 'z']
+PY
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \[(?: |~)\]', queue))
+print(count)
+assert count == 12
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: targeted tests PASS; projection comparison assertions PASS; verify count remains `12`; full guard PASS with c=2/c=8 primitive correctness and A/A fields zero; benchmark rollup files unchanged. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and this is diagnostic C2.3 evidence only.

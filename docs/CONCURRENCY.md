@@ -1350,10 +1350,17 @@ roll-up/status view.
       drift only and `layer_limit=2` QKV/Z over-atol drift, confirming projection
       amplification begins at the second retained linear layer before it becomes
       an end-to-end hidden mismatch.
-      Together with the green selected-all projection
-      control, this means both QKV/Z bit exactness and A/B exactness are still
-      required for this controlled path; do not promote the batch-GEMV QKV/Z
-      path just because an early direct stage max error is under hidden tolerance.
+      A compact comparison artifact
+      `/tmp/hipengine-hidden-bisect-L1-L2-512-16-c2-projection-route-compare.json`
+      now compares that A/B-selected route against the complementary
+      selected-QKV/Z/native-A/B route. Both routes stay hidden/token green and
+      agree that the first over-tolerance projection limit is L2, but they differ
+      at L1: selected-QKV/Z/native-A/B has no QKV/Z drift while the A/B-selected
+      route has under-tolerance QKV/Z drift. Together with the green selected-all
+      projection control, this means both QKV/Z bit exactness and A/B exactness
+      are still required for this controlled path; do not promote the batch-GEMV
+      QKV/Z path just because an early direct stage max error is under hidden
+      tolerance.
       Re-enabling native full-attention decode
       on the selected-projection/native-state/batch-GEMV-output control at
       `/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-batch-gemv-out-native-full-atol4e-3-focus1269.json`
