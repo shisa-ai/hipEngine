@@ -134,6 +134,29 @@ def _python_command_prefix() -> tuple[str, ...]:
     return (*_command_env_prefix_parts(), sys.executable)
 
 
+def _command_device_env_assignments(argv: Sequence[str]) -> dict[str, str]:
+    idx = 0
+    if argv and Path(argv[0]).name == "env":
+        idx = 1
+    assignments: dict[str, str] = {}
+    while idx < len(argv) and _is_env_assignment_token(argv[idx]):
+        key, _sep, value = argv[idx].partition("=")
+        if key in _COMMAND_ENV_KEYS:
+            assignments[key] = value
+        idx += 1
+    return assignments
+
+
+def _profiled_command_argv(command: str) -> list[str] | None:
+    try:
+        argv = shlex.split(command)
+    except ValueError:
+        return None
+    if "--" not in argv:
+        return None
+    return argv[argv.index("--") + 1 :]
+
+
 def _required_primitive_context_lens(rows: int) -> list[int]:
     max_context_len = _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS["max_context_len"]
     return [(idx % max_context_len) + 1 for idx in range(rows)]
@@ -1286,6 +1309,11 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                 reasons.append(f"profiler command trace-dir={command_trace_dir!r} does not match profiler.trace_dir={profiler_trace_dir}")
             if _RETAINED_BENCH_SCRIPT not in profiler_command:
                 reasons.append("profiler command does not target qwen35_batch_retained_bench.py")
+            retained_env = _command_device_env_assignments(command.argv)
+            profiler_profiled_argv = _profiled_command_argv(profiler_command)
+            profiler_env = _command_device_env_assignments(profiler_profiled_argv or ())
+            if retained_env != profiler_env:
+                reasons.append("profiler command device env prefix does not match retained command")
             for flag in _RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS:
                 if _command_text_has_flag(profiler_command, flag):
                     reasons.append(f"profiler command must not include {flag}")
@@ -2708,6 +2736,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         break
                     if _empty_inline_flag_values(profiled_command_argv, _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS):
                         errors.append("commands[].preconditions[].profiler profiled command flag values must be non-empty")
+                        break
+                    if _command_device_env_assignments(profiled_command_argv) != _command_device_env_assignments(argv):
+                        errors.append("commands[].preconditions[].profiler_command device env prefix must match retained command")
                         break
                     if _command_text_arg(profiler_command, "--model") != _argv_value(argv, "--model") or profiler_precondition.get("profiler_model") != _argv_value(argv, "--model"):
                         errors.append("commands[].preconditions[].profiler model must match retained command")

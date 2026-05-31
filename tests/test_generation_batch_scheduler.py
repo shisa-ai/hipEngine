@@ -588,6 +588,9 @@ def _write_c_sweep_profiler_summary(
     profiler_path = output_dir / f"profiler-c{rows}.json"
     retained_path = output_dir / f"native-diagnostic-c{rows}.json"
     trace_dir = output_dir / f"profile-c{rows}"
+    retained_launch = shlex.join(
+        (*c_sweep._command_env_prefix_parts(), "python3", "scripts/qwen35_batch_retained_bench.py")
+    )
     profiler_path.write_text(
         json.dumps(
             {
@@ -601,7 +604,7 @@ def _write_c_sweep_profiler_summary(
                     "trace_files": [str(trace_dir / "hipengine_kernel_trace.csv")],
                     "trace_kernel_names": ["qwen35_batch_decode"],
                     "command": (
-                        f"rocprofv3 --kernel-trace --output-format csv -d {trace_dir} -- python3 scripts/qwen35_batch_retained_bench.py "
+                        f"rocprofv3 --kernel-trace --output-format csv -d {trace_dir} -- {retained_launch} "
                         f"--model {model} --fixture {fixture} --batch-size {rows} "
                         "--prompt-length 16 --decode-tokens 2 "
                         f"--warmup-decode-tokens {warmup_decode_tokens} --max-layers {max_layers} "
@@ -654,7 +657,11 @@ def _write_c_sweep_profiler_summary(
     )
 
 
-def test_batch_c_sweep_profiler_precondition_rejects_mismatched_artifact_path(tmp_path: Path) -> None:
+def test_batch_c_sweep_profiler_precondition_rejects_mismatched_artifact_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HIP_VISIBLE_DEVICES", raising=False)
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
     profiler_path = output_dir / "profiler-c2.json"
@@ -855,6 +862,49 @@ def test_batch_c_sweep_profiler_precondition_rejects_missing_command(tmp_path: P
         "artifact_path": str(profiler_path),
         "passed": False,
         "reason": "profiler command is missing",
+    }
+
+
+def test_batch_c_sweep_profiler_precondition_rejects_mismatched_device_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"]["command"] = payload["profiler"]["command"].replace(
+        "-- env HIP_VISIBLE_DEVICES=1 python3",
+        "-- python3",
+    )
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler command device env prefix does not match retained command",
     }
 
 
@@ -4327,6 +4377,7 @@ def test_batch_c_sweep_skips_retained_when_profiler_summary_missing(tmp_path: Pa
 
 
 def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("HIP_VISIBLE_DEVICES", raising=False)
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
     _write_c_sweep_primitive_summary(output_dir)
