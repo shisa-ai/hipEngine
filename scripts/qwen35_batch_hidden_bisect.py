@@ -2781,10 +2781,12 @@ def _decode_linear_projection_bit_drift_rollup(layer_summaries: Sequence[dict[st
             "total_bit_mismatch": 0,
             "total_elements_over_atol": 0,
             "first_bit_drift": None,
+            "first_over_atol_drift": None,
         }
         for stage in DECODE_LINEAR_PROJECTION_BIT_EXACT_STAGES
     }
     first_bit_drift: dict[str, Any] | None = None
+    first_over_atol_drift: dict[str, Any] | None = None
     for summary in layer_summaries:
         layer_limit = int(summary.get("layer_limit", 0))
         trace = summary.get("decode_linear_stages")
@@ -2828,6 +2830,11 @@ def _decode_linear_projection_bit_drift_rollup(layer_summaries: Sequence[dict[st
                             rollup["first_bit_drift"] = record
                         if first_bit_drift is None:
                             first_bit_drift = record
+                        if elements_over_atol > 0:
+                            if rollup["first_over_atol_drift"] is None:
+                                rollup["first_over_atol_drift"] = record
+                            if first_over_atol_drift is None:
+                                first_over_atol_drift = record
                         row_index = int(row_summary.get("row", -1))
                         if row_index >= 0 and row_index not in seen_rows:
                             rollup["bit_drift_rows"].append(row_index)
@@ -2839,6 +2846,11 @@ def _decode_linear_projection_bit_drift_rollup(layer_summaries: Sequence[dict[st
     under_atol_drift_stages = [
         stage for stage in drift_stages if bool(stage_rollups[stage]["passed_under_atol"])
     ]
+    over_atol_drift_stages = [
+        stage
+        for stage in drift_stages
+        if int(stage_rollups[stage]["total_elements_over_atol"]) > 0
+    ]
     return {
         "projection_stages": list(DECODE_LINEAR_PROJECTION_BIT_EXACT_STAGES),
         "bit_exact": not drift_stages,
@@ -2847,7 +2859,10 @@ def _decode_linear_projection_bit_drift_rollup(layer_summaries: Sequence[dict[st
         "drift_stage_count": len(drift_stages),
         "under_atol_drift_stages": under_atol_drift_stages,
         "under_atol_drift_stage_count": len(under_atol_drift_stages),
+        "over_atol_drift_stages": over_atol_drift_stages,
+        "over_atol_drift_stage_count": len(over_atol_drift_stages),
         "first_bit_drift": first_bit_drift,
+        "first_over_atol_drift": first_over_atol_drift,
         "stages": stage_rollups,
     }
 

@@ -49628,3 +49628,45 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: targeted and full guards PASS; c=2/c=8 primitive correctness still PASS with A/A fields zero; verify count remains `12`; benchmark rollup files unchanged. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and the new field is diagnostic evidence only.
+
+## 2026-05-31 — CONCURRENCY C2.3 projection over-atol drift summary
+
+Extended hidden-bisect `decode_linear_projection_bit_drift_summary` with explicit over-tolerance projection drift fields: global/per-stage `first_over_atol_drift` plus `over_atol_drift_stages` / counts. This separates the early under-tolerance first QKV bit drift from later QKV/Z projection drift that exceeds the hidden tolerance, so C2.3 projection artifacts can distinguish "bit-different but under tolerance" from true over-atol amplification without mining every stage row.
+
+Re-ran the L8/512/16 c=2 batch-GEMV-QKVZ + selected-A/B / batch-GEMV output / per-row full-attention control at `/tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-gemv-qkvz-selected-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json`. The artifact remains `status=mismatch_found`, token-green/hidden-red at decode step 11 / generated index 12 / row 0 (current rerun `max_abs=0.010406494140625`). The projection summary now records `drift_stages=['qkv', 'z']`, `under_atol_drift_stages=[]`, `over_atol_drift_stages=['qkv', 'z']`; `first_bit_drift` is still the layer-0 under-atol `qkv` row-0 drift, while `first_over_atol_drift` is `qkv` layer 1 / step 0 / row 0 with `passed_under_atol=false` and `elements_over_atol>0`.
+
+Validation:
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_hidden_bisect.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_hidden_bisect_linear_stage_summary_rolls_up_first_bit_drift tests/test_generation_batch_scheduler.py::test_hidden_bisect_projection_bit_drift_rollup_reports_first_over_atol_drift -q
+python3 scripts/qwen35_batch_hidden_bisect.py --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json --prompt-length 512 --batch-size 2 --decode-tokens 16 --max-layers 8 --layer-limits 8 --max-sequence-length 1024 --hidden-atol 0.004 --focus-hidden-flat-index 1269 --batch-decode-linear-projection-path batch_gemv_selected_ab --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path per_row --json /tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-gemv-qkvz-selected-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json
+python3 - <<'PY'
+import json, pathlib
+path = pathlib.Path('/tmp/hipengine-hidden-bisect-L8-512-16-c2-batch-gemv-qkvz-selected-ab-state-batch-gemv-out-perrow-full-atol4e-3-focus1269.json')
+payload = json.loads(path.read_text())
+assert payload['status'] == 'mismatch_found'
+assert payload['correctness']['token_passed'] is True
+projection = payload['correctness']['decode_linear_projection_bit_drift_summary']
+assert projection['drift_stages'] == ['qkv', 'z']
+assert projection['under_atol_drift_stages'] == []
+assert projection['over_atol_drift_stages'] == ['qkv', 'z']
+assert projection['first_bit_drift']['stage'] == 'qkv'
+assert projection['first_bit_drift']['passed_under_atol'] is True
+assert projection['first_over_atol_drift']['stage'] == 'qkv'
+assert projection['first_over_atol_drift']['layer_index'] == 1
+assert projection['first_over_atol_drift']['passed_under_atol'] is False
+assert projection['first_over_atol_drift']['elements_over_atol'] > 0
+PY
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \[(?: |~)\]', queue))
+print(count)
+assert count == 12
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: targeted and full guards PASS; c=2/c=8 primitive correctness still PASS with A/A fields zero; verify count remains `12`; benchmark rollup files unchanged. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, and this remains diagnostic C2.3 evidence only.

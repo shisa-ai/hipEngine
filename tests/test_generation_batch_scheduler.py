@@ -7615,16 +7615,99 @@ def test_hidden_bisect_linear_stage_summary_rolls_up_first_bit_drift() -> None:
     assert rollup["stages"]["qkv"]["bit_drift_rows"] == [0]
     assert rollup["stages"]["conv_out"]["first_bit_drift"]["comparison_kind"] == "fp32"
 
-    projection_rollup = _decode_linear_projection_bit_drift_rollup([{"layer_limit": 8, "decode_linear_stages": summary}])
+    projection_rollup = _decode_linear_projection_bit_drift_rollup(
+        [{"layer_limit": 8, "decode_linear_stages": summary}]
+    )
     assert projection_rollup["projection_stages"] == ["qkv", "z"]
     assert projection_rollup["bit_exact"] is False
     assert projection_rollup["passed_under_atol"] is True
     assert projection_rollup["drift_stages"] == ["qkv"]
     assert projection_rollup["under_atol_drift_stages"] == ["qkv"]
+    assert projection_rollup["over_atol_drift_stages"] == []
     assert projection_rollup["first_bit_drift"]["stage"] == "qkv"
+    assert projection_rollup["first_over_atol_drift"] is None
     assert projection_rollup["stages"]["qkv"]["total_bit_mismatch"] == 1
     assert projection_rollup["stages"]["qkv"]["total_elements_over_atol"] == 0
+    assert projection_rollup["stages"]["qkv"]["first_over_atol_drift"] is None
     assert projection_rollup["stages"]["z"]["bit_exact"] is True
+
+
+def test_hidden_bisect_projection_bit_drift_rollup_reports_first_over_atol_drift() -> None:
+    summary = {
+        "steps": [
+            {
+                "decode_step": 2,
+                "generated_index": 3,
+                "layers": [
+                    {
+                        "layer_index": 4,
+                        "stages": {
+                            "qkv": {
+                                "rows": [
+                                    {
+                                        "row": 0,
+                                        "comparison_kind": "fp16_bits",
+                                        "passed": True,
+                                        "hidden_comparison": {
+                                            "bit_mismatch": 2,
+                                            "max_abs": 0.0009765625,
+                                            "max_abs_flat_index": 7,
+                                            "max_abs_index": [0, 7],
+                                            "elements_over_atol": 0,
+                                        },
+                                    }
+                                ]
+                            },
+                            "z": {
+                                "rows": [
+                                    {
+                                        "row": 1,
+                                        "comparison_kind": "fp16_bits",
+                                        "passed": False,
+                                        "hidden_comparison": {
+                                            "bit_mismatch": 3,
+                                            "max_abs": 0.0078125,
+                                            "max_abs_flat_index": 11,
+                                            "max_abs_index": [1, 11],
+                                            "elements_over_atol": 2,
+                                        },
+                                    }
+                                ]
+                            },
+                        },
+                    }
+                ],
+            }
+        ]
+    }
+
+    rollup = _decode_linear_projection_bit_drift_rollup(
+        [{"layer_limit": 8, "decode_linear_stages": summary}]
+    )
+
+    assert rollup["bit_exact"] is False
+    assert rollup["passed_under_atol"] is False
+    assert rollup["drift_stages"] == ["qkv", "z"]
+    assert rollup["under_atol_drift_stages"] == ["qkv"]
+    assert rollup["over_atol_drift_stages"] == ["z"]
+    assert rollup["first_bit_drift"]["stage"] == "qkv"
+    assert rollup["first_over_atol_drift"] == {
+        "layer_limit": 8,
+        "decode_step": 2,
+        "generated_index": 3,
+        "layer_index": 4,
+        "stage": "z",
+        "row": 1,
+        "comparison_kind": "fp16_bits",
+        "passed_under_atol": False,
+        "bit_mismatch": 3,
+        "max_abs": 0.0078125,
+        "max_abs_flat_index": 11,
+        "max_abs_index": [1, 11],
+        "elements_over_atol": 2,
+    }
+    assert rollup["stages"]["qkv"]["first_over_atol_drift"] is None
+    assert rollup["stages"]["z"]["first_over_atol_drift"] == rollup["first_over_atol_drift"]
 
 
 def test_hidden_bisect_linear_handoff_summary_distinguishes_copy_from_producer_drift() -> None:
