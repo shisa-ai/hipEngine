@@ -49058,3 +49058,22 @@ git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && gi
 ```
 
 Result: targeted retained-bench/schema primitive A/A tests PASS, verify count remains `12`, full guard PASS with c=2/c=8 primitive A/A fields zero, and diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, no benchmark rollup files changed, and C2.5 remains open until c=4/c=8 generated-token equality vs independent c=1 exists.
+
+## 2026-05-31 — CONCURRENCY C2.3 native linear-state isolation probes
+
+Advanced C2.3 diagnostics without closing any queue item. Ran paired L8/512/16 c=2 hidden-bisect probes with per-row full-attention fallback to keep native full attention out of the result and selected-c1 linear output to keep batch output projection out of the first probe. The selected-c1 projection/output + native segmented state probe (`/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-selected-out-perrow-full-atol4e-3-focus1269.json`) is `status=mismatch_found` with immediate generated-token and hidden failure (`first_token_mismatch.row=0`, `first_index=1`); the linear stage rollup names layer-0 `recurrent_out` as the first drift (`max_abs=2.7936763763427734`). The companion selected-c1 projection/state/output + per-row-full probe (`/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-state-out-perrow-full-atol4e-3-focus1269.json`) keeps tokens green but is hidden-only red (`max_abs=0.00811767578125`), so selected-c1 controls are still non-retained and not a closure signal. `docs/CONCURRENCY.md` records the paired probes and keeps C2.3 open with native segmented conv/GDN/recurrent state plus native output projection as the retained targets.
+
+Validation:
+
+```bash
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+git diff -- docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md && git diff --check
+```
+
+Result: verify count remains `12`; full guard PASS; c=2/c=8 primitive correctness artifacts pass with zero append/A-A mismatches and zero batch-vs-c1 attention error; diff hygiene PASS. Prompt-verifier self-check passes: no queue item was marked complete, no retained c>N performance/scaling claim was added, no benchmark rollup files changed, and C2.3 remains open pending a native segmented state/output fix plus generated-token equality.

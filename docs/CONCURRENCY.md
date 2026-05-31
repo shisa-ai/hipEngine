@@ -1245,6 +1245,18 @@ roll-up/status view.
       and regresses to hidden red (`status=mismatch_found`, first hidden mismatch
       step 6 / dim 1269), so grouped-compact MoE is not the residual blocker and
       should remain the preferred MoE path while fixing linear-attention parity.
+      A matched C2.3 per-row-full-attention probe with selected-c1 linear
+      projection/output but native segmented state at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-native-state-selected-out-perrow-full-atol4e-3-focus1269.json`
+      is `status=mismatch_found` with immediate token+hidden failure
+      (`first_token_mismatch.row=0`, `first_index=1`); its stage rollup shows the
+      first layer-0 drift at `recurrent_out` (`max_abs=2.7936763763427734`) while
+      selected-c1 projections/output and per-row full attention are forced. The
+      companion selected-c1 projection/state/output + per-row-full probe at
+      `/tmp/hipengine-hidden-bisect-L8-512-16-c2-selected-proj-state-out-perrow-full-atol4e-3-focus1269.json`
+      keeps tokens green but is still hidden-only red (`max_abs=0.00811767578125`),
+      so the native segmented state path is the correctness-critical blocker but
+      the selected-c1 diagnostic remains non-retained and not a closure signal.
       The next target is retained parity for both native segmented conv/GDN/
       recurrent state and native batched output projection; do not change
       paged-KV writer code yet. Do not re-open
