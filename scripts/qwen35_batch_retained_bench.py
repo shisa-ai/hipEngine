@@ -144,12 +144,19 @@ def _result_payload(result) -> dict[str, Any]:
     return {"token_id": int(result.token_id), "token_text": result.token_text, "logit": float(result.logit)}
 
 
-def _shape_key_payload(key) -> dict[str, Any]:
+def _shape_key_payload(
+    key,
+    *,
+    kv_storage_dtype: str = "bf16",
+    layer_plan: str = "all",
+) -> dict[str, Any]:
     return {
         "mode": key.mode.value,
         "active_c": key.active_c,
         "context_bucket": key.context_bucket,
         "active_mask": list(key.active_mask),
+        "kv_storage_dtype": str(kv_storage_dtype),
+        "layer_plan": str(layer_plan),
         "top_k": key.top_k,
         "experts_per_token": key.experts_per_token,
         "replay_steps": key.replay_steps,
@@ -158,10 +165,23 @@ def _shape_key_payload(key) -> dict[str, Any]:
     }
 
 
-def _record_decode_graph_bucket_metadata(scheduler: ResidentBatchScheduler, scheduler_metadata: dict[str, Any]) -> None:
+def _record_decode_graph_bucket_metadata(
+    scheduler: ResidentBatchScheduler,
+    scheduler_metadata: dict[str, Any],
+    *,
+    kv_storage_dtype: str = "bf16",
+    layer_plan: str = "all",
+) -> None:
     key = scheduler.shape_key(mode="decode", top_k=0, experts_per_token=0, replay_steps=1)
-    scheduler_metadata["decode_shape_key"] = _shape_key_payload(key)
-    scheduler.graph_buckets.get_or_create(key, lambda bucket: _shape_key_payload(bucket))
+    scheduler_metadata["decode_shape_key"] = _shape_key_payload(
+        key,
+        kv_storage_dtype=kv_storage_dtype,
+        layer_plan=layer_plan,
+    )
+    scheduler.graph_buckets.get_or_create(
+        key,
+        lambda bucket: _shape_key_payload(bucket, kv_storage_dtype=kv_storage_dtype, layer_plan=layer_plan),
+    )
     scheduler.graph_buckets.get(key)
     scheduler_metadata["graph_bucket_stats"] = scheduler.graph_buckets.stats.to_json_dict()
 
@@ -207,7 +227,14 @@ def _attach_profiler_graph_kernel_time_histogram(scheduler_metadata: dict[str, A
     scheduler_metadata["graph_bucket_stats"] = updated_stats
 
 
-def _decode_shape_key_blockers(scheduler_metadata: Mapping[str, Any], *, concurrency: int, prompt_length: int) -> list[str]:
+def _decode_shape_key_blockers(
+    scheduler_metadata: Mapping[str, Any],
+    *,
+    concurrency: int,
+    prompt_length: int,
+    kv_storage_dtype: str | None = None,
+    layer_plan: str | None = None,
+) -> list[str]:
     decode_shape_key = scheduler_metadata.get("decode_shape_key")
     if not isinstance(decode_shape_key, Mapping):
         return ["execution.scheduler_metadata.decode_shape_key is missing"]
@@ -230,6 +257,16 @@ def _decode_shape_key_blockers(scheduler_metadata: Mapping[str, Any], *, concurr
         blockers.append("execution.scheduler_metadata.decode_shape_key.context_bucket must be a positive int")
     elif context_bucket < int(prompt_length):
         blockers.append("execution.scheduler_metadata.decode_shape_key.context_bucket must cover workload.prompt_tokens_per_request")
+    key_kv_dtype = decode_shape_key.get("kv_storage_dtype")
+    if not isinstance(key_kv_dtype, str) or not key_kv_dtype.strip():
+        blockers.append("execution.scheduler_metadata.decode_shape_key.kv_storage_dtype must be a non-empty string")
+    elif kv_storage_dtype is not None and key_kv_dtype != str(kv_storage_dtype):
+        blockers.append("execution.scheduler_metadata.decode_shape_key.kv_storage_dtype must match workload.kv_storage_dtype")
+    key_layer_plan = decode_shape_key.get("layer_plan")
+    if not isinstance(key_layer_plan, str) or not key_layer_plan.strip():
+        blockers.append("execution.scheduler_metadata.decode_shape_key.layer_plan must be a non-empty string")
+    elif layer_plan is not None and key_layer_plan != str(layer_plan):
+        blockers.append("execution.scheduler_metadata.decode_shape_key.layer_plan must match workload layer plan")
     for field in ("top_k", "experts_per_token", "draft_depth"):
         value = decode_shape_key.get(field)
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
@@ -3281,7 +3318,12 @@ def _run_native_bench(
         if set(seed_by_request) != set(request_ids):
             raise RuntimeError("missing one or more prefill seed tokens")
 
-        _record_decode_graph_bucket_metadata(scheduler, scheduler_metadata)
+        _record_decode_graph_bucket_metadata(
+            scheduler,
+            scheduler_metadata,
+            kv_storage_dtype=kv_policy.storage_dtype.value,
+            layer_plan=f"max_layers={int(max_layers)}",
+        )
         next_token_by_request = {request_id: seed_by_request[request_id].token_id for request_id in request_ids}
         warmup_start = time.perf_counter()
         for _ in range(warmup_decode_tokens):
@@ -3701,7 +3743,13 @@ def _build_payload(
         generated_tokens=bench.get("generated_tokens"),
         per_request_observability=per_request_observability,
     )
-    graph_bucket_blockers = _decode_shape_key_blockers(scheduler_metadata, concurrency=args.batch_size, prompt_length=args.prompt_length)
+    graph_bucket_blockers = _decode_shape_key_blockers(
+        scheduler_metadata,
+        concurrency=args.batch_size,
+        prompt_length=args.prompt_length,
+        kv_storage_dtype=kv_policy.storage_dtype.value,
+        layer_plan=f"max_layers={int(args.max_layers)}",
+    )
     graph_bucket_blockers.extend(_graph_bucket_evidence_blockers(scheduler_metadata))
     graph_bucket_blockers.extend(_graph_replay_profiler_evidence_blockers(scheduler_metadata, profiler))
     equality_passed = bool(equality.get("passed"))

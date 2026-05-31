@@ -1714,6 +1714,19 @@ def _validate_accepted_scheduler_metadata(
                 required_context_bucket = prompt_tokens_per_request
             if required_context_bucket is not None and context_bucket < required_context_bucket:
                 errors.append("execution.scheduler_metadata.decode_shape_key.context_bucket must cover workload prompt length for accepted artifacts")
+        key_kv_dtype = decode_shape_key.get("kv_storage_dtype")
+        workload_kv_dtype = workload.get("kv_storage_dtype")
+        if not isinstance(key_kv_dtype, str) or not key_kv_dtype.strip():
+            errors.append("execution.scheduler_metadata.decode_shape_key.kv_storage_dtype must be a non-empty string for accepted artifacts")
+        elif isinstance(workload_kv_dtype, str) and key_kv_dtype != workload_kv_dtype:
+            errors.append("execution.scheduler_metadata.decode_shape_key.kv_storage_dtype must match workload.kv_storage_dtype for accepted artifacts")
+        key_layer_plan = decode_shape_key.get("layer_plan")
+        max_layers = workload.get("max_layers")
+        expected_layer_plan = f"max_layers={max_layers}" if isinstance(max_layers, int) and not isinstance(max_layers, bool) else None
+        if not isinstance(key_layer_plan, str) or not key_layer_plan.strip():
+            errors.append("execution.scheduler_metadata.decode_shape_key.layer_plan must be a non-empty string for accepted artifacts")
+        elif expected_layer_plan is not None and key_layer_plan != expected_layer_plan:
+            errors.append("execution.scheduler_metadata.decode_shape_key.layer_plan must match workload.max_layers for accepted artifacts")
         for field in ("top_k", "experts_per_token", "draft_depth"):
             value = decode_shape_key.get(field)
             if not isinstance(value, int) or isinstance(value, bool) or value < 0:

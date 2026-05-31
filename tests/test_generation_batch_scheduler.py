@@ -13002,6 +13002,8 @@ def test_qwen35_retained_records_decode_graph_bucket_metadata() -> None:
         "active_c": 2,
         "context_bucket": 4,
         "active_mask": [True, True],
+        "kv_storage_dtype": "bf16",
+        "layer_plan": "all",
         "top_k": 0,
         "experts_per_token": 0,
         "replay_steps": 1,
@@ -15162,6 +15164,8 @@ def test_qwen35_retained_decode_shape_key_blockers_require_concurrency_axes() ->
             "active_c": 2,
             "context_bucket": 512,
             "active_mask": [True, True],
+            "kv_storage_dtype": "bf16",
+            "layer_plan": "max_layers=40",
             "top_k": 0,
             "experts_per_token": 0,
             "replay_steps": 1,
@@ -15175,6 +15179,8 @@ def test_qwen35_retained_decode_shape_key_blockers_require_concurrency_axes() ->
             "active_c": 1,
             "context_bucket": 256,
             "active_mask": [True, False],
+            "kv_storage_dtype": "int8_per_token_head",
+            "layer_plan": "max_layers=8",
             "top_k": -1,
             "experts_per_token": 0,
             "replay_steps": 0,
@@ -15183,12 +15189,26 @@ def test_qwen35_retained_decode_shape_key_blockers_require_concurrency_axes() ->
         }
     }
 
-    assert retained_bench._decode_shape_key_blockers(valid, concurrency=2, prompt_length=512) == []
-    blockers = retained_bench._decode_shape_key_blockers(invalid, concurrency=2, prompt_length=512)
+    assert retained_bench._decode_shape_key_blockers(
+        valid,
+        concurrency=2,
+        prompt_length=512,
+        kv_storage_dtype="bf16",
+        layer_plan="max_layers=40",
+    ) == []
+    blockers = retained_bench._decode_shape_key_blockers(
+        invalid,
+        concurrency=2,
+        prompt_length=512,
+        kv_storage_dtype="bf16",
+        layer_plan="max_layers=40",
+    )
     assert "execution.scheduler_metadata.decode_shape_key.mode must be decode" in blockers
     assert "execution.scheduler_metadata.decode_shape_key.active_c must match workload.concurrency" in blockers
     assert "execution.scheduler_metadata.decode_shape_key.active_mask true count must match workload.concurrency" in blockers
     assert "execution.scheduler_metadata.decode_shape_key.context_bucket must cover workload.prompt_tokens_per_request" in blockers
+    assert "execution.scheduler_metadata.decode_shape_key.kv_storage_dtype must match workload.kv_storage_dtype" in blockers
+    assert "execution.scheduler_metadata.decode_shape_key.layer_plan must match workload layer plan" in blockers
     assert "execution.scheduler_metadata.decode_shape_key.top_k must be a non-negative int" in blockers
     assert "execution.scheduler_metadata.decode_shape_key.replay_steps must be a positive int" in blockers
     assert "execution.scheduler_metadata.decode_shape_key.tree_shape must be a list of non-negative ints" in blockers
@@ -15759,6 +15779,8 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                     "active_c": 2,
                     "context_bucket": 512,
                     "active_mask": [True, True],
+                    "kv_storage_dtype": "bf16",
+                    "layer_plan": "max_layers=40",
                     "top_k": 0,
                     "experts_per_token": 0,
                     "replay_steps": 1,
@@ -15987,6 +16009,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         }
         payload["workload"]["kv_storage_dtype"] = "int8_per_token_head"
         payload["workload"]["kv_policy"] = int8_policy
+        payload["execution"]["scheduler_metadata"]["decode_shape_key"]["kv_storage_dtype"] = "int8_per_token_head"
         payload["memory"]["kv_storage_dtype"] = "int8_per_token_head"
         payload["memory"]["kv_policy"] = int8_policy
         int8_gate_flags = (
@@ -17412,6 +17435,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     undersized_decode_context_bucket["execution"]["scheduler_metadata"]["decode_shape_key"]["context_bucket"] = 256
     with pytest.raises(ValueError, match="decode_shape_key.context_bucket must cover workload prompt length"):
         validate_cn_diagnostic_artifact_payload(undersized_decode_context_bucket)
+
+    mismatched_decode_kv_dtype = json.loads(json.dumps(accepted))
+    mismatched_decode_kv_dtype["execution"]["scheduler_metadata"]["decode_shape_key"]["kv_storage_dtype"] = "int8_per_token_head"
+    with pytest.raises(ValueError, match="decode_shape_key.kv_storage_dtype must match workload.kv_storage_dtype"):
+        validate_cn_diagnostic_artifact_payload(mismatched_decode_kv_dtype)
+
+    mismatched_decode_layer_plan = json.loads(json.dumps(accepted))
+    mismatched_decode_layer_plan["execution"]["scheduler_metadata"]["decode_shape_key"]["layer_plan"] = "max_layers=8"
+    with pytest.raises(ValueError, match="decode_shape_key.layer_plan must match workload.max_layers"):
+        validate_cn_diagnostic_artifact_payload(mismatched_decode_layer_plan)
 
     invalid_decode_top_k = json.loads(json.dumps(accepted))
     invalid_decode_top_k["execution"]["scheduler_metadata"]["decode_shape_key"]["top_k"] = -1
