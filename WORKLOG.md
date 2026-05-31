@@ -24529,3 +24529,54 @@ the +0.36% median speedup vs retained `1.2646x` was not beyond run variance
 (MAD `0.00339`, one replicate below the retained best).  Docs/artifact rollup
 from the attempted retention were reverted; retained best remains
 `cfab012` threshold4 regenerated route at `1.2646x`, `40.94 tok/s`.
+
+## 2026-05-31 — DFlash multiloop iter28 threshold4 terminal AR tail
+
+Active loop: `dflash-27b-w7900/run-20260531-102747`.  Iteration 28 pivoted
+after the verifier micro-fusion plateau to zero-probe runtime routing.  Added a
+default-off benchmark diagnostic flag, `--terminal-ar-tokens N`, to
+`scripts/dflash_chain_e2e_bench.py`.  When `N > 0` and the remaining decode
+horizon is below `N`, `_run_dflash_chain_on_session` routes that cycle through
+plain AR on the canonical slot, skips drafter capture/materialization, records
+`terminal_ar_guard`, and continues through AR for the terminal tail.  Defaults
+remain unchanged (`0`).
+
+Retained command shape:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD=4 HIPENGINE_W4_MULTI_ROW_PACK8_SITES=full_qk,linear_qkv_z,dense_gate_up,single_full_o,single_full_v,single_linear_out,single_shared_down,single_dense_down PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --verifier-graph auto --full-attn-chain-mode batched --canonical-commit-mode bulk_direct --profile-route-manifest /tmp/multiloop-dflash-27b-w7900-threshold4-regenerated-manifest.json --drafter-query-mode budget_prefix --terminal-ar-tokens 5 --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/multiloop-dflash-27b-w7900.json
+```
+
+Result: exact `9/9` on three full W7900 27B B=4/D64 replicates.  Ratios were
+`1.3003x`, `1.2984x`, `1.2929x` AR; retained rollup uses the 3-run median
+`1.2984x` AR and `42.07 tok/s` DFlash/spec vs prior threshold4 regenerated
+`1.2646x`, `40.94 tok/s` (+2.8% spec tok/s).  Rows/output falls from `1.2587`
+to `1.2205`; final replicate records 13 `terminal_ar_guard` cycles across the
+7 chain-routed prompts.  Route mix is otherwise unchanged: 7 chain / 2 AR, with
+json-YAML and sort-third still routed to AR.
+
+This is **not defaulted**.  The stack is still profile-history routing + opt-in
+verifier graph + `bulk_direct` + `budget_prefix` + expanded W4 site mask +
+threshold=4 + terminal AR tail.  Threshold=4 has a known non-exact chain row,
+so this remains only a diagnostic route for this W7900 27B B=4/D64 gate.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/dflash_chain_e2e_bench.py scripts/dflash_build_profile_route_manifest.py hipengine/runtime/qwen35_paro.py
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. pytest -q tests/test_paro_awq_gemv_multi_row_decode.py tests/test_dflash_profile_route_manifest.py tests/test_dflash_draft_confidence.py tests/test_speculative_benchmark.py
+python3 -m json.tool benchmarks/results/2026-05-31-hipengine-dflash-27b-threshold4-terminal-ar-tail.json >/tmp/hipengine-dflash-27b-threshold4-terminal-ar-tail-artifact-check.json
+```
+
+Result: targeted pytest `17 passed`; artifact JSON valid.
+
+Retained artifact:
+- `benchmarks/results/2026-05-31-hipengine-dflash-27b-threshold4-terminal-ar-tail.json`
+
+Docs/rollup updated:
+- `docs/DFLASH.md` table now includes the terminal AR tail threshold4 route.
+- `benchmarks/README.md` and `benchmarks/CHANGELOG.md` retained diagnostic row.
+
+Next multiloop focus: test whether `--terminal-ar-tokens 5` stays beneficial at
+D128/D160 or whether a different terminal threshold (e.g. 4 or 6) is a better
+D64 gate before considering any default promotion path.

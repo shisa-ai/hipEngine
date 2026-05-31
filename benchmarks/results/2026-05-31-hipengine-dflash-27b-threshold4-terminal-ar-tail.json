@@ -1,0 +1,733 @@
+{
+  "commands": {
+    "guard": "python parse exact gate + py_compile + HIP_VISIBLE_DEVICES=0 ... pytest -q tests/test_paro_awq_gemv_multi_row_decode.py tests/test_dflash_profile_route_manifest.py tests/test_dflash_draft_confidence.py tests/test_speculative_benchmark.py",
+    "threshold4_regenerated_profile_route_terminal_ar_tail": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD=4 HIPENGINE_W4_MULTI_ROW_PACK8_SITES=full_qk,linear_qkv_z,dense_gate_up,single_full_o,single_full_v,single_linear_out,single_shared_down,single_dense_down PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --verifier-graph auto --full-attn-chain-mode batched --canonical-commit-mode bulk_direct --profile-route-manifest /tmp/multiloop-dflash-27b-w7900-threshold4-regenerated-manifest.json --drafter-query-mode budget_prefix --terminal-ar-tokens 5 --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/multiloop-dflash-27b-w7900.json"
+  },
+  "correctness_gate": {
+    "all_correctness_passed": true,
+    "all_exact_match_ar": true,
+    "exact_rows": "9/9",
+    "known_rejected_control": "all-chain threshold=4 remains non-exact on code:json_yaml_continuation; manifest routes json-YAML and sort-third to AR",
+    "native_bulk_bplus1": true,
+    "oracle": "same-session greedy AR equality plus finite logits from dflash_chain_e2e_bench"
+  },
+  "decision": {
+    "accepted": true,
+    "defaulted": false,
+    "reason": "Keep as a multiloop diagnostic win. Default-off terminal AR tail routing avoids low-amortization final DFlash cycles without adaptive probing. It remains non-default because the route/history/graph/bulk_direct/budget_prefix/threshold4/expanded-W4 stack is gate-specific and terminal tail routing is only proven on this D64 suite."
+  },
+  "deltas": {
+    "median_spec_tok_s_vs_prior_best_percent": 2.751498024871335,
+    "median_speedup_vs_prior_best_absolute": 0.03387565941342663,
+    "median_speedup_vs_prior_best_relative_percent": 2.678840830501117,
+    "rows_per_output_delta": -0.03819444444444442
+  },
+  "hardware": {
+    "arch": "gfx1100",
+    "backend": "hip_gfx1100",
+    "gpu": "AMD Radeon Pro W7900"
+  },
+  "manifest": {
+    "default": "ar",
+    "description": "Zero-probe DFlash profile/history route generated from exact same-session bench rows.",
+    "generated_at": "2026-05-31T13:00:43.234396+00:00",
+    "min_chain_speedup": 1.0,
+    "routes": {
+      "code:class_continuation": "chain",
+      "code:function_continuation": "chain",
+      "code:humaneval_add": "chain",
+      "code:quicksort_prefix": "chain",
+      "instruct:simple_qa_no_template": "chain",
+      "instruct:simple_qa_qwen_static_chat": "chain",
+      "math:short_gsm8k_style": "chain"
+    },
+    "row_evidence": [
+      {
+        "benchmark_group": "code_promotion",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "code:quicksort_prefix",
+        "route": "chain",
+        "speedup_vs_ar": 1.2062343241393776
+      },
+      {
+        "benchmark_group": "code_promotion",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "code:function_continuation",
+        "route": "chain",
+        "speedup_vs_ar": 1.07835362572281
+      },
+      {
+        "benchmark_group": "code_promotion",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "code:class_continuation",
+        "route": "chain",
+        "speedup_vs_ar": 1.5733812557247893
+      },
+      {
+        "benchmark_group": "code_promotion",
+        "chain_shape": true,
+        "exact_match_ar": false,
+        "prompt_id": "code:json_yaml_continuation",
+        "route": "ar",
+        "speedup_vs_ar": 1.4254369469283559
+      },
+      {
+        "benchmark_group": "code_promotion",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "code:humaneval_add",
+        "route": "chain",
+        "speedup_vs_ar": 1.573585279011015
+      },
+      {
+        "benchmark_group": "code_promotion",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "code:humaneval_sort_third",
+        "route": "ar",
+        "speedup_vs_ar": 0.898914540014793
+      },
+      {
+        "benchmark_group": "robustness",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "math:short_gsm8k_style",
+        "route": "chain",
+        "speedup_vs_ar": 1.4770811314363343
+      },
+      {
+        "benchmark_group": "robustness",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "instruct:simple_qa_no_template",
+        "route": "chain",
+        "speedup_vs_ar": 1.5810995805741468
+      },
+      {
+        "benchmark_group": "robustness",
+        "chain_shape": true,
+        "exact_match_ar": true,
+        "prompt_id": "instruct:simple_qa_qwen_static_chat",
+        "route": "chain",
+        "speedup_vs_ar": 1.3760458554620467
+      }
+    ],
+    "source_artifact": "/tmp/multiloop-dflash-27b-w7900-threshold4-allchain-profile.json",
+    "summary": {
+      "chain_routes": 7,
+      "default_route": "ar",
+      "rows_seen": 9,
+      "rows_with_prompt_id": 9,
+      "skipped_rows": 0
+    }
+  },
+  "measurements": {
+    "previous_threshold4_regenerated_route": {
+      "acceptance": {
+        "accept_histogram": {
+          "0": 16,
+          "1": 12,
+          "2": 20,
+          "3": 9,
+          "4": 62
+        },
+        "accepted_output_tokens": 327,
+        "avg_accept_length": 2.7478991596638656,
+        "exact_rate_0_to_n": {
+          "0": 0.13445378151260504,
+          "1": 0.10084033613445378,
+          "10": 0.0,
+          "2": 0.16806722689075632,
+          "3": 0.07563025210084033,
+          "4": 0.5210084033613446,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "ge_rate_1_to_n": {
+          "1": 0.865546218487395,
+          "10": 0.0,
+          "2": 0.7647058823529411,
+          "3": 0.5966386554621849,
+          "4": 0.5210084033613446,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "multi_token_acceptance_rate": 0.7647058823529411,
+        "steps": 119
+      },
+      "all_correctness_passed": true,
+      "all_exact_match_ar": true,
+      "ar_decode_tok_s": 32.37744400889889,
+      "rows": 9,
+      "spec_decode_tok_s": 40.94335331291701,
+      "speedup_vs_ar": 1.264564099058091,
+      "target_verify_rows_per_output_token": 1.2586805555555556
+    },
+    "terminal_ar_tail_final_replicate": {
+      "acceptance": {
+        "accept_histogram": {
+          "0": 13,
+          "1": 10,
+          "2": 19,
+          "3": 7,
+          "4": 62
+        },
+        "accepted_output_tokens": 317,
+        "avg_accept_length": 2.855855855855856,
+        "exact_rate_0_to_n": {
+          "0": 0.11711711711711711,
+          "1": 0.09009009009009009,
+          "10": 0.0,
+          "2": 0.17117117117117117,
+          "3": 0.06306306306306306,
+          "4": 0.5585585585585585,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "ge_rate_1_to_n": {
+          "1": 0.8828828828828829,
+          "10": 0.0,
+          "2": 0.7927927927927928,
+          "3": 0.6216216216216216,
+          "4": 0.5585585585585585,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "multi_token_acceptance_rate": 0.7927927927927928,
+        "steps": 111
+      },
+      "all_correctness_passed": true,
+      "all_exact_match_ar": true,
+      "ar_decode_tok_s": 32.37548612570733,
+      "row_speedups": [
+        {
+          "benchmark_group": "code_promotion",
+          "draft_calls": 18,
+          "draft_seconds": 0.3503489352297038,
+          "exact_match_ar": true,
+          "no_spec_budget_cycles": 1,
+          "prompt_id": "code:quicksort_prefix",
+          "route": "chain_with_terminal_ar",
+          "speedup_vs_ar": 1.2754623577111428,
+          "target_verify_rows_per_output_token": 1.4375,
+          "target_verify_seconds": 1.193910907022655,
+          "terminal_ar_cycles": 1
+        },
+        {
+          "benchmark_group": "code_promotion",
+          "draft_calls": 20,
+          "draft_seconds": 0.3871818290790543,
+          "exact_match_ar": true,
+          "no_spec_budget_cycles": 1,
+          "prompt_id": "code:function_continuation",
+          "route": "chain_with_terminal_ar",
+          "speedup_vs_ar": 1.1209153773310472,
+          "target_verify_rows_per_output_token": 1.625,
+          "target_verify_seconds": 1.3707128467503935,
+          "terminal_ar_cycles": 3
+        },
+        {
+          "benchmark_group": "code_promotion",
+          "draft_calls": 15,
+          "draft_seconds": 0.29213730432093143,
+          "exact_match_ar": true,
+          "no_spec_budget_cycles": 1,
+          "prompt_id": "code:class_continuation",
+          "route": "chain_with_terminal_ar",
+          "speedup_vs_ar": 1.5392068430224575,
+          "target_verify_rows_per_output_token": 1.1875,
+          "target_verify_seconds": 0.9857024309458211,
+          "terminal_ar_cycles": 0
+        },
+        {
+          "benchmark_group": "code_promotion",
+          "draft_calls": 0,
+          "draft_seconds": 0.0,
+          "exact_match_ar": true,
+          "no_spec_budget_cycles": 0,
+          "prompt_id": "code:json_yaml_continuation",
+          "route": "ar",
+          "speedup_vs_ar": 0.9981153958186573,
+          "target_verify_rows_per_output_token": 1.0,
+          "target_verify_seconds": 1.988297629985027,
+          "terminal_ar_cycles": 0
+        },
+        {
+          "benchmark_group": "code_promotion",
+          "draft_calls": 14,
+          "draft_seconds": 0.2687437041895464,
+          "exact_match_ar": true,
+          "no_spec_budget_cycles": 1,
+          "prompt_id": "code:humaneval_add",
+          "route": "chain_with_terminal_ar",
+          "speedup_vs_ar": 1.5413948729153926,
+          "target_verify_rows_per_output_token": 1.15625,
+          "target_verify_seconds": 1.0154560611117631,
+          "terminal_ar_cycles": 3
+        },
+        {
+          "benchmark_group": "code_promotion",
+          "draft_calls": 0,
+          "draft_seconds": 0.0,
+          "exact_match_ar": true,
+          "no_spec_budget_cycles": 0,
+          "prompt_id": "code:humaneval_sort_third",
+          "route": "ar",
+          "speedup_vs_ar": 0.9954858616002595,
+          "target_verify_rows_per_output_token": 1.0,
+          "target_verify_seconds": 2.0051769140409306,
+          "terminal_ar_cycles": 0
+        },
+        {
+          "benchmark_group": "robustness",
+          "draft_calls": 14,
+          "draft_seconds": 0.2694754301337525,
+          "exact_match_ar": true,
+          "no_spec_budget_cycles": 1,
+          "prompt_id": "math:short_gsm8k_style",
+          "route": "chain_with_terminal_ar",
+          "speedup_vs_ar": 1.5670287203322135,
+          "target_verify_rows_per_output_token": 1.140625,
+          "target_verify_seconds": 0.9859619510825723,
+          "terminal_ar_cycles": 2
+        },
+        {
+          "benchmark_group": "robustness",
+          "draft_calls": 14,
+          "draft_seconds": 0.2647029651561752,
+          "exact_match_ar": true,
+          "no_spec_budget_cycles": 1,
+          "prompt_id": "instruct:simple_qa_no_template",
+          "route": "chain_with_terminal_ar",
+          "speedup_vs_ar": 1.5336170185312232,
+          "target_verify_rows_per_output_token": 1.15625,
+          "target_verify_seconds": 1.0112257852451876,
+          "terminal_ar_cycles": 3
+        },
+        {
+          "benchmark_group": "robustness",
+          "draft_calls": 16,
+          "draft_seconds": 0.30474823678378016,
+          "exact_match_ar": true,
+          "no_spec_budget_cycles": 1,
+          "prompt_id": "instruct:simple_qa_qwen_static_chat",
+          "route": "chain_with_terminal_ar",
+          "speedup_vs_ar": 1.4590442662605552,
+          "target_verify_rows_per_output_token": 1.28125,
+          "target_verify_seconds": 1.0421328218653798,
+          "terminal_ar_cycles": 1
+        }
+      ],
+      "rows": 9,
+      "spec_decode_tok_s": 41.85904669351529,
+      "speedup_vs_ar": 1.2929241133549392,
+      "summed_phase_seconds": {
+        "commit_seconds": 0.01669185236096382,
+        "decode_seconds": 13.760466267121956,
+        "draft_seconds": 2.137338404892944,
+        "target_verify_seconds": 11.59857734804973
+      },
+      "target_verify_rows_per_output_token": 1.2204861111111112
+    },
+    "terminal_ar_tail_median": {
+      "acceptance": {
+        "accept_histogram": {
+          "0": 13,
+          "1": 10,
+          "2": 19,
+          "3": 7,
+          "4": 62
+        },
+        "accepted_output_tokens": 317,
+        "avg_accept_length": 2.855855855855856,
+        "exact_rate_0_to_n": {
+          "0": 0.11711711711711711,
+          "1": 0.09009009009009009,
+          "10": 0.0,
+          "2": 0.17117117117117117,
+          "3": 0.06306306306306306,
+          "4": 0.5585585585585585,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "ge_rate_1_to_n": {
+          "1": 0.8828828828828829,
+          "10": 0.0,
+          "2": 0.7927927927927928,
+          "3": 0.6216216216216216,
+          "4": 0.5585585585585585,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "multi_token_acceptance_rate": 0.7927927927927928,
+        "steps": 111
+      },
+      "all_correctness_passed": true,
+      "all_exact_match_ar": true,
+      "ar_decode_tok_s": 32.4003548074971,
+      "rows": 9,
+      "spec_decode_tok_s": 42.06990887063802,
+      "spec_decode_tok_s_mean": 42.136223723542464,
+      "speedup_vs_ar": 1.2984397584715177,
+      "speedup_vs_ar_mad": 0.0018509819082974666,
+      "speedup_vs_ar_mean": 1.2972182040687574,
+      "target_verify_rows_per_output_token": 1.2204861111111112,
+      "terminal_ar_guard_cycles_final_replicate": 13
+    },
+    "terminal_ar_tail_replicates": [
+      {
+        "ar_decode_tok_s": 32.669397917934695,
+        "exact_rows": 9,
+        "replicate": 1,
+        "spec_decode_tok_s": 42.479715606474095,
+        "speedup_vs_ar": 1.3002907403798152,
+        "target_verify_rows_per_output_token": 1.2204861111111112
+      },
+      {
+        "ar_decode_tok_s": 32.4003548074971,
+        "exact_rows": 9,
+        "replicate": 2,
+        "spec_decode_tok_s": 42.06990887063802,
+        "speedup_vs_ar": 1.2984397584715177,
+        "target_verify_rows_per_output_token": 1.2204861111111112
+      },
+      {
+        "ar_decode_tok_s": 32.37548612570733,
+        "exact_rows": 9,
+        "replicate": 3,
+        "spec_decode_tok_s": 41.85904669351529,
+        "speedup_vs_ar": 1.2929241133549392,
+        "target_verify_rows_per_output_token": 1.2204861111111112
+      }
+    ]
+  },
+  "models": {
+    "drafter": {
+      "dtype": "bf16",
+      "name": "z-lab/Qwen3.6-27B-DFlash",
+      "path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106",
+      "snapshot_revision": "0919688658996800f86b895034249700e9481106"
+    },
+    "target": {
+      "name": "z-lab/Qwen3.6-27B-PARO",
+      "path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207",
+      "quant": "w4_paro_packed",
+      "snapshot_revision": "84f86409151d4f2ec86dc0b6a096d5f6daa7f207"
+    }
+  },
+  "notes": [
+    "Default-off code path; no generation/runtime defaults changed.",
+    "terminal_ar_tokens=5 routes only cycles with remaining decode tokens <5 through AR, avoiding adaptive probe/cooldown churn.",
+    "Final replicate had 13 terminal_ar_guard cycles across the 7 chain-routed prompts; AR-routed json-YAML and sort-third are unchanged."
+  ],
+  "performance_claim": false,
+  "run_tag": "dflash-27b-w7900/run-20260531-102747",
+  "schema": "hipengine.benchmark_result.v1",
+  "software": {
+    "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n",
+    "hipengine_branch": "mpt-dflash",
+    "hipengine_commit": "3026977f292c3fb59d8c98854523149d291487f9",
+    "hipengine_dirty": true,
+    "hipengine_status_porcelain": "M scripts/dflash_chain_e2e_bench.py\n?? .handoff/\n?? benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-b3-batched-graphauto-rev2.json\n?? benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-b3-batched-graphauto.json\n?? benchmarks/results/2026-05-22-hipengine-mtp-m12.1-w7900-b3-c1loop-graphauto.json\n?? benchmarks/results/2026-05-22-hipengine-mtp-m12.6b-w7900-b3-batched-graphauto.json",
+    "platform": "Linux-7.0.10-1-cachyos-x86_64-with-glibc2.43",
+    "python": "3.12.9"
+  },
+  "timestamp": "2026-05-31T14:37:12.721540+00:00",
+  "workload": {
+    "adaptive_budget_mode": "off",
+    "adaptive_min_remaining_tokens": 0,
+    "adaptive_probe_amortization_tokens": 128,
+    "artifact_validation": {
+      "drafter": {
+        "artifact_kind": "dflash_drafter",
+        "config": {
+          "architecture": "DFlashDraftModel",
+          "block_size": 16,
+          "dtype": "bfloat16",
+          "head_dim": 128,
+          "hidden_size": 5120,
+          "intermediate_size": 17408,
+          "layer_types": [
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "sliding_attention",
+            "full_attention"
+          ],
+          "mask_token_id": 248070,
+          "num_attention_heads": 32,
+          "num_hidden_layers": 5,
+          "num_key_value_heads": 8,
+          "num_target_layers": 64,
+          "rope_theta": 10000000.0,
+          "target_hidden_concat_size": 25600,
+          "target_hidden_size": 5120,
+          "target_layer_ids": [
+            1,
+            16,
+            31,
+            46,
+            61
+          ],
+          "vocab_size": 248320
+        },
+        "config_errors": [],
+        "dtype_errors": [],
+        "missing": [],
+        "model_path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106",
+        "passed": true,
+        "present_count": 58,
+        "shape_errors": []
+      },
+      "pair_errors": [],
+      "passed": true,
+      "target": {
+        "artifact_kind": "dflash_target",
+        "config": {
+          "architecture": "Qwen3_5ForConditionalGeneration",
+          "head_dim": 256,
+          "hidden_size": 5120,
+          "layer_types": [
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention",
+            "linear_attention",
+            "linear_attention",
+            "linear_attention",
+            "full_attention"
+          ],
+          "num_attention_heads": 24,
+          "num_experts": 0,
+          "num_experts_per_tok": 0,
+          "num_hidden_layers": 64,
+          "num_key_value_heads": 4,
+          "quant_method": "paroquant",
+          "shared_expert_format": "dense_paro_w4",
+          "vocab_size": 248320
+        },
+        "config_errors": [],
+        "dtype_errors": [],
+        "missing": [],
+        "model_path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207",
+        "passed": true,
+        "present_count": 2850,
+        "shape_errors": []
+      }
+    },
+    "canonical_commit_mode": "bulk_direct",
+    "decode_tokens": 64,
+    "draft_budgets": [
+      4
+    ],
+    "draft_p_min": 0.0,
+    "draft_top_k": 1,
+    "drafter_bucket_mode": "exact",
+    "drafter_fusion_mode": "off",
+    "drafter_graph_mode": "off",
+    "drafter_query_mode": "budget_prefix",
+    "native_bulk_verifier": true,
+    "profile_route_default": "ar",
+    "profile_route_manifest": "/tmp/multiloop-dflash-27b-w7900-threshold4-regenerated-manifest.json",
+    "profile_route_manifest_body": {
+      "default": "ar",
+      "description": "Zero-probe DFlash profile/history route generated from exact same-session bench rows.",
+      "generated_at": "2026-05-31T13:00:43.234396+00:00",
+      "min_chain_speedup": 1.0,
+      "routes": {
+        "code:class_continuation": "chain",
+        "code:function_continuation": "chain",
+        "code:humaneval_add": "chain",
+        "code:quicksort_prefix": "chain",
+        "instruct:simple_qa_no_template": "chain",
+        "instruct:simple_qa_qwen_static_chat": "chain",
+        "math:short_gsm8k_style": "chain"
+      },
+      "row_evidence": [
+        {
+          "benchmark_group": "code_promotion",
+          "chain_shape": true,
+          "exact_match_ar": true,
+          "prompt_id": "code:quicksort_prefix",
+          "route": "chain",
+          "speedup_vs_ar": 1.2062343241393776
+        },
+        {
+          "benchmark_group": "code_promotion",
+          "chain_shape": true,
+          "exact_match_ar": true,
+          "prompt_id": "code:function_continuation",
+          "route": "chain",
+          "speedup_vs_ar": 1.07835362572281
+        },
+        {
+          "benchmark_group": "code_promotion",
+          "chain_shape": true,
+          "exact_match_ar": true,
+          "prompt_id": "code:class_continuation",
+          "route": "chain",
+          "speedup_vs_ar": 1.5733812557247893
+        },
+        {
+          "benchmark_group": "code_promotion",
+          "chain_shape": true,
+          "exact_match_ar": false,
+          "prompt_id": "code:json_yaml_continuation",
+          "route": "ar",
+          "speedup_vs_ar": 1.4254369469283559
+        },
+        {
+          "benchmark_group": "code_promotion",
+          "chain_shape": true,
+          "exact_match_ar": true,
+          "prompt_id": "code:humaneval_add",
+          "route": "chain",
+          "speedup_vs_ar": 1.573585279011015
+        },
+        {
+          "benchmark_group": "code_promotion",
+          "chain_shape": true,
+          "exact_match_ar": true,
+          "prompt_id": "code:humaneval_sort_third",
+          "route": "ar",
+          "speedup_vs_ar": 0.898914540014793
+        },
+        {
+          "benchmark_group": "robustness",
+          "chain_shape": true,
+          "exact_match_ar": true,
+          "prompt_id": "math:short_gsm8k_style",
+          "route": "chain",
+          "speedup_vs_ar": 1.4770811314363343
+        },
+        {
+          "benchmark_group": "robustness",
+          "chain_shape": true,
+          "exact_match_ar": true,
+          "prompt_id": "instruct:simple_qa_no_template",
+          "route": "chain",
+          "speedup_vs_ar": 1.5810995805741468
+        },
+        {
+          "benchmark_group": "robustness",
+          "chain_shape": true,
+          "exact_match_ar": true,
+          "prompt_id": "instruct:simple_qa_qwen_static_chat",
+          "route": "chain",
+          "speedup_vs_ar": 1.3760458554620467
+        }
+      ],
+      "source_artifact": "/tmp/multiloop-dflash-27b-w7900-threshold4-allchain-profile.json",
+      "summary": {
+        "chain_routes": 7,
+        "default_route": "ar",
+        "rows_seen": 9,
+        "rows_with_prompt_id": 9,
+        "skipped_rows": 0
+      }
+    },
+    "profile_routes": {
+      "code:class_continuation": "chain",
+      "code:function_continuation": "chain",
+      "code:humaneval_add": "chain",
+      "code:quicksort_prefix": "chain",
+      "instruct:simple_qa_no_template": "chain",
+      "instruct:simple_qa_qwen_static_chat": "chain",
+      "math:short_gsm8k_style": "chain"
+    },
+    "promotion_blocker": "native B+1 verifier ran, but full chain must still beat same-session AR before promotion",
+    "prompt_suite": "fixtures/dflash/stable_prompts.jsonl",
+    "prompt_suite_sha256": "04a88c095fa0b05c81eaa09f62d58cac053272fc307e1dafae6ab076c214892f",
+    "provider": "dflash",
+    "rocprof_selected_region": "none",
+    "roctx_markers": false,
+    "shape": "full_model_dflash_chain_e2e",
+    "terminal_ar_tokens": 5,
+    "tree_compiler": null,
+    "tree_top_k": 1,
+    "verifier_chain_attn_mode": "batched",
+    "verifier_graph_mode": "auto",
+    "verifier_mode": "native_bulk_bplus1",
+    "verifier_tree_mode": "chain",
+    "verify_modes": [
+      "verify_chain"
+    ]
+  }
+}

@@ -2034,6 +2034,7 @@ def run_same_session_pair(
     adaptive_budget_mode: str = "off",
     adaptive_min_remaining_tokens: int = 0,
     adaptive_probe_amortization_tokens: int = 128,
+    terminal_ar_tokens: int = 0,
     chain_attn_mode: str = "c1_loop",
     tree_mode: str = "chain",
     tree_top_k: int = 1,
@@ -2057,6 +2058,8 @@ def run_same_session_pair(
         raise ValueError("adaptive_min_remaining_tokens must be non-negative")
     if adaptive_probe_amortization_tokens < 0:
         raise ValueError("adaptive_probe_amortization_tokens must be non-negative")
+    if terminal_ar_tokens < 0:
+        raise ValueError("terminal_ar_tokens must be non-negative")
     if canonical_commit_mode not in {"replay", "bulk_direct", "branch_copy"}:
         raise ValueError("canonical_commit_mode must be replay, bulk_direct, or branch_copy")
     if canonical_commit_mode != "replay" and (verifier_mode != "native_bulk_bplus1" or tree_mode != "chain"):
@@ -2154,6 +2157,7 @@ def run_same_session_pair(
                 adaptive_budget_mode=adaptive_budget_mode,
                 adaptive_min_remaining_tokens=adaptive_min_remaining_tokens,
                 adaptive_probe_amortization_tokens=adaptive_probe_amortization_tokens,
+                terminal_ar_tokens=terminal_ar_tokens,
                 ar_decode_tok_s_estimate=ar_meta["decode_tok_s"],
                 chain_attn_mode=chain_attn_mode,
                 tree_mode=routed_tree_mode,
@@ -2184,6 +2188,7 @@ def _run_dflash_chain_on_session(
     adaptive_budget_mode: str = "off",
     adaptive_min_remaining_tokens: int = 0,
     adaptive_probe_amortization_tokens: int = 128,
+    terminal_ar_tokens: int = 0,
     ar_decode_tok_s_estimate: float | None = None,
     chain_attn_mode: str = "c1_loop",
     tree_mode: str = "chain",
@@ -2199,6 +2204,8 @@ def _run_dflash_chain_on_session(
         raise ValueError("adaptive_min_remaining_tokens must be non-negative")
     if adaptive_probe_amortization_tokens < 0:
         raise ValueError("adaptive_probe_amortization_tokens must be non-negative")
+    if terminal_ar_tokens < 0:
+        raise ValueError("terminal_ar_tokens must be non-negative")
     if canonical_commit_mode not in {"replay", "bulk_direct", "branch_copy"}:
         raise ValueError("canonical_commit_mode must be replay, bulk_direct, or branch_copy")
     if canonical_commit_mode != "replay" and (verifier_mode != "native_bulk_bplus1" or tree_mode != "chain"):
@@ -2264,6 +2271,7 @@ def _run_dflash_chain_on_session(
     target_accept_scalar_reads = 0
     target_accept_scalar_values = 0
     confidence_limited_cycles = 0
+    terminal_ar_cycles = 0
     canonical_commit_replay_rows = 0
     t1 = time.perf_counter()
     state_copies = 0
@@ -2283,8 +2291,19 @@ def _run_dflash_chain_on_session(
             remaining_tokens=remaining,
             active_budget=active_budget,
         )
-        if active_budget <= 0 or not decision.use_dflash:
-            terminal_ar_bypass = active_budget <= 0 or decision.reason in _ADAPTIVE_AR_GUARD_REASONS
+        terminal_ar_guard = (
+            active_budget > 0
+            and int(terminal_ar_tokens) > 0
+            and remaining < int(terminal_ar_tokens)
+        )
+        if active_budget <= 0 or terminal_ar_guard or not decision.use_dflash:
+            if terminal_ar_guard:
+                terminal_ar_cycles += 1
+            terminal_ar_bypass = (
+                active_budget <= 0
+                or terminal_ar_guard
+                or decision.reason in _ADAPTIVE_AR_GUARD_REASONS
+            )
             cycle_context_tokens = context_tokens
             t_cycle = time.perf_counter()
             verify_rows_total += 1
@@ -2313,8 +2332,16 @@ def _run_dflash_chain_on_session(
                 cycle=cycles,
                 cycle_wall_ms=(time.perf_counter() - t_cycle) * 1000.0,
                 context_tokens=cycle_context_tokens,
-                forced_reason="no_spec_budget" if active_budget <= 0 else decision.reason,
-                update_state=active_budget > 0 and decision.reason not in _ADAPTIVE_AR_GUARD_REASONS,
+                forced_reason=(
+                    "no_spec_budget"
+                    if active_budget <= 0
+                    else ("terminal_ar_guard" if terminal_ar_guard else decision.reason)
+                ),
+                update_state=(
+                    active_budget > 0
+                    and not terminal_ar_guard
+                    and decision.reason not in _ADAPTIVE_AR_GUARD_REASONS
+                ),
             )
             continue
         cycle_context_tokens = context_tokens
@@ -2648,6 +2675,8 @@ def _run_dflash_chain_on_session(
         "tree_top_k": int(tree_top_k),
         "draft_top_k": int(drafter.draft_top_k),
         "draft_p_min": float(draft_p_min),
+        "terminal_ar_tokens": int(terminal_ar_tokens),
+        "terminal_ar_cycles": int(terminal_ar_cycles),
         "drafter_query_mode": drafter.query_mode,
         "drafter_query_rows": int(drafter.query_rows),
         "drafter_block_size": int(drafter.block_size),
@@ -2856,6 +2885,8 @@ def _row_for_artifact(prompt: dict[str, Any], budget: int, ar: tuple[list[int], 
             "tree_top_k": spec_meta.get("tree_top_k"),
             "draft_top_k": spec_meta.get("draft_top_k"),
             "draft_p_min": spec_meta.get("draft_p_min"),
+            "terminal_ar_tokens": spec_meta.get("terminal_ar_tokens"),
+            "terminal_ar_cycles": spec_meta.get("terminal_ar_cycles"),
             "drafter_query_mode": spec_meta.get("drafter_query_mode"),
             "drafter_query_rows": spec_meta.get("drafter_query_rows"),
             "drafter_block_size": spec_meta.get("drafter_block_size"),
@@ -3002,6 +3033,17 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--terminal-ar-tokens",
+        type=int,
+        default=0,
+        help=(
+            "Default-off diagnostic: route cycles with remaining decode tokens"
+            " below this threshold through plain AR instead of drafting. This"
+            " skips low-amortization terminal DFlash cycles without enabling the"
+            " adaptive probe controller."
+        ),
+    )
+    parser.add_argument(
         "--canonical-commit-mode",
         choices=("replay", "bulk_direct", "branch_copy"),
         default="replay",
@@ -3050,6 +3092,8 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError("--adaptive-min-remaining-tokens must be non-negative")
     if args.adaptive_probe_amortization_tokens < 0:
         raise ValueError("--adaptive-probe-amortization-tokens must be non-negative")
+    if args.terminal_ar_tokens < 0:
+        raise ValueError("--terminal-ar-tokens must be non-negative")
     if args.canonical_commit_mode != "replay" and (args.verifier_mode != "native_bulk_bplus1" or args.tree_mode != "chain"):
         raise ValueError("--canonical-commit-mode bulk_direct/branch_copy requires native_bulk_bplus1 chain mode")
     if args.draft_p_min > 0.0:
@@ -3105,6 +3149,7 @@ def main(argv: list[str] | None = None) -> int:
                 adaptive_budget_mode=args.adaptive_budget,
                 adaptive_min_remaining_tokens=args.adaptive_min_remaining_tokens,
                 adaptive_probe_amortization_tokens=args.adaptive_probe_amortization_tokens,
+                terminal_ar_tokens=args.terminal_ar_tokens,
                 chain_attn_mode=args.full_attn_chain_mode,
                 tree_mode=args.tree_mode,
                 tree_top_k=tree_top_k_for_row,
@@ -3177,6 +3222,7 @@ def main(argv: list[str] | None = None) -> int:
             "adaptive_budget_mode": args.adaptive_budget,
             "adaptive_min_remaining_tokens": args.adaptive_min_remaining_tokens,
             "adaptive_probe_amortization_tokens": args.adaptive_probe_amortization_tokens,
+            "terminal_ar_tokens": args.terminal_ar_tokens,
             "canonical_commit_mode": args.canonical_commit_mode,
             "profile_route_manifest": str(args.profile_route_manifest) if args.profile_route_manifest else None,
             "profile_route_default": profile_route_default,
