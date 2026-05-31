@@ -1536,17 +1536,18 @@ roll-up/status view.
       `scripts/qwen35_kv_int8_accuracy.py` for prompt/context-boundary
       `512,513`, so C3.1 handoff artifacts name both the generated-token gate
       and the lower-level INT8 KV accuracy gate before promotion; c-sweep
-      `--include-int8` rows now bind c-specific future-retained, CPU primitive,
-      and HIP primitive JSON paths and reject stale path labels, duplicate
-      INT8 model/fixture/diagnostic flags, or summaries where the
-      `int8_native_diagnostic` rows no longer agree with `options.include_int8`;
+      `--include-int8` rows now bind model/fixture labels plus c-specific
+      future-retained, CPU primitive, and HIP primitive JSON paths and reject
+      stale labels, duplicate INT8 model/fixture/diagnostic flags, or summaries
+      where the `int8_native_diagnostic` rows no longer agree with
+      `options.include_int8`;
       combined
       `--include-int8 --include-gguf` dry-run coverage locks the c=2/c=4/c=8
-      INT8 rows, artifact filenames, HIP device env prefixes,
-      future-retained JSON labels, CPU/HIP primitive evidence labels, and row
-      labels before each GGUF quant fan-out, including stale c=8
-      future/primitive/artifact/row-label/env-prefix rejection plus duplicate
-      c=8 INT8 model/fixture/diagnostic flag rejection. The future
+      INT8 rows, artifact filenames, HIP device env prefixes, model/fixture
+      labels, future-retained JSON labels, CPU/HIP primitive evidence labels,
+      and row labels before each GGUF quant fan-out, including stale c=8
+      model/fixture/future/primitive/artifact/row-label/env-prefix rejection
+      plus duplicate c=8 INT8 model/fixture/diagnostic flag rejection. The future
       retained-bench command now carries `--int8-kv-primitive-cpu-json` and
       `--int8-kv-primitive-hip-json`, `scripts/qwen35_kv_int8_accuracy.py`
       self-describes written JSON paths, and accepted c>N artifact schema
