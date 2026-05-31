@@ -34,6 +34,45 @@ def _stepfun_gguf_dir() -> Path:
     return root
 
 
+def test_stepfun_layer_prefix_smoke_dry_run_plans_all_layers_without_hip(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = _stepfun_gguf_dir()
+
+    rc = main(
+        [
+            "--dry-run-plan",
+            "--model-dir",
+            str(root),
+            "--layer-count",
+            "45",
+            "--message",
+            "hello",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    output = capsys.readouterr()
+    assert output.err == ""
+    payload = json.loads(output.out)
+    assert payload["status"] == "planned"
+    assert payload["scope"] == "layers_0_44_prefix_no_skipped_layers"
+    assert payload["layer_count"] == 45
+    assert payload["skipped_layers"] == []
+    assert payload["selected_slot_count"] == 753
+    assert payload["selected_slots"][:3] == [
+        "root.token_embedding",
+        "root.output_norm",
+        "root.lm_head",
+    ]
+    assert "root.rope_freqs" not in payload["selected_slots"]
+    assert "layers.44.ffn_down_shexp" in payload["selected_slots"]
+    assert payload["no_vision_projector_mtp_slots"] is True
+    assert payload["resident_weight_nbytes"] > 102_000_000_000
+    assert "no HIP runtime was initialized" in payload["note"]
+
+
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 def test_stepfun_layer_prefix_smoke_outputs_partial_prompt_json(capsys: pytest.CaptureFixture[str]) -> None:
     root = _stepfun_gguf_dir()

@@ -27539,3 +27539,17 @@ python3 -m pytest -q tests/test_stepfun_layer_prefix_smoke.py tests/test_stepfun
 ```
 
 Result: `2 passed`.
+
+## 2026-05-31 — StepFun layer-prefix all-layer dry-run plan
+
+Added `--dry-run-plan` to `scripts/stepfun_layer_prefix_smoke.py`. The mode scans split-GGUF metadata, builds the selected layer-prefix slot list, rejects vision/projector/MTP/nextn slots, reports resident-weight bytes, and exits without initializing HIP or computing prompt embeddings/logits. This makes it possible to inspect the all-45-layer text prefix plan separately from the still-open HIP allocation/full decode path.
+
+Extended `tests/test_stepfun_layer_prefix_smoke.py` with a dry-run `--layer-count 45` check against the real Q3_K_L split metadata. The test asserts `status=planned`, all-layer scope (`layers_0_44_prefix_no_skipped_layers`), 753 selected slots (root text tensors plus all layer weights, excluding root RoPE because the current host-composed prefix probe derives RoPE from metadata), no skipped layers, no modal/MTP slots, and no HIP allocation side effects.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_layer_prefix_smoke.py -q
+```
+
+Result: `2 passed`.

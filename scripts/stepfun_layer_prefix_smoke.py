@@ -26,6 +26,7 @@ from hipengine.loading.stepfun_gguf import build_stepfun_gguf_tensor_map
 from hipengine.runtime.stepfun_gguf_runner import (
     StepFunResidentSession,
     stepfun_layer_prefix_slot_paths,
+    stepfun_slot_tensor,
 )
 
 DEFAULT_GGUF_DIR = Path("/data/models/gguf")
@@ -47,8 +48,25 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Token id to include in sampled final logits; may be repeated.",
     )
+    parser.add_argument(
+        "--dry-run-plan",
+        action="store_true",
+        help="Scan metadata and print the layer-prefix slot/resource plan without HIP allocation.",
+    )
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output")
     return parser.parse_args(argv)
+
+
+def _scope(layer_count: int, block_count: int) -> str:
+    if layer_count >= block_count:
+        return f"layers_0_{block_count - 1}_prefix_no_skipped_layers"
+    return f"layers_0_{layer_count - 1}_prefix_only_layers_{layer_count}_{block_count - 1}_skipped"
+
+
+def _skipped_layers(layer_count: int, block_count: int) -> list[int]:
+    if layer_count >= block_count:
+        return []
+    return [layer_count, block_count - 1]
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -65,6 +83,32 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     if not no_modal_slots:
         raise RuntimeError("layer-prefix text smoke selected a vision/projector/MTP slot")
+    resident_weight_nbytes = sum(stepfun_slot_tensor(model_map, slot).nbytes for slot in selected_slots)
+    if args.dry_run_plan:
+        result = {
+            "status": "planned",
+            "scope": _scope(args.layer_count, model_map.config.block_count),
+            "model": args.pattern.removesuffix("-*.gguf"),
+            "backend": "hip_gfx1151",
+            "command": "python3 scripts/stepfun_layer_prefix_smoke.py "
+            f"--dry-run-plan --layer-count {args.layer_count} --message {json.dumps(args.message)} --pretty",
+            "paths": [str(path) for path in paths],
+            "split_count": info.split_count,
+            "tensor_count": info.tensor_count,
+            "layer_count": args.layer_count,
+            "skipped_layers": _skipped_layers(args.layer_count, model_map.config.block_count),
+            "selected_slot_count": len(selected_slots),
+            "selected_slots": list(selected_slots),
+            "no_vision_projector_mtp_slots": True,
+            "resident_weight_nbytes": int(resident_weight_nbytes),
+            "resident_weight_gib": resident_weight_nbytes / 2**30,
+            "note": (
+                "Metadata-only layer-prefix prompt plan: no HIP runtime was initialized and no weights, "
+                "KV buffers, prompt embeddings, or logits were allocated/computed."
+            ),
+        }
+        print(json.dumps(result, indent=2 if args.pretty else None, sort_keys=True))
+        return 0
 
     runtime = get_hip_runtime()
     reset_memory_stats()
@@ -90,13 +134,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise ValueError(
                 f"sample token ids out of range for vocab_size={model_map.config.vocab_size}: {sample_ids}"
             )
-        scope = (
-            f"layers_0_{args.layer_count - 1}_prefix_only_layers_"
-            f"{args.layer_count}_{model_map.config.block_count - 1}_skipped"
-        )
         result = {
             "status": "partial_prompt_smoke",
-            "scope": scope,
+            "scope": _scope(args.layer_count, model_map.config.block_count),
             "model": args.pattern.removesuffix("-*.gguf"),
             "backend": "hip_gfx1151",
             "command": "python3 scripts/stepfun_layer_prefix_smoke.py "
@@ -105,7 +145,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "split_count": info.split_count,
             "tensor_count": info.tensor_count,
             "layer_count": args.layer_count,
-            "skipped_layers": [args.layer_count, model_map.config.block_count - 1],
+            "skipped_layers": _skipped_layers(args.layer_count, model_map.config.block_count),
             "selected_slot_count": len(selected_slots),
             "selected_slots": list(selected_slots),
             "no_vision_projector_mtp_slots": True,
