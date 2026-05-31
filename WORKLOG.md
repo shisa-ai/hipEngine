@@ -27739,3 +27739,17 @@ python3 -m pytest -q tests/test_stepfun_llamacpp_oracle.py -q
 ```
 
 Result: `3 passed`.
+
+## 2026-05-31 — StepFun structured llama.cpp blocker
+
+Structured the llama.cpp oracle blocker in `scripts/stepfun_llamacpp_oracle.py`. Execution/timeout JSON now includes `oracle_blocker_kind`, `oracle_blocker_detail`, and `step35_supported` when stderr contains `unknown model architecture: 'step35'`, so downstream checks no longer need to parse a free-text stderr tail.
+
+Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-oracle-exec-attempt.json`. It still reports `status=executed`, `returncode=1`, empty generated text, and no parity, but now has `oracle_blocker_kind=llama_cpp_missing_step35_architecture` and `step35_supported=false`. Added a fake llama-cli test for the structured blocker path.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_llamacpp_oracle.py -q
+```
+
+Result: `4 passed`.

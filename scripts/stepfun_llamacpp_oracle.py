@@ -82,6 +82,20 @@ def _comparison_fields(generated_text: str, expected_text: object) -> dict[str, 
     }
 
 
+def _blocker_fields(stderr: str) -> dict[str, object]:
+    if "unknown model architecture: 'step35'" in stderr:
+        return {
+            "oracle_blocker_kind": "llama_cpp_missing_step35_architecture",
+            "oracle_blocker_detail": "local llama.cpp build reports unknown model architecture: 'step35'",
+            "step35_supported": False,
+        }
+    return {
+        "oracle_blocker_kind": None,
+        "oracle_blocker_detail": None,
+        "step35_supported": None,
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     artifact = json.loads(args.artifact.read_text())
@@ -157,6 +171,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "stdout": stdout,
                     "stderr": stderr,
                     **_comparison_fields(stdout, result.get("expected_next_token_text")),
+                    **_blocker_fields(stderr),
                 }
             )
         else:
@@ -167,6 +182,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "stdout": _as_text(completed.stdout),
                     "stderr": _as_text(completed.stderr),
                     **_comparison_fields(_as_text(completed.stdout), result.get("expected_next_token_text")),
+                    **_blocker_fields(_as_text(completed.stderr)),
                 }
             )
     _emit_json(result, pretty=args.pretty, output=args.output)

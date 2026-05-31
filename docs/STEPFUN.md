@@ -570,7 +570,9 @@ reporting.
   `benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-oracle-exec-attempt.json`
   uses diagnostic logs and fails before generation because the local
   `/home/lhl/ai/llama.cpp-cpu/llama-cli` does not support GGUF architecture
-  `step35` (`unknown model architecture: 'step35'`). Remaining implementation
+  `step35` (`unknown model architecture: 'step35'`); the JSON now exposes
+  `oracle_blocker_kind=llama_cpp_missing_step35_architecture` and
+  `step35_supported=false` for machine-checkable blocker handling. Remaining implementation
   task: use/build a StepFun-capable llama.cpp oracle and review/record the
   parsed result; KV-backed decode parity remains open too.
 - [x] Preserve multi-EOS stopping and the chat assistant prefix. The short

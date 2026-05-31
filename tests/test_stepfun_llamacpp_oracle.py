@@ -118,6 +118,54 @@ def test_stepfun_llamacpp_oracle_execute_compares_stdout(
     assert payload["generated_text"] == " |"
     assert payload["text_matches_expected_exact"] is True
     assert payload["text_matches_expected_stripped"] is True
+    assert payload["oracle_blocker_kind"] is None
+    assert payload["step35_supported"] is None
+
+
+def test_stepfun_llamacpp_oracle_execute_structures_step35_blocker(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "artifact.json"
+    _write_artifact(artifact)
+    llama_cli = tmp_path / "llama-cli"
+    llama_cli.write_text(
+        "#!/usr/bin/env bash\n"
+        "if [ \"$1\" = \"--version\" ]; then\n"
+        "  echo 'version: test (deadbeef)'\n"
+        "else\n"
+        "  echo \"llama_model_load: error loading model: unknown model architecture: 'step35'\" >&2\n"
+        "  exit 1\n"
+        "fi\n"
+    )
+    llama_cli.chmod(0o755)
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"fake")
+
+    rc = main(
+        [
+            "--artifact",
+            str(artifact),
+            "--llama-cli",
+            str(llama_cli),
+            "--model",
+            str(model),
+            "--execute",
+            "--diagnostic-logs",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    output = capsys.readouterr()
+    assert output.err == ""
+    payload = json.loads(output.out)
+    assert payload["status"] == "executed"
+    assert payload["returncode"] == 1
+    assert payload["generated_text"] == ""
+    assert payload["text_matches_expected_exact"] is False
+    assert payload["oracle_blocker_kind"] == "llama_cpp_missing_step35_architecture"
+    assert payload["step35_supported"] is False
 
 
 def test_stepfun_llamacpp_oracle_diagnostic_logs_omit_log_disable(
