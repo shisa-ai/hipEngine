@@ -1469,7 +1469,8 @@ roll-up/status view.
       planner also prefixes planned/executed subprocess argv with the visible HIP
       device env, so summary JSON records the actual GPU1 selection instead of
       relying on inherited shell state; retained-bench, c-sweep, primitive
-      correctness, validation summaries, hidden-bisect diagnostics/output cloning,
+      correctness, strict artifact/validation-summary JSON input and output,
+      hidden-bisect diagnostics/output cloning,
       hidden-artifact comparison input/output/record canonicalization, INT8/GGUF
       diagnostic templates, serial/packed/sparse correctness smokes, and
       serial-bridge baseline JSON serializers now reject non-finite values

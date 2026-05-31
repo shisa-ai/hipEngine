@@ -49,6 +49,11 @@ from scripts.qwen35_batch_constants import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"JSON contains non-finite constant {value!r}")
+
+
 _REQUIRED_WORKLOAD_FLAGS = (
     "native_compact_prefill",
     "native_caware_decode",
@@ -795,11 +800,11 @@ def _load_benchmark_results_json_artifact(field: str, value: str, errors: list[s
         errors.append(f"{field} must point to a regular JSON artifact for accepted artifacts")
         return None
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload = json.loads(path.read_text(encoding="utf-8"), parse_constant=_reject_json_constant)
     except OSError as exc:
         errors.append(f"{field} must point to a readable JSON artifact for accepted artifacts: {exc}")
         return None
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, ValueError) as exc:
         errors.append(f"{field} must point to a valid JSON artifact for accepted artifacts: {exc}")
         return None
     if not isinstance(payload, Mapping):
@@ -3270,7 +3275,7 @@ def _is_nonempty_string_list(value: Any) -> bool:
 
 
 def _load_payload(path: Path) -> Mapping[str, Any]:
-    payload = json.loads(path.read_text())
+    payload = json.loads(path.read_text(encoding="utf-8"), parse_constant=_reject_json_constant)
     if not isinstance(payload, Mapping):
         raise ValueError("artifact root must be an object")
     return payload

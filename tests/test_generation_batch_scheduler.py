@@ -220,6 +220,8 @@ def test_qwen35_artifact_reference_loader_rejects_symlinks_and_directories(
     artifact_dir.mkdir(parents=True)
     regular_artifact = artifact_dir / "source.json"
     regular_artifact.write_text('{"schema": 1}', encoding="utf-8")
+    nonfinite_artifact = artifact_dir / "nonfinite.json"
+    nonfinite_artifact.write_text('{"schema": NaN}', encoding="utf-8")
     non_json_artifact = artifact_dir / "source.txt"
     non_json_artifact.write_text('{"schema": 1}', encoding="utf-8")
     directory_artifact = artifact_dir / "directory.json"
@@ -244,6 +246,9 @@ def test_qwen35_artifact_reference_loader_rejects_symlinks_and_directories(
     assert _load_benchmark_results_json_artifact("non_json_path", "benchmarks/results/source.txt", errors) is None
     assert errors[-1] == "non_json_path must point to a .json artifact for accepted artifacts"
 
+    assert _load_benchmark_results_json_artifact("nonfinite_path", "benchmarks/results/nonfinite.json", errors) is None
+    assert errors[-1] == "nonfinite_path must point to a valid JSON artifact for accepted artifacts: JSON contains non-finite constant 'NaN'"
+
     assert _load_benchmark_results_json_artifact("directory_path", "benchmarks/results/directory.json", errors) is None
     assert errors[-1] == "directory_path must point to a regular JSON artifact for accepted artifacts"
 
@@ -260,6 +265,16 @@ def test_qwen35_artifact_reference_loader_rejects_symlinks_and_directories(
             is None
         )
         assert errors[-1] == "symlink_parent_path parent directories must not be symlinks for accepted artifacts"
+
+
+def test_qwen35_load_payload_rejects_nonfinite_json(tmp_path: Path) -> None:
+    payload_path = tmp_path / "payload.json"
+    payload_path.write_text('{"bad": Infinity}', encoding="utf-8")
+    with pytest.raises(ValueError, match="JSON contains non-finite constant 'Infinity'"):
+        artifact_schema._load_payload(payload_path)
+
+    payload_path.write_text('{"ok": 1.0}', encoding="utf-8")
+    assert artifact_schema._load_payload(payload_path) == {"ok": 1.0}
 
 
 def test_qwen35_validation_summary_json_rejects_nonfinite() -> None:
