@@ -49,7 +49,7 @@
         "text": "Add a Step GGUF runner that streams one-token decode for short prompts with"
       },
       {
-        "line": 614,
+        "line": 615,
         "state": "partial",
         "text": "Compare greedy next tokens and/or logits against llama.cpp for a small set"
       }
@@ -124,6 +124,7 @@
       "fail_on_blocked_preserves_payload": true,
       "first_blocker_only": "handoff_summary.first_blocker_work_item",
       "first_blocker_sha_only": "handoff_summary.first_blocker_work_item_sha256",
+      "readiness_summary_only": "readiness_summary",
       "summary_only": "handoff_summary"
     },
     "exit_codes": {
@@ -1469,12 +1470,29 @@
       "required_evidence": "A StepFun/step35-capable oracle must generate a comparable token and match the expected next-token text/logit policy recorded in oracle_progress."
     }
   },
+  "readiness_summary": {
+    "blocker_work_queue_count": 2,
+    "blocker_work_queue_sha256": "6273ee66cbfe851ec3787d7273514fb05d1926fba4cf728e38008b026620a5c7",
+    "e2e_inference_claim_allowed": false,
+    "e2e_inference_ready": false,
+    "fail_on_blocked_exit_code": 2,
+    "first_blocker_kind": "oracle_parity_blocked",
+    "first_blocker_work_item_sha256": "5d0526bbf1097b8bcf2bc5a01337736c1979f8cb64666b7dca88dd896cf3035f",
+    "kv_backed_decode_ready": false,
+    "kv_decode_dispatch_ready": true,
+    "open_blocker_count": 2,
+    "open_or_partial_items_p0_p12": 2,
+    "oracle_parity": false,
+    "performance_claim_allowed": false,
+    "schema_version": 1,
+    "status": "blocked"
+  },
   "source_artifacts": {
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "f2a3270f3a9f003463201ac09987a28323e58656b91852bcea5e7d0eb2865f14",
-      "size_bytes": 53306
+      "sha256": "6b129ed28e980ab37b5f6f34d8831ab00ee98077f67978d85a7ec9c11e60a51b",
+      "size_bytes": 53405
     },
     "oracle": {
       "exists": true,

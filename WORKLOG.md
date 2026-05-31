@@ -29406,3 +29406,39 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`17 passed`), source-artifact and first-blocker digest fail-on-blocked checks passed, and the full StepFun guard passed (`121 passed` plus CPU-reference fixture checks). Prompt-verifier evidence: the new test covers compact first-blocker digest output plus blocked exit semantics, no `import torch` was added to `hipengine/`, the test-only change adds no engine-wide backend or quant special-casing, and no StepFun performance claim was made.
+
+## 2026-05-31 — StepFun readiness summary CLI recorded
+
+Added a compact `readiness_summary` to `scripts/stepfun_correctness_status.py` and exposed it through `--readiness-summary-only`. The payload records top-level readiness booleans, open blocker count, first blocker kind, blocker queue/first-blocker digests, fail-on-blocked exit code, and no-claim flags without requiring consumers to fetch the full status artifact or handoff summary. The current status remains blocked: `oracle_parity=false`, `kv_backed_decode_ready=false`, and `e2e_inference_ready=false`.
+
+Regenerated `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`, added CLI regression coverage, and clarified `docs/STEPFUN.md`. This is handoff metadata only; no StepFun KV write/attention kernels are launched and no performance/e2e claim is made.
+
+Validation:
+
+```bash
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_correctness_status.py --readiness-summary-only --pretty --output /tmp/stepfun-readiness-summary.json
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty --output /tmp/stepfun-source-verify.json
+python3 - <<'PY'
+import json
+v=json.load(open('/tmp/stepfun-source-verify.json'))
+assert v['status'] == 'match'
+assert v['all_match'] is True
+s=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+r=json.load(open('/tmp/stepfun-readiness-summary.json'))
+assert r == s['readiness_summary']
+assert r['status'] == 'blocked'
+assert r['oracle_parity'] is False
+assert r['kv_decode_dispatch_ready'] is True
+assert r['kv_backed_decode_ready'] is False
+assert r['e2e_inference_ready'] is False
+assert r['first_blocker_kind'] == 'oracle_parity_blocked'
+assert r['blocker_work_queue_sha256'] == s['handoff_summary']['blocker_work_queue_sha256']
+assert r['fail_on_blocked_exit_code'] == 2
+print('stepfun readiness summary artifact ok')
+PY
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`18 passed`), source-artifact/readiness-summary checks passed, and the full StepFun guard passed (`122 passed` plus CPU-reference fixture checks). Prompt-verifier evidence: status tests cover the new compact readiness summary output, no `import torch` was added to `hipengine/`, the changed status helper adds no engine-wide backend or quant special-casing, and no StepFun performance claim was made.

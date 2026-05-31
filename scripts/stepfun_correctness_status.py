@@ -43,6 +43,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Emit only the compact handoff_summary instead of the full status artifact.",
     )
     parser.add_argument(
+        "--readiness-summary-only",
+        action="store_true",
+        help=(
+            "Emit only the compact top-level readiness_summary for scheduler polling. "
+            "Overrides --summary-only and blocker queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--blocker-work-queue-only",
         action="store_true",
         help=(
@@ -1010,6 +1018,7 @@ def _handoff_summary(
         },
         "compact_output_modes": {
             "summary_only": "handoff_summary",
+            "readiness_summary_only": "readiness_summary",
             "blocker_work_queue_only": "handoff_summary.blocker_work_queue",
             "blocker_work_queue_meta_only": "handoff_summary.blocker_work_queue_meta",
             "blocker_work_queue_sha_only": "handoff_summary.blocker_work_queue_sha256",
@@ -1220,6 +1229,31 @@ def build_status(
         kv_decode_dispatch_progress=kv_decode_dispatch_progress,
         kv_backed_decode_gap_report=kv_backed_decode_gap_report,
     )
+    readiness_summary = {
+        "schema_version": 1,
+        "status": "blocked" if blockers else "ready",
+        "oracle_parity": oracle_parity,
+        "kv_decode_dispatch_ready": kv_decode_dispatch_ready,
+        "kv_backed_decode_ready": kv_backed_decode_ready,
+        "e2e_inference_ready": e2e_inference_ready,
+        "open_or_partial_items_p0_p12": docs_status.get("open_or_partial_count_p0_p12"),
+        "open_blocker_count": handoff_summary["open_blocker_count"],
+        "first_blocker_kind": handoff_summary["blocker_work_queue_meta"]["first_blocker_kind"],
+        "first_blocker_work_item_sha256": handoff_summary[
+            "first_blocker_work_item_sha256"
+        ],
+        "blocker_work_queue_count": handoff_summary["blocker_work_queue_count"],
+        "blocker_work_queue_sha256": handoff_summary["blocker_work_queue_sha256"],
+        "fail_on_blocked_exit_code": handoff_summary["exit_codes"][
+            "current_with_fail_on_blocked"
+        ],
+        "performance_claim_allowed": handoff_summary["no_claim_policy"][
+            "performance_claim_allowed"
+        ],
+        "e2e_inference_claim_allowed": handoff_summary["no_claim_policy"][
+            "e2e_inference_claim_allowed"
+        ],
+    }
     return {
         "status": "blocked" if blockers else "ready",
         "model": "Step-3.7-flash-Q3_K_L",
@@ -1254,6 +1288,7 @@ def build_status(
         "kv_backed_decode_ready": kv_backed_decode_ready,
         "e2e_inference_ready": e2e_inference_ready,
         "readiness_gates": readiness_gates,
+        "readiness_summary": readiness_summary,
         "handoff_summary": handoff_summary,
         "blockers": blockers,
         "next_actions": next_actions,
@@ -1295,6 +1330,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["handoff_summary"]["first_blocker_work_item"]
     elif args.first_blocker_sha_only:
         result = status["handoff_summary"]["first_blocker_work_item_sha256"]
+    elif args.readiness_summary_only:
+        result = status["readiness_summary"]
     elif args.blocker_work_queue_sha_only:
         result = status["handoff_summary"]["blocker_work_queue_sha256"]
     elif args.blocker_work_queue_meta_only:
