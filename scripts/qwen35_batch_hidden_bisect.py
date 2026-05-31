@@ -80,6 +80,10 @@ def _payload_json(payload: Any) -> str:
     return json.dumps(payload, indent=2, allow_nan=False)
 
 
+def _json_clone(payload: Any) -> Any:
+    return json.loads(json.dumps(payload, allow_nan=False))
+
+
 @dataclass(frozen=True)
 class HiddenRun:
     seed_tokens: list[int]
@@ -1935,7 +1939,7 @@ def _run_batch_hidden(
             slots=tuple(range(rows)),
         )
         prefill_execution = getattr(session, "last_prefill_execution", None)
-        prefill_execution_copy = json.loads(json.dumps(prefill_execution)) if isinstance(prefill_execution, dict) else None
+        prefill_execution_copy = _json_clone(prefill_execution) if isinstance(prefill_execution, dict) else None
         next_tokens = list(seed_tokens)
         generated_tokens = [[] for _ in prompts]
         hidden_bits_by_step: list[np.ndarray] = []
@@ -1963,7 +1967,7 @@ def _run_batch_hidden(
             )
             decode_execution = getattr(session, "last_batch_decode_execution", None)
             decode_execution_by_step.append(
-                json.loads(json.dumps(decode_execution)) if isinstance(decode_execution, dict) else None
+                _json_clone(decode_execution) if isinstance(decode_execution, dict) else None
             )
             session.runtime.device_synchronize()
             hidden_bits_by_step.append(_copy_hidden_bits(session, hidden, rows=rows))
@@ -5527,7 +5531,7 @@ def _repeat_payload(args: argparse.Namespace, argv: Sequence[str] | None, repeat
         _compact_repeat_summary(payload, repeat_index=index) for index, payload in enumerate(repeat_payloads)
     ]
     rollup = _repeat_rollup(repeat_summaries)
-    first_payload = json.loads(json.dumps(repeat_payloads[0]))
+    first_payload = _json_clone(repeat_payloads[0])
     first_payload["timestamp"] = datetime.now(timezone.utc).isoformat()
     first_payload["mode"] = "qwen35_paro_native_hidden_bisect_repeat"
     first_payload["command"] = _command(argv)

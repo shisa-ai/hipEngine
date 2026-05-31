@@ -132,6 +132,7 @@ from scripts.qwen35_batch_c_sweep import build_parser as build_c_sweep_parser, b
 from scripts.qwen35_batch_gguf_diagnostic import build_parser as build_gguf_diagnostic_parser, run as run_gguf_diagnostic
 from scripts.qwen35_batch_hidden_bisect import (
     HiddenRun,
+    _json_clone as hidden_bisect_json_clone,
     _payload_json as hidden_bisect_payload_json,
     _decode_full_attention_bit_drift_rollup,
     _decode_full_attention_stage_rollup,
@@ -10082,6 +10083,15 @@ def test_hidden_bisect_payload_json_rejects_nonfinite() -> None:
         hidden_bisect_payload_json({"bad": float("inf")})
 
     assert json.loads(hidden_bisect_payload_json({"ok": 1.0})) == {"ok": 1.0}
+
+
+def test_hidden_bisect_json_clone_rejects_nonfinite() -> None:
+    with pytest.raises(ValueError, match="Out of range float values"):
+        hidden_bisect_json_clone({"bad": float("nan")})
+
+    payload = {"nested": {"ok": 1.0}}
+    assert hidden_bisect_json_clone(payload) == payload
+    assert hidden_bisect_json_clone(payload) is not payload
 
 
 def test_hidden_artifact_compare_payload_json_rejects_nonfinite() -> None:
