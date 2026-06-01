@@ -7362,6 +7362,27 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
             with pytest.raises(ValueError, match=r"commands\[\]\.returncode must be null for planned/skipped rows"):
                 c_sweep.validate_sweep_summary(tampered_planned_returncode)
 
+        tampered_planned_missing_duration = json.loads(json.dumps(summary))
+        del tampered_planned_missing_duration["commands"][index]["duration_seconds"]
+        with pytest.raises(ValueError, match=r"commands\[\]\.duration_seconds must be a non-negative number"):
+            c_sweep.validate_sweep_summary(tampered_planned_missing_duration)
+
+        for bad_duration in ("0", True, -0.001):
+            tampered_planned_duration = json.loads(json.dumps(summary))
+            tampered_planned_duration["commands"][index]["duration_seconds"] = bad_duration
+            with pytest.raises(ValueError, match=r"commands\[\]\.duration_seconds must be a non-negative number"):
+                c_sweep.validate_sweep_summary(tampered_planned_duration)
+
+        tampered_planned_infinite_duration = json.loads(json.dumps(summary))
+        tampered_planned_infinite_duration["commands"][index]["duration_seconds"] = float("inf")
+        with pytest.raises(ValueError, match=r"commands\[\]\.duration_seconds must be finite"):
+            c_sweep.validate_sweep_summary(tampered_planned_infinite_duration)
+
+        tampered_planned_nonzero_duration = json.loads(json.dumps(summary))
+        tampered_planned_nonzero_duration["commands"][index]["duration_seconds"] = 0.001
+        with pytest.raises(ValueError, match=r"commands\[\]\.duration_seconds must be zero for planned rows"):
+            c_sweep.validate_sweep_summary(tampered_planned_nonzero_duration)
+
         tampered_planned_json_path = json.loads(json.dumps(summary))
         planned_json_entry = tampered_planned_json_path["commands"][index]
         planned_json_argv = planned_json_entry["argv"]
