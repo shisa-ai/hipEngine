@@ -6025,6 +6025,19 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     finally:
         if reference_parent_file.exists():
             reference_parent_file.unlink()
+    reference_directory = output_dir / "reference-existing-directory.json"
+    try:
+        reference_directory.mkdir()
+        tampered_scaling_precondition_directory = json.loads(json.dumps(persisted))
+        tampered_scaling_precondition_directory["commands"][-1]["preconditions"][1]["reference_artifact_path"] = str(reference_directory)
+        with pytest.raises(
+            ValueError,
+            match=r"commands\[\]\.preconditions\[\]\.reference_artifact_path must be a regular file when it already exists",
+        ):
+            c_sweep.validate_sweep_summary(tampered_scaling_precondition_directory)
+    finally:
+        if reference_directory.exists():
+            reference_directory.rmdir()
     if hasattr(os, "symlink"):
         reference_symlink = output_dir / "native-baseline-c1-link.json"
         try:
@@ -6591,6 +6604,19 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     finally:
         if primitive_parent_file.exists():
             primitive_parent_file.unlink()
+    primitive_directory = output_dir / "primitive-existing-directory.json"
+    try:
+        primitive_directory.mkdir()
+        tampered_primitive_precondition_directory = json.loads(json.dumps(persisted))
+        tampered_primitive_precondition_directory["commands"][-1]["preconditions"][0]["primitive_artifact_path"] = str(primitive_directory)
+        with pytest.raises(
+            ValueError,
+            match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path must be a regular file when it already exists",
+        ):
+            c_sweep.validate_sweep_summary(tampered_primitive_precondition_directory)
+    finally:
+        if primitive_directory.exists():
+            primitive_directory.rmdir()
     if hasattr(os, "symlink"):
         primitive_symlink = output_dir / "primitive-c2-link.json"
         try:
