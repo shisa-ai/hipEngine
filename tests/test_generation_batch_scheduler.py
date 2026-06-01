@@ -8483,6 +8483,31 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         if entry["category"] in {"int8_native_diagnostic", "gguf_native_diagnostic"}
     ]
     for index in optional_entry_indices:
+        tampered_optional_command_text = json.loads(json.dumps(summary))
+        optional_command_text_entry = tampered_optional_command_text["commands"][index]
+        optional_command_text_entry["command"] = shlex.join(
+            [*optional_command_text_entry["argv"], "--stale-optional-command-label"]
+        )
+        with pytest.raises(ValueError, match=r"commands\[\]\.command must match shlex\.join\(commands\[\]\.argv\)"):
+            c_sweep.validate_sweep_summary(tampered_optional_command_text)
+
+        tampered_optional_blank_command_text = json.loads(json.dumps(summary))
+        tampered_optional_blank_command_text["commands"][index]["command"] = "   "
+        with pytest.raises(ValueError, match=r"commands\[\]\.command must be a non-empty string"):
+            c_sweep.validate_sweep_summary(tampered_optional_blank_command_text)
+
+        tampered_optional_missing_command_text = json.loads(json.dumps(summary))
+        del tampered_optional_missing_command_text["commands"][index]["command"]
+        with pytest.raises(ValueError, match=r"commands\[\]\.command must be a non-empty string"):
+            c_sweep.validate_sweep_summary(tampered_optional_missing_command_text)
+
+        for bad_argv in ([], [""]):
+            tampered_optional_bad_argv = json.loads(json.dumps(summary))
+            tampered_optional_bad_argv["commands"][index]["argv"] = bad_argv
+            with pytest.raises(ValueError, match=r"commands\[\]\.argv must be a non-empty string list"):
+                c_sweep.validate_sweep_summary(tampered_optional_bad_argv)
+
+    for index in optional_entry_indices:
         tampered_optional_artifact_c = json.loads(json.dumps(summary))
         entry = tampered_optional_artifact_c["commands"][index]
         argv = entry["argv"]
