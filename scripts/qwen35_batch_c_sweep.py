@@ -2320,6 +2320,28 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         "attn_batch_vs_c1_max_abs",
         "attn_batch_vs_numpy_max_abs",
     }
+    expected_passed_primitive_source_keys = {
+        "schema",
+        "artifact_path",
+        "seed",
+        "block_size",
+        "max_context_len",
+        "num_q_heads",
+        "num_kv_heads",
+        "head_dim",
+        "context_lens",
+        "rows",
+        "device",
+        "append_key_mismatch",
+        "append_value_mismatch",
+        "append_batch_aa_key_mismatch",
+        "append_batch_aa_value_mismatch",
+        "attn_batch_aa_max_abs",
+        "aa_passed",
+        "attn_batch_vs_c1_max_abs",
+        "attn_batch_vs_numpy_max_abs",
+        "passed",
+    }
     expected_passed_scaling_precondition_keys = {
         "kind",
         "artifact_path",
@@ -2994,6 +3016,13 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                             errors.append("commands[].preconditions[].primitive_artifact_path must contain an object when primitive passed")
                             break
                         primitive_source_payload = raw_primitive_source_payload
+                        primitive_source_keys = set(primitive_source_payload)
+                        if primitive_source_keys not in (
+                            expected_passed_primitive_source_keys,
+                            expected_passed_primitive_source_keys | {"source_artifact_path"},
+                        ):
+                            errors.append("commands[].preconditions[].primitive_artifact_path JSON must contain exactly primitive correctness source keys when primitive passed")
+                            break
                         if primitive_source_payload.get("artifact_path") != primitive_artifact_path:
                             errors.append("commands[].preconditions[].primitive_artifact_path JSON artifact_path must match when primitive passed")
                             break
