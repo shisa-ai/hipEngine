@@ -7264,6 +7264,16 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         representative_command_indices_by_category.setdefault(entry["category"], index)
     assert set(representative_command_indices_by_category) == {category for category, _ in expected_plan}
     for index in representative_command_indices_by_category.values():
+        assert tuple(summary["commands"][index]["argv"][:2]) == ("env", "HIP_VISIBLE_DEVICES=1")
+        assert summary["commands"][index]["command"].startswith("env HIP_VISIBLE_DEVICES=1 ")
+
+        tampered_planned_device_env = json.loads(json.dumps(summary))
+        planned_device_env_entry = tampered_planned_device_env["commands"][index]
+        planned_device_env_entry["argv"][1] = "HIP_VISIBLE_DEVICES=0"
+        planned_device_env_entry["command"] = shlex.join(planned_device_env_entry["argv"])
+        with pytest.raises(ValueError, match=r"commands\[\]\.argv device env prefix must match the first command"):
+            c_sweep.validate_sweep_summary(tampered_planned_device_env)
+
         tampered_missing_planned_key = json.loads(json.dumps(summary))
         del tampered_missing_planned_key["commands"][index]["returncode"]
         with pytest.raises(ValueError, match=r"commands\[\] planned rows must contain exactly planned command keys"):
