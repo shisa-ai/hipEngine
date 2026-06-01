@@ -2034,6 +2034,8 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     errors.append("options.compiler_version_file must not be a symlink")
                 elif _path_has_symlink_parent(compiler_version_check_path):
                     errors.append("options.compiler_version_file parent directories must not be symlinks")
+                elif _path_has_non_directory_parent(compiler_version_check_path):
+                    errors.append("options.compiler_version_file parent directories must be directories")
     commands = summary.get("commands")
     if not isinstance(commands, list):
         errors.append("commands must be a list")
@@ -2644,6 +2646,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     break
                 if _path_has_symlink_parent(compiler_version_check_path):
                     errors.append("commands[].argv compiler-version-file parent directories must not be symlinks")
+                    break
+                if _path_has_non_directory_parent(compiler_version_check_path):
+                    errors.append("commands[].argv compiler-version-file parent directories must be directories")
                     break
             if entry.get("category") in {_SERIAL_BRIDGE_COMMAND_CATEGORY, _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY} and isinstance(options, Mapping):
                 option_compiler_version_file = options.get("compiler_version_file")

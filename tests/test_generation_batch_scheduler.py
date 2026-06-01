@@ -2781,6 +2781,23 @@ def test_batch_c_sweep_rejects_unsafe_compiler_version_file_before_creating_arti
         run_sweep(args)
     assert not output_dir.exists()
 
+    compiler_parent_file = tmp_path / "compiler-parent-file"
+    compiler_parent_file.write_text("not a directory")
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--dry-run",
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--compiler-version-file",
+            str(compiler_parent_file / "hipcc-version.txt"),
+        ]
+    )
+    with pytest.raises(ValueError, match="--compiler-version-file parent directories must be directories"):
+        run_sweep(args)
+    assert not output_dir.exists()
+
     if hasattr(os, "symlink"):
         target = tmp_path / "hipcc-version.txt"
         target.write_text("hipcc version\n")
@@ -5274,6 +5291,21 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
                 if compiler_parent_link.is_symlink():
                     compiler_parent_link.unlink()
 
+            compiler_parent_file = output_dir / "compiler-parent-file"
+            try:
+                compiler_parent_file.write_text("not a directory")
+                parent_file_compiler_summary = json.loads(json.dumps(persisted))
+                retained_argv = parent_file_compiler_summary["commands"][-1]["argv"]
+                retained_argv.extend(["--compiler-version-file", str(compiler_parent_file / "hipcc-version.txt")])
+                parent_file_compiler_summary["commands"][-1]["command"] = shlex.join(retained_argv)
+                with pytest.raises(
+                    ValueError, match=r"commands\[\]\.argv compiler-version-file parent directories must be directories"
+                ):
+                    c_sweep.validate_sweep_summary(parent_file_compiler_summary)
+            finally:
+                if compiler_parent_file.exists():
+                    compiler_parent_file.unlink()
+
         symlink_artifact_summary = json.loads(json.dumps(persisted))
         primitive_artifact_path = Path(symlink_artifact_summary["commands"][0]["artifact_path"])
         primitive_artifact_target = primitive_artifact_path.with_name("primitive-c2-real.json")
@@ -5360,6 +5392,18 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     )
     with pytest.raises(ValueError, match="options.compiler_version_file must not contain parent-directory components"):
         c_sweep.validate_sweep_summary(tampered_options_compiler_parent_component)
+    options_compiler_parent_file = output_dir / "compiler-option-parent-file"
+    try:
+        options_compiler_parent_file.write_text("not a directory")
+        tampered_options_compiler_parent_file = json.loads(json.dumps(persisted))
+        tampered_options_compiler_parent_file["options"]["compiler_version_file"] = str(
+            options_compiler_parent_file / "hipcc-version.txt"
+        )
+        with pytest.raises(ValueError, match="options.compiler_version_file parent directories must be directories"):
+            c_sweep.validate_sweep_summary(tampered_options_compiler_parent_file)
+    finally:
+        if options_compiler_parent_file.exists():
+            options_compiler_parent_file.unlink()
     tampered_options_compiler_command_mismatch = json.loads(json.dumps(persisted))
     tampered_options_compiler_command_mismatch["options"]["compiler_version_file"] = str(output_dir / "hipcc-version.txt")
     with pytest.raises(ValueError, match=r"commands\[\]\.argv compiler-version-file must match options.compiler_version_file"):
