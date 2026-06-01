@@ -25,6 +25,7 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_ACCEPTED_MODE,
     RETAINED_ARTIFACT_ACCEPTED_NOTES,
     RETAINED_ARTIFACT_ACCEPTED_SUMMARY,
+    RETAINED_ARTIFACT_VALIDATION_SUMMARY_TYPE,
     RETAINED_ARTIFACT_CORRECTNESS_REFERENCE_UNIQUE_FLAGS,
     RETAINED_ARTIFACT_CORRECTNESS_SCRIPT_ALLOWED_FLAGS,
     RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_COMMAND_FRAGMENTS,
@@ -4268,9 +4269,6 @@ def _load_payload(path: Path) -> Mapping[str, Any]:
     return payload
 
 
-_VALIDATION_SUMMARY_TYPE = "qwen35_retained_validation_summary"
-
-
 def _validation_summary(
     *,
     artifact_json: Path,
@@ -4287,7 +4285,7 @@ def _validation_summary(
     benchmark_rollup = payload.get("benchmark_rollup") if passed else None
     return {
         "schema": 1,
-        "summary_type": _VALIDATION_SUMMARY_TYPE,
+        "summary_type": RETAINED_ARTIFACT_VALIDATION_SUMMARY_TYPE,
         "mode": mode,
         "passed": passed,
         "artifact_json": artifact_json_text,
@@ -4320,8 +4318,8 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
         errors.append("summary contains unexpected keys: " + ", ".join(unexpected_keys))
     if summary.get("schema") != 1:
         errors.append("summary.schema must be 1")
-    if summary.get("summary_type") != _VALIDATION_SUMMARY_TYPE:
-        errors.append(f"summary.summary_type must be {_VALIDATION_SUMMARY_TYPE}")
+    if summary.get("summary_type") != RETAINED_ARTIFACT_VALIDATION_SUMMARY_TYPE:
+        errors.append(f"summary.summary_type must be {RETAINED_ARTIFACT_VALIDATION_SUMMARY_TYPE}")
     mode = summary.get("mode")
     if mode not in {"artifact_schema", "rollup_evidence"}:
         errors.append("summary.mode must be artifact_schema or rollup_evidence")

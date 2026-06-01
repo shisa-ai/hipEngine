@@ -87,6 +87,7 @@ from scripts.qwen35_batch_constants import (
     RETAINED_ARTIFACT_ACCEPTED_MODE,
     RETAINED_ARTIFACT_ACCEPTED_NOTES,
     RETAINED_ARTIFACT_ACCEPTED_SUMMARY,
+    RETAINED_ARTIFACT_VALIDATION_SUMMARY_TYPE,
     RETAINED_ARTIFACT_CORRECTNESS_REFERENCE_UNIQUE_FLAGS,
     RETAINED_ARTIFACT_CORRECTNESS_SCRIPT_ALLOWED_FLAGS,
     RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_COMMAND_FRAGMENTS,
@@ -322,7 +323,7 @@ def test_qwen35_failed_validation_summary_clears_rollup_success_fields() -> None
 def test_qwen35_passed_validation_summary_requires_accepted_claim_consistency() -> None:
     summary = {
         "schema": 1,
-        "summary_type": artifact_schema._VALIDATION_SUMMARY_TYPE,
+        "summary_type": RETAINED_ARTIFACT_VALIDATION_SUMMARY_TYPE,
         "mode": "artifact_schema",
         "passed": True,
         "artifact_json": "benchmarks/results/source.json",
@@ -359,7 +360,7 @@ def test_qwen35_passed_validation_summary_requires_accepted_claim_consistency() 
 def test_qwen35_validation_summary_payload_rejects_traversal() -> None:
     summary = {
         "schema": 1,
-        "summary_type": artifact_schema._VALIDATION_SUMMARY_TYPE,
+        "summary_type": RETAINED_ARTIFACT_VALIDATION_SUMMARY_TYPE,
         "mode": "artifact_schema",
         "passed": False,
         "artifact_json": "benchmarks/results/nested/../source.json",
@@ -384,7 +385,7 @@ def test_qwen35_validation_summary_payload_rejects_traversal() -> None:
 
     rollup_summary = {
         "schema": 1,
-        "summary_type": artifact_schema._VALIDATION_SUMMARY_TYPE,
+        "summary_type": RETAINED_ARTIFACT_VALIDATION_SUMMARY_TYPE,
         "mode": "rollup_evidence",
         "passed": False,
         "artifact_json": "benchmarks/results/source.json",
@@ -506,7 +507,7 @@ def test_qwen35_validation_summary_paths_report_active_option(
         json.dumps(
             {
                 "schema": 1,
-                "summary_type": artifact_schema._VALIDATION_SUMMARY_TYPE,
+                "summary_type": RETAINED_ARTIFACT_VALIDATION_SUMMARY_TYPE,
                 "mode": "artifact_schema",
                 "passed": False,
                 "artifact_json": "benchmarks/results/source.json",
@@ -20881,7 +20882,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     summary = json.loads(summary_file.read_text())
     assert summary == {
         "schema": 1,
-        "summary_type": artifact_schema._VALIDATION_SUMMARY_TYPE,
+        "summary_type": RETAINED_ARTIFACT_VALIDATION_SUMMARY_TYPE,
         "mode": "rollup_evidence",
         "passed": True,
         "artifact_json": "benchmarks/results/accepted-c2.json",
@@ -20953,11 +20954,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         validate_cn_diagnostic_validation_summary(invalid_schema_summary)
     missing_summary_type = dict(summary)
     missing_summary_type.pop("summary_type")
-    with pytest.raises(ValueError, match=f"summary.summary_type must be {artifact_schema._VALIDATION_SUMMARY_TYPE}"):
+    with pytest.raises(ValueError, match=f"summary.summary_type must be {RETAINED_ARTIFACT_VALIDATION_SUMMARY_TYPE}"):
         validate_cn_diagnostic_validation_summary(missing_summary_type)
     mismatched_summary_type = dict(summary)
     mismatched_summary_type["summary_type"] = "qwen35_batch_retained_bench"
-    with pytest.raises(ValueError, match=f"summary.summary_type must be {artifact_schema._VALIDATION_SUMMARY_TYPE}"):
+    with pytest.raises(ValueError, match=f"summary.summary_type must be {RETAINED_ARTIFACT_VALIDATION_SUMMARY_TYPE}"):
         validate_cn_diagnostic_validation_summary(mismatched_summary_type)
     invalid_summary = dict(summary)
     invalid_summary["error"] = "unexpected warning"
