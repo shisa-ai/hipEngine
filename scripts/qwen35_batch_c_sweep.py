@@ -3774,6 +3774,8 @@ def _validate_cli_path_option(flag: str, path: str | Path) -> None:
         raise ValueError(f"{flag} must not be a symlink")
     if _path_has_symlink_parent(check_path):
         raise ValueError(f"{flag} parent directories must not be symlinks")
+    if _path_has_non_directory_parent(check_path):
+        raise ValueError(f"{flag} parent directories must be directories")
 
 
 def _validate_run_options(args: argparse.Namespace) -> None:

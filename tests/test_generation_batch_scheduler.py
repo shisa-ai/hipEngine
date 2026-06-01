@@ -2717,6 +2717,15 @@ def test_batch_c_sweep_rejects_unsafe_output_dir_before_creating_artifacts(tmp_p
         run_sweep(args)
     assert not (tmp_path / "artifacts").exists()
 
+    output_parent_file = tmp_path / "output-parent-file"
+    output_parent_file.write_text("not a directory")
+    args = build_c_sweep_parser().parse_args(
+        ["--dry-run", "--batch-sizes", "2", "--output-dir", str(output_parent_file / "artifacts")]
+    )
+    with pytest.raises(ValueError, match="--output-dir parent directories must be directories"):
+        run_sweep(args)
+    assert output_parent_file.is_file()
+
     if hasattr(os, "symlink"):
         target = tmp_path / "real-artifacts"
         target.mkdir()
