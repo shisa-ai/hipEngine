@@ -5675,6 +5675,7 @@ class Qwen35ParoDecodeState:
         selected_c1_linear_state_pairs: Sequence[tuple[Tensor, Tensor]] | None = None,
         force_selected_c1_linear_out: bool | None = None,
         force_batch_gemv_linear_out: bool = False,
+        force_per_row_moe: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -5687,7 +5688,7 @@ class Qwen35ParoDecodeState:
         if dense_mlp:
             if not isinstance(moe_scratch, Qwen35ParoDenseMlpScratch):
                 moe_scratch = self.reserve_dense_mlp_scratch(tokens=tokens, activation_dtype=DType.FP16)
-        elif tokens > 1 and not force_selected_c1_moe:
+        elif tokens > 1 and not (force_selected_c1_moe or force_per_row_moe):
             if not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
                 moe_scratch = self.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
         elif not isinstance(moe_scratch, Qwen35ParoMoeScratch):
@@ -5725,6 +5726,16 @@ class Qwen35ParoDecodeState:
         )
         if dense_mlp:
             return self.run_dense_mlp_residual_fp16(
+                mlp_input,
+                residual,
+                scratch=moe_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        if force_per_row_moe and tokens > 1:
+            return self.run_moe_c1_rows_fp16(
                 mlp_input,
                 residual,
                 scratch=moe_scratch,
@@ -6817,6 +6828,43 @@ class Qwen35ParoDecodeState:
         )
         return scratch.moe_out
 
+    def run_moe_c1_rows_fp16(
+        self,
+        hidden: Tensor,
+        residual: Tensor,
+        *,
+        scratch: Qwen35ParoMoeScratch | None = None,
+        tokens: int,
+        group_size: int = 128,
+        library=None,
+        stream: int = 0,
+    ) -> Tensor:
+        """Replay MoE with true token-1 kernels for each decode row."""
+
+        if tokens <= 0:
+            raise ValueError("tokens must be positive")
+        scratch = scratch or self.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16)
+        row_scratch = self.reserve_moe_c1_scratch(tokens=1, activation_dtype=DType.FP16, prefix="moe.decode_row")
+        runtime = self.runtime or get_hip_runtime()
+        for row in range(tokens):
+            row_out = self.run_moe_c1_fp16(
+                self._row_tensor_view(hidden, row),
+                self._row_tensor_view(residual, row),
+                scratch=row_scratch,
+                tokens=1,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+            runtime.memcpy_async(
+                scratch.moe_out.ptr + row * self.config.hidden_size * scratch.moe_out.dtype.itemsize,
+                row_out.ptr,
+                self.config.hidden_size * scratch.moe_out.dtype.itemsize,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+        return scratch.moe_out
+
     def run_moe_c1_fp16(
         self,
         hidden: Tensor,
@@ -7542,6 +7590,7 @@ class Qwen35ParoDecodeState:
         *,
         tokens: int = 1,
         activation_dtype: str | DType = DType.BF16,
+        prefix: str = "moe",
     ) -> Qwen35ParoMoeScratch:
         if tokens <= 0:
             raise ValueError("tokens must be positive")
@@ -7553,56 +7602,56 @@ class Qwen35ParoDecodeState:
         if top_k <= 0:
             raise ValueError("config.num_experts_per_tok must be positive")
         return Qwen35ParoMoeScratch(
-            normed=self.workspace.reserve_tensor("moe.normed", (tokens, cfg.hidden_size), lowp),
-            residual=self.workspace.reserve_tensor("moe.residual", (tokens, cfg.hidden_size), lowp),
-            gate_up_input=self.workspace.reserve_tensor("moe.gate_up_input", (tokens, cfg.hidden_size), lowp),
-            router_logits=self.workspace.reserve_tensor("moe.router_logits", (tokens, cfg.num_experts + 1), DType.FP32),
-            routing_weights=self.workspace.reserve_tensor("moe.routing_weights", (tokens, top_k), DType.FP32),
-            selected_experts=self.workspace.reserve_tensor("moe.selected_experts", (tokens, top_k), DType.INT64),
+            normed=self.workspace.reserve_tensor(f"{prefix}.normed", (tokens, cfg.hidden_size), lowp),
+            residual=self.workspace.reserve_tensor(f"{prefix}.residual", (tokens, cfg.hidden_size), lowp),
+            gate_up_input=self.workspace.reserve_tensor(f"{prefix}.gate_up_input", (tokens, cfg.hidden_size), lowp),
+            router_logits=self.workspace.reserve_tensor(f"{prefix}.router_logits", (tokens, cfg.num_experts + 1), DType.FP32),
+            routing_weights=self.workspace.reserve_tensor(f"{prefix}.routing_weights", (tokens, top_k), DType.FP32),
+            selected_experts=self.workspace.reserve_tensor(f"{prefix}.selected_experts", (tokens, top_k), DType.INT64),
             gate_up=self.workspace.reserve_tensor(
-                "moe.gate_up",
+                f"{prefix}.gate_up",
                 (tokens, top_k, 2 * cfg.moe_intermediate_size),
                 lowp,
             ),
-            down_input=self.workspace.reserve_tensor("moe.down_input", (tokens, top_k, cfg.moe_intermediate_size), lowp),
-            down_out=self.workspace.reserve_tensor("moe.down_out", (tokens, top_k, cfg.hidden_size), lowp),
+            down_input=self.workspace.reserve_tensor(f"{prefix}.down_input", (tokens, top_k, cfg.moe_intermediate_size), lowp),
+            down_out=self.workspace.reserve_tensor(f"{prefix}.down_out", (tokens, top_k, cfg.hidden_size), lowp),
             shared_gate_input=self.workspace.reserve_tensor(
-                "moe.shared_gate_input",
+                f"{prefix}.shared_gate_input",
                 (tokens, cfg.hidden_size),
                 lowp,
             ),
             shared_up_input=self.workspace.reserve_tensor(
-                "moe.shared_up_input",
+                f"{prefix}.shared_up_input",
                 (tokens, cfg.hidden_size),
                 lowp,
             ),
             shared_gate_out=self.workspace.reserve_tensor(
-                "moe.shared_gate_out",
+                f"{prefix}.shared_gate_out",
                 (tokens, cfg.shared_expert_intermediate_size),
                 lowp,
             ),
             shared_up_out=self.workspace.reserve_tensor(
-                "moe.shared_up_out",
+                f"{prefix}.shared_up_out",
                 (tokens, cfg.shared_expert_intermediate_size),
                 lowp,
             ),
             shared_up=self.workspace.reserve_tensor(
-                "moe.shared_up",
+                f"{prefix}.shared_up",
                 (tokens, 2 * cfg.shared_expert_intermediate_size),
                 lowp,
             ),
             shared_intermediate=self.workspace.reserve_tensor(
-                "moe.shared_intermediate",
+                f"{prefix}.shared_intermediate",
                 (tokens, cfg.shared_expert_intermediate_size),
                 lowp,
             ),
             shared_down_input=self.workspace.reserve_tensor(
-                "moe.shared_down_input",
+                f"{prefix}.shared_down_input",
                 (tokens, cfg.shared_expert_intermediate_size),
                 lowp,
             ),
-            shared_out=self.workspace.reserve_tensor("moe.shared_out", (tokens, cfg.hidden_size), lowp),
-            moe_out=self.workspace.reserve_tensor("moe.out", (tokens, cfg.hidden_size), lowp),
+            shared_out=self.workspace.reserve_tensor(f"{prefix}.shared_out", (tokens, cfg.hidden_size), lowp),
+            moe_out=self.workspace.reserve_tensor(f"{prefix}.out", (tokens, cfg.hidden_size), lowp),
         )
 
     def _memset_tensor(self, tensor: Tensor, *, stream: int, runtime, value: int = 0) -> None:

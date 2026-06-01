@@ -3950,6 +3950,9 @@ class Qwen35ParoResidentSession:
         native_full_attention_layers = 0
         dense_mlp = int(getattr(self.config, "num_experts", 1) or 0) <= 0
         force_selected_c1_moe = (not dense_mlp) and rows > 1 and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE")
+        force_per_row_linear_moe = (not dense_mlp) and rows > 1 and _env_flag(
+            "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR_MOE"
+        )
         force_selected_c1_linear_projections = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_PROJECTIONS"
         )
@@ -4037,7 +4040,11 @@ class Qwen35ParoResidentSession:
         post_attention_decode_path = "per_row_add_rmsnorm_fallback" if force_per_row_post_attention else "native_batch"
         use_single_row_c1_linear = rows == 1 and not force_per_row_linear
         use_per_row_linear = force_per_row_linear or use_single_row_c1_linear
-        moe_decode_path = "dense_mlp" if dense_mlp else ("selected_c1" if rows == 1 else ("selected_c1_forced" if force_selected_c1_moe else "grouped_compact"))
+        moe_decode_path = "dense_mlp" if dense_mlp else (
+            "selected_c1"
+            if rows == 1
+            else "selected_c1_per_row_moe_fallback" if force_per_row_linear_moe else ("selected_c1_forced" if force_selected_c1_moe else "grouped_compact")
+        )
         moe_grouped_compact_layers = 0
         moe_selected_c1_fallback_layers = 0
         layer_executions: list[dict[str, Any]] = []
@@ -4116,7 +4123,7 @@ class Qwen35ParoResidentSession:
                     else:
                         conv_state, recurrent_state, _conv_buf, _recurrent_buf, _conv_zero, _recurrent_zero = self.linear_states[layer_id]
                         linear_scratch = self._ensure_linear_decode_batch_scratch(layer_id, rows)
-                        if force_selected_c1_moe:
+                        if force_selected_c1_moe or force_per_row_linear_moe:
                             moe_scratch = self._ensure_moe_decode_batch_scratch(layer_id, rows, force_selected_c1_moe=True)
                         else:
                             moe_scratch = self._ensure_moe_decode_batch_scratch(layer_id, rows)
@@ -4144,6 +4151,7 @@ class Qwen35ParoResidentSession:
                             selected_c1_linear_state_pairs=selected_c1_linear_state_pairs,
                             force_selected_c1_linear_out=force_selected_c1_linear_out,
                             force_batch_gemv_linear_out=force_batch_gemv_linear_out,
+                            force_per_row_moe=force_per_row_linear_moe,
                             library=self.libraries,
                             stream=stream,
                         )
@@ -4156,9 +4164,13 @@ class Qwen35ParoResidentSession:
                             stream=stream,
                         )
                         self._trace_decode_linear_output(layer_id=layer_id, hidden=out, rows=rows, stream=stream)
-                        layer_moe_path = "dense_mlp" if dense_mlp else ("selected_c1" if rows == 1 else ("selected_c1_forced" if force_selected_c1_moe else "grouped_compact"))
+                        layer_moe_path = "dense_mlp" if dense_mlp else (
+                            "selected_c1"
+                            if rows == 1
+                            else "selected_c1_per_row_moe_fallback" if force_per_row_linear_moe else ("selected_c1_forced" if force_selected_c1_moe else "grouped_compact")
+                        )
                         if not dense_mlp and rows > 1:
-                            if force_selected_c1_moe:
+                            if force_selected_c1_moe or force_per_row_linear_moe:
                                 moe_selected_c1_fallback_layers += 1
                             else:
                                 moe_grouped_compact_layers += 1
@@ -4177,6 +4189,7 @@ class Qwen35ParoResidentSession:
                                 "full_attention_decode_path": "not_applicable",
                                 "native_caware_decode": not (
                                     force_selected_c1_moe
+                                    or force_per_row_linear_moe
                                     or force_selected_c1_linear_projections
                                     or force_selected_c1_qkv_z_linear_projections
                                     or force_selected_c1_ab_linear_projections
@@ -4438,6 +4451,8 @@ class Qwen35ParoResidentSession:
             decode_blockers: list[str] = []
             if force_selected_c1_moe:
                 decode_blockers.append("MoE decode forced to selected-c1 diagnostic path")
+            if force_per_row_linear_moe:
+                decode_blockers.append("linear-attention MoE forced to per-row selected-c1 diagnostic path")
             if force_selected_c1_linear_projections:
                 decode_blockers.append("linear-attention projections forced to selected-c1 diagnostic path")
             if force_selected_c1_qkv_z_linear_projections:
@@ -4457,7 +4472,7 @@ class Qwen35ParoResidentSession:
                 if not dense_mlp and rows > 1:
                     moe_decode_path = (
                         "selected_c1_forced_with_per_row_linear_attention_fallback"
-                        if force_selected_c1_moe
+                        if force_selected_c1_moe or force_per_row_linear_moe
                         else "mixed_grouped_compact_with_per_row_linear_attention_fallback"
                     )
             if force_per_row_full_attention_input:
@@ -4486,6 +4501,7 @@ class Qwen35ParoResidentSession:
                 "post_attention_decode_path": post_attention_decode_path,
                 "native_caware_decode": full_attention_decode_path not in {"per_row_splitk_fallback", "per_row_context_fallback"}
                 and not force_selected_c1_moe
+                and not force_per_row_linear_moe
                 and not force_selected_c1_linear_projections
                 and not force_selected_c1_qkv_z_linear_projections
                 and not force_selected_c1_ab_linear_projections

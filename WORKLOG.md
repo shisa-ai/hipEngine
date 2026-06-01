@@ -63300,3 +63300,27 @@ HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py \
 ```
 
 This also clears layer-0 `out_proj`/`residual`/`mlp_input`, but a temporary attempt to promote output batch-GEMV as the default was not retained because the reduced L8 token gate regressed (`first_token_mismatch` at index 13) and full c=2 512/128 row-1 equal-prefix worsened from 137 to 104 while the min metric stayed 82. Full retained verifier on clean defaults remains `rejected_correctness` with min equal-prefix `82` (`[82, 137]`). Next target is a native batch output projection that matches selected-c1 bit behavior without the selected-c1 diagnostic fallback, or the later layer-1/full-attention hidden drift once output projection is exact.
+
+## 2026-06-02 — CONCURRENCY per-row linear MoE diagnostic clears layer-0 output
+
+Added a scoped diagnostic fallback for linear-attention layers: `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR_MOE=1` replays the MoE portion with true token-1 scratch/kernels per decode row, while leaving the default grouped-compact path unchanged. The row replay uses a dedicated `moe.decode_row.*` scratch prefix and copies each token-1 output back into the batch-shaped MoE output so it does not alias the batch scratch.
+
+Focused control on GPU1 / RX 7900 XTX:
+
+```bash
+HIP_VISIBLE_DEVICES=1 HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR_MOE=1 \
+  python3 scripts/qwen35_batch_hidden_bisect.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
+  --prompt-length 512 --batch-size 2 --decode-tokens 16 \
+  --max-layers 8 --layer-limits 8 --max-sequence-length 1024 \
+  --focus-hidden-flat-index 1269 \
+  --batch-decode-linear-output-path selected_c1 \
+  --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/hipengine-e2e-hidden-L8-512-16-selected-linear-out-per-row-linear-moe-v2-gpu1.json
+```
+
+Result: the immediate layer-0 linear output/MoE handoff is now exact under diagnostics: step 0 layer 0 `out_proj`, `residual`, `mlp_input`, and `output` all have `max_abs=0`, `elements_over_atol=0`, and `bit_mismatch=0` for both rows. Layer 1 `attn_input` also turns green. The first linear-stage mismatch moves to step 0 layer 2 `attn_input` (`max_abs=0.001953125`, 8 elements over atol on row 0), L8 generated tokens remain green (`first_token_mismatch=null`), and the first hidden mismatch moves later to decode step 11 / generated index 12, row 0, dim 1543, `max_abs=0.010438919067382812`. This confirms the previous layer-1 input blocker was caused by linear-layer MoE output drift after the output-projection fix.
+
+Clean-default retained verifier is unchanged: full native c=2 512/128 remains `rejected_correctness` with min equal-prefix `82` (`[82, 137]`) and no performance claim. Guard passed with the required pytest bundle (`397 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX. Next target is either making grouped-compact MoE match the token-1 per-row path for the early linear layers, or using the new per-row MoE diagnostic to isolate the later layer-2/full-attention drift.
