@@ -21278,6 +21278,26 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     )
     validate_cn_diagnostic_artifact_payload(gpu1_accepted)
 
+    aux_env_accepted = json.loads(json.dumps(gpu1_accepted))
+    aux_env_accepted["hardware"]["visible_device"]["env"]["ROCR_VISIBLE_DEVICES"] = "1"
+    aux_env_accepted["correctness"]["primitive_batch_correctness"]["device"]["env"]["ROCR_VISIBLE_DEVICES"] = "1"
+    aux_env_accepted["commands"]["benchmark"] = aux_env_accepted["commands"]["benchmark"].replace(
+        "env HIP_VISIBLE_DEVICES=1 python3",
+        "env HIP_VISIBLE_DEVICES=1 ROCR_VISIBLE_DEVICES=1 python3",
+        1,
+    )
+    aux_env_accepted["commands"]["correctness_reference"] = aux_env_accepted["commands"]["correctness_reference"].replace(
+        "env HIP_VISIBLE_DEVICES=1 python3",
+        "env HIP_VISIBLE_DEVICES=1 ROCR_VISIBLE_DEVICES=1 python3",
+        1,
+    )
+    aux_env_accepted["commands"]["profiler"] = aux_env_accepted["commands"]["profiler"].replace(
+        "-- env HIP_VISIBLE_DEVICES=1 python3",
+        "-- env HIP_VISIBLE_DEVICES=1 ROCR_VISIBLE_DEVICES=1 python3",
+        1,
+    )
+    validate_cn_diagnostic_artifact_payload(aux_env_accepted)
+
     missing_benchmark_device_env = json.loads(json.dumps(gpu1_accepted))
     missing_benchmark_device_env["commands"]["benchmark"] = missing_benchmark_device_env["commands"]["benchmark"].replace(
         "env HIP_VISIBLE_DEVICES=1 ",
@@ -21341,6 +21361,19 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     )
     with pytest.raises(ValueError, match="commands.benchmark device env prefix HIP_VISIBLE_DEVICES must be recorded"):
         validate_cn_diagnostic_artifact_payload(command_device_env_without_metadata)
+
+    aux_command_device_env_without_metadata = json.loads(json.dumps(accepted))
+    aux_command_device_env_without_metadata["commands"]["benchmark"] = (
+        "env ROCR_VISIBLE_DEVICES=1 " + aux_command_device_env_without_metadata["commands"]["benchmark"]
+    )
+    aux_command_device_env_without_metadata["commands"]["correctness_reference"] = aux_command_device_env_without_metadata[
+        "commands"
+    ]["correctness_reference"].replace("plus python3", "plus env ROCR_VISIBLE_DEVICES=1 python3")
+    aux_command_device_env_without_metadata["commands"]["profiler"] = aux_command_device_env_without_metadata["commands"][
+        "profiler"
+    ].replace("-- python3", "-- env ROCR_VISIBLE_DEVICES=1 python3")
+    with pytest.raises(ValueError, match="commands.benchmark device env prefix ROCR_VISIBLE_DEVICES must be recorded"):
+        validate_cn_diagnostic_artifact_payload(aux_command_device_env_without_metadata)
 
     mismatched_profiler_command_env = json.loads(json.dumps(accepted))
     mismatched_profiler_command_env["commands"]["benchmark"] = (

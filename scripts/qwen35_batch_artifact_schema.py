@@ -182,8 +182,8 @@ _CORRECTNESS_SEED_RE = re.compile(r"(?:^|\s)--seed(?:=|\s+)(\d+)(?=\s|$)")
 _PRIMITIVE_CORRECTNESS_SCRIPT = RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_SCRIPT
 _RETAINED_BENCH_SCRIPT = RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT
 _RETAINED_BENCH_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS
-_COMMAND_ENV_KEYS = ("HIP_VISIBLE_DEVICES",)
 _DEVICE_METADATA_ENV_KEYS = ("HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES", "GPU_DEVICE_ORDINAL")
+_COMMAND_ENV_KEYS = _DEVICE_METADATA_ENV_KEYS
 _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS
 _INT8_PRIMITIVE_GATE_FLAGS = RETAINED_ARTIFACT_INT8_PRIMITIVE_GATE_FLAGS
 _CORRECTNESS_REFERENCE_UNIQUE_FLAGS = RETAINED_ARTIFACT_CORRECTNESS_REFERENCE_UNIQUE_FLAGS
@@ -485,22 +485,26 @@ def _accepted_device_selection_env_requirements(payload: Mapping[str, Any], erro
         env = source.get("env") if isinstance(source, Mapping) else None
         if not isinstance(env, Mapping):
             continue
-        value = env.get("HIP_VISIBLE_DEVICES")
-        if value is None:
-            continue
-        if not isinstance(value, str) or not value:
-            errors.append(f"{source_path}.HIP_VISIBLE_DEVICES must be a non-empty string for accepted artifacts")
-            continue
-        if not value.strip():
-            errors.append(f"{source_path}.HIP_VISIBLE_DEVICES must be a non-blank string for accepted artifacts")
-            continue
-        existing = requirements.get("HIP_VISIBLE_DEVICES")
-        if existing is not None and existing != value:
-            errors.append(
-                "hardware.visible_device.env.HIP_VISIBLE_DEVICES must match primitive device env for accepted artifacts"
-            )
-        else:
-            requirements["HIP_VISIBLE_DEVICES"] = value
+        for key in _DEVICE_METADATA_ENV_KEYS:
+            value = env.get(key)
+            if value is None:
+                continue
+            if not isinstance(value, str) or not value:
+                errors.append(f"{source_path}.{key} must be a non-empty string for accepted artifacts")
+                continue
+            if not value.strip():
+                errors.append(f"{source_path}.{key} must be a non-blank string for accepted artifacts")
+                continue
+            existing = requirements.get(key)
+            if existing is not None and existing != value:
+                if key == "HIP_VISIBLE_DEVICES":
+                    errors.append(
+                        "hardware.visible_device.env.HIP_VISIBLE_DEVICES must match primitive device env for accepted artifacts"
+                    )
+                else:
+                    errors.append(f"hardware.visible_device.env.{key} must match primitive device env for accepted artifacts")
+            else:
+                requirements[key] = value
     return requirements
 
 
