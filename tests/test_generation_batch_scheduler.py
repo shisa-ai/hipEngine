@@ -21378,6 +21378,31 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="commands.profiler device env prefix HIP_VISIBLE_DEVICES must be non-blank"):
         validate_cn_diagnostic_artifact_payload(blank_profiler_command_env)
 
+    duplicate_benchmark_command_env = json.loads(json.dumps(gpu1_accepted))
+    duplicate_benchmark_command_env["commands"]["benchmark"] = duplicate_benchmark_command_env["commands"]["benchmark"].replace(
+        "env HIP_VISIBLE_DEVICES=1 python3",
+        "env HIP_VISIBLE_DEVICES=1 HIP_VISIBLE_DEVICES=1 python3",
+        1,
+    )
+    with pytest.raises(ValueError, match="commands.benchmark device env prefix HIP_VISIBLE_DEVICES must appear at most once"):
+        validate_cn_diagnostic_artifact_payload(duplicate_benchmark_command_env)
+
+    duplicate_correctness_command_env = json.loads(json.dumps(gpu1_accepted))
+    duplicate_correctness_command_env["commands"]["correctness_reference"] = duplicate_correctness_command_env["commands"][
+        "correctness_reference"
+    ].replace("env HIP_VISIBLE_DEVICES=1 python3", "env HIP_VISIBLE_DEVICES=1 HIP_VISIBLE_DEVICES=1 python3", 1)
+    with pytest.raises(ValueError, match="commands.correctness_reference device env prefix HIP_VISIBLE_DEVICES must appear at most once"):
+        validate_cn_diagnostic_artifact_payload(duplicate_correctness_command_env)
+
+    duplicate_profiler_command_env = json.loads(json.dumps(gpu1_accepted))
+    duplicate_profiler_command_env["commands"]["profiler"] = duplicate_profiler_command_env["commands"]["profiler"].replace(
+        "-- env HIP_VISIBLE_DEVICES=1 python3",
+        "-- env HIP_VISIBLE_DEVICES=1 HIP_VISIBLE_DEVICES=1 python3",
+        1,
+    )
+    with pytest.raises(ValueError, match="commands.profiler device env prefix HIP_VISIBLE_DEVICES must appear at most once"):
+        validate_cn_diagnostic_artifact_payload(duplicate_profiler_command_env)
+
     command_device_env_without_metadata = json.loads(json.dumps(accepted))
     command_device_env_without_metadata["commands"]["benchmark"] = (
         "env HIP_VISIBLE_DEVICES=1 " + command_device_env_without_metadata["commands"]["benchmark"]

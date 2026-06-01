@@ -343,6 +343,20 @@ def _command_device_env_assignments(argv: Sequence[str]) -> dict[str, str]:
     return assignments
 
 
+def _validate_command_device_env_assignments_unique(argv: Sequence[str], *, field: str, errors: list[str]) -> None:
+    idx = 0
+    if argv and Path(argv[0]).name == "env":
+        idx = 1
+    seen: set[str] = set()
+    while idx < len(argv) and _is_env_assignment_token(argv[idx]):
+        key, _sep, _value = argv[idx].partition("=")
+        if key in _COMMAND_ENV_KEYS:
+            if key in seen:
+                errors.append(f"commands.{field} device env prefix {key} must appear at most once for accepted artifacts")
+            seen.add(key)
+        idx += 1
+
+
 def _retained_bench_command_device_env(command: str) -> dict[str, str]:
     try:
         return _command_device_env_assignments(shlex.split(command))
@@ -383,11 +397,11 @@ def _validate_device_env_metadata(env: Any, *, prefix: str, errors: list[str]) -
             errors.append(f"{prefix}.env.{key} must be a non-blank string when present for accepted artifacts")
 
 
-def _script_invocation_device_env_assignments(command: str, script: str) -> dict[str, str]:
+def _script_invocation_device_env_prefix_argv(command: str, script: str) -> list[str] | None:
     try:
         argv = shlex.split(command)
     except ValueError:
-        return {}
+        return None
     for script_index, token in enumerate(argv):
         if token != script or script_index == 0:
             continue
@@ -399,10 +413,17 @@ def _script_invocation_device_env_assignments(command: str, script: str) -> dict
             assignment_start -= 1
         has_env_command_prefix = assignment_start > 0 and Path(argv[assignment_start - 1]).name == "env"
         if assignment_start != 0 and not has_env_command_prefix:
-            return {}
+            return None
         prefix_start = assignment_start - 1 if has_env_command_prefix else assignment_start
-        return _command_device_env_assignments(argv[prefix_start:python_index])
-    return {}
+        return list(argv[prefix_start:python_index])
+    return None
+
+
+def _script_invocation_device_env_assignments(command: str, script: str) -> dict[str, str]:
+    prefix_argv = _script_invocation_device_env_prefix_argv(command, script)
+    if prefix_argv is None:
+        return {}
+    return _command_device_env_assignments(prefix_argv)
 
 
 def _validate_retained_bench_command_target(command: str, *, field: str, errors: list[str]) -> None:
@@ -2078,6 +2099,11 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     benchmark_device_env: dict[str, str] = {}
     if isinstance(benchmark_command, str):
         benchmark_device_env = _retained_bench_command_device_env(benchmark_command)
+        try:
+            benchmark_command_argv = shlex.split(benchmark_command)
+        except ValueError:
+            benchmark_command_argv = []
+        _validate_command_device_env_assignments_unique(benchmark_command_argv, field="benchmark", errors=errors)
         _validate_device_env_assignments_nonblank(benchmark_device_env, field="benchmark", errors=errors)
         _validate_device_env_assignments_have_metadata(
             benchmark_device_env,
@@ -2155,6 +2181,16 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
                 requirements=device_selection_env_requirements,
                 errors=errors,
             )
+            correctness_device_env_argv = _script_invocation_device_env_prefix_argv(
+                correctness_command,
+                _PRIMITIVE_CORRECTNESS_SCRIPT,
+            )
+            if correctness_device_env_argv is not None:
+                _validate_command_device_env_assignments_unique(
+                    correctness_device_env_argv,
+                    field="correctness_reference",
+                    errors=errors,
+                )
             correctness_device_env = _script_invocation_device_env_assignments(correctness_command, _PRIMITIVE_CORRECTNESS_SCRIPT)
             _validate_device_env_assignments_nonblank(correctness_device_env, field="correctness_reference", errors=errors)
             _validate_device_env_assignments_have_metadata(
@@ -2224,6 +2260,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             )
             _validate_retained_benchmark_reference_paths(profiler_profiled_benchmark_command, field="profiler", payload=payload, errors=errors)
             profiler_profiled_device_env = _command_device_env_assignments(profiled_command_argv)
+            _validate_command_device_env_assignments_unique(profiled_command_argv, field="profiler", errors=errors)
             _validate_device_env_assignments_nonblank(profiler_profiled_device_env, field="profiler", errors=errors)
             _validate_device_env_assignments_have_metadata(
                 profiler_profiled_device_env,
