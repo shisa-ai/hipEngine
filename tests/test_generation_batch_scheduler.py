@@ -7283,6 +7283,14 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     with pytest.raises(ValueError, match=r"commands\[\]\.status cannot be planned for executed summaries"):
         c_sweep.validate_sweep_summary(tampered_dry_run_mode)
     assert isinstance(summary["timestamp"], str) and summary["timestamp"]
+    tampered_timestamp_type = json.loads(json.dumps(summary))
+    tampered_timestamp_type["timestamp"] = 0
+    with pytest.raises(ValueError, match="timestamp must be a non-empty string"):
+        c_sweep.validate_sweep_summary(tampered_timestamp_type)
+    tampered_timestamp_blank = json.loads(json.dumps(summary))
+    tampered_timestamp_blank["timestamp"] = ""
+    with pytest.raises(ValueError, match="timestamp must be a non-empty string"):
+        c_sweep.validate_sweep_summary(tampered_timestamp_blank)
     tampered_timestamp = json.loads(json.dumps(summary))
     tampered_timestamp["timestamp"] = "not-a-timestamp"
     with pytest.raises(ValueError, match="timestamp must be ISO-8601 parseable"):
