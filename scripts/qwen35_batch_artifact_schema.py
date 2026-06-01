@@ -4326,6 +4326,11 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
             errors.append("failed validation summary.performance_claim must be null")
         if benchmark_rollup is not None:
             errors.append("failed validation summary.benchmark_rollup must be null")
+    if passed is True:
+        if status == "accepted" and performance_claim is not True:
+            errors.append("passed validation summary.status accepted requires performance_claim true")
+        if performance_claim is True and status != "accepted":
+            errors.append("passed validation summary.performance_claim true requires status accepted")
     if (passed is True or benchmark_rollup is not None) and not isinstance(artifact_path, str):
         errors.append("summary.artifact_path must be a non-empty string when summary.passed is true or summary.benchmark_rollup is present")
     if benchmark_rollup is not None:

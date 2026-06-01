@@ -315,6 +315,31 @@ def test_qwen35_failed_validation_summary_clears_rollup_success_fields() -> None
         validate_cn_diagnostic_validation_summary(stale_rollup_summary)
 
 
+def test_qwen35_passed_validation_summary_requires_accepted_claim_consistency() -> None:
+    summary = {
+        "schema": 1,
+        "mode": "artifact_schema",
+        "passed": True,
+        "artifact_json": "benchmarks/results/source.json",
+        "artifact_path": "benchmarks/results/source.json",
+        "status": "blocked",
+        "performance_claim": False,
+        "benchmark_rollup": None,
+        "error": None,
+    }
+    validate_cn_diagnostic_validation_summary(summary)
+
+    accepted_without_claim = dict(summary)
+    accepted_without_claim["status"] = "accepted"
+    with pytest.raises(ValueError, match="passed validation summary.status accepted requires performance_claim true"):
+        validate_cn_diagnostic_validation_summary(accepted_without_claim)
+
+    claim_without_accepted_status = dict(summary)
+    claim_without_accepted_status["performance_claim"] = True
+    with pytest.raises(ValueError, match="passed validation summary.performance_claim true requires status accepted"):
+        validate_cn_diagnostic_validation_summary(claim_without_accepted_status)
+
+
 def test_qwen35_validation_summary_payload_rejects_traversal() -> None:
     summary = {
         "schema": 1,
