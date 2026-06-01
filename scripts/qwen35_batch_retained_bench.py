@@ -3733,6 +3733,9 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_MOE"] = (
         "1" if getattr(args, "batch_decode_full_attn_moe_path", "grouped_compact") == "per_row_c1" else "0"
     )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN"] = (
+        "1" if getattr(args, "batch_decode_post_attn_path", "batch") == "per_row" else "0"
+    )
     projection_dispatch_artifact = _projection_dispatch_artifact_arg(args)
     if projection_dispatch_artifact is not None:
         os.environ[_PROJECTION_DISPATCH_ARTIFACT_ENV] = projection_dispatch_artifact
@@ -4168,6 +4171,7 @@ def _build_payload(
             "batch_decode_attention_context_path": str(getattr(args, "batch_decode_attn_context_path", "batch")),
             "batch_decode_full_attention_output_path": str(getattr(args, "batch_decode_full_attn_output_path", "batch")),
             "batch_decode_full_attention_moe_path": str(getattr(args, "batch_decode_full_attn_moe_path", "grouped_compact")),
+            "batch_decode_post_attention_path": str(getattr(args, "batch_decode_post_attn_path", "batch")),
         },
         "benchmark_rollup": {
             "artifact_path": str(args.json) if args.json is not None else None,
@@ -4318,6 +4322,12 @@ def main(argv: list[str] | None = None) -> int:
         choices=("grouped_compact", "per_row_c1"),
         default="grouped_compact",
         help="Diagnostic MoE path for full-attention c>N batch decode; per_row_c1 replays true token-1 MoE kernels per row and blocks retained claims.",
+    )
+    parser.add_argument(
+        "--batch-decode-post-attn-path",
+        choices=("batch", "per_row"),
+        default="batch",
+        help="Diagnostic post-attention add/RMSNorm path for c>N batch decode; per_row forces token-1 row kernels and blocks retained claims.",
     )
     parser.add_argument(_RETAINED_GATE_FLAGS[0], type=Path, help="c=1 baseline artifact used for retained scaling ratios")
     parser.add_argument(_RETAINED_GATE_FLAGS[1], type=Path, help="scheduler serial-bridge artifact for retained scaling ratios")

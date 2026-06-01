@@ -63548,3 +63548,22 @@ Result: generated-token equality is green for the full retained-shaped c=2 512/8
 This eliminates the focused retained-aligned full-attention blocker identified in the previous hidden-bisect run. Clean/default retained verifier remains `/tmp/hipengine-e2e-native-c2-512-128.json`: `min_equal_prefix_tokens=82`, `prefix_lengths=[82, 137]`, `status=rejected_correctness`, no performance claim. Next correctness step should replace one row-replayed full-attention stage at a time with native/batched kernels (input/context/output/MoE) to find the smallest native piece responsible for the clean row-0 token-82 failure.
 
 Guard passed with the required pytest bundle (`400 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY retained post-attention diagnostic probe
+
+Exposed the retained-bench post-attention diagnostic control `--batch-decode-post-attn-path` so artifacts can record and force token-1 post-attention add/RMSNorm replay independently from the broader full-attention path.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Native full-attention batch path with every exposed substage forced to row replay, including post-attention:
+  `/tmp/hipengine-e2e-native-c2-512-128-retained-selected-linear-full-subrows-postrow.json`
+  - `batch_decode_full_attention_path=native_batch`, `attention_input=context=output=per_row`, `full_attention_moe=per_row_c1`, `post_attention=per_row`.
+  - Still fails generated-token equality with `prefix_lengths=[82, 104]`, `first_mismatch_indices=[82, 104]`.
+- Full full-attention row replay with the same post-attention metadata:
+  `/tmp/hipengine-e2e-native-c2-512-128-retained-selected-linear-fullpath-rowdiag-postrow.json`
+  - `batch_decode_full_attention_path=per_row`, all full-attention substages row replay.
+  - Generated-token equality remains green: `prefix_lengths=[137, 137]`, `min_equal_prefix_tokens=137`, `first_mismatch_indices=[null, null]`, `generated_token_equality.passed=true`.
+
+Conclusion: post-attention add/RMSNorm is not the missing native substage by itself. The blocker sits earlier in the native full-attention batch path or in state/cache effects that only the complete c1 full-attention row replay avoids. Clean/default retained verifier remains `/tmp/hipengine-e2e-native-c2-512-128.json`: `min_equal_prefix_tokens=82`, `prefix_lengths=[82, 137]`, `status=rejected_correctness`, no performance claim.
+
+Guard passed with the required pytest bundle (`400 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
