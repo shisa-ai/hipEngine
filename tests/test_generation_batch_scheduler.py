@@ -21149,6 +21149,14 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     extra_rollup_key_summary["benchmark_rollup"]["note"] = "promote"
     with pytest.raises(ValueError, match="summary.benchmark_rollup contains unexpected keys: note"):
         validate_cn_diagnostic_validation_summary(extra_rollup_key_summary)
+    missing_rollup_artifact_path_summary = json.loads(json.dumps(summary))
+    missing_rollup_artifact_path_summary["benchmark_rollup"].pop("artifact_path")
+    with pytest.raises(ValueError, match="summary.benchmark_rollup.artifact_path must be a non-empty string"):
+        validate_cn_diagnostic_validation_summary(missing_rollup_artifact_path_summary)
+    missing_rollup_source_artifact_path_summary = json.loads(json.dumps(summary))
+    missing_rollup_source_artifact_path_summary["benchmark_rollup"].pop("source_artifact_path")
+    with pytest.raises(ValueError, match="summary.benchmark_rollup.source_artifact_path must be a non-empty string"):
+        validate_cn_diagnostic_validation_summary(missing_rollup_source_artifact_path_summary)
     leading_space_rollup_artifact_path = json.loads(json.dumps(summary))
     leading_space_rollup_artifact_path["benchmark_rollup"]["artifact_path"] = " benchmarks/results/accepted-c2.json"
     with pytest.raises(ValueError, match="summary.benchmark_rollup.artifact_path must not contain leading or trailing whitespace"):
