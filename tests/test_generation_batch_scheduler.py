@@ -21303,6 +21303,31 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="commands.profiler must include HIP_VISIBLE_DEVICES=1"):
         validate_cn_diagnostic_artifact_payload(missing_profiler_device_env)
 
+    blank_benchmark_command_env = json.loads(json.dumps(gpu1_accepted))
+    blank_benchmark_command_env["commands"]["benchmark"] = blank_benchmark_command_env["commands"]["benchmark"].replace(
+        "env HIP_VISIBLE_DEVICES=1 python3",
+        "env 'HIP_VISIBLE_DEVICES=   ' python3",
+        1,
+    )
+    with pytest.raises(ValueError, match="commands.benchmark device env prefix HIP_VISIBLE_DEVICES must be non-blank"):
+        validate_cn_diagnostic_artifact_payload(blank_benchmark_command_env)
+
+    blank_correctness_command_env = json.loads(json.dumps(gpu1_accepted))
+    blank_correctness_command_env["commands"]["correctness_reference"] = blank_correctness_command_env["commands"][
+        "correctness_reference"
+    ].replace("env HIP_VISIBLE_DEVICES=1 python3", "env 'HIP_VISIBLE_DEVICES=   ' python3", 1)
+    with pytest.raises(ValueError, match="commands.correctness_reference device env prefix HIP_VISIBLE_DEVICES must be non-blank"):
+        validate_cn_diagnostic_artifact_payload(blank_correctness_command_env)
+
+    blank_profiler_command_env = json.loads(json.dumps(gpu1_accepted))
+    blank_profiler_command_env["commands"]["profiler"] = blank_profiler_command_env["commands"]["profiler"].replace(
+        "-- env HIP_VISIBLE_DEVICES=1 python3",
+        "-- env 'HIP_VISIBLE_DEVICES=   ' python3",
+        1,
+    )
+    with pytest.raises(ValueError, match="commands.profiler device env prefix HIP_VISIBLE_DEVICES must be non-blank"):
+        validate_cn_diagnostic_artifact_payload(blank_profiler_command_env)
+
     mismatched_profiler_command_env = json.loads(json.dumps(accepted))
     mismatched_profiler_command_env["commands"]["benchmark"] = (
         "env HIP_VISIBLE_DEVICES=1 " + mismatched_profiler_command_env["commands"]["benchmark"]
