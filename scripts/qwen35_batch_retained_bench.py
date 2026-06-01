@@ -1097,11 +1097,14 @@ def _retained_command_label_provenance_blockers(args: argparse.Namespace, comman
         blockers.append("commands.benchmark must be shell-parseable for retained promotion")
         return blockers
     command_device_env = _command_device_env_assignments(parts)
+    blank_command_device_env_keys = {key for key, value in command_device_env.items() if not value.strip()}
+    for key in sorted(blank_command_device_env_keys):
+        blockers.append(f"commands.benchmark {key} must be non-blank for retained promotion")
     for key, expected_value in _current_command_device_env_assignments().items():
         command_value = command_device_env.get(key)
         if command_value is None:
             blockers.append(f"commands.benchmark must include {key}={expected_value} for retained promotion")
-        elif command_value != expected_value:
+        elif key not in blank_command_device_env_keys and command_value != expected_value:
             blockers.append(f"commands.benchmark {key} must match retained command env")
     return blockers
 
