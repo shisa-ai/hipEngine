@@ -7346,6 +7346,27 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must not contain parent-directory components"):
             c_sweep.validate_sweep_summary(tampered_planned_artifact_parent)
 
+        artifact_symlink_base = Path(summary["commands"][index]["artifact_path"])
+        artifact_parent_link = artifact_symlink_base.parent / f"planned-artifact-parent-link-{index}"
+        try:
+            artifact_parent_link.symlink_to(artifact_symlink_base.parent, target_is_directory=True)
+            tampered_planned_artifact_symlink_parent = json.loads(json.dumps(summary))
+            planned_artifact_symlink_parent_entry = tampered_planned_artifact_symlink_parent["commands"][index]
+            artifact_via_symlink_parent = str(
+                artifact_parent_link / Path(planned_artifact_symlink_parent_entry["artifact_path"]).name
+            )
+            planned_artifact_symlink_parent_entry["artifact_path"] = artifact_via_symlink_parent
+            planned_artifact_symlink_parent_argv = planned_artifact_symlink_parent_entry["argv"]
+            planned_artifact_symlink_parent_argv[
+                planned_artifact_symlink_parent_argv.index("--json") + 1
+            ] = artifact_via_symlink_parent
+            planned_artifact_symlink_parent_entry["command"] = shlex.join(planned_artifact_symlink_parent_argv)
+            with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path parent directories must not be symlinks"):
+                c_sweep.validate_sweep_summary(tampered_planned_artifact_symlink_parent)
+        finally:
+            if artifact_parent_link.is_symlink():
+                artifact_parent_link.unlink()
+
         tampered_planned_rows = json.loads(json.dumps(summary))
         planned_rows_entry = tampered_planned_rows["commands"][index]
         planned_rows_argv = planned_rows_entry["argv"]
