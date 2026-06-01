@@ -3666,6 +3666,7 @@ class Qwen35ParoDecodeState:
         *,
         tokens: int = 1,
         group_size: int = 128,
+        force_pack8_gemv: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -3694,6 +3695,7 @@ class Qwen35ParoDecodeState:
             in_features=q_width,
             group_size=group_size,
             threads=64 if tokens > 1 else 128,
+            force_gemv=force_pack8_gemv,
             library=library,
             stream=stream,
         )
@@ -3942,6 +3944,7 @@ class Qwen35ParoDecodeState:
         force_per_row_context: bool = False,
         per_row_contexts: Sequence[tuple[Tensor, Tensor, KVLiveSpans]] | None = None,
         force_per_row_output: bool = False,
+        force_batch_gemv_output: bool = False,
         force_per_row_post_attention: bool = False,
         force_per_row_moe: bool = False,
         post_input_rmsnorm_trace: Callable[[Qwen35ParoAttentionScratch], None] | None = None,
@@ -4043,19 +4046,25 @@ class Qwen35ParoDecodeState:
                 library=library,
                 stream=stream,
             )
-        project_o_fn = (
-            self.project_full_attention_o_rows_fp16
-            if force_per_row_output and tokens > 1
-            else self.project_full_attention_o_fp16
-        )
-        attn_out = project_o_fn(
-            gated,
-            attention_scratch,
-            tokens=tokens,
-            group_size=group_size,
-            library=library,
-            stream=stream,
-        )
+        if force_per_row_output and tokens > 1:
+            attn_out = self.project_full_attention_o_rows_fp16(
+                gated,
+                attention_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                library=library,
+                stream=stream,
+            )
+        else:
+            attn_out = self.project_full_attention_o_fp16(
+                gated,
+                attention_scratch,
+                tokens=tokens,
+                group_size=group_size,
+                force_pack8_gemv=force_batch_gemv_output,
+                library=library,
+                stream=stream,
+            )
         post_attention_fn = (
             self.post_attention_add_rmsnorm_fp16_per_row
             if force_per_row_post_attention and tokens > 1

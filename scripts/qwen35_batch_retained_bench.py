@@ -3664,6 +3664,18 @@ def _projection_dispatch_artifact_file_path(artifact: str) -> Path:
 
 def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     os.environ["HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"] = "1"
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_CONTEXT"] = (
+        "1" if getattr(args, "batch_decode_attn_context_path", "batch") == "per_row" else "0"
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_OUTPUT"] = (
+        "1" if getattr(args, "batch_decode_full_attn_output_path", "batch") == "per_row" else "0"
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT"] = (
+        "1" if getattr(args, "batch_decode_full_attn_output_path", "batch") == "batch_gemv" else "0"
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_MOE"] = (
+        "1" if getattr(args, "batch_decode_full_attn_moe_path", "grouped_compact") == "per_row_c1" else "0"
+    )
     projection_dispatch_artifact = _projection_dispatch_artifact_arg(args)
     if projection_dispatch_artifact is not None:
         os.environ[_PROJECTION_DISPATCH_ARTIFACT_ENV] = projection_dispatch_artifact
@@ -4087,6 +4099,9 @@ def _build_payload(
             "scheduler_path": "scheduler_native_compact_batch",
             "native_compact_prefill": True,
             "native_caware_decode": native_caware_decode,
+            "batch_decode_attention_context_path": str(getattr(args, "batch_decode_attn_context_path", "batch")),
+            "batch_decode_full_attention_output_path": str(getattr(args, "batch_decode_full_attn_output_path", "batch")),
+            "batch_decode_full_attention_moe_path": str(getattr(args, "batch_decode_full_attn_moe_path", "grouped_compact")),
         },
         "benchmark_rollup": {
             "artifact_path": str(args.json) if args.json is not None else None,
@@ -4172,6 +4187,24 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--skip-generated-equality", action="store_true")
+    parser.add_argument(
+        "--batch-decode-attn-context-path",
+        choices=("batch", "per_row"),
+        default="batch",
+        help="Diagnostic full-attention context/gate path for c>N batch decode; per_row forces token-1 row context kernels and blocks retained claims.",
+    )
+    parser.add_argument(
+        "--batch-decode-full-attn-output-path",
+        choices=("batch", "batch_gemv", "per_row"),
+        default="batch",
+        help="Diagnostic full-attention O projection path for c>N batch decode; batch_gemv forces one batched GEMV kernel and per_row forces token-1 O projection kernels.",
+    )
+    parser.add_argument(
+        "--batch-decode-full-attn-moe-path",
+        choices=("grouped_compact", "per_row_c1"),
+        default="grouped_compact",
+        help="Diagnostic MoE path for full-attention c>N batch decode; per_row_c1 replays true token-1 MoE kernels per row and blocks retained claims.",
+    )
     parser.add_argument(_RETAINED_GATE_FLAGS[0], type=Path, help="c=1 baseline artifact used for retained scaling ratios")
     parser.add_argument(_RETAINED_GATE_FLAGS[1], type=Path, help="scheduler serial-bridge artifact for retained scaling ratios")
     parser.add_argument(_RETAINED_GATE_FLAGS[2], type=Path, help="scripts/qwen35_batch_correctness.py JSON for this c>N row count")

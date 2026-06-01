@@ -4033,6 +4033,11 @@ class Qwen35ParoResidentSession:
         force_per_row_full_attention_output = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_OUTPUT"
         )
+        force_batch_gemv_full_attention_output = (
+            rows > 1
+            and not force_per_row_full_attention_output
+            and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT")
+        )
         force_per_row_post_attention = rows > 1 and _env_flag("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN")
         force_per_row_full_attention_moe = (not dense_mlp) and rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_MOE"
@@ -4044,7 +4049,9 @@ class Qwen35ParoResidentSession:
             "per_row_context_gate_fallback" if force_per_row_full_attention_context else "native_batch"
         )
         full_attention_output_decode_path = (
-            "per_row_o_projection_fallback" if force_per_row_full_attention_output else "native_batch"
+            "per_row_o_projection_fallback"
+            if force_per_row_full_attention_output
+            else "batch_gemv" if force_batch_gemv_full_attention_output else "native_batch"
         )
         post_attention_decode_path = "per_row_add_rmsnorm_fallback" if force_per_row_post_attention else "native_batch"
         use_single_row_c1_linear = rows == 1 and not force_per_row_linear
@@ -4321,6 +4328,7 @@ class Qwen35ParoResidentSession:
                             force_per_row_context=force_per_row_full_attention_context,
                             per_row_contexts=per_row_contexts,
                             force_per_row_output=force_per_row_full_attention_output,
+                            force_batch_gemv_output=force_batch_gemv_full_attention_output,
                             force_per_row_post_attention=force_per_row_post_attention,
                             force_per_row_moe=force_per_row_full_attention_moe,
                             post_input_rmsnorm_trace=post_input_rmsnorm_trace,
@@ -4371,6 +4379,7 @@ class Qwen35ParoResidentSession:
                                 or force_per_row_full_attention_moe
                                 or force_per_row_full_attention_input
                                 or force_per_row_full_attention_output
+                                or force_batch_gemv_full_attention_output
                                 or force_per_row_full_attention_context
                                 or force_per_row_post_attention
                             ),
@@ -4382,7 +4391,7 @@ class Qwen35ParoResidentSession:
                             layer_execution["full_attention_input_decode_path"] = full_attention_input_decode_path
                         if force_per_row_full_attention_context:
                             layer_execution["full_attention_context_decode_path"] = full_attention_context_decode_path
-                        if force_per_row_full_attention_output:
+                        if force_per_row_full_attention_output or force_batch_gemv_full_attention_output:
                             layer_execution["full_attention_output_decode_path"] = full_attention_output_decode_path
                         if force_per_row_post_attention:
                             layer_execution["post_attention_decode_path"] = post_attention_decode_path
@@ -4506,6 +4515,8 @@ class Qwen35ParoResidentSession:
                 decode_blockers.append("full-attention context/gate forced to per-row diagnostic path")
             if force_per_row_full_attention_output:
                 decode_blockers.append("full-attention O projection forced to per-row diagnostic path")
+            if force_batch_gemv_full_attention_output:
+                decode_blockers.append("full-attention O projection forced to batch GEMV diagnostic path")
             if force_per_row_post_attention:
                 decode_blockers.append("post-attention add/rmsnorm forced to per-row diagnostic path")
             if full_attention_decode_path in {"per_row_splitk_fallback", "per_row_context_fallback"}:
@@ -4539,6 +4550,7 @@ class Qwen35ParoResidentSession:
                 and not force_per_row_full_attention_input
                 and not force_per_row_full_attention_context
                 and not force_per_row_full_attention_output
+                and not force_batch_gemv_full_attention_output
                 and not force_per_row_full_attention_moe
                 and not force_per_row_post_attention,
                 "linear_attention_segment_metadata": linear_segment_metadata,

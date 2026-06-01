@@ -2035,6 +2035,7 @@ def test_qwen35_resident_full_attention_batch_decode_can_force_per_row_output_an
     _hidden, kwargs = state.calls[0]
     assert kwargs["force_selected_c1_moe"] is False
     assert kwargs["force_per_row_output"] is True
+    assert kwargs["force_batch_gemv_output"] is False
     assert kwargs["force_per_row_moe"] is True
     assert copies == [(0x2000, 0x9000, 2 * session.hidden_nbytes, 5)]
     execution = session.last_batch_decode_execution
@@ -2046,6 +2047,30 @@ def test_qwen35_resident_full_attention_batch_decode_can_force_per_row_output_an
     assert execution["layer_executions"][0]["moe_decode_path"] == "selected_c1_per_row_moe_fallback"
     assert execution["layer_executions"][0]["full_attention_output_decode_path"] == "per_row_o_projection_fallback"
     assert "full-attention O projection forced to per-row diagnostic path" in execution["blockers"]
+    assert "full-attention MoE forced to per-row selected-c1 diagnostic path" in execution["blockers"]
+
+    monkeypatch.delenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_OUTPUT")
+    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT", "1")
+    state.calls.clear()
+    force_flags.clear()
+    copies.clear()
+
+    out = session._run_layers_batch_decode(rows=2, positions=(4, 7), slots=(0, 2), stream=5)
+
+    assert out.ptr == 0x2000
+    assert force_flags == [True]
+    assert len(state.calls) == 1
+    _hidden, kwargs = state.calls[0]
+    assert kwargs["force_selected_c1_moe"] is False
+    assert kwargs["force_per_row_output"] is False
+    assert kwargs["force_batch_gemv_output"] is True
+    assert kwargs["force_per_row_moe"] is True
+    assert copies == [(0x2000, 0x9000, 2 * session.hidden_nbytes, 5)]
+    execution = session.last_batch_decode_execution
+    assert execution["native_caware_decode"] is False
+    assert execution["layer_executions"][0]["native_caware_decode"] is False
+    assert execution["layer_executions"][0]["full_attention_output_decode_path"] == "batch_gemv"
+    assert "full-attention O projection forced to batch GEMV diagnostic path" in execution["blockers"]
     assert "full-attention MoE forced to per-row selected-c1 diagnostic path" in execution["blockers"]
 
 

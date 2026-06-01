@@ -5635,9 +5635,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--batch-decode-full-attn-output-path",
-        choices=("batch", "per_row"),
+        choices=("batch", "batch_gemv", "per_row"),
         default="batch",
-        help="Diagnostic full-attention O projection path for c>N batch decode; per_row forces token-1 O projection kernels and blocks retained claims.",
+        help="Diagnostic full-attention O projection path for c>N batch decode; batch_gemv forces one batched GEMV kernel and per_row forces token-1 O projection kernels.",
     )
     parser.add_argument(
         "--batch-decode-full-attn-moe-path",
@@ -5823,6 +5823,9 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_OUTPUT"] = (
         "1" if args.batch_decode_full_attn_output_path == "per_row" else "0"
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT"] = (
+        "1" if args.batch_decode_full_attn_output_path == "batch_gemv" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_MOE"] = (
         "1" if args.batch_decode_full_attn_moe_path == "per_row_c1" else "0"

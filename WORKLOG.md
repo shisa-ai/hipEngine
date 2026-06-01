@@ -63381,3 +63381,32 @@ HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py \
 Result: `/tmp/hipengine-e2e-hidden-L8-512-16-selected-linear-all-per-row-full-context-output-moe-gpu1.json` is `status=eq_ok`; L8 hidden and generated-token checks are both green (`first_token_mismatch=null`, `hidden_passed=true`, `token_passed=true`). The prior partial control without per-row full-attention context was still red at layer-3 `mlp_input` (`/tmp/hipengine-e2e-hidden-L8-512-16-selected-linear-all-per-row-full-output-moe-gpu1.json`: max abs `0.001953125`, one element over atol), so the next retained work should make the native full-attention context/O path match row replay before removing the diagnostic fallbacks.
 
 Clean-default retained verifier remains unchanged: full native c=2 512/128 is `rejected_correctness` with min equal-prefix `82` (`[82, 137]`) and no performance claim. Guard passed with the required pytest bundle (`398 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY full-attention batch-GEMV O diagnostic moves L8 blocker to layer 7
+
+Added a batched-GEMV diagnostic for full-attention decode O projection: `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT=1`, exposed as `--batch-decode-full-attn-output-path batch_gemv` in the hidden-bisect tool and retained bench metadata/CLI. This keeps one batched GEMV projection for c>N rows (not per-row O replay), marks the run non-native/diagnostic, and leaves the default retained path as `batch`.
+
+Focused GPU1 / RX 7900 XTX controls with selected/per-row linear diagnostics and per-row full-attention context:
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
+  --prompt-length 512 --batch-size 2 --decode-tokens 16 \
+  --max-layers 8 --layer-limits 8 --max-sequence-length 1024 \
+  --focus-hidden-flat-index 1269 \
+  --batch-prefill-linear-path per_segment \
+  --batch-decode-linear-projection-path selected_c1 \
+  --batch-decode-linear-state-path selected_c1 \
+  --batch-decode-linear-moe-path per_row_c1 \
+  --batch-decode-linear-output-path selected_c1 \
+  --batch-decode-attn-context-path per_row \
+  --batch-decode-full-attn-output-path batch_gemv \
+  --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/hipengine-e2e-hidden-L8-512-16-selected-linear-all-per-row-full-context-batch-gemv-out-gpu1.json
+```
+
+Result: the previous native full-attention layer-3 `mlp_input` blocker is eliminated without per-row O replay. Control artifact `/tmp/hipengine-e2e-hidden-L8-512-16-selected-linear-all-per-row-full-context-native-out-gpu1.json` first fails at full-attention layer 3 `mlp_input` (`max_abs=0.00390625`, 10 elements over atol). The new batch-GEMV O artifact first fails later at full-attention layer 7 `attn_input_pre_qkv` (`max_abs=0.00390625`, 47 elements over atol), with L8 generated tokens still green and the first hidden mismatch delayed from step 6 / generated index 7 to step 11 / generated index 12. This suggests full-attention O should move from the prefill W4 projection path to the batched GEMV path once the remaining layer-4 linear and layer-7 full-attention drift is closed.
+
+Clean-default retained verifier remains `rejected_correctness` with min equal-prefix `82` (`[82, 137]`) and no performance claim. One first retained rerun produced a transient row-1 prefix `0`, but two immediate reruns (including the final `/tmp/hipengine-e2e-native-c2-512-128.json`) returned the established `[82, 137]`. Guard passed with the required pytest bundle (`398 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
