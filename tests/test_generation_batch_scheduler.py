@@ -7384,6 +7384,11 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         tampered_include_option["options"][option] = False
         with pytest.raises(ValueError, match=r"command_count must match batch_sizes/options\.include_int8/include_gguf"):
             c_sweep.validate_sweep_summary(tampered_include_option)
+    tampered_include_options_disabled = json.loads(json.dumps(summary))
+    tampered_include_options_disabled["options"]["include_int8"] = False
+    tampered_include_options_disabled["options"]["include_gguf"] = False
+    with pytest.raises(ValueError, match=r"command_count must match batch_sizes/options\.include_int8/include_gguf"):
+        c_sweep.validate_sweep_summary(tampered_include_options_disabled)
     assert summary["options"]["stop_on_failure"] is True
     tampered_stop_on_failure_option = json.loads(json.dumps(summary))
     tampered_stop_on_failure_option["options"]["stop_on_failure"] = "yes"
