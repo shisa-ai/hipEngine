@@ -20942,10 +20942,26 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     absolute_summary_source_artifact_path["source_artifact_path"] = str(artifact_file)
     with pytest.raises(ValueError, match="summary.source_artifact_path must be a repo-relative benchmarks/results path"):
         validate_cn_diagnostic_validation_summary(absolute_summary_source_artifact_path)
+    leading_space_artifact_json = dict(summary)
+    leading_space_artifact_json["artifact_json"] = " benchmarks/results/accepted-c2.json"
+    with pytest.raises(ValueError, match="summary.artifact_json must not contain leading or trailing whitespace"):
+        validate_cn_diagnostic_validation_summary(leading_space_artifact_json)
+    trailing_space_artifact_json = dict(summary)
+    trailing_space_artifact_json["artifact_json"] = "benchmarks/results/accepted-c2.json "
+    with pytest.raises(ValueError, match="summary.artifact_json must not contain leading or trailing whitespace"):
+        validate_cn_diagnostic_validation_summary(trailing_space_artifact_json)
     stale_summary_source_artifact_path = dict(summary)
     stale_summary_source_artifact_path["source_artifact_path"] = "benchmarks/results/other-accepted-c2.json"
     with pytest.raises(ValueError, match="summary.source_artifact_path must match summary.artifact_json"):
         validate_cn_diagnostic_validation_summary(stale_summary_source_artifact_path)
+    leading_space_source_artifact_path = dict(summary)
+    leading_space_source_artifact_path["source_artifact_path"] = " benchmarks/results/accepted-c2.json"
+    with pytest.raises(ValueError, match="summary.source_artifact_path must not contain leading or trailing whitespace"):
+        validate_cn_diagnostic_validation_summary(leading_space_source_artifact_path)
+    trailing_space_source_artifact_path = dict(summary)
+    trailing_space_source_artifact_path["source_artifact_path"] = "benchmarks/results/accepted-c2.json "
+    with pytest.raises(ValueError, match="summary.source_artifact_path must not contain leading or trailing whitespace"):
+        validate_cn_diagnostic_validation_summary(trailing_space_source_artifact_path)
     missing_summary_source_artifact_path = dict(summary)
     missing_summary_source_artifact_path.pop("source_artifact_path")
     with pytest.raises(ValueError, match="summary.source_artifact_path must be a non-empty string"):

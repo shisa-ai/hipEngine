@@ -4329,11 +4329,15 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
     artifact_json = summary.get("artifact_json")
     if not isinstance(artifact_json, str) or not artifact_json:
         errors.append("summary.artifact_json must be a non-empty string")
+    elif artifact_json.strip() != artifact_json:
+        errors.append("summary.artifact_json must not contain leading or trailing whitespace")
     source_artifact_path = summary.get("source_artifact_path")
     if not isinstance(source_artifact_path, str) or not source_artifact_path:
         errors.append("summary.source_artifact_path must be a non-empty string")
     else:
         _validate_benchmark_results_artifact_path("summary.source_artifact_path", source_artifact_path, errors)
+        if source_artifact_path.strip() != source_artifact_path:
+            errors.append("summary.source_artifact_path must not contain leading or trailing whitespace")
         if _path_text_contains_parent_traversal(source_artifact_path):
             errors.append("summary.source_artifact_path must not contain parent traversal")
         if _benchmark_results_relative_path(source_artifact_path) != source_artifact_path.replace("\\", "/"):
