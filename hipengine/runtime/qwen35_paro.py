@@ -4058,6 +4058,7 @@ class Qwen35ParoDecodeState:
         force_per_row_kv_append: bool = False,
         per_row_append_contexts: Sequence[tuple[Tensor, Tensor, KVLiveSpans]] | None = None,
         force_per_row_append_context: bool = False,
+        force_per_row_suffix: bool = False,
         force_per_row_output: bool = False,
         force_batch_gemv_output: bool = False,
         force_per_row_post_attention: bool = False,
@@ -4115,6 +4116,91 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
+        if force_per_row_suffix and tokens > 1:
+            if not (
+                force_per_row_kv_append
+                and force_per_row_context
+                and force_per_row_output
+                and force_per_row_post_attention
+                and force_per_row_moe
+            ):
+                raise ValueError("per-row suffix interleave requires per-row KV append, context, output, post-attention, and MoE diagnostics")
+            if per_row_append_contexts is None or len(per_row_append_contexts) != tokens:
+                raise ValueError("per_row_append_contexts must provide one key/value/span tuple per decode row")
+            if per_row_contexts is None or len(per_row_contexts) != tokens:
+                raise ValueError("per_row_contexts must provide one key/value/span tuple per decode row")
+            if dense_mlp:
+                raise NotImplementedError("per-row suffix diagnostic is currently wired for MoE layers")
+            if not isinstance(moe_scratch, Qwen35ParoMoeScratch):
+                raise ValueError("per-row suffix diagnostic requires token-row MoE scratch")
+            row_moe_scratch = self.reserve_moe_c1_scratch(
+                tokens=1,
+                activation_dtype=hidden.dtype,
+                prefix="moe.decode_row_suffix",
+            )
+            runtime = self.runtime or get_hip_runtime()
+            for row, ((row_key_cache, row_value_cache, row_append_spans), row_context_tuple) in enumerate(
+                zip(per_row_append_contexts, per_row_contexts, strict=True)
+            ):
+                context_key_cache, context_value_cache, row_decode_spans = row_context_tuple
+                if context_key_cache.ptr != row_key_cache.ptr or context_value_cache.ptr != row_value_cache.ptr:
+                    raise ValueError("per-row suffix diagnostics must use matching row cache views")
+                row_scratch = self._decode_row_full_attention_scratch(attention_scratch, row)
+                row_hidden = self._row_tensor_view(hidden, row)
+                self.append_full_attention_kv_fp16(
+                    row_scratch,
+                    key_cache=row_key_cache,
+                    value_cache=row_value_cache,
+                    spans=row_append_spans,
+                    block_size=block_size,
+                    library=library,
+                    stream=stream,
+                )
+                row_gate = self._row_tensor_view(gate, row)
+                self.decode_full_attention_context_gate_fp16(
+                    row_scratch,
+                    key_cache=row_key_cache,
+                    value_cache=row_value_cache,
+                    spans=row_decode_spans,
+                    gate=row_gate,
+                    block_size=block_size,
+                    library=library,
+                    stream=stream,
+                )
+                row_attn_out = self.project_full_attention_o_fp16(
+                    self._row_tensor_view(attention_scratch.gated_attn, row),
+                    row_scratch,
+                    tokens=1,
+                    group_size=group_size,
+                    library=library,
+                    stream=stream,
+                )
+                row_mlp_input, row_residual = self.post_attention_add_rmsnorm_fp16(
+                    row_hidden,
+                    row_attn_out,
+                    row_moe_scratch,
+                    tokens=1,
+                    library=library,
+                    stream=stream,
+                )
+                row_out = self.run_moe_c1_fp16(
+                    row_mlp_input,
+                    row_residual,
+                    scratch=row_moe_scratch,
+                    tokens=1,
+                    group_size=group_size,
+                    library=library,
+                    stream=stream,
+                )
+                dst = self._row_tensor_view(moe_scratch.moe_out, row)
+                runtime.memcpy_async(
+                    dst.ptr,
+                    row_out.ptr,
+                    row_out.numel * row_out.dtype.itemsize,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+            return moe_scratch.moe_out
         if force_per_row_append_context and tokens > 1 and not (force_per_row_kv_append and force_per_row_context):
             raise ValueError("per-row append+context interleave requires per-row KV append and context diagnostics")
         if force_per_row_append_context and tokens > 1:
