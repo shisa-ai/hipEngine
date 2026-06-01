@@ -6524,6 +6524,16 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON status must match when profiler passed"):
         c_sweep.validate_sweep_summary(persisted)
     profiler_source_payload = json.loads(profiler_artifact_payload)
+    profiler_source_payload["profiler"]["output_format"] = "json"
+    profiler_artifact_path.write_text(json.dumps(profiler_source_payload))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON output_format must match when profiler passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    profiler_source_payload = json.loads(profiler_artifact_payload)
+    profiler_source_payload["profiler"]["trace_files"] = [str(output_dir / "profile-c2" / "other_kernel_trace.csv")]
+    profiler_artifact_path.write_text(json.dumps(profiler_source_payload))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON trace_files must match when profiler passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    profiler_source_payload = json.loads(profiler_artifact_payload)
     profiler_source_payload["profiler"]["trace_dir"] = str(output_dir / "other-profile-c2")
     profiler_artifact_path.write_text(json.dumps(profiler_source_payload))
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON trace_dir must match when profiler passed"):
