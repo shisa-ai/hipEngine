@@ -21288,6 +21288,14 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="hardware.visible_device.env.HIP_VISIBLE_DEVICES must include HIP_VISIBLE_DEVICES=1"):
         validate_cn_diagnostic_artifact_payload(missing_hardware_visible_device_env_key)
 
+    missing_primitive_device_env_key = json.loads(json.dumps(gpu1_accepted))
+    missing_primitive_device_env_key["correctness"]["primitive_batch_correctness"]["device"]["env"].pop("HIP_VISIBLE_DEVICES")
+    with pytest.raises(
+        ValueError,
+        match="correctness.primitive_batch_correctness.device.env.HIP_VISIBLE_DEVICES must include HIP_VISIBLE_DEVICES=1",
+    ):
+        validate_cn_diagnostic_artifact_payload(missing_primitive_device_env_key)
+
     invalid_hardware_visible_device_runtime = json.loads(json.dumps(gpu1_accepted))
     invalid_hardware_visible_device_runtime["hardware"]["visible_device"]["hipGetDeviceCount_error"] = 1
     with pytest.raises(ValueError, match="hardware.visible_device.hipGetDeviceCount_error must be 0"):

@@ -60889,3 +60889,40 @@ git diff --check
 ```
 
 Result: targeted hardware visible-device runtime metadata regression PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1` with c=2/c=8 primitive JSONs passing on GPU1/XTX (`seed=1234`, zero append/A-A/attention errors, `device.env.HIP_VISIBLE_DEVICES=1`, `device_name=AMD Radeon RX 7900 XTX`). Prompt-verifier self-check passes: C2.5 remains unchecked with generated-token equality/scaling caveats present, no completed item marker changed, no retained c>N performance/scaling claim was added, and no benchmark/doc rollup file changed.
+
+## 2026-06-01 — CONCURRENCY accepted primitive device-env binding guard
+
+Closed the accepted diagnostic artifact primitive correctness device-env binding gap. `scripts/qwen35_batch_artifact_schema.py` now requires `correctness.primitive_batch_correctness.device.env` to include every command device-selection env requirement, not just `hardware.visible_device.env`, and factors shared device-env requirement validation for hardware and primitive device metadata. Added an accepted-row schema regression where primitive correctness metadata omits `HIP_VISIBLE_DEVICES` while hardware metadata and command labels require `HIP_VISIBLE_DEVICES=1`. C2.5 generated-token equality vs independent c=1 remains open and no performance/scaling claim changed.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+python3 -m compileall -q scripts/qwen35_batch_artifact_schema.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+python3 - <<'PY'
+from pathlib import Path
+import re
+text = Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue))
+assert count == 12, count
+assert '- [ ] **C2.5 c=4/c=8 BF16 equality.**' in queue
+assert 'generated-token equality vs independent c=1 for c=4/c=8 is still missing' in queue
+assert '`source_artifact_path` self-binding for primitive correctness and profiler JSONs' in queue
+assert 'aggregate/per-request ratios' in queue
+print('prompt-verifier support: C2.5 remains open; generated-token equality and aggregate/per-request scaling caveats remain present; no docs completed-item markers changed; no retained c>N performance claim added by this primitive device-env binding diff')
+PY
+if git diff --name-only -- docs/CONCURRENCY.md docs/ENVS.md docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md | grep .; then
+  echo 'unexpected doc/benchmark diff' >&2
+  exit 1
+fi
+git diff --check
+```
+
+Result: targeted primitive device-env binding regression PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1` with c=2/c=8 primitive JSONs passing on GPU1/XTX (`seed=1234`, zero append/A-A/attention errors, `device.env.HIP_VISIBLE_DEVICES=1`, `device_name=AMD Radeon RX 7900 XTX`). Prompt-verifier self-check passes: C2.5 remains unchecked with generated-token equality/scaling caveats present, no completed item marker changed, no retained c>N performance/scaling claim was added, and no benchmark/doc rollup file changed.

@@ -419,27 +419,59 @@ def _validate_device_runtime_metadata(device: Mapping[str, Any], *, prefix: str,
         errors.append(f"{prefix}.device_name must be a non-empty string for accepted artifacts")
 
 
+def _validate_device_env_requirements(
+    device: Any,
+    *,
+    prefix: str,
+    requirements: Mapping[str, str],
+    errors: list[str],
+) -> bool:
+    if not requirements:
+        return False
+    if not isinstance(device, Mapping):
+        errors.append(f"{prefix} must be an object when command device env prefixes are required for accepted artifacts")
+        return False
+    env = device.get("env")
+    if not isinstance(env, Mapping):
+        errors.append(f"{prefix}.env must be an object when command device env prefixes are required for accepted artifacts")
+        return False
+    for key, value in requirements.items():
+        if env.get(key) != value:
+            errors.append(f"{prefix}.env.{key} must include {key}={value} for accepted artifacts")
+    return True
+
+
 def _validate_hardware_visible_device_env_requirements(
     hardware: Mapping[str, Any],
     requirements: Mapping[str, str],
     errors: list[str],
 ) -> None:
-    if not requirements:
-        return
     visible_device = hardware.get("visible_device")
-    if not isinstance(visible_device, Mapping):
-        errors.append("hardware.visible_device must be an object when command device env prefixes are required for accepted artifacts")
-        return
-    env = visible_device.get("env")
-    if not isinstance(env, Mapping):
-        errors.append("hardware.visible_device.env must be an object when command device env prefixes are required for accepted artifacts")
-        return
-    for key, value in requirements.items():
-        if env.get(key) != value:
-            errors.append(f"hardware.visible_device.env.{key} must include {key}={value} for accepted artifacts")
-    _validate_device_runtime_metadata(
+    if _validate_device_env_requirements(
         visible_device,
         prefix="hardware.visible_device",
+        requirements=requirements,
+        errors=errors,
+    ):
+        _validate_device_runtime_metadata(
+            visible_device,
+            prefix="hardware.visible_device",
+            errors=errors,
+        )
+
+
+def _validate_primitive_device_env_requirements(
+    payload: Mapping[str, Any],
+    requirements: Mapping[str, str],
+    errors: list[str],
+) -> None:
+    correctness = payload.get("correctness")
+    primitive = correctness.get("primitive_batch_correctness") if isinstance(correctness, Mapping) else None
+    primitive_device = primitive.get("device") if isinstance(primitive, Mapping) else None
+    _validate_device_env_requirements(
+        primitive_device,
+        prefix="correctness.primitive_batch_correctness.device",
+        requirements=requirements,
         errors=errors,
     )
 
@@ -2136,6 +2168,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             _append_disallowed_accepted_diagnostic_text_errors(command_value, path=f"commands.{field}", errors=errors)
     device_selection_env_requirements = _accepted_device_selection_env_requirements(payload, errors)
     _validate_hardware_visible_device_env_requirements(hardware, device_selection_env_requirements, errors)
+    _validate_primitive_device_env_requirements(payload, device_selection_env_requirements, errors)
     environment_commands = commands.get("environment")
     if not _is_nonempty_string_list(environment_commands):
         errors.append("commands.environment must be a non-empty string list for accepted artifacts")
