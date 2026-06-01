@@ -1477,6 +1477,8 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                 reasons.append("profiler.trace_dir contains parent-directory components")
             if trace_dir_check_path.is_symlink():
                 reasons.append("profiler.trace_dir is a symlink")
+            if _path_has_symlink_parent(trace_dir_check_path):
+                reasons.append("profiler.trace_dir parent directories contain symlinks")
         raw_trace_files = profiler.get("trace_files")
         if not isinstance(raw_trace_files, list) or not raw_trace_files:
             reasons.append("profiler.trace_files is missing or empty")
@@ -1497,6 +1499,8 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
             ]
             if any(trace_file_path.is_symlink() for trace_file_path in trace_file_check_paths):
                 reasons.append("profiler.trace_files contains a symlink")
+            if any(_path_has_symlink_parent(trace_file_path) for trace_file_path in trace_file_check_paths):
+                reasons.append("profiler.trace_files parent directories contain symlinks")
             if any(_path_has_parent_directory_component(trace_file) for trace_file in profiler_trace_files):
                 reasons.append("profiler.trace_files contains parent-directory components")
             elif profiler_trace_dir is not None:

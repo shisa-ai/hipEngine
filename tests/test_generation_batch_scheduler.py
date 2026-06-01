@@ -1048,7 +1048,53 @@ def test_batch_c_sweep_profiler_precondition_rejects_symlink_trace_dir(tmp_path:
         "kind": "profiler_summary",
         "artifact_path": str(profiler_path),
         "passed": False,
-        "reason": "profiler.trace_dir is a symlink",
+        "reason": "profiler.trace_dir is a symlink; profiler.trace_files parent directories contain symlinks",
+    }
+
+
+def test_batch_c_sweep_profiler_precondition_rejects_symlink_parent_trace_dir(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    real_parent = output_dir / "real-profiler-parent"
+    real_parent.mkdir()
+    linked_parent = output_dir / "linked-profiler-parent"
+    linked_parent.symlink_to(real_parent, target_is_directory=True)
+    trace_dir = linked_parent / "profile-c2"
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"]["trace_dir"] = str(trace_dir)
+    payload["profiler"]["trace_files"] = [str(trace_dir / "hipengine_kernel_trace.csv")]
+    payload["profiler"]["command"] = payload["profiler"]["command"].replace(
+        f" -d {output_dir / 'profile-c2'} --",
+        f" -d {trace_dir} --",
+    )
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler.trace_dir parent directories contain symlinks; profiler.trace_files parent directories contain symlinks",
     }
 
 
@@ -1159,6 +1205,48 @@ def test_batch_c_sweep_profiler_precondition_rejects_symlink_trace_file(tmp_path
         "artifact_path": str(profiler_path),
         "passed": False,
         "reason": "profiler.trace_files contains a symlink",
+    }
+
+
+def test_batch_c_sweep_profiler_precondition_rejects_symlink_parent_trace_file(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    trace_dir = output_dir / "profile-c2"
+    trace_dir.mkdir()
+    real_trace_parent = trace_dir / "real-traces"
+    real_trace_parent.mkdir()
+    linked_trace_parent = trace_dir / "linked-traces"
+    linked_trace_parent.symlink_to(real_trace_parent, target_is_directory=True)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"]["trace_files"] = [str(linked_trace_parent / "hipengine_kernel_trace.csv")]
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler.trace_files parent directories contain symlinks",
     }
 
 
