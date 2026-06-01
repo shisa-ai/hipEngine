@@ -20032,6 +20032,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             },
         },
         "workload": {
+            "shape": "c=2 prompt=512 decode=128",
             "model": "Qwen3.5/3.6-35B-A3B-PARO",
             "model_path": "/models/test-qwen35",
             "fixture_path": "fixtures/qwen35.json",
@@ -20423,6 +20424,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     naive_timestamp["timestamp"] = "2026-06-01T14:00:00"
     with pytest.raises(ValueError, match="timestamp must include timezone offset for accepted artifacts"):
         validate_cn_diagnostic_artifact_payload(naive_timestamp)
+
+    missing_workload_shape = json.loads(json.dumps(accepted))
+    missing_workload_shape["workload"].pop("shape")
+    with pytest.raises(ValueError, match="workload.shape must be a non-empty string for accepted artifacts"):
+        validate_cn_diagnostic_artifact_payload(missing_workload_shape)
+
+    mismatched_workload_shape = json.loads(json.dumps(accepted))
+    mismatched_workload_shape["workload"]["shape"] = "c=8 prompt=512 decode=128"
+    with pytest.raises(ValueError, match="workload.shape must match c=<workload.concurrency> prompt=<workload.prompt_tokens_per_request> decode=<workload.gen_tokens_per_request>"):
+        validate_cn_diagnostic_artifact_payload(mismatched_workload_shape)
 
     missing_artifact_rows = json.loads(json.dumps(accepted))
     missing_artifact_rows.pop("rows")

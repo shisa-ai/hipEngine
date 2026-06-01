@@ -1278,6 +1278,20 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
         else:
             if parsed_timestamp.tzinfo is None or parsed_timestamp.utcoffset() is None:
                 errors.append("timestamp must include timezone offset for accepted artifacts")
+    prompt_tokens = workload.get("prompt_tokens_per_request")
+    gen_tokens = workload.get("gen_tokens_per_request")
+    workload_shape = workload.get("shape")
+    if not isinstance(workload_shape, str) or not workload_shape:
+        errors.append("workload.shape must be a non-empty string for accepted artifacts")
+    elif (
+        concurrency_valid
+        and isinstance(prompt_tokens, int)
+        and not isinstance(prompt_tokens, bool)
+        and isinstance(gen_tokens, int)
+        and not isinstance(gen_tokens, bool)
+        and workload_shape != f"c={concurrency} prompt={prompt_tokens} decode={gen_tokens}"
+    ):
+        errors.append("workload.shape must match c=<workload.concurrency> prompt=<workload.prompt_tokens_per_request> decode=<workload.gen_tokens_per_request> for accepted artifacts")
     artifact_rows = payload.get("rows")
     if not isinstance(artifact_rows, int) or isinstance(artifact_rows, bool):
         errors.append("rows must be an int for accepted artifacts")
