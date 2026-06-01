@@ -2849,7 +2849,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         break
                     primitive_artifact_path = primitive_precondition.get("primitive_artifact_path")
                     if not isinstance(primitive_artifact_path, str) or not primitive_artifact_path:
-                        errors.append("commands[].preconditions[].primitive_artifact_path must match primitive artifact_path when primitive passed")
+                        errors.append("commands[].preconditions[].primitive_artifact_path must be a non-empty string when primitive passed")
                         break
                     if not primitive_artifact_path.strip():
                         errors.append("commands[].preconditions[].primitive_artifact_path must be a non-blank string when primitive passed")
@@ -2959,7 +2959,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         break
                     reference_artifact_path = scaling_precondition.get("reference_artifact_path")
                     if not isinstance(reference_artifact_path, str) or not reference_artifact_path:
-                        errors.append("commands[].preconditions[].reference_artifact_path must match scaling reference artifact_path when passed")
+                        errors.append("commands[].preconditions[].reference_artifact_path must be a non-empty string when scaling reference passed")
                         scaling_precondition_error = True
                         break
                     if not reference_artifact_path.strip():

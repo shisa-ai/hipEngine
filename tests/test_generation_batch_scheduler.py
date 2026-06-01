@@ -6087,8 +6087,18 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
                 reference_parent_target.rmdir()
     tampered_scaling_precondition_missing_artifact = json.loads(json.dumps(persisted))
     tampered_scaling_precondition_missing_artifact["commands"][-1]["preconditions"][2].pop("reference_artifact_path")
-    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.reference_artifact_path must match scaling reference artifact_path when passed"):
+    with pytest.raises(
+        ValueError,
+        match=r"commands\[\]\.preconditions\[\]\.reference_artifact_path must be a non-empty string when scaling reference passed",
+    ):
         c_sweep.validate_sweep_summary(tampered_scaling_precondition_missing_artifact)
+    tampered_scaling_precondition_type_artifact = json.loads(json.dumps(persisted))
+    tampered_scaling_precondition_type_artifact["commands"][-1]["preconditions"][1]["reference_artifact_path"] = 123
+    with pytest.raises(
+        ValueError,
+        match=r"commands\[\]\.preconditions\[\]\.reference_artifact_path must be a non-empty string when scaling reference passed",
+    ):
+        c_sweep.validate_sweep_summary(tampered_scaling_precondition_type_artifact)
     tampered_scaling_precondition_empty_label = json.loads(json.dumps(persisted))
     tampered_scaling_precondition_empty_label["commands"][-1]["preconditions"][1]["benchmark_model"] = ""
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.benchmark input labels must be null or non-empty strings when passed"):
@@ -6673,8 +6683,18 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
                 primitive_parent_target.rmdir()
     tampered_primitive_precondition_missing_artifact = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_missing_artifact["commands"][-1]["preconditions"][0].pop("primitive_artifact_path")
-    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path must match primitive artifact_path when primitive passed"):
+    with pytest.raises(
+        ValueError,
+        match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path must be a non-empty string when primitive passed",
+    ):
         c_sweep.validate_sweep_summary(tampered_primitive_precondition_missing_artifact)
+    tampered_primitive_precondition_type_artifact = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_type_artifact["commands"][-1]["preconditions"][0]["primitive_artifact_path"] = 123
+    with pytest.raises(
+        ValueError,
+        match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path must be a non-empty string when primitive passed",
+    ):
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_type_artifact)
     tampered_primitive_precondition_seed = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_seed["commands"][-1]["preconditions"][0]["primitive_seed"] = 4321
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_seed must be typed int 1234 when primitive passed"):
