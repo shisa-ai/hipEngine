@@ -7613,10 +7613,13 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     tampered_precondition_count_status_label["retained_precondition_counts"] = {"primitive_correctness": {"blocked": 1}}
     with pytest.raises(ValueError, match="retained_precondition_counts must contain only passed/failed status labels"):
         c_sweep.validate_sweep_summary(tampered_precondition_count_status_label)
-    tampered_precondition_count_value = json.loads(json.dumps(summary))
-    tampered_precondition_count_value["retained_precondition_counts"] = {"primitive_correctness": {"passed": True}}
-    with pytest.raises(ValueError, match="retained_precondition_counts must contain only non-negative integer count values"):
-        c_sweep.validate_sweep_summary(tampered_precondition_count_value)
+    for invalid_precondition_count_value in (True, -1, "1"):
+        tampered_precondition_count_value = json.loads(json.dumps(summary))
+        tampered_precondition_count_value["retained_precondition_counts"] = {
+            "primitive_correctness": {"passed": invalid_precondition_count_value}
+        }
+        with pytest.raises(ValueError, match="retained_precondition_counts must contain only non-negative integer count values"):
+            c_sweep.validate_sweep_summary(tampered_precondition_count_value)
     tampered_precondition_count = json.loads(json.dumps(summary))
     tampered_precondition_count["retained_precondition_counts"] = {"primitive_correctness": {"passed": 1}}
     with pytest.raises(ValueError, match="retained_precondition_counts must match commands.preconditions"):
@@ -7634,10 +7637,13 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     tampered_postcondition_count_status_label["retained_postcondition_counts"] = {"retained_profiler_synthesis": {"blocked": 1}}
     with pytest.raises(ValueError, match="retained_postcondition_counts must contain only passed/failed status labels"):
         c_sweep.validate_sweep_summary(tampered_postcondition_count_status_label)
-    tampered_postcondition_count_value = json.loads(json.dumps(summary))
-    tampered_postcondition_count_value["retained_postcondition_counts"] = {"retained_profiler_synthesis": {"passed": True}}
-    with pytest.raises(ValueError, match="retained_postcondition_counts must contain only non-negative integer count values"):
-        c_sweep.validate_sweep_summary(tampered_postcondition_count_value)
+    for invalid_postcondition_count_value in (True, -1, "1"):
+        tampered_postcondition_count_value = json.loads(json.dumps(summary))
+        tampered_postcondition_count_value["retained_postcondition_counts"] = {
+            "retained_profiler_synthesis": {"passed": invalid_postcondition_count_value}
+        }
+        with pytest.raises(ValueError, match="retained_postcondition_counts must contain only non-negative integer count values"):
+            c_sweep.validate_sweep_summary(tampered_postcondition_count_value)
     tampered_postcondition_count = json.loads(json.dumps(summary))
     tampered_postcondition_count["retained_postcondition_counts"] = {"retained_profiler_synthesis": {"passed": 1}}
     with pytest.raises(ValueError, match="retained_postcondition_counts must match commands.postconditions"):
