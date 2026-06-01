@@ -30954,3 +30954,43 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: P0-P12 open/partial checklist count stayed at `2`; status-helper tests passed (`96 passed`); compact first-KV-blocker output/SHA returned expected blocked exit code 2 with stable JSON SHA `126f69ef7c41c0cbd8779801ea769477b1a973c58aef0e191baa4b564e48af32`; source/status verification returned `match`; the full StepFun guard passed (`200` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was the pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes status-helper metadata/tests/docs/status artifact only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.
+
+## 2026-06-01 — StepFun first KV blocker persisted digest
+
+Persisted the first source-level KV streaming-runner blocker digest in the StepFun correctness status artifact. `kv_backed_decode_gap_report.first_streaming_runner_blocker_sha256` now records the stable JSON SHA-256 for the current first blocker (`streaming_decode_loop_not_wired`), and the digest is mirrored through `next_action_commands.kv_backed_decode_not_wired`, `blockers`, `handoff_summary.blocker_work_queue[1]`, and `handoff_summary.kv_backed_decode_gap_report`. The compact `--kv-first-streaming-blocker-sha-only` output now emits that persisted field, and status integrity checks verify both the digest and all mirrors. Refreshed `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`; readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`). This only improves blocker handoff integrity; no KV-backed decode kernel path is launched and no StepFun performance or e2e correctness claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_correctness_status.py --kv-first-streaming-blocker-sha-only --fail-on-blocked --pretty > /tmp/stepfun-kv-first-streaming-blocker-persisted-sha.json; rc_sha=$?; printf '%s' "$rc_sha" > /tmp/stepfun-kv-first-streaming-blocker-persisted-sha.rc
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty > /tmp/stepfun-source-verify-kv-first-streaming-persisted-sha.json
+python3 - <<'PY'
+import hashlib, json
+stable=lambda v: hashlib.sha256(json.dumps(v, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+assert open('/tmp/stepfun-kv-first-streaming-blocker-persisted-sha.rc').read() == '2'
+s=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+sha=json.load(open('/tmp/stepfun-kv-first-streaming-blocker-persisted-sha.json'))
+first=s['kv_backed_decode_gap_report']['first_streaming_runner_blocker']
+expected=stable(first)
+assert first == 'streaming_decode_loop_not_wired'
+assert sha == s['kv_backed_decode_gap_report']['first_streaming_runner_blocker_sha256'] == expected
+assert s['next_action_commands']['kv_backed_decode_not_wired']['first_streaming_runner_blocker_sha256'] == expected
+queue_item=s['handoff_summary']['blocker_work_queue'][1]
+assert queue_item['first_streaming_runner_blocker_sha256'] == expected
+assert s['handoff_summary']['kv_backed_decode_gap_report']['first_streaming_runner_blocker_sha256'] == expected
+v=json.load(open('/tmp/stepfun-source-verify-kv-first-streaming-persisted-sha.json'))
+assert v['status'] == 'match'
+assert v['all_match'] is True
+assert v['status_integrity']['all_match'] is True
+checks=v['status_integrity']['checks']
+assert checks['first_kv_streaming_runner_blocker_sha256'] is True
+assert checks['first_kv_streaming_runner_blocker_mirrors'] is True
+print('persisted first kv blocker sha ok', expected)
+PY
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: P0-P12 open/partial checklist count stayed at `2`; status-helper tests passed (`97 passed`); compact persisted first-KV-blocker SHA output returned expected blocked exit code 2 with stable JSON SHA `126f69ef7c41c0cbd8779801ea769477b1a973c58aef0e191baa4b564e48af32`; source/status verification returned `match` with the new first-KV-blocker digest and mirror integrity checks true; the full StepFun guard passed (`201` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was the pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes status-helper metadata/tests/docs/status artifact only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.

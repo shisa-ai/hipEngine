@@ -496,6 +496,16 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         if isinstance(kv_gap_report, dict)
         else None
     )
+    first_kv_streaming_blocker = (
+        kv_gap_report.get("first_streaming_runner_blocker")
+        if isinstance(kv_gap_report, dict)
+        else None
+    )
+    first_kv_streaming_blocker_sha256 = (
+        kv_gap_report.get("first_streaming_runner_blocker_sha256")
+        if isinstance(kv_gap_report, dict)
+        else None
+    )
     schema_versions = status.get("schema_versions", {})
     blocker_meta = (
         handoff_summary.get("blocker_work_queue_meta", {})
@@ -528,6 +538,20 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             and record.get("streaming_runner_blocker_names_sha256_match") is True
             for record in kv_streaming_mirror_records
         )
+    )
+    first_kv_streaming_runner_blocker_sha256_match = (
+        first_kv_streaming_blocker_sha256 is None
+        if first_kv_streaming_blocker is None
+        else first_kv_streaming_blocker_sha256
+        == _stable_json_sha256(first_kv_streaming_blocker)
+    )
+    first_kv_streaming_runner_blocker_mirrors = bool(
+        kv_streaming_mirror_records
+    ) and all(
+        record.get("first_streaming_runner_blocker") == first_kv_streaming_blocker
+        and record.get("first_streaming_runner_blocker_sha256")
+        == first_kv_streaming_blocker_sha256
+        for record in kv_streaming_mirror_records
     )
     checks = {
         "source_artifacts_sha256": (
@@ -565,6 +589,12 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             and kv_streaming_blocker_names_sha256_match is True
         ),
         "kv_streaming_runner_blocker_mirrors": kv_streaming_runner_blocker_mirrors,
+        "first_kv_streaming_runner_blocker_sha256": (
+            first_kv_streaming_runner_blocker_sha256_match
+        ),
+        "first_kv_streaming_runner_blocker_mirrors": (
+            first_kv_streaming_runner_blocker_mirrors
+        ),
         "schema_versions": schema_versions
         == {
             "status": status.get("schema_version"),
@@ -1004,6 +1034,11 @@ def _kv_backed_decode_gap_report(
     first_streaming_runner_blocker = run_plan.get(
         "first_streaming_runner_blocker"
     ) or launch_schedule.get("first_streaming_runner_blocker")
+    first_streaming_runner_blocker_sha256 = (
+        _stable_json_sha256(first_streaming_runner_blocker)
+        if first_streaming_runner_blocker is not None
+        else None
+    )
     streaming_runner_blocker_count = run_plan.get(
         "streaming_runner_blocker_count"
     ) or launch_schedule.get("streaming_runner_blocker_count")
@@ -1058,6 +1093,7 @@ def _kv_backed_decode_gap_report(
                 "computed_streaming_runner_blocker_names_sha256": computed_streaming_runner_blocker_names_sha256,
                 "streaming_runner_blocker_names_sha256_match": streaming_runner_blocker_names_sha256_match,
                 "first_streaming_runner_blocker": first_streaming_runner_blocker,
+                "first_streaming_runner_blocker_sha256": first_streaming_runner_blocker_sha256,
                 "streaming_runner_blockers": streaming_runner_blockers,
                 "launch_schedule_streaming_runner_blocker_count": launch_schedule.get(
                     "streaming_runner_blocker_count"
@@ -1115,6 +1151,7 @@ def _kv_backed_decode_gap_report(
         "computed_streaming_runner_blocker_names_sha256": computed_streaming_runner_blocker_names_sha256,
         "streaming_runner_blocker_names_sha256_match": streaming_runner_blocker_names_sha256_match,
         "first_streaming_runner_blocker": first_streaming_runner_blocker,
+        "first_streaming_runner_blocker_sha256": first_streaming_runner_blocker_sha256,
         "streaming_runner_blockers": streaming_runner_blockers,
         "upload_entry_count": decode_input_upload_plan.get("entry_count"),
         "upload_total_nbytes": decode_input_upload_plan.get("total_nbytes"),
@@ -1339,6 +1376,9 @@ def _next_action_commands(
             ),
             "first_streaming_runner_blocker": kv_backed_decode_gap_report.get(
                 "first_streaming_runner_blocker"
+            ),
+            "first_streaming_runner_blocker_sha256": kv_backed_decode_gap_report.get(
+                "first_streaming_runner_blocker_sha256"
             ),
             "success_criteria": [
                 "kv_backed_decode_gap_report.status is ready",
@@ -1655,6 +1695,9 @@ def _handoff_summary(
                     "first_streaming_runner_blocker": kv_backed_decode_gap_report.get(
                         "first_streaming_runner_blocker"
                     ),
+                    "first_streaming_runner_blocker_sha256": kv_backed_decode_gap_report.get(
+                        "first_streaming_runner_blocker_sha256"
+                    ),
                 }
             )
         else:
@@ -1730,7 +1773,7 @@ def _handoff_summary(
                 "kv_backed_decode_gap_report.first_streaming_runner_blocker"
             ),
             "kv_first_streaming_blocker_sha_only": (
-                "sha256(kv_backed_decode_gap_report.first_streaming_runner_blocker)"
+                "kv_backed_decode_gap_report.first_streaming_runner_blocker_sha256"
             ),
             "status_refresh_command_only": (
                 "next_action_commands.oracle_parity_blocked.status_refresh_command"
@@ -1865,6 +1908,9 @@ def _handoff_summary(
             "first_streaming_runner_blocker": kv_backed_decode_gap_report.get(
                 "first_streaming_runner_blocker"
             ),
+            "first_streaming_runner_blocker_sha256": kv_backed_decode_gap_report.get(
+                "first_streaming_runner_blocker_sha256"
+            ),
             "upload_total_nbytes": kv_backed_decode_gap_report.get("upload_total_nbytes"),
         },
         "blocked_signals": {
@@ -1980,6 +2026,9 @@ def build_status(
                 ),
                 "first_streaming_runner_blocker": kv_backed_decode_gap_report.get(
                     "first_streaming_runner_blocker"
+                ),
+                "first_streaming_runner_blocker_sha256": kv_backed_decode_gap_report.get(
+                    "first_streaming_runner_blocker_sha256"
                 ),
             }
         )
@@ -2198,13 +2247,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.blocked_gates_only:
         result = status["blocked_gates"]
     elif args.kv_first_streaming_blocker_sha_only:
-        first_kv_streaming_blocker = status["kv_backed_decode_gap_report"].get(
-            "first_streaming_runner_blocker"
-        )
-        result = (
-            _stable_json_sha256(first_kv_streaming_blocker)
-            if first_kv_streaming_blocker is not None
-            else None
+        result = status["kv_backed_decode_gap_report"].get(
+            "first_streaming_runner_blocker_sha256"
         )
     elif args.kv_first_streaming_blocker_only:
         result = status["kv_backed_decode_gap_report"].get(

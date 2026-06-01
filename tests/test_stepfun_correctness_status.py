@@ -96,6 +96,14 @@ def _streaming_runner_blocker_names_sha256() -> str:
     return _stable_json_sha256(_streaming_runner_blocker_names())
 
 
+def _first_streaming_runner_blocker() -> str:
+    return "streaming_decode_loop_not_wired"
+
+
+def _first_streaming_runner_blocker_sha256() -> str:
+    return _stable_json_sha256(_first_streaming_runner_blocker())
+
+
 def _streaming_runner_blockers() -> list[dict[str, object]]:
     return [
         {
@@ -271,6 +279,7 @@ def _write_resource_artifact(path: Path) -> None:
                         "streaming_runner_blocker_names": _streaming_runner_blocker_names(),
                         "streaming_runner_blocker_names_sha256": _streaming_runner_blocker_names_sha256(),
                         "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
+                        "first_streaming_runner_blocker_sha256": _first_streaming_runner_blocker_sha256(),
                         "streaming_runner_blockers": _streaming_runner_blockers(),
                     },
                     "kv_decode_kernel_plan": {
@@ -614,6 +623,7 @@ def _write_resource_artifact(path: Path) -> None:
                     "streaming_runner_blocker_names": _streaming_runner_blocker_names(),
                     "streaming_runner_blocker_names_sha256": _streaming_runner_blocker_names_sha256(),
                     "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
+                    "first_streaming_runner_blocker_sha256": _first_streaming_runner_blocker_sha256(),
                     "streaming_runner_blockers": _streaming_runner_blockers(),
                 },
             }
@@ -973,11 +983,13 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert gap_report["computed_streaming_runner_blocker_names_sha256"] == _streaming_runner_blocker_names_sha256()
     assert gap_report["streaming_runner_blocker_names_sha256_match"] is True
     assert gap_report["first_streaming_runner_blocker"] == "streaming_decode_loop_not_wired"
+    assert gap_report["first_streaming_runner_blocker_sha256"] == _first_streaming_runner_blocker_sha256()
     assert gap_report["streaming_runner_blockers"] == _streaming_runner_blockers()
     assert gap_report["upload_entry_count"] == 6
     assert gap_report["upload_total_nbytes"] == 484
     assert gap_report["remaining_evidence"][0]["current"] == {
         "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
+        "first_streaming_runner_blocker_sha256": _first_streaming_runner_blocker_sha256(),
         "launch_schedule_streaming_runner_blocker_count": 3,
         "launch_schedule_streaming_runner_ready": False,
         "run_plan_streaming_runner_blocker_count": 3,
@@ -1037,6 +1049,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
             ),
             "first_missing_evidence": "streaming_runner_ready_flags",
             "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
+            "first_streaming_runner_blocker_sha256": _first_streaming_runner_blocker_sha256(),
             "gap_report_status": "blocked",
             "operation_count": 135,
             "streaming_runner_blocker_count": 3,
@@ -1089,7 +1102,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
             "kv_backed_decode_gap_report.first_streaming_runner_blocker"
         ),
         "kv_first_streaming_blocker_sha_only": (
-            "sha256(kv_backed_decode_gap_report.first_streaming_runner_blocker)"
+            "kv_backed_decode_gap_report.first_streaming_runner_blocker_sha256"
         ),
         "status_refresh_command_only": (
             "next_action_commands.oracle_parity_blocked.status_refresh_command"
@@ -1215,6 +1228,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "operation_count": 135,
         "precondition_count": 5,
         "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
+        "first_streaming_runner_blocker_sha256": _first_streaming_runner_blocker_sha256(),
         "status": "blocked",
         "streaming_runner_blocker_count": 3,
         "streaming_runner_blocker_names": _streaming_runner_blocker_names(),
@@ -1265,6 +1279,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert kv_blocker["streaming_runner_blocker_names_sha256"] == _streaming_runner_blocker_names_sha256()
     assert kv_blocker["streaming_runner_blocker_names_sha256_match"] is True
     assert kv_blocker["first_streaming_runner_blocker"] == "streaming_decode_loop_not_wired"
+    assert kv_blocker["first_streaming_runner_blocker_sha256"] == _first_streaming_runner_blocker_sha256()
     assert {action["blocker_kind"] for action in status["next_actions"]} == {
         "oracle_parity_blocked",
         "kv_backed_decode_not_wired",
@@ -1395,6 +1410,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert kv_commands["streaming_runner_blocker_names_sha256"] == _streaming_runner_blocker_names_sha256()
     assert kv_commands["streaming_runner_blocker_names_sha256_match"] is True
     assert kv_commands["first_streaming_runner_blocker"] == "streaming_decode_loop_not_wired"
+    assert kv_commands["first_streaming_runner_blocker_sha256"] == _first_streaming_runner_blocker_sha256()
     assert kv_commands["success_criteria"] == [
         "kv_backed_decode_gap_report.status is ready",
         "kv_backed_decode_gap_report.missing_evidence is empty",
@@ -2121,6 +2137,7 @@ def test_stepfun_correctness_status_kv_first_streaming_blocker_sha_only(
     _write_resource_artifact(resource)
     _write_docs(docs)
 
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
     rc = main(
         [
             "--prompt-artifact",
@@ -2146,7 +2163,10 @@ def test_stepfun_correctness_status_kv_first_streaming_blocker_sha_only(
     assert captured.out == ""
     assert captured.err == ""
     payload = json.loads(output.read_text())
-    assert payload == _stable_json_sha256("streaming_decode_loop_not_wired")
+    assert payload == status["kv_backed_decode_gap_report"][
+        "first_streaming_runner_blocker_sha256"
+    ]
+    assert payload == _first_streaming_runner_blocker_sha256()
 
 
 def test_stepfun_correctness_status_blocker_kinds_sha_only(capsys, tmp_path: Path) -> None:
@@ -2374,6 +2394,8 @@ def test_stepfun_correctness_status_status_integrity_only(capsys, tmp_path: Path
             "blocked_gates_sha256": True,
             "kv_streaming_runner_blocker_names_sha256": True,
             "kv_streaming_runner_blocker_mirrors": True,
+            "first_kv_streaming_runner_blocker_sha256": True,
+            "first_kv_streaming_runner_blocker_mirrors": True,
             "schema_versions": True,
         },
     }
@@ -2590,6 +2612,7 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
             ),
             "first_missing_evidence": "streaming_runner_ready_flags",
             "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
+            "first_streaming_runner_blocker_sha256": _first_streaming_runner_blocker_sha256(),
             "gap_report_status": "blocked",
             "operation_count": 135,
             "streaming_runner_blocker_count": 3,
@@ -2642,7 +2665,7 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
             "kv_backed_decode_gap_report.first_streaming_runner_blocker"
         ),
         "kv_first_streaming_blocker_sha_only": (
-            "sha256(kv_backed_decode_gap_report.first_streaming_runner_blocker)"
+            "kv_backed_decode_gap_report.first_streaming_runner_blocker_sha256"
         ),
         "status_refresh_command_only": (
             "next_action_commands.oracle_parity_blocked.status_refresh_command"
@@ -2741,6 +2764,7 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "operation_count": 135,
         "precondition_count": 5,
         "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
+        "first_streaming_runner_blocker_sha256": _first_streaming_runner_blocker_sha256(),
         "status": "blocked",
         "streaming_runner_blocker_count": 3,
         "streaming_runner_blocker_names": _streaming_runner_blocker_names(),
@@ -2834,6 +2858,7 @@ def test_stepfun_correctness_status_blocker_work_queue_only(capsys, tmp_path: Pa
             ),
             "first_missing_evidence": "streaming_runner_ready_flags",
             "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
+            "first_streaming_runner_blocker_sha256": _first_streaming_runner_blocker_sha256(),
             "gap_report_status": "blocked",
             "operation_count": 135,
             "streaming_runner_blocker_count": 3,
@@ -3890,6 +3915,8 @@ def test_stepfun_correctness_status_verifies_source_artifact_provenance(capsys, 
             "blocked_gates_sha256": True,
             "kv_streaming_runner_blocker_names_sha256": True,
             "kv_streaming_runner_blocker_mirrors": True,
+            "first_kv_streaming_runner_blocker_sha256": True,
+            "first_kv_streaming_runner_blocker_mirrors": True,
             "schema_versions": True,
         },
     }
@@ -4590,6 +4617,8 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_status_digest
         "blocked_gates_sha256": True,
         "kv_streaming_runner_blocker_names_sha256": True,
         "kv_streaming_runner_blocker_mirrors": True,
+        "first_kv_streaming_runner_blocker_sha256": True,
+        "first_kv_streaming_runner_blocker_mirrors": True,
         "schema_versions": True,
     }
 
@@ -4662,6 +4691,82 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_
         "blocked_gates_sha256": True,
         "kv_streaming_runner_blocker_names_sha256": False,
         "kv_streaming_runner_blocker_mirrors": False,
+        "first_kv_streaming_runner_blocker_sha256": True,
+        "first_kv_streaming_runner_blocker_mirrors": True,
+        "schema_versions": True,
+    }
+
+
+def test_stepfun_correctness_status_source_artifact_verify_detects_first_kv_streaming_digest_drift(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    status_output = tmp_path / "status.json"
+    verify_output = tmp_path / "verify.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(status_output),
+        ]
+    )
+    assert rc == 0
+    status_payload = json.loads(status_output.read_text())
+    status_payload["kv_backed_decode_gap_report"][
+        "first_streaming_runner_blocker_sha256"
+    ] = "stale"
+    status_output.write_text(json.dumps(status_payload))
+
+    rc = main(
+        [
+            "--verify-source-artifacts",
+            str(status_output),
+            "--output",
+            str(verify_output),
+        ]
+    )
+
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(verify_output.read_text())
+    assert payload["status"] == "mismatch"
+    assert payload["all_match"] is False
+    assert payload["source_artifacts_all_match"] is True
+    assert payload["status_integrity"]["all_match"] is False
+    assert payload["status_integrity"]["failed_checks"] == [
+        "first_kv_streaming_runner_blocker_sha256",
+        "first_kv_streaming_runner_blocker_mirrors",
+    ]
+    assert payload["status_integrity"]["checks"] == {
+        "source_artifacts_sha256": True,
+        "handoff_summary_sha256": True,
+        "readiness_summary_sha256": True,
+        "readiness_gates_sha256": True,
+        "next_action_commands_sha256": True,
+        "blocker_kinds_sha256": True,
+        "blocked_gates_sha256": True,
+        "kv_streaming_runner_blocker_names_sha256": True,
+        "kv_streaming_runner_blocker_mirrors": True,
+        "first_kv_streaming_runner_blocker_sha256": False,
+        "first_kv_streaming_runner_blocker_mirrors": False,
         "schema_versions": True,
     }
 
@@ -4734,6 +4839,8 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_
         "blocked_gates_sha256": True,
         "kv_streaming_runner_blocker_names_sha256": True,
         "kv_streaming_runner_blocker_mirrors": False,
+        "first_kv_streaming_runner_blocker_sha256": True,
+        "first_kv_streaming_runner_blocker_mirrors": True,
         "schema_versions": True,
     }
 
