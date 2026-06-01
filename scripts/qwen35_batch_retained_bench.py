@@ -582,12 +582,19 @@ def _scaling_reference_command_env_assignments(
         argv = shlex.split(command)
     except ValueError:
         return {}, ["commands.benchmark is not shell-parseable"]
-    assignments = _command_device_env_assignments(argv)
-    reasons = [
+    raw_assignments = _command_device_env_assignments(argv)
+    assignments: dict[str, str] = {}
+    reasons: list[str] = []
+    for key, value in raw_assignments.items():
+        if not value.strip():
+            reasons.append(f"commands.benchmark device env {key} is not a non-blank string when present")
+        else:
+            assignments[key] = value
+    reasons.extend(
         f"commands.benchmark device env {key} is missing while retained command env sets it"
         for key, value in (required_env or {}).items()
-        if value and key not in assignments
-    ]
+        if value and key not in raw_assignments
+    )
     if expected_command_script is not None:
         launch = _strip_command_env_prefix(argv)
         if len(launch) < 2 or not Path(launch[0]).name.startswith("python") or launch[1] != expected_command_script:
