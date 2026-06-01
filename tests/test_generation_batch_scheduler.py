@@ -7351,6 +7351,17 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.status must be planned for dry-run summaries"):
             c_sweep.validate_sweep_summary(tampered_planned_non_planned_status)
 
+        tampered_planned_missing_returncode = json.loads(json.dumps(summary))
+        del tampered_planned_missing_returncode["commands"][index]["returncode"]
+        with pytest.raises(ValueError, match=r"commands\[\] planned rows must contain exactly planned command keys"):
+            c_sweep.validate_sweep_summary(tampered_planned_missing_returncode)
+
+        for bad_returncode in (0, "0", True):
+            tampered_planned_returncode = json.loads(json.dumps(summary))
+            tampered_planned_returncode["commands"][index]["returncode"] = bad_returncode
+            with pytest.raises(ValueError, match=r"commands\[\]\.returncode must be null for planned/skipped rows"):
+                c_sweep.validate_sweep_summary(tampered_planned_returncode)
+
         tampered_planned_json_path = json.loads(json.dumps(summary))
         planned_json_entry = tampered_planned_json_path["commands"][index]
         planned_json_argv = planned_json_entry["argv"]
