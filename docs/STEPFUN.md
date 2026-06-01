@@ -676,11 +676,12 @@ reporting.
   launching kernels. The canonical resource artifact now contains that blueprint,
   and the correctness-status KV gap report validates that it is recorded, matches
   the launch schedule, matches the pre-run upload order, and points at the same
-  first blocker. Compact `--kv-streaming-blueprint-only` /
-  `--kv-streaming-blueprint-sha-only` outputs expose that validated blueprint
-  summary and digest directly for handoff automation; status integrity also
-  cross-checks the mirrored first KV blocker digest plus the full KV streaming
-  blocker names/SHA across the gap report,
+  first blocker. The KV gap report now persists the validated blueprint summary
+  digest, and compact `--kv-streaming-blueprint-only` /
+  `--kv-streaming-blueprint-sha-only` outputs expose that recorded blueprint
+  summary/digest directly for handoff automation; status integrity also
+  cross-checks the mirrored blueprint digest, the mirrored first KV blocker
+  digest, and the full KV streaming blocker names/SHA across the gap report,
   next-action command, and handoff queue so the runner artifact and status helper
   agree on why KV-backed decode remains blocked. The same status
   artifact records `source_artifacts` path/size/SHA-256 provenance for the

@@ -540,6 +540,16 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         if isinstance(kv_gap_report, dict)
         else None
     )
+    kv_streaming_blueprint = (
+        kv_gap_report.get("streaming_decode_loop_blueprint")
+        if isinstance(kv_gap_report, dict)
+        else None
+    )
+    kv_streaming_blueprint_sha256 = (
+        kv_gap_report.get("streaming_decode_loop_blueprint_sha256")
+        if isinstance(kv_gap_report, dict)
+        else None
+    )
     schema_versions = status.get("schema_versions", {})
     blocker_meta = (
         handoff_summary.get("blocker_work_queue_meta", {})
@@ -587,6 +597,17 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         == first_kv_streaming_blocker_sha256
         for record in kv_streaming_mirror_records
     )
+    kv_streaming_blueprint_sha256_match = (
+        isinstance(kv_streaming_blueprint, dict)
+        and kv_streaming_blueprint_sha256
+        == _stable_json_sha256(kv_streaming_blueprint)
+    )
+    kv_streaming_blueprint_mirrors = bool(kv_streaming_mirror_records) and all(
+        record.get("streaming_decode_loop_blueprint") == kv_streaming_blueprint
+        and record.get("streaming_decode_loop_blueprint_sha256")
+        == kv_streaming_blueprint_sha256
+        for record in kv_streaming_mirror_records
+    )
     checks = {
         "source_artifacts_sha256": (
             isinstance(source_artifacts, dict)
@@ -629,6 +650,8 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         "first_kv_streaming_runner_blocker_mirrors": (
             first_kv_streaming_runner_blocker_mirrors
         ),
+        "kv_streaming_blueprint_sha256": kv_streaming_blueprint_sha256_match,
+        "kv_streaming_blueprint_mirrors": kv_streaming_blueprint_mirrors,
         "schema_versions": schema_versions
         == {
             "status": status.get("schema_version"),
@@ -997,6 +1020,11 @@ def _kv_decode_dispatch_progress(resource: dict[str, object]) -> dict[str, objec
     streaming_decode_loop_blueprint = dict(
         run_plan.get("streaming_decode_loop_blueprint", {})
     )
+    streaming_decode_loop_blueprint_sha256 = (
+        _stable_json_sha256(streaming_decode_loop_blueprint)
+        if streaming_decode_loop_blueprint
+        else None
+    )
     registered = dict(kv_plan.get("registered", {}))
     blueprint_operation_count = streaming_decode_loop_blueprint.get("operation_count")
     launch_operation_count = dict(plan.get("kv_decode_launch_schedule", {})).get(
@@ -1023,6 +1051,7 @@ def _kv_decode_dispatch_progress(resource: dict[str, object]) -> dict[str, objec
         "launch_schedule": dict(plan.get("kv_decode_launch_schedule", {})),
         "run_plan": run_plan,
         "streaming_decode_loop_blueprint": streaming_decode_loop_blueprint,
+        "streaming_decode_loop_blueprint_sha256": streaming_decode_loop_blueprint_sha256,
         "streaming_decode_loop_blueprint_recorded": bool(
             streaming_decode_loop_blueprint.get("operation_count")
         ),
@@ -1215,6 +1244,34 @@ def _kv_backed_decode_gap_report(
     missing_evidence = [
         str(item["name"]) for item in remaining_evidence if item.get("ready") is not True
     ]
+    streaming_decode_loop_blueprint_summary = {
+        "recorded": kv_decode_dispatch_progress.get(
+            "streaming_decode_loop_blueprint_recorded"
+        ),
+        "matches_launch_schedule": kv_decode_dispatch_progress.get(
+            "streaming_decode_loop_blueprint_matches_launch_schedule"
+        ),
+        "upload_order_matches": kv_decode_dispatch_progress.get(
+            "streaming_decode_loop_blueprint_upload_order_matches"
+        ),
+        "blocker_matches": kv_decode_dispatch_progress.get(
+            "streaming_decode_loop_blueprint_blocker_matches"
+        ),
+        "executable": streaming_decode_loop_blueprint.get("executable"),
+        "blocked_by": streaming_decode_loop_blueprint.get("blocked_by"),
+        "blocked_by_sha256": streaming_decode_loop_blueprint.get("blocked_by_sha256"),
+        "operation_count": streaming_decode_loop_blueprint.get("operation_count"),
+        "operation_sequence_sha256": streaming_decode_loop_blueprint.get(
+            "operation_sequence_sha256"
+        ),
+        "stage_count": streaming_decode_loop_blueprint.get("stage_count"),
+        "pre_run_upload_checks_passed": streaming_decode_loop_blueprint.get(
+            "pre_run_upload_checks_passed"
+        ),
+    }
+    streaming_decode_loop_blueprint_summary_sha256 = _stable_json_sha256(
+        streaming_decode_loop_blueprint_summary
+    )
     return {
         "source": "kv_decode_dispatch_progress",
         "status": "ready" if not missing_preconditions and not missing_evidence else "blocked",
@@ -1232,31 +1289,8 @@ def _kv_backed_decode_gap_report(
         "preconditions": preconditions,
         "remaining_evidence": remaining_evidence,
         "operation_count": launch_schedule.get("operation_count"),
-        "streaming_decode_loop_blueprint": {
-            "recorded": kv_decode_dispatch_progress.get(
-                "streaming_decode_loop_blueprint_recorded"
-            ),
-            "matches_launch_schedule": kv_decode_dispatch_progress.get(
-                "streaming_decode_loop_blueprint_matches_launch_schedule"
-            ),
-            "upload_order_matches": kv_decode_dispatch_progress.get(
-                "streaming_decode_loop_blueprint_upload_order_matches"
-            ),
-            "blocker_matches": kv_decode_dispatch_progress.get(
-                "streaming_decode_loop_blueprint_blocker_matches"
-            ),
-            "executable": streaming_decode_loop_blueprint.get("executable"),
-            "blocked_by": streaming_decode_loop_blueprint.get("blocked_by"),
-            "blocked_by_sha256": streaming_decode_loop_blueprint.get("blocked_by_sha256"),
-            "operation_count": streaming_decode_loop_blueprint.get("operation_count"),
-            "operation_sequence_sha256": streaming_decode_loop_blueprint.get(
-                "operation_sequence_sha256"
-            ),
-            "stage_count": streaming_decode_loop_blueprint.get("stage_count"),
-            "pre_run_upload_checks_passed": streaming_decode_loop_blueprint.get(
-                "pre_run_upload_checks_passed"
-            ),
-        },
+        "streaming_decode_loop_blueprint": streaming_decode_loop_blueprint_summary,
+        "streaming_decode_loop_blueprint_sha256": streaming_decode_loop_blueprint_summary_sha256,
         "streaming_runner_blocker_count": streaming_runner_blocker_count,
         "streaming_runner_blocker_names": streaming_runner_blocker_names,
         "streaming_runner_blocker_names_sha256": streaming_runner_blocker_names_sha256,
@@ -1491,6 +1525,12 @@ def _next_action_commands(
             ),
             "first_streaming_runner_blocker_sha256": kv_backed_decode_gap_report.get(
                 "first_streaming_runner_blocker_sha256"
+            ),
+            "streaming_decode_loop_blueprint": kv_backed_decode_gap_report.get(
+                "streaming_decode_loop_blueprint"
+            ),
+            "streaming_decode_loop_blueprint_sha256": kv_backed_decode_gap_report.get(
+                "streaming_decode_loop_blueprint_sha256"
             ),
             "success_criteria": [
                 "kv_backed_decode_gap_report.status is ready",
@@ -1853,6 +1893,12 @@ def _handoff_summary(
                     "first_streaming_runner_blocker_sha256": kv_backed_decode_gap_report.get(
                         "first_streaming_runner_blocker_sha256"
                     ),
+                    "streaming_decode_loop_blueprint": kv_backed_decode_gap_report.get(
+                        "streaming_decode_loop_blueprint"
+                    ),
+                    "streaming_decode_loop_blueprint_sha256": kv_backed_decode_gap_report.get(
+                        "streaming_decode_loop_blueprint_sha256"
+                    ),
                 }
             )
         else:
@@ -1945,7 +1991,7 @@ def _handoff_summary(
                 "kv_backed_decode_gap_report.streaming_decode_loop_blueprint"
             ),
             "kv_streaming_blueprint_sha_only": (
-                "sha256(kv_backed_decode_gap_report.streaming_decode_loop_blueprint)"
+                "kv_backed_decode_gap_report.streaming_decode_loop_blueprint_sha256"
             ),
             "status_refresh_command_only": (
                 "next_action_commands.oracle_parity_blocked.status_refresh_command"
@@ -2097,6 +2143,9 @@ def _handoff_summary(
             "streaming_decode_loop_blueprint": kv_backed_decode_gap_report.get(
                 "streaming_decode_loop_blueprint"
             ),
+            "streaming_decode_loop_blueprint_sha256": kv_backed_decode_gap_report.get(
+                "streaming_decode_loop_blueprint_sha256"
+            ),
             "upload_total_nbytes": kv_backed_decode_gap_report.get("upload_total_nbytes"),
         },
         "blocked_signals": {
@@ -2215,6 +2264,12 @@ def build_status(
                 ),
                 "first_streaming_runner_blocker_sha256": kv_backed_decode_gap_report.get(
                     "first_streaming_runner_blocker_sha256"
+                ),
+                "streaming_decode_loop_blueprint": kv_backed_decode_gap_report.get(
+                    "streaming_decode_loop_blueprint"
+                ),
+                "streaming_decode_loop_blueprint_sha256": kv_backed_decode_gap_report.get(
+                    "streaming_decode_loop_blueprint_sha256"
                 ),
             }
         )
@@ -2447,8 +2502,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.blocked_gates_only:
         result = status["blocked_gates"]
     elif args.kv_streaming_blueprint_sha_only:
-        result = _stable_json_sha256(
-            status["kv_backed_decode_gap_report"].get("streaming_decode_loop_blueprint")
+        result = status["kv_backed_decode_gap_report"].get(
+            "streaming_decode_loop_blueprint_sha256"
         )
     elif args.kv_streaming_blueprint_only:
         result = status["kv_backed_decode_gap_report"].get(
