@@ -17071,6 +17071,21 @@ def test_qwen35_retained_command_labels_preserve_visible_hip_device_env(monkeypa
         expected_references=None,
         expected_kv_policy=None,
     )
+    profiler_command_with_blank_env = profiler_command.replace(
+        "-- env HIP_VISIBLE_DEVICES=1 python3",
+        "-- env 'HIP_VISIBLE_DEVICES=   ' python3",
+    )
+    assert "profiler command device env prefix values must be non-blank" in retained_bench._profiler_command_provenance_blockers(
+        profiler_command_with_blank_env,
+        trace_dir=None,
+        profiler_artifact_path=profiler_json,
+        retained_artifact_path=retained_json,
+        expected_workload=None,
+        expected_inputs=None,
+        expected_build=None,
+        expected_references=None,
+        expected_kv_policy=None,
+    )
 
 
 def test_qwen35_retained_primitive_correctness_reference_requires_same_rows(tmp_path: Path) -> None:

@@ -2187,7 +2187,11 @@ def _profiler_command_provenance_blockers(
         for flag in _RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS:
             if _command_has_flag(retained_command, flag):
                 blockers.append(f"profiler command must not include {flag}")
-        if _command_device_env_assignments(profiled_segment) != _current_command_device_env_assignments():
+        profiled_env = _command_device_env_assignments(profiled_segment)
+        current_env = _current_command_device_env_assignments()
+        if any(not value.strip() for value in (*profiled_env.values(), *current_env.values())):
+            blockers.append("profiler command device env prefix values must be non-blank")
+        elif profiled_env != current_env:
             blockers.append("profiler command device env prefix must match retained command")
         profiled_launch_segment = _strip_command_env_prefix(profiled_segment)
         if (
