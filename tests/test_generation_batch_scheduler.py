@@ -6529,6 +6529,16 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON trace_dir must match when profiler passed"):
         c_sweep.validate_sweep_summary(persisted)
     profiler_source_payload = json.loads(profiler_artifact_payload)
+    profiler_source_payload["profiler"]["trace_kernel_names"] = ["qwen35_batch_other"]
+    profiler_artifact_path.write_text(json.dumps(profiler_source_payload))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON trace_kernel_names must match when profiler passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    profiler_source_payload = json.loads(profiler_artifact_payload)
+    profiler_source_payload["profiler"]["expected_kernel_names"] = ["qwen35_batch_other"]
+    profiler_artifact_path.write_text(json.dumps(profiler_source_payload))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON expected_kernel_names must match when profiler passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    profiler_source_payload = json.loads(profiler_artifact_payload)
     profiler_source_payload["profiler"]["kernel_durations_ns"]["qwen35_batch_decode"] = 54321.0
     profiler_artifact_path.write_text(json.dumps(profiler_source_payload))
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON kernel_durations_ns must match when profiler passed"):
