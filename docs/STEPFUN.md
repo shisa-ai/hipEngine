@@ -676,10 +676,11 @@ reporting.
   launching kernels. `kv_decode_run_plan.streaming_decode_loop_status` now adds
   a compact runtime-produced readiness summary (blocker count/names, first
   blocker digest, blueprint digest, and `next_action=wire_streaming_decode_loop`)
-  next to the blueprint. The canonical resource artifact now contains that
-  blueprint, and the correctness-status KV gap report validates that it is
-  recorded, matches the launch schedule, matches the pre-run upload order, and points at the same
-  first blocker. The KV gap report now persists the validated blueprint summary
+  next to the blueprint. The canonical resource artifact now contains the
+  blueprint and loop-status summary, and the correctness-status KV gap report
+  validates that the blueprint is recorded, matches the launch schedule, matches
+  the pre-run upload order, points at the same first blocker, and has a matching
+  loop-status summary. The KV gap report now persists the validated blueprint summary
   digest, and compact `--kv-streaming-blueprint-only` /
   `--kv-streaming-blueprint-sha-only` outputs expose that recorded blueprint
   summary/digest directly for handoff automation; status integrity also
