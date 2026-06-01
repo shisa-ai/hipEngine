@@ -24944,3 +24944,66 @@ PYTHONPATH=. python3 -m py_compile scripts/hipfire_dflash_exactness_audit.py
 PYTHONPATH=. pytest -q tests/test_hipfire_dflash_exactness_audit.py tests/test_dflash_profile_route_manifest.py
 # ..... [100%]
 ```
+
+## 2026-06-02 exact high-accept DFlash budget pass
+
+Adopted the exact-safe part of the hipfire lesson: larger speculative budgets are
+worth trying only when acceptance is already known to be high.  Added optional
+per-prompt `draft_budgets` handling to `scripts/dflash_chain_e2e_bench.py`
+profile-route manifests.  Schema examples:
+
+```json
+{"draft_budgets": {"default": 4, "code:fast_prompt": [8, 15], "code": "2,4"}}
+```
+
+The runner now ignores duplicate budget sweeps for `profile_route=ar` rows
+because plain AR is budget-independent.  This lets future profile/history
+manifests route only high-accept prompts to B=8/B=15 while keeping losers on B=4
+or AR.  Validation:
+
+```bash
+PYTHONPATH=. python3 -m py_compile scripts/dflash_chain_e2e_bench.py scripts/dflash_build_profile_route_manifest.py
+PYTHONPATH=. pytest -q tests/test_dflash_profile_route_manifest.py
+# ... [100%]
+```
+
+Benchmark diagnostic on the synthetic 4096-token token-9707 prompt, decode 512,
+Qwen3.6-27B PARO target + z-lab DFlash drafter, W7900/gfx1100, threshold4 W4
+site mask, native bulk B+1, batched full-attn chain, verifier graph auto,
+bulk_direct, budget_prefix, terminal AR 5.  External peak VRAM sampled via
+`/tmp/run_with_vram_peak.py` every 50 ms.  Artifact:
+`benchmarks/results/2026-06-02-hipengine-dflash-27b-4096-512-b8-b15-diagnostic.json`
+(`performance_claim=false`, synthetic shape diagnostic).
+
+Command:
+
+```bash
+HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD=4 \
+HIPENGINE_W4_MULTI_ROW_PACK8_SITES=full_qk,linear_qkv_z,dense_gate_up,single_full_o,single_full_v,single_linear_out,single_shared_down,single_dense_down \
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 /tmp/run_with_vram_peak.py --out /tmp/hipengine_dflash_4096_512_b8_b15_peak.json \
+  --stdout /tmp/hipengine_dflash_4096_512_b8_b15.stdout \
+  --stderr /tmp/hipengine_dflash_4096_512_b8_b15.stderr --interval 0.05 -- \
+  python3 scripts/dflash_chain_e2e_bench.py \
+    --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 \
+    --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 \
+    --prompt-fixture /tmp/hipengine_dflash_4096_token9707.jsonl \
+    --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+    --max-prompts 1 --decode-tokens 512 --draft-budgets 8,15 \
+    --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --verifier-graph auto \
+    --canonical-commit-mode bulk_direct --drafter-query-mode budget_prefix --terminal-ar-tokens 5 \
+    --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine_dflash_4096_512_b8_b15.json
+```
+
+Results:
+
+| Budget | Correctness | AR tok/s | DFlash tok/s | vs AR | Avg accept | Verify rows/output | Target verify seconds |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| B=8 | exact | 27.90 | 33.80 | 1.211x | 7.98 | 1.002 | 12.36 |
+| B=15 | exact | 27.87 | 38.72 | 1.389x | 15.00 | 1.000 | 10.53 |
+
+Combined two-row aggregate: exact `2/2`, `36.09 tok/s`, `1.294x` AR.  External
+peak VRAM max was `41.07 GiB` on the W7900 card.  Interpretation: hipfire's
+large-B lesson does transfer when acceptance is essentially perfect, but B=15 is
+not a default policy; it requires a high-accept/profile route and a VRAM guard.

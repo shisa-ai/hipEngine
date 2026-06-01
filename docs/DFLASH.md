@@ -440,9 +440,14 @@ Importable exact-safe lessons for the next hipEngine pass:
    an AR session per cycle; avoid full-logit materialization and host token loops.
 2. Use B=8/B=16 only behind exact, high-accept routes and a profit/VRAM gate;
    hipfire's win occurs at near-perfect acceptance, while our measured B=15 row
-   still loses when acceptance does not scale.
-3. Keep profile/history routing and terminal AR tails as exact-safe policy
-   levers.  Online probes are only a fallback because failed probes are costly.
+   still loses when acceptance does not scale.  A same-day hipEngine synthetic
+   4096/512 repeated-token sweep confirms the conditional: B=8 is exact at
+   `33.80 tok/s` (`1.211x` AR, avg accept `7.98`), and B=15 is exact at
+   `38.72 tok/s` (`1.389x` AR, avg accept `15.0`), but combined-process peak
+   VRAM rises to `41.07 GiB`.  Artifact:
+   [`2026-06-02-hipengine-dflash-27b-4096-512-b8-b15-diagnostic.json`](../benchmarks/results/2026-06-02-hipengine-dflash-27b-4096-512-b8-b15-diagnostic.json).
+3. Keep profile/history routing, per-prompt draft budgets, and terminal AR tails
+   as exact-safe policy levers.  Online probes are only a fallback because failed probes are costly.
 4. Treat Q8/asym KV as a full storage+attention kernel-family project, not a
    flag flip; hipfire's low VRAM comes from target format plus q8 KV kernels.
 5. Copy tape/rollback and fixed-address graph ideas only when same-session AR

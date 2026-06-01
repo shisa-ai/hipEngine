@@ -167,7 +167,7 @@ def _load_profile_route_manifest(path: Path | None) -> tuple[str, dict[str, str]
         raise ValueError("profile route manifest 'routes' must be a JSON object")
     routes: dict[str, str] = {}
     for key, value in routes_raw.items():
-        if key in {"default", "routes", "notes", "description", "terminal_ar_tokens"}:
+        if key in {"default", "routes", "notes", "description", "terminal_ar_tokens", "draft_budgets"}:
             continue
         routes[str(key)] = _canonical_profile_route(value)
     return default, routes, raw
@@ -209,6 +209,39 @@ def _terminal_ar_tokens_for_prompt(prompt: dict[str, Any], *, default: int, mani
     if parsed < 0:
         raise ValueError("profile route manifest terminal_ar_tokens values must be non-negative")
     return parsed
+
+
+def _parse_draft_budget_list(value: Any) -> list[int]:
+    if isinstance(value, int):
+        budgets = [int(value)]
+    elif isinstance(value, str):
+        budgets = [int(part) for part in value.split(",") if part.strip()]
+    elif isinstance(value, Sequence):
+        budgets = [int(part) for part in value]
+    else:
+        raise ValueError("draft budget values must be an integer, comma string, or list")
+    if not budgets:
+        raise ValueError("draft budget list must not be empty")
+    if any(budget <= 0 for budget in budgets):
+        raise ValueError("draft budgets must be positive integers")
+    return budgets
+
+
+def _draft_budgets_for_prompt(prompt: dict[str, Any], *, default: Sequence[int], manifest: dict[str, Any] | None) -> list[int]:
+    if manifest is None or "draft_budgets" not in manifest:
+        return [int(budget) for budget in default]
+    raw = manifest.get("draft_budgets")
+    if raw is None:
+        return [int(budget) for budget in default]
+    if isinstance(raw, dict):
+        value: Any = raw.get("default", list(default))
+        for key in _profile_prompt_keys(prompt):
+            if key and key in raw:
+                value = raw[key]
+                break
+    else:
+        value = raw
+    return _parse_draft_budget_list(value)
 
 
 @dataclass(frozen=True)
@@ -3157,7 +3190,17 @@ def main(argv: list[str] | None = None) -> int:
             default=args.terminal_ar_tokens,
             manifest=profile_route_manifest,
         )
-        for budget in budgets:
+        draft_budgets_for_row = _draft_budgets_for_prompt(
+            prompt,
+            default=budgets,
+            manifest=profile_route_manifest,
+        )
+        if profile_route == "ar":
+            # Plain-AR route is independent of speculative budget; avoid
+            # duplicating the same AR row when a manifest uses multi-budget
+            # overrides for other prompts.
+            draft_budgets_for_row = [draft_budgets_for_row[0]]
+        for budget in draft_budgets_for_row:
             tree_top_k_for_row = args.tree_top_k if args.tree_mode == "branching_topk" or profile_route == "tree" else 1
             ar, spec = run_same_session_pair(
                 model=target,
@@ -3260,6 +3303,7 @@ def main(argv: list[str] | None = None) -> int:
             "profile_route_manifest": str(args.profile_route_manifest) if args.profile_route_manifest else None,
             "profile_route_default": profile_route_default,
             "profile_routes": profile_routes,
+            "profile_route_draft_budgets": (profile_route_manifest or {}).get("draft_budgets") if profile_route_manifest else None,
             "profile_route_manifest_body": profile_route_manifest,
             "roctx_markers": bool(args.roctx),
             "rocprof_selected_region": args.rocprof_selected_region,
