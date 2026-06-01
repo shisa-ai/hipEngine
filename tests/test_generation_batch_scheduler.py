@@ -8627,12 +8627,13 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         ("--model", "/tmp/other-model", r"commands\[\]\.argv --model must match options\.model"),
         ("--fixture", "/tmp/other-fixture.json", r"commands\[\]\.argv --fixture must match options\.fixture"),
     ):
-        tampered = json.loads(json.dumps(summary))
-        argv = tampered["commands"][int8_entry_indices[-1]]["argv"]
-        argv[argv.index(flag) + 1] = stale_value
-        tampered["commands"][int8_entry_indices[-1]]["command"] = shlex.join(argv)
-        with pytest.raises(ValueError, match=expected_error):
-            c_sweep.validate_sweep_summary(tampered)
+        for index in int8_entry_indices:
+            tampered = json.loads(json.dumps(summary))
+            argv = tampered["commands"][index]["argv"]
+            argv[argv.index(flag) + 1] = stale_value
+            tampered["commands"][index]["command"] = shlex.join(argv)
+            with pytest.raises(ValueError, match=expected_error):
+                c_sweep.validate_sweep_summary(tampered)
     tampered_int8_rows = json.loads(json.dumps(summary))
     int8_rows_argv = tampered_int8_rows["commands"][int8_entry_indices[-1]]["argv"]
     int8_rows_argv[int8_rows_argv.index("--rows") + 1] = "4"
