@@ -7281,6 +7281,30 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     tampered_git_dirty_status["git"]["status_short"] = [] if summary["git"]["dirty"] else ["?? uv.lock"]
     with pytest.raises(ValueError, match=r"git\.dirty must match bool\(git\.status_short\)"):
         c_sweep.validate_sweep_summary(tampered_git_dirty_status)
+    expected_option_keys = {
+        "model",
+        "fixture",
+        "prompt_length",
+        "decode_tokens",
+        "warmup_decode_tokens",
+        "max_layers",
+        "seed",
+        "stop_on_failure",
+        "include_int8",
+        "include_gguf",
+        "require_cached_build",
+        "compiler_version_file",
+        "projection_dispatch_artifact",
+    }
+    assert set(summary["options"]) == expected_option_keys
+    tampered_extra_option = json.loads(json.dumps(summary))
+    tampered_extra_option["options"]["unexpected_option"] = "field"
+    with pytest.raises(ValueError, match="options must contain exactly the c-sweep schema keys"):
+        c_sweep.validate_sweep_summary(tampered_extra_option)
+    tampered_missing_option = json.loads(json.dumps(summary))
+    tampered_missing_option["options"].pop("compiler_version_file")
+    with pytest.raises(ValueError, match="options must contain exactly the c-sweep schema keys"):
+        c_sweep.validate_sweep_summary(tampered_missing_option)
     assert summary["options"]["include_int8"] is True
     assert summary["options"]["include_gguf"] is True
     for option in ("include_int8", "include_gguf"):
