@@ -3360,6 +3360,24 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if profiler_source_synthesized_fields != profiler_synthesized_fields:
                         errors.append("commands[].preconditions[].profiler_source_artifact_path synthesized fields must match when profiler passed")
                         break
+                    profiler_source_workload = (
+                        profiler_source_payload.get("workload")
+                        if isinstance(profiler_source_payload, dict) and isinstance(profiler_source_payload.get("workload"), dict)
+                        else profiler_source_object.get("workload")
+                    )
+                    if isinstance(profiler_source_workload, dict):
+                        if profiler_source_workload.get("concurrency") != profiler_precondition.get("workload_concurrency"):
+                            errors.append("commands[].preconditions[].profiler_source_artifact_path JSON workload.concurrency must match when profiler passed")
+                            break
+                        if profiler_source_workload.get("prompt_tokens_per_request") != profiler_precondition.get("prompt_tokens_per_request"):
+                            errors.append("commands[].preconditions[].profiler_source_artifact_path JSON workload.prompt_tokens_per_request must match when profiler passed")
+                            break
+                        if profiler_source_workload.get("gen_tokens_per_request") != profiler_precondition.get("gen_tokens_per_request"):
+                            errors.append("commands[].preconditions[].profiler_source_artifact_path JSON workload.gen_tokens_per_request must match when profiler passed")
+                            break
+                    if profiler_source_object.get("rows") is not None and profiler_source_object.get("rows") != profiler_precondition.get("workload_concurrency"):
+                        errors.append("commands[].preconditions[].profiler_source_artifact_path JSON rows must match when profiler passed")
+                        break
                     if profiler_precondition.get("profiler_status") != "captured":
                         errors.append("commands[].preconditions[].profiler_status must be captured when passed")
                         break
