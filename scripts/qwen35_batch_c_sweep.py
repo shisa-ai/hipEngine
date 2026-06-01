@@ -2495,6 +2495,12 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 break
             if batch_arg_error:
                 break
+            baseline_c1_native = (
+                entry.get("category") == _NATIVE_DIAGNOSTIC_COMMAND_CATEGORY and entry.get("batch_size") == 1
+            )
+            if declared_batch_size is None and not baseline_c1_native:
+                errors.append("commands[].argv must include --batch-size or --rows")
+                break
             if declared_batch_size is not None and declared_batch_size != entry.get("batch_size"):
                 errors.append("commands[].batch_size must match commands[].argv --batch-size/--rows")
                 break

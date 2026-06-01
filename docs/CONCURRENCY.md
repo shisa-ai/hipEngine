@@ -1455,7 +1455,7 @@ roll-up/status view.
       top-level options object schema/keyset, typed optional diagnostic include flags/count toggles, optional INT8/GGUF row-count and category-rollup invariants, stop-on-failure and seed options, typed cached-build and compiler-version-file options, typed projection-dispatch artifact option, typed model/fixture workload labels, typed workload shape options, typed command/exact completed-command count bounds, typed status/category/condition rollup containers/kind-status labels/non-bool/non-string/non-negative/exact-match counts, typed empty skipped/failed rollup containers/object entry keysets/value matching, and rejects
       missing/empty/blank/stale per-category command text/argv, wrong device env,
       missing/blank/unknown/known-mismatched/wrong script/category, per-category missing/malformed/unlisted
-      `batch_size`, per-category missing/unknown/non-planned dry-run status,
+      `batch_size`, missing non-baseline argv `--batch-size`/`--rows` labels, per-category missing/unknown/non-planned dry-run status,
       per-category missing/malformed/non-null returncode, per-category missing/malformed/non-finite/nonzero duration,
       per-category output-tail/all condition-field variants,
       per-category unknown command schema keys and missing/malformed/stale `git_dirty`, per-category duplicate/blank/missing

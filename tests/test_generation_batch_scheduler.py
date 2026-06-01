@@ -5421,7 +5421,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     rows_index = primitive_argv.index("--rows")
     del primitive_argv[rows_index : rows_index + 2]
     tampered_primitive_rows_missing["commands"][0]["command"] = shlex.join(primitive_argv)
-    with pytest.raises(ValueError, match=r"commands\[\]\.argv --rows must have an int value"):
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv must include --batch-size or --rows"):
         c_sweep.validate_sweep_summary(tampered_primitive_rows_missing)
     tampered_primitive_rows_mismatch = json.loads(json.dumps(persisted))
     primitive_argv = tampered_primitive_rows_mismatch["commands"][0]["argv"]
@@ -7514,6 +7514,16 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.batch_size must match commands\[\]\.argv --batch-size/--rows"):
             c_sweep.validate_sweep_summary(tampered_planned_rows)
 
+        tampered_planned_missing_batch_arg = json.loads(json.dumps(summary))
+        planned_missing_batch_arg_entry = tampered_planned_missing_batch_arg["commands"][index]
+        planned_missing_batch_arg_argv = planned_missing_batch_arg_entry["argv"]
+        batch_flag = "--batch-size" if "--batch-size" in planned_missing_batch_arg_argv else "--rows"
+        batch_arg_index = planned_missing_batch_arg_argv.index(batch_flag)
+        del planned_missing_batch_arg_argv[batch_arg_index : batch_arg_index + 2]
+        planned_missing_batch_arg_entry["command"] = shlex.join(planned_missing_batch_arg_argv)
+        with pytest.raises(ValueError, match=r"commands\[\]\.argv must include --batch-size or --rows"):
+            c_sweep.validate_sweep_summary(tampered_planned_missing_batch_arg)
+
         if "--model" in summary["commands"][index]["argv"]:
             tampered_planned_model = json.loads(json.dumps(summary))
             planned_model_entry = tampered_planned_model["commands"][index]
@@ -8310,7 +8320,8 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
             flag_index = missing_flag_argv.index(flag)
             del missing_flag_argv[flag_index : flag_index + 2]
             missing_flag_entry["command"] = shlex.join(missing_flag_argv)
-            with pytest.raises(ValueError, match=error):
+            missing_error = r"commands\[\]\.argv must include --batch-size or --rows" if flag == "--rows" else error
+            with pytest.raises(ValueError, match=missing_error):
                 c_sweep.validate_sweep_summary(tampered_missing_flag)
 
             tampered_blank_inline = json.loads(json.dumps(summary))
