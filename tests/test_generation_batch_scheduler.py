@@ -21328,6 +21328,31 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="commands.profiler must include ROCR_VISIBLE_DEVICES=1"):
         validate_cn_diagnostic_artifact_payload(missing_aux_profiler_env)
 
+    mismatched_aux_benchmark_env = json.loads(json.dumps(aux_env_accepted))
+    mismatched_aux_benchmark_env["commands"]["benchmark"] = mismatched_aux_benchmark_env["commands"]["benchmark"].replace(
+        "ROCR_VISIBLE_DEVICES=1 ",
+        "ROCR_VISIBLE_DEVICES=2 ",
+        1,
+    )
+    with pytest.raises(ValueError, match="commands.benchmark must include ROCR_VISIBLE_DEVICES=1"):
+        validate_cn_diagnostic_artifact_payload(mismatched_aux_benchmark_env)
+
+    mismatched_aux_correctness_env = json.loads(json.dumps(aux_env_accepted))
+    mismatched_aux_correctness_env["commands"]["correctness_reference"] = mismatched_aux_correctness_env["commands"][
+        "correctness_reference"
+    ].replace("ROCR_VISIBLE_DEVICES=1 ", "ROCR_VISIBLE_DEVICES=2 ", 1)
+    with pytest.raises(ValueError, match="commands.correctness_reference must include ROCR_VISIBLE_DEVICES=1"):
+        validate_cn_diagnostic_artifact_payload(mismatched_aux_correctness_env)
+
+    mismatched_aux_profiler_env = json.loads(json.dumps(aux_env_accepted))
+    mismatched_aux_profiler_env["commands"]["profiler"] = mismatched_aux_profiler_env["commands"]["profiler"].replace(
+        "ROCR_VISIBLE_DEVICES=1 ",
+        "ROCR_VISIBLE_DEVICES=2 ",
+        1,
+    )
+    with pytest.raises(ValueError, match="commands.profiler must include ROCR_VISIBLE_DEVICES=1"):
+        validate_cn_diagnostic_artifact_payload(mismatched_aux_profiler_env)
+
     missing_benchmark_device_env = json.loads(json.dumps(gpu1_accepted))
     missing_benchmark_device_env["commands"]["benchmark"] = missing_benchmark_device_env["commands"]["benchmark"].replace(
         "env HIP_VISIBLE_DEVICES=1 ",
