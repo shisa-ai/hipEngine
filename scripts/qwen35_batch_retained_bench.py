@@ -46,6 +46,9 @@ from scripts.qwen35_batch_artifact_schema import (
 )
 from scripts.qwen35_batch_constants import (
     PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS,
+    RETAINED_ARTIFACT_ACCEPTED_DECISION_REASON,
+    RETAINED_ARTIFACT_ACCEPTED_NOTES,
+    RETAINED_ARTIFACT_ACCEPTED_SUMMARY,
     RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT,
     RETAINED_ARTIFACT_LEGACY_NATIVE_BENCH_SCRIPT,
     RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_SCRIPT,
@@ -96,6 +99,9 @@ _SERIAL_BRIDGE_SCRIPT = RETAINED_ARTIFACT_SERIAL_BRIDGE_SCRIPT
 _RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS = RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS
 _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS
 _DISALLOWED_PROFILER_KERNEL_NAME_FRAGMENTS = PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS
+_ACCEPTED_SUMMARY = RETAINED_ARTIFACT_ACCEPTED_SUMMARY
+_ACCEPTED_DECISION_REASON = RETAINED_ARTIFACT_ACCEPTED_DECISION_REASON
+_ACCEPTED_NOTES = RETAINED_ARTIFACT_ACCEPTED_NOTES
 _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS = RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS
 _REQUIRED_PRIMITIVE_CORRECTNESS_SEED = RETAINED_ARTIFACT_REQUIRED_PRIMITIVE_CORRECTNESS_SEED
 _PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT = RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_NUMPY_MAX_ABS_LIMIT
@@ -4055,7 +4061,7 @@ def _build_payload(
         "artifact_path": str(args.json) if args.json is not None else None,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "run_tag": f"qwen35-paro-c{args.batch_size}-native-retained",
-        "summary": "Qwen3.5/PARO scheduler compact native c>N benchmark",
+        "summary": _ACCEPTED_SUMMARY,
         "performance_claim": accepted,
         "hardware": _hardware_context(),
         "software": _software_context(),
@@ -4139,12 +4145,9 @@ def _build_payload(
         "profiler": profiler,
         "decision": {
             "accepted": accepted,
-            "reason": "correctness/protocol passed" if accepted else "; ".join(blocked_reasons),
+            "reason": _ACCEPTED_DECISION_REASON if accepted else "; ".join(blocked_reasons),
         },
-        "notes": [
-            "Native retained c>N path uses packed prompt slabs and step_batch_native for decode.",
-            "Batch split-K decode remains out of scope; this accepted protocol keeps context < 1024.",
-        ],
+        "notes": list(_ACCEPTED_NOTES),
     }
     if int8_kv_primitive_layer_accuracy is not None:
         payload["correctness"]["int8_kv_primitive_layer_accuracy"] = int8_kv_primitive_layer_accuracy

@@ -83,6 +83,9 @@ from scripts.qwen35_batch_artifact_schema import (
 )
 from scripts.qwen35_batch_constants import (
     PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS,
+    RETAINED_ARTIFACT_ACCEPTED_DECISION_REASON,
+    RETAINED_ARTIFACT_ACCEPTED_NOTES,
+    RETAINED_ARTIFACT_ACCEPTED_SUMMARY,
     RETAINED_ARTIFACT_CORRECTNESS_REFERENCE_UNIQUE_FLAGS,
     RETAINED_ARTIFACT_CORRECTNESS_SCRIPT_ALLOWED_FLAGS,
     RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_COMMAND_FRAGMENTS,
@@ -19990,7 +19993,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         "rows": 2,
         "run_tag": "qwen35-paro-c2-native-retained",
         "timestamp": "2026-06-01T14:00:00+00:00",
-        "summary": "Qwen3.5/PARO scheduler compact native c>N benchmark",
+        "summary": RETAINED_ARTIFACT_ACCEPTED_SUMMARY,
         "artifact_path": "benchmarks/results/accepted-c2.json",
         "performance_claim": True,
         "hardware": {
@@ -20391,11 +20394,8 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                 },
             }
         ],
-        "decision": {"accepted": True, "reason": "correctness/protocol passed"},
-        "notes": [
-            "Native retained c>N path uses packed prompt slabs and step_batch_native for decode.",
-            "Batch split-K decode remains out of scope; this accepted protocol keeps context < 1024.",
-        ],
+        "decision": {"accepted": True, "reason": RETAINED_ARTIFACT_ACCEPTED_DECISION_REASON},
+        "notes": list(RETAINED_ARTIFACT_ACCEPTED_NOTES),
     }
 
     artifact_root = tmp_path / "artifact-repo"
@@ -20948,6 +20948,9 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     artifact_schema_summary_file = rollup_root / "benchmarks" / "results" / "accepted-c2-schema-check.json"
     assert validate_cn_diagnostic_artifact_main([str(artifact_file), "--summary-json", str(artifact_schema_summary_file)]) == 0
     artifact_schema_summary = json.loads(artifact_schema_summary_file.read_text())
+    assert retained_bench.RETAINED_ARTIFACT_ACCEPTED_SUMMARY == RETAINED_ARTIFACT_ACCEPTED_SUMMARY
+    assert retained_bench.RETAINED_ARTIFACT_ACCEPTED_DECISION_REASON == RETAINED_ARTIFACT_ACCEPTED_DECISION_REASON
+    assert retained_bench.RETAINED_ARTIFACT_ACCEPTED_NOTES == RETAINED_ARTIFACT_ACCEPTED_NOTES
     assert artifact_schema_summary["mode"] == "artifact_schema"
     assert artifact_schema_summary["status"] == "accepted"
     assert artifact_schema_summary["performance_claim"] is True

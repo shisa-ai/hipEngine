@@ -21,6 +21,9 @@ from hipengine.dispatch import (
 from hipengine.generation import GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS
 from scripts.qwen35_batch_constants import (
     PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS,
+    RETAINED_ARTIFACT_ACCEPTED_DECISION_REASON,
+    RETAINED_ARTIFACT_ACCEPTED_NOTES,
+    RETAINED_ARTIFACT_ACCEPTED_SUMMARY,
     RETAINED_ARTIFACT_CORRECTNESS_REFERENCE_UNIQUE_FLAGS,
     RETAINED_ARTIFACT_CORRECTNESS_SCRIPT_ALLOWED_FLAGS,
     RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_COMMAND_FRAGMENTS,
@@ -1258,24 +1261,20 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
     summary = payload.get("summary")
     if not isinstance(summary, str) or not summary:
         errors.append("summary must be a non-empty string for accepted artifacts")
-    elif summary != "Qwen3.5/PARO scheduler compact native c>N benchmark":
-        errors.append("summary must be Qwen3.5/PARO scheduler compact native c>N benchmark for accepted artifacts")
+    elif summary != RETAINED_ARTIFACT_ACCEPTED_SUMMARY:
+        errors.append(f"summary must be {RETAINED_ARTIFACT_ACCEPTED_SUMMARY} for accepted artifacts")
     if payload.get("performance_claim") is not True:
         errors.append("accepted retained artifact must set performance_claim=true")
     decision = payload.get("decision")
     if not isinstance(decision, Mapping) or decision.get("accepted") is not True:
         errors.append("accepted retained artifact must set decision.accepted=true")
-    elif decision.get("reason") != "correctness/protocol passed":
-        errors.append("accepted retained artifact decision.reason must be correctness/protocol passed")
+    elif decision.get("reason") != RETAINED_ARTIFACT_ACCEPTED_DECISION_REASON:
+        errors.append(f"accepted retained artifact decision.reason must be {RETAINED_ARTIFACT_ACCEPTED_DECISION_REASON}")
     notes = payload.get("notes")
     if not _is_nonempty_string_list(notes):
         errors.append("notes must be a non-empty string list for accepted artifacts")
     elif isinstance(notes, list):
-        required_notes = (
-            "Native retained c>N path uses packed prompt slabs and step_batch_native for decode.",
-            "Batch split-K decode remains out of scope; this accepted protocol keeps context < 1024.",
-        )
-        for note in required_notes:
+        for note in RETAINED_ARTIFACT_ACCEPTED_NOTES:
             if note not in notes:
                 errors.append(f"notes must include {note!r} for accepted artifacts")
 

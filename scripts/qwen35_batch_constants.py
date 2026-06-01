@@ -87,6 +87,12 @@ RETAINED_ARTIFACT_INT8_DIAGNOSTIC_SCRIPT = "scripts/qwen35_batch_int8_diagnostic
 RETAINED_ARTIFACT_GGUF_DIAGNOSTIC_SCRIPT = "scripts/qwen35_batch_gguf_diagnostic.py"
 RETAINED_ARTIFACT_GGUF_E2E_CORRECTNESS_SCRIPT = "scripts/qwen35_gguf_e2e_correctness.py"
 RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT = "scripts/qwen35_batch_retained_bench.py"
+RETAINED_ARTIFACT_ACCEPTED_SUMMARY = "Qwen3.5/PARO scheduler compact native c>N benchmark"
+RETAINED_ARTIFACT_ACCEPTED_DECISION_REASON = "correctness/protocol passed"
+RETAINED_ARTIFACT_ACCEPTED_NOTES = (
+    "Native retained c>N path uses packed prompt slabs and step_batch_native for decode.",
+    "Batch split-K decode remains out of scope; this accepted protocol keeps context < 1024.",
+)
 
 RETAINED_ARTIFACT_PROFILER_TRACE_SYNTHESIZED_FIELDS = (
     "trace_kernel_names",
