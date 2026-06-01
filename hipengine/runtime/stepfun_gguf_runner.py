@@ -942,6 +942,72 @@ class StepFunKVDecodeRunPlan:
             "note": "Metadata-only combined upload plan; no kernels are launched.",
         }
 
+    @property
+    def streaming_decode_loop_blueprint(self) -> dict[str, object]:
+        """Return the metadata-only contract for the future KV streaming loop."""
+
+        launch_schedule = self.resource_plan.kv_decode_launch_schedule
+        per_layer_order = list(launch_schedule["per_layer_order"])
+        layer_count = int(launch_schedule["layer_count"])
+        operation_sequence = [
+            f"layers.{layer_id}.{op_name}"
+            for layer_id in range(layer_count)
+            for op_name in per_layer_order
+        ]
+        upload_plan = self.decode_input_upload_plan
+        streaming_runner_blockers = list(self.streaming_runner_blockers)
+        streaming_runner_blocker_names = [
+            str(blocker["name"]) for blocker in streaming_runner_blockers
+        ]
+        first_streaming_runner_blocker = (
+            streaming_runner_blocker_names[0] if streaming_runner_blocker_names else None
+        )
+        first_streaming_runner_blocker_sha256 = (
+            _stable_json_sha256(first_streaming_runner_blocker)
+            if first_streaming_runner_blocker is not None
+            else None
+        )
+        return {
+            "source": "kv_decode_run_plan",
+            "executable": False,
+            "blocked_by": first_streaming_runner_blocker,
+            "blocked_by_sha256": first_streaming_runner_blocker_sha256,
+            "streaming_runner_ready": self.streaming_runner_ready,
+            "layer_count": layer_count,
+            "operation_count": len(operation_sequence),
+            "per_layer_order": per_layer_order,
+            "operation_sequence_sha256": _stable_json_sha256(operation_sequence),
+            "first_layer_ops": operation_sequence[: len(per_layer_order)],
+            "last_layer_ops": operation_sequence[-len(per_layer_order) :] if operation_sequence else [],
+            "pre_run_upload_order": list(upload_plan["upload_order"]),
+            "pre_run_cleanup_order": list(upload_plan["cleanup_order"]),
+            "pre_run_upload_checks_passed": upload_plan["all_consistency_checks_passed"],
+            "stages": [
+                {
+                    "name": "upload_decode_inputs",
+                    "source": "decode_input_upload_plan",
+                    "ready": upload_plan["all_consistency_checks_passed"],
+                    "entry_count": upload_plan["entry_count"],
+                    "total_nbytes": upload_plan["total_nbytes"],
+                },
+                *[
+                    {
+                        "name": str(stage["name"]),
+                        "dispatch_key": str(stage["dispatch_key"]),
+                        "span_contract": str(stage["span_contract"]),
+                        "layer_count": int(stage["layer_count"]),
+                        "ready": bool(stage["ready"]),
+                    }
+                    for stage in launch_schedule["stages"]
+                ],
+            ],
+            "stage_count": 1 + len(launch_schedule["stages"]),
+            "note": (
+                "Metadata-only StepFun KV streaming decode loop contract. "
+                "It records the upload and launch order but does not launch kernels."
+            ),
+        }
+
     def to_dict(self) -> dict[str, object]:
         launch_schedule = self.resource_plan.kv_decode_launch_schedule
         streaming_runner_blockers = list(self.streaming_runner_blockers)
@@ -979,6 +1045,7 @@ class StepFunKVDecodeRunPlan:
             "span_input_upload_manifest": self.span_input_upload_manifest,
             "span_input_host_payloads": self.span_input_host_payloads,
             "decode_input_upload_plan": self.decode_input_upload_plan,
+            "streaming_decode_loop_blueprint": self.streaming_decode_loop_blueprint,
             "prompt_fits_resource_plan": self.prompt_fits_resource_plan,
             "context_fits_resource_plan": self.context_fits_resource_plan,
             "stop_token_ids": list(self.decode_plan.stop_token_ids),

@@ -419,6 +419,51 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
     assert payload["first_streaming_runner_blocker_sha256"] == expected_first_streaming_blocker_sha
     assert [blocker["name"] for blocker in payload["streaming_runner_blockers"]] == expected_streaming_blockers
     assert all(blocker["ready"] is False for blocker in payload["streaming_runner_blockers"])
+    blueprint = payload["streaming_decode_loop_blueprint"]
+    expected_operation_sequence = [
+        f"layers.{layer_id}.{op_name}"
+        for layer_id in range(45)
+        for op_name in payload["kv_decode_launch_per_layer_order"]
+    ]
+    assert blueprint["source"] == "kv_decode_run_plan"
+    assert blueprint["executable"] is False
+    assert blueprint["blocked_by"] == "streaming_decode_loop_not_wired"
+    assert blueprint["blocked_by_sha256"] == expected_first_streaming_blocker_sha
+    assert blueprint["streaming_runner_ready"] is False
+    assert blueprint["layer_count"] == 45
+    assert blueprint["operation_count"] == 135
+    assert blueprint["per_layer_order"] == payload["kv_decode_launch_per_layer_order"]
+    assert blueprint["operation_sequence_sha256"] == hashlib.sha256(
+        json.dumps(expected_operation_sequence, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    assert blueprint["first_layer_ops"] == [
+        "layers.0.prompt_kv_write",
+        "layers.0.decode_kv_write",
+        "layers.0.decode_attention",
+    ]
+    assert blueprint["last_layer_ops"] == [
+        "layers.44.prompt_kv_write",
+        "layers.44.decode_kv_write",
+        "layers.44.decode_attention",
+    ]
+    assert blueprint["pre_run_upload_order"] == upload_plan["upload_order"]
+    assert blueprint["pre_run_cleanup_order"] == upload_plan["cleanup_order"]
+    assert blueprint["pre_run_upload_checks_passed"] is True
+    assert blueprint["stage_count"] == 4
+    assert blueprint["stages"][0] == {
+        "name": "upload_decode_inputs",
+        "source": "decode_input_upload_plan",
+        "ready": True,
+        "entry_count": 6,
+        "total_nbytes": 484,
+    }
+    assert blueprint["stages"][1] == {
+        "name": "prompt_prefill_kv_write",
+        "dispatch_key": "prompt_kv_write",
+        "span_contract": "prompt_span",
+        "layer_count": 45,
+        "ready": True,
+    }
 
 
 def test_stepfun_kv_decode_run_plan_frees_partial_uploads_after_copy_failure() -> None:
