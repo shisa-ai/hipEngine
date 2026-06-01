@@ -58212,3 +58212,33 @@ PY
 ```
 
 Result: focused profiler kernel-name padding regressions PASS after the validator fix; docs diff check PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1` with c=2/c=8 primitive JSONs passing on GPU1/XTX (`seed=1234`, zero append/A-A/attention errors, `device.env.HIP_VISIBLE_DEVICES=1`, `device_name=AMD Radeon RX 7900 XTX`). Prompt-verifier self-check passes: the open C2.5 item remains unchecked and explicitly says generated-token equality/scaling are still missing, completed items were not changed, and no retained c>N performance/scaling claim was added.
+
+## 2026-06-01 — CONCURRENCY C2.5 retained-bench profiler kernel-name padding rejection
+
+Tightened retained-bench profiler evidence blockers so native-batch profiler kernel aliases must be canonical stripped strings before a retained row can promote. RED: `test_qwen35_retained_profiler_kernel_evidence_blockers_require_trace_durations` accepted a profiler payload whose `trace_kernel_names`, `expected_kernel_names`, duration keys, and share keys were consistently padded with leading/trailing spaces. GREEN: `scripts/qwen35_batch_retained_bench.py` now uses stripped non-empty string checks for profiler trace/expected kernel names, duration/share keys, native-batch name detection, and trace/duration cross-check sets; `docs/CONCURRENCY.md` C2.5 progress now calls out stripped profiler kernel-name duration/share evidence. The C2.5 retained/equality requirement stays open: this is retained-bench lifecycle/provenance hardening only, not generated-token equality vs independent c=1 and not a performance/scaling claim.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+python3 -m compileall -q tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_retained_profiler_kernel_evidence_blockers_require_trace_durations -q  # RED before validator fix
+python3 -m compileall -q scripts/qwen35_batch_retained_bench.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_retained_profiler_kernel_evidence_blockers_require_trace_durations -q
+git diff --check
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+env HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+python3 - <<'PY'
+from pathlib import Path
+text = Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+assert '- [ ] **C2.5 c=4/c=8 BF16 equality.**' in queue
+assert 'generated-token equality vs independent c=1 for c=4/c=8 is still missing' in queue
+assert 'stripped kernel-name duration/share keys' in queue
+print('prompt-verifier support: C2.5 remains open; missing generated-token equality caveat remains present; retained-bench stripped kernel-name evidence text is present; no completed item marker changed by this diff')
+PY
+```
+
+Result: focused retained-bench profiler kernel-name padding regression PASS after the validator fix; docs diff check PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1` with c=2/c=8 primitive JSONs passing on GPU1/XTX (`seed=1234`, zero append/A-A/attention errors, `device.env.HIP_VISIBLE_DEVICES=1`, `device_name=AMD Radeon RX 7900 XTX`). Prompt-verifier self-check passes: the open C2.5 item remains unchecked and explicitly says generated-token equality/scaling are still missing, completed items were not changed, and no retained c>N performance/scaling claim was added.

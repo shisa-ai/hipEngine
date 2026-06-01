@@ -17062,6 +17062,19 @@ def test_qwen35_retained_profiler_kernel_evidence_blockers_require_trace_duratio
         "kernel_duration_categories_ns": {**complete["kernel_duration_categories_ns"], "projection": 0.0, "other": 14690.0},
         "kernel_duration_category_shares": {**complete["kernel_duration_category_shares"], "projection": 0.0, "other": 1.0},
     }
+    padded_names = {
+        **complete,
+        "trace_kernel_names": [f" {kernel_name} " for kernel_name in complete["trace_kernel_names"]],
+        "expected_kernel_names": [f" {kernel_name} " for kernel_name in complete["expected_kernel_names"]],
+        "kernel_durations_ns": {
+            f" {kernel_name} ": duration_ns
+            for kernel_name, duration_ns in complete["kernel_durations_ns"].items()
+        },
+        "kernel_duration_shares": {
+            f" {kernel_name} ": share
+            for kernel_name, share in complete["kernel_duration_shares"].items()
+        },
+    }
 
     missing_status = {**complete, "status": "not_captured"}
     missing_expected_present = {**complete, "expected_kernels_present": False}
@@ -17081,6 +17094,10 @@ def test_qwen35_retained_profiler_kernel_evidence_blockers_require_trace_duratio
     generic_blockers = retained_bench._profiler_kernel_evidence_blockers(generic_kernel_names)
     assert "profiler.trace_kernel_names must include at least one native batch kernel name" in generic_blockers
     assert "profiler.expected_kernel_names must include at least one native batch kernel name" in generic_blockers
+    padded_blockers = retained_bench._profiler_kernel_evidence_blockers(padded_names)
+    assert "profiler.trace_kernel_names entries must be non-empty strings" in padded_blockers
+    assert "profiler.expected_kernel_names entries must be non-empty strings" in padded_blockers
+    assert "profiler.kernel_durations_ns keys must be non-empty strings" in padded_blockers
     blockers = retained_bench._profiler_kernel_evidence_blockers(incomplete)
     assert "profiler.trace_kernel_names must include profiler.expected_kernel_names" in blockers
     assert "profiler.kernel_durations_ns.qwen35_batch_decode_wmma_caware must be positive numeric" in blockers

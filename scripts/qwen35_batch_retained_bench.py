@@ -1030,6 +1030,10 @@ def _is_finite_positive_number(value: Any) -> bool:
     return _is_finite_nonnegative_number(value) and float(value) > 0.0
 
 
+def _is_stripped_non_empty_string(value: Any) -> bool:
+    return isinstance(value, str) and bool(value) and value == value.strip()
+
+
 def _is_retained_artifact_path(value: Any) -> bool:
     if not isinstance(value, str) or not value:
         return False
@@ -1137,7 +1141,7 @@ def _has_disallowed_profiler_kernel_name_fragment(kernel_name: str) -> bool:
 
 
 def _has_native_batch_profiler_kernel_name(kernel_names: list[Any]) -> bool:
-    return any(isinstance(name, str) and "batch" in name.lower() for name in kernel_names)
+    return any(_is_stripped_non_empty_string(name) and "batch" in name.lower() for name in kernel_names)
 
 
 def _profiler_kernel_duration_category(kernel_name: str) -> str:
@@ -2405,7 +2409,7 @@ def _profiler_kernel_evidence_blockers(profiler: Mapping[str, Any]) -> list[str]
     trace_kernel_names = profiler.get("trace_kernel_names")
     if not isinstance(trace_kernel_names, list) or not any(isinstance(name, str) and name for name in trace_kernel_names):
         blockers.append("profiler.trace_kernel_names must be a non-empty string list")
-    elif not all(isinstance(name, str) and name for name in trace_kernel_names):
+    elif not all(_is_stripped_non_empty_string(name) for name in trace_kernel_names):
         blockers.append("profiler.trace_kernel_names entries must be non-empty strings")
     elif len(set(trace_kernel_names)) != len(trace_kernel_names):
         blockers.append("profiler.trace_kernel_names entries must be unique")
@@ -2416,7 +2420,7 @@ def _profiler_kernel_evidence_blockers(profiler: Mapping[str, Any]) -> list[str]
     expected_kernel_names = profiler.get("expected_kernel_names")
     if not isinstance(expected_kernel_names, list) or not any(isinstance(name, str) and name for name in expected_kernel_names):
         blockers.append("profiler.expected_kernel_names must be a non-empty string list")
-    elif not all(isinstance(name, str) and name for name in expected_kernel_names):
+    elif not all(_is_stripped_non_empty_string(name) for name in expected_kernel_names):
         blockers.append("profiler.expected_kernel_names entries must be non-empty strings")
     elif len(set(expected_kernel_names)) != len(expected_kernel_names):
         blockers.append("profiler.expected_kernel_names entries must be unique")
@@ -2432,7 +2436,7 @@ def _profiler_kernel_evidence_blockers(profiler: Mapping[str, Any]) -> list[str]
     durations_valid = True
     duration_total = 0.0
     for kernel_name, duration_ns in kernel_durations.items():
-        if not isinstance(kernel_name, str) or not kernel_name:
+        if not _is_stripped_non_empty_string(kernel_name):
             blockers.append("profiler.kernel_durations_ns keys must be non-empty strings")
             duration_keys_valid = False
             break
@@ -2455,8 +2459,8 @@ def _profiler_kernel_evidence_blockers(profiler: Mapping[str, Any]) -> list[str]
     if not isinstance(kernel_duration_shares, Mapping) or not kernel_duration_shares:
         blockers.append("profiler.kernel_duration_shares must be a non-empty object")
     elif duration_keys_valid:
-        duration_key_set = {key for key in kernel_durations if isinstance(key, str) and key}
-        share_key_set = {key for key in kernel_duration_shares if isinstance(key, str) and key}
+        duration_key_set = {key for key in kernel_durations if _is_stripped_non_empty_string(key)}
+        share_key_set = {key for key in kernel_duration_shares if _is_stripped_non_empty_string(key)}
         if len(share_key_set) != len(kernel_duration_shares):
             blockers.append("profiler.kernel_duration_shares keys must be non-empty strings")
         elif share_key_set != duration_key_set:
@@ -2523,17 +2527,17 @@ def _profiler_kernel_evidence_blockers(profiler: Mapping[str, Any]) -> list[str]
                         blockers.append(f"profiler.kernel_duration_category_shares.{category} must match category/total")
                         break
     if isinstance(trace_kernel_names, list):
-        trace_name_set = {name for name in trace_kernel_names if isinstance(name, str) and name}
-        missing_trace_names = [name for name in kernel_durations if isinstance(name, str) and name and name not in trace_name_set]
+        trace_name_set = {name for name in trace_kernel_names if _is_stripped_non_empty_string(name)}
+        missing_trace_names = [name for name in kernel_durations if _is_stripped_non_empty_string(name) and name not in trace_name_set]
         if missing_trace_names:
             blockers.append("profiler.trace_kernel_names must include profiler.kernel_durations_ns keys")
     if isinstance(expected_kernel_names, list):
         trace_name_set = set()
         if isinstance(trace_kernel_names, list):
-            trace_name_set = {name for name in trace_kernel_names if isinstance(name, str) and name}
+            trace_name_set = {name for name in trace_kernel_names if _is_stripped_non_empty_string(name)}
         missing_expected_trace_name = False
         for kernel_name in expected_kernel_names:
-            if isinstance(kernel_name, str) and kernel_name:
+            if _is_stripped_non_empty_string(kernel_name):
                 if trace_name_set and kernel_name not in trace_name_set and not missing_expected_trace_name:
                     blockers.append("profiler.trace_kernel_names must include profiler.expected_kernel_names")
                     missing_expected_trace_name = True
