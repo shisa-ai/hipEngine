@@ -8604,6 +8604,17 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
             if optional_artifact_parent_link.is_symlink():
                 optional_artifact_parent_link.unlink()
 
+        optional_artifact_directory_path = Path(summary["commands"][index]["artifact_path"])
+        try:
+            optional_artifact_directory_path.mkdir()
+            with pytest.raises(
+                ValueError, match=r"commands\[\]\.artifact_path must be a regular file when it already exists"
+            ):
+                c_sweep.validate_sweep_summary(summary)
+        finally:
+            if optional_artifact_directory_path.is_dir():
+                optional_artifact_directory_path.rmdir()
+
         tampered_optional_blank_category = json.loads(json.dumps(summary))
         tampered_optional_blank_category["commands"][index]["category"] = "   "
         with pytest.raises(ValueError, match=r"commands\[\]\.category must be a non-empty string"):

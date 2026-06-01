@@ -2347,6 +2347,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             if _path_has_symlink_parent(artifact_path_for_symlink_check):
                 errors.append("commands[].artifact_path parent directories must not be symlinks")
                 break
+            if artifact_path_for_symlink_check.exists() and not artifact_path_for_symlink_check.is_file():
+                errors.append("commands[].artifact_path must be a regular file when it already exists")
+                break
             command_text = entry.get("command")
             if not isinstance(command_text, str) or not command_text.strip():
                 errors.append("commands[].command must be a non-empty string")
