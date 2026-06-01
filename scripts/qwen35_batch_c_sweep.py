@@ -3150,8 +3150,11 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         errors.append("commands[].preconditions[].profiler command --profiler-json must match profiler precondition artifact")
                         break
                     profiler_source_artifact_path = profiler_precondition.get("profiler_source_artifact_path")
-                    if not isinstance(profiler_source_artifact_path, str) or not profiler_source_artifact_path:
+                    if not isinstance(profiler_source_artifact_path, str):
                         errors.append("commands[].preconditions[].profiler_source_artifact_path must match profiler artifact_path when profiler passed")
+                        break
+                    if not profiler_source_artifact_path.strip():
+                        errors.append("commands[].preconditions[].profiler_source_artifact_path must be a non-empty string when profiler passed")
                         break
                     if _path_has_parent_directory_component(profiler_source_artifact_path):
                         errors.append("commands[].preconditions[].profiler_source_artifact_path must not contain parent-directory components when profiler passed")

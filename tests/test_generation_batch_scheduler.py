@@ -5779,6 +5779,13 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_profiler_source_artifact_path["commands"][-1]["preconditions"][-1]["profiler_source_artifact_path"] = str(output_dir / "other-profiler-c2.json")
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path must match profiler artifact_path when profiler passed"):
         c_sweep.validate_sweep_summary(tampered_profiler_source_artifact_path)
+    tampered_profiler_source_blank = json.loads(json.dumps(persisted))
+    tampered_profiler_source_blank["commands"][-1]["preconditions"][-1]["profiler_source_artifact_path"] = "   "
+    with pytest.raises(
+        ValueError,
+        match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path must be a non-empty string when profiler passed",
+    ):
+        c_sweep.validate_sweep_summary(tampered_profiler_source_blank)
     tampered_profiler_source_parent_component = json.loads(json.dumps(persisted))
     tampered_profiler_source_parent_component["commands"][-1]["preconditions"][-1]["profiler_source_artifact_path"] = str(
         output_dir / "profiler-parent" / ".." / "profiler-c2.json"
