@@ -7285,6 +7285,14 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.category must match commands\[\]\.argv script"):
             c_sweep.validate_sweep_summary(tampered_planned_script)
 
+        tampered_planned_json_path = json.loads(json.dumps(summary))
+        planned_json_entry = tampered_planned_json_path["commands"][index]
+        planned_json_argv = planned_json_entry["argv"]
+        planned_json_argv[planned_json_argv.index("--json") + 1] = str(tmp_path / "artifacts" / f"stale-planned-{index}.json")
+        planned_json_entry["command"] = shlex.join(planned_json_argv)
+        with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match commands\[\]\.argv --json"):
+            c_sweep.validate_sweep_summary(tampered_planned_json_path)
+
         tampered_missing_planned_key = json.loads(json.dumps(summary))
         del tampered_missing_planned_key["commands"][index]["returncode"]
         with pytest.raises(ValueError, match=r"commands\[\] planned rows must contain exactly planned command keys"):
