@@ -24633,3 +24633,45 @@ Next multiloop focus: the prompt-history route is now the largest D64 win, but
 it is brittle.  Either validate the route/cutoffs on longer horizons or build a
 deployable prompt-history/route-manifest mechanism before considering default
 promotion.
+
+
+## 2026-06-02 — DFlash DDTree probe and live MTP status check
+
+Follow-up to the stopped `dflash-27b-w7900/run-20260531-102747` loop and the
+user-requested MTP status check.  No source changes.
+
+DDTree probe: built `/tmp/hipengine-dflash-27b-ddtree-current-route-manifest.json`
+from the retained 27B json-terminal20 route, replacing the eight chain routes
+with `tree` / `branching_topk K=2` while keeping sort-third AR and the json
+terminal override.  Command shape:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD=4 HIPENGINE_W4_MULTI_ROW_PACK8_SITES=full_qk,linear_qkv_z,dense_gate_up,single_full_o,single_full_v,single_linear_out,single_shared_down,single_dense_down PYTHONPATH=. timeout 3600 python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 9 --decode-tokens 64 --draft-budgets 4 --tree-top-k 2 --verifier-mode native_bulk_bplus1 --verifier-graph auto --full-attn-chain-mode batched --canonical-commit-mode bulk_direct --profile-route-manifest /tmp/hipengine-dflash-27b-ddtree-current-route-manifest.json --drafter-query-mode budget_prefix --terminal-ar-tokens 5 --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/hipengine-dflash-27b-ddtree-current-route.json
+```
+
+Result: exact `9/9`, but `0.8834x` AR (`28.91 tok/s` spec vs `32.72 tok/s`
+AR), avg accept `1.81`, rows/output `1.642`.  This is a no-keep/regression vs
+the retained chain/profile route (`1.3503x`, `43.76 tok/s`).  The current
+balanced DDTree compiler caps effective accepted depth at 2 for B=4/K=2 and
+pays too many verifier rows.
+
+Live MTP raw prompt-suite check (B=3, D64, W7900/GPU0, graph off, batched,
+`persistent_device`, default exact-safe W4 site mask):
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. timeout 1800 python3 scripts/mtp-bench.py --mode hipengine-current --max-tokens 64 --candidate-budgets 3 --runs 1 --prompt-render raw --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode batched --graph-mode off --out /tmp/hipengine-mtp-current-w7900-raw-b3-d64.json --raw-root /tmp/hipengine-mtp-current-w7900-raw-b3-d64
+```
+
+Result: exact `9/9`, aggregate `0.3641x` MTP/AR, observed cycle speedup
+`0.3616x`, cycle cost `5.242` AR-token-equivalents, visible tokens/cycle
+`1.884`, accepted drafts/cycle `0.884`, acceptance `29.9%`, verify wall
+`40.17 ms/cycle`, cycle wall `50.08 ms/cycle`, AR `9.54 ms/token`.  This is
+slower than the older M14.dispatch.1 artifact (`~0.52x`, cycle cost `~3.70`,
+verify `~24.9 ms/cycle`), so current live status should be reported as a
+regression/needs-bisect rather than a retained MTP improvement.
+
+Expanded W4-site MTP retry with
+`HIPENGINE_W4_MULTI_ROW_PACK8_SITES=full_qk,linear_qkv_z,dense_gate_up,single_full_o,single_full_v,single_linear_out,single_shared_down,single_dense_down`
+was aborted/rejected: first three prompts remained exact but `summarize` failed
+exact AR equality, reproducing why the llama.cpp-compatible MTP suite cannot use
+that DFlash-expanded site mask as-is.
