@@ -7333,6 +7333,18 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     with pytest.raises(ValueError, match=r"commands\[\]\.argv require-cached-build must match options\.require_cached_build"):
         c_sweep.validate_sweep_summary(tampered_cached_build_option)
     assert summary["options"]["compiler_version_file"] is None
+    tampered_compiler_version_type = json.loads(json.dumps(summary))
+    tampered_compiler_version_type["options"]["compiler_version_file"] = 123
+    with pytest.raises(ValueError, match="options.compiler_version_file must be a string or null"):
+        c_sweep.validate_sweep_summary(tampered_compiler_version_type)
+    tampered_compiler_version_blank = json.loads(json.dumps(summary))
+    tampered_compiler_version_blank["options"]["compiler_version_file"] = "   "
+    with pytest.raises(ValueError, match="options.compiler_version_file must be a non-empty string or null"):
+        c_sweep.validate_sweep_summary(tampered_compiler_version_blank)
+    tampered_compiler_version_parent = json.loads(json.dumps(summary))
+    tampered_compiler_version_parent["options"]["compiler_version_file"] = "artifacts/../hipcc-version.txt"
+    with pytest.raises(ValueError, match="options.compiler_version_file must not contain parent-directory components"):
+        c_sweep.validate_sweep_summary(tampered_compiler_version_parent)
     tampered_compiler_version_option = json.loads(json.dumps(summary))
     tampered_compiler_version_option["options"]["compiler_version_file"] = str(tmp_path / "hipcc-version.txt")
     with pytest.raises(ValueError, match=r"commands\[\]\.argv compiler-version-file must match options\.compiler_version_file"):
