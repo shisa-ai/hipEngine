@@ -7246,6 +7246,23 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     assert summary["status"] == "planned"
     assert summary["options"]["include_int8"] is True
     assert summary["options"]["include_gguf"] is True
+    expected_shape_options = {
+        "prompt_length": 512,
+        "decode_tokens": 128,
+        "warmup_decode_tokens": 8,
+        "max_layers": 40,
+    }
+    assert {option: summary["options"][option] for option in expected_shape_options} == expected_shape_options
+    for option, flag, stale_value in (
+        ("prompt_length", "--prompt-length", 513),
+        ("decode_tokens", "--decode-tokens", 129),
+        ("warmup_decode_tokens", "--warmup-decode-tokens", 9),
+        ("max_layers", "--max-layers", 41),
+    ):
+        tampered_shape_option = json.loads(json.dumps(summary))
+        tampered_shape_option["options"][option] = stale_value
+        with pytest.raises(ValueError, match=rf"commands\[\]\.argv {flag} must match options\.{option}"):
+            c_sweep.validate_sweep_summary(tampered_shape_option)
     assert summary["batch_sizes"] == [1, 2, 4, 8]
     tampered_batch_size_order = json.loads(json.dumps(summary))
     tampered_batch_size_order["batch_sizes"] = [1, 4, 2, 8]
