@@ -2755,6 +2755,11 @@ def _generated_token_equality_blockers(
     elif equality_rows != expected_concurrency:
         blockers.append("correctness.generated_token_equality.rows must match expected concurrency")
     expected_tokens = 1 + int(expected_warmup_decode_tokens) + int(expected_decode_tokens)
+    tokens_per_sequence = equality.get("tokens_per_sequence")
+    if not isinstance(tokens_per_sequence, int) or isinstance(tokens_per_sequence, bool):
+        blockers.append("correctness.generated_token_equality.tokens_per_sequence must be an int")
+    elif tokens_per_sequence != expected_tokens:
+        blockers.append("correctness.generated_token_equality.tokens_per_sequence must match seed plus warmup plus decode tokens")
 
     def _validate_sequences(field: str) -> Any:
         sequences = equality.get(field)
@@ -4197,12 +4202,14 @@ def main(argv: list[str] | None = None) -> int:
         bench["projection_dispatch_candidates"] = projection_dispatch_candidates
 
     request_ids = list(range(args.batch_size))
+    equality_tokens_per_sequence = 1 + args.warmup_decode_tokens + args.decode_tokens
     batch_sequences = _generated_sequences_from_bench(bench, request_ids)
     if args.skip_generated_equality:
         equality = {
             "passed": False,
             "skipped": True,
             "rows": args.batch_size,
+            "tokens_per_sequence": equality_tokens_per_sequence,
             "reason": "--skip-generated-equality was provided",
             "batch_sequences": batch_sequences,
             "c1_sequences": None,
@@ -4222,6 +4229,7 @@ def main(argv: list[str] | None = None) -> int:
             "passed": batch_sequences == c1_sequences,
             "skipped": False,
             "rows": args.batch_size,
+            "tokens_per_sequence": equality_tokens_per_sequence,
             "batch_sequences": batch_sequences,
             "c1_sequences": c1_sequences,
             "mismatches": [

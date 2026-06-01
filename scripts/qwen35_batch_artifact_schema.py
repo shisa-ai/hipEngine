@@ -3407,6 +3407,11 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
             errors.append("correctness.generated_token_equality.c1_sequences length must match workload.concurrency for accepted artifacts")
     if gen_tokens_valid and warmup_tokens_valid:
         expected_equality_tokens = 1 + int(warmup_tokens) + int(gen_tokens)
+        equality_tokens_per_sequence = equality.get("tokens_per_sequence")
+        if not isinstance(equality_tokens_per_sequence, int) or isinstance(equality_tokens_per_sequence, bool):
+            errors.append("correctness.generated_token_equality.tokens_per_sequence must be an int for accepted artifacts")
+        elif equality_tokens_per_sequence != expected_equality_tokens:
+            errors.append("correctness.generated_token_equality.tokens_per_sequence must match seed plus workload.warmup_decode_tokens plus workload.gen_tokens_per_request for accepted artifacts")
         _validate_generated_token_sequence_lengths(
             "correctness.generated_token_equality.batch_sequences",
             batch_sequences,
