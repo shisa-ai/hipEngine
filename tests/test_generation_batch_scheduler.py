@@ -19919,6 +19919,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     accepted = {
+        "schema": 3,
         "status": "accepted",
         "rows": 2,
         "artifact_path": "benchmarks/results/accepted-c2.json",
@@ -20385,6 +20386,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     monkeypatch.chdir(artifact_root)
 
     validate_cn_diagnostic_artifact_payload(accepted)
+
+    missing_artifact_schema = json.loads(json.dumps(accepted))
+    missing_artifact_schema.pop("schema")
+    with pytest.raises(ValueError, match="schema must be 3 for accepted artifacts"):
+        validate_cn_diagnostic_artifact_payload(missing_artifact_schema)
+
+    mismatched_artifact_schema = json.loads(json.dumps(accepted))
+    mismatched_artifact_schema["schema"] = 2
+    with pytest.raises(ValueError, match="schema must be 3 for accepted artifacts"):
+        validate_cn_diagnostic_artifact_payload(mismatched_artifact_schema)
 
     missing_artifact_rows = json.loads(json.dumps(accepted))
     missing_artifact_rows.pop("rows")

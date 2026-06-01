@@ -1252,6 +1252,8 @@ def validate_cn_diagnostic_artifact_payload(payload: Mapping[str, Any]) -> None:
 def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[str]) -> None:
     if payload.get("status") != "accepted":
         errors.append("accepted retained artifact must have status='accepted'")
+    if payload.get("schema") != 3 or isinstance(payload.get("schema"), bool):
+        errors.append("schema must be 3 for accepted artifacts")
     if payload.get("performance_claim") is not True:
         errors.append("accepted retained artifact must set performance_claim=true")
 
