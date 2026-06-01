@@ -1008,6 +1008,34 @@ class StepFunKVDecodeRunPlan:
             ),
         }
 
+    @property
+    def streaming_decode_loop_status(self) -> dict[str, object]:
+        """Return compact readiness metadata for the future KV streaming loop."""
+
+        blueprint = self.streaming_decode_loop_blueprint
+        streaming_runner_blockers = list(self.streaming_runner_blockers)
+        blocker_names = [str(blocker["name"]) for blocker in streaming_runner_blockers]
+        return {
+            "source": "kv_decode_run_plan",
+            "ready": self.streaming_runner_ready,
+            "executable": bool(blueprint["executable"]),
+            "blocked_by": blueprint["blocked_by"],
+            "blocked_by_sha256": blueprint["blocked_by_sha256"],
+            "blocker_count": len(streaming_runner_blockers),
+            "blocker_names": blocker_names,
+            "blocker_names_sha256": _stable_json_sha256(blocker_names),
+            "blueprint_operation_count": blueprint["operation_count"],
+            "blueprint_stage_count": blueprint["stage_count"],
+            "blueprint_sha256": _stable_json_sha256(blueprint),
+            "next_action": (
+                "wire_streaming_decode_loop" if not self.streaming_runner_ready else None
+            ),
+            "note": (
+                "Metadata-only readiness summary for the future StepFun KV streaming "
+                "decode loop; no kernels are launched."
+            ),
+        }
+
     def to_dict(self) -> dict[str, object]:
         launch_schedule = self.resource_plan.kv_decode_launch_schedule
         streaming_runner_blockers = list(self.streaming_runner_blockers)
@@ -1046,6 +1074,7 @@ class StepFunKVDecodeRunPlan:
             "span_input_host_payloads": self.span_input_host_payloads,
             "decode_input_upload_plan": self.decode_input_upload_plan,
             "streaming_decode_loop_blueprint": self.streaming_decode_loop_blueprint,
+            "streaming_decode_loop_status": self.streaming_decode_loop_status,
             "prompt_fits_resource_plan": self.prompt_fits_resource_plan,
             "context_fits_resource_plan": self.context_fits_resource_plan,
             "stop_token_ids": list(self.decode_plan.stop_token_ids),

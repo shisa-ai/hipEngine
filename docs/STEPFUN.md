@@ -673,9 +673,12 @@ reporting.
   `kv_decode_run_plan` now emit the same first-blocker digest at the metadata
   source, and `kv_decode_run_plan.streaming_decode_loop_blueprint` records the
   metadata-only upload/order/stage contract for the future KV loop without
-  launching kernels. The canonical resource artifact now contains that blueprint,
-  and the correctness-status KV gap report validates that it is recorded, matches
-  the launch schedule, matches the pre-run upload order, and points at the same
+  launching kernels. `kv_decode_run_plan.streaming_decode_loop_status` now adds
+  a compact runtime-produced readiness summary (blocker count/names, first
+  blocker digest, blueprint digest, and `next_action=wire_streaming_decode_loop`)
+  next to the blueprint. The canonical resource artifact now contains that
+  blueprint, and the correctness-status KV gap report validates that it is
+  recorded, matches the launch schedule, matches the pre-run upload order, and points at the same
   first blocker. The KV gap report now persists the validated blueprint summary
   digest, and compact `--kv-streaming-blueprint-only` /
   `--kv-streaming-blueprint-sha-only` outputs expose that recorded blueprint

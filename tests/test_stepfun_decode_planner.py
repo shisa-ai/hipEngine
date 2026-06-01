@@ -464,6 +464,27 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
         "layer_count": 45,
         "ready": True,
     }
+    streaming_status = payload["streaming_decode_loop_status"]
+    assert streaming_status == {
+        "source": "kv_decode_run_plan",
+        "ready": False,
+        "executable": False,
+        "blocked_by": "streaming_decode_loop_not_wired",
+        "blocked_by_sha256": expected_first_streaming_blocker_sha,
+        "blocker_count": 3,
+        "blocker_names": expected_streaming_blockers,
+        "blocker_names_sha256": expected_streaming_blockers_sha,
+        "blueprint_operation_count": 135,
+        "blueprint_stage_count": 4,
+        "blueprint_sha256": hashlib.sha256(
+            json.dumps(blueprint, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest(),
+        "next_action": "wire_streaming_decode_loop",
+        "note": (
+            "Metadata-only readiness summary for the future StepFun KV streaming "
+            "decode loop; no kernels are launched."
+        ),
+    }
 
 
 def test_stepfun_kv_decode_run_plan_frees_partial_uploads_after_copy_failure() -> None:
