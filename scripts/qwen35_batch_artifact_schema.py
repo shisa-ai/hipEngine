@@ -3393,9 +3393,14 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
     warmup_tokens_valid = isinstance(warmup_tokens, int) and not isinstance(warmup_tokens, bool) and warmup_tokens >= 0
     if not warmup_tokens_valid:
         errors.append("workload.warmup_decode_tokens must be a non-negative int for accepted artifacts")
+    equality_rows = equality.get("rows")
+    if not isinstance(equality_rows, int) or isinstance(equality_rows, bool):
+        errors.append("correctness.generated_token_equality.rows must be an int for accepted artifacts")
     if not concurrency_valid:
         errors.append("workload.concurrency must be an int > 1 for accepted artifacts")
     else:
+        if isinstance(equality_rows, int) and not isinstance(equality_rows, bool) and equality_rows != concurrency:
+            errors.append("correctness.generated_token_equality.rows must match workload.concurrency for accepted artifacts")
         if isinstance(batch_sequences, list) and len(batch_sequences) != concurrency:
             errors.append("correctness.generated_token_equality.batch_sequences length must match workload.concurrency for accepted artifacts")
         if isinstance(c1_sequences, list) and len(c1_sequences) != concurrency:

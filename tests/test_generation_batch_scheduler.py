@@ -17720,6 +17720,7 @@ def test_qwen35_retained_generated_token_equality_blockers_cover_c1_rows() -> No
     equality = {
         "passed": True,
         "skipped": False,
+        "rows": 2,
         "batch_sequences": [[0, 7, 9, 10], [100, 107, 109, 110]],
         "c1_sequences": [[0, 7, 9, 10], [100, 107, 109, 110]],
         "mismatches": [],
@@ -17733,6 +17734,7 @@ def test_qwen35_retained_generated_token_equality_blockers_cover_c1_rows() -> No
 
     invalid = json.loads(json.dumps(equality))
     invalid["skipped"] = True
+    invalid["rows"] = 3
     invalid["batch_sequences"][0] = [0, -1]
     invalid["c1_sequences"][1][0] = 101
     invalid["mismatches"] = [{"row": 1}]
@@ -17743,6 +17745,7 @@ def test_qwen35_retained_generated_token_equality_blockers_cover_c1_rows() -> No
         expected_warmup_decode_tokens=1,
     )
     assert "correctness.generated_token_equality.skipped must be false" in blockers
+    assert "correctness.generated_token_equality.rows must match expected concurrency" in blockers
     assert (
         "correctness.generated_token_equality.batch_sequences[0] "
         "length does not match seed plus warmup plus decode tokens"
@@ -20038,6 +20041,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             "generated_token_equality": {
                 "passed": True,
                 "skipped": False,
+                "rows": 2,
                 "batch_sequences": [list(range(0, 137)), list(range(100, 237))],
                 "c1_sequences": [list(range(0, 137)), list(range(100, 237))],
                 "mismatches": [],
@@ -20375,6 +20379,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     mismatched_artifact_rows["rows"] = 8
     with pytest.raises(ValueError, match="rows must match workload.concurrency for accepted artifacts"):
         validate_cn_diagnostic_artifact_payload(mismatched_artifact_rows)
+
+    missing_equality_rows = json.loads(json.dumps(accepted))
+    missing_equality_rows["correctness"]["generated_token_equality"].pop("rows")
+    with pytest.raises(ValueError, match="generated_token_equality.rows must be an int"):
+        validate_cn_diagnostic_artifact_payload(missing_equality_rows)
+
+    mismatched_equality_rows = json.loads(json.dumps(accepted))
+    mismatched_equality_rows["correctness"]["generated_token_equality"]["rows"] = 8
+    with pytest.raises(ValueError, match="generated_token_equality.rows must match workload.concurrency"):
+        validate_cn_diagnostic_artifact_payload(mismatched_equality_rows)
 
     def _accepted_with_int8_kv_policy() -> dict[str, object]:
         payload = json.loads(json.dumps(accepted))

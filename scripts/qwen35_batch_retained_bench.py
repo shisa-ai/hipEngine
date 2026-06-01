@@ -2749,6 +2749,11 @@ def _generated_token_equality_blockers(
         blockers.append("correctness.generated_token_equality.passed must be true")
     if equality.get("skipped") is not False:
         blockers.append("correctness.generated_token_equality.skipped must be false")
+    equality_rows = equality.get("rows")
+    if not isinstance(equality_rows, int) or isinstance(equality_rows, bool):
+        blockers.append("correctness.generated_token_equality.rows must be an int")
+    elif equality_rows != expected_concurrency:
+        blockers.append("correctness.generated_token_equality.rows must match expected concurrency")
     expected_tokens = 1 + int(expected_warmup_decode_tokens) + int(expected_decode_tokens)
 
     def _validate_sequences(field: str) -> Any:
@@ -4197,6 +4202,7 @@ def main(argv: list[str] | None = None) -> int:
         equality = {
             "passed": False,
             "skipped": True,
+            "rows": args.batch_size,
             "reason": "--skip-generated-equality was provided",
             "batch_sequences": batch_sequences,
             "c1_sequences": None,
@@ -4215,6 +4221,7 @@ def main(argv: list[str] | None = None) -> int:
         equality = {
             "passed": batch_sequences == c1_sequences,
             "skipped": False,
+            "rows": args.batch_size,
             "batch_sequences": batch_sequences,
             "c1_sequences": c1_sequences,
             "mismatches": [
