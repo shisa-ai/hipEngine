@@ -1285,6 +1285,42 @@ def test_batch_c_sweep_profiler_precondition_rejects_padded_trace_kernel_names(t
     }
 
 
+def test_batch_c_sweep_profiler_precondition_rejects_trace_kernel_names_without_duration_key(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"]["trace_kernel_names"].append("qwen35_batch_unmeasured")
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler.kernel_durations_ns keys must include trace_kernel_names",
+    }
+
+
 def test_batch_c_sweep_profiler_precondition_rejects_trace_kernel_names_missing_duration_key(tmp_path: Path) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
@@ -1317,7 +1353,7 @@ def test_batch_c_sweep_profiler_precondition_rejects_trace_kernel_names_missing_
         "kind": "profiler_summary",
         "artifact_path": str(profiler_path),
         "passed": False,
-        "reason": "profiler.trace_kernel_names must include kernel_durations_ns keys",
+        "reason": "profiler.trace_kernel_names must include kernel_durations_ns keys; profiler.kernel_durations_ns keys must include trace_kernel_names",
     }
 
 
@@ -6632,6 +6668,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_profiler_precondition_duration_trace["commands"][-1]["preconditions"][-1]["kernel_durations_ns"]["qwen35_batch_other"] = 1.0
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.kernel_durations_ns keys must be present in profiler_trace_kernel_names"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_duration_trace)
+    tampered_profiler_precondition_trace_duration = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_trace_duration["commands"][-1]["preconditions"][-1]["profiler_trace_kernel_names"].append("qwen35_batch_other")
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_kernel_names must be present in kernel_durations_ns"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_trace_duration)
     tampered_profiler_precondition_total_duration = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_total_duration["commands"][-1]["preconditions"][-1]["total_kernel_duration_ns"] = 0.0
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.total_kernel_duration_ns must be positive when profiler passed"):
@@ -21552,6 +21592,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     profiler_trace_kernel_names_missing_duration["profiler"]["trace_kernel_names"] = ["qwen35_batch_prefill"]
     with pytest.raises(ValueError, match="profiler.trace_kernel_names must include profiler.kernel_durations_ns keys"):
         validate_cn_diagnostic_artifact_payload(profiler_trace_kernel_names_missing_duration)
+
+    profiler_trace_kernel_name_without_duration = json.loads(json.dumps(accepted))
+    profiler_trace_kernel_name_without_duration["profiler"]["trace_kernel_names"].append("qwen35_batch_unmeasured")
+    with pytest.raises(ValueError, match="profiler.kernel_durations_ns keys must include profiler.trace_kernel_names"):
+        validate_cn_diagnostic_artifact_payload(profiler_trace_kernel_name_without_duration)
 
     profiler_wrong_target = json.loads(json.dumps(accepted))
     profiler_wrong_target["commands"]["profiler"] = "rocprofv3 --kernel-trace -- python3 scripts/qwen35_batch_serial_bench.py --batch-size 2"

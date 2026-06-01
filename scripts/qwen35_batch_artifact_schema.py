@@ -2239,6 +2239,15 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             )
             if missing_duration_names:
                 errors.append("profiler.trace_kernel_names must include profiler.kernel_durations_ns keys for accepted artifacts")
+            unmeasured_trace_names = sorted(
+                kernel_name
+                for kernel_name in profiler_trace_kernel_names
+                if _is_stripped_nonempty_string(kernel_name)
+                and not _has_disallowed_profiler_kernel_fragment(kernel_name)
+                and kernel_name not in kernel_durations
+            )
+            if unmeasured_trace_names:
+                errors.append("profiler.kernel_durations_ns keys must include profiler.trace_kernel_names for accepted artifacts")
         _validate_profiler_kernel_duration_total(profiler, kernel_durations, errors)
         _validate_profiler_kernel_duration_shares(profiler, kernel_durations, errors)
         _validate_profiler_kernel_duration_categories(profiler, kernel_durations, errors)

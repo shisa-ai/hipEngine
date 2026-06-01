@@ -1628,6 +1628,15 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                 )
                 if missing_duration_names:
                     reasons.append("profiler.trace_kernel_names must include kernel_durations_ns keys")
+                unmeasured_trace_names = sorted(
+                    kernel_name
+                    for kernel_name in profiler_trace_kernel_names
+                    if _is_stripped_non_empty_string(kernel_name)
+                    and not _has_disallowed_profiler_kernel_fragment(kernel_name)
+                    and kernel_name not in kernel_durations
+                )
+                if unmeasured_trace_names:
+                    reasons.append("profiler.kernel_durations_ns keys must include trace_kernel_names")
         _validate_profiler_kernel_durations(profiler, reasons)
         _validate_profiler_kernel_duration_categories(profiler, reasons)
         _validate_profiler_cpu_side_bottlenecks(profiler, reasons)
@@ -3348,6 +3357,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         break
                     if any(kernel_name not in profiler_kernel_names for kernel_name in kernel_durations):
                         errors.append("commands[].preconditions[].kernel_durations_ns keys must be present in profiler_trace_kernel_names")
+                        break
+                    if any(kernel_name not in kernel_durations for kernel_name in profiler_kernel_names):
+                        errors.append("commands[].preconditions[].profiler_trace_kernel_names must be present in kernel_durations_ns")
                         break
                     if not _is_positive_finite_number(profiler_precondition.get("total_kernel_duration_ns")):
                         errors.append("commands[].preconditions[].total_kernel_duration_ns must be positive when profiler passed")
