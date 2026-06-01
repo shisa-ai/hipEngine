@@ -7303,6 +7303,29 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.batch_size must match commands\[\]\.argv --batch-size/--rows"):
             c_sweep.validate_sweep_summary(tampered_planned_rows)
 
+        if "--model" in summary["commands"][index]["argv"]:
+            tampered_planned_model = json.loads(json.dumps(summary))
+            planned_model_entry = tampered_planned_model["commands"][index]
+            planned_model_argv = planned_model_entry["argv"]
+            planned_model_argv[planned_model_argv.index("--model") + 1] = "/tmp/stale-model"
+            planned_model_entry["command"] = shlex.join(planned_model_argv)
+            with pytest.raises(ValueError, match=r"commands\[\]\.argv --model must match options\.model"):
+                c_sweep.validate_sweep_summary(tampered_planned_model)
+
+        if "--fixture" in summary["commands"][index]["argv"]:
+            tampered_planned_fixture = json.loads(json.dumps(summary))
+            planned_fixture_entry = tampered_planned_fixture["commands"][index]
+            planned_fixture_argv = planned_fixture_entry["argv"]
+            planned_fixture_argv[planned_fixture_argv.index("--fixture") + 1] = "/tmp/stale-fixture.json"
+            planned_fixture_entry["command"] = shlex.join(planned_fixture_argv)
+            fixture_error = (
+                r"commands\[\]\.argv GGUF --fixture must match the template fixture"
+                if planned_fixture_entry["category"] == "gguf_native_diagnostic"
+                else r"commands\[\]\.argv --fixture must match options\.fixture"
+            )
+            with pytest.raises(ValueError, match=fixture_error):
+                c_sweep.validate_sweep_summary(tampered_planned_fixture)
+
         tampered_missing_planned_key = json.loads(json.dumps(summary))
         del tampered_missing_planned_key["commands"][index]["returncode"]
         with pytest.raises(ValueError, match=r"commands\[\] planned rows must contain exactly planned command keys"):
