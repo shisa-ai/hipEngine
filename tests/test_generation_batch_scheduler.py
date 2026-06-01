@@ -4865,7 +4865,7 @@ def test_batch_c_sweep_primitive_precondition_requires_device_metadata(tmp_path:
         "kind": "primitive_correctness",
         "artifact_path": str(primitive_path),
         "passed": False,
-        "reason": "device metadata is missing or not an object",
+        "reason": "device metadata is missing or not a plain object",
     }
     assert malformed_device["passed"] is False
     assert "device.env.HIP_VISIBLE_DEVICES is not a non-empty string when present" in malformed_device["reason"]
@@ -7934,6 +7934,22 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_primitive_precondition_device["commands"][-1]["preconditions"][0]["primitive_device"]["device_name"] = ""
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_device must contain valid device metadata when primitive passed"):
         c_sweep.validate_sweep_summary(tampered_primitive_precondition_device)
+    primitive_device_dict_type = type("PrimitiveDeviceDict", (dict,), {})
+    tampered_primitive_precondition_device_subclass = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_device_subclass["commands"][-1]["preconditions"][0]["primitive_device"] = primitive_device_dict_type(
+        tampered_primitive_precondition_device_subclass["commands"][-1]["preconditions"][0]["primitive_device"]
+    )
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_device must contain valid device metadata when primitive passed") as device_subclass_exc:
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_device_subclass)
+    assert "device metadata is missing or not a plain object" in str(device_subclass_exc.value)
+    primitive_env_dict_type = type("PrimitiveEnvDict", (dict,), {})
+    tampered_primitive_precondition_env_subclass = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_env_subclass["commands"][-1]["preconditions"][0]["primitive_device"]["env"] = primitive_env_dict_type(
+        tampered_primitive_precondition_env_subclass["commands"][-1]["preconditions"][0]["primitive_device"]["env"]
+    )
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_device must contain valid device metadata when primitive passed") as env_subclass_exc:
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_env_subclass)
+    assert "device.env is missing or not a plain object" in str(env_subclass_exc.value)
     tampered_primitive_precondition_blank_env_device = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_blank_env_device["commands"][-1]["preconditions"][0]["primitive_device"]["env"]["HIP_VISIBLE_DEVICES"] = "   "
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_device must contain valid device metadata when primitive passed"):

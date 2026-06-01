@@ -177,8 +177,8 @@ def _primitive_context_lens_matches(value: Any, rows: int) -> bool:
 
 
 def _primitive_device_metadata_blockers(device: Any) -> list[str]:
-    if not isinstance(device, Mapping):
-        return ["device metadata is missing or not an object"]
+    if type(device) is not dict:
+        return ["device metadata is missing or not a plain object"]
     blockers: list[str] = []
     expected_device_keys = {
         "env",
@@ -192,8 +192,8 @@ def _primitive_device_metadata_blockers(device: Any) -> list[str]:
     if set(device) - expected_device_keys:
         blockers.append("device metadata contains unknown keys")
     env = device.get("env")
-    if not isinstance(env, Mapping):
-        blockers.append("device.env is missing or not an object")
+    if type(env) is not dict:
+        blockers.append("device.env is missing or not a plain object")
     else:
         known_env_keys = ("HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES", "GPU_DEVICE_ORDINAL")
         if set(env) - set(known_env_keys):
