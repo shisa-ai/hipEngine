@@ -6492,6 +6492,12 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     profiler_trace_file_path.unlink()
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_files must exist when passed"):
         c_sweep.validate_sweep_summary(persisted)
+    profiler_trace_file_path.write_text("Kernel_Name,Start_Timestamp,End_Timestamp\nqwen35_batch_unexpected,0,12345\n")
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_kernel_names must match kernel-trace CSV rows when passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    profiler_trace_file_path.write_text("Kernel_Name,Start_Timestamp,End_Timestamp\nqwen35_batch_decode,0,100\n")
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.kernel_durations_ns must match kernel-trace CSV durations when profiler passed"):
+        c_sweep.validate_sweep_summary(persisted)
     profiler_trace_file_path.write_text(profiler_trace_file_payload)
     tampered_duration = json.loads(json.dumps(persisted))
     tampered_duration["commands"][-1]["duration_seconds"] = -1.0

@@ -3393,6 +3393,11 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         trace_file_path if trace_file_path.is_absolute() else REPO_ROOT / trace_file_path
                         for trace_file_path in (Path(trace_file) for trace_file in profiler_trace_files)
                     ]
+                    kernel_trace_file_paths = [
+                        trace_file_path
+                        for trace_file, trace_file_path in zip(profiler_trace_files, trace_file_check_paths)
+                        if _is_kernel_trace_csv_path(trace_file)
+                    ]
                     if any(trace_file_path.is_symlink() for trace_file_path in trace_file_check_paths):
                         errors.append("commands[].preconditions[].profiler_trace_files must not be symlinks when passed")
                         break
@@ -3541,6 +3546,35 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         break
                     if abs(category_share_sum - 1.0) > 1e-6:
                         errors.append("commands[].preconditions[].kernel_duration_category_shares must sum to 1.0 when profiler passed")
+                        break
+                    trace_kernel_names_from_csv: list[str] = []
+                    seen_trace_kernel_names: set[str] = set()
+                    trace_kernel_durations_from_csv: dict[str, float] = {}
+                    for trace_file_path in kernel_trace_file_paths:
+                        for kernel_name in _read_profiler_trace_kernel_names(trace_file_path):
+                            if kernel_name not in seen_trace_kernel_names:
+                                trace_kernel_names_from_csv.append(kernel_name)
+                                seen_trace_kernel_names.add(kernel_name)
+                        for kernel_name, duration_ns in _read_profiler_trace_kernel_durations(trace_file_path).items():
+                            trace_kernel_durations_from_csv[kernel_name] = trace_kernel_durations_from_csv.get(kernel_name, 0.0) + duration_ns
+                    if not trace_kernel_names_from_csv:
+                        errors.append("commands[].preconditions[].profiler_trace_files must contain readable kernel rows when passed")
+                        break
+                    if set(trace_kernel_names_from_csv) != set(profiler_kernel_names):
+                        errors.append("commands[].preconditions[].profiler_trace_kernel_names must match kernel-trace CSV rows when passed")
+                        break
+                    if set(trace_kernel_durations_from_csv) != set(kernel_durations):
+                        errors.append("commands[].preconditions[].kernel_durations_ns keys must match kernel-trace CSV rows when profiler passed")
+                        break
+                    trace_duration_error = False
+                    for kernel_name, trace_duration_ns in trace_kernel_durations_from_csv.items():
+                        duration_ns = float(kernel_durations[kernel_name])
+                        tolerance = max(1.0, abs(trace_duration_ns) * 1e-6)
+                        if abs(duration_ns - trace_duration_ns) > tolerance:
+                            errors.append("commands[].preconditions[].kernel_durations_ns must match kernel-trace CSV durations when profiler passed")
+                            trace_duration_error = True
+                            break
+                    if trace_duration_error:
                         break
                     if not _is_positive_finite_number(profiler_precondition.get("cpu_side_total_seconds")):
                         errors.append("commands[].preconditions[].cpu_side_total_seconds must be positive when profiler passed")
