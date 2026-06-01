@@ -1449,12 +1449,12 @@ roll-up/status view.
       `HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 4 --json /tmp/hipengine-multiloop-c4-correctness.json`
       and
       `HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json`;
-      combined c-sweep dry-run coverage locks per-category env-prefixed command text/argv with `HIP_VISIBLE_DEVICES=1`, per-category command text/argv schema and synchronization, Python launcher validation, script/category matching, artifact/`--json`, direct-symlink, parent-component, and symlink-parent rejection, output-dir containment, and category-filename binding, batch-size/`--rows` binding, model/fixture argv binding, workload-shape argv binding, cache/compiler argv binding, and retained gate argv binding, the primitive
+      combined c-sweep dry-run coverage locks per-category env-prefixed command text/argv with `HIP_VISIBLE_DEVICES=1`, per-category command text/argv schema and synchronization, Python launcher validation, script/category matching, batch-size schema/list membership and `--rows` binding, artifact/`--json`, direct-symlink, parent-component, and symlink-parent rejection, output-dir containment, and category-filename binding, model/fixture argv binding, workload-shape argv binding, cache/compiler argv binding, and retained gate argv binding, the primitive
       `primitive-c1/c2/c4/c8.json` command text, argv,
       `--rows`, `--seed 1234`, `--json` labels, typed top-level summary schema/exact keyset, commands collection schema/per-category planned-row keysets and extra-key rejection, typed status label, typed non-empty timestamp, typed git provenance object/keyset/status list, typed dry-run mode, typed output-dir root, typed non-empty unique batch-size plan/order,
       top-level options object schema/keyset, typed optional diagnostic include flags/count toggles, stop-on-failure and seed options, typed cached-build and compiler-version-file options, typed projection-dispatch artifact option, typed model/fixture workload labels, typed workload shape options, typed command/exact completed-command count bounds, typed status/category/condition rollup containers/kind-status labels/non-bool/non-string/non-negative/exact-match counts, typed empty skipped/failed rollup containers/object entry keysets/value matching, and rejects
       missing/empty/blank/stale per-category command text/argv, wrong device env,
-      missing/blank/unknown/known-mismatched/wrong script/category, missing/malformed/unlisted
+      missing/blank/unknown/known-mismatched/wrong script/category, per-category missing/malformed/unlisted
       `batch_size`, missing/unknown/invalid planned-row status,
       missing/malformed/non-null returncode, missing/malformed/non-finite/invalid duration,
       output-tail/all condition-field variants,

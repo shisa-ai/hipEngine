@@ -7320,6 +7320,22 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.category must match commands\[\]\.argv script"):
             c_sweep.validate_sweep_summary(tampered_planned_script)
 
+        for bad_batch_size in ("2", True, 0):
+            tampered_planned_bad_batch_size = json.loads(json.dumps(summary))
+            tampered_planned_bad_batch_size["commands"][index]["batch_size"] = bad_batch_size
+            with pytest.raises(ValueError, match=r"commands\[\]\.batch_size must be a positive int"):
+                c_sweep.validate_sweep_summary(tampered_planned_bad_batch_size)
+
+        tampered_planned_missing_batch_size = json.loads(json.dumps(summary))
+        del tampered_planned_missing_batch_size["commands"][index]["batch_size"]
+        with pytest.raises(ValueError, match=r"commands\[\]\.batch_size must be a positive int"):
+            c_sweep.validate_sweep_summary(tampered_planned_missing_batch_size)
+
+        tampered_planned_unlisted_batch_size = json.loads(json.dumps(summary))
+        tampered_planned_unlisted_batch_size["commands"][index]["batch_size"] = 16
+        with pytest.raises(ValueError, match=r"commands\[\]\.batch_size must be listed in batch_sizes"):
+            c_sweep.validate_sweep_summary(tampered_planned_unlisted_batch_size)
+
         tampered_planned_json_path = json.loads(json.dumps(summary))
         planned_json_entry = tampered_planned_json_path["commands"][index]
         planned_json_argv = planned_json_entry["argv"]
