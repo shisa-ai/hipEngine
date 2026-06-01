@@ -31353,3 +31353,42 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: P0-P12 open/partial checklist count stayed at `2`; status-helper tests passed (`107 passed`); source/status verification returned `match` with persisted status-integrity payload/SHA checks true and verification-failures SHA `7cfb3c2fa9bc85020fd8c8b7ce754f02a91428927683db62d584331fc89926da`; the full StepFun guard passed (`211` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was the pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes StepFun status-helper verification metadata/tests/docs/status artifact only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.
+
+## 2026-06-01 — StepFun persisted status integrity compact outputs
+
+Added compact status-helper outputs for persisted status-integrity verification. `--persisted-status-integrity-only` now emits the payload/SHA comparison result (`all_match=true`, `status_integrity_payload=true`, `status_integrity_sha256=true` for the canonical artifact), and `--persisted-status-integrity-failures-only` emits its failed-check list. Both modes work for normal status generation and `--verify-source-artifacts`; under `--fail-on-blocked` they preserve payload output while returning blocked exit code 2. Refreshed `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`; readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`). This is status/handoff integrity only; no oracle run, KV kernel launch, performance claim, or e2e correctness claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_correctness_status.py --persisted-status-integrity-only --fail-on-blocked --pretty > /tmp/stepfun-persisted-status-integrity.json; rc_payload=$?; printf '%s' "$rc_payload" > /tmp/stepfun-persisted-status-integrity.rc
+python3 scripts/stepfun_correctness_status.py --persisted-status-integrity-failures-only --fail-on-blocked --pretty > /tmp/stepfun-persisted-status-integrity-failures.json; rc_failures=$?; printf '%s' "$rc_failures" > /tmp/stepfun-persisted-status-integrity-failures.rc
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --persisted-status-integrity-only --pretty > /tmp/stepfun-verify-persisted-status-integrity.json
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --persisted-status-integrity-failures-only --pretty > /tmp/stepfun-verify-persisted-status-integrity-failures.json
+python3 - <<'PY'
+import json
+assert open('/tmp/stepfun-persisted-status-integrity.rc').read() == '2'
+assert open('/tmp/stepfun-persisted-status-integrity-failures.rc').read() == '2'
+payload=json.load(open('/tmp/stepfun-persisted-status-integrity.json'))
+failures=json.load(open('/tmp/stepfun-persisted-status-integrity-failures.json'))
+verify_payload=json.load(open('/tmp/stepfun-verify-persisted-status-integrity.json'))
+verify_failures=json.load(open('/tmp/stepfun-verify-persisted-status-integrity-failures.json'))
+assert payload == verify_payload
+assert payload == {
+    'all_match': True,
+    'checks': {'status_integrity_payload': True, 'status_integrity_sha256': True},
+    'failed_checks': [],
+}
+assert failures == verify_failures == []
+s=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+assert s['handoff_summary']['compact_output_modes']['persisted_status_integrity_only'] == 'persisted_status_integrity'
+assert s['handoff_summary']['compact_output_modes']['persisted_status_integrity_failures_only'] == 'persisted_status_integrity.failed_checks'
+print('persisted status integrity compact outputs ok')
+PY
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: P0-P12 open/partial checklist count stayed at `2`; status-helper tests passed (`110 passed`); compact persisted-status-integrity outputs returned expected blocked exit code 2 and matched the `--verify-source-artifacts` payloads; the full StepFun guard passed (`214` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was the pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes StepFun status-helper verification metadata/tests/docs/status artifact only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.

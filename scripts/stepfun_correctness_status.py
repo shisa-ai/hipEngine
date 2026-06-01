@@ -139,6 +139,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--persisted-status-integrity-only",
+        action="store_true",
+        help=(
+            "Emit only persisted_status_integrity for checking that embedded status_integrity "
+            "payload/SHA still match recomputed checks. Overrides summary and queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--persisted-status-integrity-failures-only",
+        action="store_true",
+        help=(
+            "Emit only persisted_status_integrity.failed_checks for compact embedded integrity "
+            "payload/SHA drift routing. Overrides summary and queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--source-artifacts-sha-only",
         action="store_true",
         help=(
@@ -2067,6 +2083,10 @@ def _handoff_summary(
             "status_integrity_only": "status_integrity",
             "status_integrity_sha_only": "status_integrity_sha256",
             "status_integrity_failures_only": "status_integrity.failed_checks",
+            "persisted_status_integrity_only": "persisted_status_integrity",
+            "persisted_status_integrity_failures_only": (
+                "persisted_status_integrity.failed_checks"
+            ),
             "readiness_summary_only": "readiness_summary",
             "readiness_summary_sha_only": "readiness_summary_sha256",
             "readiness_gates_only": "readiness_gates",
@@ -2539,6 +2559,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = verification["verification_failures"]
         elif args.source_artifact_failures_only:
             result = verification["source_artifact_failed_records"]
+        elif args.persisted_status_integrity_failures_only:
+            result = verification["persisted_status_integrity"]["failed_checks"]
+        elif args.persisted_status_integrity_only:
+            result = verification["persisted_status_integrity"]
         elif args.status_integrity_failures_only:
             result = verification["status_integrity"]["failed_checks"]
         elif args.status_integrity_sha_only:
@@ -2687,6 +2711,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["next_action_commands"]["kv_backed_decode_not_wired"].get(
             "resource_plan_refresh_command"
         )
+    elif args.persisted_status_integrity_failures_only:
+        result = _persisted_status_integrity(status, status["status_integrity"])[
+            "failed_checks"
+        ]
+    elif args.persisted_status_integrity_only:
+        result = _persisted_status_integrity(status, status["status_integrity"])
     elif args.status_integrity_failures_only:
         result = status["status_integrity"]["failed_checks"]
     elif args.status_integrity_sha_only:

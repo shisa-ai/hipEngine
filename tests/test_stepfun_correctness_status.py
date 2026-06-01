@@ -1230,6 +1230,10 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "status_integrity_only": "status_integrity",
         "status_integrity_sha_only": "status_integrity_sha256",
         "status_integrity_failures_only": "status_integrity.failed_checks",
+        "persisted_status_integrity_only": "persisted_status_integrity",
+        "persisted_status_integrity_failures_only": (
+            "persisted_status_integrity.failed_checks"
+        ),
         "readiness_summary_only": "readiness_summary",
         "readiness_summary_sha_only": "readiness_summary_sha256",
         "readiness_gates_only": "readiness_gates",
@@ -2780,6 +2784,93 @@ def test_stepfun_correctness_status_status_integrity_failures_only(
     assert payload == []
 
 
+def test_stepfun_correctness_status_persisted_status_integrity_only(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "persisted-status-integrity.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--status-integrity-only",
+            "--persisted-status-integrity-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert json.loads(output.read_text()) == {
+        "all_match": True,
+        "failed_checks": [],
+        "checks": {
+            "status_integrity_payload": True,
+            "status_integrity_sha256": True,
+        },
+    }
+
+
+def test_stepfun_correctness_status_persisted_status_integrity_failures_only(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "persisted-status-integrity-failures.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--persisted-status-integrity-only",
+            "--persisted-status-integrity-failures-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert json.loads(output.read_text()) == []
+
+
 def test_stepfun_correctness_status_source_artifacts_sha_only(capsys, tmp_path: Path) -> None:
     prompt = tmp_path / "prompt.json"
     oracle = tmp_path / "oracle.json"
@@ -3005,6 +3096,10 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "status_integrity_only": "status_integrity",
         "status_integrity_sha_only": "status_integrity_sha256",
         "status_integrity_failures_only": "status_integrity.failed_checks",
+        "persisted_status_integrity_only": "persisted_status_integrity",
+        "persisted_status_integrity_failures_only": (
+            "persisted_status_integrity.failed_checks"
+        ),
         "readiness_summary_only": "readiness_summary",
         "readiness_summary_sha_only": "readiness_summary_sha256",
         "readiness_gates_only": "readiness_gates",
@@ -4602,6 +4697,58 @@ def test_stepfun_correctness_status_verify_source_detects_persisted_status_integ
         "status_integrity_failed_checks": [],
         "persisted_status_integrity_failed_checks": ["status_integrity_sha256"],
     }
+
+
+def test_stepfun_correctness_status_verify_source_persisted_status_integrity_failures_only(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    status_output = tmp_path / "status.json"
+    failures_output = tmp_path / "persisted-failures.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(status_output),
+        ]
+    )
+    assert rc == 0
+    status_payload = json.loads(status_output.read_text())
+    status_payload["status_integrity_sha256"] = "stale"
+    status_output.write_text(json.dumps(status_payload))
+
+    rc = main(
+        [
+            "--verify-source-artifacts",
+            str(status_output),
+            "--persisted-status-integrity-failures-only",
+            "--output",
+            str(failures_output),
+            "--pretty",
+        ]
+    )
+
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert json.loads(failures_output.read_text()) == ["status_integrity_sha256"]
 
 
 def test_stepfun_correctness_status_verify_source_status_integrity_failures_only(

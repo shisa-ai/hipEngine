@@ -730,7 +730,9 @@ reporting.
   `status_integrity_sha256`, compact `--status-integrity-sha-only` exposes the
   digest for top-level embedded-check polling, and source-artifact verification
   now checks that the persisted integrity payload/SHA still match the recomputed
-  checks. The remaining oracle next
+  checks. Compact `--persisted-status-integrity-only` /
+  `--persisted-status-integrity-failures-only` outputs expose those persisted
+  payload/SHA verification checks directly. The remaining oracle next
   action is therefore a concrete longer-timeout rerun instead of only the prior
   60 s replay. Remaining
   implementation task: run a longer/faster StepFun-capable llama.cpp oracle and
