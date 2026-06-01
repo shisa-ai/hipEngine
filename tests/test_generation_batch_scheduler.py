@@ -7246,6 +7246,16 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     assert summary["status"] == "planned"
     assert summary["options"]["include_int8"] is True
     assert summary["options"]["include_gguf"] is True
+    assert summary["options"]["model"] == "/tmp/model"
+    tampered_model_option = json.loads(json.dumps(summary))
+    tampered_model_option["options"]["model"] = "/tmp/stale-model"
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv --model must match options\.model"):
+        c_sweep.validate_sweep_summary(tampered_model_option)
+    assert summary["options"]["fixture"] == "/tmp/fixture.json"
+    tampered_fixture_option = json.loads(json.dumps(summary))
+    tampered_fixture_option["options"]["fixture"] = "/tmp/stale-fixture.json"
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv --fixture must match options\.fixture"):
+        c_sweep.validate_sweep_summary(tampered_fixture_option)
     expected_shape_options = {
         "prompt_length": 512,
         "decode_tokens": 128,
