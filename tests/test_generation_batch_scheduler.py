@@ -7387,10 +7387,11 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\] planned rows must contain exactly planned command keys"):
             c_sweep.validate_sweep_summary(tampered_missing_returncode)
 
-        tampered_returncode = json.loads(json.dumps(summary))
-        tampered_returncode["commands"][index]["returncode"] = 0
-        with pytest.raises(ValueError, match=r"commands\[\]\.returncode must be null for planned/skipped rows"):
-            c_sweep.validate_sweep_summary(tampered_returncode)
+        for bad_returncode in (0, "0", True):
+            tampered_returncode = json.loads(json.dumps(summary))
+            tampered_returncode["commands"][index]["returncode"] = bad_returncode
+            with pytest.raises(ValueError, match=r"commands\[\]\.returncode must be null for planned/skipped rows"):
+                c_sweep.validate_sweep_summary(tampered_returncode)
 
         tampered_missing_duration = json.loads(json.dumps(summary))
         del tampered_missing_duration["commands"][index]["duration_seconds"]
