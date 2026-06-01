@@ -1,0 +1,456 @@
+{
+  "commands": {
+    "hipengine_ar_4096_512": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/qwen35_paro_bench.py --model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --backend hip_gfx1100 --token-id 9707 --prompt-length 4096 --decode-tokens 512 --warmup-decode-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/compare_hipengine_ar_4096_512.json",
+    "hipengine_dflash_4096_512": "HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD=4 HIPENGINE_W4_MULTI_ROW_PACK8_SITES=full_qk,linear_qkv_z,dense_gate_up,single_full_o,single_full_v,single_linear_out,single_shared_down,single_dense_down HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/dflash_chain_e2e_bench.py --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 --prompt-fixture /tmp/hipengine_dflash_4096_token9707.jsonl --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --max-prompts 1 --decode-tokens 512 --draft-budgets 4 --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --verifier-graph auto --canonical-commit-mode bulk_direct --drafter-query-mode budget_prefix --terminal-ar-tokens 5 --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/compare_hipengine_dflash_4096_512.json",
+    "hipfire_accuracy_ar_10prompt": "HIP_VISIBLE_DEVICES=0 HIPFIRE_DFLASH_LOOP_BREAK=off /tmp/hipfire-target/release/examples/dflash_spec_demo --target /home/lhl/.hipfire/models/qwen3.6-27b.mq4 --draft /home/lhl/.hipfire/models/qwen36-27b-dflash-mq4.hfq --prompts-file /tmp/hipfire_accuracy_prompts.jsonl --temp 0.0 --no-chatml --kv-mode q8 --ctx 4096 --ar-baseline",
+    "hipfire_accuracy_dflash_10prompt": "HIP_VISIBLE_DEVICES=0 HIPFIRE_DFLASH_LOOP_BREAK=off /tmp/hipfire-target/release/examples/dflash_spec_demo --target /home/lhl/.hipfire/models/qwen3.6-27b.mq4 --draft /home/lhl/.hipfire/models/qwen36-27b-dflash-mq4.hfq --prompts-file /tmp/hipfire_accuracy_prompts.jsonl --temp 0.0 --no-chatml --kv-mode q8 --ctx 4096",
+    "hipfire_accuracy_dflash_notape_subset": "HIP_VISIBLE_DEVICES=0 HIPFIRE_DFLASH_LOOP_BREAK=off HIPFIRE_PREFILL_BATCHED=0 /tmp/hipfire-target/release/examples/dflash_spec_demo --target /home/lhl/.hipfire/models/qwen3.6-27b.mq4 --draft /home/lhl/.hipfire/models/qwen36-27b-dflash-mq4.hfq --prompts-file /tmp/hipfire_accuracy_fail_subset.jsonl --temp 0.0 --no-chatml --kv-mode q8 --ctx 4096 --no-tape",
+    "hipfire_ar_4096_512_clean": "HIP_VISIBLE_DEVICES=0 HIPFIRE_DFLASH_LOOP_BREAK=off /tmp/hipfire-target/release/examples/dflash_spec_demo --target /home/lhl/.hipfire/models/qwen3.6-27b.mq4 --draft /home/lhl/.hipfire/models/qwen36-27b-dflash-mq4.hfq --prompt-file /tmp/hipfire_4096_token9707_prompt.txt --max 512 --temp 0.0 --no-chatml --kv-mode q8 --ctx 8192 --ar-baseline",
+    "hipfire_dflash_4096_512_clean": "HIP_VISIBLE_DEVICES=0 HIPFIRE_DFLASH_LOOP_BREAK=off /tmp/hipfire-target/release/examples/dflash_spec_demo --target /home/lhl/.hipfire/models/qwen3.6-27b.mq4 --draft /home/lhl/.hipfire/models/qwen36-27b-dflash-mq4.hfq --prompt-file /tmp/hipfire_4096_token9707_prompt.txt --max 512 --temp 0.0 --no-chatml --kv-mode q8 --ctx 8192"
+  },
+  "date": "2026-06-02",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "hip_visible_devices": "0",
+    "sampled_peak_source": "/sys/class/drm/card*/device/mem_info_vram_used at 50ms"
+  },
+  "hipfire_accuracy": {
+    "hard_mismatch_rows": [
+      {
+        "accept": "0.7590",
+        "ar_len": 166,
+        "ar_md5": "ae97dd32b35fa5260e4da75f52a4ee7e",
+        "ar_tok_s": "34.58",
+        "dflash_len": 162,
+        "dflash_md5": "cfc2e5ddcf7016395153defcbde1b66b",
+        "dflash_tok_s": "197.19",
+        "exact": false,
+        "first_mismatch": 73,
+        "idx": 0,
+        "label": "hipfire_merge_sort_thinking_off",
+        "norm_exact_trim_terminal": false,
+        "prefix_equal_to_min": false,
+        "tau": "11.3846"
+      },
+      {
+        "accept": "0.2590",
+        "ar_len": 128,
+        "ar_md5": "13dc9a5057be8f57698ee86f4663f770",
+        "ar_tok_s": "34.12",
+        "dflash_len": 128,
+        "dflash_md5": "c32227ff5da954f6cabafc9b7984e5c9",
+        "dflash_tok_s": "55.61",
+        "exact": false,
+        "first_mismatch": 54,
+        "idx": 1,
+        "label": "code:quicksort_prefix",
+        "norm_exact_trim_terminal": false,
+        "prefix_equal_to_min": false,
+        "tau": "3.8846"
+      },
+      {
+        "accept": "0.2381",
+        "ar_len": 128,
+        "ar_md5": "92ac9557145e352064dd6d7f22a825af",
+        "ar_tok_s": "34.83",
+        "dflash_len": 129,
+        "dflash_md5": "a6174910b2de3fbf30e321db9dc8fa26",
+        "dflash_tok_s": "74.85",
+        "exact": false,
+        "first_mismatch": 118,
+        "idx": 8,
+        "label": "instruct:simple_qa_no_template",
+        "norm_exact_trim_terminal": false,
+        "prefix_equal_to_min": false,
+        "tau": "3.5714"
+      },
+      {
+        "accept": "0.2151",
+        "ar_len": 128,
+        "ar_md5": "797e095391558f5f438aefd2490f0dd7",
+        "ar_tok_s": "34.78",
+        "dflash_len": 132,
+        "dflash_md5": "cbb7a5ad527f2a190b402d548f8e21a1",
+        "dflash_tok_s": "70.13",
+        "exact": false,
+        "first_mismatch": 74,
+        "idx": 9,
+        "label": "instruct:simple_qa_qwen_static_chat",
+        "norm_exact_trim_terminal": false,
+        "prefix_equal_to_min": false,
+        "tau": "3.2258"
+      }
+    ],
+    "interpretation": "Default hipfire DFlash is not strict greedy-equivalent on this 10-prompt audit. Some rows only over-emit after matching the AR prefix, but four rows diverge before the shared length. The --no-tape/HIPFIRE_PREFILL_BATCHED=0 subset did not fix those four hard mismatches.",
+    "notape_subset_rows": [
+      {
+        "ar_len": 166,
+        "dflash_len": 162,
+        "dflash_tok_s": "30.30",
+        "exact": false,
+        "first_mismatch": 73,
+        "label": "hipfire_merge_sort_thinking_off",
+        "prefix_equal_to_min": false,
+        "tau": "11.3846"
+      },
+      {
+        "ar_len": 128,
+        "dflash_len": 50,
+        "dflash_tok_s": "23.99",
+        "exact": false,
+        "first_mismatch": 49,
+        "label": "code:quicksort_prefix",
+        "prefix_equal_to_min": false,
+        "tau": "3.0833"
+      },
+      {
+        "ar_len": 128,
+        "dflash_len": 129,
+        "dflash_tok_s": "24.83",
+        "exact": false,
+        "first_mismatch": 118,
+        "label": "instruct:simple_qa_no_template",
+        "prefix_equal_to_min": false,
+        "tau": "3.7407"
+      },
+      {
+        "ar_len": 128,
+        "dflash_len": 132,
+        "dflash_tok_s": "23.97",
+        "exact": false,
+        "first_mismatch": 74,
+        "label": "instruct:simple_qa_qwen_static_chat",
+        "prefix_equal_to_min": false,
+        "tau": "3.2258"
+      }
+    ],
+    "prefix_equal_to_min_rows": 6,
+    "prompt_count": 10,
+    "rows": [
+      {
+        "accept": "0.7590",
+        "ar_len": 166,
+        "ar_md5": "ae97dd32b35fa5260e4da75f52a4ee7e",
+        "ar_tok_s": "34.58",
+        "dflash_len": 162,
+        "dflash_md5": "cfc2e5ddcf7016395153defcbde1b66b",
+        "dflash_tok_s": "197.19",
+        "exact": false,
+        "first_mismatch": 73,
+        "idx": 0,
+        "label": "hipfire_merge_sort_thinking_off",
+        "norm_exact_trim_terminal": false,
+        "prefix_equal_to_min": false,
+        "tau": "11.3846"
+      },
+      {
+        "accept": "0.2590",
+        "ar_len": 128,
+        "ar_md5": "13dc9a5057be8f57698ee86f4663f770",
+        "ar_tok_s": "34.12",
+        "dflash_len": 128,
+        "dflash_md5": "c32227ff5da954f6cabafc9b7984e5c9",
+        "dflash_tok_s": "55.61",
+        "exact": false,
+        "first_mismatch": 54,
+        "idx": 1,
+        "label": "code:quicksort_prefix",
+        "norm_exact_trim_terminal": false,
+        "prefix_equal_to_min": false,
+        "tau": "3.8846"
+      },
+      {
+        "accept": "0.2194",
+        "ar_len": 104,
+        "ar_md5": "b7d66352ac1927d793031cf7a0052eb6",
+        "ar_tok_s": "34.31",
+        "dflash_len": 104,
+        "dflash_md5": "b7d66352ac1927d793031cf7a0052eb6",
+        "dflash_tok_s": "73.12",
+        "exact": true,
+        "first_mismatch": null,
+        "idx": 2,
+        "label": "code:function_continuation",
+        "norm_exact_trim_terminal": true,
+        "prefix_equal_to_min": true,
+        "tau": "3.2917"
+      },
+      {
+        "accept": "0.3515",
+        "ar_len": 128,
+        "ar_md5": "5e2521068c8cbf30ca77468d84e0319d",
+        "ar_tok_s": "34.15",
+        "dflash_len": 139,
+        "dflash_md5": "2aa01cd11b78bb6f5fc388874388efd5",
+        "dflash_tok_s": "102.03",
+        "exact": false,
+        "first_mismatch": null,
+        "idx": 3,
+        "label": "code:class_continuation",
+        "norm_exact_trim_terminal": false,
+        "prefix_equal_to_min": true,
+        "tau": "5.2727"
+      },
+      {
+        "accept": "0.4750",
+        "ar_len": 128,
+        "ar_md5": "556e5479c111f32169ef0b394ab26cfe",
+        "ar_tok_s": "34.14",
+        "dflash_len": 131,
+        "dflash_md5": "dbed8f7a66bff36719bfa429f659194c",
+        "dflash_tok_s": "130.14",
+        "exact": false,
+        "first_mismatch": null,
+        "idx": 4,
+        "label": "code:json_yaml_continuation",
+        "norm_exact_trim_terminal": false,
+        "prefix_equal_to_min": true,
+        "tau": "7.1250"
+      },
+      {
+        "accept": "0.5476",
+        "ar_len": 128,
+        "ar_md5": "b644aad9b5081968fdb882c0ac24561d",
+        "ar_tok_s": "34.30",
+        "dflash_len": 130,
+        "dflash_md5": "126bc190d11ca2330db81688e4b0a4c5",
+        "dflash_tok_s": "147.47",
+        "exact": false,
+        "first_mismatch": null,
+        "idx": 5,
+        "label": "code:humaneval_add",
+        "norm_exact_trim_terminal": false,
+        "prefix_equal_to_min": true,
+        "tau": "8.2143"
+      },
+      {
+        "accept": "0.2692",
+        "ar_len": 128,
+        "ar_md5": "6d4c417fd9b09e4c3d12f2491b5f9e3a",
+        "ar_tok_s": "33.94",
+        "dflash_len": 132,
+        "dflash_md5": "a384c1c6c3debb1ce77f4eafa2d5606e",
+        "dflash_tok_s": "83.56",
+        "exact": false,
+        "first_mismatch": null,
+        "idx": 6,
+        "label": "code:humaneval_sort_third",
+        "norm_exact_trim_terminal": false,
+        "prefix_equal_to_min": true,
+        "tau": "4.0385"
+      },
+      {
+        "accept": "0.3485",
+        "ar_len": 128,
+        "ar_md5": "539f52a1699336a0c795d185b890bccc",
+        "ar_tok_s": "34.33",
+        "dflash_len": 138,
+        "dflash_md5": "b8dad604a18edbc5fd220f5badd4a0a9",
+        "dflash_tok_s": "101.72",
+        "exact": false,
+        "first_mismatch": null,
+        "idx": 7,
+        "label": "math:short_gsm8k_style",
+        "norm_exact_trim_terminal": false,
+        "prefix_equal_to_min": true,
+        "tau": "5.2273"
+      },
+      {
+        "accept": "0.2381",
+        "ar_len": 128,
+        "ar_md5": "92ac9557145e352064dd6d7f22a825af",
+        "ar_tok_s": "34.83",
+        "dflash_len": 129,
+        "dflash_md5": "a6174910b2de3fbf30e321db9dc8fa26",
+        "dflash_tok_s": "74.85",
+        "exact": false,
+        "first_mismatch": 118,
+        "idx": 8,
+        "label": "instruct:simple_qa_no_template",
+        "norm_exact_trim_terminal": false,
+        "prefix_equal_to_min": false,
+        "tau": "3.5714"
+      },
+      {
+        "accept": "0.2151",
+        "ar_len": 128,
+        "ar_md5": "797e095391558f5f438aefd2490f0dd7",
+        "ar_tok_s": "34.78",
+        "dflash_len": 132,
+        "dflash_md5": "cbb7a5ad527f2a190b402d548f8e21a1",
+        "dflash_tok_s": "70.13",
+        "exact": false,
+        "first_mismatch": 74,
+        "idx": 9,
+        "label": "instruct:simple_qa_qwen_static_chat",
+        "norm_exact_trim_terminal": false,
+        "prefix_equal_to_min": false,
+        "tau": "3.2258"
+      }
+    ],
+    "strict_exact_rows": 1,
+    "truncate_to_ar_length_exact_rows": 6
+  },
+  "notes": [
+    "Hipfire AR baseline command still requires and loads the draft artifact in dflash_spec_demo, so Hipfire AR peak VRAM includes target+draft residency.",
+    "HipEngine AR prefill/decode comes from qwen35_paro_bench target-only; hipEngine DFlash peak comes from target+drafter dflash_chain_e2e_bench.",
+    "4096/512 shape prompt is synthetic repeated token 9707 and is not a quality representative prompt."
+  ],
+  "paroquant_quality": {
+    "canonical_protocol_source": "/home/lhl/paroquant/docs/QUANTIZATION-QUALITY.md",
+    "canonical_qwen36_35b_a3b_paro_full4096_e5_packed": {
+      "bpw": 4.68,
+      "delta_nll_nats": 0.009506,
+      "mean_kl_nats": 0.034684,
+      "ppl": 6.6216,
+      "reference": "Original BF16 HF Qwen3.6-35B-A3B",
+      "size_gib": 19.068,
+      "top1_agreement_pct": 92.0
+    },
+    "canonical_readme_source": "/home/lhl/paroquant/README.md",
+    "local_kld_smoke": {
+      "by_source": {
+        "qwen36-paro-tx4-codebreadth-chotto-val-64x2048": {
+          "delta_nll_nats": -0.006788779431440699,
+          "mean_kl_nats": 0.05362155775385579,
+          "quant_nll_nats": 3.3526718259796384,
+          "quant_ppl": 28.578989814252253,
+          "ref_nll_nats": 3.359460605411079,
+          "ref_ppl": 28.773666332767583,
+          "tokens": 508
+        },
+        "wikitext2": {
+          "delta_nll_nats": 0.06976402462936762,
+          "mean_kl_nats": 0.08872193426597776,
+          "quant_nll_nats": 2.9871385228915477,
+          "quant_ppl": 19.828861401224966,
+          "ref_nll_nats": 2.91737449826218,
+          "ref_ppl": 18.49267112636086,
+          "tokens": 508
+        }
+      },
+      "overall": {
+        "delta_nll_nats": 0.03148762259896346,
+        "mean_kl_nats": 0.07117174600991677,
+        "quant_nll_nats": 3.169905174435593,
+        "quant_ppl": 23.80522690532119,
+        "ref_nll_nats": 3.1384175518366297,
+        "ref_ppl": 23.0673350994759,
+        "tokens": 1016
+      },
+      "quant_model": "/models/qwen36-quant/Qwen3.6-35B-A3B-PARO-full4096-e5",
+      "ref_model": "/home/lhl/.cache/huggingface/hub/models--Qwen--Qwen3.6-35B-A3B/snapshots/995ad96eacd98c81ed38be0c5b274b04031597b0",
+      "samples_per_source": 4,
+      "seed": 1234,
+      "seq_len": 128,
+      "sources": [
+        "wikitext2",
+        "/models/qwen36-calibration/qwen36-paro-tx4-codebreadth-chotto-val-64x2048.jsonl"
+      ]
+    },
+    "local_kld_smoke_source": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e/kld-smoke.json",
+    "rerun_status": "canonical full tx4/quality3 rerun not executed: this machine has ~/paroquant code, but the documented BF16 reference model path and validation JSONL are not present under the expected /home/lhl/.cache and /models/qwen36-calibration paths. Used the checked-in canonical README row plus local kld-smoke attached to the packed PARO artifact."
+  },
+  "performance": {
+    "hipengine": {
+      "ar_decode_seconds": 17.989009676035494,
+      "ar_decode_tok_s": 28.461822480537855,
+      "ar_peak_vram_gib_external": 31.64205551147461,
+      "dflash_acceptance": {
+        "accept_histogram": {
+          "4": 102
+        },
+        "accepted_output_tokens": 408,
+        "avg_accept_length": 4.0,
+        "exact_rate_0_to_n": {
+          "0": 0.0,
+          "1": 0.0,
+          "10": 0.0,
+          "2": 0.0,
+          "3": 0.0,
+          "4": 1.0,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "ge_rate_1_to_n": {
+          "1": 1.0,
+          "10": 0.0,
+          "2": 1.0,
+          "3": 1.0,
+          "4": 1.0,
+          "5": 0.0,
+          "6": 0.0,
+          "7": 0.0,
+          "8": 0.0,
+          "9": 0.0
+        },
+        "multi_token_acceptance_rate": 1.0,
+        "steps": 102
+      },
+      "dflash_correctness_passed": true,
+      "dflash_decode_tok_s": 24.946370857124442,
+      "dflash_exact_match_ar": true,
+      "dflash_peak_vram_gib_external": 33.18017578125,
+      "dflash_same_session_ar_tok_s": 28.002236097118658,
+      "dflash_speedup_vs_same_session_ar": 0.8908706708494378,
+      "drafter": "z-lab/Qwen3.6-27B-DFlash snapshot 0919688658996800f86b895034249700e9481106",
+      "prefill_tok_s": 629.0177750282737,
+      "quant": "w4_paro packed safetensors",
+      "target": "z-lab/Qwen3.6-27B-PARO snapshot 84f86409151d4f2ec86dc0b6a096d5f6daa7f207"
+    },
+    "hipfire": {
+      "ar_decode_seconds": 15.3751,
+      "ar_decode_tok_s": 33.3,
+      "ar_emitted_tokens": 512,
+      "ar_peak_vram_gib_external": 18.688716888427734,
+      "ar_prefill_tok_s": 591.97,
+      "ar_tokens_md5": "6afa7271902532500b7c62bb5300c5d6",
+      "clean_run_recompiled": {
+        "ar": false,
+        "dflash": false
+      },
+      "dflash_accept_rate": 1.0,
+      "dflash_decode_seconds": 2.8481,
+      "dflash_decode_tok_s": 180.12,
+      "dflash_decode_tok_s_normalized_to_512": 179.76888888888888,
+      "dflash_emitted_tokens": 513,
+      "dflash_extra_tokens": 1,
+      "dflash_peak_vram_gib_external": 18.780574798583984,
+      "dflash_prefill_tok_s": 595.22,
+      "dflash_prefix_matches_ar_512": true,
+      "dflash_tau": 15.0,
+      "dflash_tokens_md5": "4b8c33ae11fd0f6842e28fbd454c5479",
+      "drafter": "/home/lhl/.hipfire/models/qwen36-27b-dflash-mq4.hfq",
+      "quant": "MQ4 target + HFQ/MQ4 DFlash drafter, q8 KV",
+      "target": "/home/lhl/.hipfire/models/qwen3.6-27b.mq4"
+    },
+    "prompt": {
+      "notes": "Chosen to force identical 4096-token input across HF tokenizer and hipfire tokenizer; this is a shape stress prompt, not a quality prompt.",
+      "shape": "4096 prompt tokens / max 512 generated tokens",
+      "synthetic": true,
+      "text": ".Q repeated 4096 times",
+      "token_id": 9707
+    },
+    "ratios": {
+      "hipengine_dflash_vs_hipengine_ar_same_session": 0.8908706708494378,
+      "hipfire_ar_vs_hipengine_ar": 1.1699883246327771,
+      "hipfire_dflash_vs_hipengine_dflash": 7.220288715805709,
+      "hipfire_dflash_vs_hipfire_ar": 5.40900900900901,
+      "hipfire_prefill_vs_hipengine_prefill_using_dflash_prefill": 0.9462689666810218
+    }
+  },
+  "performance_claim": false,
+  "schema": 1,
+  "software": {
+    "hipcc_version": "HIP version: 7.2.53211-364a905\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n",
+    "hipengine_branch": "mpt-dflash",
+    "hipengine_commit": "f074ce018fd479af54b4d3b9037bbbe4ee97b864",
+    "hipfire_commit": "d8974f62694a46fbfc6047041792de8c3c8d6d5d",
+    "paroquant_commit": "c78b527885e9800774a95597aa9ea755f16911d8",
+    "python": "3.12.9"
+  },
+  "status": "diagnostic"
+}

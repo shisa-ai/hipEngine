@@ -24775,3 +24775,116 @@ Implementation findings from hipfire source:
   τ≈11.4 at B=16.  HipEngine retained DFlash remains `43.76 tok/s` exact `9/9`
   on its 9-prompt suite; current live hipEngine MTP is `0.364x` AR on the
   llama.cpp-compatible 9-prompt B=3/D64 suite.
+
+
+## 2026-06-02 hipfire vs hipEngine 27B 4096/512 diagnostic + quality/accuracy audit
+
+User asked for hipfire vs hipEngine comparison at 4096-token prompt / 512-token
+decode, peak VRAM for AR and DFlash, standard ParoQuant PPL/KLD context, and a
+hipfire DFlash accuracy check.  Artifact:
+`benchmarks/results/2026-06-02-hipfire-vs-hipengine-27b-4096-512-diagnostic.json`
+(`status=diagnostic`, `performance_claim=false`).  Prompt for the shape row was a
+synthetic exact-token input: token id `9707` (`.Q`) repeated 4096 times, used only
+to force the same prompt length across hipEngine and hipfire tokenizers; it is not
+a representative quality prompt.
+
+Peak VRAM was sampled externally from
+`/sys/class/drm/card*/device/mem_info_vram_used` every 50 ms on GPU0/W7900.
+Hipfire clean runs were after the first shape run compiled missing prebuilt-kernel
+hashes; clean AR/DFlash runs report `recompiling=false`.
+
+Commands (wrapped by `/tmp/run_with_vram_peak.py` for peak VRAM):
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/qwen35_paro_bench.py \
+  --model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 \
+  --backend hip_gfx1100 --token-id 9707 --prompt-length 4096 \
+  --decode-tokens 512 --warmup-decode-tokens 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --json /tmp/compare_hipengine_ar_4096_512.json
+```
+
+```bash
+HIPENGINE_SMALL_BATCH_DECODE_THRESHOLD=4 \
+HIPENGINE_W4_MULTI_ROW_PACK8_SITES=full_qk,linear_qkv_z,dense_gate_up,single_full_o,single_full_v,single_linear_out,single_shared_down,single_dense_down \
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. \
+python3 scripts/dflash_chain_e2e_bench.py \
+  --target-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-PARO/snapshots/84f86409151d4f2ec86dc0b6a096d5f6daa7f207 \
+  --drafter-model /home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-27B-DFlash/snapshots/0919688658996800f86b895034249700e9481106 \
+  --prompt-fixture /tmp/hipengine_dflash_4096_token9707.jsonl \
+  --backend hip_gfx1100 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build \
+  --max-prompts 1 --decode-tokens 512 --draft-budgets 4 \
+  --verifier-mode native_bulk_bplus1 --full-attn-chain-mode batched --verifier-graph auto \
+  --canonical-commit-mode bulk_direct --drafter-query-mode budget_prefix --terminal-ar-tokens 5 \
+  --hardware-gpu 'AMD Radeon Pro W7900' --json /tmp/compare_hipengine_dflash_4096_512.json
+```
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPFIRE_DFLASH_LOOP_BREAK=off \
+/tmp/hipfire-target/release/examples/dflash_spec_demo \
+  --target /home/lhl/.hipfire/models/qwen3.6-27b.mq4 \
+  --draft /home/lhl/.hipfire/models/qwen36-27b-dflash-mq4.hfq \
+  --prompt-file /tmp/hipfire_4096_token9707_prompt.txt \
+  --max 512 --temp 0.0 --no-chatml --kv-mode q8 --ctx 8192 [--ar-baseline]
+```
+
+Shape-row results:
+
+| Engine | Mode | Prefill tok/s | Decode tok/s | Same-session vs AR | Peak VRAM GiB | Correctness / notes |
+|---|---|---:|---:|---:|---:|---|
+| hipEngine 27B PARO | AR target-only | 629.02 | 28.46 | 1.00x | 31.64 | forced 512 decode, graph replay |
+| hipEngine 27B PARO+DFlash | DFlash B=4 | n/a | 24.95 | 0.891x | 33.18 | exact vs same-session AR; all finite; accept length 4 every cycle |
+| hipfire MQ4/q8 | AR baseline | 591.97 | 33.30 | 1.00x | 18.69 | `dflash_spec_demo --ar-baseline` still loads draft, so peak includes target+draft |
+| hipfire MQ4/q8 + DFlash | DFlash B=16 | 595.22 | 180.12 | 5.41x | 18.78 | emitted 513 tokens for max 512; first 512 tokens match AR; normalized-to-512 tok/s `179.77` |
+
+Ratios: hipfire AR is `1.17x` hipEngine AR on this synthetic shape; hipfire
+DFlash is `5.41x` its AR and `7.22x` hipEngine DFlash.  hipEngine DFlash loses
+to its same-session AR on this long-context synthetic prompt (`0.891x`) even with
+perfect B=4 acceptance because each cycle verifies 5 target rows.  Hipfire's huge
+DFlash win here is helped by perfect B=16 acceptance on the repeated-token prompt
+and by the lower-memory MQ4/q8 target format.
+
+ParoQuant PPL/KLD: read `~/paroquant/docs/QUANTIZATION-QUALITY.md` and
+`~/paroquant/README.md`.  Canonical full tx4/quality3 rerun was not executed
+because the documented BF16 reference path
+`/home/lhl/.cache/huggingface/hub/models--Qwen--Qwen3.6-35B-A3B/snapshots/995ad96eacd98c81ed38be0c5b274b04031597b0`
+and validation JSONL `/models/qwen36-calibration/...` are absent on this machine.
+Used the checked-in canonical row plus the local `kld-smoke.json` attached to the
+packed 35B PARO artifact:
+
+- Canonical `~/paroquant` README row for Qwen3.6-35B-A3B PARO full4096-e5 packed:
+  PPL `6.6216`, ΔNLL `+0.009506`, mean KL `0.034684`, top-1 agreement `92.000%`,
+  size `19.068 GiB`, `4.680 BPW` vs original BF16 HF.
+- Local kld-smoke (`1016` scored tokens) for the packed 35B PARO artifact:
+  mean KL `0.071172`, ΔNLL `+0.031488`, ref PPL `23.066`, quant PPL `23.805`.
+
+Hipfire DFlash accuracy audit: built `/tmp/hipfire_accuracy_prompts.jsonl` from
+one hipfire merge-sort prompt plus the first 9 hipEngine stable DFlash prompts,
+ran hipfire AR and default DFlash resident over the same rows (`max=256` for
+merge-sort, `max=128` for the others, no ChatML wrapping except prompts already
+containing it), then compared emitted token ids.
+
+- Strict exact rows: `1/10`.
+- Prefix-equal-to-min rows: `6/10`.
+- Exact if DFlash is truncated to AR length: `6/10`.
+- Hard mismatches before the shared output length: `4/10`:
+  `hipfire_merge_sort_thinking_off` first mismatch index `73`,
+  `code:quicksort_prefix` index `54`,
+  `instruct:simple_qa_no_template` index `118`, and
+  `instruct:simple_qa_qwen_static_chat` index `74`.
+- The default DFlash over-emits beyond requested max on several rows (and on the
+  4096/512 synthetic row), which inflates emitted-token tok/s slightly unless
+  normalized/truncated.
+- A slower `--no-tape` + `HIPFIRE_PREFILL_BATCHED=0` rerun on the four hard
+  mismatch rows did **not** fix the mismatches; it was ~24-30 tok/s and retained
+  the same first-mismatch locations for 3 rows, with quicksort stopping after 50
+  tokens and mismatching at 49.
+
+Conclusion: hipfire's reported 200 tok/s class is real on favorable prompts and
+on the synthetic perfect-acceptance 4K shape, but default hipfire DFlash is not a
+strict greedy-equivalent path under our exact-token audit.  Treat hipfire DFlash
+numbers as throughput diagnostics unless outputs are externally truncated and
+prompt-specific exactness is proven.
