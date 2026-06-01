@@ -8694,6 +8694,19 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         ("--max-new-tokens", "8", r"commands\[\]\.argv GGUF --max-new-tokens must match the template decode length"),
         ("--quant", "gguf_q2_bad", r"commands\[\]\.argv GGUF --quant must be one of the template quants"),
     ):
+        for index in gguf_entry_indices:
+            tampered = json.loads(json.dumps(summary))
+            argv = tampered["commands"][index]["argv"]
+            argv[argv.index(flag) + 1] = stale_value
+            tampered["commands"][index]["command"] = shlex.join(argv)
+            with pytest.raises(ValueError, match=expected_error):
+                c_sweep.validate_sweep_summary(tampered)
+    for flag, stale_value, expected_error in (
+        ("--fixture", "tests/fixtures/gguf/other.json", r"commands\[\]\.argv GGUF --fixture must match the template fixture"),
+        ("--backend", "cpu_reference", r"commands\[\]\.argv GGUF --backend must match the template backend"),
+        ("--max-new-tokens", "8", r"commands\[\]\.argv GGUF --max-new-tokens must match the template decode length"),
+        ("--quant", "gguf_q2_bad", r"commands\[\]\.argv GGUF --quant must be one of the template quants"),
+    ):
         tampered = json.loads(json.dumps(summary))
         argv = tampered["commands"][gguf_c8_index]["argv"]
         argv[argv.index(flag) + 1] = stale_value
