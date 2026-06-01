@@ -7638,6 +7638,24 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         tampered_planned_git_dirty["commands"][index]["git_dirty"] = not summary["git"]["dirty"]
         with pytest.raises(ValueError, match=r"commands\[\]\.git_dirty must match git\.dirty"):
             c_sweep.validate_sweep_summary(tampered_planned_git_dirty)
+
+    non_optional_entry_indices = [
+        index
+        for index, entry in enumerate(summary["commands"])
+        if entry["category"] not in {"int8_native_diagnostic", "gguf_native_diagnostic"}
+    ]
+    for index in non_optional_entry_indices:
+        planned_artifact_directory_path = Path(summary["commands"][index]["artifact_path"])
+        try:
+            planned_artifact_directory_path.mkdir()
+            with pytest.raises(
+                ValueError, match=r"commands\[\]\.artifact_path must be a regular file when it already exists"
+            ):
+                c_sweep.validate_sweep_summary(summary)
+        finally:
+            if planned_artifact_directory_path.is_dir():
+                planned_artifact_directory_path.rmdir()
+
     assert summary["schema"] == 1
     for stale_schema in (True, "1", 2):
         tampered_summary_schema = json.loads(json.dumps(summary))
