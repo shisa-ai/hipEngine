@@ -7272,7 +7272,24 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     with pytest.raises(ValueError, match="timestamp must include timezone"):
         c_sweep.validate_sweep_summary(tampered_naive_timestamp)
     assert set(summary["git"]) == {"commit", "dirty", "status_short"}
+    tampered_git_extra_key = json.loads(json.dumps(summary))
+    tampered_git_extra_key["git"]["unexpected"] = "field"
+    with pytest.raises(ValueError, match="git must contain exactly the c-sweep provenance keys"):
+        c_sweep.validate_sweep_summary(tampered_git_extra_key)
+    tampered_git_missing_key = json.loads(json.dumps(summary))
+    tampered_git_missing_key["git"].pop("status_short")
+    with pytest.raises(ValueError, match="git must contain exactly the c-sweep provenance keys"):
+        c_sweep.validate_sweep_summary(tampered_git_missing_key)
     assert isinstance(summary["git"]["dirty"], bool)
+    tampered_git_dirty_type = json.loads(json.dumps(summary))
+    tampered_git_dirty_type["git"]["dirty"] = "yes"
+    with pytest.raises(ValueError, match="git.dirty must be a bool"):
+        c_sweep.validate_sweep_summary(tampered_git_dirty_type)
+    for stale_status_short in ("?? uv.lock", ["   "]):
+        tampered_git_status_short_type = json.loads(json.dumps(summary))
+        tampered_git_status_short_type["git"]["status_short"] = stale_status_short
+        with pytest.raises(ValueError, match="git.status_short must be a non-empty string list"):
+            c_sweep.validate_sweep_summary(tampered_git_status_short_type)
     tampered_git_commit = json.loads(json.dumps(summary))
     tampered_git_commit["git"]["commit"] = "   "
     with pytest.raises(ValueError, match="git.commit must be a non-empty string"):
