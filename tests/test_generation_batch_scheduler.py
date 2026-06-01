@@ -20978,6 +20978,15 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     trailing_space_summary_artifact_path["artifact_path"] = "benchmarks/results/accepted-c2.json "
     with pytest.raises(ValueError, match="summary.artifact_path must not contain leading or trailing whitespace"):
         validate_cn_diagnostic_validation_summary(trailing_space_summary_artifact_path)
+    non_json_summary_artifact_path = dict(summary)
+    non_json_summary_artifact_path["passed"] = False
+    non_json_summary_artifact_path["artifact_path"] = "benchmarks/results/accepted-c2.txt"
+    non_json_summary_artifact_path["status"] = None
+    non_json_summary_artifact_path["performance_claim"] = None
+    non_json_summary_artifact_path["benchmark_rollup"] = None
+    non_json_summary_artifact_path["error"] = "schema check failed"
+    with pytest.raises(ValueError, match="summary.artifact_path must end with .json when non-null"):
+        validate_cn_diagnostic_validation_summary(non_json_summary_artifact_path)
     missing_summary_artifact_path = dict(summary)
     missing_summary_artifact_path["artifact_path"] = None
     with pytest.raises(ValueError, match="summary.artifact_path must be a non-empty string when summary.passed is true"):

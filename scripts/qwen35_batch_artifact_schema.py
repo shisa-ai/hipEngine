@@ -4356,6 +4356,8 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
                 errors.append("summary.artifact_path must not contain parent traversal")
             if _benchmark_results_relative_path(artifact_path) != artifact_path.replace("\\", "/"):
                 errors.append("summary.artifact_path must be a repo-relative benchmarks/results path or null")
+            if not artifact_path.replace("\\", "/").rsplit("/", 1)[-1].endswith(".json"):
+                errors.append("summary.artifact_path must end with .json when non-null")
     status = summary.get("status")
     if status is not None:
         if not isinstance(status, str) or not status.strip():
