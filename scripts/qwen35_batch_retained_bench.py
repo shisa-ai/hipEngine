@@ -2760,6 +2760,16 @@ def _generated_token_equality_blockers(
         blockers.append("correctness.generated_token_equality.tokens_per_sequence must be an int")
     elif tokens_per_sequence != expected_tokens:
         blockers.append("correctness.generated_token_equality.tokens_per_sequence must match seed plus warmup plus decode tokens")
+    equality_warmup_tokens = equality.get("warmup_decode_tokens")
+    if not isinstance(equality_warmup_tokens, int) or isinstance(equality_warmup_tokens, bool):
+        blockers.append("correctness.generated_token_equality.warmup_decode_tokens must be an int")
+    elif equality_warmup_tokens != expected_warmup_decode_tokens:
+        blockers.append("correctness.generated_token_equality.warmup_decode_tokens must match expected warmup decode tokens")
+    equality_decode_tokens = equality.get("gen_tokens_per_request")
+    if not isinstance(equality_decode_tokens, int) or isinstance(equality_decode_tokens, bool):
+        blockers.append("correctness.generated_token_equality.gen_tokens_per_request must be an int")
+    elif equality_decode_tokens != expected_decode_tokens:
+        blockers.append("correctness.generated_token_equality.gen_tokens_per_request must match expected decode tokens")
 
     def _validate_sequences(field: str) -> Any:
         sequences = equality.get(field)
@@ -4203,13 +4213,18 @@ def main(argv: list[str] | None = None) -> int:
 
     request_ids = list(range(args.batch_size))
     equality_tokens_per_sequence = 1 + args.warmup_decode_tokens + args.decode_tokens
+    equality_shape_metadata = {
+        "rows": args.batch_size,
+        "warmup_decode_tokens": args.warmup_decode_tokens,
+        "gen_tokens_per_request": args.decode_tokens,
+        "tokens_per_sequence": equality_tokens_per_sequence,
+    }
     batch_sequences = _generated_sequences_from_bench(bench, request_ids)
     if args.skip_generated_equality:
         equality = {
             "passed": False,
             "skipped": True,
-            "rows": args.batch_size,
-            "tokens_per_sequence": equality_tokens_per_sequence,
+            **equality_shape_metadata,
             "reason": "--skip-generated-equality was provided",
             "batch_sequences": batch_sequences,
             "c1_sequences": None,
@@ -4228,8 +4243,7 @@ def main(argv: list[str] | None = None) -> int:
         equality = {
             "passed": batch_sequences == c1_sequences,
             "skipped": False,
-            "rows": args.batch_size,
-            "tokens_per_sequence": equality_tokens_per_sequence,
+            **equality_shape_metadata,
             "batch_sequences": batch_sequences,
             "c1_sequences": c1_sequences,
             "mismatches": [

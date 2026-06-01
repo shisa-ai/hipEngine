@@ -3412,6 +3412,16 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
             errors.append("correctness.generated_token_equality.tokens_per_sequence must be an int for accepted artifacts")
         elif equality_tokens_per_sequence != expected_equality_tokens:
             errors.append("correctness.generated_token_equality.tokens_per_sequence must match seed plus workload.warmup_decode_tokens plus workload.gen_tokens_per_request for accepted artifacts")
+        equality_warmup_tokens = equality.get("warmup_decode_tokens")
+        if not isinstance(equality_warmup_tokens, int) or isinstance(equality_warmup_tokens, bool):
+            errors.append("correctness.generated_token_equality.warmup_decode_tokens must be an int for accepted artifacts")
+        elif equality_warmup_tokens != int(warmup_tokens):
+            errors.append("correctness.generated_token_equality.warmup_decode_tokens must match workload.warmup_decode_tokens for accepted artifacts")
+        equality_gen_tokens = equality.get("gen_tokens_per_request")
+        if not isinstance(equality_gen_tokens, int) or isinstance(equality_gen_tokens, bool):
+            errors.append("correctness.generated_token_equality.gen_tokens_per_request must be an int for accepted artifacts")
+        elif equality_gen_tokens != int(gen_tokens):
+            errors.append("correctness.generated_token_equality.gen_tokens_per_request must match workload.gen_tokens_per_request for accepted artifacts")
         _validate_generated_token_sequence_lengths(
             "correctness.generated_token_equality.batch_sequences",
             batch_sequences,

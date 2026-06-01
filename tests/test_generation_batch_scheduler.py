@@ -17721,6 +17721,8 @@ def test_qwen35_retained_generated_token_equality_blockers_cover_c1_rows() -> No
         "passed": True,
         "skipped": False,
         "rows": 2,
+        "warmup_decode_tokens": 1,
+        "gen_tokens_per_request": 2,
         "tokens_per_sequence": 4,
         "batch_sequences": [[0, 7, 9, 10], [100, 107, 109, 110]],
         "c1_sequences": [[0, 7, 9, 10], [100, 107, 109, 110]],
@@ -17736,6 +17738,8 @@ def test_qwen35_retained_generated_token_equality_blockers_cover_c1_rows() -> No
     invalid = json.loads(json.dumps(equality))
     invalid["skipped"] = True
     invalid["rows"] = 3
+    invalid["warmup_decode_tokens"] = 0
+    invalid["gen_tokens_per_request"] = 3
     invalid["tokens_per_sequence"] = 5
     invalid["batch_sequences"][0] = [0, -1]
     invalid["c1_sequences"][1][0] = 101
@@ -17748,6 +17752,8 @@ def test_qwen35_retained_generated_token_equality_blockers_cover_c1_rows() -> No
     )
     assert "correctness.generated_token_equality.skipped must be false" in blockers
     assert "correctness.generated_token_equality.rows must match expected concurrency" in blockers
+    assert "correctness.generated_token_equality.warmup_decode_tokens must match expected warmup decode tokens" in blockers
+    assert "correctness.generated_token_equality.gen_tokens_per_request must match expected decode tokens" in blockers
     assert "correctness.generated_token_equality.tokens_per_sequence must match seed plus warmup plus decode tokens" in blockers
     assert (
         "correctness.generated_token_equality.batch_sequences[0] "
@@ -20045,6 +20051,8 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                 "passed": True,
                 "skipped": False,
                 "rows": 2,
+                "warmup_decode_tokens": 8,
+                "gen_tokens_per_request": 128,
                 "tokens_per_sequence": 137,
                 "batch_sequences": [list(range(0, 137)), list(range(100, 237))],
                 "c1_sequences": [list(range(0, 137)), list(range(100, 237))],
@@ -20403,6 +20411,26 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     mismatched_equality_token_count["correctness"]["generated_token_equality"]["tokens_per_sequence"] = 136
     with pytest.raises(ValueError, match="generated_token_equality.tokens_per_sequence must match seed plus workload.warmup_decode_tokens plus workload.gen_tokens_per_request"):
         validate_cn_diagnostic_artifact_payload(mismatched_equality_token_count)
+
+    missing_equality_warmup_tokens = json.loads(json.dumps(accepted))
+    missing_equality_warmup_tokens["correctness"]["generated_token_equality"].pop("warmup_decode_tokens")
+    with pytest.raises(ValueError, match="generated_token_equality.warmup_decode_tokens must be an int"):
+        validate_cn_diagnostic_artifact_payload(missing_equality_warmup_tokens)
+
+    mismatched_equality_warmup_tokens = json.loads(json.dumps(accepted))
+    mismatched_equality_warmup_tokens["correctness"]["generated_token_equality"]["warmup_decode_tokens"] = 7
+    with pytest.raises(ValueError, match="generated_token_equality.warmup_decode_tokens must match workload.warmup_decode_tokens"):
+        validate_cn_diagnostic_artifact_payload(mismatched_equality_warmup_tokens)
+
+    missing_equality_gen_tokens = json.loads(json.dumps(accepted))
+    missing_equality_gen_tokens["correctness"]["generated_token_equality"].pop("gen_tokens_per_request")
+    with pytest.raises(ValueError, match="generated_token_equality.gen_tokens_per_request must be an int"):
+        validate_cn_diagnostic_artifact_payload(missing_equality_gen_tokens)
+
+    mismatched_equality_gen_tokens = json.loads(json.dumps(accepted))
+    mismatched_equality_gen_tokens["correctness"]["generated_token_equality"]["gen_tokens_per_request"] = 127
+    with pytest.raises(ValueError, match="generated_token_equality.gen_tokens_per_request must match workload.gen_tokens_per_request"):
+        validate_cn_diagnostic_artifact_payload(mismatched_equality_gen_tokens)
 
     def _accepted_with_int8_kv_policy() -> dict[str, object]:
         payload = json.loads(json.dumps(accepted))
