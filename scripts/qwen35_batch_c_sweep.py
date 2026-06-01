@@ -2848,11 +2848,27 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         errors.append("commands[].preconditions[].primitive_schema must be typed int 1 when primitive passed")
                         break
                     primitive_artifact_path = primitive_precondition.get("primitive_artifact_path")
-                    if (
-                        not isinstance(primitive_artifact_path, str)
-                        or not primitive_artifact_path
-                        or primitive_artifact_path != primitive_precondition.get("artifact_path")
-                    ):
+                    if not isinstance(primitive_artifact_path, str) or not primitive_artifact_path:
+                        errors.append("commands[].preconditions[].primitive_artifact_path must match primitive artifact_path when primitive passed")
+                        break
+                    primitive_alias_path = Path(primitive_artifact_path)
+                    primitive_alias_check_path = primitive_alias_path if primitive_alias_path.is_absolute() else REPO_ROOT / primitive_alias_path
+                    if _path_has_parent_directory_component(primitive_artifact_path):
+                        errors.append("commands[].preconditions[].primitive_artifact_path must not contain parent-directory components when primitive passed")
+                        break
+                    if primitive_alias_check_path.is_symlink():
+                        errors.append("commands[].preconditions[].primitive_artifact_path must be a regular file, not a symlink, when primitive passed")
+                        break
+                    if _path_has_symlink_parent(primitive_alias_check_path):
+                        errors.append("commands[].preconditions[].primitive_artifact_path parent directories must not be symlinks when primitive passed")
+                        break
+                    if _path_has_non_directory_parent(primitive_alias_check_path):
+                        errors.append("commands[].preconditions[].primitive_artifact_path parent directories must be directories when primitive passed")
+                        break
+                    if primitive_alias_check_path.exists() and not primitive_alias_check_path.is_file():
+                        errors.append("commands[].preconditions[].primitive_artifact_path must be a regular file when it already exists")
+                        break
+                    if primitive_artifact_path != primitive_precondition.get("artifact_path"):
                         errors.append("commands[].preconditions[].primitive_artifact_path must match primitive artifact_path when primitive passed")
                         break
                     primitive_seed = primitive_precondition.get("primitive_seed")
@@ -2939,11 +2955,33 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         scaling_precondition_error = True
                         break
                     reference_artifact_path = scaling_precondition.get("reference_artifact_path")
-                    if (
-                        not isinstance(reference_artifact_path, str)
-                        or not reference_artifact_path
-                        or reference_artifact_path != scaling_precondition.get("artifact_path")
-                    ):
+                    if not isinstance(reference_artifact_path, str) or not reference_artifact_path:
+                        errors.append("commands[].preconditions[].reference_artifact_path must match scaling reference artifact_path when passed")
+                        scaling_precondition_error = True
+                        break
+                    reference_path = Path(reference_artifact_path)
+                    reference_check_path = reference_path if reference_path.is_absolute() else REPO_ROOT / reference_path
+                    if _path_has_parent_directory_component(reference_artifact_path):
+                        errors.append("commands[].preconditions[].reference_artifact_path must not contain parent-directory components when scaling reference passed")
+                        scaling_precondition_error = True
+                        break
+                    if reference_check_path.is_symlink():
+                        errors.append("commands[].preconditions[].reference_artifact_path must be a regular file, not a symlink, when scaling reference passed")
+                        scaling_precondition_error = True
+                        break
+                    if _path_has_symlink_parent(reference_check_path):
+                        errors.append("commands[].preconditions[].reference_artifact_path parent directories must not be symlinks when scaling reference passed")
+                        scaling_precondition_error = True
+                        break
+                    if _path_has_non_directory_parent(reference_check_path):
+                        errors.append("commands[].preconditions[].reference_artifact_path parent directories must be directories when scaling reference passed")
+                        scaling_precondition_error = True
+                        break
+                    if reference_check_path.exists() and not reference_check_path.is_file():
+                        errors.append("commands[].preconditions[].reference_artifact_path must be a regular file when it already exists")
+                        scaling_precondition_error = True
+                        break
+                    if reference_artifact_path != scaling_precondition.get("artifact_path"):
                         errors.append("commands[].preconditions[].reference_artifact_path must match scaling reference artifact_path when passed")
                         scaling_precondition_error = True
                         break
