@@ -2749,6 +2749,11 @@ def _generated_token_equality_blockers(
         blockers.append("correctness.generated_token_equality.passed must be true")
     if equality.get("skipped") is not False:
         blockers.append("correctness.generated_token_equality.skipped must be false")
+    equality_comparison = equality.get("comparison")
+    if not isinstance(equality_comparison, str) or not equality_comparison:
+        blockers.append("correctness.generated_token_equality.comparison must be a non-empty string")
+    elif equality_comparison != "native_batch_vs_independent_c1":
+        blockers.append("correctness.generated_token_equality.comparison must be native_batch_vs_independent_c1")
     equality_rows = equality.get("rows")
     if not isinstance(equality_rows, int) or isinstance(equality_rows, bool):
         blockers.append("correctness.generated_token_equality.rows must be an int")
@@ -4214,6 +4219,7 @@ def main(argv: list[str] | None = None) -> int:
     request_ids = list(range(args.batch_size))
     equality_tokens_per_sequence = 1 + args.warmup_decode_tokens + args.decode_tokens
     equality_shape_metadata = {
+        "comparison": "native_batch_vs_independent_c1",
         "rows": args.batch_size,
         "warmup_decode_tokens": args.warmup_decode_tokens,
         "gen_tokens_per_request": args.decode_tokens,

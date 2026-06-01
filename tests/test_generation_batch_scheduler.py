@@ -17720,6 +17720,7 @@ def test_qwen35_retained_generated_token_equality_blockers_cover_c1_rows() -> No
     equality = {
         "passed": True,
         "skipped": False,
+        "comparison": "native_batch_vs_independent_c1",
         "rows": 2,
         "warmup_decode_tokens": 1,
         "gen_tokens_per_request": 2,
@@ -17737,6 +17738,7 @@ def test_qwen35_retained_generated_token_equality_blockers_cover_c1_rows() -> No
 
     invalid = json.loads(json.dumps(equality))
     invalid["skipped"] = True
+    invalid["comparison"] = "batch_only"
     invalid["rows"] = 3
     invalid["warmup_decode_tokens"] = 0
     invalid["gen_tokens_per_request"] = 3
@@ -17751,6 +17753,7 @@ def test_qwen35_retained_generated_token_equality_blockers_cover_c1_rows() -> No
         expected_warmup_decode_tokens=1,
     )
     assert "correctness.generated_token_equality.skipped must be false" in blockers
+    assert "correctness.generated_token_equality.comparison must be native_batch_vs_independent_c1" in blockers
     assert "correctness.generated_token_equality.rows must match expected concurrency" in blockers
     assert "correctness.generated_token_equality.warmup_decode_tokens must match expected warmup decode tokens" in blockers
     assert "correctness.generated_token_equality.gen_tokens_per_request must match expected decode tokens" in blockers
@@ -20050,6 +20053,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             "generated_token_equality": {
                 "passed": True,
                 "skipped": False,
+                "comparison": "native_batch_vs_independent_c1",
                 "rows": 2,
                 "warmup_decode_tokens": 8,
                 "gen_tokens_per_request": 128,
@@ -20391,6 +20395,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     mismatched_artifact_rows["rows"] = 8
     with pytest.raises(ValueError, match="rows must match workload.concurrency for accepted artifacts"):
         validate_cn_diagnostic_artifact_payload(mismatched_artifact_rows)
+
+    missing_equality_comparison = json.loads(json.dumps(accepted))
+    missing_equality_comparison["correctness"]["generated_token_equality"].pop("comparison")
+    with pytest.raises(ValueError, match="generated_token_equality.comparison must be a non-empty string"):
+        validate_cn_diagnostic_artifact_payload(missing_equality_comparison)
+
+    mismatched_equality_comparison = json.loads(json.dumps(accepted))
+    mismatched_equality_comparison["correctness"]["generated_token_equality"]["comparison"] = "native_batch_only"
+    with pytest.raises(ValueError, match="generated_token_equality.comparison must be native_batch_vs_independent_c1"):
+        validate_cn_diagnostic_artifact_payload(mismatched_equality_comparison)
 
     missing_equality_rows = json.loads(json.dumps(accepted))
     missing_equality_rows["correctness"]["generated_token_equality"].pop("rows")

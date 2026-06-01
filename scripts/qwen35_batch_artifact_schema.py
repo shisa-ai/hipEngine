@@ -3393,6 +3393,11 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
     warmup_tokens_valid = isinstance(warmup_tokens, int) and not isinstance(warmup_tokens, bool) and warmup_tokens >= 0
     if not warmup_tokens_valid:
         errors.append("workload.warmup_decode_tokens must be a non-negative int for accepted artifacts")
+    equality_comparison = equality.get("comparison")
+    if not isinstance(equality_comparison, str) or not equality_comparison:
+        errors.append("correctness.generated_token_equality.comparison must be a non-empty string for accepted artifacts")
+    elif equality_comparison != "native_batch_vs_independent_c1":
+        errors.append("correctness.generated_token_equality.comparison must be native_batch_vs_independent_c1 for accepted artifacts")
     equality_rows = equality.get("rows")
     if not isinstance(equality_rows, int) or isinstance(equality_rows, bool):
         errors.append("correctness.generated_token_equality.rows must be an int for accepted artifacts")
