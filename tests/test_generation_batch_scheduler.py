@@ -7246,6 +7246,11 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     assert summary["status"] == "planned"
     assert summary["options"]["include_int8"] is True
     assert summary["options"]["include_gguf"] is True
+    assert summary["batch_sizes"] == [1, 2, 4, 8]
+    tampered_batch_size_order = json.loads(json.dumps(summary))
+    tampered_batch_size_order["batch_sizes"] = [1, 4, 2, 8]
+    with pytest.raises(ValueError, match=r"commands\[\] category/batch_size order must match batch_sizes/options\.include_int8/include_gguf"):
+        c_sweep.validate_sweep_summary(tampered_batch_size_order)
     assert summary["command_count"] == 27
     tampered_command_count = json.loads(json.dumps(summary))
     tampered_command_count["command_count"] = 28
