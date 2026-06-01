@@ -537,6 +537,8 @@ def _visible_device_env_assignments(payload: Mapping[str, Any]) -> tuple[dict[st
             continue
         if not isinstance(value, str) or not value:
             reasons.append(f"hardware.visible_device.env.{key} is not a non-empty string when present")
+        elif not value.strip():
+            reasons.append(f"hardware.visible_device.env.{key} is not a non-blank string when present")
         else:
             assignments[key] = value
     return assignments, reasons

@@ -16170,6 +16170,32 @@ def test_qwen35_retained_scaling_reference_rejects_mismatched_visible_device_env
     assert reference["decode_tok_s_per_request"] is None
 
 
+def test_qwen35_retained_scaling_reference_rejects_blank_visible_device_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
+    serial = tmp_path / "serial-bridge-c2.json"
+    serial.write_text(
+        json.dumps(
+            {
+                "artifact_path": str(serial),
+                "status": "blocked",
+                "hardware": {"visible_device": {"env": {"HIP_VISIBLE_DEVICES": "   "}}},
+                "commands": {"benchmark": f"env HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_serial_bench.py --json {serial}"},
+                "workload": {"concurrency": 2, "prompt_tokens_per_request": 512, "gen_tokens_per_request": 128},
+                "measurements": {"decode_tok_s_aggregate": 8.0, "decode_tok_s_per_request": 4.0},
+            }
+        )
+    )
+
+    reference = retained_bench._scaling_reference(serial)
+
+    assert reference["reason"] == "hardware.visible_device.env.HIP_VISIBLE_DEVICES is not a non-blank string when present"
+    assert reference["decode_tok_s_aggregate"] is None
+    assert reference["decode_tok_s_per_request"] is None
+
+
 def test_qwen35_retained_scaling_reference_rejects_mismatched_visible_device_name(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
