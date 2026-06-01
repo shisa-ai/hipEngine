@@ -7251,6 +7251,11 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         tampered_include_option["options"][option] = False
         with pytest.raises(ValueError, match=r"command_count must match batch_sizes/options\.include_int8/include_gguf"):
             c_sweep.validate_sweep_summary(tampered_include_option)
+    assert summary["options"]["seed"] == 1234
+    tampered_seed_option = json.loads(json.dumps(summary))
+    tampered_seed_option["options"]["seed"] = 4321
+    with pytest.raises(ValueError, match="options.seed must match required primitive correctness seed"):
+        c_sweep.validate_sweep_summary(tampered_seed_option)
     assert summary["options"]["model"] == "/tmp/model"
     tampered_model_option = json.loads(json.dumps(summary))
     tampered_model_option["options"]["model"] = "/tmp/stale-model"
