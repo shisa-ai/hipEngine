@@ -3137,6 +3137,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         if primitive_source_payload.get("passed") != primitive_precondition.get("passed"):
                             errors.append("commands[].preconditions[].primitive_artifact_path JSON passed must match when primitive passed")
                             break
+                        primitive_source_device_blockers = _primitive_device_metadata_blockers(primitive_source_payload.get("device"))
+                        if primitive_source_device_blockers:
+                            errors.append("commands[].preconditions[].primitive_artifact_path JSON device must contain valid device metadata when primitive passed")
+                            break
                         if primitive_source_payload.get("device") != primitive_precondition.get("primitive_device"):
                             errors.append("commands[].preconditions[].primitive_artifact_path JSON device must match when primitive passed")
                             break

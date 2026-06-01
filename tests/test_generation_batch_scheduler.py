@@ -6573,6 +6573,11 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path JSON passed must match when primitive passed"):
         c_sweep.validate_sweep_summary(persisted)
     primitive_source_payload = json.loads(primitive_artifact_payload)
+    primitive_source_payload["device"]["current_device"] = False
+    primitive_artifact_path.write_text(json.dumps(primitive_source_payload))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path JSON device must contain valid device metadata when primitive passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    primitive_source_payload = json.loads(primitive_artifact_payload)
     primitive_source_payload["device"]["device_name"] = "other-gpu"
     primitive_artifact_path.write_text(json.dumps(primitive_source_payload))
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path JSON device must match when primitive passed"):
