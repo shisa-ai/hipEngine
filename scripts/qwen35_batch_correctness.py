@@ -76,9 +76,12 @@ class _DeviceArena:
 
 def _visible_hip_device_metadata(runtime) -> dict[str, object]:
     env_keys = ("HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES", "GPU_DEVICE_ORDINAL")
-    metadata: dict[str, object] = {
-        "env": {key: os.environ.get(key) for key in env_keys if os.environ.get(key) is not None}
-    }
+    visible_env: dict[str, str] = {}
+    for key in env_keys:
+        value = os.environ.get(key)
+        if value is not None and value.strip():
+            visible_env[key] = value
+    metadata: dict[str, object] = {"env": visible_env}
     library = runtime.library
     try:
         library.hipGetDeviceCount.argtypes = [ctypes.POINTER(ctypes.c_int)]

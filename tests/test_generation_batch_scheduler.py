@@ -16477,6 +16477,31 @@ def test_qwen35_batch_correctness_records_visible_hip_device_metadata(monkeypatc
     }
 
 
+def test_qwen35_batch_correctness_omits_blank_visible_device_env(monkeypatch) -> None:
+    class FakeHipFunc:
+        argtypes = None
+        restype = None
+
+        @staticmethod
+        def __call__(count_ptr):
+            count_ptr._obj.value = 0
+            return 0
+
+    class FakeHipLibrary:
+        hipGetDeviceCount = FakeHipFunc()
+
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "   ")
+    monkeypatch.setenv("ROCR_VISIBLE_DEVICES", "")
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0")
+    monkeypatch.setenv("GPU_DEVICE_ORDINAL", "\t")
+    metadata = batch_correctness._visible_hip_device_metadata(SimpleNamespace(library=FakeHipLibrary()))
+    assert metadata == {
+        "env": {"CUDA_VISIBLE_DEVICES": "0"},
+        "hipGetDeviceCount_error": 0,
+        "visible_device_count": 0,
+    }
+
+
 def test_qwen35_retained_hardware_context_uses_visible_hip_device(monkeypatch) -> None:
     class FakeHipFunc:
         def __init__(self, func):
