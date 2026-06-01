@@ -123,6 +123,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--status-integrity-sha-only",
+        action="store_true",
+        help=(
+            "Emit only status_integrity_sha256 for compact embedded integrity drift polling. "
+            "Overrides summary and queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--status-integrity-failures-only",
         action="store_true",
         help=(
@@ -2028,6 +2036,7 @@ def _handoff_summary(
             "handoff_summary_sha_only": "handoff_summary_sha256",
             "schema_versions_only": "schema_versions",
             "status_integrity_only": "status_integrity",
+            "status_integrity_sha_only": "status_integrity_sha256",
             "status_integrity_failures_only": "status_integrity.failed_checks",
             "readiness_summary_only": "readiness_summary",
             "readiness_summary_sha_only": "readiness_summary_sha256",
@@ -2421,7 +2430,7 @@ def build_status(
         ],
     }
     readiness_summary_sha256 = _stable_json_sha256(readiness_summary)
-    return {
+    status = {
         "schema_version": STATUS_SCHEMA_VERSION,
         "schema_versions": schema_versions,
         "status": "blocked" if blockers else "ready",
@@ -2472,6 +2481,10 @@ def build_status(
             "oracle parity and KV-backed decode."
         ),
     }
+    status_integrity = _status_integrity(status)
+    status["status_integrity"] = status_integrity
+    status["status_integrity_sha256"] = _stable_json_sha256(status_integrity)
+    return status
 
 
 def _emit_json(result: dict[str, object], *, pretty: bool, output: Path | None) -> None:
@@ -2499,6 +2512,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = verification["source_artifact_failed_records"]
         elif args.status_integrity_failures_only:
             result = verification["status_integrity"]["failed_checks"]
+        elif args.status_integrity_sha_only:
+            result = _stable_json_sha256(verification["status_integrity"])
         elif args.status_integrity_only:
             result = verification["status_integrity"]
         else:
@@ -2644,9 +2659,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             "resource_plan_refresh_command"
         )
     elif args.status_integrity_failures_only:
-        result = _status_integrity(status)["failed_checks"]
+        result = status["status_integrity"]["failed_checks"]
+    elif args.status_integrity_sha_only:
+        result = status["status_integrity_sha256"]
     elif args.status_integrity_only:
-        result = _status_integrity(status)
+        result = status["status_integrity"]
     elif args.schema_versions_only:
         result = status["schema_versions"]
     elif args.handoff_summary_sha_only:

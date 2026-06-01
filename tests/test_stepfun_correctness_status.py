@@ -1228,6 +1228,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "handoff_summary_sha_only": "handoff_summary_sha256",
         "schema_versions_only": "schema_versions",
         "status_integrity_only": "status_integrity",
+        "status_integrity_sha_only": "status_integrity_sha256",
         "status_integrity_failures_only": "status_integrity.failed_checks",
         "readiness_summary_only": "readiness_summary",
         "readiness_summary_sha_only": "readiness_summary_sha256",
@@ -2689,6 +2690,51 @@ def test_stepfun_correctness_status_status_integrity_only(capsys, tmp_path: Path
             "schema_versions": True,
         },
     }
+    assert status["status_integrity"] == payload
+    assert status["status_integrity_sha256"] == _stable_json_sha256(payload)
+
+
+def test_stepfun_correctness_status_status_integrity_sha_only(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "status-integrity-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--status-integrity-only",
+            "--status-integrity-sha-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(output.read_text())
+    assert payload == status["status_integrity_sha256"]
+    assert payload == _stable_json_sha256(status["status_integrity"])
 
 
 def test_stepfun_correctness_status_status_integrity_failures_only(
@@ -2957,6 +3003,7 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "handoff_summary_sha_only": "handoff_summary_sha256",
         "schema_versions_only": "schema_versions",
         "status_integrity_only": "status_integrity",
+        "status_integrity_sha_only": "status_integrity_sha256",
         "status_integrity_failures_only": "status_integrity.failed_checks",
         "readiness_summary_only": "readiness_summary",
         "readiness_summary_sha_only": "readiness_summary_sha256",

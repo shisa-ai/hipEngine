@@ -726,8 +726,11 @@ reporting.
   `blocker_recommended_commands` list plus SHA so automation can inspect both
   the front oracle rerun and the queued KV resource refresh without parsing full
   work-item payloads; status integrity verifies both the list digest and the
-  queue-meta mirror. The remaining oracle next action is therefore a concrete
-  longer-timeout rerun instead of only the prior 60 s replay. Remaining
+  queue-meta mirror. The status artifact now persists `status_integrity` plus
+  `status_integrity_sha256`, and compact `--status-integrity-sha-only` exposes
+  the digest for top-level embedded-check polling. The remaining oracle next
+  action is therefore a concrete longer-timeout rerun instead of only the prior
+  60 s replay. Remaining
   implementation task: run a longer/faster StepFun-capable llama.cpp oracle and
   review/record the parsed result; KV-backed decode parity remains open too.
 - [x] Preserve multi-EOS stopping and the chat assistant prefix. The short
