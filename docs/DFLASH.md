@@ -379,6 +379,76 @@ Retained artifacts:
 [`2026-05-31-hipengine-dflash-27b-threshold4-terminal-ar-tail.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-threshold4-terminal-ar-tail.json), and
 [`2026-05-31-hipengine-dflash-27b-threshold4-json-terminal20-route.json`](../benchmarks/results/2026-05-31-hipengine-dflash-27b-threshold4-json-terminal20-route.json).
 
+### 2026-06-02 hipfire replication, exactness audit, and importable lessons
+
+Retained diagnostic:
+[`2026-06-02-hipfire-vs-hipengine-27b-4096-512-diagnostic.json`](../benchmarks/results/2026-06-02-hipfire-vs-hipengine-27b-4096-512-diagnostic.json)
+(`performance_claim=false`).  The 4096/512 shape row used token id `9707`
+repeated 4096 times to force the same prompt length across tokenizers; it is a
+shape/perf diagnostic, not a quality prompt.
+
+| Engine | Mode | Prefill tok/s | Decode tok/s | Same-session vs AR | Peak VRAM GiB | Correctness / notes |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| hipEngine 27B PARO | AR target-only | 629.02 | 28.46 | 1.00x | 31.64 | forced 512 decode, graph replay |
+| hipEngine 27B PARO+DFlash | DFlash B=4 | n/a | 24.95 | 0.891x | 33.18 | exact vs same-session AR; accept length 4 every cycle |
+| hipfire MQ4/q8 | AR baseline | 591.97 | 33.30 | 1.00x | 18.69 | `--ar-baseline` still loads draft, so peak includes target+draft |
+| hipfire MQ4/q8 + DFlash | DFlash B=16 | 595.22 | 180.12 | 5.41x | 18.78 | emitted 513 tokens for max 512; first 512 tokens match AR; normalized-to-512 decode is 179.77 tok/s |
+
+The speed class is real on favorable prompts: hipfire's synthetic row still
+matches the first 512 target-AR tokens and is ~5.4x its AR baseline.  However,
+the same implementation is not an exact-greedy path by default on a broader
+prompt audit.  The original 10-prompt token-id comparison between hipfire AR and
+default hipfire DFlash found strict exact rows `1/10`, prefix-equal-to-min rows `6/10`,
+and hard mismatches before the shared output length on `4/10` rows
+(`hipfire_merge_sort_thinking_off`, `code:quicksort_prefix`,
+`instruct:simple_qa_no_template`, `instruct:simple_qa_qwen_static_chat`).  A
+slower `--no-tape` + `HIPFIRE_PREFILL_BATCHED=0` rerun did not repair those
+mismatches.  A follow-up stable-fixture reproducer now lives at
+`scripts/hipfire_dflash_exactness_audit.py`; on the first 10 committed
+`fixtures/dflash/stable_prompts.jsonl` rows (`--max 128 --no-chatml --kv-mode q8`)
+it reports strict exact rows `1/10`, prefix-equal-to-shared-length rows `8/10`,
+hard mismatches `2/10` (`code:quicksort_prefix` at token 54 and
+`code:function_continuation` at token 42), and over-emission past `max=128` on
+`7/10` rows.  Artifact:
+[`2026-06-02-hipfire-dflash-exactness-audit.json`](../benchmarks/results/2026-06-02-hipfire-dflash-exactness-audit.json).
+
+Interpretation: a mismatch before the shared output length means DFlash emitted
+and accepted a token that the target model's greedy AR run did **not** choose at
+the same position.  For hipEngine's exact mode that is simply incorrect output,
+not a speculative speedup.  It may still be usable by a system that explicitly
+opts into approximate speculative generation and validates quality by task-level
+metrics, but it cannot satisfy our exact-token gate (`exact_match_ar` for every
+retained row).  Over-emitting past `max` also inflates emitted-token throughput
+unless results are truncated/normalized.
+
+Reproducer command:
+
+```bash
+PYTHONPATH=. HIP_VISIBLE_DEVICES=0 \
+python3 scripts/hipfire_dflash_exactness_audit.py \
+  --demo /tmp/hipfire-target/release/examples/dflash_spec_demo \
+  --target /home/lhl/.hipfire/models/qwen3.6-27b.mq4 \
+  --draft /home/lhl/.hipfire/models/qwen36-27b-dflash-mq4.hfq \
+  --prompts fixtures/dflash/stable_prompts.jsonl --max-prompts 10 \
+  --max 128 --ctx 8192 --kv-mode q8 --temp 0.0 --no-chatml \
+  --json benchmarks/results/2026-06-02-hipfire-dflash-exactness-audit.json
+```
+
+Importable exact-safe lessons for the next hipEngine pass:
+
+1. Prefer a verifier-native hot loop with persistent scratch/state over adapting
+   an AR session per cycle; avoid full-logit materialization and host token loops.
+2. Use B=8/B=16 only behind exact, high-accept routes and a profit/VRAM gate;
+   hipfire's win occurs at near-perfect acceptance, while our measured B=15 row
+   still loses when acceptance does not scale.
+3. Keep profile/history routing and terminal AR tails as exact-safe policy
+   levers.  Online probes are only a fallback because failed probes are costly.
+4. Treat Q8/asym KV as a full storage+attention kernel-family project, not a
+   flag flip; hipfire's low VRAM comes from target format plus q8 KV kernels.
+5. Copy tape/rollback and fixed-address graph ideas only when same-session AR
+   equality survives the full prompt suite; non-exact acceptance shortcuts stay
+   out of the promoted hipEngine path.
+
 ### 2026-05-26 W7900 27B multi-row-decode default
 
 The real 27B dense lane was validated on GPU0/W7900 (`HIP_VISIBLE_DEVICES=0`)
@@ -481,7 +551,7 @@ hipEngine work; port ideas and, where license-compatible and approved, code.
 | Spec decode analysis | `~/amd-gpu-tuning/docs/SPECULATIVE-DECODE.md` | speed model, reference audit, break-even math | Verification efficiency is the metric, not raw acceptance. |
 | Fresh-eyes audit | `~/amd-gpu-tuning/docs/DFLASH-FRESH-EYES.md` | side-by-side reference patterns | Every winning impl uses one native batched forward plus persistent state commit. |
 | DDTree-MLX | `~/amd-gpu-tuning/reference/ddtree-mlx` | `ddtree_mlx/verify.py::tree_verify_forward`, `cache.py::tree_aware_path_commit`, `kernels.py`, `BENCHMARKS.md` | Budget=4 default; tree-aware GDN/Conv; commit as slot copy; chain DFlash wins first. |
-| hipfire | `~/amd-gpu-tuning/reference/hipfire` | `crates/hipfire-arch-qwen35/src/speculative.rs`, `qwen35.rs::TreeVerifyCtx`, `forward_prefill_batch*`, `rdna-compute/src/dispatch.rs::gated_delta_net_q8_tree_batch_seq` | Closest C++/HIP/gfx1100 shape: persistent scratch, batched verify, tree parent indices, native hot loop. |
+| hipfire | `~/amd-gpu-tuning/reference/hipfire` | `crates/hipfire-arch-qwen35/src/speculative.rs`, `qwen35.rs::TreeVerifyCtx`, `forward_prefill_batch*`, `rdna-compute/src/dispatch.rs::gated_delta_net_q8_tree_batch_seq` | Closest C++/HIP/gfx1100 shape: persistent scratch, batched verify, tree parent indices, native hot loop. Copy the runtime shape, **not** its default exactness policy; see the 2026-06-02 audit above. |
 | Lucebox DFlash | `~/amd-gpu-tuning/reference/lucebox-hub/dflash` | `test_dflash` flow, ggml CUDA tree Conv/GDN variants | Single graph/ggml forward; `_persist` GDN writes state directly into persistent cache. |
 | vLLM / SGLang DFlash | source refs listed in `PLAN-DFLASH.md` | DFlash proposer, target-verify mode, draft KV materialization | Separate draft context KV materialization from query-token draft forward. |
 
@@ -496,7 +566,10 @@ Reference headline numbers on Qwen3.5/3.6 27B-class DFlash targets:
 
 The gap is not explained by W7900 memory bandwidth. It is runtime shape,
 quantized small-batch linears, persistent cache discipline, and graph/native
-host overhead.
+host overhead.  Reference headline numbers are not exact-greedy claims unless a
+same-session target-AR token audit proves equality; hipfire's default DFlash path
+fails that audit on several local prompts, so treat it as a throughput/existence
+proof rather than an exact acceptance policy.
 
 ## gfx1151 / packed-target deltas
 
@@ -930,6 +1003,9 @@ Do not start these before D1-D6 establish a winning native chain path.
 
 - A DFlash speed claim without `verify_eta`, rows/output, draft time, and exact
   AR equality is not actionable.
+- A speculative path that accepts a token different from same-session target AR
+  is approximate generation, not exact DFlash.  It is only usable behind an
+  explicit non-exact quality policy, never under hipEngine's exact-token gate.
 - A path that replays accepted prefixes through the target model is a debug
   path, not the production path.
 - A tree verifier that launches per depth or per node from the host is not the

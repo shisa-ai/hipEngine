@@ -24888,3 +24888,59 @@ on the synthetic perfect-acceptance 4K shape, but default hipfire DFlash is not 
 strict greedy-equivalent path under our exact-token audit.  Treat hipfire DFlash
 numbers as throughput diagnostics unless outputs are externally truncated and
 prompt-specific exactness is proven.
+
+## 2026-06-02 hipfire DFlash exactness reproducer + DFLASH.md update
+
+User asked whether hipfire likely knows its DFlash path is non-exact and whether
+we need a more robust simple eval.  Local hipfire docs show a DFlash coherence
+/ attractor gate, not a same-target greedy token equality gate; hipfire notes the
+prior byte-exact quality gate was removed because it blocked legitimate output
+changes.  Conclusion for hipEngine: treat hipfire default DFlash as an
+approximate/coherence-gated path unless a token audit proves exactness.
+
+Added `scripts/hipfire_dflash_exactness_audit.py`, a small reproducible audit
+that runs hipfire `dflash_spec_demo` once in `--ar-baseline` mode and once in
+DFlash mode over the same JSONL prompts, parses `AR tokens:` / `DFlash tokens:`,
+and reports strict exact rows, prefix equality to shared length, hard first
+mismatches, and over-emission.  Added unit coverage in
+`tests/test_hipfire_dflash_exactness_audit.py` for row parsing and mismatch vs
+over-emission classification.
+
+Reproducer run:
+
+```bash
+PYTHONPATH=. HIP_VISIBLE_DEVICES=0 python3 scripts/hipfire_dflash_exactness_audit.py \
+  --demo /tmp/hipfire-target/release/examples/dflash_spec_demo \
+  --target /home/lhl/.hipfire/models/qwen3.6-27b.mq4 \
+  --draft /home/lhl/.hipfire/models/qwen36-27b-dflash-mq4.hfq \
+  --prompts fixtures/dflash/stable_prompts.jsonl \
+  --max-prompts 10 --max 128 --ctx 8192 --kv-mode q8 --temp 0.0 --no-chatml \
+  --json benchmarks/results/2026-06-02-hipfire-dflash-exactness-audit.json
+```
+
+The script intentionally exits `2` when outputs are not strict-exact.  Artifact
+`benchmarks/results/2026-06-02-hipfire-dflash-exactness-audit.json` recorded:
+
+- strict exact rows `1/10`;
+- prefix-equal-to-shared-length rows `8/10`;
+- DFlash prefix matches full AR rows `8/10`;
+- hard mismatches before shared length `2/10`:
+  `code:quicksort_prefix` first mismatch token index `54` and
+  `code:function_continuation` index `42`;
+- over-emission past `max=128` on `7/10` rows.
+
+This stable-fixture result is slightly less severe than the earlier mixed
+hipfire+hipEngine prompt audit (`4/10` hard mismatches) but strengthens the core
+claim: default hipfire DFlash is not a strict greedy-equivalent path under a
+simple token-id oracle, and over-emission alone makes most strict exact rows fail.
+Updated `docs/DFLASH.md` with the 4096/512 hipfire comparison, exactness
+interpretation, reproducer command, and exact-safe takeaways (copy persistent
+runtime / q8-KV ideas, not non-exact acceptance policy).
+
+Validation:
+
+```bash
+PYTHONPATH=. python3 -m py_compile scripts/hipfire_dflash_exactness_audit.py
+PYTHONPATH=. pytest -q tests/test_hipfire_dflash_exactness_audit.py tests/test_dflash_profile_route_manifest.py
+# ..... [100%]
+```
