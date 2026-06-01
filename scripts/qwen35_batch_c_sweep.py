@@ -3097,6 +3097,19 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         errors.append("commands[].preconditions[].attn_batch_vs_numpy_max_abs must be finite between 0.0 and 2e-5 when primitive passed")
                         break
                     if primitive_source_payload is not None:
+                        primitive_source_integer_fields = (
+                            "schema",
+                            "rows",
+                            "seed",
+                            *_REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS,
+                        )
+                        if any(
+                            not isinstance(primitive_source_payload.get(field), int)
+                            or isinstance(primitive_source_payload.get(field), bool)
+                            for field in primitive_source_integer_fields
+                        ):
+                            errors.append("commands[].preconditions[].primitive_artifact_path JSON integer labels must be typed ints when primitive passed")
+                            break
                         if primitive_source_payload.get("schema") != primitive_precondition.get("primitive_schema"):
                             errors.append("commands[].preconditions[].primitive_artifact_path JSON schema must match when primitive passed")
                             break
