@@ -7658,8 +7658,7 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         tampered_skipped_precondition_schema["skipped_preconditions"] = [invalid_skipped_precondition]
         with pytest.raises(ValueError, match=r"skipped_preconditions\[\] must contain exactly skipped precondition rollup keys"):
             c_sweep.validate_sweep_summary(tampered_skipped_precondition_schema)
-    tampered_skipped_preconditions = json.loads(json.dumps(summary))
-    tampered_skipped_preconditions["skipped_preconditions"] = [
+    for stale_skipped_precondition in (
         {
             "category": "native_diagnostic",
             "batch_size": 2,
@@ -7667,10 +7666,20 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
             "kind": "primitive_correctness",
             "precondition_artifact_path": str(tmp_path / "artifacts" / "primitive-c2.json"),
             "reason": "stale dry-run precondition rollup",
-        }
-    ]
-    with pytest.raises(ValueError, match="skipped_preconditions must match commands.preconditions"):
-        c_sweep.validate_sweep_summary(tampered_skipped_preconditions)
+        },
+        {
+            "category": "native_diagnostic",
+            "batch_size": "2",
+            "artifact_path": str(tmp_path / "artifacts" / "native-diagnostic-c2.json"),
+            "kind": "primitive_correctness",
+            "precondition_artifact_path": str(tmp_path / "artifacts" / "primitive-c2.json"),
+            "reason": "stale dry-run precondition rollup",
+        },
+    ):
+        tampered_skipped_preconditions = json.loads(json.dumps(summary))
+        tampered_skipped_preconditions["skipped_preconditions"] = [stale_skipped_precondition]
+        with pytest.raises(ValueError, match="skipped_preconditions must match commands.preconditions"):
+            c_sweep.validate_sweep_summary(tampered_skipped_preconditions)
     assert summary["failed_postconditions"] == []
     tampered_failed_postconditions_list = json.loads(json.dumps(summary))
     tampered_failed_postconditions_list["failed_postconditions"] = {}
@@ -7681,8 +7690,7 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         tampered_failed_postcondition_schema["failed_postconditions"] = [invalid_failed_postcondition]
         with pytest.raises(ValueError, match=r"failed_postconditions\[\] must contain exactly failed postcondition rollup keys"):
             c_sweep.validate_sweep_summary(tampered_failed_postcondition_schema)
-    tampered_failed_postconditions = json.loads(json.dumps(summary))
-    tampered_failed_postconditions["failed_postconditions"] = [
+    for stale_failed_postcondition in (
         {
             "category": "native_diagnostic",
             "batch_size": 2,
@@ -7690,10 +7698,20 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
             "kind": "retained_profiler_synthesis",
             "profiler_precondition_artifact_path": str(tmp_path / "artifacts" / "profiler-c2.json"),
             "reason": "stale dry-run postcondition rollup",
-        }
-    ]
-    with pytest.raises(ValueError, match="failed_postconditions must match commands.postconditions"):
-        c_sweep.validate_sweep_summary(tampered_failed_postconditions)
+        },
+        {
+            "category": "native_diagnostic",
+            "batch_size": "2",
+            "artifact_path": str(tmp_path / "artifacts" / "native-diagnostic-c2.json"),
+            "kind": "retained_profiler_synthesis",
+            "profiler_precondition_artifact_path": str(tmp_path / "artifacts" / "profiler-c2.json"),
+            "reason": "stale dry-run postcondition rollup",
+        },
+    ):
+        tampered_failed_postconditions = json.loads(json.dumps(summary))
+        tampered_failed_postconditions["failed_postconditions"] = [stale_failed_postcondition]
+        with pytest.raises(ValueError, match="failed_postconditions must match commands.postconditions"):
+            c_sweep.validate_sweep_summary(tampered_failed_postconditions)
     primitive_entries = [entry for entry in summary["commands"] if entry["category"] == "primitive"]
     assert [Path(entry["artifact_path"]).name for entry in primitive_entries] == [
         "primitive-c1.json",
