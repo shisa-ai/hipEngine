@@ -658,8 +658,10 @@ reporting.
   path/size/SHA-256 provenance for the prompt, oracle, resource-plan, and docs
   inputs used to compute the summary; `--verify-source-artifacts STATUS_JSON`
   checks those embedded hashes/sizes against the current files before a handoff is
-  trusted. The status also includes `next_action_commands` for rerunning the
-  oracle command shell, regenerating the oracle JSON via `scripts/stepfun_llamacpp_oracle.py`,
+  trusted, and `source_artifacts_sha256` gives readiness pollers a compact digest
+  of the same prompt/oracle/resource/docs provenance. The status also includes
+  `next_action_commands` for rerunning the oracle command shell, regenerating
+  the oracle JSON via `scripts/stepfun_llamacpp_oracle.py`,
   and refreshing the resource/status artifacts, with length/SHA-256 metadata for
   the helper/resource/status refresh commands plus a compact source-artifact
   verification command for rechecking embedded prompt/oracle/resource/docs

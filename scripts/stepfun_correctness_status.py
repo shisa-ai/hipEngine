@@ -63,6 +63,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--source-artifacts-sha-only",
+        action="store_true",
+        help=(
+            "Emit only source_artifacts_sha256 for input provenance drift polling. "
+            "Overrides --summary-only and blocker queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--blocker-work-queue-only",
         action="store_true",
         help=(
@@ -1186,6 +1194,7 @@ def _handoff_summary(
             "summary_only": "handoff_summary",
             "readiness_summary_only": "readiness_summary",
             "readiness_summary_sha_only": "readiness_summary_sha256",
+            "source_artifacts_sha_only": "source_artifacts_sha256",
             "status_refresh_command_only": (
                 "next_action_commands.oracle_parity_blocked.status_refresh_command"
             ),
@@ -1420,6 +1429,13 @@ def build_status(
         kv_decode_dispatch_progress=kv_decode_dispatch_progress,
         kv_backed_decode_gap_report=kv_backed_decode_gap_report,
     )
+    source_artifacts = _source_artifacts(
+        prompt_artifact=prompt_artifact,
+        oracle_artifact=oracle_artifact,
+        resource_artifact=resource_artifact,
+        docs_path=docs_path,
+    )
+    source_artifacts_sha256 = _stable_json_sha256(source_artifacts)
     readiness_summary = {
         "schema_version": 1,
         "status": "blocked" if blockers else "ready",
@@ -1429,6 +1445,7 @@ def build_status(
         "e2e_inference_ready": e2e_inference_ready,
         "open_or_partial_items_p0_p12": docs_status.get("open_or_partial_count_p0_p12"),
         "open_blocker_count": handoff_summary["open_blocker_count"],
+        "source_artifacts_sha256": source_artifacts_sha256,
         "first_blocker_kind": handoff_summary["blocker_work_queue_meta"]["first_blocker_kind"],
         "first_blocker_work_item_sha256": handoff_summary[
             "first_blocker_work_item_sha256"
@@ -1449,12 +1466,8 @@ def build_status(
     return {
         "status": "blocked" if blockers else "ready",
         "model": "Step-3.7-flash-Q3_K_L",
-        "source_artifacts": _source_artifacts(
-            prompt_artifact=prompt_artifact,
-            oracle_artifact=oracle_artifact,
-            resource_artifact=resource_artifact,
-            docs_path=docs_path,
-        ),
+        "source_artifacts": source_artifacts,
+        "source_artifacts_sha256": source_artifacts_sha256,
         "backend": prompt.get("backend", "hip_gfx1151"),
         "prompt_artifact": str(prompt_artifact),
         "oracle_artifact": str(oracle_artifact),
@@ -1531,6 +1544,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["next_action_commands"]["oracle_parity_blocked"].get(
             "oracle_helper_refresh_command"
         )
+    elif args.source_artifacts_sha_only:
+        result = status["source_artifacts_sha256"]
     elif args.source_verify_command_sha_only:
         result = status["next_action_commands"]["handoff_integrity"].get(
             "source_artifacts_verify_command_sha256"
