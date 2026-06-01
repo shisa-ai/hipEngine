@@ -21171,6 +21171,14 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     blank_failed_summary["error"] = "   "
     with pytest.raises(ValueError, match="summary.error must be a non-empty string"):
         validate_cn_diagnostic_validation_summary(blank_failed_summary)
+    leading_space_failed_summary = dict(failed_summary)
+    leading_space_failed_summary["error"] = " benchmark_rollup must be an object"
+    with pytest.raises(ValueError, match="summary.error must not contain leading or trailing whitespace"):
+        validate_cn_diagnostic_validation_summary(leading_space_failed_summary)
+    trailing_space_failed_summary = dict(failed_summary)
+    trailing_space_failed_summary["error"] = "benchmark_rollup must be an object "
+    with pytest.raises(ValueError, match="summary.error must not contain leading or trailing whitespace"):
+        validate_cn_diagnostic_validation_summary(trailing_space_failed_summary)
 
     wrong_named_failed_summary_file = rollup_root / "benchmarks" / "results" / "accepted-c2-missing-rollup-check.json"
     assert validate_cn_diagnostic_artifact_main(
