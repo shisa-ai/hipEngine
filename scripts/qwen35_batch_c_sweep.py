@@ -3071,6 +3071,31 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         if primitive_source_payload.get("passed") != primitive_precondition.get("passed"):
                             errors.append("commands[].preconditions[].primitive_artifact_path JSON passed must match when primitive passed")
                             break
+                        if primitive_source_payload.get("device") != primitive_precondition.get("primitive_device"):
+                            errors.append("commands[].preconditions[].primitive_artifact_path JSON device must match when primitive passed")
+                            break
+                        if any(
+                            primitive_source_payload.get(field) != primitive_precondition.get(field)
+                            for field in (
+                                "append_key_mismatch",
+                                "append_value_mismatch",
+                                "append_batch_aa_key_mismatch",
+                                "append_batch_aa_value_mismatch",
+                            )
+                        ):
+                            errors.append("commands[].preconditions[].primitive_artifact_path JSON append mismatches must match when primitive passed")
+                            break
+                        if any(
+                            primitive_source_payload.get(field) != primitive_precondition.get(field)
+                            for field in (
+                                "attn_batch_aa_max_abs",
+                                "aa_passed",
+                                "attn_batch_vs_c1_max_abs",
+                                "attn_batch_vs_numpy_max_abs",
+                            )
+                        ):
+                            errors.append("commands[].preconditions[].primitive_artifact_path JSON attention metrics must match when primitive passed")
+                            break
                     if set(primitive_precondition) != expected_passed_primitive_precondition_keys:
                         errors.append("commands[].preconditions[] passed primitive_correctness must contain exactly primitive precondition keys")
                         break
