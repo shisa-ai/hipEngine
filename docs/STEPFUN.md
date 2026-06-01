@@ -680,10 +680,12 @@ reporting.
   blueprint and loop-status summary, and the correctness-status KV gap report
   validates that the blueprint is recorded, matches the launch schedule, matches
   the pre-run upload order, points at the same first blocker, and has a matching
-  loop-status summary. The KV gap report now persists the validated blueprint summary
-  digest, and compact `--kv-streaming-blueprint-only` /
-  `--kv-streaming-blueprint-sha-only` outputs expose that recorded blueprint
-  summary/digest directly for handoff automation; status integrity also
+  loop-status summary. The KV gap report now persists the validated blueprint and
+  loop-status summary digests, and compact `--kv-streaming-blueprint-only` /
+  `--kv-streaming-blueprint-sha-only` plus
+  `--kv-streaming-loop-status-only` / `--kv-streaming-loop-status-sha-only`
+  outputs expose those recorded summaries/digests directly for handoff automation;
+  status integrity also
   cross-checks the mirrored blueprint digest, the mirrored first KV blocker
   digest, and the full KV streaming blocker names/SHA across the gap report,
   next-action command, and handoff queue so the runner artifact and status helper

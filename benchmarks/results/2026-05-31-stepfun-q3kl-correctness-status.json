@@ -256,6 +256,8 @@
       "kv_streaming_blockers_sha_only": "kv_streaming_runner_blocker_names_sha256",
       "kv_streaming_blueprint_only": "kv_backed_decode_gap_report.streaming_decode_loop_blueprint",
       "kv_streaming_blueprint_sha_only": "kv_backed_decode_gap_report.streaming_decode_loop_blueprint_sha256",
+      "kv_streaming_loop_status_only": "kv_backed_decode_gap_report.streaming_decode_loop_status",
+      "kv_streaming_loop_status_sha_only": "kv_backed_decode_gap_report.streaming_decode_loop_status_sha256",
       "next_action_commands_sha_only": "next_action_commands_sha256",
       "oracle_helper_command_only": "next_action_commands.oracle_parity_blocked.oracle_helper_refresh_command",
       "oracle_helper_command_sha_only": "next_action_commands.oracle_parity_blocked.oracle_helper_refresh_command_sha256",
@@ -453,7 +455,7 @@
     "schema_version": 1,
     "status": "blocked"
   },
-  "handoff_summary_sha256": "828656b243579effbe014f4032325148e3c411fafca5afd2fe7065a41189c176",
+  "handoff_summary_sha256": "9d5cd1140bab109ade510481967056ce05437e4580d2b4e188564c3bdf2adcaf",
   "kv_backed_decode_gap_report": {
     "computed_streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
     "first_missing_evidence": "streaming_runner_ready_flags",
@@ -2101,7 +2103,7 @@
     "fail_on_blocked_exit_code": 2,
     "first_blocker_kind": "oracle_parity_blocked",
     "first_blocker_work_item_sha256": "07a6fb2fde62f86f8b87f7f714c1f63e84d46e1a12ef743b26d93ca1b798b1a8",
-    "handoff_summary_sha256": "828656b243579effbe014f4032325148e3c411fafca5afd2fe7065a41189c176",
+    "handoff_summary_sha256": "9d5cd1140bab109ade510481967056ce05437e4580d2b4e188564c3bdf2adcaf",
     "kv_backed_decode_ready": false,
     "kv_decode_dispatch_ready": true,
     "next_action_commands_sha256": "7048d66e4c02a43cefee5407e7d4d6700be694b44bb14a2bb4c4cb1e138d5c0f",
@@ -2111,10 +2113,10 @@
     "performance_claim_allowed": false,
     "readiness_gates_sha256": "31d086fa91a45d8c1635a954d5f42de779ffc61fd1f342c0689c57aad24f2467",
     "schema_version": 1,
-    "source_artifacts_sha256": "f687c1fa9b200035c99020dec871866628c55eaa25f2e22bac43ff71f1e02223",
+    "source_artifacts_sha256": "2ab0f286f719894c1d61763f045340be22417d9229cd1e5f86c4a8b8276e76bb",
     "status": "blocked"
   },
-  "readiness_summary_sha256": "5f909ccab6abd85963008d2a61f55d453d12dc90fa3a9a9fd3306de442d0d85d",
+  "readiness_summary_sha256": "6587e76a9c3e1840569156464af2ffcc8e21313007cba9be86f64d07a22c976b",
   "schema_version": 1,
   "schema_versions": {
     "blocker_work_queue": 1,
@@ -2127,8 +2129,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "2702fed39884efb54f2f2ce6d1893cee7c5744e4743f573f409c58f8bb5485de",
-      "size_bytes": 59635
+      "sha256": "7f88ce0a03f3c21c6489a4b2c4e10be6de6b6b1a02207ccbbc3793a8de0c4264",
+      "size_bytes": 59729
     },
     "oracle": {
       "exists": true,
@@ -2149,7 +2151,7 @@
       "size_bytes": 50044
     }
   },
-  "source_artifacts_sha256": "f687c1fa9b200035c99020dec871866628c55eaa25f2e22bac43ff71f1e02223",
+  "source_artifacts_sha256": "2ab0f286f719894c1d61763f045340be22417d9229cd1e5f86c4a8b8276e76bb",
   "status": "blocked",
   "status_integrity": {
     "all_match": true,
