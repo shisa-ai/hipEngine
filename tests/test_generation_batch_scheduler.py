@@ -3211,6 +3211,12 @@ def test_batch_c_sweep_records_visible_hip_device_env_in_commands(
     assert summary["status"] == "planned"
     c_sweep.validate_sweep_summary(persisted)
 
+    blank_env_summary = json.loads(json.dumps(persisted))
+    blank_env_summary["commands"][0]["argv"][1] = "HIP_VISIBLE_DEVICES=   "
+    blank_env_summary["commands"][0]["command"] = shlex.join(blank_env_summary["commands"][0]["argv"])
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv device env prefix values must be non-blank"):
+        c_sweep.validate_sweep_summary(blank_env_summary)
+
 
 def test_batch_c_sweep_omits_blank_visible_hip_device_env_from_commands(
     tmp_path: Path,

@@ -2535,6 +2535,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 errors.append("commands[].command must match shlex.join(commands[].argv)")
                 break
             command_device_env = _command_device_env_assignments(argv)
+            if any(not value.strip() for value in command_device_env.values()):
+                errors.append("commands[].argv device env prefix values must be non-blank")
+                break
             if expected_command_device_env is None:
                 expected_command_device_env = dict(command_device_env)
             elif command_device_env != expected_command_device_env:
