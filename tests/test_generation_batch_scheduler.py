@@ -7274,6 +7274,27 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.command must match shlex\.join\(commands\[\]\.argv\)"):
             c_sweep.validate_sweep_summary(tampered_planned_command_text)
 
+        tampered_planned_blank_command_text = json.loads(json.dumps(summary))
+        tampered_planned_blank_command_text["commands"][index]["command"] = "   "
+        with pytest.raises(ValueError, match=r"commands\[\]\.command must be a non-empty string"):
+            c_sweep.validate_sweep_summary(tampered_planned_blank_command_text)
+
+        tampered_planned_missing_command_text = json.loads(json.dumps(summary))
+        del tampered_planned_missing_command_text["commands"][index]["command"]
+        with pytest.raises(ValueError, match=r"commands\[\]\.command must be a non-empty string"):
+            c_sweep.validate_sweep_summary(tampered_planned_missing_command_text)
+
+        for bad_argv in ([], [""]):
+            tampered_planned_bad_argv = json.loads(json.dumps(summary))
+            tampered_planned_bad_argv["commands"][index]["argv"] = bad_argv
+            with pytest.raises(ValueError, match=r"commands\[\]\.argv must be a non-empty string list"):
+                c_sweep.validate_sweep_summary(tampered_planned_bad_argv)
+
+        tampered_planned_missing_argv = json.loads(json.dumps(summary))
+        del tampered_planned_missing_argv["commands"][index]["argv"]
+        with pytest.raises(ValueError, match=r"commands\[\]\.argv must be a non-empty string list"):
+            c_sweep.validate_sweep_summary(tampered_planned_missing_argv)
+
         tampered_planned_executable = json.loads(json.dumps(summary))
         planned_executable_entry = tampered_planned_executable["commands"][index]
         planned_executable_entry["argv"][2] = "bash"
