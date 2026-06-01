@@ -660,7 +660,9 @@ reporting.
   and `e2e_inference` so each readiness boolean carries
   required evidence and current blocker state, plus compact
   `--readiness-gates-only` / `--readiness-gates-sha-only` outputs for polling
-  those gates directly. The same status artifact records `source_artifacts`
+  those gates directly and `--blocked-gates-only` /
+  `--blocked-gates-sha-only` for polling just the currently false gate names.
+  The same status artifact records `source_artifacts`
   path/size/SHA-256 provenance for the prompt, oracle, resource-plan, and docs
   inputs used to compute the summary; `--verify-source-artifacts STATUS_JSON`
   checks those embedded hashes/sizes plus the embedded digest/schema-version
