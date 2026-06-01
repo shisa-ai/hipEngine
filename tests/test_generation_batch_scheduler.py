@@ -7244,6 +7244,11 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     assert [(item.category, item.batch_size) for item in planned] == expected_plan
     assert [(entry["category"], entry["batch_size"]) for entry in summary["commands"]] == expected_plan
     assert summary["status"] == "planned"
+    assert summary["dry_run"] is True
+    tampered_dry_run_mode = json.loads(json.dumps(summary))
+    tampered_dry_run_mode["dry_run"] = False
+    with pytest.raises(ValueError, match=r"commands\[\]\.status cannot be planned for executed summaries"):
+        c_sweep.validate_sweep_summary(tampered_dry_run_mode)
     assert summary["options"]["include_int8"] is True
     assert summary["options"]["include_gguf"] is True
     for option in ("include_int8", "include_gguf"):
