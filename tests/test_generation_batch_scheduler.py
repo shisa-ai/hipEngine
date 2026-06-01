@@ -7413,6 +7413,24 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.argv must not repeat retained benchmark flags"):
             c_sweep.validate_sweep_summary(tampered_planned_duplicate_json)
 
+        tampered_planned_missing_json = json.loads(json.dumps(summary))
+        planned_missing_json_entry = tampered_planned_missing_json["commands"][index]
+        planned_missing_json_argv = planned_missing_json_entry["argv"]
+        planned_missing_json_index = planned_missing_json_argv.index("--json")
+        del planned_missing_json_argv[planned_missing_json_index : planned_missing_json_index + 2]
+        planned_missing_json_entry["command"] = shlex.join(planned_missing_json_argv)
+        with pytest.raises(ValueError, match=r"commands\[\]\.argv must include --json <artifact_path>"):
+            c_sweep.validate_sweep_summary(tampered_planned_missing_json)
+
+        tampered_planned_blank_json = json.loads(json.dumps(summary))
+        planned_blank_json_entry = tampered_planned_blank_json["commands"][index]
+        planned_blank_json_argv = planned_blank_json_entry["argv"]
+        planned_blank_json_index = planned_blank_json_argv.index("--json")
+        planned_blank_json_argv[planned_blank_json_index : planned_blank_json_index + 2] = ["--json="]
+        planned_blank_json_entry["command"] = shlex.join(planned_blank_json_argv)
+        with pytest.raises(ValueError, match=r"commands\[\]\.argv flag values must be non-empty"):
+            c_sweep.validate_sweep_summary(tampered_planned_blank_json)
+
         tampered_planned_artifact_filename = json.loads(json.dumps(summary))
         planned_artifact_entry = tampered_planned_artifact_filename["commands"][index]
         wrong_artifact_filename = str(
