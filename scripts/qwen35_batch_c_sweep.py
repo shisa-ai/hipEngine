@@ -3305,6 +3305,13 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if profiler_source_object.get("artifact_path") != profiler_source_artifact_path:
                         errors.append("commands[].preconditions[].profiler_source_artifact_path JSON artifact_path must match when profiler passed")
                         break
+                    if (
+                        isinstance(profiler_source_payload, dict)
+                        and "source_artifact_path" in profiler_source_payload
+                        and profiler_source_payload.get("source_artifact_path") != profiler_source_artifact_path
+                    ):
+                        errors.append("commands[].preconditions[].profiler_source_artifact_path JSON root source_artifact_path must match when profiler passed")
+                        break
                     if "source_artifact_path" in profiler_source_object and profiler_source_object.get("source_artifact_path") != profiler_source_artifact_path:
                         errors.append("commands[].preconditions[].profiler_source_artifact_path JSON source_artifact_path must match when profiler passed")
                         break
