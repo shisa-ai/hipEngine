@@ -7247,6 +7247,10 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     assert summary["options"]["include_int8"] is True
     assert summary["options"]["include_gguf"] is True
     assert summary["command_count"] == 27
+    tampered_command_count = json.loads(json.dumps(summary))
+    tampered_command_count["command_count"] = 28
+    with pytest.raises(ValueError, match="dry-run summaries must include all planned commands"):
+        c_sweep.validate_sweep_summary(tampered_command_count)
     assert summary["completed_command_count"] == 27
     tampered_completed_command_count = json.loads(json.dumps(summary))
     tampered_completed_command_count["completed_command_count"] = 26
