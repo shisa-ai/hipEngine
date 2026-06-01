@@ -251,6 +251,56 @@ def _source_artifacts(
     }
 
 
+def _status_integrity(status: dict[str, object]) -> dict[str, object]:
+    """Verify embedded status digests/schema versions are self-consistent."""
+
+    source_artifacts = status.get("source_artifacts", {})
+    handoff_summary = status.get("handoff_summary", {})
+    readiness_summary = status.get("readiness_summary", {})
+    next_action_commands = status.get("next_action_commands", {})
+    schema_versions = status.get("schema_versions", {})
+    blocker_meta = (
+        handoff_summary.get("blocker_work_queue_meta", {})
+        if isinstance(handoff_summary, dict)
+        else {}
+    )
+    checks = {
+        "source_artifacts_sha256": (
+            isinstance(source_artifacts, dict)
+            and status.get("source_artifacts_sha256") == _stable_json_sha256(source_artifacts)
+        ),
+        "handoff_summary_sha256": (
+            isinstance(handoff_summary, dict)
+            and status.get("handoff_summary_sha256") == _stable_json_sha256(handoff_summary)
+        ),
+        "readiness_summary_sha256": (
+            isinstance(readiness_summary, dict)
+            and status.get("readiness_summary_sha256") == _stable_json_sha256(readiness_summary)
+        ),
+        "next_action_commands_sha256": (
+            isinstance(next_action_commands, dict)
+            and status.get("next_action_commands_sha256") == _stable_json_sha256(next_action_commands)
+        ),
+        "schema_versions": schema_versions
+        == {
+            "status": status.get("schema_version"),
+            "readiness_summary": readiness_summary.get("schema_version")
+            if isinstance(readiness_summary, dict)
+            else None,
+            "handoff_summary": handoff_summary.get("schema_version")
+            if isinstance(handoff_summary, dict)
+            else None,
+            "blocker_work_queue": handoff_summary.get("blocker_work_queue_schema_version")
+            if isinstance(handoff_summary, dict)
+            else None,
+            "first_blocker_work_item": blocker_meta.get("first_work_item_schema_version")
+            if isinstance(blocker_meta, dict)
+            else None,
+        },
+    }
+    return {"all_match": all(checks.values()), "checks": checks}
+
+
 def _verify_source_artifacts(status_artifact: Path) -> dict[str, object]:
     """Verify embedded source_artifacts provenance against current files."""
 
@@ -261,11 +311,13 @@ def _verify_source_artifacts(status_artifact: Path) -> dict[str, object]:
             "status": "missing_source_artifacts",
             "status_artifact": str(status_artifact),
             "all_match": False,
+            "source_artifacts_all_match": False,
             "checked_count": 0,
             "records": {},
+            "status_integrity": _status_integrity(status),
         }
     records: dict[str, object] = {}
-    all_match = True
+    source_artifacts_all_match = True
     for name, recorded_obj in source_artifacts.items():
         recorded = dict(recorded_obj) if isinstance(recorded_obj, dict) else {}
         path_value = recorded.get("path")
@@ -276,7 +328,7 @@ def _verify_source_artifacts(status_artifact: Path) -> dict[str, object]:
             "sha256": recorded.get("sha256") == current.get("sha256"),
         }
         match = all(matches.values())
-        all_match = all_match and match
+        source_artifacts_all_match = source_artifacts_all_match and match
         records[str(name)] = {
             "path": path_value,
             "match": match,
@@ -284,12 +336,16 @@ def _verify_source_artifacts(status_artifact: Path) -> dict[str, object]:
             "recorded": recorded,
             "current": current,
         }
+    status_integrity = _status_integrity(status)
+    all_match = source_artifacts_all_match and status_integrity["all_match"] is True
     return {
         "status": "match" if all_match else "mismatch",
         "status_artifact": str(status_artifact),
         "all_match": all_match,
+        "source_artifacts_all_match": source_artifacts_all_match,
         "checked_count": len(records),
         "records": records,
+        "status_integrity": status_integrity,
     }
 
 

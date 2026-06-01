@@ -2679,6 +2679,17 @@ def test_stepfun_correctness_status_verifies_source_artifact_provenance(capsys, 
     assert payload["status"] == "match"
     assert payload["status_artifact"] == str(status_output)
     assert payload["all_match"] is True
+    assert payload["source_artifacts_all_match"] is True
+    assert payload["status_integrity"] == {
+        "all_match": True,
+        "checks": {
+            "source_artifacts_sha256": True,
+            "handoff_summary_sha256": True,
+            "readiness_summary_sha256": True,
+            "next_action_commands_sha256": True,
+            "schema_versions": True,
+        },
+    }
     assert payload["checked_count"] == 4
     assert payload["records"]["prompt"]["match"] is True
     assert payload["records"]["prompt"]["matches"] == {
@@ -2739,6 +2750,8 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_stale_inputs(
     payload = json.loads(verify_output.read_text())
     assert payload["status"] == "mismatch"
     assert payload["all_match"] is False
+    assert payload["source_artifacts_all_match"] is False
+    assert payload["status_integrity"]["all_match"] is True
     assert payload["records"]["prompt"]["match"] is False
     assert payload["records"]["prompt"]["matches"] == {
         "exists": True,
@@ -2746,6 +2759,67 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_stale_inputs(
         "size_bytes": False,
     }
     assert payload["records"]["oracle"]["match"] is True
+
+
+def test_stepfun_correctness_status_source_artifact_verify_detects_status_digest_drift(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    status_output = tmp_path / "status.json"
+    verify_output = tmp_path / "verify.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(status_output),
+        ]
+    )
+    assert rc == 0
+    status_payload = json.loads(status_output.read_text())
+    status_payload["next_action_commands_sha256"] = "stale"
+    status_output.write_text(json.dumps(status_payload))
+
+    rc = main(
+        [
+            "--verify-source-artifacts",
+            str(status_output),
+            "--output",
+            str(verify_output),
+        ]
+    )
+
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(verify_output.read_text())
+    assert payload["status"] == "mismatch"
+    assert payload["all_match"] is False
+    assert payload["source_artifacts_all_match"] is True
+    assert payload["status_integrity"]["all_match"] is False
+    assert payload["status_integrity"]["checks"] == {
+        "source_artifacts_sha256": True,
+        "handoff_summary_sha256": True,
+        "readiness_summary_sha256": True,
+        "next_action_commands_sha256": False,
+        "schema_versions": True,
+    }
 
 
 def test_stepfun_correctness_status_kv_resource_command_fail_on_blocked_returns_nonzero(

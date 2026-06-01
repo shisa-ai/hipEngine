@@ -30154,3 +30154,29 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`46 passed`), compact schema-versions output returned expected blocked exit code 2 and matched the top-level `schema_versions` payload, source-artifact verification returned `match`, and the full StepFun guard passed (`150` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was a pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes status-helper metadata/tests/docs/status artifact only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.
+
+## 2026-06-01 — StepFun source verification checks status integrity
+
+Extended `scripts/stepfun_correctness_status.py --verify-source-artifacts` so the handoff verifier now checks both file provenance and embedded status integrity. The verifier reports `source_artifacts_all_match` plus `status_integrity` checks for `source_artifacts_sha256`, `handoff_summary_sha256`, `readiness_summary_sha256`, `next_action_commands_sha256`, and `schema_versions`, and returns the source-artifact mismatch exit code if either file provenance or internal status metadata drifts. Refreshed `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`; readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`). No StepFun KV write/attention kernels are launched and no performance/e2e claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty > /tmp/stepfun-source-verify-integrity.json
+python3 - <<'PY'
+import json
+v=json.load(open('/tmp/stepfun-source-verify-integrity.json'))
+assert v['status'] == 'match'
+assert v['all_match'] is True
+assert v['source_artifacts_all_match'] is True
+assert v['status_integrity']['all_match'] is True
+assert all(v['status_integrity']['checks'].values())
+print('source and status integrity ok', v['status_integrity']['checks'])
+PY
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`47 passed`), source/status integrity verification returned `match` with all digest/schema checks true, and the full StepFun guard passed (`151` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was a pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes status-helper metadata/tests/docs/status artifact only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.
