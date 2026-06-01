@@ -636,6 +636,16 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         if isinstance(kv_gap_report, dict)
         else None
     )
+    kv_streaming_loop_next_action = (
+        kv_streaming_loop_status.get("next_action")
+        if isinstance(kv_streaming_loop_status, dict)
+        else None
+    )
+    kv_streaming_loop_next_action_sha256 = (
+        kv_streaming_loop_status.get("next_action_sha256")
+        if isinstance(kv_streaming_loop_status, dict)
+        else None
+    )
     schema_versions = status.get("schema_versions", {})
     blocker_meta = (
         handoff_summary.get("blocker_work_queue_meta", {})
@@ -715,6 +725,10 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         == kv_streaming_loop_status_sha256
         for record in kv_streaming_mirror_records
     )
+    kv_streaming_loop_next_action_sha256_match = (
+        kv_streaming_loop_next_action_sha256
+        == _stable_json_sha256(kv_streaming_loop_next_action)
+    )
     blocker_recommended_commands_sha256_match = (
         isinstance(blocker_recommended_commands, list)
         and blocker_recommended_commands_sha256
@@ -771,6 +785,9 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         "kv_streaming_blueprint_mirrors": kv_streaming_blueprint_mirrors,
         "kv_streaming_loop_status_sha256": kv_streaming_loop_status_sha256_match,
         "kv_streaming_loop_status_mirrors": kv_streaming_loop_status_mirrors,
+        "kv_streaming_loop_next_action_sha256": (
+            kv_streaming_loop_next_action_sha256_match
+        ),
         "blocker_recommended_commands_sha256": (
             blocker_recommended_commands_sha256_match
         ),
@@ -1494,6 +1511,9 @@ def _kv_backed_decode_gap_report(
         ),
         "blueprint_sha256": streaming_decode_loop_status.get("blueprint_sha256"),
         "next_action": streaming_decode_loop_status.get("next_action"),
+        "next_action_sha256": _stable_json_sha256(
+            streaming_decode_loop_status.get("next_action")
+        ),
     }
     streaming_decode_loop_status_summary_sha256 = _stable_json_sha256(
         streaming_decode_loop_status_summary
@@ -2266,7 +2286,7 @@ def _handoff_summary(
                 "kv_backed_decode_gap_report.streaming_decode_loop_status.next_action"
             ),
             "kv_streaming_loop_next_action_sha_only": (
-                "sha256(kv_backed_decode_gap_report.streaming_decode_loop_status.next_action)"
+                "kv_backed_decode_gap_report.streaming_decode_loop_status.next_action_sha256"
             ),
             "status_refresh_command_only": (
                 "next_action_commands.oracle_parity_blocked.status_refresh_command"
@@ -2803,8 +2823,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         loop_status = status["kv_backed_decode_gap_report"].get(
             "streaming_decode_loop_status", {}
         )
-        result = _stable_json_sha256(
-            loop_status.get("next_action") if isinstance(loop_status, dict) else None
+        result = (
+            loop_status.get("next_action_sha256")
+            if isinstance(loop_status, dict)
+            else None
         )
     elif args.kv_streaming_loop_next_action_only:
         loop_status = status["kv_backed_decode_gap_report"].get(

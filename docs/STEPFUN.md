@@ -686,8 +686,8 @@ reporting.
   `--kv-streaming-loop-status-sha-only`, and
   `--kv-streaming-loop-next-action-only` /
   `--kv-streaming-loop-next-action-sha-only` outputs expose the recorded
-  summaries/digests plus the direct `wire_streaming_decode_loop` handoff target;
-  status integrity also
+  summaries/digests plus the direct `wire_streaming_decode_loop` handoff target
+  and its persisted digest; status integrity also
   cross-checks the mirrored blueprint digest, the mirrored loop-status digest,
   the mirrored first KV blocker digest, and the full KV streaming blocker names/SHA across the gap report,
   next-action command, and handoff queue so the runner artifact and status helper
