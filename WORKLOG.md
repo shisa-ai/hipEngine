@@ -58365,3 +58365,37 @@ PY
 ```
 
 Result: focused profiler trace/duration set-agreement regression PASS after the validator fixes; docs diff check PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1` with c=2/c=8 primitive JSONs passing on GPU1/XTX (`seed=1234`, zero append/A-A/attention errors, `device.env.HIP_VISIBLE_DEVICES=1`, `device_name=AMD Radeon RX 7900 XTX`). Prompt-verifier self-check passes: the open C2.5 item remains unchecked and explicitly says generated-token equality/scaling are still missing, completed items were not changed, and no retained c>N performance/scaling claim was added.
+
+## 2026-06-01 — CONCURRENCY C2.5 c-sweep profiler precondition uniqueness
+
+Closed another retained-profiler provenance gap at the c-sweep precondition layer. RED: `_profiler_summary_precondition` accepted profiler summaries with duplicate `trace_files`, duplicate `trace_kernel_names`, or duplicate `expected_kernel_names`, even though accepted artifacts and persisted summary validation already reject those aliases later. GREEN: `scripts/qwen35_batch_c_sweep.py` now fail-closes those duplicate profiler fields before a retained native diagnostic can run, and `docs/CONCURRENCY.md` P1 progress now distinguishes c-sweep-precondition-and-schema-checked unique profiler provenance. This does not close C2.5: it is profiler precondition hardening only, not generated-token equality vs independent c=1 and not a performance/scaling claim.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+python3 -m compileall -q tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_batch_c_sweep_profiler_precondition_rejects_duplicate_trace_files tests/test_generation_batch_scheduler.py::test_batch_c_sweep_profiler_precondition_rejects_duplicate_trace_kernel_names tests/test_generation_batch_scheduler.py::test_batch_c_sweep_profiler_precondition_rejects_duplicate_expected_kernel_names -q  # RED before c-sweep fix
+python3 -m compileall -q scripts/qwen35_batch_c_sweep.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_batch_c_sweep_profiler_precondition_rejects_duplicate_trace_files tests/test_generation_batch_scheduler.py::test_batch_c_sweep_profiler_precondition_rejects_duplicate_trace_kernel_names tests/test_generation_batch_scheduler.py::test_batch_c_sweep_profiler_precondition_rejects_duplicate_expected_kernel_names tests/test_generation_batch_scheduler.py::test_batch_c_sweep_runs_retained_when_all_references_are_usable -q
+git diff --check
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+env HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+python3 - <<'PY'
+from pathlib import Path
+import re
+text = Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue))
+assert count == 12, count
+assert '- [ ] **C2.5 c=4/c=8 BF16 equality.**' in queue
+assert 'generated-token equality vs independent c=1 for c=4/c=8 is still missing' in queue
+assert 'c-sweep-precondition-and-schema-checked' in queue
+assert 'unique kernel-trace CSV/unique kernel-name/kernel-duration set-agreement' in queue
+print('prompt-verifier support: C2.5 remains open; missing generated-token equality caveat remains present; c-sweep precondition/schema unique profiler provenance text is present; no completed item marker changed by this diff')
+PY
+```
+
+Result: focused c-sweep profiler uniqueness precondition regression PASS after the c-sweep fix; docs diff check PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1` with c=2/c=8 primitive JSONs passing on GPU1/XTX (`seed=1234`, zero append/A-A/attention errors, `device.env.HIP_VISIBLE_DEVICES=1`, `device_name=AMD Radeon RX 7900 XTX`). Prompt-verifier self-check passes: the open C2.5 item remains unchecked and explicitly says generated-token equality/scaling are still missing, completed items were not changed, and no retained c>N performance/scaling claim was added.

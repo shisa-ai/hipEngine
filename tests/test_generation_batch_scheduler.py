@@ -1009,6 +1009,42 @@ def test_batch_c_sweep_profiler_precondition_rejects_missing_trace_files(tmp_pat
     }
 
 
+def test_batch_c_sweep_profiler_precondition_rejects_duplicate_trace_files(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"]["trace_files"].append(payload["profiler"]["trace_files"][0])
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler.trace_files contains duplicates",
+    }
+
+
 def test_batch_c_sweep_profiler_precondition_rejects_trace_files_outside_trace_dir(tmp_path: Path) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
@@ -1285,6 +1321,42 @@ def test_batch_c_sweep_profiler_precondition_rejects_padded_trace_kernel_names(t
     }
 
 
+def test_batch_c_sweep_profiler_precondition_rejects_duplicate_trace_kernel_names(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"]["trace_kernel_names"].append(payload["profiler"]["trace_kernel_names"][0])
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler.trace_kernel_names contains duplicates",
+    }
+
+
 def test_batch_c_sweep_profiler_precondition_rejects_trace_kernel_names_without_duration_key(tmp_path: Path) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
@@ -1531,6 +1603,42 @@ def test_batch_c_sweep_profiler_precondition_rejects_wrong_workload_command(tmp_
         "artifact_path": str(profiler_path),
         "passed": False,
         "reason": "profiler command model='/tmp/model' does not match model=/tmp/other-model",
+    }
+
+
+def test_batch_c_sweep_profiler_precondition_rejects_duplicate_expected_kernel_names(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"]["expected_kernel_names"].append(payload["profiler"]["expected_kernel_names"][0])
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "expected_kernel_names contains duplicates",
     }
 
 

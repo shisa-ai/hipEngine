@@ -1477,6 +1477,8 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
             reasons.append("profiler.trace_files contains a non-string entry")
         else:
             profiler_trace_files = list(raw_trace_files)
+            if len(set(profiler_trace_files)) != len(profiler_trace_files):
+                reasons.append("profiler.trace_files contains duplicates")
             if any(Path(trace_file).suffix.lower() != ".csv" for trace_file in profiler_trace_files):
                 reasons.append("profiler.trace_files contains a non-CSV trace file")
             if not any(_is_kernel_trace_csv_path(trace_file) for trace_file in profiler_trace_files):
@@ -1495,6 +1497,8 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
         else:
             profiler_trace_kernel_names = list(raw_trace_kernel_names)
             trace_kernel_names_valid = True
+            if len(set(profiler_trace_kernel_names)) != len(profiler_trace_kernel_names):
+                reasons.append("profiler.trace_kernel_names contains duplicates")
             if not any("batch" in kernel_name.lower() for kernel_name in profiler_trace_kernel_names):
                 reasons.append("profiler.trace_kernel_names does not include a native batch kernel")
             if any(_has_disallowed_profiler_kernel_fragment(kernel_name) for kernel_name in profiler_trace_kernel_names):
@@ -1597,6 +1601,8 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
             reasons.append("expected_kernel_names is missing or empty")
         elif not all(_is_stripped_non_empty_string(name) for name in expected_kernel_names):
             reasons.append("expected_kernel_names contains a non-string entry")
+        elif len(set(expected_kernel_names)) != len(expected_kernel_names):
+            reasons.append("expected_kernel_names contains duplicates")
         elif not any("batch" in name.lower() for name in expected_kernel_names):
             reasons.append("expected_kernel_names does not include a native batch kernel")
         elif any(_has_disallowed_profiler_kernel_fragment(name) for name in expected_kernel_names):
