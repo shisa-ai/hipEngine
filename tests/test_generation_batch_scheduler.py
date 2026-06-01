@@ -8507,6 +8507,41 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
             with pytest.raises(ValueError, match=r"commands\[\]\.argv must be a non-empty string list"):
                 c_sweep.validate_sweep_summary(tampered_optional_bad_argv)
 
+        tampered_optional_blank_category = json.loads(json.dumps(summary))
+        tampered_optional_blank_category["commands"][index]["category"] = "   "
+        with pytest.raises(ValueError, match=r"commands\[\]\.category must be a non-empty string"):
+            c_sweep.validate_sweep_summary(tampered_optional_blank_category)
+
+        tampered_optional_missing_category = json.loads(json.dumps(summary))
+        del tampered_optional_missing_category["commands"][index]["category"]
+        with pytest.raises(ValueError, match=r"commands\[\]\.category must be a non-empty string"):
+            c_sweep.validate_sweep_summary(tampered_optional_missing_category)
+
+        tampered_optional_unknown_category = json.loads(json.dumps(summary))
+        tampered_optional_unknown_category["commands"][index]["category"] = "unexpected_optional_diagnostic"
+        with pytest.raises(ValueError, match=r"commands\[\]\.category must be a known c-sweep command category"):
+            c_sweep.validate_sweep_summary(tampered_optional_unknown_category)
+
+        tampered_optional_known_category = json.loads(json.dumps(summary))
+        tampered_optional_known_category["commands"][index]["category"] = "native_diagnostic"
+        with pytest.raises(ValueError, match=r"commands\[\]\.category must match commands\[\]\.argv script"):
+            c_sweep.validate_sweep_summary(tampered_optional_known_category)
+
+        tampered_optional_script = json.loads(json.dumps(summary))
+        optional_script_entry = tampered_optional_script["commands"][index]
+        optional_script_argv = optional_script_entry["argv"]
+        if optional_script_entry["category"] == "int8_native_diagnostic":
+            optional_script_argv[optional_script_argv.index(RETAINED_ARTIFACT_INT8_DIAGNOSTIC_SCRIPT)] = (
+                RETAINED_ARTIFACT_GGUF_DIAGNOSTIC_SCRIPT
+            )
+        else:
+            optional_script_argv[optional_script_argv.index(RETAINED_ARTIFACT_GGUF_DIAGNOSTIC_SCRIPT)] = (
+                RETAINED_ARTIFACT_INT8_DIAGNOSTIC_SCRIPT
+            )
+        optional_script_entry["command"] = shlex.join(optional_script_argv)
+        with pytest.raises(ValueError, match=r"commands\[\]\.category must match commands\[\]\.argv script"):
+            c_sweep.validate_sweep_summary(tampered_optional_script)
+
     for index in optional_entry_indices:
         tampered_optional_artifact_c = json.loads(json.dumps(summary))
         entry = tampered_optional_artifact_c["commands"][index]
