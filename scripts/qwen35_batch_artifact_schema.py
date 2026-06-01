@@ -476,6 +476,31 @@ def _validate_primitive_device_env_requirements(
     )
 
 
+def _validate_hardware_visible_device_matches_primitive(payload: Mapping[str, Any], errors: list[str]) -> None:
+    hardware = payload.get("hardware")
+    visible_device = hardware.get("visible_device") if isinstance(hardware, Mapping) else None
+    correctness = payload.get("correctness")
+    primitive = correctness.get("primitive_batch_correctness") if isinstance(correctness, Mapping) else None
+    primitive_device = primitive.get("device") if isinstance(primitive, Mapping) else None
+    if not isinstance(visible_device, Mapping) or not isinstance(primitive_device, Mapping):
+        return
+    for field in ("visible_device_count", "current_device"):
+        visible_value = visible_device.get(field)
+        primitive_value = primitive_device.get(field)
+        if visible_value is not None and primitive_value is not None and visible_value != primitive_value:
+            errors.append(f"hardware.visible_device.{field} must match correctness.primitive_batch_correctness.device.{field} for accepted artifacts")
+    visible_name = visible_device.get("device_name")
+    primitive_name = primitive_device.get("device_name")
+    if (
+        isinstance(visible_name, str)
+        and visible_name
+        and isinstance(primitive_name, str)
+        and primitive_name
+        and _normalized_gpu_label(visible_name) != _normalized_gpu_label(primitive_name)
+    ):
+        errors.append("hardware.visible_device.device_name must match correctness.primitive_batch_correctness.device.device_name for accepted artifacts")
+
+
 def _script_invocation_device_env_prefix_argv(command: str, script: str) -> list[str] | None:
     try:
         argv = shlex.split(command)
@@ -2169,6 +2194,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     device_selection_env_requirements = _accepted_device_selection_env_requirements(payload, errors)
     _validate_hardware_visible_device_env_requirements(hardware, device_selection_env_requirements, errors)
     _validate_primitive_device_env_requirements(payload, device_selection_env_requirements, errors)
+    _validate_hardware_visible_device_matches_primitive(payload, errors)
     environment_commands = commands.get("environment")
     if not _is_nonempty_string_list(environment_commands):
         errors.append("commands.environment must be a non-empty string list for accepted artifacts")
