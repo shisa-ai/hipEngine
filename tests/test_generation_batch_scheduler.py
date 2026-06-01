@@ -329,6 +329,16 @@ def test_qwen35_passed_validation_summary_requires_accepted_claim_consistency() 
     }
     validate_cn_diagnostic_validation_summary(summary)
 
+    missing_status = dict(summary)
+    missing_status["status"] = None
+    with pytest.raises(ValueError, match="passed validation summary.status must be a non-empty string"):
+        validate_cn_diagnostic_validation_summary(missing_status)
+
+    missing_claim = dict(summary)
+    missing_claim["performance_claim"] = None
+    with pytest.raises(ValueError, match="passed validation summary.performance_claim must be a bool"):
+        validate_cn_diagnostic_validation_summary(missing_claim)
+
     accepted_without_claim = dict(summary)
     accepted_without_claim["status"] = "accepted"
     with pytest.raises(ValueError, match="passed validation summary.status accepted requires performance_claim true"):

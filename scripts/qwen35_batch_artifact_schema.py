@@ -4327,6 +4327,10 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
         if benchmark_rollup is not None:
             errors.append("failed validation summary.benchmark_rollup must be null")
     if passed is True:
+        if status is None:
+            errors.append("passed validation summary.status must be a non-empty string")
+        if performance_claim is None:
+            errors.append("passed validation summary.performance_claim must be a bool")
         if status == "accepted" and performance_claim is not True:
             errors.append("passed validation summary.status accepted requires performance_claim true")
         if performance_claim is True and status != "accepted":
