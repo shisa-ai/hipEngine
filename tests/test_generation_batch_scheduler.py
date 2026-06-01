@@ -6235,6 +6235,11 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
                 primitive_artifact_path.unlink()
             if primitive_artifact_target.exists():
                 primitive_artifact_target.replace(primitive_artifact_path)
+        profiler_trace_dir = output_dir / "profile-c2"
+        profiler_trace_dir.mkdir(exist_ok=True)
+        (profiler_trace_dir / "hipengine_kernel_trace.csv").write_text(
+            "Kernel_Name,Start_Timestamp,End_Timestamp\nqwen35_batch_decode,0,12345\n"
+        )
     tampered_timestamp = json.loads(json.dumps(persisted))
     tampered_timestamp["timestamp"] = "not-a-timestamp"
     with pytest.raises(ValueError, match="timestamp must be ISO-8601 parseable"):
@@ -6482,6 +6487,12 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must exist for passed summary rows"):
         c_sweep.validate_sweep_summary(persisted)
     primitive_artifact_path.write_text(primitive_artifact_payload)
+    profiler_trace_file_path = output_dir / "profile-c2" / "hipengine_kernel_trace.csv"
+    profiler_trace_file_payload = profiler_trace_file_path.read_text()
+    profiler_trace_file_path.unlink()
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_files must exist when passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    profiler_trace_file_path.write_text(profiler_trace_file_payload)
     tampered_duration = json.loads(json.dumps(persisted))
     tampered_duration["commands"][-1]["duration_seconds"] = -1.0
     with pytest.raises(ValueError, match=r"commands\[\]\.duration_seconds must be a non-negative number"):

@@ -3365,6 +3365,12 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if _path_has_parent_directory_component(profiler_trace_dir):
                         errors.append("commands[].preconditions[].profiler_trace_dir must not contain parent-directory components when passed")
                         break
+                    if not profiler_trace_dir_check_path.exists():
+                        errors.append("commands[].preconditions[].profiler_trace_dir must exist when passed")
+                        break
+                    if not profiler_trace_dir_check_path.is_dir():
+                        errors.append("commands[].preconditions[].profiler_trace_dir must be a directory when passed")
+                        break
                     profiler_trace_files = profiler_precondition.get("profiler_trace_files")
                     if (
                         not isinstance(profiler_trace_files, list)
@@ -3401,6 +3407,12 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         break
                     if any(_path_has_parent_directory_component(trace_file) for trace_file in profiler_trace_files):
                         errors.append("commands[].preconditions[].profiler_trace_files must not contain parent-directory components when passed")
+                        break
+                    if any(not trace_file_path.exists() for trace_file_path in trace_file_check_paths):
+                        errors.append("commands[].preconditions[].profiler_trace_files must exist when passed")
+                        break
+                    if any(not trace_file_path.is_file() for trace_file_path in trace_file_check_paths):
+                        errors.append("commands[].preconditions[].profiler_trace_files must be files when passed")
                         break
                     profiler_kernel_names = profiler_precondition.get("profiler_trace_kernel_names")
                     if (
