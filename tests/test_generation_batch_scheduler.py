@@ -8593,6 +8593,18 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
             with pytest.raises(ValueError, match=r"command_count must match batch_sizes/options\.include_int8/include_gguf"):
                 c_sweep.validate_sweep_summary(tampered_missing_optional_row)
 
+    for index in (*int8_entry_indices, *gguf_entry_indices):
+        optional_category = summary["commands"][index]["category"]
+        tampered_status_rollup = json.loads(json.dumps(summary))
+        tampered_status_rollup["status_counts"]["planned"] -= 1
+        with pytest.raises(ValueError, match="status_counts must match commands"):
+            c_sweep.validate_sweep_summary(tampered_status_rollup)
+
+        tampered_category_rollup = json.loads(json.dumps(summary))
+        tampered_category_rollup["category_status_counts"][optional_category]["planned"] -= 1
+        with pytest.raises(ValueError, match="category_status_counts must match commands"):
+            c_sweep.validate_sweep_summary(tampered_category_rollup)
+
     for flag, stale_name in (
         ("--future-json", "int8-native-retained-future-stale.json"),
         ("--primitive-cpu-json", "int8-primitive-cpu-stale.json"),
