@@ -4399,8 +4399,19 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
         if isinstance(benchmark_rollup, Mapping):
             for key in ("artifact_path", "source_artifact_path"):
                 value = benchmark_rollup.get(key)
-                if isinstance(value, str) and _path_text_contains_parent_traversal(value):
-                    errors.append(f"summary.benchmark_rollup.{key} must not contain parent traversal")
+                if not isinstance(value, str) or not value:
+                    errors.append(f"summary.benchmark_rollup.{key} must be a non-empty string")
+                else:
+                    if value.strip() != value:
+                        errors.append(f"summary.benchmark_rollup.{key} must not contain leading or trailing whitespace")
+                    if not _is_benchmark_results_path(value):
+                        errors.append(f"summary.benchmark_rollup.{key} must be under benchmarks/results")
+                    if _path_text_contains_parent_traversal(value):
+                        errors.append(f"summary.benchmark_rollup.{key} must not contain parent traversal")
+                    if _benchmark_results_relative_path(value) != value.replace("\\", "/"):
+                        errors.append(f"summary.benchmark_rollup.{key} must be a repo-relative benchmarks/results path")
+                    if not value.replace("\\", "/").rsplit("/", 1)[-1].endswith(".json"):
+                        errors.append(f"summary.benchmark_rollup.{key} must end with .json")
         if isinstance(benchmark_rollup, Mapping) and isinstance(artifact_path, str):
             if benchmark_rollup.get("artifact_path") != artifact_path:
                 errors.append("summary.benchmark_rollup.artifact_path must match summary.artifact_path")

@@ -21149,6 +21149,14 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     extra_rollup_key_summary["benchmark_rollup"]["note"] = "promote"
     with pytest.raises(ValueError, match="summary.benchmark_rollup contains unexpected keys: note"):
         validate_cn_diagnostic_validation_summary(extra_rollup_key_summary)
+    leading_space_rollup_artifact_path = json.loads(json.dumps(summary))
+    leading_space_rollup_artifact_path["benchmark_rollup"]["artifact_path"] = " benchmarks/results/accepted-c2.json"
+    with pytest.raises(ValueError, match="summary.benchmark_rollup.artifact_path must not contain leading or trailing whitespace"):
+        validate_cn_diagnostic_validation_summary(leading_space_rollup_artifact_path)
+    non_json_rollup_source_artifact_path = json.loads(json.dumps(summary))
+    non_json_rollup_source_artifact_path["benchmark_rollup"]["source_artifact_path"] = "benchmarks/results/accepted-c2.txt"
+    with pytest.raises(ValueError, match="summary.benchmark_rollup.source_artifact_path must end with .json"):
+        validate_cn_diagnostic_validation_summary(non_json_rollup_source_artifact_path)
     wrong_summary_readme = json.loads(json.dumps(summary))
     wrong_summary_readme["benchmark_rollup"]["readme_path"] = "README.md"
     with pytest.raises(ValueError, match="summary.benchmark_rollup.readme_path must be benchmarks/README.md"):
