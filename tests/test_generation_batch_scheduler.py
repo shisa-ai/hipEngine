@@ -7351,11 +7351,21 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     with pytest.raises(ValueError, match=r"commands\[\] category/batch_size order must match batch_sizes/options\.include_int8/include_gguf"):
         c_sweep.validate_sweep_summary(tampered_batch_size_order)
     assert summary["command_count"] == 27
+    for stale_command_count in (True, "27"):
+        tampered_command_count_type = json.loads(json.dumps(summary))
+        tampered_command_count_type["command_count"] = stale_command_count
+        with pytest.raises(ValueError, match="command_count must be an int greater than or equal to completed_command_count"):
+            c_sweep.validate_sweep_summary(tampered_command_count_type)
     tampered_command_count = json.loads(json.dumps(summary))
     tampered_command_count["command_count"] = 28
     with pytest.raises(ValueError, match="dry-run summaries must include all planned commands"):
         c_sweep.validate_sweep_summary(tampered_command_count)
     assert summary["completed_command_count"] == 27
+    for stale_completed_command_count in (True, "27"):
+        tampered_completed_command_count_type = json.loads(json.dumps(summary))
+        tampered_completed_command_count_type["completed_command_count"] = stale_completed_command_count
+        with pytest.raises(ValueError, match=r"completed_command_count must be a typed int matching len\(commands\)"):
+            c_sweep.validate_sweep_summary(tampered_completed_command_count_type)
     tampered_completed_command_count = json.loads(json.dumps(summary))
     tampered_completed_command_count["completed_command_count"] = 26
     with pytest.raises(ValueError, match=r"completed_command_count must be a typed int matching len\(commands\)"):
