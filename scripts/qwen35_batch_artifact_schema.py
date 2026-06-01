@@ -397,6 +397,26 @@ def _validate_device_env_metadata(env: Any, *, prefix: str, errors: list[str]) -
             errors.append(f"{prefix}.env.{key} must be a non-blank string when present for accepted artifacts")
 
 
+def _validate_hardware_visible_device_env_requirements(
+    hardware: Mapping[str, Any],
+    requirements: Mapping[str, str],
+    errors: list[str],
+) -> None:
+    if not requirements:
+        return
+    visible_device = hardware.get("visible_device")
+    if not isinstance(visible_device, Mapping):
+        errors.append("hardware.visible_device must be an object when command device env prefixes are required for accepted artifacts")
+        return
+    env = visible_device.get("env")
+    if not isinstance(env, Mapping):
+        errors.append("hardware.visible_device.env must be an object when command device env prefixes are required for accepted artifacts")
+        return
+    for key, value in requirements.items():
+        if env.get(key) != value:
+            errors.append(f"hardware.visible_device.env.{key} must include {key}={value} for accepted artifacts")
+
+
 def _script_invocation_device_env_prefix_argv(command: str, script: str) -> list[str] | None:
     try:
         argv = shlex.split(command)
@@ -2079,6 +2099,7 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         elif isinstance(command_value, str):
             _append_disallowed_accepted_diagnostic_text_errors(command_value, path=f"commands.{field}", errors=errors)
     device_selection_env_requirements = _accepted_device_selection_env_requirements(payload, errors)
+    _validate_hardware_visible_device_env_requirements(hardware, device_selection_env_requirements, errors)
     environment_commands = commands.get("environment")
     if not _is_nonempty_string_list(environment_commands):
         errors.append("commands.environment must be a non-empty string list for accepted artifacts")

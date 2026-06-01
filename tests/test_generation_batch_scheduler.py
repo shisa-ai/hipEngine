@@ -21278,6 +21278,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     )
     validate_cn_diagnostic_artifact_payload(gpu1_accepted)
 
+    missing_hardware_visible_device_env = json.loads(json.dumps(gpu1_accepted))
+    missing_hardware_visible_device_env["hardware"].pop("visible_device")
+    with pytest.raises(ValueError, match="hardware.visible_device must be an object when command device env prefixes are required"):
+        validate_cn_diagnostic_artifact_payload(missing_hardware_visible_device_env)
+
+    missing_hardware_visible_device_env_key = json.loads(json.dumps(gpu1_accepted))
+    missing_hardware_visible_device_env_key["hardware"]["visible_device"]["env"].pop("HIP_VISIBLE_DEVICES")
+    with pytest.raises(ValueError, match="hardware.visible_device.env.HIP_VISIBLE_DEVICES must include HIP_VISIBLE_DEVICES=1"):
+        validate_cn_diagnostic_artifact_payload(missing_hardware_visible_device_env_key)
+
     aux_env_accepted = json.loads(json.dumps(gpu1_accepted))
     aux_env_accepted["hardware"]["visible_device"]["env"]["ROCR_VISIBLE_DEVICES"] = "1"
     aux_env_accepted["correctness"]["primitive_batch_correctness"]["device"]["env"]["ROCR_VISIBLE_DEVICES"] = "1"
