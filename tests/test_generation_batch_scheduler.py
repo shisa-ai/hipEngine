@@ -6549,6 +6549,21 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON total_kernel_duration_ns must match when profiler passed"):
         c_sweep.validate_sweep_summary(persisted)
     profiler_source_payload = json.loads(profiler_artifact_payload)
+    profiler_source_payload["profiler"]["kernel_duration_shares"]["qwen35_batch_decode"] = 0.5
+    profiler_artifact_path.write_text(json.dumps(profiler_source_payload))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON kernel_duration_shares must match when profiler passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    profiler_source_payload = json.loads(profiler_artifact_payload)
+    profiler_source_payload["profiler"]["kernel_duration_categories_ns"]["other"] = 54321.0
+    profiler_artifact_path.write_text(json.dumps(profiler_source_payload))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON kernel_duration_categories_ns must match when profiler passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    profiler_source_payload = json.loads(profiler_artifact_payload)
+    profiler_source_payload["profiler"]["kernel_duration_category_shares"]["other"] = 0.5
+    profiler_artifact_path.write_text(json.dumps(profiler_source_payload))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON kernel_duration_category_shares must match when profiler passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    profiler_source_payload = json.loads(profiler_artifact_payload)
     profiler_source_payload["profiler"]["cpu_side_total_seconds"] = 11.0
     profiler_artifact_path.write_text(json.dumps(profiler_source_payload))
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON cpu_side_total_seconds must match when profiler passed"):
