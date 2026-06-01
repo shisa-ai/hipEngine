@@ -82,6 +82,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--status-integrity-only",
+        action="store_true",
+        help=(
+            "Emit only status_integrity for compact embedded digest/schema checks. "
+            "Overrides summary and queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--source-artifacts-sha-only",
         action="store_true",
         help=(
@@ -1278,6 +1286,7 @@ def _handoff_summary(
             "summary_only": "handoff_summary",
             "handoff_summary_sha_only": "handoff_summary_sha256",
             "schema_versions_only": "schema_versions",
+            "status_integrity_only": "status_integrity",
             "readiness_summary_only": "readiness_summary",
             "readiness_summary_sha_only": "readiness_summary_sha256",
             "source_artifacts_sha_only": "source_artifacts_sha256",
@@ -1676,6 +1685,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["next_action_commands"]["kv_backed_decode_not_wired"].get(
             "resource_plan_refresh_command"
         )
+    elif args.status_integrity_only:
+        result = _status_integrity(status)
     elif args.schema_versions_only:
         result = status["schema_versions"]
     elif args.handoff_summary_sha_only:

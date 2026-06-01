@@ -4,7 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from scripts.stepfun_correctness_status import build_status, main
+from scripts.stepfun_correctness_status import _status_integrity, build_status, main
 
 
 def _primary_command_fields(kind: str | None, command: str | None) -> dict[str, object]:
@@ -1004,6 +1004,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "summary_only": "handoff_summary",
         "handoff_summary_sha_only": "handoff_summary_sha256",
         "schema_versions_only": "schema_versions",
+        "status_integrity_only": "status_integrity",
         "readiness_summary_only": "readiness_summary",
         "readiness_summary_sha_only": "readiness_summary_sha256",
         "source_artifacts_sha_only": "source_artifacts_sha256",
@@ -1669,6 +1670,58 @@ def test_stepfun_correctness_status_schema_versions_only(capsys, tmp_path: Path)
     }
 
 
+def test_stepfun_correctness_status_status_integrity_only(capsys, tmp_path: Path) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "status-integrity.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--readiness-summary-only",
+            "--readiness-summary-sha-only",
+            "--handoff-summary-sha-only",
+            "--schema-versions-only",
+            "--status-integrity-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(output.read_text())
+    assert payload == _status_integrity(status)
+    assert payload == {
+        "all_match": True,
+        "checks": {
+            "source_artifacts_sha256": True,
+            "handoff_summary_sha256": True,
+            "readiness_summary_sha256": True,
+            "next_action_commands_sha256": True,
+            "schema_versions": True,
+        },
+    }
+
+
 def test_stepfun_correctness_status_source_artifacts_sha_only(capsys, tmp_path: Path) -> None:
     prompt = tmp_path / "prompt.json"
     oracle = tmp_path / "oracle.json"
@@ -1868,6 +1921,7 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "summary_only": "handoff_summary",
         "handoff_summary_sha_only": "handoff_summary_sha256",
         "schema_versions_only": "schema_versions",
+        "status_integrity_only": "status_integrity",
         "readiness_summary_only": "readiness_summary",
         "readiness_summary_sha_only": "readiness_summary_sha256",
         "source_artifacts_sha_only": "source_artifacts_sha256",
@@ -3341,6 +3395,45 @@ def test_stepfun_correctness_status_schema_versions_fail_on_blocked_returns_nonz
         "blocker_work_queue": 1,
         "first_blocker_work_item": 1,
     }
+
+
+def test_stepfun_correctness_status_status_integrity_fail_on_blocked_returns_nonzero(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-integrity-only",
+            "--fail-on-blocked",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 2
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert captured.err == ""
+    assert payload == _status_integrity(status)
+    assert payload["all_match"] is True
+    assert all(payload["checks"].values())
 
 
 def test_stepfun_correctness_status_source_artifacts_sha_fail_on_blocked_returns_nonzero(
