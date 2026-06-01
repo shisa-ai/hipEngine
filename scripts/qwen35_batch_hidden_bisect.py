@@ -157,19 +157,27 @@ def _parse_focus_hidden_flat_indices(values: Sequence[str] | None) -> list[int]:
     return indices
 
 
-def _trace_decode_window(args: argparse.Namespace) -> tuple[int, int]:
+def _total_decode_tokens(args: argparse.Namespace) -> int:
     decode_tokens = int(args.decode_tokens)
-    start = int(getattr(args, "trace_decode_start", 0))
-    end_arg = getattr(args, "trace_decode_end", None)
-    end = decode_tokens if end_arg is None else int(end_arg)
+    warmup_decode_tokens = int(getattr(args, "warmup_decode_tokens", 0))
     if decode_tokens < 0:
         raise ValueError("decode-tokens must be non-negative")
+    if warmup_decode_tokens < 0:
+        raise ValueError("warmup-decode-tokens must be non-negative")
+    return warmup_decode_tokens + decode_tokens
+
+
+def _trace_decode_window(args: argparse.Namespace) -> tuple[int, int]:
+    total_decode_tokens = _total_decode_tokens(args)
+    start = int(getattr(args, "trace_decode_start", 0))
+    end_arg = getattr(args, "trace_decode_end", None)
+    end = total_decode_tokens if end_arg is None else int(end_arg)
     if start < 0:
         raise ValueError("trace decode window start must be non-negative")
     if end < start:
         raise ValueError("trace decode window end must be greater than or equal to start")
-    if end > decode_tokens:
-        raise ValueError("trace decode window end must not exceed decode-tokens")
+    if end > total_decode_tokens:
+        raise ValueError("trace decode window end must not exceed warmup-decode-tokens + decode-tokens")
     return start, end
 
 
@@ -5596,6 +5604,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prompt-length", type=int, default=512)
     parser.add_argument("--batch-size", type=int, default=2)
     parser.add_argument("--decode-tokens", type=int, default=16)
+    parser.add_argument(
+        "--warmup-decode-tokens",
+        type=int,
+        default=0,
+        help="Decode tokens to run before the measured decode segment; comparisons include seed+warmup+decode.",
+    )
     parser.add_argument("--max-layers", type=int, default=8)
     parser.add_argument("--layer-limits", default=None, help="Comma/range list such as '1,4,8' or '1-8'; default all")
     parser.add_argument("--max-sequence-length", type=int, default=1024)
@@ -5728,6 +5742,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
         raise ValueError("repeat-runs must be positive")
     layer_limits = _parse_layer_limits(args.layer_limits, max_layers=args.max_layers)
     focus_hidden_flat_indices = _parse_focus_hidden_flat_indices(args.focus_hidden_flat_index)
+    total_decode_tokens = _total_decode_tokens(args)
     trace_decode_start, trace_decode_end = _trace_decode_window(args)
     prompt_lengths: list[int] = []
     if args.dry_run:
@@ -5735,8 +5750,8 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
     else:
         prompts = _load_prompt_slices(Path(args.fixture), prompt_length=args.prompt_length, batch_size=args.batch_size)
         prompt_lengths = [len(prompt) for prompt in prompts]
-        if args.max_sequence_length < max(prompt_lengths) + args.decode_tokens + 1:
-            raise ValueError("max_sequence_length must cover prompt_length + decode_tokens + 1")
+        if args.max_sequence_length < max(prompt_lengths) + total_decode_tokens + 1:
+            raise ValueError("max_sequence_length must cover prompt_length + warmup_decode_tokens + decode_tokens + 1")
     payload: dict[str, Any] = {
         "schema": 1,
         "status": "planned" if args.dry_run else "running",
@@ -5751,6 +5766,8 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "prompt_lengths": prompt_lengths,
             "batch_size": int(args.batch_size),
             "decode_tokens": int(args.decode_tokens),
+            "warmup_decode_tokens": int(args.warmup_decode_tokens),
+            "total_decode_tokens": int(total_decode_tokens),
             "max_layers": int(args.max_layers),
             "layer_limits": layer_limits,
             "max_sequence_length": int(args.max_sequence_length),
@@ -5898,7 +5915,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             runner,
             prompts,
             layer_limit=layer_limit,
-            decode_tokens=args.decode_tokens,
+            decode_tokens=total_decode_tokens,
             max_sequence_length=args.max_sequence_length,
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
@@ -5909,7 +5926,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             runner,
             prompts,
             layer_limit=layer_limit,
-            decode_tokens=args.decode_tokens,
+            decode_tokens=total_decode_tokens,
             max_sequence_length=args.max_sequence_length,
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,

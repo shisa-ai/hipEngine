@@ -63474,3 +63474,24 @@ Interpretation: the diagnostic controls can make a full-depth hidden-bisect run 
 Official retained verifier was rerun after the change. One transient run produced prefix 0 due a shifted c1 row-0 sequence; an immediate rerun restored the established `/tmp/hipengine-e2e-native-c2-512-128.json` result: `min_equal_prefix_tokens=82`, `prefix_lengths=[82, 137]`, `status=rejected_correctness`, no performance claim.
 
 Guard passed with the required pytest bundle (`399 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY hidden-bisect warmup alignment
+
+Added `scripts/qwen35_batch_hidden_bisect.py --warmup-decode-tokens` so hidden-bisect can run the same seed + warmup + measured-decode token sequence shape as retained bench. Artifacts now record `workload.warmup_decode_tokens` and `workload.total_decode_tokens`; the trace window is validated against total warmup+decode tokens.
+
+GPU1 / RX 7900 XTX evidence with retained-shaped warmup (`prompt=512`, `warmup=8`, `decode=128`, `max_layers=40`, `trace_decode_window=[80,83]`):
+
+- Native full-depth hidden-bisect artifact `/tmp/hipengine-e2e-hidden-L40-512-w8-d128-trace80-83-native-gpu1.json`:
+  - `status=mismatch_found`, hidden/token equality fail.
+  - First hidden mismatch is now much smaller than the no-warmup run: step 0 row 0 `max_abs=0.0078125` (35 elements over atol), not `0.3125`.
+  - Focus window again shows full-attention drift at decode step 80 / generated index 81, layer 3 `attn_input_pre_qkv`, row 0 (`max_abs=0.03125`, 40 elements over atol).
+  - First token mismatch in this hidden-bisect oracle is row 1 index 104.
+- Selected/per-row diagnostic artifact `/tmp/hipengine-e2e-hidden-L40-512-w8-d128-trace80-83-selected-linear-full-rowdiag-gpu1.json`:
+  - `status=eq_ok`, hidden/token equality pass for the full seed+8+128 sequence.
+  - No full-attention or linear failures in the traced retained-neighborhood window.
+
+Official retained verifier rerun after the change remains `/tmp/hipengine-e2e-native-c2-512-128.json`: `min_equal_prefix_tokens=82`, `prefix_lengths=[82, 137]`, `status=rejected_correctness`, no performance claim.
+
+Interpretation: hidden-bisect can now exactly include retained warmup, and the selected/per-row controls still make the full-depth oracle green. The remaining retained-bench blocker is therefore likely in scheduler/retained bench replay or a retained-only execution difference after warmup, not merely in the long no-warmup hidden-bisect path. Next step should compare retained bench's batch/c1 token sequences against warmup-enabled hidden-bisect sequences or add a scheduler-retained hidden trace.
+
+Guard passed with the required pytest bundle (`399 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.

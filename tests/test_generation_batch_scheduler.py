@@ -11853,6 +11853,9 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert payload["performance_claim"] is False
     assert payload["workload"]["native_compact_prefill"] is True
     assert payload["workload"]["repeat_runs"] == 1
+    assert payload["workload"]["decode_tokens"] == 4
+    assert payload["workload"]["warmup_decode_tokens"] == 0
+    assert payload["workload"]["total_decode_tokens"] == 4
     assert payload["workload"]["focus_hidden_flat_indices"] == []
     assert payload["workload"]["trace_decode_start"] == 0
     assert payload["workload"]["trace_decode_end"] == 4
@@ -11901,6 +11904,29 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert focused_trace_payload["workload"]["trace_decode_end"] == 3
     assert focused_trace_payload["workload"]["trace_decode_window"] == [1, 3]
 
+    warmup_trace = build_hidden_bisect_parser().parse_args(
+        [
+            "--dry-run",
+            "--prompt-length",
+            "32",
+            "--batch-size",
+            "2",
+            "--decode-tokens",
+            "4",
+            "--warmup-decode-tokens",
+            "2",
+            "--max-layers",
+            "8",
+            "--layer-limits",
+            "8",
+        ]
+    )
+    warmup_trace_payload = run_hidden_bisect(warmup_trace, ["--dry-run", "--warmup-decode-tokens", "2"])
+    assert warmup_trace_payload["workload"]["decode_tokens"] == 4
+    assert warmup_trace_payload["workload"]["warmup_decode_tokens"] == 2
+    assert warmup_trace_payload["workload"]["total_decode_tokens"] == 6
+    assert warmup_trace_payload["workload"]["trace_decode_window"] == [0, 6]
+
     invalid_trace = build_hidden_bisect_parser().parse_args(
         [
             "--dry-run",
@@ -11912,7 +11938,7 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
             "5",
         ]
     )
-    with pytest.raises(ValueError, match="trace decode window end must not exceed decode-tokens"):
+    with pytest.raises(ValueError, match="trace decode window end must not exceed warmup-decode-tokens \\+ decode-tokens"):
         run_hidden_bisect(invalid_trace, ["--dry-run", "--trace-decode-start", "3"])
 
     per_row_post_attn = build_hidden_bisect_parser().parse_args(
