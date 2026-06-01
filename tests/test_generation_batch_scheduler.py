@@ -19922,6 +19922,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         "schema": 3,
         "status": "accepted",
         "rows": 2,
+        "run_tag": "qwen35-paro-c2-native-retained",
         "artifact_path": "benchmarks/results/accepted-c2.json",
         "performance_claim": True,
         "hardware": {
@@ -20396,6 +20397,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     mismatched_artifact_schema["schema"] = 2
     with pytest.raises(ValueError, match="schema must be 3 for accepted artifacts"):
         validate_cn_diagnostic_artifact_payload(mismatched_artifact_schema)
+
+    missing_run_tag = json.loads(json.dumps(accepted))
+    missing_run_tag.pop("run_tag")
+    with pytest.raises(ValueError, match="run_tag must be a non-empty string for accepted artifacts"):
+        validate_cn_diagnostic_artifact_payload(missing_run_tag)
+
+    mismatched_run_tag = json.loads(json.dumps(accepted))
+    mismatched_run_tag["run_tag"] = "qwen35-paro-c8-native-retained"
+    with pytest.raises(ValueError, match="run_tag must match qwen35-paro-c<workload.concurrency>-native-retained"):
+        validate_cn_diagnostic_artifact_payload(mismatched_run_tag)
 
     missing_artifact_rows = json.loads(json.dumps(accepted))
     missing_artifact_rows.pop("rows")

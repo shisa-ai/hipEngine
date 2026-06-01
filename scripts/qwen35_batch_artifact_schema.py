@@ -1261,6 +1261,11 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
     workload = _mapping_at(payload, "workload", errors)
     concurrency = workload.get("concurrency")
     concurrency_valid = isinstance(concurrency, int) and not isinstance(concurrency, bool) and concurrency > 1
+    run_tag = payload.get("run_tag")
+    if not isinstance(run_tag, str) or not run_tag:
+        errors.append("run_tag must be a non-empty string for accepted artifacts")
+    elif concurrency_valid and run_tag != f"qwen35-paro-c{concurrency}-native-retained":
+        errors.append("run_tag must match qwen35-paro-c<workload.concurrency>-native-retained for accepted artifacts")
     artifact_rows = payload.get("rows")
     if not isinstance(artifact_rows, int) or isinstance(artifact_rows, bool):
         errors.append("rows must be an int for accepted artifacts")
