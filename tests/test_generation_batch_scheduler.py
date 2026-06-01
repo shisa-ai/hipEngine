@@ -7243,6 +7243,22 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
 
     assert [(item.category, item.batch_size) for item in planned] == expected_plan
     assert [(entry["category"], entry["batch_size"]) for entry in summary["commands"]] == expected_plan
+    assert len(summary["commands"]) == 27
+    tampered_commands_type = json.loads(json.dumps(summary))
+    tampered_commands_type["commands"] = "not-a-list"
+    with pytest.raises(ValueError, match="commands must be a list"):
+        c_sweep.validate_sweep_summary(tampered_commands_type)
+    tampered_commands_empty = json.loads(json.dumps(summary))
+    tampered_commands_empty["commands"] = []
+    tampered_commands_empty["completed_command_count"] = 0
+    with pytest.raises(ValueError, match="commands must be a non-empty list"):
+        c_sweep.validate_sweep_summary(tampered_commands_empty)
+    tampered_commands_entry_type = json.loads(json.dumps(summary))
+    tampered_commands_entry_type["commands"] = [None]
+    tampered_commands_entry_type["completed_command_count"] = 1
+    tampered_commands_entry_type["command_count"] = 1
+    with pytest.raises(ValueError, match="commands entries must be objects"):
+        c_sweep.validate_sweep_summary(tampered_commands_entry_type)
     assert summary["schema"] == 1
     tampered_summary_schema = json.loads(json.dumps(summary))
     tampered_summary_schema["schema"] = 2
