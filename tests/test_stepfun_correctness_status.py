@@ -3244,6 +3244,13 @@ def test_stepfun_correctness_status_verifies_source_artifact_provenance(capsys, 
     assert payload["all_match"] is True
     assert payload["source_artifacts_all_match"] is True
     assert payload["source_artifact_failed_records"] == []
+    assert payload["verification_failures"] == {
+        "source_artifact_failed_records": [],
+        "status_integrity_failed_checks": [],
+    }
+    assert payload["verification_failures_sha256"] == _stable_json_sha256(
+        payload["verification_failures"]
+    )
     assert payload["status_integrity"] == {
         "all_match": True,
         "failed_checks": [],
@@ -3518,10 +3525,65 @@ def test_stepfun_correctness_status_verify_failures_only(
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == ""
-    assert json.loads(failures_output.read_text()) == {
+    payload = json.loads(failures_output.read_text())
+    assert payload == {
         "source_artifact_failed_records": [],
         "status_integrity_failed_checks": [],
     }
+
+
+def test_stepfun_correctness_status_verify_failures_sha_only(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    status_output = tmp_path / "status.json"
+    sha_output = tmp_path / "verification-failures-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(status_output),
+        ]
+    )
+    assert rc == 0
+
+    rc = main(
+        [
+            "--verify-source-artifacts",
+            str(status_output),
+            "--verification-failures-sha-only",
+            "--output",
+            str(sha_output),
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert json.loads(sha_output.read_text()) == _stable_json_sha256(
+        {
+            "source_artifact_failed_records": [],
+            "status_integrity_failed_checks": [],
+        }
+    )
 
 
 def test_stepfun_correctness_status_verify_failures_only_detects_source_and_status_drift(
@@ -3574,7 +3636,8 @@ def test_stepfun_correctness_status_verify_failures_only_detects_source_and_stat
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == ""
-    assert json.loads(failures_output.read_text()) == {
+    payload = json.loads(failures_output.read_text())
+    assert payload == {
         "source_artifact_failed_records": ["prompt"],
         "status_integrity_failed_checks": ["next_action_commands_sha256"],
     }

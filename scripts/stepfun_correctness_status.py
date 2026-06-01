@@ -154,6 +154,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--verification-failures-sha-only",
+        action="store_true",
+        help=(
+            "With --verify-source-artifacts, emit only verification_failures_sha256 "
+            "for compact source/status failure drift polling."
+        ),
+    )
+    parser.add_argument(
         "--next-action-commands-sha-only",
         action="store_true",
         help=(
@@ -471,16 +479,18 @@ def _verify_source_artifacts(status_artifact: Path) -> dict[str, object]:
     if not isinstance(source_artifacts, dict) or not source_artifacts:
         status_integrity = _status_integrity(status)
         source_artifact_failed_records: list[str] = []
+        verification_failures = {
+            "source_artifact_failed_records": source_artifact_failed_records,
+            "status_integrity_failed_checks": status_integrity["failed_checks"],
+        }
         return {
             "status": "missing_source_artifacts",
             "status_artifact": str(status_artifact),
             "all_match": False,
             "source_artifacts_all_match": False,
             "source_artifact_failed_records": source_artifact_failed_records,
-            "verification_failures": {
-                "source_artifact_failed_records": source_artifact_failed_records,
-                "status_integrity_failed_checks": status_integrity["failed_checks"],
-            },
+            "verification_failures": verification_failures,
+            "verification_failures_sha256": _stable_json_sha256(verification_failures),
             "checked_count": 0,
             "records": {},
             "status_integrity": status_integrity,
@@ -521,6 +531,7 @@ def _verify_source_artifacts(status_artifact: Path) -> dict[str, object]:
         "source_artifacts_all_match": source_artifacts_all_match,
         "source_artifact_failed_records": source_artifact_failed_records,
         "verification_failures": verification_failures,
+        "verification_failures_sha256": _stable_json_sha256(verification_failures),
         "checked_count": len(records),
         "records": records,
         "status_integrity": status_integrity,
@@ -1893,7 +1904,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     if args.verify_source_artifacts is not None:
         verification = _verify_source_artifacts(args.verify_source_artifacts)
-        if args.verification_failures_only:
+        if args.verification_failures_sha_only:
+            result = verification["verification_failures_sha256"]
+        elif args.verification_failures_only:
             result = verification["verification_failures"]
         elif args.source_artifact_failures_only:
             result = verification["source_artifact_failed_records"]

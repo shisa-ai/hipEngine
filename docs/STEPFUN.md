@@ -674,8 +674,8 @@ reporting.
   checks those embedded hashes/sizes plus the embedded digest/schema-version
   integrity fields before a handoff is trusted, can be combined with
   `--source-artifact-failures-only` to emit only stale source record names,
-  `--verification-failures-only` to emit both source-record and status-integrity
-  failure lists, and can be combined with
+  `--verification-failures-only` / `--verification-failures-sha-only` to emit
+  or digest both source-record and status-integrity failure lists, and can be combined with
   `--status-integrity-only` or `--status-integrity-failures-only` to emit just
   the embedded integrity payload or failing check names from a persisted status
   artifact; without `--verify-source-artifacts`, those compact integrity modes
