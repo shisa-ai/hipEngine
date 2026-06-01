@@ -2983,6 +2983,21 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if primitive_artifact_path != primitive_precondition.get("artifact_path"):
                         errors.append("commands[].preconditions[].primitive_artifact_path must match primitive artifact_path when primitive passed")
                         break
+                    if primitive_alias_check_path.exists() and primitive_alias_check_path.is_file():
+                        try:
+                            primitive_source_payload = _load_json_path(primitive_alias_check_path)
+                        except Exception:
+                            errors.append("commands[].preconditions[].primitive_artifact_path must be valid JSON when primitive passed")
+                            break
+                        if not isinstance(primitive_source_payload, dict):
+                            errors.append("commands[].preconditions[].primitive_artifact_path must contain an object when primitive passed")
+                            break
+                        if primitive_source_payload.get("artifact_path") != primitive_artifact_path:
+                            errors.append("commands[].preconditions[].primitive_artifact_path JSON artifact_path must match when primitive passed")
+                            break
+                        if "source_artifact_path" in primitive_source_payload and primitive_source_payload.get("source_artifact_path") != primitive_artifact_path:
+                            errors.append("commands[].preconditions[].primitive_artifact_path JSON source_artifact_path must match when primitive passed")
+                            break
                     primitive_seed = primitive_precondition.get("primitive_seed")
                     if (
                         not isinstance(primitive_seed, int)
