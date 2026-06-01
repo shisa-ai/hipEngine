@@ -7274,6 +7274,17 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.argv device env prefix must match the first command"):
             c_sweep.validate_sweep_summary(tampered_planned_device_env)
 
+        tampered_planned_script = json.loads(json.dumps(summary))
+        planned_script_entry = tampered_planned_script["commands"][index]
+        planned_script_entry["argv"][3] = (
+            RETAINED_ARTIFACT_SERIAL_BRIDGE_SCRIPT
+            if planned_script_entry["category"] == "primitive"
+            else RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_SCRIPT
+        )
+        planned_script_entry["command"] = shlex.join(planned_script_entry["argv"])
+        with pytest.raises(ValueError, match=r"commands\[\]\.category must match commands\[\]\.argv script"):
+            c_sweep.validate_sweep_summary(tampered_planned_script)
+
         tampered_missing_planned_key = json.loads(json.dumps(summary))
         del tampered_missing_planned_key["commands"][index]["returncode"]
         with pytest.raises(ValueError, match=r"commands\[\] planned rows must contain exactly planned command keys"):
