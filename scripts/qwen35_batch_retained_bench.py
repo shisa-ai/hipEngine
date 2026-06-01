@@ -3530,7 +3530,7 @@ def _run_native_bench(
         batch_execution = session.batch_execution_metadata(
             scheduler_owned=True,
             native_decode=True,
-            active_rows=args.batch_size,
+            active_rows=batch_size,
         ).to_json_dict()
 
     completed_payload = [done.to_json_dict() for done in completed]

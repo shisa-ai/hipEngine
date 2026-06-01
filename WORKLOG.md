@@ -63008,3 +63008,59 @@ git diff --check
 ```
 
 Result: targeted non-JSON-rollup-artifact-path regression PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1` with c=2/c=8 primitive JSONs passing on GPU1/XTX (`seed=1234`, zero append/A-A/attention errors, `device.env.HIP_VISIBLE_DEVICES=1`, `device_name=AMD Radeon RX 7900 XTX`). Prompt-verifier self-check passes: C2.5 remains unchecked with generated-token equality/scaling caveats present, no completed item marker changed, no retained c>N performance/scaling claim was added, and no benchmark/doc rollup file changed.
+
+## 2026-06-02 — CONCURRENCY native c2 retained-bench verify unblock
+
+Fixed the new `concurrency-e2e/native-c2-e2e` verifier blocker in `scripts/qwen35_batch_retained_bench.py`: `_run_native_bench(...)` now passes its local `batch_size` into `session.batch_execution_metadata(active_rows=...)` instead of referencing out-of-scope `args.batch_size`. This is a runtime/benchmark harness fix only; native c>1 correctness is still red and no retained performance claim is made.
+
+Validation on GPU1 / RX 7900 XTX:
+
+```bash
+bash -lc 'set -euo pipefail
+OUT=/tmp/hipengine-e2e-native-c2-512-128.json
+LOG=/tmp/hipengine-e2e-native-c2-512-128.log
+rm -f "$OUT" "$LOG"
+HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
+  --prompt-length 512 --batch-size 2 --decode-tokens 128 \
+  --warmup-decode-tokens 8 --max-layers 40 \
+  --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt \
+  --require-cached-build --json "$OUT" >"$LOG" 2>&1 || true
+python3 - <<PY
+import json
+p = "$OUT"
+try:
+    d = json.load(open(p))
+    eq = d.get("correctness", {}).get("generated_token_equality", {})
+    batch = eq.get("batch_sequences") or []
+    c1 = eq.get("c1_sequences") or []
+    if not batch or not c1 or len(batch) != len(c1):
+        print(0)
+    else:
+        prefixes = []
+        for b, r in zip(batch, c1):
+            n = 0
+            for x, y in zip(b, r):
+                if x != y:
+                    break
+                n += 1
+            prefixes.append(n)
+        print(min(prefixes) if prefixes else 0)
+except Exception:
+    print(0)
+PY'
+```
+
+Result: verifier now writes `/tmp/hipengine-e2e-native-c2-512-128.json`; metric `native_c2_512x128_min_equal_prefix_tokens=61` with row prefixes `[61, 137]`. Artifact status remains `rejected_correctness`, `correctness.generated_token_equality.passed=false`, first row-0 mismatch at prefix 61 (`batch=68022`, `c1=58655`), `performance_claim=false`. Measured diagnostic decode was `78.620` aggregate / `39.310` per-request tok/s on `AMD Radeon RX 7900 XTX` with `HIP_VISIBLE_DEVICES=1`.
+
+Guard:
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && \
+HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && \
+HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-e2e-primitive-c2.json && \
+HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-e2e-primitive-c8.json
+```
+
+Result: pytest bundle `396 passed`; primitive c=2/c=8 JSONs passed with zero append/A-A mismatches, `attn_batch_vs_c1_max_abs=0.0`, and `device.env.HIP_VISIBLE_DEVICES=1` / `device_name=AMD Radeon RX 7900 XTX`.
