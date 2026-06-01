@@ -21157,6 +21157,14 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     missing_rollup_source_artifact_path_summary["benchmark_rollup"].pop("source_artifact_path")
     with pytest.raises(ValueError, match="summary.benchmark_rollup.source_artifact_path must be a non-empty string"):
         validate_cn_diagnostic_validation_summary(missing_rollup_source_artifact_path_summary)
+    blank_rollup_artifact_path_summary = json.loads(json.dumps(summary))
+    blank_rollup_artifact_path_summary["benchmark_rollup"]["artifact_path"] = ""
+    with pytest.raises(ValueError, match="summary.benchmark_rollup.artifact_path must be a non-empty string"):
+        validate_cn_diagnostic_validation_summary(blank_rollup_artifact_path_summary)
+    blank_rollup_source_artifact_path_summary = json.loads(json.dumps(summary))
+    blank_rollup_source_artifact_path_summary["benchmark_rollup"]["source_artifact_path"] = ""
+    with pytest.raises(ValueError, match="summary.benchmark_rollup.source_artifact_path must be a non-empty string"):
+        validate_cn_diagnostic_validation_summary(blank_rollup_source_artifact_path_summary)
     absolute_rollup_artifact_path_summary = json.loads(json.dumps(summary))
     absolute_rollup_artifact_path_summary["benchmark_rollup"]["artifact_path"] = str(artifact_file)
     with pytest.raises(ValueError, match="summary.benchmark_rollup.artifact_path must be a repo-relative benchmarks/results path"):
