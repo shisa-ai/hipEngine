@@ -685,6 +685,10 @@ def _is_kernel_trace_csv_path(trace_file: str) -> bool:
     return Path(trace_file).suffix.lower() == ".csv" and "kernel" in name and "trace" in name
 
 
+def _path_has_parent_directory_component(path: str | Path) -> bool:
+    return ".." in Path(path).parts
+
+
 def _resolve_repo_path(path: str | Path) -> Path:
     path = Path(path)
     if not path.is_absolute():
@@ -2191,6 +2195,9 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             trace_path = Path(trace_file)
             if trace_path.suffix.lower() != ".csv":
                 errors.append("profiler.trace_files entries must be CSV paths for accepted artifacts")
+                break
+            if _path_has_parent_directory_component(trace_file):
+                errors.append("profiler.trace_files must not contain parent-directory components for accepted artifacts")
                 break
             if not _is_resolved_path_relative_to(trace_file, profiler_trace_dir):
                 errors.append("profiler.trace_files must be under profiler.trace_dir for accepted artifacts")

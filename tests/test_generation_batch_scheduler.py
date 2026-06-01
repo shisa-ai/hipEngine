@@ -1113,7 +1113,45 @@ def test_batch_c_sweep_profiler_precondition_rejects_trace_file_path_traversal(t
         "kind": "profiler_summary",
         "artifact_path": str(profiler_path),
         "passed": False,
-        "reason": "profiler.trace_files contains a path outside profiler.trace_dir",
+        "reason": "profiler.trace_files contains parent-directory components",
+    }
+
+
+def test_batch_c_sweep_profiler_precondition_rejects_trace_file_path_traversal_inside_trace_dir(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"]["trace_files"] = [
+        str(output_dir / "profile-c2" / ".." / "profile-c2" / "hipengine_kernel_trace.csv")
+    ]
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler.trace_files contains parent-directory components",
     }
 
 
@@ -21633,8 +21671,15 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
 
     profiler_trace_file_path_traversal = json.loads(json.dumps(accepted))
     profiler_trace_file_path_traversal["profiler"]["trace_files"] = ["/tmp/hipengine-profile/../other-profile/hipengine_kernel_trace.csv"]
-    with pytest.raises(ValueError, match="profiler.trace_files must be under profiler.trace_dir"):
+    with pytest.raises(ValueError, match="profiler.trace_files must not contain parent-directory components"):
         validate_cn_diagnostic_artifact_payload(profiler_trace_file_path_traversal)
+
+    profiler_trace_file_path_traversal_inside_trace_dir = json.loads(json.dumps(accepted))
+    profiler_trace_file_path_traversal_inside_trace_dir["profiler"]["trace_files"] = [
+        "/tmp/hipengine-profile/../hipengine-profile/hipengine_kernel_trace.csv"
+    ]
+    with pytest.raises(ValueError, match="profiler.trace_files must not contain parent-directory components"):
+        validate_cn_diagnostic_artifact_payload(profiler_trace_file_path_traversal_inside_trace_dir)
 
     profiler_trace_file_without_kernel_trace_csv = json.loads(json.dumps(accepted))
     profiler_trace_file_without_kernel_trace_csv["profiler"]["trace_files"] = ["/tmp/hipengine-profile/hipengine_api_trace.csv"]

@@ -1483,7 +1483,9 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                 reasons.append("profiler.trace_files contains a non-CSV trace file")
             if not any(_is_kernel_trace_csv_path(trace_file) for trace_file in profiler_trace_files):
                 reasons.append("profiler.trace_files does not include a kernel-trace CSV")
-            if profiler_trace_dir is not None:
+            if any(_path_has_parent_directory_component(trace_file) for trace_file in profiler_trace_files):
+                reasons.append("profiler.trace_files contains parent-directory components")
+            elif profiler_trace_dir is not None:
                 for trace_file in profiler_trace_files:
                     if not _is_resolved_path_relative_to(trace_file, profiler_trace_dir):
                         reasons.append("profiler.trace_files contains a path outside profiler.trace_dir")
