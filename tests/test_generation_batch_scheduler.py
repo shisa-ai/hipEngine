@@ -7279,6 +7279,10 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         "int8_native_diagnostic": {"planned": 3},
         "gguf_native_diagnostic": {"planned": 12},
     }
+    tampered_primitive_category_status_count = json.loads(json.dumps(summary))
+    tampered_primitive_category_status_count["category_status_counts"]["primitive"]["planned"] = 3
+    with pytest.raises(ValueError, match="category_status_counts must match commands"):
+        c_sweep.validate_sweep_summary(tampered_primitive_category_status_count)
     primitive_entries = [entry for entry in summary["commands"] if entry["category"] == "primitive"]
     assert [Path(entry["artifact_path"]).name for entry in primitive_entries] == [
         "primitive-c1.json",
