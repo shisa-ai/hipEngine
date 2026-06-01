@@ -84,6 +84,7 @@ from scripts.qwen35_batch_artifact_schema import (
 from scripts.qwen35_batch_constants import (
     PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS,
     RETAINED_ARTIFACT_ACCEPTED_DECISION_REASON,
+    RETAINED_ARTIFACT_ACCEPTED_MODE,
     RETAINED_ARTIFACT_ACCEPTED_NOTES,
     RETAINED_ARTIFACT_ACCEPTED_SUMMARY,
     RETAINED_ARTIFACT_CORRECTNESS_REFERENCE_UNIQUE_FLAGS,
@@ -19989,6 +19990,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
 ) -> None:
     accepted = {
         "schema": 3,
+        "mode": RETAINED_ARTIFACT_ACCEPTED_MODE,
         "status": "accepted",
         "rows": 2,
         "run_tag": "qwen35-paro-c2-native-retained",
@@ -20482,6 +20484,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="schema must be 3 for accepted artifacts"):
         validate_cn_diagnostic_artifact_payload(mismatched_artifact_schema)
 
+    missing_mode = json.loads(json.dumps(accepted))
+    missing_mode.pop("mode")
+    with pytest.raises(ValueError, match=f"mode must be {RETAINED_ARTIFACT_ACCEPTED_MODE} for accepted artifacts"):
+        validate_cn_diagnostic_artifact_payload(missing_mode)
+
+    mismatched_mode = json.loads(json.dumps(accepted))
+    mismatched_mode["mode"] = "qwen35_paro_diagnostic"
+    with pytest.raises(ValueError, match=f"mode must be {RETAINED_ARTIFACT_ACCEPTED_MODE} for accepted artifacts"):
+        validate_cn_diagnostic_artifact_payload(mismatched_mode)
+
     missing_summary = json.loads(json.dumps(accepted))
     missing_summary.pop("summary")
     with pytest.raises(ValueError, match="summary must be a non-empty string for accepted artifacts"):
@@ -20959,6 +20971,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     artifact_schema_summary_file = rollup_root / "benchmarks" / "results" / "accepted-c2-schema-check.json"
     assert validate_cn_diagnostic_artifact_main([str(artifact_file), "--summary-json", str(artifact_schema_summary_file)]) == 0
     artifact_schema_summary = json.loads(artifact_schema_summary_file.read_text())
+    assert retained_bench.RETAINED_ARTIFACT_ACCEPTED_MODE == RETAINED_ARTIFACT_ACCEPTED_MODE
     assert retained_bench.RETAINED_ARTIFACT_ACCEPTED_SUMMARY == RETAINED_ARTIFACT_ACCEPTED_SUMMARY
     assert retained_bench.RETAINED_ARTIFACT_ACCEPTED_DECISION_REASON == RETAINED_ARTIFACT_ACCEPTED_DECISION_REASON
     assert retained_bench.RETAINED_ARTIFACT_ACCEPTED_NOTES == RETAINED_ARTIFACT_ACCEPTED_NOTES

@@ -22,6 +22,7 @@ from hipengine.generation import GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS
 from scripts.qwen35_batch_constants import (
     PROFILER_DISALLOWED_DIAGNOSTIC_KERNEL_NAME_FRAGMENTS,
     RETAINED_ARTIFACT_ACCEPTED_DECISION_REASON,
+    RETAINED_ARTIFACT_ACCEPTED_MODE,
     RETAINED_ARTIFACT_ACCEPTED_NOTES,
     RETAINED_ARTIFACT_ACCEPTED_SUMMARY,
     RETAINED_ARTIFACT_CORRECTNESS_REFERENCE_UNIQUE_FLAGS,
@@ -1258,6 +1259,8 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
         errors.append("accepted retained artifact must have status='accepted'")
     if payload.get("schema") != 3 or isinstance(payload.get("schema"), bool):
         errors.append("schema must be 3 for accepted artifacts")
+    if payload.get("mode") != RETAINED_ARTIFACT_ACCEPTED_MODE:
+        errors.append(f"mode must be {RETAINED_ARTIFACT_ACCEPTED_MODE} for accepted artifacts")
     summary = payload.get("summary")
     if not isinstance(summary, str) or not summary:
         errors.append("summary must be a non-empty string for accepted artifacts")
