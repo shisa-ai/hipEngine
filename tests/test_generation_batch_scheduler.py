@@ -20392,6 +20392,10 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             }
         ],
         "decision": {"accepted": True, "reason": "correctness/protocol passed"},
+        "notes": [
+            "Native retained c>N path uses packed prompt slabs and step_batch_native for decode.",
+            "Batch split-K decode remains out of scope; this accepted protocol keeps context < 1024.",
+        ],
     }
 
     artifact_root = tmp_path / "artifact-repo"
@@ -20501,6 +20505,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     mismatched_decision_reason["decision"]["reason"] = "blocked"
     with pytest.raises(ValueError, match="accepted retained artifact decision.reason must be correctness/protocol passed"):
         validate_cn_diagnostic_artifact_payload(mismatched_decision_reason)
+
+    missing_notes = json.loads(json.dumps(accepted))
+    missing_notes.pop("notes")
+    with pytest.raises(ValueError, match="notes must be a non-empty string list for accepted artifacts"):
+        validate_cn_diagnostic_artifact_payload(missing_notes)
+
+    missing_splitk_note = json.loads(json.dumps(accepted))
+    missing_splitk_note["notes"] = [missing_splitk_note["notes"][0]]
+    with pytest.raises(ValueError, match="notes must include"):
+        validate_cn_diagnostic_artifact_payload(missing_splitk_note)
 
     missing_timestamp = json.loads(json.dumps(accepted))
     missing_timestamp.pop("timestamp")

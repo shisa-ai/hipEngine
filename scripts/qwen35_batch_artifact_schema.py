@@ -1267,6 +1267,17 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
         errors.append("accepted retained artifact must set decision.accepted=true")
     elif decision.get("reason") != "correctness/protocol passed":
         errors.append("accepted retained artifact decision.reason must be correctness/protocol passed")
+    notes = payload.get("notes")
+    if not _is_nonempty_string_list(notes):
+        errors.append("notes must be a non-empty string list for accepted artifacts")
+    elif isinstance(notes, list):
+        required_notes = (
+            "Native retained c>N path uses packed prompt slabs and step_batch_native for decode.",
+            "Batch split-K decode remains out of scope; this accepted protocol keeps context < 1024.",
+        )
+        for note in required_notes:
+            if note not in notes:
+                errors.append(f"notes must include {note!r} for accepted artifacts")
 
     observability = _mapping_at(payload, "observability", errors)
     workload = _mapping_at(payload, "workload", errors)
