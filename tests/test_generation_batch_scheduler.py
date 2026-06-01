@@ -7259,6 +7259,15 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     tampered_commands_entry_type["command_count"] = 1
     with pytest.raises(ValueError, match="commands entries must be objects"):
         c_sweep.validate_sweep_summary(tampered_commands_entry_type)
+    representative_command_indices_by_category = {}
+    for index, entry in enumerate(summary["commands"]):
+        representative_command_indices_by_category.setdefault(entry["category"], index)
+    assert set(representative_command_indices_by_category) == {category for category, _ in expected_plan}
+    for index in representative_command_indices_by_category.values():
+        tampered_missing_planned_key = json.loads(json.dumps(summary))
+        del tampered_missing_planned_key["commands"][index]["returncode"]
+        with pytest.raises(ValueError, match=r"commands\[\] planned rows must contain exactly planned command keys"):
+            c_sweep.validate_sweep_summary(tampered_missing_planned_key)
     assert summary["schema"] == 1
     for stale_schema in (True, "1", 2):
         tampered_summary_schema = json.loads(json.dumps(summary))
