@@ -7266,6 +7266,11 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     tampered_compiler_version_option["options"]["compiler_version_file"] = str(tmp_path / "hipcc-version.txt")
     with pytest.raises(ValueError, match=r"commands\[\]\.argv compiler-version-file must match options\.compiler_version_file"):
         c_sweep.validate_sweep_summary(tampered_compiler_version_option)
+    assert summary["options"]["projection_dispatch_artifact"] is None
+    tampered_projection_dispatch_option = json.loads(json.dumps(summary))
+    tampered_projection_dispatch_option["options"]["projection_dispatch_artifact"] = "benchmarks/results/stale-projection-dispatch.json"
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv --projection-dispatch-artifact must match options\.projection_dispatch_artifact"):
+        c_sweep.validate_sweep_summary(tampered_projection_dispatch_option)
     assert summary["options"]["model"] == "/tmp/model"
     tampered_model_option = json.loads(json.dumps(summary))
     tampered_model_option["options"]["model"] = "/tmp/stale-model"
