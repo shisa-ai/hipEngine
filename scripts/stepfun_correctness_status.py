@@ -24,6 +24,9 @@ DEFAULT_DOCS_PATH = Path("docs/STEPFUN.md")
 DEFAULT_STATUS_ARTIFACT = Path(
     "benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json"
 )
+STATUS_SCHEMA_VERSION = 1
+HANDOFF_SUMMARY_SCHEMA_VERSION = 1
+READINESS_SUMMARY_SCHEMA_VERSION = 1
 READY_EXIT_CODE = 0
 SOURCE_ARTIFACT_MISMATCH_EXIT_CODE = 1
 BLOCKED_EXIT_CODE = 2
@@ -1187,6 +1190,7 @@ def _handoff_summary(
         "first_work_item_sha256": first_blocker_work_item_sha256,
     }
     return {
+        "schema_version": HANDOFF_SUMMARY_SCHEMA_VERSION,
         "status": "blocked" if blocker_kinds else "ready",
         "open_or_partial_items_p0_p12": docs_status.get("open_or_partial_count_p0_p12"),
         "open_blocker_count": len(blocker_kinds),
@@ -1457,7 +1461,7 @@ def build_status(
     )
     source_artifacts_sha256 = _stable_json_sha256(source_artifacts)
     readiness_summary = {
-        "schema_version": 1,
+        "schema_version": READINESS_SUMMARY_SCHEMA_VERSION,
         "status": "blocked" if blockers else "ready",
         "oracle_parity": oracle_parity,
         "kv_decode_dispatch_ready": kv_decode_dispatch_ready,
@@ -1486,6 +1490,7 @@ def build_status(
     }
     readiness_summary_sha256 = _stable_json_sha256(readiness_summary)
     return {
+        "schema_version": STATUS_SCHEMA_VERSION,
         "status": "blocked" if blockers else "ready",
         "model": "Step-3.7-flash-Q3_K_L",
         "source_artifacts": source_artifacts,

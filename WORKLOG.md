@@ -30090,3 +30090,32 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`44 passed`), compact handoff-summary digest output returned expected blocked exit code 2 and matched both top-level and readiness-summary digests (`e6241744f3dbc086c8e94d697faf7c0d07c21d316302d3e8cfb96e8b351ee020`), source-artifact verification returned `match`, and the full StepFun guard passed (`148` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was a pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes status-helper metadata/tests/docs/status artifact only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.
+
+## 2026-06-01 — StepFun status schema versions
+
+Added explicit schema version fields to the StepFun correctness status handoff: top-level `schema_version`, `readiness_summary.schema_version`, and `handoff_summary.schema_version`. This gives handoff consumers a stable contract check before trusting compact outputs, digests, or the remaining `oracle_parity_blocked` / `kv_backed_decode_not_wired` queue. Refreshed `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`; readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`). No StepFun KV write/attention kernels are launched and no performance/e2e claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_correctness_status.py --handoff-summary-sha-only --fail-on-blocked --pretty > /tmp/stepfun-handoff-summary-sha-fail.json; rc=$?; test "$rc" -eq 2
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty
+python3 - <<'PY'
+import hashlib, json
+s=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+assert s['schema_version'] == 1
+assert s['readiness_summary']['schema_version'] == 1
+assert s['handoff_summary']['schema_version'] == 1
+handoff_sha=json.load(open('/tmp/stepfun-handoff-summary-sha-fail.json'))
+payload=json.dumps(s['handoff_summary'], sort_keys=True, separators=(',', ':'))
+assert handoff_sha == s['handoff_summary_sha256'] == s['readiness_summary']['handoff_summary_sha256'] == hashlib.sha256(payload.encode()).hexdigest()
+assert s['status'] == 'blocked'
+print('schema versions and handoff digest ok', handoff_sha)
+PY
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`44 passed`), schema-version/digest revalidation passed with compact handoff-summary digest `d7b4a1a3812751435bfa12ea61b83f3ab64bf11cb16914bae01d86666c8ac3cd`, source-artifact verification returned `match`, and the full StepFun guard passed (`148` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was a pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes status-helper metadata/tests/docs/status artifact only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.

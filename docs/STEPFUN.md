@@ -649,7 +649,8 @@ reporting.
   that separates recorded deterministic-target prerequisites from missing run/match evidence
   for the exact deterministic target (`prompt_length=23`, `n_predict=1`, expected token id 369 /
   text ` |`, top-5 expected tokens, timeout 60 s, elapsed 62.44 s, generated text
-  length 0, and the llama.cpp command shell). It records both blockers
+  length 0, and the llama.cpp command shell). It carries explicit status,
+  readiness-summary, and handoff-summary schema versions, records both blockers
   (`oracle_parity_blocked`, `kv_backed_decode_not_wired`) for the current
   all-layer prompt smoke, lists machine-readable next actions for each blocker,
   and now includes `readiness_gates` for `oracle_parity`, `kv_backed_decode`,

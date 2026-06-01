@@ -613,6 +613,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
 
     status = build_status(prompt, oracle, docs, resource_artifact=resource)
 
+    assert status["schema_version"] == 1
     assert status["status"] == "blocked"
     source_artifacts = status["source_artifacts"]
     assert source_artifacts["prompt"] == {
@@ -920,6 +921,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert gates["e2e_inference"]["ready"] is False
     assert gates["e2e_inference"]["blocked_by"] == ["oracle_parity", "kv_backed_decode"]
     handoff = status["handoff_summary"]
+    assert handoff["schema_version"] == 1
     assert handoff["status"] == "blocked"
     assert handoff["open_or_partial_items_p0_p12"] == 2
     assert handoff["open_blocker_count"] == 2
@@ -1345,6 +1347,7 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
     assert captured.out == ""
     assert captured.err == ""
     payload = json.loads(output.read_text())
+    assert payload["schema_version"] == 1
     assert payload["status"] == "blocked"
     assert payload["source_artifacts"]["prompt"]["sha256"] == hashlib.sha256(prompt.read_bytes()).hexdigest()
     assert payload["source_artifacts"]["oracle"]["size_bytes"] == len(oracle.read_bytes())
@@ -1724,6 +1727,7 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
     assert captured.out == ""
     assert captured.err == ""
     payload = json.loads(output.read_text())
+    assert payload["schema_version"] == 1
     assert payload["status"] == "blocked"
     assert payload["open_or_partial_items_p0_p12"] == 2
     assert payload["open_blockers"] == [
