@@ -6016,6 +6016,24 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     finally:
         if reference_parent_file.exists():
             reference_parent_file.unlink()
+    if hasattr(os, "symlink"):
+        reference_symlink = output_dir / "native-baseline-c1-link.json"
+        try:
+            reference_symlink.symlink_to(output_dir / "native-baseline-c1.json")
+        except (OSError, NotImplementedError):
+            pass
+        else:
+            try:
+                tampered_scaling_precondition_symlink = json.loads(json.dumps(persisted))
+                tampered_scaling_precondition_symlink["commands"][-1]["preconditions"][1]["reference_artifact_path"] = str(reference_symlink)
+                with pytest.raises(
+                    ValueError,
+                    match=r"commands\[\]\.preconditions\[\]\.reference_artifact_path must be a regular file, not a symlink, when scaling reference passed",
+                ):
+                    c_sweep.validate_sweep_summary(tampered_scaling_precondition_symlink)
+            finally:
+                if reference_symlink.is_symlink():
+                    reference_symlink.unlink()
     tampered_scaling_precondition_missing_artifact = json.loads(json.dumps(persisted))
     tampered_scaling_precondition_missing_artifact["commands"][-1]["preconditions"][2].pop("reference_artifact_path")
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.reference_artifact_path must match scaling reference artifact_path when passed"):
@@ -6533,6 +6551,24 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     finally:
         if primitive_parent_file.exists():
             primitive_parent_file.unlink()
+    if hasattr(os, "symlink"):
+        primitive_symlink = output_dir / "primitive-c2-link.json"
+        try:
+            primitive_symlink.symlink_to(output_dir / "primitive-c2.json")
+        except (OSError, NotImplementedError):
+            pass
+        else:
+            try:
+                tampered_primitive_precondition_symlink = json.loads(json.dumps(persisted))
+                tampered_primitive_precondition_symlink["commands"][-1]["preconditions"][0]["primitive_artifact_path"] = str(primitive_symlink)
+                with pytest.raises(
+                    ValueError,
+                    match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path must be a regular file, not a symlink, when primitive passed",
+                ):
+                    c_sweep.validate_sweep_summary(tampered_primitive_precondition_symlink)
+            finally:
+                if primitive_symlink.is_symlink():
+                    primitive_symlink.unlink()
     tampered_primitive_precondition_missing_artifact = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_missing_artifact["commands"][-1]["preconditions"][0].pop("primitive_artifact_path")
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path must match primitive artifact_path when primitive passed"):
