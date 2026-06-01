@@ -7508,6 +7508,10 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     with pytest.raises(ValueError, match=r"completed_command_count must be a typed int matching len\(commands\)"):
         c_sweep.validate_sweep_summary(tampered_completed_command_count)
     assert summary["status_counts"] == {"planned": 27}
+    tampered_status_counts_object = json.loads(json.dumps(summary))
+    tampered_status_counts_object["status_counts"] = "planned"
+    with pytest.raises(ValueError, match="status_counts must be an object"):
+        c_sweep.validate_sweep_summary(tampered_status_counts_object)
     for stale_status_count in (True, "27", -1):
         tampered_status_count_type = json.loads(json.dumps(summary))
         tampered_status_count_type["status_counts"]["planned"] = stale_status_count
@@ -7553,6 +7557,10 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         "int8_native_diagnostic": {"planned": 3},
         "gguf_native_diagnostic": {"planned": 12},
     }
+    tampered_category_status_counts_object = json.loads(json.dumps(summary))
+    tampered_category_status_counts_object["category_status_counts"] = "planned"
+    with pytest.raises(ValueError, match="category_status_counts must be an object"):
+        c_sweep.validate_sweep_summary(tampered_category_status_counts_object)
     for stale_category_status_count in (True, "4", -1):
         tampered_category_status_count_type = json.loads(json.dumps(summary))
         tampered_category_status_count_type["category_status_counts"]["primitive"]["planned"] = stale_category_status_count
@@ -7563,16 +7571,28 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     with pytest.raises(ValueError, match="category_status_counts must match commands"):
         c_sweep.validate_sweep_summary(tampered_primitive_category_status_count)
     assert summary["retained_precondition_counts"] == {}
+    tampered_precondition_count_object = json.loads(json.dumps(summary))
+    tampered_precondition_count_object["retained_precondition_counts"] = []
+    with pytest.raises(ValueError, match="retained_precondition_counts must be an object"):
+        c_sweep.validate_sweep_summary(tampered_precondition_count_object)
     tampered_precondition_count = json.loads(json.dumps(summary))
     tampered_precondition_count["retained_precondition_counts"] = {"primitive_correctness": {"passed": 1}}
     with pytest.raises(ValueError, match="retained_precondition_counts must match commands.preconditions"):
         c_sweep.validate_sweep_summary(tampered_precondition_count)
     assert summary["retained_postcondition_counts"] == {}
+    tampered_postcondition_count_object = json.loads(json.dumps(summary))
+    tampered_postcondition_count_object["retained_postcondition_counts"] = []
+    with pytest.raises(ValueError, match="retained_postcondition_counts must be an object"):
+        c_sweep.validate_sweep_summary(tampered_postcondition_count_object)
     tampered_postcondition_count = json.loads(json.dumps(summary))
     tampered_postcondition_count["retained_postcondition_counts"] = {"retained_profiler_synthesis": {"passed": 1}}
     with pytest.raises(ValueError, match="retained_postcondition_counts must match commands.postconditions"):
         c_sweep.validate_sweep_summary(tampered_postcondition_count)
     assert summary["skipped_preconditions"] == []
+    tampered_skipped_preconditions_list = json.loads(json.dumps(summary))
+    tampered_skipped_preconditions_list["skipped_preconditions"] = {}
+    with pytest.raises(ValueError, match="skipped_preconditions must be a list"):
+        c_sweep.validate_sweep_summary(tampered_skipped_preconditions_list)
     tampered_skipped_preconditions = json.loads(json.dumps(summary))
     tampered_skipped_preconditions["skipped_preconditions"] = [
         {
@@ -7587,6 +7607,10 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     with pytest.raises(ValueError, match="skipped_preconditions must match commands.preconditions"):
         c_sweep.validate_sweep_summary(tampered_skipped_preconditions)
     assert summary["failed_postconditions"] == []
+    tampered_failed_postconditions_list = json.loads(json.dumps(summary))
+    tampered_failed_postconditions_list["failed_postconditions"] = {}
+    with pytest.raises(ValueError, match="failed_postconditions must be a list"):
+        c_sweep.validate_sweep_summary(tampered_failed_postconditions_list)
     tampered_failed_postconditions = json.loads(json.dumps(summary))
     tampered_failed_postconditions["failed_postconditions"] = [
         {

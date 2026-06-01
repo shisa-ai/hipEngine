@@ -2068,7 +2068,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         "reason",
     }
     skipped_preconditions = summary.get("skipped_preconditions")
-    if isinstance(skipped_preconditions, list):
+    if not isinstance(skipped_preconditions, list):
+        errors.append("skipped_preconditions must be a list")
+    else:
         for skipped_precondition in skipped_preconditions:
             if not isinstance(skipped_precondition, Mapping) or set(skipped_precondition) != expected_skipped_precondition_keys:
                 errors.append("skipped_preconditions[] must contain exactly skipped precondition rollup keys")
@@ -2077,7 +2079,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     if not _typed_json_like_matches(skipped_preconditions, expected_skipped_preconditions):
         errors.append("skipped_preconditions must match commands.preconditions")
     summary_failed_postconditions = summary.get("failed_postconditions")
-    if isinstance(summary_failed_postconditions, list):
+    if not isinstance(summary_failed_postconditions, list):
+        errors.append("failed_postconditions must be a list")
+    else:
         for failed_postcondition in summary_failed_postconditions:
             if not isinstance(failed_postcondition, Mapping) or set(failed_postcondition) != expected_failed_postcondition_keys:
                 errors.append("failed_postconditions[] must contain exactly failed postcondition rollup keys")
@@ -3636,6 +3640,8 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 errors.append("commands[] failed/skipped row must be final when stop_on_failure is true")
                 break
     status_counts = summary.get("status_counts")
+    if not isinstance(status_counts, Mapping):
+        errors.append("status_counts must be an object")
     if not _count_leaf_labels_within(status_counts, set(_SWEEP_COMMAND_STATUS_LABELS)):
         errors.append("status_counts must contain only known command status labels")
     if not _count_leaf_values_are_nonnegative_ints(status_counts):
@@ -3644,6 +3650,8 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     if not _typed_count_mapping_matches(status_counts, expected_status_counts):
         errors.append("status_counts must match commands")
     category_status_counts = summary.get("category_status_counts")
+    if not isinstance(category_status_counts, Mapping):
+        errors.append("category_status_counts must be an object")
     if not _count_top_labels_within(category_status_counts, set(_SWEEP_COMMAND_CATEGORIES)):
         errors.append("category_status_counts must contain only known command category labels")
     if not _count_leaf_labels_within(category_status_counts, set(_SWEEP_COMMAND_STATUS_LABELS)):
@@ -3657,6 +3665,8 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     if summary.get("status") != expected_status:
         errors.append("status must match commands")
     retained_precondition_counts = summary.get("retained_precondition_counts")
+    if not isinstance(retained_precondition_counts, Mapping):
+        errors.append("retained_precondition_counts must be an object")
     if not _count_top_labels_within(retained_precondition_counts, set(_RETAINED_PRECONDITION_KINDS)):
         errors.append("retained_precondition_counts must contain only known retained precondition labels")
     if not _count_leaf_labels_within(retained_precondition_counts, set(_RETAINED_CONDITION_STATUS_LABELS)):
@@ -3667,6 +3677,8 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
     if not _typed_count_mapping_matches(retained_precondition_counts, expected_precondition_counts):
         errors.append("retained_precondition_counts must match commands.preconditions")
     retained_postcondition_counts = summary.get("retained_postcondition_counts")
+    if not isinstance(retained_postcondition_counts, Mapping):
+        errors.append("retained_postcondition_counts must be an object")
     if not _count_top_labels_within(retained_postcondition_counts, set(_RETAINED_POSTCONDITION_KINDS)):
         errors.append("retained_postcondition_counts must contain only known retained postcondition labels")
     if not _count_leaf_labels_within(retained_postcondition_counts, set(_RETAINED_CONDITION_STATUS_LABELS)):
