@@ -7656,6 +7656,24 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
             if planned_artifact_directory_path.is_dir():
                 planned_artifact_directory_path.rmdir()
 
+        planned_artifact_parent_file = Path(summary["commands"][index]["artifact_path"]).parent / f"planned-artifact-parent-file-{index}"
+        try:
+            planned_artifact_parent_file.write_text("not a directory")
+            tampered_planned_artifact_parent_file = json.loads(json.dumps(summary))
+            planned_parent_file_entry = tampered_planned_artifact_parent_file["commands"][index]
+            artifact_via_parent_file = str(planned_artifact_parent_file / Path(planned_parent_file_entry["artifact_path"]).name)
+            planned_parent_file_entry["artifact_path"] = artifact_via_parent_file
+            planned_parent_file_argv = planned_parent_file_entry["argv"]
+            planned_parent_file_argv[planned_parent_file_argv.index("--json") + 1] = artifact_via_parent_file
+            planned_parent_file_entry["command"] = shlex.join(planned_parent_file_argv)
+            with pytest.raises(
+                ValueError, match=r"commands\[\]\.artifact_path parent directories must be directories"
+            ):
+                c_sweep.validate_sweep_summary(tampered_planned_artifact_parent_file)
+        finally:
+            if planned_artifact_parent_file.exists():
+                planned_artifact_parent_file.unlink()
+
     assert summary["schema"] == 1
     for stale_schema in (True, "1", 2):
         tampered_summary_schema = json.loads(json.dumps(summary))
@@ -8632,6 +8650,26 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         finally:
             if optional_artifact_directory_path.is_dir():
                 optional_artifact_directory_path.rmdir()
+
+        optional_artifact_parent_file = Path(summary["commands"][index]["artifact_path"]).parent / f"optional-artifact-parent-file-{index}"
+        try:
+            optional_artifact_parent_file.write_text("not a directory")
+            tampered_optional_artifact_parent_file = json.loads(json.dumps(summary))
+            optional_parent_file_entry = tampered_optional_artifact_parent_file["commands"][index]
+            optional_artifact_via_parent_file = str(
+                optional_artifact_parent_file / Path(optional_parent_file_entry["artifact_path"]).name
+            )
+            optional_parent_file_entry["artifact_path"] = optional_artifact_via_parent_file
+            optional_parent_file_argv = optional_parent_file_entry["argv"]
+            optional_parent_file_argv[optional_parent_file_argv.index("--json") + 1] = optional_artifact_via_parent_file
+            optional_parent_file_entry["command"] = shlex.join(optional_parent_file_argv)
+            with pytest.raises(
+                ValueError, match=r"commands\[\]\.artifact_path parent directories must be directories"
+            ):
+                c_sweep.validate_sweep_summary(tampered_optional_artifact_parent_file)
+        finally:
+            if optional_artifact_parent_file.exists():
+                optional_artifact_parent_file.unlink()
 
         tampered_optional_blank_category = json.loads(json.dumps(summary))
         tampered_optional_blank_category["commands"][index]["category"] = "   "

@@ -1463,7 +1463,7 @@ roll-up/status view.
       duplicate `--rows`/`--seed` labels,
       blank inline/missing/non-integer `--rows`/`--seed` values,
       parent-directory/symlinked/symlink-parent `output_dir`, missing/blank/non-string
-      `artifact_path`, parent-directory artifact paths, direct-symlink artifacts, symlink-parent artifact paths, and existing-directory artifact paths including non-optional and optional all-row checks, or
+      `artifact_path`, parent-directory artifact paths, direct-symlink artifacts, symlink-parent artifact paths, non-directory artifact parents, and existing-directory artifact paths including non-optional and optional all-row checks, or
       outside-output-dir artifacts, wrong artifact filenames,
       artifact-path/argv `--json`, `--rows`, or `--seed` labels in
       `test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics`.

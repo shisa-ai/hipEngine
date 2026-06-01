@@ -784,6 +784,18 @@ def _path_has_symlink_parent(path: str | Path) -> bool:
     return False
 
 
+def _path_has_non_directory_parent(path: str | Path) -> bool:
+    path = Path(path)
+    if not path.is_absolute():
+        path = REPO_ROOT / path
+    current = path.parent
+    while current != current.parent:
+        if current.exists() and not current.is_dir():
+            return True
+        current = current.parent
+    return False
+
+
 def _path_has_parent_directory_component(path: str | Path) -> bool:
     return ".." in Path(path).parts
 
@@ -2346,6 +2358,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                 break
             if _path_has_symlink_parent(artifact_path_for_symlink_check):
                 errors.append("commands[].artifact_path parent directories must not be symlinks")
+                break
+            if _path_has_non_directory_parent(artifact_path_for_symlink_check):
+                errors.append("commands[].artifact_path parent directories must be directories")
                 break
             if artifact_path_for_symlink_check.exists() and not artifact_path_for_symlink_check.is_file():
                 errors.append("commands[].artifact_path must be a regular file when it already exists")
