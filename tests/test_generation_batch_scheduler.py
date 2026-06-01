@@ -21298,6 +21298,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     )
     validate_cn_diagnostic_artifact_payload(aux_env_accepted)
 
+    mismatched_aux_metadata_env = json.loads(json.dumps(aux_env_accepted))
+    mismatched_aux_metadata_env["correctness"]["primitive_batch_correctness"]["device"]["env"]["ROCR_VISIBLE_DEVICES"] = "2"
+    with pytest.raises(ValueError, match="hardware.visible_device.env.ROCR_VISIBLE_DEVICES must match primitive device env"):
+        validate_cn_diagnostic_artifact_payload(mismatched_aux_metadata_env)
+
     missing_benchmark_device_env = json.loads(json.dumps(gpu1_accepted))
     missing_benchmark_device_env["commands"]["benchmark"] = missing_benchmark_device_env["commands"]["benchmark"].replace(
         "env HIP_VISIBLE_DEVICES=1 ",
