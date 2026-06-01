@@ -1431,6 +1431,7 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
     profiler_trace_dir: str | None = None
     profiler_trace_files: list[str] = []
     profiler_trace_kernel_names: list[str] = []
+    profiler_trace_kernel_names_from_csv: list[str] = []
     profiler_trace_synthesized_fields: list[str] = []
     profiler_source_artifact_path: str | None = None
     trace_kernel_names_valid = False
@@ -1541,13 +1542,17 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                         for trace_file, trace_file_path in zip(profiler_trace_files, trace_file_check_paths)
                         if _is_kernel_trace_csv_path(trace_file)
                     ]
-                    kernel_trace_names = [
-                        kernel_name
-                        for trace_file_path in kernel_trace_file_paths
-                        for kernel_name in _read_profiler_trace_kernel_names(trace_file_path)
-                    ]
+                    kernel_trace_names: list[str] = []
+                    seen_kernel_trace_names: set[str] = set()
+                    for trace_file_path in kernel_trace_file_paths:
+                        for kernel_name in _read_profiler_trace_kernel_names(trace_file_path):
+                            if kernel_name not in seen_kernel_trace_names:
+                                kernel_trace_names.append(kernel_name)
+                                seen_kernel_trace_names.add(kernel_name)
                     if not kernel_trace_names:
                         reasons.append("profiler.trace_files contain no readable kernel trace rows")
+                    else:
+                        profiler_trace_kernel_names_from_csv = kernel_trace_names
         profiler_trace_synthesized_fields = _synthesize_profiler_trace_fields(profiler, profiler_path=profiler_path)
         raw_trace_kernel_names = profiler.get("trace_kernel_names")
         if not isinstance(raw_trace_kernel_names, list) or not raw_trace_kernel_names:
@@ -1563,6 +1568,8 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                 reasons.append("profiler.trace_kernel_names does not include a native batch kernel")
             if any(_has_disallowed_profiler_kernel_fragment(kernel_name) for kernel_name in profiler_trace_kernel_names):
                 reasons.append("profiler.trace_kernel_names contains a serial/per-row/fallback kernel")
+            if profiler_trace_kernel_names_from_csv and set(profiler_trace_kernel_names) != set(profiler_trace_kernel_names_from_csv):
+                reasons.append("profiler.trace_kernel_names must match kernel-trace CSV rows")
         profiler_command = _profiler_command_label(profiler, payload if isinstance(payload, dict) else None)
         if profiler_command is None:
             reasons.append("profiler command is missing")

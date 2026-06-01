@@ -1523,6 +1523,42 @@ def test_batch_c_sweep_profiler_precondition_rejects_empty_kernel_trace_csv(tmp_
     }
 
 
+def test_batch_c_sweep_profiler_precondition_rejects_trace_kernel_names_absent_from_csv(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    (output_dir / "profile-c2" / "hipengine_kernel_trace.csv").write_text(
+        "Kernel_Name,Start_Timestamp,End_Timestamp\nqwen35_batch_unexpected,0,12345\n"
+    )
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler.trace_kernel_names must match kernel-trace CSV rows",
+    }
+
+
 def test_batch_c_sweep_profiler_precondition_rejects_trace_files_outside_trace_dir(tmp_path: Path) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
@@ -1895,6 +1931,11 @@ def test_batch_c_sweep_profiler_precondition_rejects_trace_kernel_names_without_
     )
     profiler_path = output_dir / "profiler-c2.json"
     payload = json.loads(profiler_path.read_text())
+    (output_dir / "profile-c2" / "hipengine_kernel_trace.csv").write_text(
+        "Kernel_Name,Start_Timestamp,End_Timestamp\n"
+        "qwen35_batch_decode,0,12345\n"
+        "qwen35_batch_unmeasured,12345,13000\n"
+    )
     payload["profiler"]["trace_kernel_names"].append("qwen35_batch_unmeasured")
     profiler_path.write_text(json.dumps(payload))
     native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
@@ -1931,6 +1972,9 @@ def test_batch_c_sweep_profiler_precondition_rejects_trace_kernel_names_missing_
     )
     profiler_path = output_dir / "profiler-c2.json"
     payload = json.loads(profiler_path.read_text())
+    (output_dir / "profile-c2" / "hipengine_kernel_trace.csv").write_text(
+        "Kernel_Name,Start_Timestamp,End_Timestamp\nqwen35_batch_prefill,0,12345\n"
+    )
     payload["profiler"]["trace_kernel_names"] = ["qwen35_batch_prefill"]
     profiler_path.write_text(json.dumps(payload))
     native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
@@ -2470,6 +2514,11 @@ def test_batch_c_sweep_profiler_precondition_rejects_nonpositive_extra_kernel_du
     )
     profiler_path = output_dir / "profiler-c2.json"
     payload = json.loads(profiler_path.read_text())
+    (output_dir / "profile-c2" / "hipengine_kernel_trace.csv").write_text(
+        "Kernel_Name,Start_Timestamp,End_Timestamp\n"
+        "qwen35_batch_decode,0,12345\n"
+        "qwen35_batch_extra,12345,13000\n"
+    )
     payload["profiler"]["trace_kernel_names"].append("qwen35_batch_extra")
     payload["profiler"]["kernel_durations_ns"]["qwen35_batch_extra"] = 0.0
     payload["profiler"]["kernel_duration_shares"]["qwen35_batch_extra"] = 0.0
@@ -2625,6 +2674,11 @@ def test_batch_c_sweep_profiler_precondition_rejects_category_rows_mismatch(tmp_
     )
     profiler_path = output_dir / "profiler-c2.json"
     payload = json.loads(profiler_path.read_text())
+    (output_dir / "profile-c2" / "hipengine_kernel_trace.csv").write_text(
+        "Kernel_Name,Start_Timestamp,End_Timestamp\n"
+        "qwen35_batch_decode,0,12345\n"
+        "qwen35_batch_decode_wmma_caware,12345,14690\n"
+    )
     payload["profiler"]["expected_kernel_names"] = ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"]
     payload["profiler"]["trace_kernel_names"] = ["qwen35_batch_decode", "qwen35_batch_decode_wmma_caware"]
     payload["profiler"]["kernel_durations_ns"] = {
