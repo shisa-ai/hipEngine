@@ -617,6 +617,10 @@ def _write_c_sweep_profiler_summary(
     profiler_path = output_dir / f"profiler-c{rows}.json"
     retained_path = output_dir / f"native-diagnostic-c{rows}.json"
     trace_dir = output_dir / f"profile-c{rows}"
+    trace_dir.mkdir(parents=True, exist_ok=True)
+    (trace_dir / "hipengine_kernel_trace.csv").write_text(
+        "Kernel_Name,Start_Timestamp,End_Timestamp\nqwen35_batch_decode,0,12345\n"
+    )
     retained_launch = shlex.join(
         (*c_sweep._command_env_prefix_parts(), "python3", "scripts/qwen35_batch_retained_bench.py")
     )
@@ -693,6 +697,11 @@ def test_batch_c_sweep_profiler_precondition_rejects_mismatched_artifact_path(
     monkeypatch.delenv("HIP_VISIBLE_DEVICES", raising=False)
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
+    trace_dir = output_dir / "profile-c2"
+    trace_dir.mkdir()
+    (trace_dir / "hipengine_kernel_trace.csv").write_text(
+        "Kernel_Name,Start_Timestamp,End_Timestamp\nqwen35_batch_decode,0,12345\n"
+    )
     profiler_path = output_dir / "profiler-c2.json"
     profiler_path.write_text(
         json.dumps(
@@ -1020,6 +1029,8 @@ def test_batch_c_sweep_profiler_precondition_rejects_symlink_trace_dir(tmp_path:
     output_dir.mkdir()
     _write_c_sweep_profiler_summary(output_dir, rows=2)
     trace_dir = output_dir / "profile-c2"
+    (trace_dir / "hipengine_kernel_trace.csv").unlink()
+    trace_dir.rmdir()
     actual_trace_dir = output_dir / "actual-profile-c2"
     actual_trace_dir.mkdir()
     trace_dir.symlink_to(actual_trace_dir, target_is_directory=True)
@@ -1142,6 +1153,79 @@ def test_batch_c_sweep_profiler_precondition_rejects_non_directory_parent_trace_
     }
 
 
+def test_batch_c_sweep_profiler_precondition_rejects_missing_trace_dir(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    trace_dir = output_dir / "profile-c2"
+    (trace_dir / "hipengine_kernel_trace.csv").unlink()
+    trace_dir.rmdir()
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler.trace_dir does not exist; profiler.trace_files contains a missing file",
+    }
+
+
+def test_batch_c_sweep_profiler_precondition_rejects_file_trace_dir(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    trace_dir = output_dir / "profile-c2"
+    (trace_dir / "hipengine_kernel_trace.csv").unlink()
+    trace_dir.rmdir()
+    trace_dir.write_text("not a directory")
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler.trace_dir is not a directory; profiler.trace_files parent directories contain non-directories",
+    }
+
+
 def test_batch_c_sweep_profiler_precondition_rejects_missing_trace_files(tmp_path: Path) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
@@ -1219,7 +1303,7 @@ def test_batch_c_sweep_profiler_precondition_rejects_symlink_trace_file(tmp_path
     output_dir.mkdir()
     _write_c_sweep_profiler_summary(output_dir, rows=2)
     trace_dir = output_dir / "profile-c2"
-    trace_dir.mkdir()
+    (trace_dir / "hipengine_kernel_trace.csv").unlink()
     target_trace_file = trace_dir / "actual_kernel_trace.csv"
     target_trace_file.write_text("Kernel_Name,Start_Timestamp,End_Timestamp\nqwen35_batch_decode,0,1\n")
     (trace_dir / "hipengine_kernel_trace.csv").symlink_to(target_trace_file)
@@ -1257,7 +1341,6 @@ def test_batch_c_sweep_profiler_precondition_rejects_symlink_parent_trace_file(t
     output_dir.mkdir()
     _write_c_sweep_profiler_summary(output_dir, rows=2)
     trace_dir = output_dir / "profile-c2"
-    trace_dir.mkdir()
     real_trace_parent = trace_dir / "real-traces"
     real_trace_parent.mkdir()
     linked_trace_parent = trace_dir / "linked-traces"
@@ -1299,7 +1382,6 @@ def test_batch_c_sweep_profiler_precondition_rejects_non_directory_parent_trace_
     output_dir.mkdir()
     _write_c_sweep_profiler_summary(output_dir, rows=2)
     trace_dir = output_dir / "profile-c2"
-    trace_dir.mkdir()
     file_parent = trace_dir / "file-traces"
     file_parent.write_text("not a directory")
     args = build_c_sweep_parser().parse_args(
@@ -1331,6 +1413,77 @@ def test_batch_c_sweep_profiler_precondition_rejects_non_directory_parent_trace_
         "artifact_path": str(profiler_path),
         "passed": False,
         "reason": "profiler.trace_files parent directories contain non-directories",
+    }
+
+
+def test_batch_c_sweep_profiler_precondition_rejects_missing_trace_file_path(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    trace_file = output_dir / "profile-c2" / "hipengine_kernel_trace.csv"
+    trace_file.unlink()
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler.trace_files contains a missing file",
+    }
+
+
+def test_batch_c_sweep_profiler_precondition_rejects_directory_trace_file_path(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    trace_file = output_dir / "profile-c2" / "hipengine_kernel_trace.csv"
+    trace_file.unlink()
+    trace_file.mkdir()
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler.trace_files contains a non-file path",
     }
 
 
@@ -1485,7 +1638,6 @@ def test_batch_c_sweep_profiler_precondition_synthesizes_trace_fields_from_csv(t
     output_dir.mkdir()
     _write_c_sweep_profiler_summary(output_dir, rows=2)
     trace_dir = output_dir / "profile-c2"
-    trace_dir.mkdir()
     (trace_dir / "hipengine_kernel_trace.csv").write_text(
         "Kernel_Name,Start_Timestamp,End_Timestamp\n"
         "qwen35_batch_decode,0,100\n"
@@ -1598,6 +1750,7 @@ def test_batch_c_sweep_profiler_precondition_rejects_missing_trace_kernel_names(
     )
     profiler_path = output_dir / "profiler-c2.json"
     payload = json.loads(profiler_path.read_text())
+    (output_dir / "profile-c2" / "hipengine_kernel_trace.csv").write_text("Kernel_Name,Start_Timestamp,End_Timestamp\n")
     payload["profiler"].pop("trace_kernel_names")
     profiler_path.write_text(json.dumps(payload))
     native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
@@ -5686,7 +5839,9 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
             profiler_trace_dir = Path(persisted["commands"][-1]["preconditions"][-1]["profiler_trace_dir"])
             trace_file_path = Path(persisted["commands"][-1]["preconditions"][-1]["profiler_trace_files"][0])
             trace_file_target = trace_file_path.with_name("hipengine_kernel_trace_real.csv")
-            profiler_trace_dir.mkdir()
+            profiler_trace_dir.mkdir(exist_ok=True)
+            if trace_file_path.exists():
+                trace_file_path.unlink()
             trace_file_target.write_text("kernel,duration_ns\n")
             try:
                 trace_file_path.symlink_to(trace_file_target)
@@ -5700,7 +5855,7 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
                 if profiler_trace_dir.exists():
                     profiler_trace_dir.rmdir()
 
-            profiler_trace_dir.mkdir()
+            profiler_trace_dir.mkdir(exist_ok=True)
             trace_file_parent_target = profiler_trace_dir / "trace-file-parent-real"
             trace_file_parent_link = profiler_trace_dir / "trace-file-parent-link"
             trace_file_parent_target.mkdir()

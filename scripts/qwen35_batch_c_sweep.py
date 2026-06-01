@@ -1473,14 +1473,24 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
             trace_dir_check_path = Path(raw_trace_dir)
             if not trace_dir_check_path.is_absolute():
                 trace_dir_check_path = REPO_ROOT / trace_dir_check_path
+            trace_dir_has_path_error = False
             if _path_has_parent_directory_component(raw_trace_dir):
                 reasons.append("profiler.trace_dir contains parent-directory components")
+                trace_dir_has_path_error = True
             if trace_dir_check_path.is_symlink():
                 reasons.append("profiler.trace_dir is a symlink")
+                trace_dir_has_path_error = True
             if _path_has_symlink_parent(trace_dir_check_path):
                 reasons.append("profiler.trace_dir parent directories contain symlinks")
+                trace_dir_has_path_error = True
             if _path_has_non_directory_parent(trace_dir_check_path):
                 reasons.append("profiler.trace_dir parent directories contain non-directories")
+                trace_dir_has_path_error = True
+            if not trace_dir_has_path_error:
+                if not trace_dir_check_path.exists():
+                    reasons.append("profiler.trace_dir does not exist")
+                elif not trace_dir_check_path.is_dir():
+                    reasons.append("profiler.trace_dir is not a directory")
         raw_trace_files = profiler.get("trace_files")
         if not isinstance(raw_trace_files, list) or not raw_trace_files:
             reasons.append("profiler.trace_files is missing or empty")
@@ -1488,12 +1498,15 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
             reasons.append("profiler.trace_files contains a non-string entry")
         else:
             profiler_trace_files = list(raw_trace_files)
+            trace_files_have_path_error = False
             if len(set(profiler_trace_files)) != len(profiler_trace_files):
                 reasons.append("profiler.trace_files contains duplicates")
             if any(Path(trace_file).suffix.lower() != ".csv" for trace_file in profiler_trace_files):
                 reasons.append("profiler.trace_files contains a non-CSV trace file")
+                trace_files_have_path_error = True
             if not any(_is_kernel_trace_csv_path(trace_file) for trace_file in profiler_trace_files):
                 reasons.append("profiler.trace_files does not include a kernel-trace CSV")
+                trace_files_have_path_error = True
             trace_file_check_paths = [Path(trace_file) for trace_file in profiler_trace_files]
             trace_file_check_paths = [
                 trace_file_path if trace_file_path.is_absolute() else REPO_ROOT / trace_file_path
@@ -1501,17 +1514,27 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
             ]
             if any(trace_file_path.is_symlink() for trace_file_path in trace_file_check_paths):
                 reasons.append("profiler.trace_files contains a symlink")
+                trace_files_have_path_error = True
             if any(_path_has_symlink_parent(trace_file_path) for trace_file_path in trace_file_check_paths):
                 reasons.append("profiler.trace_files parent directories contain symlinks")
+                trace_files_have_path_error = True
             if any(_path_has_non_directory_parent(trace_file_path) for trace_file_path in trace_file_check_paths):
                 reasons.append("profiler.trace_files parent directories contain non-directories")
+                trace_files_have_path_error = True
             if any(_path_has_parent_directory_component(trace_file) for trace_file in profiler_trace_files):
                 reasons.append("profiler.trace_files contains parent-directory components")
+                trace_files_have_path_error = True
             elif profiler_trace_dir is not None:
                 for trace_file in profiler_trace_files:
                     if not _is_resolved_path_relative_to(trace_file, profiler_trace_dir):
                         reasons.append("profiler.trace_files contains a path outside profiler.trace_dir")
+                        trace_files_have_path_error = True
                         break
+            if not trace_files_have_path_error:
+                if any(not trace_file_path.exists() for trace_file_path in trace_file_check_paths):
+                    reasons.append("profiler.trace_files contains a missing file")
+                elif any(not trace_file_path.is_file() for trace_file_path in trace_file_check_paths):
+                    reasons.append("profiler.trace_files contains a non-file path")
         profiler_trace_synthesized_fields = _synthesize_profiler_trace_fields(profiler, profiler_path=profiler_path)
         raw_trace_kernel_names = profiler.get("trace_kernel_names")
         if not isinstance(raw_trace_kernel_names, list) or not raw_trace_kernel_names:
