@@ -2983,15 +2983,17 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if primitive_artifact_path != primitive_precondition.get("artifact_path"):
                         errors.append("commands[].preconditions[].primitive_artifact_path must match primitive artifact_path when primitive passed")
                         break
+                    primitive_source_payload: dict[str, Any] | None = None
                     if primitive_alias_check_path.exists() and primitive_alias_check_path.is_file():
                         try:
-                            primitive_source_payload = _load_json_path(primitive_alias_check_path)
+                            raw_primitive_source_payload = _load_json_path(primitive_alias_check_path)
                         except Exception:
                             errors.append("commands[].preconditions[].primitive_artifact_path must be valid JSON when primitive passed")
                             break
-                        if not isinstance(primitive_source_payload, dict):
+                        if not isinstance(raw_primitive_source_payload, dict):
                             errors.append("commands[].preconditions[].primitive_artifact_path must contain an object when primitive passed")
                             break
+                        primitive_source_payload = raw_primitive_source_payload
                         if primitive_source_payload.get("artifact_path") != primitive_artifact_path:
                             errors.append("commands[].preconditions[].primitive_artifact_path JSON artifact_path must match when primitive passed")
                             break
@@ -3050,6 +3052,25 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if not _is_bounded_primitive_numpy_oracle(attn_vs_numpy):
                         errors.append("commands[].preconditions[].attn_batch_vs_numpy_max_abs must be finite between 0.0 and 2e-5 when primitive passed")
                         break
+                    if primitive_source_payload is not None:
+                        if primitive_source_payload.get("schema") != primitive_precondition.get("primitive_schema"):
+                            errors.append("commands[].preconditions[].primitive_artifact_path JSON schema must match when primitive passed")
+                            break
+                        if primitive_source_payload.get("rows") != primitive_precondition.get("primitive_rows"):
+                            errors.append("commands[].preconditions[].primitive_artifact_path JSON rows must match when primitive passed")
+                            break
+                        if primitive_source_payload.get("seed") != primitive_precondition.get("primitive_seed"):
+                            errors.append("commands[].preconditions[].primitive_artifact_path JSON seed must match when primitive passed")
+                            break
+                        if any(primitive_source_payload.get(field) != primitive_precondition.get(f"primitive_{field}") for field in _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS):
+                            errors.append("commands[].preconditions[].primitive_artifact_path JSON shape fields must match when primitive passed")
+                            break
+                        if primitive_source_payload.get("context_lens") != primitive_precondition.get("primitive_context_lens"):
+                            errors.append("commands[].preconditions[].primitive_artifact_path JSON context_lens must match when primitive passed")
+                            break
+                        if primitive_source_payload.get("passed") != primitive_precondition.get("passed"):
+                            errors.append("commands[].preconditions[].primitive_artifact_path JSON passed must match when primitive passed")
+                            break
                     if set(primitive_precondition) != expected_passed_primitive_precondition_keys:
                         errors.append("commands[].preconditions[] passed primitive_correctness must contain exactly primitive precondition keys")
                         break
