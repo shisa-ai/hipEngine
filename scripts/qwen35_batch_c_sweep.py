@@ -1432,6 +1432,7 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
     profiler_trace_files: list[str] = []
     profiler_trace_kernel_names: list[str] = []
     profiler_trace_kernel_names_from_csv: list[str] = []
+    profiler_trace_kernel_durations_from_csv: dict[str, float] = {}
     profiler_trace_synthesized_fields: list[str] = []
     profiler_source_artifact_path: str | None = None
     trace_kernel_names_valid = False
@@ -1502,6 +1503,7 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
             trace_files_have_path_error = False
             if len(set(profiler_trace_files)) != len(profiler_trace_files):
                 reasons.append("profiler.trace_files contains duplicates")
+                trace_files_have_path_error = True
             if any(Path(trace_file).suffix.lower() != ".csv" for trace_file in profiler_trace_files):
                 reasons.append("profiler.trace_files contains a non-CSV trace file")
                 trace_files_have_path_error = True
@@ -1553,6 +1555,11 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                         reasons.append("profiler.trace_files contain no readable kernel trace rows")
                     else:
                         profiler_trace_kernel_names_from_csv = kernel_trace_names
+                        for trace_file_path in kernel_trace_file_paths:
+                            for kernel_name, duration_ns in _read_profiler_trace_kernel_durations(trace_file_path).items():
+                                profiler_trace_kernel_durations_from_csv[kernel_name] = (
+                                    profiler_trace_kernel_durations_from_csv.get(kernel_name, 0.0) + duration_ns
+                                )
         profiler_trace_synthesized_fields = _synthesize_profiler_trace_fields(profiler, profiler_path=profiler_path)
         raw_trace_kernel_names = profiler.get("trace_kernel_names")
         if not isinstance(raw_trace_kernel_names, list) or not raw_trace_kernel_names:
@@ -1710,6 +1717,18 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                 )
                 if unmeasured_trace_names:
                     reasons.append("profiler.kernel_durations_ns keys must include trace_kernel_names")
+                duration_key_set = {
+                    kernel_name
+                    for kernel_name, duration_ns in kernel_durations.items()
+                    if _is_stripped_non_empty_string(kernel_name) and _is_positive_finite_number(duration_ns)
+                }
+                if profiler_trace_kernel_durations_from_csv and duration_key_set == set(profiler_trace_kernel_durations_from_csv):
+                    for kernel_name, trace_duration_ns in profiler_trace_kernel_durations_from_csv.items():
+                        duration_ns = float(kernel_durations[kernel_name])
+                        tolerance = max(1.0, abs(trace_duration_ns) * 1e-6)
+                        if abs(duration_ns - trace_duration_ns) > tolerance:
+                            reasons.append("profiler.kernel_durations_ns must match kernel-trace CSV durations")
+                            break
         _validate_profiler_kernel_durations(profiler, reasons)
         _validate_profiler_kernel_duration_categories(profiler, reasons)
         _validate_profiler_cpu_side_bottlenecks(profiler, reasons)
