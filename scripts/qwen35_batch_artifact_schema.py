@@ -4350,6 +4350,8 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
             errors.append("summary.artifact_path must be a non-empty string or null")
         else:
             _validate_benchmark_results_artifact_path("summary.artifact_path", artifact_path, errors)
+            if artifact_path.strip() != artifact_path:
+                errors.append("summary.artifact_path must not contain leading or trailing whitespace")
             if _path_text_contains_parent_traversal(artifact_path):
                 errors.append("summary.artifact_path must not contain parent traversal")
             if _benchmark_results_relative_path(artifact_path) != artifact_path.replace("\\", "/"):

@@ -20970,6 +20970,14 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     absolute_summary_artifact_path["artifact_path"] = str(artifact_file)
     with pytest.raises(ValueError, match="summary.artifact_path must be a repo-relative benchmarks/results path"):
         validate_cn_diagnostic_validation_summary(absolute_summary_artifact_path)
+    leading_space_summary_artifact_path = dict(summary)
+    leading_space_summary_artifact_path["artifact_path"] = " benchmarks/results/accepted-c2.json"
+    with pytest.raises(ValueError, match="summary.artifact_path must not contain leading or trailing whitespace"):
+        validate_cn_diagnostic_validation_summary(leading_space_summary_artifact_path)
+    trailing_space_summary_artifact_path = dict(summary)
+    trailing_space_summary_artifact_path["artifact_path"] = "benchmarks/results/accepted-c2.json "
+    with pytest.raises(ValueError, match="summary.artifact_path must not contain leading or trailing whitespace"):
+        validate_cn_diagnostic_validation_summary(trailing_space_summary_artifact_path)
     missing_summary_artifact_path = dict(summary)
     missing_summary_artifact_path["artifact_path"] = None
     with pytest.raises(ValueError, match="summary.artifact_path must be a non-empty string when summary.passed is true"):
