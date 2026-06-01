@@ -20929,9 +20929,19 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     assert failed_summary["mode"] == "rollup_evidence"
     assert failed_summary["artifact_json"] == "benchmarks/results/accepted-c2-missing-rollup.json"
     assert failed_summary["artifact_path"] == "benchmarks/results/accepted-c2.json"
+    assert failed_summary["status"] is None
+    assert failed_summary["performance_claim"] is None
     assert failed_summary["benchmark_rollup"] is None
     assert "benchmark_rollup must be an object" in failed_summary["error"]
     validate_cn_diagnostic_validation_summary(failed_summary)
+    failed_summary_success_status = dict(failed_summary)
+    failed_summary_success_status["status"] = "accepted"
+    with pytest.raises(ValueError, match="failed validation summary.status must be null"):
+        validate_cn_diagnostic_validation_summary(failed_summary_success_status)
+    failed_summary_success_claim = dict(failed_summary)
+    failed_summary_success_claim["performance_claim"] = True
+    with pytest.raises(ValueError, match="failed validation summary.performance_claim must be null"):
+        validate_cn_diagnostic_validation_summary(failed_summary_success_claim)
     assert validate_cn_diagnostic_artifact_main([str(failed_summary_file), "--validation-summary"]) == 0
     outside_failed_summary_source = dict(failed_summary)
     outside_failed_summary_source["artifact_json"] = str(rollup_root / "tmp" / "accepted-c2-missing-rollup.json")
@@ -20960,6 +20970,8 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     ) == 1
     missing_artifact_and_rollup_summary = json.loads(missing_artifact_and_rollup_summary_file.read_text())
     assert missing_artifact_and_rollup_summary["artifact_path"] is None
+    assert missing_artifact_and_rollup_summary["status"] is None
+    assert missing_artifact_and_rollup_summary["performance_claim"] is None
     assert validate_cn_diagnostic_artifact_main([str(missing_artifact_and_rollup_summary_file), "--validation-summary"]) == 0
     wrong_named_missing_artifact_and_rollup_summary_file = rollup_root / "benchmarks" / "results" / "other-missing-artifact-and-rollup-rollup-check.json"
     assert validate_cn_diagnostic_artifact_main(

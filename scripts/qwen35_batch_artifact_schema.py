@@ -4259,8 +4259,8 @@ def _validation_summary(
     payload = payload or {}
     artifact_json_text = _benchmark_results_relative_path(str(artifact_json))
     artifact_path = payload.get("artifact_path")
-    status = payload.get("status")
-    performance_claim = payload.get("performance_claim")
+    status = payload.get("status") if passed else None
+    performance_claim = payload.get("performance_claim") if passed else None
     benchmark_rollup = payload.get("benchmark_rollup")
     return {
         "schema": 1,
@@ -4318,6 +4318,11 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
     performance_claim = summary.get("performance_claim")
     if performance_claim is not None and not isinstance(performance_claim, bool):
         errors.append("summary.performance_claim must be a bool or null")
+    if passed is False:
+        if status is not None:
+            errors.append("failed validation summary.status must be null")
+        if performance_claim is not None:
+            errors.append("failed validation summary.performance_claim must be null")
     benchmark_rollup = summary.get("benchmark_rollup")
     if (passed is True or benchmark_rollup is not None) and not isinstance(artifact_path, str):
         errors.append("summary.artifact_path must be a non-empty string when summary.passed is true or summary.benchmark_rollup is present")
