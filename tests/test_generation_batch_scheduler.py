@@ -7350,6 +7350,10 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         "projection_dispatch_artifact",
     }
     assert set(summary["options"]) == expected_option_keys
+    tampered_options_object = json.loads(json.dumps(summary))
+    tampered_options_object["options"] = []
+    with pytest.raises(ValueError, match="options must be an object"):
+        c_sweep.validate_sweep_summary(tampered_options_object)
     tampered_extra_option = json.loads(json.dumps(summary))
     tampered_extra_option["options"]["unexpected_option"] = "field"
     with pytest.raises(ValueError, match="options must contain exactly the c-sweep schema keys"):
