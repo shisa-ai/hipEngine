@@ -138,6 +138,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--source-artifact-failures-only",
+        action="store_true",
+        help=(
+            "With --verify-source-artifacts, emit only source_artifact_failed_records "
+            "for compact file provenance failure routing."
+        ),
+    )
+    parser.add_argument(
         "--next-action-commands-sha-only",
         action="store_true",
         help=(
@@ -458,6 +466,7 @@ def _verify_source_artifacts(status_artifact: Path) -> dict[str, object]:
             "status_artifact": str(status_artifact),
             "all_match": False,
             "source_artifacts_all_match": False,
+            "source_artifact_failed_records": [],
             "checked_count": 0,
             "records": {},
             "status_integrity": _status_integrity(status),
@@ -482,6 +491,9 @@ def _verify_source_artifacts(status_artifact: Path) -> dict[str, object]:
             "recorded": recorded,
             "current": current,
         }
+    source_artifact_failed_records = [
+        name for name, record in records.items() if record["match"] is not True
+    ]
     status_integrity = _status_integrity(status)
     all_match = source_artifacts_all_match and status_integrity["all_match"] is True
     return {
@@ -489,6 +501,7 @@ def _verify_source_artifacts(status_artifact: Path) -> dict[str, object]:
         "status_artifact": str(status_artifact),
         "all_match": all_match,
         "source_artifacts_all_match": source_artifacts_all_match,
+        "source_artifact_failed_records": source_artifact_failed_records,
         "checked_count": len(records),
         "records": records,
         "status_integrity": status_integrity,
@@ -1861,7 +1874,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     if args.verify_source_artifacts is not None:
         verification = _verify_source_artifacts(args.verify_source_artifacts)
-        if args.status_integrity_failures_only:
+        if args.source_artifact_failures_only:
+            result = verification["source_artifact_failed_records"]
+        elif args.status_integrity_failures_only:
             result = verification["status_integrity"]["failed_checks"]
         elif args.status_integrity_only:
             result = verification["status_integrity"]
