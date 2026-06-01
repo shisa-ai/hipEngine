@@ -7539,10 +7539,11 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         tampered_status_count_type["status_counts"]["planned"] = stale_status_count
         with pytest.raises(ValueError, match="status_counts must contain only non-negative integer count values"):
             c_sweep.validate_sweep_summary(tampered_status_count_type)
-    tampered_status_count = json.loads(json.dumps(summary))
-    tampered_status_count["status_counts"]["planned"] = 26
-    with pytest.raises(ValueError, match="status_counts must match commands"):
-        c_sweep.validate_sweep_summary(tampered_status_count)
+    for stale_status_count in (26, 28):
+        tampered_status_count = json.loads(json.dumps(summary))
+        tampered_status_count["status_counts"]["planned"] = stale_status_count
+        with pytest.raises(ValueError, match="status_counts must match commands"):
+            c_sweep.validate_sweep_summary(tampered_status_count)
     assert summary["output_dir"] == str(tmp_path / "artifacts")
     for stale_output_dir in ("   ", 123):
         tampered_output_dir_type = json.loads(json.dumps(summary))
@@ -7596,10 +7597,11 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         tampered_category_status_count_type["category_status_counts"]["primitive"]["planned"] = stale_category_status_count
         with pytest.raises(ValueError, match="category_status_counts must contain only non-negative integer count values"):
             c_sweep.validate_sweep_summary(tampered_category_status_count_type)
-    tampered_primitive_category_status_count = json.loads(json.dumps(summary))
-    tampered_primitive_category_status_count["category_status_counts"]["primitive"]["planned"] = 3
-    with pytest.raises(ValueError, match="category_status_counts must match commands"):
-        c_sweep.validate_sweep_summary(tampered_primitive_category_status_count)
+    for stale_primitive_category_status_count in (3, 5):
+        tampered_primitive_category_status_count = json.loads(json.dumps(summary))
+        tampered_primitive_category_status_count["category_status_counts"]["primitive"]["planned"] = stale_primitive_category_status_count
+        with pytest.raises(ValueError, match="category_status_counts must match commands"):
+            c_sweep.validate_sweep_summary(tampered_primitive_category_status_count)
     assert summary["retained_precondition_counts"] == {}
     tampered_precondition_count_object = json.loads(json.dumps(summary))
     tampered_precondition_count_object["retained_precondition_counts"] = []
