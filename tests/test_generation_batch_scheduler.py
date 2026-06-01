@@ -7486,7 +7486,7 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=rf"commands\[\]\.argv {flag} must match options\.{option}"):
             c_sweep.validate_sweep_summary(tampered_shape_option)
     assert summary["batch_sizes"] == [1, 2, 4, 8]
-    for stale_batch_sizes in ([1, 2.0, 4, 8], [1, True, 4, 8], [1, 2, 2, 8], [1, 2, 4, 0]):
+    for stale_batch_sizes in ("1,2,4,8", [], [1, 2.0, 4, 8], [1, True, 4, 8], [1, 2, 2, 8], [1, 2, 4, 0]):
         tampered_batch_size_type = json.loads(json.dumps(summary))
         tampered_batch_size_type["batch_sizes"] = stale_batch_sizes
         with pytest.raises(ValueError, match="batch_sizes must be a non-empty unique positive-int list"):
