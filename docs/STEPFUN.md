@@ -672,10 +672,12 @@ reporting.
   path/size/SHA-256 provenance for the prompt, oracle, resource-plan, and docs
   inputs used to compute the summary; `--verify-source-artifacts STATUS_JSON`
   checks those embedded hashes/sizes plus the embedded digest/schema-version
-  integrity fields before a handoff is trusted, `--status-integrity-only` emits
-  those embedded integrity checks without rechecking filesystem provenance,
-  `--status-integrity-failures-only` emits only the failing integrity check
-  names for routing stale handoffs, and `source_artifacts_sha256` gives
+  integrity fields before a handoff is trusted, and it can be combined with
+  `--status-integrity-only` or `--status-integrity-failures-only` to emit just
+  the embedded integrity payload or failing check names from a persisted status
+  artifact; without `--verify-source-artifacts`, those compact integrity modes
+  check the freshly built status without rechecking filesystem provenance. The
+  `source_artifacts_sha256` digest gives
   readiness pollers a compact digest
   of the same prompt/oracle/resource/docs provenance. The status also exposes
   `handoff_summary_sha256` so pollers can detect blocker-summary or

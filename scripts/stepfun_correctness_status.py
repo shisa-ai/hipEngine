@@ -1861,8 +1861,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     if args.verify_source_artifacts is not None:
         verification = _verify_source_artifacts(args.verify_source_artifacts)
+        if args.status_integrity_failures_only:
+            result = verification["status_integrity"]["failed_checks"]
+        elif args.status_integrity_only:
+            result = verification["status_integrity"]
+        else:
+            result = verification
         _emit_json(
-            verification,
+            result,
             pretty=args.pretty,
             output=args.output,
         )
