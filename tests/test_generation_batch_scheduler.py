@@ -5825,6 +5825,21 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         finally:
             if profiler_source_parent_link.is_symlink():
                 profiler_source_parent_link.unlink()
+    profiler_source_parent_file = output_dir / "profiler-source-parent-file"
+    try:
+        profiler_source_parent_file.write_text("not a directory")
+        tampered_profiler_source_parent_file = json.loads(json.dumps(persisted))
+        tampered_profiler_source_parent_file["commands"][-1]["preconditions"][-1]["profiler_source_artifact_path"] = str(
+            profiler_source_parent_file / "profiler-c2.json"
+        )
+        with pytest.raises(
+            ValueError,
+            match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path parent directories must be directories when profiler passed",
+        ):
+            c_sweep.validate_sweep_summary(tampered_profiler_source_parent_file)
+    finally:
+        if profiler_source_parent_file.exists():
+            profiler_source_parent_file.unlink()
     tampered_profiler_precondition_field_shape = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_field_shape["commands"][-1]["preconditions"][-1]["profiler_trace_synthesized_fields"] = [1]
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_synthesized_fields must be a string list when profiler passed"):
