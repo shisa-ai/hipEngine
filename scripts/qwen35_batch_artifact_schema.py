@@ -700,6 +700,30 @@ def _is_resolved_path_relative_to(path: str | Path, root: str | Path) -> bool:
     return _resolve_repo_path(path).is_relative_to(_resolve_repo_path(root))
 
 
+def _path_has_symlink_parent(path: str | Path) -> bool:
+    path = Path(path)
+    if not path.is_absolute():
+        path = REPO_ROOT / path
+    current = path.parent
+    while current != current.parent:
+        if current.is_symlink():
+            return True
+        current = current.parent
+    return False
+
+
+def _path_has_non_directory_parent(path: str | Path) -> bool:
+    path = Path(path)
+    if not path.is_absolute():
+        path = REPO_ROOT / path
+    current = path.parent
+    while current != current.parent:
+        if current.exists() and not current.is_dir():
+            return True
+        current = current.parent
+    return False
+
+
 def _profiler_kernel_duration_category(kernel_name: str) -> str:
     lowered = kernel_name.lower()
     if "graph" in lowered or "replay" in lowered:
@@ -2185,8 +2209,19 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         errors.append("profiler.trace_dir must be a non-empty string for accepted artifacts")
     elif _path_has_parent_directory_component(profiler_trace_dir):
         errors.append("profiler.trace_dir must not contain parent-directory components for accepted artifacts")
-    elif profiler_command_trace_dir is not None and profiler_trace_dir != profiler_command_trace_dir:
-        errors.append("profiler.trace_dir must match commands.profiler -d for accepted artifacts")
+    else:
+        profiler_trace_dir_path = Path(profiler_trace_dir)
+        profiler_trace_dir_check_path = (
+            profiler_trace_dir_path if profiler_trace_dir_path.is_absolute() else REPO_ROOT / profiler_trace_dir_path
+        )
+        if profiler_trace_dir_check_path.is_symlink():
+            errors.append("profiler.trace_dir must not be a symlink for accepted artifacts")
+        if _path_has_symlink_parent(profiler_trace_dir_check_path):
+            errors.append("profiler.trace_dir parent directories must not be symlinks for accepted artifacts")
+        if _path_has_non_directory_parent(profiler_trace_dir_check_path):
+            errors.append("profiler.trace_dir parent directories must be directories for accepted artifacts")
+        if profiler_command_trace_dir is not None and profiler_trace_dir != profiler_command_trace_dir:
+            errors.append("profiler.trace_dir must match commands.profiler -d for accepted artifacts")
     profiler_trace_files = profiler.get("trace_files")
     if not _is_nonempty_string_list(profiler_trace_files):
         errors.append("profiler.trace_files must be a non-empty string list for accepted artifacts")
@@ -2197,6 +2232,16 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             trace_path = Path(trace_file)
             if trace_path.suffix.lower() != ".csv":
                 errors.append("profiler.trace_files entries must be CSV paths for accepted artifacts")
+                break
+            trace_check_path = trace_path if trace_path.is_absolute() else REPO_ROOT / trace_path
+            if trace_check_path.is_symlink():
+                errors.append("profiler.trace_files entries must not be symlinks for accepted artifacts")
+                break
+            if _path_has_symlink_parent(trace_check_path):
+                errors.append("profiler.trace_files parent directories must not be symlinks for accepted artifacts")
+                break
+            if _path_has_non_directory_parent(trace_check_path):
+                errors.append("profiler.trace_files parent directories must be directories for accepted artifacts")
                 break
             if _path_has_parent_directory_component(trace_file):
                 errors.append("profiler.trace_files must not contain parent-directory components for accepted artifacts")

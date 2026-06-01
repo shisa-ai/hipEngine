@@ -21938,6 +21938,52 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="profiler.trace_dir must not contain parent-directory components"):
         validate_cn_diagnostic_artifact_payload(profiler_trace_dir_path_traversal)
 
+    profiler_trace_dir_symlink = json.loads(json.dumps(accepted))
+    real_trace_dir = tmp_path / "artifact-real-profile"
+    real_trace_dir.mkdir()
+    linked_trace_dir = tmp_path / "artifact-linked-profile"
+    linked_trace_dir.symlink_to(real_trace_dir, target_is_directory=True)
+    profiler_trace_dir_symlink["profiler"]["trace_dir"] = str(linked_trace_dir)
+    profiler_trace_dir_symlink["profiler"]["trace_files"] = [str(linked_trace_dir / "hipengine_kernel_trace.csv")]
+    profiler_trace_dir_symlink["commands"]["profiler"] = profiler_trace_dir_symlink["commands"]["profiler"].replace(
+        " -d /tmp/hipengine-profile --",
+        f" -d {linked_trace_dir} --",
+    )
+    with pytest.raises(ValueError, match="profiler.trace_dir must not be a symlink"):
+        validate_cn_diagnostic_artifact_payload(profiler_trace_dir_symlink)
+
+    profiler_trace_dir_symlink_parent = json.loads(json.dumps(accepted))
+    real_trace_parent = tmp_path / "artifact-real-profile-parent"
+    real_trace_parent.mkdir()
+    linked_trace_parent = tmp_path / "artifact-linked-profile-parent"
+    linked_trace_parent.symlink_to(real_trace_parent, target_is_directory=True)
+    trace_dir_under_linked_parent = linked_trace_parent / "profile-c2"
+    profiler_trace_dir_symlink_parent["profiler"]["trace_dir"] = str(trace_dir_under_linked_parent)
+    profiler_trace_dir_symlink_parent["profiler"]["trace_files"] = [
+        str(trace_dir_under_linked_parent / "hipengine_kernel_trace.csv")
+    ]
+    profiler_trace_dir_symlink_parent["commands"]["profiler"] = profiler_trace_dir_symlink_parent["commands"][
+        "profiler"
+    ].replace(
+        " -d /tmp/hipengine-profile --",
+        f" -d {trace_dir_under_linked_parent} --",
+    )
+    with pytest.raises(ValueError, match="profiler.trace_dir parent directories must not be symlinks"):
+        validate_cn_diagnostic_artifact_payload(profiler_trace_dir_symlink_parent)
+
+    profiler_trace_dir_file_parent = json.loads(json.dumps(accepted))
+    trace_dir_parent_file = tmp_path / "artifact-profile-parent-file"
+    trace_dir_parent_file.write_text("not a directory")
+    trace_dir_under_file_parent = trace_dir_parent_file / "profile-c2"
+    profiler_trace_dir_file_parent["profiler"]["trace_dir"] = str(trace_dir_under_file_parent)
+    profiler_trace_dir_file_parent["profiler"]["trace_files"] = [str(trace_dir_under_file_parent / "hipengine_kernel_trace.csv")]
+    profiler_trace_dir_file_parent["commands"]["profiler"] = profiler_trace_dir_file_parent["commands"]["profiler"].replace(
+        " -d /tmp/hipengine-profile --",
+        f" -d {trace_dir_under_file_parent} --",
+    )
+    with pytest.raises(ValueError, match="profiler.trace_dir parent directories must be directories"):
+        validate_cn_diagnostic_artifact_payload(profiler_trace_dir_file_parent)
+
     duplicate_profiler_trace_dir = json.loads(json.dumps(accepted))
     duplicate_profiler_trace_dir["commands"]["profiler"] = duplicate_profiler_trace_dir["commands"]["profiler"].replace(
         " -d /tmp/hipengine-profile -- python3",
@@ -21978,6 +22024,58 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     ]
     with pytest.raises(ValueError, match="profiler.trace_files must not contain parent-directory components"):
         validate_cn_diagnostic_artifact_payload(profiler_trace_file_path_traversal_inside_trace_dir)
+
+    profiler_trace_file_symlink = json.loads(json.dumps(accepted))
+    trace_file_symlink_dir = tmp_path / "artifact-profile-with-symlink-file"
+    trace_file_symlink_dir.mkdir()
+    trace_file_target = trace_file_symlink_dir / "real_kernel_trace.csv"
+    trace_file_target.write_text("Kernel_Name,Start_Timestamp,End_Timestamp\nqwen35_batch_decode,0,1\n")
+    trace_file_link = trace_file_symlink_dir / "hipengine_kernel_trace.csv"
+    trace_file_link.symlink_to(trace_file_target)
+    profiler_trace_file_symlink["profiler"]["trace_dir"] = str(trace_file_symlink_dir)
+    profiler_trace_file_symlink["profiler"]["trace_files"] = [str(trace_file_link)]
+    profiler_trace_file_symlink["commands"]["profiler"] = profiler_trace_file_symlink["commands"]["profiler"].replace(
+        " -d /tmp/hipengine-profile --",
+        f" -d {trace_file_symlink_dir} --",
+    )
+    with pytest.raises(ValueError, match="profiler.trace_files entries must not be symlinks"):
+        validate_cn_diagnostic_artifact_payload(profiler_trace_file_symlink)
+
+    profiler_trace_file_symlink_parent = json.loads(json.dumps(accepted))
+    trace_file_parent_dir = tmp_path / "artifact-profile-with-symlink-parent"
+    trace_file_parent_dir.mkdir()
+    real_trace_file_parent = trace_file_parent_dir / "real-traces"
+    real_trace_file_parent.mkdir()
+    linked_trace_file_parent = trace_file_parent_dir / "linked-traces"
+    linked_trace_file_parent.symlink_to(real_trace_file_parent, target_is_directory=True)
+    profiler_trace_file_symlink_parent["profiler"]["trace_dir"] = str(trace_file_parent_dir)
+    profiler_trace_file_symlink_parent["profiler"]["trace_files"] = [
+        str(linked_trace_file_parent / "hipengine_kernel_trace.csv")
+    ]
+    profiler_trace_file_symlink_parent["commands"]["profiler"] = profiler_trace_file_symlink_parent["commands"][
+        "profiler"
+    ].replace(
+        " -d /tmp/hipengine-profile --",
+        f" -d {trace_file_parent_dir} --",
+    )
+    with pytest.raises(ValueError, match="profiler.trace_files parent directories must not be symlinks"):
+        validate_cn_diagnostic_artifact_payload(profiler_trace_file_symlink_parent)
+
+    profiler_trace_file_parent_file = json.loads(json.dumps(accepted))
+    trace_file_parent_file_dir = tmp_path / "artifact-profile-with-file-parent"
+    trace_file_parent_file_dir.mkdir()
+    trace_file_parent_file = trace_file_parent_file_dir / "file-traces"
+    trace_file_parent_file.write_text("not a directory")
+    profiler_trace_file_parent_file["profiler"]["trace_dir"] = str(trace_file_parent_file_dir)
+    profiler_trace_file_parent_file["profiler"]["trace_files"] = [
+        str(trace_file_parent_file / "hipengine_kernel_trace.csv")
+    ]
+    profiler_trace_file_parent_file["commands"]["profiler"] = profiler_trace_file_parent_file["commands"]["profiler"].replace(
+        " -d /tmp/hipengine-profile --",
+        f" -d {trace_file_parent_file_dir} --",
+    )
+    with pytest.raises(ValueError, match="profiler.trace_files parent directories must be directories"):
+        validate_cn_diagnostic_artifact_payload(profiler_trace_file_parent_file)
 
     profiler_trace_file_without_kernel_trace_csv = json.loads(json.dumps(accepted))
     profiler_trace_file_without_kernel_trace_csv["profiler"]["trace_files"] = ["/tmp/hipengine-profile/hipengine_api_trace.csv"]

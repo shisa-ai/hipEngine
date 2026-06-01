@@ -58564,3 +58564,36 @@ PY
 ```
 
 Result: focused c-sweep profiler non-directory-parent regression PASS after the c-sweep fix; docs diff check PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1` with c=2/c=8 primitive JSONs passing on GPU1/XTX (`seed=1234`, zero append/A-A/attention errors, `device.env.HIP_VISIBLE_DEVICES=1`, `device_name=AMD Radeon RX 7900 XTX`). Prompt-verifier self-check passes: the open C2.5 item remains unchecked and explicitly says generated-token equality/scaling are still missing, completed items were not changed, and no retained c>N performance/scaling claim was added.
+
+## 2026-06-01 — CONCURRENCY C2.5 accepted-schema profiler trace-path hardening
+
+Mirrored the retained-profiler trace-path hardening into the accepted artifact schema. The initial thought was to require profiler trace files to still exist on disk, but accepted artifacts may outlive `/tmp` rocprof trace directories; the safer gap was that `scripts/qwen35_batch_artifact_schema.py` still accepted profiler `trace_dir` / `trace_files` paths that were direct symlinks, lived below symlink parents, or lived below file-valued parents, even though c-sweep retained preconditions now reject those shapes. RED: accepted-row schema validation did not reject a symlink trace dir. GREEN: accepted artifact validation now rejects symlink trace dirs, symlink-parent trace dirs, file-parent trace dirs, symlink trace CSVs, symlink-parent trace CSVs, and file-parent trace CSVs. `docs/CONCURRENCY.md` P1 progress now records trace-dir/trace-file path hardening. This still does not close C2.5: it is profiler provenance hardening only, not generated-token equality vs independent c=1 and not a performance/scaling claim.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+python3 -m compileall -q tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q  # RED before schema fix: symlink trace_dir did not raise
+python3 -m compileall -q scripts/qwen35_batch_artifact_schema.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q
+git diff --check
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+env HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+python3 - <<'PY'
+from pathlib import Path
+import re
+text = Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue))
+assert count == 12, count
+assert '- [ ] **C2.5 c=4/c=8 BF16 equality.**' in queue
+assert 'generated-token equality vs independent c=1 for c=4/c=8 is still missing' in queue
+assert 'non-symlink+symlink-parent-free+directory-parent trace-dir/trace-file paths' in queue
+print('prompt-verifier support: C2.5 remains open; missing generated-token equality caveat remains present; accepted schema/c-sweep trace-dir and trace-file path evidence text is present; no completed item marker changed by this diff')
+PY
+```
+
+Result: focused accepted-artifact schema profiler trace-path regression PASS after the schema fix; docs diff check PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1` with c=2/c=8 primitive JSONs passing on GPU1/XTX (`seed=1234`, zero append/A-A/attention errors, `device.env.HIP_VISIBLE_DEVICES=1`, `device_name=AMD Radeon RX 7900 XTX`). Prompt-verifier self-check passes: the open C2.5 item remains unchecked and explicitly says generated-token equality/scaling are still missing, completed items were not changed, and no retained c>N performance/scaling claim was added.
