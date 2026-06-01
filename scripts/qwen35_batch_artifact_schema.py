@@ -1255,6 +1255,11 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
         errors.append("accepted retained artifact must have status='accepted'")
     if payload.get("schema") != 3 or isinstance(payload.get("schema"), bool):
         errors.append("schema must be 3 for accepted artifacts")
+    summary = payload.get("summary")
+    if not isinstance(summary, str) or not summary:
+        errors.append("summary must be a non-empty string for accepted artifacts")
+    elif summary != "Qwen3.5/PARO scheduler compact native c>N benchmark":
+        errors.append("summary must be Qwen3.5/PARO scheduler compact native c>N benchmark for accepted artifacts")
     if payload.get("performance_claim") is not True:
         errors.append("accepted retained artifact must set performance_claim=true")
 

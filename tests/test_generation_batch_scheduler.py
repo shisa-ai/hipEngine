@@ -19924,6 +19924,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         "rows": 2,
         "run_tag": "qwen35-paro-c2-native-retained",
         "timestamp": "2026-06-01T14:00:00+00:00",
+        "summary": "Qwen3.5/PARO scheduler compact native c>N benchmark",
         "artifact_path": "benchmarks/results/accepted-c2.json",
         "performance_claim": True,
         "hardware": {
@@ -20399,6 +20400,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     mismatched_artifact_schema["schema"] = 2
     with pytest.raises(ValueError, match="schema must be 3 for accepted artifacts"):
         validate_cn_diagnostic_artifact_payload(mismatched_artifact_schema)
+
+    missing_summary = json.loads(json.dumps(accepted))
+    missing_summary.pop("summary")
+    with pytest.raises(ValueError, match="summary must be a non-empty string for accepted artifacts"):
+        validate_cn_diagnostic_artifact_payload(missing_summary)
+
+    mismatched_summary = json.loads(json.dumps(accepted))
+    mismatched_summary["summary"] = "Qwen3.5/PARO diagnostic"
+    with pytest.raises(ValueError, match="summary must be Qwen3.5/PARO scheduler compact native c>N benchmark for accepted artifacts"):
+        validate_cn_diagnostic_artifact_payload(mismatched_summary)
 
     missing_run_tag = json.loads(json.dumps(accepted))
     missing_run_tag.pop("run_tag")
