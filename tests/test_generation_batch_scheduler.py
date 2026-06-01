@@ -21451,6 +21451,54 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="commands.profiler device env prefix ROCR_VISIBLE_DEVICES must appear at most once"):
         validate_cn_diagnostic_artifact_payload(duplicate_aux_profiler_command_env)
 
+    aux_command_insertions = {
+        "benchmark": ("env HIP_VISIBLE_DEVICES=1 python3", "env HIP_VISIBLE_DEVICES=1 {key}=1 python3"),
+        "correctness_reference": ("env HIP_VISIBLE_DEVICES=1 python3", "env HIP_VISIBLE_DEVICES=1 {key}=1 python3"),
+        "profiler": ("-- env HIP_VISIBLE_DEVICES=1 python3", "-- env HIP_VISIBLE_DEVICES=1 {key}=1 python3"),
+    }
+    for aux_env_key in ("CUDA_VISIBLE_DEVICES", "GPU_DEVICE_ORDINAL"):
+        other_aux_env_accepted = json.loads(json.dumps(gpu1_accepted))
+        other_aux_env_accepted["hardware"]["visible_device"]["env"][aux_env_key] = "1"
+        other_aux_env_accepted["correctness"]["primitive_batch_correctness"]["device"]["env"][aux_env_key] = "1"
+        for command_field, (needle, replacement) in aux_command_insertions.items():
+            other_aux_env_accepted["commands"][command_field] = other_aux_env_accepted["commands"][command_field].replace(
+                needle,
+                replacement.format(key=aux_env_key),
+                1,
+            )
+        validate_cn_diagnostic_artifact_payload(other_aux_env_accepted)
+
+        for command_field in aux_command_insertions:
+            missing_aux_env = json.loads(json.dumps(other_aux_env_accepted))
+            missing_aux_env["commands"][command_field] = missing_aux_env["commands"][command_field].replace(
+                f"{aux_env_key}=1 ",
+                "",
+                1,
+            )
+            with pytest.raises(ValueError, match=rf"commands\.{command_field} must include {aux_env_key}=1"):
+                validate_cn_diagnostic_artifact_payload(missing_aux_env)
+
+            mismatched_aux_env = json.loads(json.dumps(other_aux_env_accepted))
+            mismatched_aux_env["commands"][command_field] = mismatched_aux_env["commands"][command_field].replace(
+                f"{aux_env_key}=1 ",
+                f"{aux_env_key}=2 ",
+                1,
+            )
+            with pytest.raises(ValueError, match=rf"commands\.{command_field} must include {aux_env_key}=1"):
+                validate_cn_diagnostic_artifact_payload(mismatched_aux_env)
+
+            duplicate_aux_env = json.loads(json.dumps(other_aux_env_accepted))
+            duplicate_aux_env["commands"][command_field] = duplicate_aux_env["commands"][command_field].replace(
+                f"{aux_env_key}=1 python3",
+                f"{aux_env_key}=1 {aux_env_key}=1 python3",
+                1,
+            )
+            with pytest.raises(
+                ValueError,
+                match=rf"commands\.{command_field} device env prefix {aux_env_key} must appear at most once",
+            ):
+                validate_cn_diagnostic_artifact_payload(duplicate_aux_env)
+
     command_device_env_without_metadata = json.loads(json.dumps(accepted))
     command_device_env_without_metadata["commands"]["benchmark"] = (
         "env HIP_VISIBLE_DEVICES=1 " + command_device_env_without_metadata["commands"]["benchmark"]
