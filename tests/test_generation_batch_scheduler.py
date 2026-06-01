@@ -7369,6 +7369,22 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         "max_layers": 40,
     }
     assert {option: summary["options"][option] for option in expected_shape_options} == expected_shape_options
+    for option in expected_shape_options:
+        for stale_shape_value in (True, str(expected_shape_options[option])):
+            tampered_shape_type = json.loads(json.dumps(summary))
+            tampered_shape_type["options"][option] = stale_shape_value
+            with pytest.raises(ValueError, match=rf"options\.{option} must be an int"):
+                c_sweep.validate_sweep_summary(tampered_shape_type)
+    for option, stale_shape_value, expected_error in (
+        ("prompt_length", 0, "options.prompt_length must be positive"),
+        ("decode_tokens", 0, "options.decode_tokens must be positive"),
+        ("warmup_decode_tokens", -1, "options.warmup_decode_tokens must be non-negative"),
+        ("max_layers", 0, "options.max_layers must be positive"),
+    ):
+        tampered_shape_domain = json.loads(json.dumps(summary))
+        tampered_shape_domain["options"][option] = stale_shape_value
+        with pytest.raises(ValueError, match=expected_error):
+            c_sweep.validate_sweep_summary(tampered_shape_domain)
     for option, flag, stale_value in (
         ("prompt_length", "--prompt-length", 513),
         ("decode_tokens", "--decode-tokens", 129),
