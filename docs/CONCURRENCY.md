@@ -1874,7 +1874,18 @@ roll-up/status view.
       JSON artifacts under `benchmarks/results/`. Acceptance: every perf claim
       cites correctness gate, profiler status, exact command, and hardware.
       Progress: accepted/performance-claim c>N artifacts now fail schema
-      validation unless they include fully native scheduler-owned batch/prefill/decode-execution metadata with empty blockers, the known full-native prefill path, null unsupported-layer fields, positive native full-attention layer evidence, decode rows/slots plus grouped-compact MoE decode rows matching `workload.concurrency` with positive grouped-compact layer count and zero selected-c1 fallback layers, decode context covering `workload.prompt_tokens_per_request` while staying below the open row-aware split-K threshold, and prefill layer limits matching `workload.max_layers`,
+      validation unless they include the retained-bench envelope (`schema=3`,
+      `status=accepted`, `performance_claim=true`, `decision.accepted=true`,
+      `decision.reason=correctness/protocol passed`, matching `run_tag`,
+      timezone timestamp, canonical summary, matching `rows`, and the native-path
+      plus split-K-scope `notes`), fully native scheduler-owned
+      batch/prefill/decode-execution metadata with empty blockers, the known
+      full-native prefill path, null unsupported-layer fields, positive native
+      full-attention layer evidence, decode rows/slots plus grouped-compact MoE
+      decode rows matching `workload.concurrency` with positive grouped-compact
+      layer count and zero selected-c1 fallback layers, decode context covering
+      `workload.prompt_tokens_per_request` while staying below the open row-aware
+      split-K threshold, and prefill layer limits matching `workload.max_layers`,
       workload native prefill/decode flags set, workload scheduler labels matching the execution path, per-layer decode traces matching the global native full-attention and grouped-MoE layer counts, projection evidence artifact JSON reporting accepted same-row evidence with self-matching `artifact_path`/`source_artifact_path` and matching >1 aggregate/per-request row-GEMV speedup ratios, sampler requested mode `batched_lm_head` plus rows/equality rows matching `workload.concurrency` and sampler equality artifact JSON reporting self-matching `artifact_path`/`source_artifact_path` and the same rows with generated-token equality vs independent c=1 (`passed=true`, `skipped=false`, matching batch/c1 sequence lists, empty mismatches),
       generated-token equality sequence lists matching `workload.concurrency`
       rows and seed + warmup + measured decode token counts per row, with
