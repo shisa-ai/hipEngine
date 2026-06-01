@@ -661,7 +661,9 @@ reporting.
   trusted. The status also includes `next_action_commands` for rerunning the
   oracle command shell, regenerating the oracle JSON via `scripts/stepfun_llamacpp_oracle.py`,
   and refreshing the resource/status artifacts, with length/SHA-256 metadata for
-  the helper/resource/status refresh commands; the oracle helper refresh command
+  the helper/resource/status refresh commands plus a compact source-artifact
+  verification command for rechecking embedded prompt/oracle/resource/docs
+  hashes before blocker handoff; the oracle helper refresh command
   preserves the recorded `diagnostic_logs=true` setting so reruns keep llama.cpp
   load/error logs enabled for the canonical timeout artifact, and the blocker
   work queue now exposes that boolean directly for handoff consumers. Remaining

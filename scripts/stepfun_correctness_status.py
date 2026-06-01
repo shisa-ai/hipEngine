@@ -21,6 +21,9 @@ DEFAULT_RESOURCE_ARTIFACT = Path(
     "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json"
 )
 DEFAULT_DOCS_PATH = Path("docs/STEPFUN.md")
+DEFAULT_STATUS_ARTIFACT = Path(
+    "benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json"
+)
 READY_EXIT_CODE = 0
 SOURCE_ARTIFACT_MISMATCH_EXIT_CODE = 1
 BLOCKED_EXIT_CODE = 2
@@ -113,6 +116,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=(
             "Emit only next_action_commands.oracle_parity_blocked.status_refresh_command_sha256 "
             "for status-refresh command drift polling. Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--source-verify-command-only",
+        action="store_true",
+        help=(
+            "Emit only next_action_commands.handoff_integrity.source_artifacts_verify_command "
+            "for source artifact provenance checks. Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--source-verify-command-sha-only",
+        action="store_true",
+        help=(
+            "Emit only next_action_commands.handoff_integrity.source_artifacts_verify_command_sha256 "
+            "for source artifact verification command drift polling. Overrides readiness/queue compact-output modes."
         ),
     )
     parser.add_argument(
@@ -680,7 +699,7 @@ def _status_refresh_command(
     oracle_artifact: Path,
     resource_artifact: Path,
     docs_path: Path,
-    output_artifact: Path = Path("benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json"),
+    output_artifact: Path = DEFAULT_STATUS_ARTIFACT,
 ) -> str:
     return (
         "python3 scripts/stepfun_correctness_status.py "
@@ -689,6 +708,16 @@ def _status_refresh_command(
         f"--resource-artifact {resource_artifact} "
         f"--docs {docs_path} "
         f"--output {output_artifact} --pretty"
+    )
+
+
+def _source_artifacts_verify_command(
+    *,
+    status_artifact: Path = DEFAULT_STATUS_ARTIFACT,
+) -> str:
+    return (
+        "python3 scripts/stepfun_correctness_status.py "
+        f"--verify-source-artifacts {status_artifact} --pretty"
     )
 
 
@@ -768,7 +797,20 @@ def _next_action_commands(
         oracle_artifact=oracle_artifact,
     )
     resource_plan_refresh = _resource_plan_refresh_command(output_artifact=resource_artifact)
+    source_artifacts_verify = _source_artifacts_verify_command()
     return {
+        "handoff_integrity": {
+            "source_artifacts_verify_command": source_artifacts_verify,
+            **_command_length_hash(
+                "source_artifacts_verify_command",
+                source_artifacts_verify,
+            ),
+            "success_criteria": [
+                "source artifact verification exits 0",
+                "source artifact verification reports status=match",
+                "source artifact verification reports all_match=true",
+            ],
+        },
         "oracle_parity_blocked": {
             "rerun_command_shell": oracle_progress.get("command_shell"),
             "oracle_helper_refresh_command": oracle_helper_refresh,
@@ -1150,6 +1192,12 @@ def _handoff_summary(
             "status_refresh_command_sha_only": (
                 "next_action_commands.oracle_parity_blocked.status_refresh_command_sha256"
             ),
+            "source_verify_command_only": (
+                "next_action_commands.handoff_integrity.source_artifacts_verify_command"
+            ),
+            "source_verify_command_sha_only": (
+                "next_action_commands.handoff_integrity.source_artifacts_verify_command_sha256"
+            ),
             "kv_resource_command_only": (
                 "next_action_commands.kv_backed_decode_not_wired.resource_plan_refresh_command"
             ),
@@ -1482,6 +1530,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.oracle_helper_command_only:
         result = status["next_action_commands"]["oracle_parity_blocked"].get(
             "oracle_helper_refresh_command"
+        )
+    elif args.source_verify_command_sha_only:
+        result = status["next_action_commands"]["handoff_integrity"].get(
+            "source_artifacts_verify_command_sha256"
+        )
+    elif args.source_verify_command_only:
+        result = status["next_action_commands"]["handoff_integrity"].get(
+            "source_artifacts_verify_command"
         )
     elif args.status_refresh_command_sha_only:
         result = status["next_action_commands"]["oracle_parity_blocked"].get(

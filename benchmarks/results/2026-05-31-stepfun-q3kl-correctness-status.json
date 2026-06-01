@@ -135,6 +135,8 @@
       "oracle_helper_command_sha_only": "next_action_commands.oracle_parity_blocked.oracle_helper_refresh_command_sha256",
       "readiness_summary_only": "readiness_summary",
       "readiness_summary_sha_only": "readiness_summary_sha256",
+      "source_verify_command_only": "next_action_commands.handoff_integrity.source_artifacts_verify_command",
+      "source_verify_command_sha_only": "next_action_commands.handoff_integrity.source_artifacts_verify_command_sha256",
       "status_refresh_command_only": "next_action_commands.oracle_parity_blocked.status_refresh_command",
       "status_refresh_command_sha_only": "next_action_commands.oracle_parity_blocked.status_refresh_command_sha256",
       "summary_only": "handoff_summary"
@@ -1028,6 +1030,16 @@
   },
   "model": "Step-3.7-flash-Q3_K_L",
   "next_action_commands": {
+    "handoff_integrity": {
+      "source_artifacts_verify_command": "python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty",
+      "source_artifacts_verify_command_nchars": 147,
+      "source_artifacts_verify_command_sha256": "e76668e6d601befe227dbda871418e69228ec2572d591d2589a176d08031946b",
+      "success_criteria": [
+        "source artifact verification exits 0",
+        "source artifact verification reports status=match",
+        "source artifact verification reports all_match=true"
+      ]
+    },
     "kv_backed_decode_not_wired": {
       "first_missing_evidence": "streaming_runner_ready_flags",
       "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
@@ -1519,8 +1531,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "fb34f3cd88a69b0bbd39721af0359c5ca42360d5f8aa76a572e7f97d62f4c5b8",
-      "size_bytes": 54427
+      "sha256": "93af9a3dfada29a74826194f2412a16b088caa2ee705b8da53078309c92fd773",
+      "size_bytes": 54565
     },
     "oracle": {
       "exists": true,
