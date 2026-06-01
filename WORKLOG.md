@@ -63515,3 +63515,36 @@ This means the earlier warmup-enabled selected/per-row hidden-bisect `eq_ok` was
 Official retained verifier rerun after the change remains `/tmp/hipengine-e2e-native-c2-512-128.json`: `min_equal_prefix_tokens=82`, `prefix_lengths=[82,137]`, `status=rejected_correctness`, no performance claim.
 
 Guard passed with the required pytest bundle (`399 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY retained full-attention row diagnostic green
+
+Exposed retained-bench controls for the remaining full-attention diagnostic path: `--batch-decode-full-attn-path` and `--batch-decode-attn-input-path`. These now set/record `HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE`, `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT`, and the corresponding workload metadata so retained artifacts can reproduce the retained-aligned hidden-bisect full-attention row replay.
+
+GPU1 / RX 7900 XTX focused retained artifact:
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
+  --prompt-length 512 --batch-size 2 --decode-tokens 128 \
+  --warmup-decode-tokens 8 --max-layers 40 \
+  --batch-prefill-linear-path per_segment \
+  --batch-decode-linear-projection-path selected_c1 \
+  --batch-decode-linear-state-path selected_c1 \
+  --batch-decode-linear-moe-path per_row_c1 \
+  --batch-decode-linear-output-path selected_c1 \
+  --batch-decode-full-attn-path per_row \
+  --batch-decode-attn-input-path per_row \
+  --batch-decode-attn-context-path per_row \
+  --batch-decode-full-attn-output-path per_row \
+  --batch-decode-full-attn-moe-path per_row_c1 \
+  --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/hipengine-e2e-native-c2-512-128-retained-selected-linear-fullpath-rowdiag.json
+```
+
+Result: generated-token equality is green for the full retained-shaped c=2 512/8+128 sequence under the row diagnostic path: `prefix_lengths=[137, 137]`, `min_equal_prefix_tokens=137`, `first_mismatch_indices=[null, null]`, `generated_token_equality.passed=true`. Artifact status remains `blocked` (no throughput claim; diagnostic row replay plus missing promotion gates), as expected.
+
+This eliminates the focused retained-aligned full-attention blocker identified in the previous hidden-bisect run. Clean/default retained verifier remains `/tmp/hipengine-e2e-native-c2-512-128.json`: `min_equal_prefix_tokens=82`, `prefix_lengths=[82, 137]`, `status=rejected_correctness`, no performance claim. Next correctness step should replace one row-replayed full-attention stage at a time with native/batched kernels (input/context/output/MoE) to find the smallest native piece responsible for the clean row-0 token-82 failure.
+
+Guard passed with the required pytest bundle (`400 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.

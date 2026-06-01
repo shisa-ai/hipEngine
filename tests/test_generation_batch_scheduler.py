@@ -3461,6 +3461,32 @@ def test_retained_bench_projection_dispatch_artifact_env_and_payload(tmp_path: P
     assert candidates == [candidate]
 
 
+def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(retained_bench._PROJECTION_DISPATCH_ARTIFACT_ENV, raising=False)
+    args = SimpleNamespace(
+        projection_dispatch_artifact=None,
+        batch_decode_full_attn_path="per_row",
+        batch_decode_attn_input_path="per_row",
+        batch_decode_attn_context_path="per_row",
+        batch_decode_full_attn_output_path="batch_gemv",
+        batch_decode_full_attn_moe_path="per_row_c1",
+    )
+
+    retained_bench._apply_runtime_env_args(args)
+
+    assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "0"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_CONTEXT"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_FULL_ATTN_OUTPUT"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_OUTPUT"] == "0"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_MOE"] == "1"
+
+    defaults = SimpleNamespace(projection_dispatch_artifact=None)
+    retained_bench._apply_runtime_env_args(defaults)
+    assert os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] == "1"
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"] == "0"
+
+
 def test_retained_bench_projection_dispatch_artifact_fails_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     artifact_dir = tmp_path / "benchmarks" / "results"
     artifact_dir.mkdir(parents=True)

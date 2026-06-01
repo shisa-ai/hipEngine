@@ -3715,6 +3715,12 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT"] = str(
         getattr(args, "batch_decode_linear_output_path", "auto")
     )
+    os.environ["HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE"] = (
+        "0" if getattr(args, "batch_decode_full_attn_path", "native_batch") == "per_row" else "1"
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"] = (
+        "1" if getattr(args, "batch_decode_attn_input_path", "batch") == "per_row" else "0"
+    )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_CONTEXT"] = (
         "1" if getattr(args, "batch_decode_attn_context_path", "batch") == "per_row" else "0"
     )
@@ -4157,6 +4163,8 @@ def _build_payload(
             "batch_decode_linear_state_path": str(getattr(args, "batch_decode_linear_state_path", "batch_segments")),
             "batch_decode_linear_moe_path": str(getattr(args, "batch_decode_linear_moe_path", "grouped_compact")),
             "batch_decode_linear_output_path": str(getattr(args, "batch_decode_linear_output_path", "auto")),
+            "batch_decode_full_attention_path": str(getattr(args, "batch_decode_full_attn_path", "native_batch")),
+            "batch_decode_attention_input_path": str(getattr(args, "batch_decode_attn_input_path", "batch")),
             "batch_decode_attention_context_path": str(getattr(args, "batch_decode_attn_context_path", "batch")),
             "batch_decode_full_attention_output_path": str(getattr(args, "batch_decode_full_attn_output_path", "batch")),
             "batch_decode_full_attention_moe_path": str(getattr(args, "batch_decode_full_attn_moe_path", "grouped_compact")),
@@ -4280,6 +4288,18 @@ def main(argv: list[str] | None = None) -> int:
         choices=("auto", "batch", "batch_gemv", "selected_c1"),
         default="auto",
         help="Diagnostic linear-attention output projection path for c>N batch decode; auto follows selected-c1 state replay for compatibility.",
+    )
+    parser.add_argument(
+        "--batch-decode-full-attn-path",
+        choices=("native_batch", "per_row"),
+        default="native_batch",
+        help="Diagnostic full-attention decode path for native c>N batch decode; per_row forces the existing non-retained row loop and blocks retained claims.",
+    )
+    parser.add_argument(
+        "--batch-decode-attn-input-path",
+        choices=("batch", "per_row"),
+        default="batch",
+        help="Diagnostic full-attention input RMSNorm path for c>N batch decode; per_row forces token-1 row kernels and blocks retained claims.",
     )
     parser.add_argument(
         "--batch-decode-attn-context-path",
