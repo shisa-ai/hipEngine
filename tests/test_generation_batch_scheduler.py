@@ -8543,6 +8543,17 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.argv flag values must be non-empty"):
             c_sweep.validate_sweep_summary(tampered_optional_blank_json)
 
+        for bad_artifact_path in (None, "   "):
+            tampered_optional_artifact_path_type = json.loads(json.dumps(summary))
+            tampered_optional_artifact_path_type["commands"][index]["artifact_path"] = bad_artifact_path
+            with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must be a non-empty string"):
+                c_sweep.validate_sweep_summary(tampered_optional_artifact_path_type)
+
+        tampered_optional_missing_artifact_path = json.loads(json.dumps(summary))
+        del tampered_optional_missing_artifact_path["commands"][index]["artifact_path"]
+        with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must be a non-empty string"):
+            c_sweep.validate_sweep_summary(tampered_optional_missing_artifact_path)
+
         tampered_optional_blank_category = json.loads(json.dumps(summary))
         tampered_optional_blank_category["commands"][index]["category"] = "   "
         with pytest.raises(ValueError, match=r"commands\[\]\.category must be a non-empty string"):
