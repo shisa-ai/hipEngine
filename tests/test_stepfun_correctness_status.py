@@ -1066,6 +1066,8 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "next_action_commands_sha_only": "next_action_commands_sha256",
         "blocker_kinds_only": "blocker_kinds",
         "blocker_kinds_sha_only": "blocker_kinds_sha256",
+        "kv_streaming_blockers_only": "kv_streaming_runner_blocker_names",
+        "kv_streaming_blockers_sha_only": "kv_streaming_runner_blocker_names_sha256",
         "status_refresh_command_only": (
             "next_action_commands.oracle_parity_blocked.status_refresh_command"
         ),
@@ -1846,6 +1848,97 @@ def test_stepfun_correctness_status_blocked_gates_only(capsys, tmp_path: Path) -
     assert payload == ["oracle_parity", "kv_backed_decode", "e2e_inference"]
 
 
+def test_stepfun_correctness_status_kv_streaming_blockers_sha_only(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "kv-streaming-blockers-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--blocker-work-queue-only",
+            "--readiness-summary-only",
+            "--readiness-summary-sha-only",
+            "--kv-streaming-blockers-sha-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(output.read_text())
+    assert payload == status["kv_backed_decode_gap_report"][
+        "streaming_runner_blocker_names_sha256"
+    ]
+    assert payload == _streaming_runner_blocker_names_sha256()
+
+
+def test_stepfun_correctness_status_kv_streaming_blockers_only(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "kv-streaming-blockers.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--blocker-work-queue-only",
+            "--readiness-summary-only",
+            "--kv-streaming-blockers-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(output.read_text())
+    assert payload == status["kv_backed_decode_gap_report"]["streaming_runner_blocker_names"]
+    assert payload == _streaming_runner_blocker_names()
+
+
 def test_stepfun_correctness_status_blocker_kinds_sha_only(capsys, tmp_path: Path) -> None:
     prompt = tmp_path / "prompt.json"
     oracle = tmp_path / "oracle.json"
@@ -2068,6 +2161,7 @@ def test_stepfun_correctness_status_status_integrity_only(capsys, tmp_path: Path
             "next_action_commands_sha256": True,
             "blocker_kinds_sha256": True,
             "blocked_gates_sha256": True,
+            "kv_streaming_runner_blocker_names_sha256": True,
             "schema_versions": True,
         },
     }
@@ -2286,6 +2380,8 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "next_action_commands_sha_only": "next_action_commands_sha256",
         "blocker_kinds_only": "blocker_kinds",
         "blocker_kinds_sha_only": "blocker_kinds_sha256",
+        "kv_streaming_blockers_only": "kv_streaming_runner_blocker_names",
+        "kv_streaming_blockers_sha_only": "kv_streaming_runner_blocker_names_sha256",
         "status_refresh_command_only": (
             "next_action_commands.oracle_parity_blocked.status_refresh_command"
         ),
@@ -3110,6 +3206,7 @@ def test_stepfun_correctness_status_verifies_source_artifact_provenance(capsys, 
             "next_action_commands_sha256": True,
             "blocker_kinds_sha256": True,
             "blocked_gates_sha256": True,
+            "kv_streaming_runner_blocker_names_sha256": True,
             "schema_versions": True,
         },
     }
@@ -3244,6 +3341,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_status_digest
         "next_action_commands_sha256": False,
         "blocker_kinds_sha256": True,
         "blocked_gates_sha256": True,
+        "kv_streaming_runner_blocker_names_sha256": True,
         "schema_versions": True,
     }
 
@@ -3839,6 +3937,84 @@ def test_stepfun_correctness_status_blocked_gates_fail_on_blocked_returns_nonzer
     assert captured.err == ""
     assert payload == status["blocked_gates"]
     assert payload == ["oracle_parity", "kv_backed_decode", "e2e_inference"]
+
+
+def test_stepfun_correctness_status_kv_streaming_blockers_sha_fail_on_blocked_returns_nonzero(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--kv-streaming-blockers-sha-only",
+            "--fail-on-blocked",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 2
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert captured.err == ""
+    assert payload == status["kv_backed_decode_gap_report"][
+        "streaming_runner_blocker_names_sha256"
+    ]
+    assert payload == _streaming_runner_blocker_names_sha256()
+
+
+def test_stepfun_correctness_status_kv_streaming_blockers_fail_on_blocked_returns_nonzero(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--kv-streaming-blockers-only",
+            "--fail-on-blocked",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 2
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert captured.err == ""
+    assert payload == status["kv_backed_decode_gap_report"]["streaming_runner_blocker_names"]
+    assert payload == _streaming_runner_blocker_names()
 
 
 def test_stepfun_correctness_status_blocker_kinds_sha_fail_on_blocked_returns_nonzero(

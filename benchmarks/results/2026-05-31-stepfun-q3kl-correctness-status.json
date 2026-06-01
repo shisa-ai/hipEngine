@@ -161,6 +161,8 @@
       "handoff_summary_sha_only": "handoff_summary_sha256",
       "kv_resource_command_only": "next_action_commands.kv_backed_decode_not_wired.resource_plan_refresh_command",
       "kv_resource_command_sha_only": "next_action_commands.kv_backed_decode_not_wired.resource_plan_refresh_command_sha256",
+      "kv_streaming_blockers_only": "kv_streaming_runner_blocker_names",
+      "kv_streaming_blockers_sha_only": "kv_streaming_runner_blocker_names_sha256",
       "next_action_commands_sha_only": "next_action_commands_sha256",
       "oracle_helper_command_only": "next_action_commands.oracle_parity_blocked.oracle_helper_refresh_command",
       "oracle_helper_command_sha_only": "next_action_commands.oracle_parity_blocked.oracle_helper_refresh_command_sha256",
@@ -301,7 +303,7 @@
     "schema_version": 1,
     "status": "blocked"
   },
-  "handoff_summary_sha256": "eccde74e44ce52dc2193439d63db488b3786c48afd70679b0542d3f8f46b65b9",
+  "handoff_summary_sha256": "db71e86827ef68d510a96111f3e80ad61a20c9037a3c9ef8512fb7d9798e2a6b",
   "kv_backed_decode_gap_report": {
     "computed_streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
     "first_missing_evidence": "streaming_runner_ready_flags",
@@ -1617,7 +1619,7 @@
     "fail_on_blocked_exit_code": 2,
     "first_blocker_kind": "oracle_parity_blocked",
     "first_blocker_work_item_sha256": "8c5a2cfe6f5b1b7939bb041118ee622bc90a8be6fb3472c7079706d78aacfed3",
-    "handoff_summary_sha256": "eccde74e44ce52dc2193439d63db488b3786c48afd70679b0542d3f8f46b65b9",
+    "handoff_summary_sha256": "db71e86827ef68d510a96111f3e80ad61a20c9037a3c9ef8512fb7d9798e2a6b",
     "kv_backed_decode_ready": false,
     "kv_decode_dispatch_ready": true,
     "next_action_commands_sha256": "23883be38d8afed578f914c07c8df498eb57c262956da8854a5a800cbcf14755",
@@ -1627,10 +1629,10 @@
     "performance_claim_allowed": false,
     "readiness_gates_sha256": "870a83850e6973f145e93d7cca98573f34b5d8c24c9cd64090053afa56748d54",
     "schema_version": 1,
-    "source_artifacts_sha256": "c40e02e4d925e401da6076102df1b20ec3bfa09fff474577ca029bdfcdc5d05f",
+    "source_artifacts_sha256": "17805a0ad4ddfbf9b596947dda46ceff169f4377eb34b75ab4e3b8a3427527c9",
     "status": "blocked"
   },
-  "readiness_summary_sha256": "22a690a93543ae676fbd65f1058dc442038439dc56fa8fc58a175c57a6405c58",
+  "readiness_summary_sha256": "e8c7b259904e1c7cafded28a054e028ffaeaf6d548ad62b125f88f1d3128cf6b",
   "schema_version": 1,
   "schema_versions": {
     "blocker_work_queue": 1,
@@ -1643,8 +1645,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "15d0412e87bbc5d36c190aeaf820fafd8b5691f8bb11e19d66eace0397c8b4b7",
-      "size_bytes": 55823
+      "sha256": "0757bb6fea5b82226abe05dacefb461cf3f47610ab3d0e685e9821b755284a0e",
+      "size_bytes": 55914
     },
     "oracle": {
       "exists": true,
@@ -1665,7 +1667,7 @@
       "size_bytes": 46515
     }
   },
-  "source_artifacts_sha256": "c40e02e4d925e401da6076102df1b20ec3bfa09fff474577ca029bdfcdc5d05f",
+  "source_artifacts_sha256": "17805a0ad4ddfbf9b596947dda46ceff169f4377eb34b75ab4e3b8a3427527c9",
   "status": "blocked",
   "step35_supported_by_local_llama_cpp": null,
   "text_resource_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json"

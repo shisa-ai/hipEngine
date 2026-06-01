@@ -664,8 +664,9 @@ reporting.
   `--blocked-gates-sha-only` for polling just the currently false gate names.
   The runtime KV resource/run-plan payloads also expose deterministic streaming
   blocker-name lists plus SHA-256 digests, and the status KV gap report mirrors
-  and verifies that digest so the runner artifact and status helper agree on why
-  KV-backed decode remains blocked. The same status artifact records `source_artifacts`
+  and verifies that digest with compact `--kv-streaming-blockers-only` /
+  `--kv-streaming-blockers-sha-only` outputs so the runner artifact and status
+  helper agree on why KV-backed decode remains blocked. The same status artifact records `source_artifacts`
   path/size/SHA-256 provenance for the prompt, oracle, resource-plan, and docs
   inputs used to compute the summary; `--verify-source-artifacts STATUS_JSON`
   checks those embedded hashes/sizes plus the embedded digest/schema-version

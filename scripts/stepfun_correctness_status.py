@@ -154,6 +154,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--kv-streaming-blockers-only",
+        action="store_true",
+        help=(
+            "Emit only kv_streaming_runner_blocker_names for runtime-specific KV blocker polling. "
+            "Overrides --summary-only and readiness compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--kv-streaming-blockers-sha-only",
+        action="store_true",
+        help=(
+            "Emit only kv_streaming_runner_blocker_names_sha256 for KV blocker drift polling. "
+            "Overrides --summary-only and readiness compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--blocker-work-queue-only",
         action="store_true",
         help=(
@@ -317,6 +333,22 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
     next_action_commands = status.get("next_action_commands", {})
     blocker_kinds = status.get("blocker_kinds", [])
     blocked_gates = status.get("blocked_gates", [])
+    kv_gap_report = status.get("kv_backed_decode_gap_report", {})
+    kv_streaming_blocker_names = (
+        kv_gap_report.get("streaming_runner_blocker_names", [])
+        if isinstance(kv_gap_report, dict)
+        else []
+    )
+    kv_streaming_blocker_names_sha256 = (
+        kv_gap_report.get("streaming_runner_blocker_names_sha256")
+        if isinstance(kv_gap_report, dict)
+        else None
+    )
+    kv_streaming_blocker_names_sha256_match = (
+        kv_gap_report.get("streaming_runner_blocker_names_sha256_match")
+        if isinstance(kv_gap_report, dict)
+        else None
+    )
     schema_versions = status.get("schema_versions", {})
     blocker_meta = (
         handoff_summary.get("blocker_work_queue_meta", {})
@@ -351,6 +383,12 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         "blocked_gates_sha256": (
             isinstance(blocked_gates, list)
             and status.get("blocked_gates_sha256") == _stable_json_sha256(blocked_gates)
+        ),
+        "kv_streaming_runner_blocker_names_sha256": (
+            isinstance(kv_streaming_blocker_names, list)
+            and kv_streaming_blocker_names_sha256
+            == _stable_json_sha256(kv_streaming_blocker_names)
+            and kv_streaming_blocker_names_sha256_match is True
         ),
         "schema_versions": schema_versions
         == {
@@ -1410,6 +1448,8 @@ def _handoff_summary(
             "next_action_commands_sha_only": "next_action_commands_sha256",
             "blocker_kinds_only": "blocker_kinds",
             "blocker_kinds_sha_only": "blocker_kinds_sha256",
+            "kv_streaming_blockers_only": "kv_streaming_runner_blocker_names",
+            "kv_streaming_blockers_sha_only": "kv_streaming_runner_blocker_names_sha256",
             "status_refresh_command_only": (
                 "next_action_commands.oracle_parity_blocked.status_refresh_command"
             ),
@@ -1821,6 +1861,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["blocked_gates_sha256"]
     elif args.blocked_gates_only:
         result = status["blocked_gates"]
+    elif args.kv_streaming_blockers_sha_only:
+        result = status["kv_backed_decode_gap_report"].get(
+            "streaming_runner_blocker_names_sha256"
+        )
+    elif args.kv_streaming_blockers_only:
+        result = status["kv_backed_decode_gap_report"].get("streaming_runner_blocker_names")
     elif args.source_artifacts_sha_only:
         result = status["source_artifacts_sha256"]
     elif args.source_verify_command_sha_only:

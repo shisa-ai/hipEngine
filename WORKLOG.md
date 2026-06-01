@@ -30413,3 +30413,48 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: P0-P12 open/partial checklist count stayed at `2`; targeted status/decode-planner tests passed (`72 passed`), runtime/status streaming blocker digest mirroring passed with SHA `bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e`, source/status verification returned `match`, and the full StepFun guard passed (`165` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was a pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes runtime/status metadata/tests/docs/artifacts only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.
+
+## 2026-06-01 — StepFun compact KV streaming blocker outputs
+
+Added compact `--kv-streaming-blockers-only` and `--kv-streaming-blockers-sha-only` outputs to the StepFun correctness status helper. The emitted payload reads the KV-backed decode gap report's runtime-specific `streaming_runner_blocker_names` and SHA-256 digest, and `status_integrity` now checks `kv_streaming_runner_blocker_names_sha256` so handoff consumers can cheaply validate the runtime-specific blocker set without parsing the full status JSON. Refreshed `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`; readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`) with runtime streaming blockers `streaming_decode_loop_not_wired`, `kv_kernel_trace_artifact_missing`, and `kv_backed_next_token_artifact_missing`. No StepFun KV write/attention kernels are launched and no performance/e2e claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_correctness_status.py --kv-streaming-blockers-only --fail-on-blocked --pretty > /tmp/stepfun-kv-streaming-blockers-fail.json; rc=$?; test "$rc" -eq 2
+python3 scripts/stepfun_correctness_status.py --kv-streaming-blockers-sha-only --fail-on-blocked --pretty > /tmp/stepfun-kv-streaming-blockers-sha-fail.json; rc=$?; test "$rc" -eq 2
+python3 scripts/stepfun_correctness_status.py --status-integrity-only --fail-on-blocked --pretty > /tmp/stepfun-status-integrity-kv-streaming.json; rc=$?; test "$rc" -eq 2
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty > /tmp/stepfun-source-verify-kv-streaming.json
+python3 - <<'PY'
+import hashlib, json
+s=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+names=json.load(open('/tmp/stepfun-kv-streaming-blockers-fail.json'))
+sha=json.load(open('/tmp/stepfun-kv-streaming-blockers-sha-fail.json'))
+integrity=json.load(open('/tmp/stepfun-status-integrity-kv-streaming.json'))
+expected=[
+    'streaming_decode_loop_not_wired',
+    'kv_kernel_trace_artifact_missing',
+    'kv_backed_next_token_artifact_missing',
+]
+expected_sha=hashlib.sha256(json.dumps(expected, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+assert names == s['kv_backed_decode_gap_report']['streaming_runner_blocker_names'] == expected
+assert sha == s['kv_backed_decode_gap_report']['streaming_runner_blocker_names_sha256'] == expected_sha
+assert s['kv_backed_decode_gap_report']['streaming_runner_blocker_names_sha256_match'] is True
+assert integrity['all_match'] is True
+assert integrity['checks']['kv_streaming_runner_blocker_names_sha256'] is True
+assert all(integrity['checks'].values())
+v=json.load(open('/tmp/stepfun-source-verify-kv-streaming.json'))
+assert v['status'] == 'match'
+assert v['all_match'] is True
+assert v['status_integrity']['checks']['kv_streaming_runner_blocker_names_sha256'] is True
+assert all(v['status_integrity']['checks'].values())
+assert s['status'] == 'blocked'
+print('kv streaming blocker compact output ok', sha)
+PY
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`65 passed`), compact KV streaming blocker outputs returned expected blocked exit code 2, the runtime-specific streaming blocker digest was `bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e`, status/source integrity checks included `kv_streaming_runner_blocker_names_sha256=true`, and the full StepFun guard passed (`169` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was a pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes status-helper metadata/tests/docs/status artifact only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.
