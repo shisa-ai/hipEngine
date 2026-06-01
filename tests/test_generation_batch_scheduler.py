@@ -21496,6 +21496,14 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
             )
         validate_cn_diagnostic_artifact_payload(other_aux_env_accepted)
 
+        missing_aux_primitive_env = json.loads(json.dumps(other_aux_env_accepted))
+        missing_aux_primitive_env["correctness"]["primitive_batch_correctness"]["device"]["env"].pop(aux_env_key)
+        with pytest.raises(
+            ValueError,
+            match=rf"correctness\.primitive_batch_correctness\.device\.env\.{aux_env_key} must include {aux_env_key}=1",
+        ):
+            validate_cn_diagnostic_artifact_payload(missing_aux_primitive_env)
+
         for command_field in aux_command_insertions:
             missing_aux_env = json.loads(json.dumps(other_aux_env_accepted))
             missing_aux_env["commands"][command_field] = missing_aux_env["commands"][command_field].replace(
