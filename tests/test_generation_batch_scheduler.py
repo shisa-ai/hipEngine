@@ -20466,6 +20466,17 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="schema must be 3 for accepted artifacts"):
         validate_cn_diagnostic_artifact_payload(missing_artifact_schema)
 
+    non_json_artifact_path = json.loads(json.dumps(accepted))
+    non_json_artifact_path["artifact_path"] = "benchmarks/results/accepted-c2.txt"
+    non_json_artifact_path["benchmark_rollup"]["artifact_path"] = "benchmarks/results/accepted-c2.txt"
+    non_json_artifact_path["benchmark_rollup"]["source_artifact_path"] = "benchmarks/results/accepted-c2.txt"
+    non_json_artifact_path["commands"]["benchmark"] = non_json_artifact_path["commands"]["benchmark"].replace(
+        "benchmarks/results/accepted-c2.json",
+        "benchmarks/results/accepted-c2.txt",
+    )
+    with pytest.raises(ValueError, match="artifact_path must end with .json for accepted artifacts"):
+        validate_cn_diagnostic_artifact_payload(non_json_artifact_path)
+
     mismatched_artifact_schema = json.loads(json.dumps(accepted))
     mismatched_artifact_schema["schema"] = 2
     with pytest.raises(ValueError, match="schema must be 3 for accepted artifacts"):

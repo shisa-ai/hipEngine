@@ -2146,6 +2146,8 @@ def _validate_accepted_payload_artifact_path(payload: Mapping[str, Any], errors:
         errors.append("artifact_path must be a non-empty string for accepted artifacts")
     else:
         _validate_benchmark_results_artifact_path("artifact_path", artifact_path, errors)
+        if not artifact_path.replace("\\", "/").rsplit("/", 1)[-1].endswith(".json"):
+            errors.append("artifact_path must end with .json for accepted artifacts")
     return artifact_path
 
 
