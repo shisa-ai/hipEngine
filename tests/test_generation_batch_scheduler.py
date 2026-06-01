@@ -8515,6 +8515,34 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
             with pytest.raises(ValueError, match=r"commands\[\]\.argv must start with a python executable"):
                 c_sweep.validate_sweep_summary(tampered_optional_executable)
 
+        tampered_optional_duplicate_json = json.loads(json.dumps(summary))
+        optional_duplicate_json_entry = tampered_optional_duplicate_json["commands"][index]
+        optional_duplicate_json_argv = optional_duplicate_json_entry["argv"]
+        optional_duplicate_json_argv.extend(
+            ["--json", optional_duplicate_json_argv[optional_duplicate_json_argv.index("--json") + 1]]
+        )
+        optional_duplicate_json_entry["command"] = shlex.join(optional_duplicate_json_argv)
+        with pytest.raises(ValueError, match=r"commands\[\]\.argv must not repeat retained benchmark flags"):
+            c_sweep.validate_sweep_summary(tampered_optional_duplicate_json)
+
+        tampered_optional_missing_json = json.loads(json.dumps(summary))
+        optional_missing_json_entry = tampered_optional_missing_json["commands"][index]
+        optional_missing_json_argv = optional_missing_json_entry["argv"]
+        optional_missing_json_index = optional_missing_json_argv.index("--json")
+        del optional_missing_json_argv[optional_missing_json_index : optional_missing_json_index + 2]
+        optional_missing_json_entry["command"] = shlex.join(optional_missing_json_argv)
+        with pytest.raises(ValueError, match=r"commands\[\]\.argv must include --json <artifact_path>"):
+            c_sweep.validate_sweep_summary(tampered_optional_missing_json)
+
+        tampered_optional_blank_json = json.loads(json.dumps(summary))
+        optional_blank_json_entry = tampered_optional_blank_json["commands"][index]
+        optional_blank_json_argv = optional_blank_json_entry["argv"]
+        optional_blank_json_index = optional_blank_json_argv.index("--json")
+        optional_blank_json_argv[optional_blank_json_index : optional_blank_json_index + 2] = ["--json="]
+        optional_blank_json_entry["command"] = shlex.join(optional_blank_json_argv)
+        with pytest.raises(ValueError, match=r"commands\[\]\.argv flag values must be non-empty"):
+            c_sweep.validate_sweep_summary(tampered_optional_blank_json)
+
         tampered_optional_blank_category = json.loads(json.dumps(summary))
         tampered_optional_blank_category["commands"][index]["category"] = "   "
         with pytest.raises(ValueError, match=r"commands\[\]\.category must be a non-empty string"):
