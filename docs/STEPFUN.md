@@ -727,8 +727,10 @@ reporting.
   the front oracle rerun and the queued KV resource refresh without parsing full
   work-item payloads; status integrity verifies both the list digest and the
   queue-meta mirror. The status artifact now persists `status_integrity` plus
-  `status_integrity_sha256`, and compact `--status-integrity-sha-only` exposes
-  the digest for top-level embedded-check polling. The remaining oracle next
+  `status_integrity_sha256`, compact `--status-integrity-sha-only` exposes the
+  digest for top-level embedded-check polling, and source-artifact verification
+  now checks that the persisted integrity payload/SHA still match the recomputed
+  checks. The remaining oracle next
   action is therefore a concrete longer-timeout rerun instead of only the prior
   60 s replay. Remaining
   implementation task: run a longer/faster StepFun-capable llama.cpp oracle and

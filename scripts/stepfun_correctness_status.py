@@ -723,6 +723,21 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
     return {"all_match": not failed_checks, "failed_checks": failed_checks, "checks": checks}
 
 
+def _persisted_status_integrity(
+    status: dict[str, object], computed_status_integrity: dict[str, object]
+) -> dict[str, object]:
+    """Verify persisted status_integrity fields against computed checks."""
+
+    checks = {
+        "status_integrity_payload": status.get("status_integrity")
+        == computed_status_integrity,
+        "status_integrity_sha256": status.get("status_integrity_sha256")
+        == _stable_json_sha256(computed_status_integrity),
+    }
+    failed_checks = [name for name, passed in checks.items() if not passed]
+    return {"all_match": not failed_checks, "failed_checks": failed_checks, "checks": checks}
+
+
 def _verify_source_artifacts(status_artifact: Path) -> dict[str, object]:
     """Verify embedded source_artifacts provenance against current files."""
 
@@ -730,10 +745,14 @@ def _verify_source_artifacts(status_artifact: Path) -> dict[str, object]:
     source_artifacts = status.get("source_artifacts", {})
     if not isinstance(source_artifacts, dict) or not source_artifacts:
         status_integrity = _status_integrity(status)
+        persisted_status_integrity = _persisted_status_integrity(status, status_integrity)
         source_artifact_failed_records: list[str] = []
         verification_failures = {
             "source_artifact_failed_records": source_artifact_failed_records,
             "status_integrity_failed_checks": status_integrity["failed_checks"],
+            "persisted_status_integrity_failed_checks": persisted_status_integrity[
+                "failed_checks"
+            ],
         }
         return {
             "status": "missing_source_artifacts",
@@ -747,6 +766,7 @@ def _verify_source_artifacts(status_artifact: Path) -> dict[str, object]:
             "checked_count": 0,
             "records": {},
             "status_integrity": status_integrity,
+            "persisted_status_integrity": persisted_status_integrity,
         }
     records: dict[str, object] = {}
     source_artifacts_all_match = True
@@ -772,11 +792,19 @@ def _verify_source_artifacts(status_artifact: Path) -> dict[str, object]:
         name for name, record in records.items() if record["match"] is not True
     ]
     status_integrity = _status_integrity(status)
+    persisted_status_integrity = _persisted_status_integrity(status, status_integrity)
     verification_failures = {
         "source_artifact_failed_records": source_artifact_failed_records,
         "status_integrity_failed_checks": status_integrity["failed_checks"],
+        "persisted_status_integrity_failed_checks": persisted_status_integrity[
+            "failed_checks"
+        ],
     }
-    all_match = source_artifacts_all_match and status_integrity["all_match"] is True
+    all_match = (
+        source_artifacts_all_match
+        and status_integrity["all_match"] is True
+        and persisted_status_integrity["all_match"] is True
+    )
     verification_exit_code = (
         READY_EXIT_CODE if all_match is True else SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
     )
@@ -792,6 +820,7 @@ def _verify_source_artifacts(status_artifact: Path) -> dict[str, object]:
         "checked_count": len(records),
         "records": records,
         "status_integrity": status_integrity,
+        "persisted_status_integrity": persisted_status_integrity,
     }
 
 

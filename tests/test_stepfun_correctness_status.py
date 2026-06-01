@@ -4489,6 +4489,7 @@ def test_stepfun_correctness_status_verifies_source_artifact_provenance(capsys, 
     assert payload["verification_failures"] == {
         "source_artifact_failed_records": [],
         "status_integrity_failed_checks": [],
+        "persisted_status_integrity_failed_checks": [],
     }
     assert payload["verification_failures_sha256"] == _stable_json_sha256(
         payload["verification_failures"]
@@ -4515,6 +4516,14 @@ def test_stepfun_correctness_status_verifies_source_artifact_provenance(capsys, 
             "schema_versions": True,
         },
     }
+    assert payload["persisted_status_integrity"] == {
+        "all_match": True,
+        "failed_checks": [],
+        "checks": {
+            "status_integrity_payload": True,
+            "status_integrity_sha256": True,
+        },
+    }
     assert payload["checked_count"] == 4
     assert payload["records"]["prompt"]["match"] is True
     assert payload["records"]["prompt"]["matches"] == {
@@ -4525,6 +4534,74 @@ def test_stepfun_correctness_status_verifies_source_artifact_provenance(capsys, 
     assert payload["records"]["docs"]["current"]["sha256"] == hashlib.sha256(
         docs.read_bytes()
     ).hexdigest()
+
+
+def test_stepfun_correctness_status_verify_source_detects_persisted_status_integrity_sha_drift(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    status_output = tmp_path / "status.json"
+    verify_output = tmp_path / "verify.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(status_output),
+        ]
+    )
+    assert rc == 0
+    status_payload = json.loads(status_output.read_text())
+    status_payload["status_integrity_sha256"] = "stale"
+    status_output.write_text(json.dumps(status_payload))
+
+    rc = main(
+        [
+            "--verify-source-artifacts",
+            str(status_output),
+            "--output",
+            str(verify_output),
+            "--pretty",
+        ]
+    )
+
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(verify_output.read_text())
+    assert payload["status"] == "mismatch"
+    assert payload["all_match"] is False
+    assert payload["source_artifacts_all_match"] is True
+    assert payload["status_integrity"]["all_match"] is True
+    assert payload["persisted_status_integrity"] == {
+        "all_match": False,
+        "failed_checks": ["status_integrity_sha256"],
+        "checks": {
+            "status_integrity_payload": True,
+            "status_integrity_sha256": False,
+        },
+    }
+    assert payload["verification_failures"] == {
+        "source_artifact_failed_records": [],
+        "status_integrity_failed_checks": [],
+        "persisted_status_integrity_failed_checks": ["status_integrity_sha256"],
+    }
 
 
 def test_stepfun_correctness_status_verify_source_status_integrity_failures_only(
@@ -4975,6 +5052,7 @@ def test_stepfun_correctness_status_verify_failures_only(
     assert payload == {
         "source_artifact_failed_records": [],
         "status_integrity_failed_checks": [],
+        "persisted_status_integrity_failed_checks": [],
     }
 
 
@@ -5028,6 +5106,7 @@ def test_stepfun_correctness_status_verify_failures_sha_only(
         {
             "source_artifact_failed_records": [],
             "status_integrity_failed_checks": [],
+            "persisted_status_integrity_failed_checks": [],
         }
     )
 
@@ -5086,6 +5165,10 @@ def test_stepfun_correctness_status_verify_failures_only_detects_source_and_stat
     assert payload == {
         "source_artifact_failed_records": ["prompt"],
         "status_integrity_failed_checks": ["next_action_commands_sha256"],
+        "persisted_status_integrity_failed_checks": [
+            "status_integrity_payload",
+            "status_integrity_sha256",
+        ],
     }
 
 
