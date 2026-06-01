@@ -6001,6 +6001,13 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_scaling_precondition_artifact["commands"][-1]["preconditions"][1]["reference_artifact_path"] = str(output_dir / "other-native-baseline-c1.json")
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.reference_artifact_path must match scaling reference artifact_path when passed"):
         c_sweep.validate_sweep_summary(tampered_scaling_precondition_artifact)
+    tampered_scaling_precondition_blank_artifact = json.loads(json.dumps(persisted))
+    tampered_scaling_precondition_blank_artifact["commands"][-1]["preconditions"][1]["reference_artifact_path"] = "   "
+    with pytest.raises(
+        ValueError,
+        match=r"commands\[\]\.preconditions\[\]\.reference_artifact_path must be a non-blank string when scaling reference passed",
+    ):
+        c_sweep.validate_sweep_summary(tampered_scaling_precondition_blank_artifact)
     tampered_scaling_precondition_parent_component = json.loads(json.dumps(persisted))
     tampered_scaling_precondition_parent_component["commands"][-1]["preconditions"][1]["reference_artifact_path"] = str(
         output_dir / "reference-parent" / ".." / "native-baseline-c1.json"
@@ -6580,6 +6587,13 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_primitive_precondition_artifact["commands"][-1]["preconditions"][0]["primitive_artifact_path"] = str(output_dir / "other-primitive-c2.json")
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path must match primitive artifact_path when primitive passed"):
         c_sweep.validate_sweep_summary(tampered_primitive_precondition_artifact)
+    tampered_primitive_precondition_blank_artifact = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_blank_artifact["commands"][-1]["preconditions"][0]["primitive_artifact_path"] = "   "
+    with pytest.raises(
+        ValueError,
+        match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path must be a non-blank string when primitive passed",
+    ):
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_blank_artifact)
     tampered_primitive_precondition_parent_component = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_parent_component["commands"][-1]["preconditions"][0]["primitive_artifact_path"] = str(
         output_dir / "primitive-parent" / ".." / "primitive-c2.json"

@@ -2851,6 +2851,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if not isinstance(primitive_artifact_path, str) or not primitive_artifact_path:
                         errors.append("commands[].preconditions[].primitive_artifact_path must match primitive artifact_path when primitive passed")
                         break
+                    if not primitive_artifact_path.strip():
+                        errors.append("commands[].preconditions[].primitive_artifact_path must be a non-blank string when primitive passed")
+                        break
                     primitive_alias_path = Path(primitive_artifact_path)
                     primitive_alias_check_path = primitive_alias_path if primitive_alias_path.is_absolute() else REPO_ROOT / primitive_alias_path
                     if _path_has_parent_directory_component(primitive_artifact_path):
@@ -2957,6 +2960,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     reference_artifact_path = scaling_precondition.get("reference_artifact_path")
                     if not isinstance(reference_artifact_path, str) or not reference_artifact_path:
                         errors.append("commands[].preconditions[].reference_artifact_path must match scaling reference artifact_path when passed")
+                        scaling_precondition_error = True
+                        break
+                    if not reference_artifact_path.strip():
+                        errors.append("commands[].preconditions[].reference_artifact_path must be a non-blank string when scaling reference passed")
                         scaling_precondition_error = True
                         break
                     reference_path = Path(reference_artifact_path)
