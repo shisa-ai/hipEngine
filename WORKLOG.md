@@ -63262,3 +63262,41 @@ HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py \
 shows the old first layer-0 `recurrent_out` mismatch is eliminated (`recurrent_out` max abs `1.49e-08`, over-atol `0` at step 0 / layer 0); the first linear-stage mismatch moves to `mlp_input` (row 0, dim 859, max abs `0.0078125`). L8 generated tokens remain green (`first_token_mismatch=null`) but hidden remains red at decode step 2 / generated index 3, row 0, dim 1269, max abs `0.00146484375`.
 
 Full native c=2 512/128 retained verifier remains `rejected_correctness` with min equal-prefix `82` (`[82, 137]`), so there is still no performance claim. Guard passed with the required pytest bundle plus `tests/test_qwen35_decode_state.py` (`453 passed`) and primitive c=2/c=8 correctness green on GPU1. Next target is the post-linear MoE/input or full-attention hidden parity that remains after the decode-order recurrent handoff.
+
+## 2026-06-02 — CONCURRENCY linear output projection controls after decode-order state
+
+Followed up the decode-order linear recurrent fix by isolating the next L8 linear-stage blocker: layer-0 `mlp_input` drift caused by tiny output-projection/residual bit drift being amplified by post-attention RMSNorm. Runtime code defaults were left unchanged after controls.
+
+Controls on GPU1 / RX 7900 XTX:
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
+  --prompt-length 512 --batch-size 2 --decode-tokens 16 \
+  --max-layers 8 --layer-limits 8 --max-sequence-length 1024 \
+  --focus-hidden-flat-index 1269 \
+  --batch-decode-linear-output-path selected_c1 \
+  --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/hipengine-e2e-hidden-L8-512-16-selected-linear-out-cli-after-decode-order-gpu1.json
+```
+
+Result: selected-c1 linear output projection clears the immediate layer-0 output/residual/post-attention blocker: step 0 layer 0 `out_proj`, `residual`, and `mlp_input` are exact (`max_abs=0`, `bit_mismatch=0` for `out_proj`/`residual`/`mlp_input`). The first linear-stage mismatch moves to layer 1 `attn_input` (`max_abs=0.001953125`, 2 elements over atol), and reduced L8 tokens stay green (`first_token_mismatch=null`). Hidden still fails at decode step 2 / generated index 3, row 0, dim 1269, `max_abs=0.001220703125`.
+
+Batch-GEMV output projection was also tested:
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
+  --prompt-length 512 --batch-size 2 --decode-tokens 16 \
+  --max-layers 8 --layer-limits 8 --max-sequence-length 1024 \
+  --focus-hidden-flat-index 1269 \
+  --batch-decode-linear-output-path batch_gemv \
+  --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/hipengine-e2e-hidden-L8-512-16-batch-gemv-linear-out-after-decode-order-gpu1.json
+```
+
+This also clears layer-0 `out_proj`/`residual`/`mlp_input`, but a temporary attempt to promote output batch-GEMV as the default was not retained because the reduced L8 token gate regressed (`first_token_mismatch` at index 13) and full c=2 512/128 row-1 equal-prefix worsened from 137 to 104 while the min metric stayed 82. Full retained verifier on clean defaults remains `rejected_correctness` with min equal-prefix `82` (`[82, 137]`). Next target is a native batch output projection that matches selected-c1 bit behavior without the selected-c1 diagnostic fallback, or the later layer-1/full-attention hidden drift once output projection is exact.
