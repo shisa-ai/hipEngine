@@ -3092,7 +3092,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         break
                     primitive_device_blockers = _primitive_device_metadata_blockers(primitive_precondition.get("primitive_device"))
                     if primitive_device_blockers:
-                        errors.append("commands[].preconditions[].primitive_device must contain valid device metadata when primitive passed")
+                        errors.append(
+                            "commands[].preconditions[].primitive_device must contain valid device metadata when primitive passed: "
+                            + "; ".join(primitive_device_blockers)
+                        )
                         break
                     if not _is_zero_int(primitive_precondition.get("append_key_mismatch")) or not _is_zero_int(primitive_precondition.get("append_value_mismatch")):
                         errors.append("commands[].preconditions[].primitive append mismatches must be typed integer zeros when passed")
@@ -3157,7 +3160,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                             break
                         primitive_source_device_blockers = _primitive_device_metadata_blockers(primitive_source_payload.get("device"))
                         if primitive_source_device_blockers:
-                            errors.append("commands[].preconditions[].primitive_artifact_path JSON device must contain valid device metadata when primitive passed")
+                            errors.append(
+                                "commands[].preconditions[].primitive_artifact_path JSON device must contain valid device metadata when primitive passed: "
+                                + "; ".join(primitive_source_device_blockers)
+                            )
                             break
                         if primitive_source_payload.get("device") != primitive_precondition.get("primitive_device"):
                             errors.append("commands[].preconditions[].primitive_artifact_path JSON device must match when primitive passed")
