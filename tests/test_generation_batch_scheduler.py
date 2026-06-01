@@ -4857,6 +4857,9 @@ def test_batch_c_sweep_primitive_precondition_requires_device_metadata(tmp_path:
     primitive_payload["device"] = {"env": {"HIP_VISIBLE_DEVICES": ""}}
     primitive_path.write_text(json.dumps(primitive_payload))
     malformed_device = c_sweep._primitive_correctness_precondition(command)
+    primitive_payload["device"] = {"env": []}
+    primitive_path.write_text(json.dumps(primitive_payload))
+    malformed_env = c_sweep._primitive_correctness_precondition(command)
     primitive_payload["device"] = _c_sweep_primitive_device_metadata()
     primitive_path.write_text(json.dumps(primitive_payload))
     passed = c_sweep._primitive_correctness_precondition(command)
@@ -4870,6 +4873,8 @@ def test_batch_c_sweep_primitive_precondition_requires_device_metadata(tmp_path:
     assert malformed_device["passed"] is False
     assert "device.env.HIP_VISIBLE_DEVICES is not a non-empty string when present" in malformed_device["reason"]
     assert "device.visible_device_count is missing or not a positive int" in malformed_device["reason"]
+    assert malformed_env["passed"] is False
+    assert "device.env is missing or not a plain object" in malformed_env["reason"]
     assert passed["passed"] is True
     assert passed["primitive_device"] == _c_sweep_primitive_device_metadata()
 
