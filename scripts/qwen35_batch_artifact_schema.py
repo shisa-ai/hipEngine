@@ -722,6 +722,8 @@ def _profiler_kernel_duration_category_sums(kernel_durations: Mapping[Any, Any])
 
 
 def _validate_expected_profiler_kernel_names(expected_kernel_names: list[Any], errors: list[str]) -> None:
+    if len(set(expected_kernel_names)) != len(expected_kernel_names):
+        errors.append("profiler.expected_kernel_names entries must be unique for accepted artifacts")
     if not any(isinstance(name, str) and "batch" in name.lower() for name in expected_kernel_names):
         errors.append("profiler.expected_kernel_names must include at least one native batch kernel name for accepted artifacts")
     for name in expected_kernel_names:
@@ -2201,6 +2203,8 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     if not profiler_trace_kernel_names_valid:
         errors.append("profiler.trace_kernel_names must be a non-empty string list for accepted artifacts")
     elif isinstance(profiler_trace_kernel_names, list):
+        if len(set(profiler_trace_kernel_names)) != len(profiler_trace_kernel_names):
+            errors.append("profiler.trace_kernel_names entries must be unique for accepted artifacts")
         if not any("batch" in kernel_name.lower() for kernel_name in profiler_trace_kernel_names):
             errors.append("profiler.trace_kernel_names must include at least one native batch kernel name for accepted artifacts")
         if any(_has_disallowed_profiler_kernel_fragment(kernel_name) for kernel_name in profiler_trace_kernel_names):

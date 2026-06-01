@@ -58302,3 +58302,33 @@ PY
 ```
 
 Result: focused accepted-schema profiler trace-file uniqueness regression PASS after the validator fix; docs diff check PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1` with c=2/c=8 primitive JSONs passing on GPU1/XTX (`seed=1234`, zero append/A-A/attention errors, `device.env.HIP_VISIBLE_DEVICES=1`, `device_name=AMD Radeon RX 7900 XTX`). Prompt-verifier self-check passes: the open C2.5 item remains unchecked and explicitly says generated-token equality/scaling are still missing, completed items were not changed, and no retained c>N performance/scaling claim was added.
+
+## 2026-06-01 — CONCURRENCY C2.5 accepted-schema profiler kernel-name uniqueness
+
+Tightened accepted c>N artifact schema validation so retained rows cannot promote with duplicated profiler kernel-name entries. RED: `test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates` accepted a payload whose `profiler.trace_kernel_names` and `profiler.expected_kernel_names` repeated existing native-batch kernel names. GREEN: `scripts/qwen35_batch_artifact_schema.py` now requires unique trace and expected kernel-name lists before accepted artifacts can validate; `docs/CONCURRENCY.md` C2.5 progress now calls out unique profiler kernel-name provenance alongside unique kernel-trace CSV evidence. The C2.5 retained/equality requirement stays open: this is accepted-artifact schema/provenance hardening only, not generated-token equality vs independent c=1 and not a performance/scaling claim.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+python3 -m compileall -q tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q  # RED before validator fix
+python3 -m compileall -q scripts/qwen35_batch_artifact_schema.py tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates -q
+git diff --check
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+env HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+python3 - <<'PY'
+from pathlib import Path
+text = Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+assert '- [ ] **C2.5 c=4/c=8 BF16 equality.**' in queue
+assert 'generated-token equality vs independent c=1 for c=4/c=8 is still missing' in queue
+assert 'unique kernel-trace CSV/unique kernel-name' in queue
+print('prompt-verifier support: C2.5 remains open; missing generated-token equality caveat remains present; unique kernel-name evidence text is present; no completed item marker changed by this diff')
+PY
+```
+
+Result: focused accepted-schema profiler kernel-name uniqueness regression PASS after the validator fix; docs diff check PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1` with c=2/c=8 primitive JSONs passing on GPU1/XTX (`seed=1234`, zero append/A-A/attention errors, `device.env.HIP_VISIBLE_DEVICES=1`, `device_name=AMD Radeon RX 7900 XTX`). Prompt-verifier self-check passes: the open C2.5 item remains unchecked and explicitly says generated-token equality/scaling are still missing, completed items were not changed, and no retained c>N performance/scaling claim was added.
