@@ -4428,7 +4428,7 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
     error = summary.get("error")
     if passed is True and error is not None:
         errors.append("summary.error must be null when summary.passed is true")
-    if passed is False and (not isinstance(error, str) or not error):
+    if passed is False and (not isinstance(error, str) or not error.strip()):
         errors.append("summary.error must be a non-empty string when summary.passed is false")
     if errors:
         raise ValueError("invalid c>N validation summary: " + "; ".join(errors))

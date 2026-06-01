@@ -21142,6 +21142,10 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     invalid_failed_summary["error"] = None
     with pytest.raises(ValueError, match="summary.error must be a non-empty string"):
         validate_cn_diagnostic_validation_summary(invalid_failed_summary)
+    blank_failed_summary = dict(failed_summary)
+    blank_failed_summary["error"] = "   "
+    with pytest.raises(ValueError, match="summary.error must be a non-empty string"):
+        validate_cn_diagnostic_validation_summary(blank_failed_summary)
 
     wrong_named_failed_summary_file = rollup_root / "benchmarks" / "results" / "accepted-c2-missing-rollup-check.json"
     assert validate_cn_diagnostic_artifact_main(
