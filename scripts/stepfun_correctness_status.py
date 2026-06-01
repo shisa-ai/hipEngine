@@ -74,6 +74,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--schema-versions-only",
+        action="store_true",
+        help=(
+            "Emit only schema_versions for compact status/readiness/handoff "
+            "contract checks. Overrides summary and queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--source-artifacts-sha-only",
         action="store_true",
         help=(
@@ -1213,6 +1221,7 @@ def _handoff_summary(
         "compact_output_modes": {
             "summary_only": "handoff_summary",
             "handoff_summary_sha_only": "handoff_summary_sha256",
+            "schema_versions_only": "schema_versions",
             "readiness_summary_only": "readiness_summary",
             "readiness_summary_sha_only": "readiness_summary_sha256",
             "source_artifacts_sha_only": "source_artifacts_sha256",
@@ -1460,6 +1469,15 @@ def build_status(
         docs_path=docs_path,
     )
     source_artifacts_sha256 = _stable_json_sha256(source_artifacts)
+    schema_versions = {
+        "status": STATUS_SCHEMA_VERSION,
+        "readiness_summary": READINESS_SUMMARY_SCHEMA_VERSION,
+        "handoff_summary": HANDOFF_SUMMARY_SCHEMA_VERSION,
+        "blocker_work_queue": handoff_summary["blocker_work_queue_schema_version"],
+        "first_blocker_work_item": handoff_summary["blocker_work_queue_meta"][
+            "first_work_item_schema_version"
+        ],
+    }
     readiness_summary = {
         "schema_version": READINESS_SUMMARY_SCHEMA_VERSION,
         "status": "blocked" if blockers else "ready",
@@ -1491,6 +1509,7 @@ def build_status(
     readiness_summary_sha256 = _stable_json_sha256(readiness_summary)
     return {
         "schema_version": STATUS_SCHEMA_VERSION,
+        "schema_versions": schema_versions,
         "status": "blocked" if blockers else "ready",
         "model": "Step-3.7-flash-Q3_K_L",
         "source_artifacts": source_artifacts,
@@ -1601,6 +1620,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["next_action_commands"]["kv_backed_decode_not_wired"].get(
             "resource_plan_refresh_command"
         )
+    elif args.schema_versions_only:
+        result = status["schema_versions"]
     elif args.handoff_summary_sha_only:
         result = status["handoff_summary_sha256"]
     elif args.readiness_summary_sha_only:
