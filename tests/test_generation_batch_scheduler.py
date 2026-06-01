@@ -8507,6 +8507,14 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
             with pytest.raises(ValueError, match=r"commands\[\]\.argv must be a non-empty string list"):
                 c_sweep.validate_sweep_summary(tampered_optional_bad_argv)
 
+        for bad_python in ("bash", "pythonish"):
+            tampered_optional_executable = json.loads(json.dumps(summary))
+            optional_executable_argv = tampered_optional_executable["commands"][index]["argv"]
+            optional_executable_argv[2] = bad_python
+            tampered_optional_executable["commands"][index]["command"] = shlex.join(optional_executable_argv)
+            with pytest.raises(ValueError, match=r"commands\[\]\.argv must start with a python executable"):
+                c_sweep.validate_sweep_summary(tampered_optional_executable)
+
         tampered_optional_blank_category = json.loads(json.dumps(summary))
         tampered_optional_blank_category["commands"][index]["category"] = "   "
         with pytest.raises(ValueError, match=r"commands\[\]\.category must be a non-empty string"):
