@@ -8632,6 +8632,12 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         tampered_blank["commands"][gguf_c8_index]["command"] = shlex.join(blank_argv)
         with pytest.raises(ValueError, match=r"commands\[\]\.argv flag values must be non-empty"):
             c_sweep.validate_sweep_summary(tampered_blank)
+    tampered_gguf_rows = json.loads(json.dumps(summary))
+    gguf_rows_argv = tampered_gguf_rows["commands"][gguf_c8_index]["argv"]
+    gguf_rows_argv[gguf_rows_argv.index("--rows") + 1] = "4"
+    tampered_gguf_rows["commands"][gguf_c8_index]["command"] = shlex.join(gguf_rows_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.batch_size must match commands\[\]\.argv --batch-size/--rows"):
+        c_sweep.validate_sweep_summary(tampered_gguf_rows)
     tampered_gguf_artifact = json.loads(json.dumps(summary))
     stale_gguf_artifact_path = str(
         Path(tampered_gguf_artifact["commands"][gguf_c8_index]["artifact_path"]).with_name("gguf-native-diagnostic-c8-stale.json")
