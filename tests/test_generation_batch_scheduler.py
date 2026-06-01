@@ -8590,6 +8590,16 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     tampered_int8_artifact["commands"][int8_entry_indices[-1]]["command"] = shlex.join(int8_artifact_argv)
     with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match category/batch-size filename"):
         c_sweep.validate_sweep_summary(tampered_int8_artifact)
+    tampered_int8_artifact_output_dir = json.loads(json.dumps(summary))
+    outside_int8_artifact_path = str(
+        tmp_path / "outside" / Path(tampered_int8_artifact_output_dir["commands"][int8_entry_indices[-1]]["artifact_path"]).name
+    )
+    int8_artifact_output_dir_argv = tampered_int8_artifact_output_dir["commands"][int8_entry_indices[-1]]["argv"]
+    int8_artifact_output_dir_argv[int8_artifact_output_dir_argv.index("--json") + 1] = outside_int8_artifact_path
+    tampered_int8_artifact_output_dir["commands"][int8_entry_indices[-1]]["artifact_path"] = outside_int8_artifact_path
+    tampered_int8_artifact_output_dir["commands"][int8_entry_indices[-1]]["command"] = shlex.join(int8_artifact_output_dir_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must be under output_dir"):
+        c_sweep.validate_sweep_summary(tampered_int8_artifact_output_dir)
     for flag in ("--model", "--fixture", "--rows", "--future-json", "--primitive-cpu-json", "--primitive-hip-json"):
         tampered = json.loads(json.dumps(summary))
         argv = tampered["commands"][int8_entry_indices[-1]]["argv"]
@@ -8653,6 +8663,16 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     tampered_gguf_artifact["commands"][gguf_c8_index]["command"] = shlex.join(gguf_artifact_argv)
     with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match category/batch-size filename"):
         c_sweep.validate_sweep_summary(tampered_gguf_artifact)
+    tampered_gguf_artifact_output_dir = json.loads(json.dumps(summary))
+    outside_gguf_artifact_path = str(
+        tmp_path / "outside" / Path(tampered_gguf_artifact_output_dir["commands"][gguf_c8_index]["artifact_path"]).name
+    )
+    gguf_artifact_output_dir_argv = tampered_gguf_artifact_output_dir["commands"][gguf_c8_index]["argv"]
+    gguf_artifact_output_dir_argv[gguf_artifact_output_dir_argv.index("--json") + 1] = outside_gguf_artifact_path
+    tampered_gguf_artifact_output_dir["commands"][gguf_c8_index]["artifact_path"] = outside_gguf_artifact_path
+    tampered_gguf_artifact_output_dir["commands"][gguf_c8_index]["command"] = shlex.join(gguf_artifact_output_dir_argv)
+    with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must be under output_dir"):
+        c_sweep.validate_sweep_summary(tampered_gguf_artifact_output_dir)
     for flag in ("--fixture", "--rows", "--backend", "--quant", "--max-new-tokens"):
         tampered = json.loads(json.dumps(summary))
         argv = tampered["commands"][gguf_c8_index]["argv"]
