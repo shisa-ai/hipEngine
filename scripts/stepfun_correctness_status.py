@@ -237,6 +237,24 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--kv-streaming-blueprint-only",
+        action="store_true",
+        help=(
+            "Emit only kv_backed_decode_gap_report.streaming_decode_loop_blueprint "
+            "for KV streaming loop contract handoff. Overrides --summary-only and readiness "
+            "compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--kv-streaming-blueprint-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the stable SHA-256 digest of kv_backed_decode_gap_report.streaming_decode_loop_blueprint "
+            "for KV streaming loop contract drift polling. Overrides --summary-only and readiness "
+            "compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--blocker-work-queue-only",
         action="store_true",
         help=(
@@ -1923,6 +1941,12 @@ def _handoff_summary(
             "kv_first_streaming_blocker_sha_only": (
                 "kv_backed_decode_gap_report.first_streaming_runner_blocker_sha256"
             ),
+            "kv_streaming_blueprint_only": (
+                "kv_backed_decode_gap_report.streaming_decode_loop_blueprint"
+            ),
+            "kv_streaming_blueprint_sha_only": (
+                "sha256(kv_backed_decode_gap_report.streaming_decode_loop_blueprint)"
+            ),
             "status_refresh_command_only": (
                 "next_action_commands.oracle_parity_blocked.status_refresh_command"
             ),
@@ -2422,6 +2446,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["blocked_gates_sha256"]
     elif args.blocked_gates_only:
         result = status["blocked_gates"]
+    elif args.kv_streaming_blueprint_sha_only:
+        result = _stable_json_sha256(
+            status["kv_backed_decode_gap_report"].get("streaming_decode_loop_blueprint")
+        )
+    elif args.kv_streaming_blueprint_only:
+        result = status["kv_backed_decode_gap_report"].get(
+            "streaming_decode_loop_blueprint"
+        )
     elif args.kv_first_streaming_blocker_sha_only:
         result = status["kv_backed_decode_gap_report"].get(
             "first_streaming_runner_blocker_sha256"

@@ -1231,6 +1231,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "kv_first_streaming_blocker_sha_only": (
             "kv_backed_decode_gap_report.first_streaming_runner_blocker_sha256"
         ),
+        "kv_streaming_blueprint_only": (
+            "kv_backed_decode_gap_report.streaming_decode_loop_blueprint"
+        ),
+        "kv_streaming_blueprint_sha_only": (
+            "sha256(kv_backed_decode_gap_report.streaming_decode_loop_blueprint)"
+        ),
         "status_refresh_command_only": (
             "next_action_commands.oracle_parity_blocked.status_refresh_command"
         ),
@@ -2322,6 +2328,111 @@ def test_stepfun_correctness_status_kv_first_streaming_blocker_sha_only(
     assert payload == _first_streaming_runner_blocker_sha256()
 
 
+def test_stepfun_correctness_status_kv_streaming_blueprint_only(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "kv-streaming-blueprint.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--kv-streaming-blockers-only",
+            "--kv-first-streaming-blocker-only",
+            "--kv-streaming-blueprint-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(output.read_text())
+    assert payload == status["kv_backed_decode_gap_report"][
+        "streaming_decode_loop_blueprint"
+    ]
+    assert payload == {
+        "recorded": True,
+        "matches_launch_schedule": True,
+        "upload_order_matches": True,
+        "blocker_matches": True,
+        "executable": False,
+        "blocked_by": "streaming_decode_loop_not_wired",
+        "blocked_by_sha256": _first_streaming_runner_blocker_sha256(),
+        "operation_count": 135,
+        "operation_sequence_sha256": _stable_json_sha256(
+            _kv_loop_operation_sequence()
+        ),
+        "stage_count": 4,
+        "pre_run_upload_checks_passed": True,
+    }
+
+
+def test_stepfun_correctness_status_kv_streaming_blueprint_sha_only(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "kv-streaming-blueprint-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--kv-streaming-blueprint-only",
+            "--kv-streaming-blueprint-sha-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(output.read_text())
+    expected = status["kv_backed_decode_gap_report"][
+        "streaming_decode_loop_blueprint"
+    ]
+    assert payload == _stable_json_sha256(expected)
+
+
 def test_stepfun_correctness_status_blocker_kinds_sha_only(capsys, tmp_path: Path) -> None:
     prompt = tmp_path / "prompt.json"
     oracle = tmp_path / "oracle.json"
@@ -2833,6 +2944,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         ),
         "kv_first_streaming_blocker_sha_only": (
             "kv_backed_decode_gap_report.first_streaming_runner_blocker_sha256"
+        ),
+        "kv_streaming_blueprint_only": (
+            "kv_backed_decode_gap_report.streaming_decode_loop_blueprint"
+        ),
+        "kv_streaming_blueprint_sha_only": (
+            "sha256(kv_backed_decode_gap_report.streaming_decode_loop_blueprint)"
         ),
         "status_refresh_command_only": (
             "next_action_commands.oracle_parity_blocked.status_refresh_command"
