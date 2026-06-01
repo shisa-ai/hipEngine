@@ -3636,6 +3636,18 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if abs(cpu_share_sum - 1.0) > 1e-6:
                         errors.append("commands[].preconditions[].cpu_side_bottleneck_shares must sum to 1.0 when profiler passed")
                         break
+                    if profiler_source_object.get("status") != profiler_precondition.get("profiler_status"):
+                        errors.append("commands[].preconditions[].profiler_source_artifact_path JSON status must match when profiler passed")
+                        break
+                    if profiler_source_object.get("output_format") != profiler_precondition.get("profiler_output_format"):
+                        errors.append("commands[].preconditions[].profiler_source_artifact_path JSON output_format must match when profiler passed")
+                        break
+                    if profiler_source_object.get("trace_dir") != profiler_precondition.get("profiler_trace_dir"):
+                        errors.append("commands[].preconditions[].profiler_source_artifact_path JSON trace_dir must match when profiler passed")
+                        break
+                    if profiler_source_object.get("trace_files") != profiler_precondition.get("profiler_trace_files"):
+                        errors.append("commands[].preconditions[].profiler_source_artifact_path JSON trace_files must match when profiler passed")
+                        break
                     if profiler_source_command != profiler_precondition.get("profiler_command"):
                         errors.append("commands[].preconditions[].profiler_source_artifact_path JSON command must match when profiler passed")
                         break

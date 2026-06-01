@@ -6498,9 +6498,19 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     profiler_artifact_path.write_text(json.dumps({"profiler": {"artifact_path": str(output_dir / "other-profiler-c2.json")}}))
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON artifact_path must match when profiler passed"):
         c_sweep.validate_sweep_summary(persisted)
-    profiler_artifact_path.write_text(
-        json.dumps({"profiler": {"artifact_path": str(profiler_artifact_path), "command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/other -- python3 scripts/qwen35_batch_retained_bench.py"}})
-    )
+    profiler_source_payload = json.loads(profiler_artifact_payload)
+    profiler_source_payload["profiler"]["status"] = "missing"
+    profiler_artifact_path.write_text(json.dumps(profiler_source_payload))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON status must match when profiler passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    profiler_source_payload = json.loads(profiler_artifact_payload)
+    profiler_source_payload["profiler"]["trace_dir"] = str(output_dir / "other-profile-c2")
+    profiler_artifact_path.write_text(json.dumps(profiler_source_payload))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON trace_dir must match when profiler passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    profiler_source_payload = json.loads(profiler_artifact_payload)
+    profiler_source_payload["profiler"]["command"] = "rocprofv3 --kernel-trace --output-format csv -d /tmp/other -- python3 scripts/qwen35_batch_retained_bench.py"
+    profiler_artifact_path.write_text(json.dumps(profiler_source_payload))
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON command must match when profiler passed"):
         c_sweep.validate_sweep_summary(persisted)
     profiler_artifact_path.write_text(profiler_artifact_payload)
