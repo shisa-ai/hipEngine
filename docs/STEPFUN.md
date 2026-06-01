@@ -653,7 +653,9 @@ reporting.
   readiness-summary, and handoff-summary schema versions plus a compact
   `schema_versions` handoff payload, records both blockers
   (`oracle_parity_blocked`, `kv_backed_decode_not_wired`) for the current
-  all-layer prompt smoke, lists machine-readable next actions for each blocker,
+  all-layer prompt smoke, exposes compact `--blocker-kinds-only` /
+  `--blocker-kinds-sha-only` outputs for polling that blocker-kind list, lists
+  machine-readable next actions for each blocker,
   and now includes `readiness_gates` for `oracle_parity`, `kv_backed_decode`,
   and `e2e_inference` so each readiness boolean carries
   required evidence and current blocker state, plus compact

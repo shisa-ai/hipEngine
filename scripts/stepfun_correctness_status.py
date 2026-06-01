@@ -122,6 +122,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--blocker-kinds-only",
+        action="store_true",
+        help=(
+            "Emit only blocker_kinds for lightweight blocker kind polling. "
+            "Overrides --summary-only and readiness compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--blocker-kinds-sha-only",
+        action="store_true",
+        help=(
+            "Emit only blocker_kinds_sha256 for blocker kind drift polling. "
+            "Overrides --summary-only and readiness compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--blocker-work-queue-only",
         action="store_true",
         help=(
@@ -283,6 +299,7 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
     readiness_summary = status.get("readiness_summary", {})
     readiness_gates = status.get("readiness_gates", {})
     next_action_commands = status.get("next_action_commands", {})
+    blocker_kinds = status.get("blocker_kinds", [])
     schema_versions = status.get("schema_versions", {})
     blocker_meta = (
         handoff_summary.get("blocker_work_queue_meta", {})
@@ -309,6 +326,10 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         "next_action_commands_sha256": (
             isinstance(next_action_commands, dict)
             and status.get("next_action_commands_sha256") == _stable_json_sha256(next_action_commands)
+        ),
+        "blocker_kinds_sha256": (
+            isinstance(blocker_kinds, list)
+            and status.get("blocker_kinds_sha256") == _stable_json_sha256(blocker_kinds)
         ),
         "schema_versions": schema_versions
         == {
@@ -1314,6 +1335,8 @@ def _handoff_summary(
             "readiness_gates_sha_only": "readiness_gates_sha256",
             "source_artifacts_sha_only": "source_artifacts_sha256",
             "next_action_commands_sha_only": "next_action_commands_sha256",
+            "blocker_kinds_only": "blocker_kinds",
+            "blocker_kinds_sha_only": "blocker_kinds_sha256",
             "status_refresh_command_only": (
                 "next_action_commands.oracle_parity_blocked.status_refresh_command"
             ),
@@ -1551,6 +1574,8 @@ def build_status(
         kv_backed_decode_gap_report=kv_backed_decode_gap_report,
     )
     handoff_summary_sha256 = _stable_json_sha256(handoff_summary)
+    blocker_kinds = list(handoff_summary["open_blockers"])
+    blocker_kinds_sha256 = _stable_json_sha256(blocker_kinds)
     source_artifacts = _source_artifacts(
         prompt_artifact=prompt_artifact,
         oracle_artifact=oracle_artifact,
@@ -1580,6 +1605,7 @@ def build_status(
         "source_artifacts_sha256": source_artifacts_sha256,
         "readiness_gates_sha256": readiness_gates_sha256,
         "next_action_commands_sha256": next_action_commands_sha256,
+        "blocker_kinds_sha256": blocker_kinds_sha256,
         "first_blocker_kind": handoff_summary["blocker_work_queue_meta"]["first_blocker_kind"],
         "first_blocker_work_item_sha256": handoff_summary[
             "first_blocker_work_item_sha256"
@@ -1634,6 +1660,8 @@ def build_status(
         "readiness_summary_sha256": readiness_summary_sha256,
         "handoff_summary": handoff_summary,
         "handoff_summary_sha256": handoff_summary_sha256,
+        "blocker_kinds": blocker_kinds,
+        "blocker_kinds_sha256": blocker_kinds_sha256,
         "blockers": blockers,
         "next_actions": next_actions,
         "next_action_commands": next_action_commands,
@@ -1689,6 +1717,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["readiness_gates_sha256"]
     elif args.readiness_gates_only:
         result = status["readiness_gates"]
+    elif args.blocker_kinds_sha_only:
+        result = status["blocker_kinds_sha256"]
+    elif args.blocker_kinds_only:
+        result = status["blocker_kinds"]
     elif args.source_artifacts_sha_only:
         result = status["source_artifacts_sha256"]
     elif args.source_verify_command_sha_only:

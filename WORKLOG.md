@@ -30263,3 +30263,44 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`53 passed`), compact readiness-gates outputs returned expected blocked exit code 2, the readiness-gates digest was `4cc632d119cbb0edc67b560f23f4d6cefbcf614e73f3685f80b95133aad5fc89`, status/source integrity checks included `readiness_gates_sha256=true`, and the full StepFun guard passed (`157` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was a pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes status-helper metadata/tests/docs/status artifact only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.
+
+## 2026-06-01 — StepFun blocker kinds compact output
+
+Added compact `--blocker-kinds-only` and `--blocker-kinds-sha-only` outputs to the StepFun correctness status helper. The emitted blocker-kind list is also stored at top level as `blocker_kinds` with `blocker_kinds_sha256`, mirrored into the readiness summary, and included in `status_integrity` so handoff consumers can cheaply poll whether the remaining blockers changed before parsing the full handoff summary or work queue. Refreshed `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`; readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`) with remaining blockers `oracle_parity_blocked` and `kv_backed_decode_not_wired`. No StepFun KV write/attention kernels are launched and no performance/e2e claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_correctness_status.py --blocker-kinds-only --fail-on-blocked --pretty > /tmp/stepfun-blocker-kinds-fail.json; rc=$?; test "$rc" -eq 2
+python3 scripts/stepfun_correctness_status.py --blocker-kinds-sha-only --fail-on-blocked --pretty > /tmp/stepfun-blocker-kinds-sha-fail.json; rc=$?; test "$rc" -eq 2
+python3 scripts/stepfun_correctness_status.py --status-integrity-only --fail-on-blocked --pretty > /tmp/stepfun-status-integrity-blocker-kinds.json; rc=$?; test "$rc" -eq 2
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty > /tmp/stepfun-source-verify-blocker-kinds.json
+python3 - <<'PY'
+import hashlib, json
+s=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+kinds=json.load(open('/tmp/stepfun-blocker-kinds-fail.json'))
+sha=json.load(open('/tmp/stepfun-blocker-kinds-sha-fail.json'))
+integrity=json.load(open('/tmp/stepfun-status-integrity-blocker-kinds.json'))
+expected=['oracle_parity_blocked', 'kv_backed_decode_not_wired']
+expected_sha=hashlib.sha256(json.dumps(expected, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+assert kinds == s['blocker_kinds'] == expected
+assert sha == s['blocker_kinds_sha256'] == s['readiness_summary']['blocker_kinds_sha256'] == expected_sha
+assert s['handoff_summary']['open_blockers'] == expected
+assert integrity['all_match'] is True
+assert integrity['checks']['blocker_kinds_sha256'] is True
+assert all(integrity['checks'].values())
+assert s['status'] == 'blocked'
+v=json.load(open('/tmp/stepfun-source-verify-blocker-kinds.json'))
+assert v['status'] == 'match'
+assert v['all_match'] is True
+assert v['status_integrity']['checks']['blocker_kinds_sha256'] is True
+assert all(v['status_integrity']['checks'].values())
+print('blocker kinds compact output ok', sha)
+PY
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`57 passed`), compact blocker-kind outputs returned expected blocked exit code 2, the blocker-kind digest was `dacb44b00ddea30312072d9186eb161ad56d9bf6725e19e7d2ed13ec7144c766`, status/source integrity checks included `blocker_kinds_sha256=true`, and the full StepFun guard passed (`161` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was a pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes status-helper metadata/tests/docs/status artifact only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.

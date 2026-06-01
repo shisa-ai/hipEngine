@@ -4,6 +4,11 @@
   "all_layer_prompt_peak_resident_weight_nbytes": 3531578496,
   "all_layer_prompt_smoke": true,
   "backend": "hip_gfx1151",
+  "blocker_kinds": [
+    "oracle_parity_blocked",
+    "kv_backed_decode_not_wired"
+  ],
+  "blocker_kinds_sha256": "dacb44b00ddea30312072d9186eb161ad56d9bf6725e19e7d2ed13ec7144c766",
   "blockers": [
     {
       "artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-llamacpp-step35-timeout.json",
@@ -123,6 +128,8 @@
     "blocker_work_queue_schema_version": 1,
     "blocker_work_queue_sha256": "400dd2ba3c938f03fb0556816766ff0de4863988c7f48e59f94927b60aef80f4",
     "compact_output_modes": {
+      "blocker_kinds_only": "blocker_kinds",
+      "blocker_kinds_sha_only": "blocker_kinds_sha256",
       "blocker_work_queue_meta_only": "handoff_summary.blocker_work_queue_meta",
       "blocker_work_queue_only": "handoff_summary.blocker_work_queue",
       "blocker_work_queue_sha_only": "handoff_summary.blocker_work_queue_sha256",
@@ -265,7 +272,7 @@
     "schema_version": 1,
     "status": "blocked"
   },
-  "handoff_summary_sha256": "2b42267f4eef9c7bbf8c97f1d89bb2d94376c57cae9a2f904d19d781aa40d788",
+  "handoff_summary_sha256": "c7bd3ebc0dab52005b89813088e82560ea8344818aa3eb7974b24fca1b6d269e",
   "kv_backed_decode_gap_report": {
     "first_missing_evidence": "streaming_runner_ready_flags",
     "first_missing_precondition": null,
@@ -1521,6 +1528,7 @@
   },
   "readiness_gates_sha256": "4cc632d119cbb0edc67b560f23f4d6cefbcf614e73f3685f80b95133aad5fc89",
   "readiness_summary": {
+    "blocker_kinds_sha256": "dacb44b00ddea30312072d9186eb161ad56d9bf6725e19e7d2ed13ec7144c766",
     "blocker_work_queue_count": 2,
     "blocker_work_queue_sha256": "400dd2ba3c938f03fb0556816766ff0de4863988c7f48e59f94927b60aef80f4",
     "e2e_inference_claim_allowed": false,
@@ -1528,7 +1536,7 @@
     "fail_on_blocked_exit_code": 2,
     "first_blocker_kind": "oracle_parity_blocked",
     "first_blocker_work_item_sha256": "8c5a2cfe6f5b1b7939bb041118ee622bc90a8be6fb3472c7079706d78aacfed3",
-    "handoff_summary_sha256": "2b42267f4eef9c7bbf8c97f1d89bb2d94376c57cae9a2f904d19d781aa40d788",
+    "handoff_summary_sha256": "c7bd3ebc0dab52005b89813088e82560ea8344818aa3eb7974b24fca1b6d269e",
     "kv_backed_decode_ready": false,
     "kv_decode_dispatch_ready": true,
     "next_action_commands_sha256": "1e27ca8833b336ecd85b9439d662ab9ed9e8b5d55f414f7d10cb8119a0654ba3",
@@ -1538,10 +1546,10 @@
     "performance_claim_allowed": false,
     "readiness_gates_sha256": "4cc632d119cbb0edc67b560f23f4d6cefbcf614e73f3685f80b95133aad5fc89",
     "schema_version": 1,
-    "source_artifacts_sha256": "a3ad5e62977271593528de6397bb18695ce96eed86f85ff1a38968bc42c86bfb",
+    "source_artifacts_sha256": "29f3e5582c6a845eec1b9e48566dc7b3887e0061fd2099d81f26b4b394aebd85",
     "status": "blocked"
   },
-  "readiness_summary_sha256": "df54051ece2f1fddbf87a48b35e74b833ecfb74d0b2c79a63302b8893a4e1cba",
+  "readiness_summary_sha256": "c14d3c8433e27adb7f366a52ee55a04acd419caffde9410421c44ec15902f160",
   "schema_version": 1,
   "schema_versions": {
     "blocker_work_queue": 1,
@@ -1554,8 +1562,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "2c6f6be0b302d8f422a938c037c1ae4e8362cabf9189a4e551c567ccc5b0c42a",
-      "size_bytes": 55324
+      "sha256": "acbfc3d2a2d6d3db1662fc4621e4429cea8f6edb72bb6e15c70ea39ba0bd8039",
+      "size_bytes": 55440
     },
     "oracle": {
       "exists": true,
@@ -1576,7 +1584,7 @@
       "size_bytes": 45925
     }
   },
-  "source_artifacts_sha256": "a3ad5e62977271593528de6397bb18695ce96eed86f85ff1a38968bc42c86bfb",
+  "source_artifacts_sha256": "29f3e5582c6a845eec1b9e48566dc7b3887e0061fd2099d81f26b4b394aebd85",
   "status": "blocked",
   "step35_supported_by_local_llama_cpp": null,
   "text_resource_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json"
