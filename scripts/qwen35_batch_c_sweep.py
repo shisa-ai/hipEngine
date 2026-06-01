@@ -3148,6 +3148,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if _path_has_symlink_parent(profiler_trace_dir_check_path):
                         errors.append("commands[].preconditions[].profiler_trace_dir parent directories must not be symlinks when passed")
                         break
+                    if _path_has_non_directory_parent(profiler_trace_dir_check_path):
+                        errors.append("commands[].preconditions[].profiler_trace_dir parent directories must be directories when passed")
+                        break
                     output_dir_text = summary.get("output_dir")
                     if isinstance(output_dir_text, str) and output_dir_text:
                         trace_dir_path = Path(profiler_trace_dir)
@@ -3184,6 +3187,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         break
                     if any(_path_has_symlink_parent(trace_file_path) for trace_file_path in trace_file_check_paths):
                         errors.append("commands[].preconditions[].profiler_trace_files parent directories must not be symlinks when passed")
+                        break
+                    if any(_path_has_non_directory_parent(trace_file_path) for trace_file_path in trace_file_check_paths):
+                        errors.append("commands[].preconditions[].profiler_trace_files parent directories must be directories when passed")
                         break
                     if any(not _is_resolved_path_relative_to(trace_file, profiler_trace_dir) for trace_file in profiler_trace_files):
                         errors.append("commands[].preconditions[].profiler_trace_files must be under profiler_trace_dir when passed")

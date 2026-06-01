@@ -5329,6 +5329,53 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
                 if compiler_parent_file.exists():
                     compiler_parent_file.unlink()
 
+        trace_dir_parent_file = output_dir / "profile-parent-file"
+        try:
+            trace_dir_parent_file.write_text("not a directory")
+            parent_file_trace_dir_summary = json.loads(json.dumps(persisted))
+            profiler_precondition = parent_file_trace_dir_summary["commands"][-1]["preconditions"][-1]
+            old_trace_dir = profiler_precondition["profiler_trace_dir"]
+            trace_dir_via_parent_file = trace_dir_parent_file / "profile-c2"
+            profiler_precondition["profiler_trace_dir"] = str(trace_dir_via_parent_file)
+            profiler_precondition["profiler_trace_files"] = [str(trace_dir_via_parent_file / "hipengine_kernel_trace.csv")]
+            profiler_precondition["profiler_command"] = profiler_precondition["profiler_command"].replace(
+                old_trace_dir,
+                str(trace_dir_via_parent_file),
+            )
+            with pytest.raises(
+                ValueError,
+                match=r"commands\[\]\.preconditions\[\]\.profiler_trace_dir parent directories must be directories",
+            ):
+                c_sweep.validate_sweep_summary(parent_file_trace_dir_summary)
+        finally:
+            if trace_dir_parent_file.exists():
+                trace_dir_parent_file.unlink()
+
+        trace_file_dir = output_dir / "profile-trace-file-parent"
+        trace_file_parent_file = trace_file_dir / "trace-file-parent"
+        try:
+            trace_file_dir.mkdir()
+            trace_file_parent_file.write_text("not a directory")
+            parent_file_trace_file_summary = json.loads(json.dumps(persisted))
+            profiler_precondition = parent_file_trace_file_summary["commands"][-1]["preconditions"][-1]
+            old_trace_dir = profiler_precondition["profiler_trace_dir"]
+            profiler_precondition["profiler_trace_dir"] = str(trace_file_dir)
+            profiler_precondition["profiler_trace_files"] = [str(trace_file_parent_file / "hipengine_kernel_trace.csv")]
+            profiler_precondition["profiler_command"] = profiler_precondition["profiler_command"].replace(
+                old_trace_dir,
+                str(trace_file_dir),
+            )
+            with pytest.raises(
+                ValueError,
+                match=r"commands\[\]\.preconditions\[\]\.profiler_trace_files parent directories must be directories",
+            ):
+                c_sweep.validate_sweep_summary(parent_file_trace_file_summary)
+        finally:
+            if trace_file_parent_file.exists():
+                trace_file_parent_file.unlink()
+            if trace_file_dir.exists():
+                trace_file_dir.rmdir()
+
         symlink_artifact_summary = json.loads(json.dumps(persisted))
         primitive_artifact_path = Path(symlink_artifact_summary["commands"][0]["artifact_path"])
         primitive_artifact_target = primitive_artifact_path.with_name("primitive-c2-real.json")
