@@ -1452,7 +1452,7 @@ roll-up/status view.
       combined c-sweep dry-run coverage locks the env-prefixed primitive
       `primitive-c1/c2/c4/c8.json` command text, argv, `HIP_VISIBLE_DEVICES=1`,
       script/category, `--rows`, `--seed 1234`, `--json` labels, top-level batch-size plan/order,
-      model/fixture workload labels, workload shape options, command, completed-command, and status rollup counts, and primitive category-status rollup counts and rejects
+      optional diagnostic include flags, model/fixture workload labels, workload shape options, command, completed-command, and status rollup counts, and primitive category-status rollup counts and rejects
       missing/empty/blank/stale primitive command text/argv, wrong device env,
       missing/blank/unknown/known-mismatched/wrong script/category, missing/malformed/unlisted
       `batch_size`, missing/unknown/invalid planned-row status,

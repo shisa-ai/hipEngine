@@ -7246,6 +7246,11 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     assert summary["status"] == "planned"
     assert summary["options"]["include_int8"] is True
     assert summary["options"]["include_gguf"] is True
+    for option in ("include_int8", "include_gguf"):
+        tampered_include_option = json.loads(json.dumps(summary))
+        tampered_include_option["options"][option] = False
+        with pytest.raises(ValueError, match=r"command_count must match batch_sizes/options\.include_int8/include_gguf"):
+            c_sweep.validate_sweep_summary(tampered_include_option)
     assert summary["options"]["model"] == "/tmp/model"
     tampered_model_option = json.loads(json.dumps(summary))
     tampered_model_option["options"]["model"] = "/tmp/stale-model"
