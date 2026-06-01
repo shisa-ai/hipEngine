@@ -4515,8 +4515,8 @@ def _validate_validation_summary_output_path(path: Path, summary: Mapping[str, A
     mode = summary.get("mode")
     if mode not in {"artifact_schema", "rollup_evidence"}:
         return
-    artifact_path = summary.get("artifact_path")
-    stem_source = artifact_path if isinstance(artifact_path, str) and artifact_path else summary.get("artifact_json")
+    source_artifact_path = summary.get("source_artifact_path")
+    stem_source = source_artifact_path if isinstance(source_artifact_path, str) and source_artifact_path else summary.get("artifact_json")
     if not isinstance(stem_source, str) or not stem_source:
         return
     normalized_source = stem_source.replace("\\", "/")

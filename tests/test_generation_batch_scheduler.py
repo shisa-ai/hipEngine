@@ -21064,7 +21064,12 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     missing_rollup_artifact.pop("benchmark_rollup")
     missing_rollup_file = rollup_root / "benchmarks" / "results" / "accepted-c2-missing-rollup.json"
     missing_rollup_file.write_text(json.dumps(missing_rollup_artifact), encoding="utf-8")
-    failed_summary_file = rollup_root / "benchmarks" / "results" / "accepted-c2-rollup-check.json"
+    stale_stem_failed_summary_file = rollup_root / "benchmarks" / "results" / "accepted-c2-rollup-check.json"
+    assert validate_cn_diagnostic_artifact_main(
+        [str(missing_rollup_file), "--rollup-evidence", "--summary-json", str(stale_stem_failed_summary_file)]
+    ) == 1
+    assert json.loads(stale_stem_failed_summary_file.read_text()) == summary
+    failed_summary_file = rollup_root / "benchmarks" / "results" / "accepted-c2-missing-rollup-rollup-check.json"
     assert validate_cn_diagnostic_artifact_main(
         [str(missing_rollup_file), "--rollup-evidence", "--summary-json", str(failed_summary_file)]
     ) == 1
