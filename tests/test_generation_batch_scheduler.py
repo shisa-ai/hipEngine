@@ -1098,6 +1098,50 @@ def test_batch_c_sweep_profiler_precondition_rejects_symlink_parent_trace_dir(tm
     }
 
 
+def test_batch_c_sweep_profiler_precondition_rejects_non_directory_parent_trace_dir(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    file_parent = output_dir / "file-profiler-parent"
+    file_parent.write_text("not a directory")
+    trace_dir = file_parent / "profile-c2"
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"]["trace_dir"] = str(trace_dir)
+    payload["profiler"]["trace_files"] = [str(trace_dir / "hipengine_kernel_trace.csv")]
+    payload["profiler"]["command"] = payload["profiler"]["command"].replace(
+        f" -d {output_dir / 'profile-c2'} --",
+        f" -d {trace_dir} --",
+    )
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler.trace_dir parent directories contain non-directories; profiler.trace_files parent directories contain non-directories",
+    }
+
+
 def test_batch_c_sweep_profiler_precondition_rejects_missing_trace_files(tmp_path: Path) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
@@ -1247,6 +1291,46 @@ def test_batch_c_sweep_profiler_precondition_rejects_symlink_parent_trace_file(t
         "artifact_path": str(profiler_path),
         "passed": False,
         "reason": "profiler.trace_files parent directories contain symlinks",
+    }
+
+
+def test_batch_c_sweep_profiler_precondition_rejects_non_directory_parent_trace_file(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    trace_dir = output_dir / "profile-c2"
+    trace_dir.mkdir()
+    file_parent = trace_dir / "file-traces"
+    file_parent.write_text("not a directory")
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"]["trace_files"] = [str(file_parent / "hipengine_kernel_trace.csv")]
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler.trace_files parent directories contain non-directories",
     }
 
 
