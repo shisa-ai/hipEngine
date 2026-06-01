@@ -1451,7 +1451,7 @@ roll-up/status view.
       `HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json`;
       combined c-sweep dry-run coverage locks the env-prefixed primitive
       `primitive-c1/c2/c4/c8.json` command text, argv, `HIP_VISIBLE_DEVICES=1`,
-      script/category, `--rows`, `--seed 1234`, `--json` labels, top-level summary schema/keyset, status label, timestamp, typed git provenance keyset/status list, dry-run mode, typed unique batch-size plan/order,
+      script/category, `--rows`, `--seed 1234`, `--json` labels, top-level summary schema/keyset, status label, timestamp, typed git provenance keyset/status list, dry-run mode, typed output-dir root, typed unique batch-size plan/order,
       top-level options schema/keyset, typed optional diagnostic include flags, stop-on-failure and seed options, typed cached-build and compiler-version-file options, typed projection-dispatch artifact option, typed model/fixture workload labels, typed workload shape options, typed command/completed-command counts, typed status/category rollup counts, and empty retained-condition/skipped/failed rollups and rejects
       missing/empty/blank/stale primitive command text/argv, wrong device env,
       missing/blank/unknown/known-mismatched/wrong script/category, missing/malformed/unlisted

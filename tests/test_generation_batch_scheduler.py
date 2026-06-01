@@ -7481,6 +7481,12 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     tampered_status_count["status_counts"]["planned"] = 26
     with pytest.raises(ValueError, match="status_counts must match commands"):
         c_sweep.validate_sweep_summary(tampered_status_count)
+    assert summary["output_dir"] == str(tmp_path / "artifacts")
+    for stale_output_dir in ("   ", 123):
+        tampered_output_dir_type = json.loads(json.dumps(summary))
+        tampered_output_dir_type["output_dir"] = stale_output_dir
+        with pytest.raises(ValueError, match="output_dir must be a non-empty string"):
+            c_sweep.validate_sweep_summary(tampered_output_dir_type)
     parent_component_output_dir_summary = json.loads(json.dumps(summary))
     parent_component_output_dir_summary["output_dir"] = str(tmp_path / "output-dir-parent" / ".." / "artifacts")
     with pytest.raises(ValueError, match="output_dir must not contain parent-directory components"):
