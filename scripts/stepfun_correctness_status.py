@@ -146,6 +146,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--verification-status-only",
+        action="store_true",
+        help=(
+            "With --verify-source-artifacts, emit only verification status "
+            "for compact match/mismatch routing."
+        ),
+    )
+    parser.add_argument(
         "--verification-failures-only",
         action="store_true",
         help=(
@@ -1904,7 +1912,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     if args.verify_source_artifacts is not None:
         verification = _verify_source_artifacts(args.verify_source_artifacts)
-        if args.verification_failures_sha_only:
+        if args.verification_status_only:
+            result = verification["status"]
+        elif args.verification_failures_sha_only:
             result = verification["verification_failures_sha256"]
         elif args.verification_failures_only:
             result = verification["verification_failures"]
