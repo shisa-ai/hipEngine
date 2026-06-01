@@ -3122,7 +3122,13 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         if any(primitive_source_payload.get(field) != primitive_precondition.get(f"primitive_{field}") for field in _REQUIRED_PRIMITIVE_CORRECTNESS_SHAPE_FIELDS):
                             errors.append("commands[].preconditions[].primitive_artifact_path JSON shape fields must match when primitive passed")
                             break
-                        if primitive_source_payload.get("context_lens") != primitive_precondition.get("primitive_context_lens"):
+                        primitive_source_context_lens = primitive_source_payload.get("context_lens")
+                        if not isinstance(primitive_source_context_lens, list) or any(
+                            not isinstance(item, int) or isinstance(item, bool) for item in primitive_source_context_lens
+                        ):
+                            errors.append("commands[].preconditions[].primitive_artifact_path JSON context_lens must be a typed int list when primitive passed")
+                            break
+                        if primitive_source_context_lens != primitive_precondition.get("primitive_context_lens"):
                             errors.append("commands[].preconditions[].primitive_artifact_path JSON context_lens must match when primitive passed")
                             break
                         if primitive_source_payload.get("passed") != primitive_precondition.get("passed"):
