@@ -1459,7 +1459,7 @@ roll-up/status view.
       per-category missing/malformed/non-null returncode, per-category missing/malformed/non-finite/nonzero duration,
       per-category output-tail/all condition-field variants,
       per-category unknown command schema keys and missing/malformed/stale `git_dirty`, per-category duplicate/blank/missing
-      `--json` labels, optional INT8/GGUF category-count mismatches, optional INT8/GGUF `--rows`/batch-size mismatches, missing optional INT8/GGUF planned rows, missing/blank optional INT8 auxiliary artifact and GGUF template flags, duplicate/swapped optional GGUF quant rows,
+      `--json` labels, missing/mismatched optional INT8/GGUF category counts, optional INT8/GGUF `--rows`/batch-size mismatches, missing optional INT8/GGUF planned rows, missing/blank optional INT8 auxiliary artifact and GGUF template flags, duplicate/swapped optional GGUF quant rows,
       duplicate `--rows`/`--seed` labels,
       blank inline/missing/non-integer `--rows`/`--seed` values,
       parent-directory/symlinked/symlink-parent `output_dir`, missing/blank/non-string
