@@ -3194,7 +3194,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if profiler_precondition.get("profiler_compiler_version_file") != _argv_value(argv, "--compiler-version-file"):
                         errors.append("commands[].preconditions[].profiler_compiler_version_file must match retained command")
                         break
-                    if profiler_precondition.get("profiler_require_cached_build") != ("--require-cached-build" in argv):
+                    if profiler_precondition.get("profiler_require_cached_build") is not ("--require-cached-build" in argv):
                         errors.append("commands[].preconditions[].profiler_require_cached_build must match retained command")
                         break
                     if any(_argv_value(profiled_command_argv, flag) != _argv_value(argv, flag) for flag in _RETAINED_PROFILED_COMMAND_VALUE_FLAGS) or (

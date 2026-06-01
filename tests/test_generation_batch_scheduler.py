@@ -6411,6 +6411,10 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_profiler_precondition_cached_build["commands"][-1]["preconditions"][-1]["profiler_require_cached_build"] = True
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_require_cached_build must match retained command"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_cached_build)
+    tampered_profiler_precondition_cached_build_type = json.loads(json.dumps(persisted))
+    tampered_profiler_precondition_cached_build_type["commands"][-1]["preconditions"][-1]["profiler_require_cached_build"] = 0
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_require_cached_build must match retained command"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_cached_build_type)
     tampered_profiler_precondition_synth_shape = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_synth_shape["commands"][-1]["preconditions"][-1]["profiler_trace_synthesized_fields"] = [1]
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_synthesized_fields must be a string list when profiler passed"):
