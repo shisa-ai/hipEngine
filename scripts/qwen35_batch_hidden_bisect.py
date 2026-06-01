@@ -2076,7 +2076,10 @@ def _run_c1_hidden(
     require_cached_build: bool,
     trace_decode_start: int = 0,
     trace_decode_end: int | None = None,
+    c1_decode_path: str = "serial",
 ) -> HiddenRun:
+    if c1_decode_path not in {"serial", "native_batch"}:
+        raise ValueError("c1_decode_path must be serial or native_batch")
     rows = len(prompts)
     seed_tokens: list[int] = []
     generated_tokens: list[list[int]] = []
@@ -2107,13 +2110,27 @@ def _run_c1_hidden(
     ) as session:
         for row, prompt in enumerate(prompts):
             session._prefill_linear_input_trace = []
-            result = session.prefill_native(prompt, sample=True)
+            if c1_decode_path == "native_batch":
+                scheduler = ResidentBatchScheduler(capacity=1)
+                request_id = scheduler.submit(prompt, max_new_tokens=decode_tokens)
+                admitted = scheduler.admit_pending()
+                if admitted != (request_id,):
+                    raise RuntimeError(f"unexpected c=1 admitted request ids {admitted!r}")
+                slabs = scheduler.next_compact_prefill_slabs(chunk_size=len(prompt), block_size=session.block_size)
+                if len(slabs) != 1:
+                    raise RuntimeError("c=1 native-batch prefill expected one compact slab")
+                results = session.prefill_native_packed(slabs[0], sample=True)
+                result = results[0]
+                prefill_hidden = _batch_prefill_hidden_tensor(session, rows=1)
+            else:
+                result = session.prefill_native(prompt, sample=True)
+                prefill_hidden = session.hidden
             if result is None:
                 raise RuntimeError("c=1 prefill did not produce a seed token")
             next_token = int(result.token_id)
             seed_tokens.append(next_token)
             session.runtime.device_synchronize()
-            prefill_hidden_bits[row : row + 1] = _copy_hidden_bits(session, session.hidden, rows=1)
+            prefill_hidden_bits[row : row + 1] = _copy_hidden_bits(session, prefill_hidden, rows=1)
             _merge_prefill_linear_state_row(
                 prefill_linear_state_rows,
                 _copy_prefill_linear_states(session, rows=1),
@@ -2138,9 +2155,19 @@ def _run_c1_hidden(
                 session._decode_linear_output_trace = [] if trace_step else None
                 session._decode_linear_stage_trace = [] if trace_step else None
                 session._decode_full_attention_trace = [] if trace_step else None
-                session._set_token_embedding(next_token, stream=0)
-                session._set_position(position, stream=0)
-                hidden = session._run_layers(position=position, stream=0)
+                if c1_decode_path == "native_batch":
+                    step_result = session.step_batch_native(
+                        [next_token],
+                        positions=[position],
+                        slots=[0],
+                        sample=True,
+                    )[0]
+                    hidden = _batch_prefill_hidden_tensor(session, rows=1)
+                else:
+                    session._set_token_embedding(next_token, stream=0)
+                    session._set_position(position, stream=0)
+                    hidden = session._run_layers(position=position, stream=0)
+                    step_result = session._sample_from_hidden(hidden)
                 session.runtime.device_synchronize()
                 hidden_by_step[step][row : row + 1] = _copy_hidden_bits(session, hidden, rows=1)
                 if trace_step:
@@ -2181,7 +2208,8 @@ def _run_c1_hidden(
                         decode_linear_state_rows_by_step[step],
                         _copy_prefill_linear_states(session, rows=1),
                     )
-                step_result = session._sample_from_hidden(hidden)
+                if step_result is None:
+                    raise RuntimeError("c=1 decode did not produce a token")
                 next_token = int(step_result.token_id)
                 row_generated.append(next_token)
             generated_tokens.append(row_generated)
@@ -5610,6 +5638,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=0,
         help="Decode tokens to run before the measured decode segment; comparisons include seed+warmup+decode.",
     )
+    parser.add_argument(
+        "--c1-decode-path",
+        choices=("serial", "native_batch"),
+        default="serial",
+        help="Independent c=1 oracle path: serial uses prefill_native/_run_layers; native_batch uses packed prefill plus step_batch_native like retained bench.",
+    )
     parser.add_argument("--max-layers", type=int, default=8)
     parser.add_argument("--layer-limits", default=None, help="Comma/range list such as '1,4,8' or '1-8'; default all")
     parser.add_argument("--max-sequence-length", type=int, default=1024)
@@ -5768,6 +5802,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "decode_tokens": int(args.decode_tokens),
             "warmup_decode_tokens": int(args.warmup_decode_tokens),
             "total_decode_tokens": int(total_decode_tokens),
+            "c1_decode_path": str(args.c1_decode_path),
             "max_layers": int(args.max_layers),
             "layer_limits": layer_limits,
             "max_sequence_length": int(args.max_sequence_length),
@@ -5932,6 +5967,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             require_cached_build=args.require_cached_build,
             trace_decode_start=trace_decode_start,
             trace_decode_end=trace_decode_end,
+            c1_decode_path=str(args.c1_decode_path),
         )
         layer_summaries.append(
             _summarize_layer_limit(

@@ -63495,3 +63495,23 @@ Official retained verifier rerun after the change remains `/tmp/hipengine-e2e-na
 Interpretation: hidden-bisect can now exactly include retained warmup, and the selected/per-row controls still make the full-depth oracle green. The remaining retained-bench blocker is therefore likely in scheduler/retained bench replay or a retained-only execution difference after warmup, not merely in the long no-warmup hidden-bisect path. Next step should compare retained bench's batch/c1 token sequences against warmup-enabled hidden-bisect sequences or add a scheduler-retained hidden trace.
 
 Guard passed with the required pytest bundle (`399 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY hidden-bisect retained c1 oracle alignment
+
+Added `scripts/qwen35_batch_hidden_bisect.py --c1-decode-path native_batch`. The default remains `serial`, but `native_batch` makes the independent c=1 oracle use scheduler packed prefill plus `step_batch_native` (the same c=1 reference path used by `qwen35_batch_retained_bench.py`). This closes the diagnostic mismatch where the selected/per-row full-depth hidden-bisect oracle was green against serial c=1 but retained bench was still failing against native c=1.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Retained-shaped selected/per-row diagnostic with native c=1 oracle:
+  `/tmp/hipengine-e2e-hidden-L40-512-w8-d128-trace80-83-selected-linear-full-rowdiag-c1native-gpu1.json`
+  - `workload.c1_decode_path="native_batch"`, `warmup=8`, `decode=128`, `trace_decode_window=[80,83]`.
+  - Token prefixes are `[82, 104]`, matching the retained selected/per-row artifact from the previous iteration (`/tmp/hipengine-e2e-native-c2-512-128-retained-selected-linear-full-rowdiag.json`: `[82,104]`).
+  - First token mismatch: row 0 index 82; batch has `8204, 1228` where native c1 has `27502, 9640`.
+  - First hidden mismatch: step 0 row 0 `max_abs=0.0029296875` at flat index 390.
+  - Focused trace-window failures: full-attention layer 3 `mlp_input` row 0 (`max_abs=0.001953125`, 1 element over atol) and linear layer 4 `attn_input` row 0 (`max_abs=0.00390625`, 5 elements over atol).
+
+This means the earlier warmup-enabled selected/per-row hidden-bisect `eq_ok` was only green against the serial c=1 oracle. With the retained native c=1 oracle, hidden-bisect now reproduces the retained bench blocker exactly enough to be useful: row0 token-82 and row1 token-104. The next kernel/runtime step should target the retained-aligned trace: eliminate the layer-3 full-attention `mlp_input`/layer-4 linear `attn_input` drift under native-c1 oracle, then rerun retained selected/per-row and clean paths.
+
+Official retained verifier rerun after the change remains `/tmp/hipengine-e2e-native-c2-512-128.json`: `min_equal_prefix_tokens=82`, `prefix_lengths=[82,137]`, `status=rejected_correctness`, no performance claim.
+
+Guard passed with the required pytest bundle (`399 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.

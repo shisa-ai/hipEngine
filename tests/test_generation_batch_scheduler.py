@@ -11856,6 +11856,7 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert payload["workload"]["decode_tokens"] == 4
     assert payload["workload"]["warmup_decode_tokens"] == 0
     assert payload["workload"]["total_decode_tokens"] == 4
+    assert payload["workload"]["c1_decode_path"] == "serial"
     assert payload["workload"]["focus_hidden_flat_indices"] == []
     assert payload["workload"]["trace_decode_start"] == 0
     assert payload["workload"]["trace_decode_end"] == 4
@@ -11926,6 +11927,26 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert warmup_trace_payload["workload"]["warmup_decode_tokens"] == 2
     assert warmup_trace_payload["workload"]["total_decode_tokens"] == 6
     assert warmup_trace_payload["workload"]["trace_decode_window"] == [0, 6]
+
+    native_c1_trace = build_hidden_bisect_parser().parse_args(
+        [
+            "--dry-run",
+            "--prompt-length",
+            "32",
+            "--batch-size",
+            "2",
+            "--decode-tokens",
+            "4",
+            "--c1-decode-path",
+            "native_batch",
+            "--max-layers",
+            "8",
+            "--layer-limits",
+            "8",
+        ]
+    )
+    native_c1_trace_payload = run_hidden_bisect(native_c1_trace, ["--dry-run", "--c1-decode-path", "native_batch"])
+    assert native_c1_trace_payload["workload"]["c1_decode_path"] == "native_batch"
 
     invalid_trace = build_hidden_bisect_parser().parse_args(
         [
