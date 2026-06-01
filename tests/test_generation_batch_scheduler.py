@@ -21328,6 +21328,20 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="commands.profiler device env prefix HIP_VISIBLE_DEVICES must be non-blank"):
         validate_cn_diagnostic_artifact_payload(blank_profiler_command_env)
 
+    command_device_env_without_metadata = json.loads(json.dumps(accepted))
+    command_device_env_without_metadata["commands"]["benchmark"] = (
+        "env HIP_VISIBLE_DEVICES=1 " + command_device_env_without_metadata["commands"]["benchmark"]
+    )
+    command_device_env_without_metadata["commands"]["correctness_reference"] = command_device_env_without_metadata["commands"][
+        "correctness_reference"
+    ].replace("plus python3", "plus env HIP_VISIBLE_DEVICES=1 python3")
+    command_device_env_without_metadata["commands"]["profiler"] = command_device_env_without_metadata["commands"]["profiler"].replace(
+        "-- python3",
+        "-- env HIP_VISIBLE_DEVICES=1 python3",
+    )
+    with pytest.raises(ValueError, match="commands.benchmark device env prefix HIP_VISIBLE_DEVICES must be recorded"):
+        validate_cn_diagnostic_artifact_payload(command_device_env_without_metadata)
+
     mismatched_profiler_command_env = json.loads(json.dumps(accepted))
     mismatched_profiler_command_env["commands"]["benchmark"] = (
         "env HIP_VISIBLE_DEVICES=1 " + mismatched_profiler_command_env["commands"]["benchmark"]

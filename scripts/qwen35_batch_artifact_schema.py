@@ -356,6 +356,21 @@ def _validate_device_env_assignments_nonblank(assignments: Mapping[str, str], *,
             errors.append(f"commands.{field} device env prefix {key} must be non-blank for accepted artifacts")
 
 
+def _validate_device_env_assignments_have_metadata(
+    assignments: Mapping[str, str],
+    *,
+    field: str,
+    requirements: Mapping[str, str],
+    errors: list[str],
+) -> None:
+    for key in assignments:
+        if key not in requirements:
+            errors.append(
+                f"commands.{field} device env prefix {key} must be recorded in hardware.visible_device.env "
+                "or correctness.primitive_batch_correctness.device.env for accepted artifacts"
+            )
+
+
 def _validate_device_env_metadata(env: Any, *, prefix: str, errors: list[str]) -> None:
     if not isinstance(env, Mapping):
         errors.append(f"{prefix}.env must be an object for accepted artifacts")
@@ -2060,6 +2075,12 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     if isinstance(benchmark_command, str):
         benchmark_device_env = _retained_bench_command_device_env(benchmark_command)
         _validate_device_env_assignments_nonblank(benchmark_device_env, field="benchmark", errors=errors)
+        _validate_device_env_assignments_have_metadata(
+            benchmark_device_env,
+            field="benchmark",
+            requirements=device_selection_env_requirements,
+            errors=errors,
+        )
         if _RETAINED_BENCH_SCRIPT not in benchmark_command:
             errors.append("commands.benchmark must reference scripts/qwen35_batch_retained_bench.py for accepted artifacts")
         else:
@@ -2132,6 +2153,12 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             )
             correctness_device_env = _script_invocation_device_env_assignments(correctness_command, _PRIMITIVE_CORRECTNESS_SCRIPT)
             _validate_device_env_assignments_nonblank(correctness_device_env, field="correctness_reference", errors=errors)
+            _validate_device_env_assignments_have_metadata(
+                correctness_device_env,
+                field="correctness_reference",
+                requirements=device_selection_env_requirements,
+                errors=errors,
+            )
             if correctness_device_env != benchmark_device_env:
                 errors.append("commands.correctness_reference device env prefix must match commands.benchmark for accepted artifacts")
     profiler_command = commands.get("profiler")
@@ -2194,6 +2221,12 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
             _validate_retained_benchmark_reference_paths(profiler_profiled_benchmark_command, field="profiler", payload=payload, errors=errors)
             profiler_profiled_device_env = _command_device_env_assignments(profiled_command_argv)
             _validate_device_env_assignments_nonblank(profiler_profiled_device_env, field="profiler", errors=errors)
+            _validate_device_env_assignments_have_metadata(
+                profiler_profiled_device_env,
+                field="profiler",
+                requirements=device_selection_env_requirements,
+                errors=errors,
+            )
             if profiler_profiled_device_env != benchmark_device_env:
                 errors.append("commands.profiler device env prefix must match commands.benchmark for accepted artifacts")
             _validate_command_device_selection_env(
