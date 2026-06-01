@@ -50,7 +50,7 @@ def _command_env_prefix_parts() -> list[str]:
     assignments = [
         f"{key}={value}"
         for key in _COMMAND_ENV_KEYS
-        if (value := os.environ.get(key)) is not None
+        if (value := os.environ.get(key)) is not None and value.strip()
     ]
     return ["env", *assignments] if assignments else []
 
@@ -145,7 +145,12 @@ def _software_context() -> dict[str, Any]:
 
 def _visible_hip_device_context() -> dict[str, Any]:
     env_keys = ("HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES", "GPU_DEVICE_ORDINAL")
-    context: dict[str, Any] = {"env": {key: os.environ.get(key) for key in env_keys if os.environ.get(key) is not None}}
+    visible_env: dict[str, str] = {}
+    for key in env_keys:
+        value = os.environ.get(key)
+        if value is not None and value.strip():
+            visible_env[key] = value
+    context: dict[str, Any] = {"env": visible_env}
     try:
         hip = ctypes.CDLL("libamdhip64.so")
         count = ctypes.c_int()

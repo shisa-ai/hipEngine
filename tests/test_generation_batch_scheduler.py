@@ -16720,6 +16720,38 @@ def test_qwen35_serial_bridge_hardware_context_uses_visible_hip_device(monkeypat
     assert hardware["visible_device"]["device_name"] == "AMD Radeon RX 7900 XTX"
 
 
+def test_qwen35_batch_benchmarks_omit_blank_visible_device_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeHipFunc:
+        argtypes = None
+        restype = None
+
+        @staticmethod
+        def __call__(count_ptr):
+            count_ptr._obj.value = 0
+            return 0
+
+    class FakeHipLibrary:
+        hipGetDeviceCount = FakeHipFunc()
+
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "   ")
+    monkeypatch.setenv("ROCR_VISIBLE_DEVICES", "")
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0")
+    monkeypatch.setenv("GPU_DEVICE_ORDINAL", "\t")
+    monkeypatch.setattr(retained_bench.ctypes, "CDLL", lambda _path: FakeHipLibrary())
+    monkeypatch.setattr(serial_bench.ctypes, "CDLL", lambda _path: FakeHipLibrary())
+
+    assert retained_bench._visible_hip_device_context()["env"] == {"CUDA_VISIBLE_DEVICES": "0"}
+    assert serial_bench._visible_hip_device_context()["env"] == {"CUDA_VISIBLE_DEVICES": "0"}
+    assert shlex.split(retained_bench._command(["--json", "retained.json"]))[:2] == [
+        "python3",
+        "scripts/qwen35_batch_retained_bench.py",
+    ]
+    assert shlex.split(serial_bench._command(["--json", "serial.json"]))[:2] == [
+        "python3",
+        "scripts/qwen35_batch_serial_bench.py",
+    ]
+
+
 def test_qwen35_retained_command_labels_preserve_visible_hip_device_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
 
