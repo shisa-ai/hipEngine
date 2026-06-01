@@ -1249,6 +1249,42 @@ def test_batch_c_sweep_profiler_precondition_rejects_missing_trace_kernel_names(
     }
 
 
+def test_batch_c_sweep_profiler_precondition_rejects_padded_trace_kernel_names(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    payload["profiler"]["trace_kernel_names"] = [" qwen35_batch_decode "]
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler.trace_kernel_names contains a non-string entry",
+    }
+
+
 def test_batch_c_sweep_profiler_precondition_rejects_trace_kernel_names_missing_duration_key(tmp_path: Path) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
@@ -6552,6 +6588,21 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     trace_precondition["profiler_trace_kernel_names"].append(trace_precondition["profiler_trace_kernel_names"][0])
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_kernel_names must be unique when passed"):
         c_sweep.validate_sweep_summary(tampered_profiler_precondition_kernel_name_duplicate)
+    tampered_profiler_precondition_kernel_name_padding = json.loads(json.dumps(persisted))
+    trace_precondition = tampered_profiler_precondition_kernel_name_padding["commands"][-1]["preconditions"][-1]
+    padded_kernel_names = [f" {kernel_name} " for kernel_name in trace_precondition["profiler_trace_kernel_names"]]
+    trace_precondition["profiler_trace_kernel_names"] = list(padded_kernel_names)
+    trace_precondition["expected_kernel_names"] = list(padded_kernel_names)
+    trace_precondition["kernel_durations_ns"] = {
+        f" {kernel_name} ": duration_ns
+        for kernel_name, duration_ns in trace_precondition["kernel_durations_ns"].items()
+    }
+    trace_precondition["kernel_duration_shares"] = {
+        f" {kernel_name} ": share
+        for kernel_name, share in trace_precondition["kernel_duration_shares"].items()
+    }
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_kernel_names must include native batch kernels only when passed"):
+        c_sweep.validate_sweep_summary(tampered_profiler_precondition_kernel_name_padding)
     tampered_profiler_precondition_expected_kernels = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_expected_kernels["commands"][-1]["preconditions"][-1]["expected_kernel_names"] = ["serial_lm_head"]
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.expected_kernel_names must include native batch kernels only when profiler passed"):

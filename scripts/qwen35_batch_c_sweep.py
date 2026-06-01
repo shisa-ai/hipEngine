@@ -493,6 +493,10 @@ def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
+def _is_stripped_non_empty_string(value: Any) -> bool:
+    return isinstance(value, str) and bool(value) and value == value.strip()
+
+
 def _is_positive_finite_number(value: Any) -> bool:
     return _is_number(value) and math.isfinite(float(value)) and float(value) > 0.0
 
@@ -1008,12 +1012,12 @@ def _validate_profiler_kernel_durations(profiler: dict[str, Any], reasons: list[
     if not isinstance(duration_shares, dict) or not duration_shares:
         reasons.append("kernel_duration_shares is missing or empty")
         return
-    if any(not isinstance(key, str) or not key for key in kernel_durations):
+    if any(not _is_stripped_non_empty_string(key) for key in kernel_durations):
         reasons.append("kernel_durations_ns keys must be non-empty strings")
-    if any(not isinstance(key, str) or not key for key in duration_shares):
+    if any(not _is_stripped_non_empty_string(key) for key in duration_shares):
         reasons.append("kernel_duration_shares keys must be non-empty strings")
-    duration_keys = {key for key in kernel_durations if isinstance(key, str) and key}
-    share_keys = {key for key in duration_shares if isinstance(key, str) and key}
+    duration_keys = {key for key in kernel_durations if _is_stripped_non_empty_string(key)}
+    share_keys = {key for key in duration_shares if _is_stripped_non_empty_string(key)}
     if duration_keys != share_keys:
         reasons.append("kernel_duration_shares keys do not match kernel_durations_ns")
     if any(_has_disallowed_profiler_kernel_fragment(key) for key in share_keys):
@@ -1486,7 +1490,7 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
         raw_trace_kernel_names = profiler.get("trace_kernel_names")
         if not isinstance(raw_trace_kernel_names, list) or not raw_trace_kernel_names:
             reasons.append("profiler.trace_kernel_names is missing or empty")
-        elif not all(isinstance(kernel_name, str) and kernel_name for kernel_name in raw_trace_kernel_names):
+        elif not all(_is_stripped_non_empty_string(kernel_name) for kernel_name in raw_trace_kernel_names):
             reasons.append("profiler.trace_kernel_names contains a non-string entry")
         else:
             profiler_trace_kernel_names = list(raw_trace_kernel_names)
@@ -1591,7 +1595,7 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
         expected_kernel_names = profiler.get("expected_kernel_names")
         if not isinstance(expected_kernel_names, list) or not expected_kernel_names:
             reasons.append("expected_kernel_names is missing or empty")
-        elif not all(isinstance(name, str) and name for name in expected_kernel_names):
+        elif not all(_is_stripped_non_empty_string(name) for name in expected_kernel_names):
             reasons.append("expected_kernel_names contains a non-string entry")
         elif not any("batch" in name.lower() for name in expected_kernel_names):
             reasons.append("expected_kernel_names does not include a native batch kernel")
@@ -1609,7 +1613,7 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
             if isinstance(expected_kernel_names, list):
                 for kernel_name in expected_kernel_names:
                     duration_ns = kernel_durations.get(kernel_name)
-                    if isinstance(kernel_name, str) and kernel_name and (
+                    if _is_stripped_non_empty_string(kernel_name) and (
                         not _is_number(duration_ns) or float(duration_ns) <= 0.0
                     ):
                         reasons.append(f"kernel_durations_ns.{kernel_name} is missing or non-positive numeric")
@@ -1618,8 +1622,7 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                 missing_duration_names = sorted(
                     kernel_name
                     for kernel_name in kernel_durations
-                    if isinstance(kernel_name, str)
-                    and kernel_name
+                    if _is_stripped_non_empty_string(kernel_name)
                     and not _has_disallowed_profiler_kernel_fragment(kernel_name)
                     and kernel_name not in profiler_trace_kernel_names
                 )
@@ -3294,7 +3297,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if (
                         not isinstance(profiler_kernel_names, list)
                         or not profiler_kernel_names
-                        or not all(isinstance(kernel_name, str) and kernel_name for kernel_name in profiler_kernel_names)
+                        or not all(_is_stripped_non_empty_string(kernel_name) for kernel_name in profiler_kernel_names)
                         or not any("batch" in kernel_name.lower() for kernel_name in profiler_kernel_names)
                         or any(_has_disallowed_profiler_kernel_fragment(kernel_name) for kernel_name in profiler_kernel_names)
                     ):
@@ -3307,7 +3310,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if (
                         not isinstance(expected_kernel_names, list)
                         or not expected_kernel_names
-                        or not all(isinstance(kernel_name, str) and kernel_name for kernel_name in expected_kernel_names)
+                        or not all(_is_stripped_non_empty_string(kernel_name) for kernel_name in expected_kernel_names)
                         or not any("batch" in kernel_name.lower() for kernel_name in expected_kernel_names)
                         or any(_has_disallowed_profiler_kernel_fragment(kernel_name) for kernel_name in expected_kernel_names)
                     ):
@@ -3326,8 +3329,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     invalid_kernel_duration = False
                     for kernel_name, duration_ns in kernel_durations.items():
                         if (
-                            not isinstance(kernel_name, str)
-                            or not kernel_name
+                            not _is_stripped_non_empty_string(kernel_name)
                             or _has_disallowed_profiler_kernel_fragment(kernel_name)
                             or not _is_positive_finite_number(duration_ns)
                         ):
