@@ -24675,3 +24675,103 @@ Expanded W4-site MTP retry with
 was aborted/rejected: first three prompts remained exact but `summarize` failed
 exact AR equality, reproducing why the llama.cpp-compatible MTP suite cannot use
 that DFlash-expanded site mask as-is.
+
+
+## 2026-06-02 — Hipfire DFlash LocalMaxxing replication on W7900
+
+Follow-up after the live MTP status check.  Reviewed
+`~/amd-gpu-tuning/reference/hipfire` at commit
+`d8974f62694a46fbfc6047041792de8c3c8d6d5d` and the LocalMaxxing run
+`cmp8fw36n00zno401goz8qnyv`.  No hipEngine source changes.
+
+LocalMaxxing linked run reports hipfire `0.1.20-alpha+71896daa`, Qwen3.6-27B
+MQ4 target + Qwen3.6 DFlash MQ4 draft, `merge_sort_thinking_off.txt` prompt
+(md5 `253c7ac50857fe6d0e10fb0d2c5e35c0`), `--max 256 --temp 0.0 --no-chatml
+--kv-mode q8 --ctx 4096`, `216.69 tok/s`, τ `10.9286`, accept rate `0.7286`,
+AR baseline `44.79 tok/s` on RX 7900 XTX.  Current LocalMaxxing top corrected
+RX 7900 XTX hipfire row reports `232.14 tok/s` on the same prompt/shape with
+target md5 `e42a489edf0be1b144307f2869b73b93`, draft md5
+`204c4c4ceab30cb9ebc118fa9d59a446`, τ `11.3846`, accept rate `0.7590`, and
+notes explicitly say no AR baseline rerun in that correction pass.
+
+Built hipfire out-of-tree to avoid touching its existing stale `target/`:
+
+```bash
+cd /home/lhl/amd-gpu-tuning/reference/hipfire
+CARGO_TARGET_DIR=/tmp/hipfire-target cargo build --release --features deltanet --example dflash_spec_demo -p hipfire-runtime
+```
+
+The in-tree build first failed because `target/release` contained artifacts from
+a different Rust toolchain (`E0460` newer `core` / stale proc-macro deps); the
+`CARGO_TARGET_DIR=/tmp/hipfire-target` rebuild succeeded.  Downloaded the exact
+HF artifacts to `~/.hipfire/models/`:
+
+```bash
+hf download schuttdev/hipfire-qwen3.6-27b qwen3.6-27b.mq4 qwen36-27b-dflash-mq4.hfq --revision f9b326a657f14cbc400e384ff84a4b9b4b726ba2 --local-dir /home/lhl/.hipfire/models
+```
+
+Hashes:
+- target `qwen3.6-27b.mq4`: md5 `e42a489edf0be1b144307f2869b73b93`, sha256 `86a5f80fd29d545abb1093dead242725ced6d68b8607c6d566d897b1a82442dc`
+- draft `qwen36-27b-dflash-mq4.hfq`: md5 `204c4c4ceab30cb9ebc118fa9d59a446`, sha256 `bd8c4f07ae80fe1385bf2606af9a7ba0daa18ca8daec50916f2a489054c44e70`
+- built binary `/tmp/hipfire-target/release/examples/dflash_spec_demo`: md5 `f7c5902789725a362c5ecdbf6a4db998`
+
+Replication command on W7900/GPU0:
+
+```bash
+HIP_VISIBLE_DEVICES=0 /tmp/hipfire-target/release/examples/dflash_spec_demo \
+  --target /home/lhl/.hipfire/models/qwen3.6-27b.mq4 \
+  --draft /home/lhl/.hipfire/models/qwen36-27b-dflash-mq4.hfq \
+  --prompt-file benchmarks/prompts/merge_sort_thinking_off.txt \
+  --max 256 --temp 0.0 --no-chatml --kv-mode q8 --ctx 4096
+```
+
+First run was JIT/graph warmup (`decode_tok_s=23.18`, 16 kernel recompiles) and
+was discarded.  Three subsequent fresh-process DFlash runs:
+
+| run | decode tok/s | decode s | emitted | τ | accept | prefill tok/s | output md5 |
+|---:|---:|---:|---:|---:|---:|---:|---|
+| 1 | 199.71 | 0.8112 | 162 | 11.3846 | 0.7590 | 321.84 | `4d3a55e4d1daff05ee0265b3055325bd` |
+| 2 | 199.27 | 0.8130 | 162 | 11.3846 | 0.7590 | 322.30 | `4d3a55e4d1daff05ee0265b3055325bd` |
+| 3 | 198.96 | 0.8142 | 162 | 11.3846 | 0.7590 | 320.62 | `4d3a55e4d1daff05ee0265b3055325bd` |
+
+Median W7900 replication: `199.27 tok/s`, τ `11.3846`, accept `0.7590`, 13
+cycles, 148 accepted draft tokens, 174 committed accounting tokens, peak used
+VRAM `17886 MiB` / total `46064 MiB`.
+
+AR baseline command added `--ar-baseline` to the same invocation.  First AR run
+was discarded due 8 recompiles.  Three clean AR runs (runs 2/3/4) produced
+identical output md5 `d0bcbf43b7e3b1d2d9685e4551f25d05`:
+
+| run | AR tok/s | decode s | emitted | prefill tok/s |
+|---:|---:|---:|---:|---:|
+| 2 | 34.87 | 4.5879 | 160 | 308.93 |
+| 3 | 34.77 | 4.6020 | 160 | 322.44 |
+| 4 | 34.86 | 4.5898 | 160 | 323.45 |
+
+Median clean AR: `34.86 tok/s`.  DFlash/AR speedup on this prompt is therefore
+`199.27 / 34.86 = 5.72x` using hipfire's own emitted-token metric (or about
+`5.65x` if normalizing DFlash to the AR's 160-token stop length).
+
+Correctness caveat: DFlash and AR share a 160-token prefix exactly.  DFlash then
+emits two extra terminal-tail tokens `[198, 248044]` (newline + `<|endoftext|>`)
+after AR has already stopped on `<|im_end|>`.  So the visible code is the same,
+but strict emitted-token exact AR equality is false unless the stream is
+truncated at the first terminator.  This matches the LocalMaxxing corrected row's
+reported DFlash output md5 `4d3a55...` and its note that the output was only
+eyeballed as fluent code.
+
+Implementation findings from hipfire source:
+- The linked 200+ tok/s path is **linear DFlash**, not DDTree.  The DDTree code
+  exists, but hipfire docs still call gfx1100 DDTree a structural perf
+  regression; LocalMaxxing linked/corrected rows use adaptive B=16 DFlash.
+- The drafter is a 5-layer non-causal Qwen3 block that produces B-1 proposals in
+  one forward over target hidden context; no draft KV is persisted.
+- The hot wins are stable scratch buffers, D2D target embedding/noise setup,
+  GPU-resident `target_hidden`, incremental cached `K_ctx/V_ctx`, batched
+  draft lm_head, batched verifier lm_head + GPU argmax, and target rollback via
+  GDN tape replay rather than full replay.
+- This is not an apples-to-apples comparison to hipEngine's retained 9-prompt
+  exact D64 suite.  It is a single 27-token code continuation selected because
+  τ≈11.4 at B=16.  HipEngine retained DFlash remains `43.76 tok/s` exact `9/9`
+  on its 9-prompt suite; current live hipEngine MTP is `0.364x` AR on the
+  llama.cpp-compatible 9-prompt B=3/D64 suite.
