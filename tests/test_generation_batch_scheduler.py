@@ -7402,6 +7402,17 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match commands\[\]\.argv --json"):
             c_sweep.validate_sweep_summary(tampered_planned_json_path)
 
+        tampered_planned_duplicate_json = json.loads(json.dumps(summary))
+        planned_duplicate_json_entry = tampered_planned_duplicate_json["commands"][index]
+        planned_duplicate_json_argv = planned_duplicate_json_entry["argv"]
+        planned_duplicate_json_argv.extend([
+            "--json",
+            planned_duplicate_json_argv[planned_duplicate_json_argv.index("--json") + 1],
+        ])
+        planned_duplicate_json_entry["command"] = shlex.join(planned_duplicate_json_argv)
+        with pytest.raises(ValueError, match=r"commands\[\]\.argv must not repeat retained benchmark flags"):
+            c_sweep.validate_sweep_summary(tampered_planned_duplicate_json)
+
         tampered_planned_artifact_filename = json.loads(json.dumps(summary))
         planned_artifact_entry = tampered_planned_artifact_filename["commands"][index]
         wrong_artifact_filename = str(

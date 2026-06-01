@@ -1458,8 +1458,8 @@ roll-up/status view.
       `batch_size`, per-category missing/unknown/non-planned dry-run status,
       per-category missing/malformed/non-null returncode, per-category missing/malformed/non-finite/nonzero duration,
       per-category output-tail/all condition-field variants,
-      per-category unknown command schema keys and missing/malformed/stale `git_dirty`, duplicate
-      `--rows`/`--seed`/`--json` labels, blank inline/missing `--json`,
+      per-category unknown command schema keys and missing/malformed/stale `git_dirty`, per-category duplicate
+      `--json` labels, duplicate `--rows`/`--seed` labels, blank inline/missing `--json`,
       blank inline/missing/non-integer `--rows`/`--seed` values,
       parent-directory/symlinked/symlink-parent `output_dir`, missing/blank/non-string
       `artifact_path`, direct-symlink, symlink-parent, parent-directory, or
