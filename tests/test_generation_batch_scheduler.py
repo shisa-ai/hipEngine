@@ -7258,6 +7258,16 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     tampered_naive_timestamp["timestamp"] = "2026-06-01T00:00:00"
     with pytest.raises(ValueError, match="timestamp must include timezone"):
         c_sweep.validate_sweep_summary(tampered_naive_timestamp)
+    assert set(summary["git"]) == {"commit", "dirty", "status_short"}
+    assert isinstance(summary["git"]["dirty"], bool)
+    tampered_git_commit = json.loads(json.dumps(summary))
+    tampered_git_commit["git"]["commit"] = "   "
+    with pytest.raises(ValueError, match="git.commit must be a non-empty string"):
+        c_sweep.validate_sweep_summary(tampered_git_commit)
+    tampered_git_dirty_status = json.loads(json.dumps(summary))
+    tampered_git_dirty_status["git"]["status_short"] = [] if summary["git"]["dirty"] else ["?? uv.lock"]
+    with pytest.raises(ValueError, match=r"git\.dirty must match bool\(git\.status_short\)"):
+        c_sweep.validate_sweep_summary(tampered_git_dirty_status)
     assert summary["options"]["include_int8"] is True
     assert summary["options"]["include_gguf"] is True
     for option in ("include_int8", "include_gguf"):
