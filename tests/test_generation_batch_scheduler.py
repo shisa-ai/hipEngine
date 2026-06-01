@@ -7244,6 +7244,17 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     assert [(item.category, item.batch_size) for item in planned] == expected_plan
     assert [(entry["category"], entry["batch_size"]) for entry in summary["commands"]] == expected_plan
     assert len(summary["commands"]) == 27
+    baseline_native_c1_index = next(
+        index
+        for index, entry in enumerate(summary["commands"])
+        if entry["category"] == "native_diagnostic" and entry["batch_size"] == 1
+    )
+    tampered_baseline_batch_arg = json.loads(json.dumps(summary))
+    baseline_batch_arg_entry = tampered_baseline_batch_arg["commands"][baseline_native_c1_index]
+    baseline_batch_arg_entry["argv"].extend(["--batch-size", "1"])
+    baseline_batch_arg_entry["command"] = shlex.join(baseline_batch_arg_entry["argv"])
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv c=1 native baseline must not include --batch-size or --rows"):
+        c_sweep.validate_sweep_summary(tampered_baseline_batch_arg)
     tampered_commands_type = json.loads(json.dumps(summary))
     tampered_commands_type["commands"] = "not-a-list"
     with pytest.raises(ValueError, match="commands must be a list"):
