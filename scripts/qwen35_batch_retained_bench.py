@@ -3730,6 +3730,9 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_KV_APPEND"] = (
         "1" if getattr(args, "batch_decode_full_attn_kv_append_path", "batch") == "per_row" else "0"
     )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_APPEND_CONTEXT"] = (
+        "1" if getattr(args, "batch_decode_attn_append_context_order", "phased") == "interleaved" else "0"
+    )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_OUTPUT"] = (
         "1" if getattr(args, "batch_decode_full_attn_output_path", "batch") == "per_row" else "0"
     )
@@ -4177,6 +4180,7 @@ def _build_payload(
             "batch_decode_attention_qkv_path": str(getattr(args, "batch_decode_attn_qkv_path", "batch")),
             "batch_decode_attention_context_path": str(getattr(args, "batch_decode_attn_context_path", "batch")),
             "batch_decode_full_attention_kv_append_path": str(getattr(args, "batch_decode_full_attn_kv_append_path", "batch")),
+            "batch_decode_attention_append_context_order": str(getattr(args, "batch_decode_attn_append_context_order", "phased")),
             "batch_decode_full_attention_output_path": str(getattr(args, "batch_decode_full_attn_output_path", "batch")),
             "batch_decode_full_attention_moe_path": str(getattr(args, "batch_decode_full_attn_moe_path", "grouped_compact")),
             "batch_decode_post_attention_path": str(getattr(args, "batch_decode_post_attn_path", "batch")),
@@ -4330,6 +4334,12 @@ def main(argv: list[str] | None = None) -> int:
         choices=("batch", "per_row"),
         default="batch",
         help="Diagnostic full-attention KV append path for c>N batch decode; per_row writes each token-1 K/V row separately and blocks retained claims.",
+    )
+    parser.add_argument(
+        "--batch-decode-attn-append-context-order",
+        choices=("phased", "interleaved"),
+        default="phased",
+        help="Diagnostic full-attention per-row KV append/context ordering; interleaved requires per-row KV append and context diagnostics.",
     )
     parser.add_argument(
         "--batch-decode-full-attn-output-path",

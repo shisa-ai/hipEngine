@@ -63612,3 +63612,25 @@ GPU1 / RX 7900 XTX evidence:
 Conclusion: batch-scratch QKV/rotary/head-norm prep is not the sole native full-attention batch blocker. The clean/default retained verifier remains `/tmp/hipengine-e2e-native-c2-512-128.json`: `min_equal_prefix_tokens=82`, `prefix_lengths=[82, 137]`, `status=rejected_correctness`, no performance claim. With input RMSNorm, QKV prep, KV append, context/gate, O projection, post-attention, and MoE row diagnostics all ruled out individually inside native batch, the remaining gap is likely full-layer phase ordering or a batch-scratch side effect that only the complete c1 row-layer replay avoids.
 
 Guard passed with the required pytest bundle (`400 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY retained full-attention append/context ordering diagnostic
+
+Added a focused full-attention decode phase-order diagnostic:
+
+- Runtime env: `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_APPEND_CONTEXT=1`.
+- Retained/hidden scripts: `--batch-decode-attn-append-context-order {phased,interleaved}`.
+- Runtime path: when per-row KV append and per-row context diagnostics are both active, the interleaved mode runs `append(row) -> context(row)` before moving to the next row, while leaving the later O/post/MoE diagnostics in batch-stage order.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Native full-attention batch path with all exposed substages forced to row replay plus interleaved append/context ordering:
+  `/tmp/hipengine-e2e-native-c2-512-128-retained-selected-linear-full-subrows-interleaved.json`
+  - `batch_decode_full_attention_path=native_batch`, `attention_input=qkv=context=output=per_row`, `full_attention_kv_append=per_row`, `attention_append_context_order=interleaved`, `full_attention_moe=per_row_c1`, `post_attention=per_row`.
+  - Still fails generated-token equality with `prefix_lengths=[82, 104]`, `min_equal_prefix_tokens=82`, `first_mismatch_indices=[82, 104]`.
+- Complete full-attention row replay with the new ordering metadata:
+  `/tmp/hipengine-e2e-native-c2-512-128-retained-selected-linear-fullpath-rowdiag-interleaved.json`
+  - Generated-token equality remains green: `prefix_lengths=[137, 137]`, `min_equal_prefix_tokens=137`, `first_mismatch_indices=[null, null]`, `generated_token_equality.passed=true`.
+
+Conclusion: row1-current-token KV visibility before row0 context is not the native batch blocker. The clean/default retained verifier remains `/tmp/hipengine-e2e-native-c2-512-128.json`: `min_equal_prefix_tokens=82`, `prefix_lengths=[82, 137]`, `status=rejected_correctness`, no performance claim. Since interleaving append/context still fails but complete row-layer replay passes, the remaining gap is after attention context or in later full-layer stage ordering/scratch lifetime not covered by append/context interleaving alone.
+
+Guard passed with the required pytest bundle (`400 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.

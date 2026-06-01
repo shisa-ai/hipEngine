@@ -1805,6 +1805,7 @@ def test_qwen35_resident_run_layers_batch_decode_combined_full_attention_boundar
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT", "1")
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_QKV", "1")
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_KV_APPEND", "1")
+    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_APPEND_CONTEXT", "1")
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN", "1")
     device = Device("hip", 0)
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
@@ -1869,6 +1870,7 @@ def test_qwen35_resident_run_layers_batch_decode_combined_full_attention_boundar
     assert state.calls[0][1]["force_per_row_input_rmsnorm"] is True
     assert state.calls[0][1]["force_per_row_qkv_scratch"] is True
     assert state.calls[0][1]["force_per_row_kv_append"] is True
+    assert state.calls[0][1]["force_per_row_append_context"] is True
     per_row_append_contexts = state.calls[0][1]["per_row_append_contexts"]
     assert len(per_row_append_contexts) == 2
     assert [int(context[0].ptr) for context in per_row_append_contexts] == [0x5100, 0x5300]
@@ -1886,6 +1888,7 @@ def test_qwen35_resident_run_layers_batch_decode_combined_full_attention_boundar
         "full-attention input RMSNorm forced to per-row diagnostic path",
         "full-attention QKV prep forced to per-row scratch diagnostic path",
         "full-attention KV append forced to per-row diagnostic path",
+        "full-attention append+context forced to interleaved per-row diagnostic order",
         "post-attention add/rmsnorm forced to per-row diagnostic path",
     ]
     layer_execution = session.last_batch_decode_execution["layer_executions"][0]
@@ -1893,6 +1896,7 @@ def test_qwen35_resident_run_layers_batch_decode_combined_full_attention_boundar
     assert layer_execution["full_attention_input_decode_path"] == "per_row_rmsnorm_fallback"
     assert layer_execution["full_attention_qkv_decode_path"] == "per_row_qkv_scratch_fallback"
     assert layer_execution["full_attention_kv_append_decode_path"] == "per_row_kv_append_fallback"
+    assert layer_execution["full_attention_append_context_decode_path"] == "per_row_append_context_interleaved"
     assert layer_execution["post_attention_decode_path"] == "per_row_add_rmsnorm_fallback"
     metadata = session.batch_execution_metadata(scheduler_owned=True, native_decode=True)
     assert not metadata.native_caware_decode
@@ -1900,6 +1904,7 @@ def test_qwen35_resident_run_layers_batch_decode_combined_full_attention_boundar
     assert "full-attention input RMSNorm forced to per-row diagnostic path" in metadata.blockers
     assert "full-attention QKV prep forced to per-row scratch diagnostic path" in metadata.blockers
     assert "full-attention KV append forced to per-row diagnostic path" in metadata.blockers
+    assert "full-attention append+context forced to interleaved per-row diagnostic order" in metadata.blockers
     assert "post-attention add/rmsnorm forced to per-row diagnostic path" in metadata.blockers
 
 

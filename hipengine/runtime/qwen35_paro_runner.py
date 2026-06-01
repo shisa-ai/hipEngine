@@ -4036,6 +4036,9 @@ class Qwen35ParoResidentSession:
         force_per_row_full_attention_kv_append = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_KV_APPEND"
         )
+        force_per_row_full_attention_append_context = rows > 1 and _env_flag(
+            "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_APPEND_CONTEXT"
+        )
         force_per_row_full_attention_output = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_OUTPUT"
         )
@@ -4059,6 +4062,9 @@ class Qwen35ParoResidentSession:
         )
         full_attention_kv_append_decode_path = (
             "per_row_kv_append_fallback" if force_per_row_full_attention_kv_append else "native_batch"
+        )
+        full_attention_append_context_decode_path = (
+            "per_row_append_context_interleaved" if force_per_row_full_attention_append_context else "phased"
         )
         full_attention_output_decode_path = (
             "per_row_o_projection_fallback"
@@ -4347,6 +4353,7 @@ class Qwen35ParoResidentSession:
                             per_row_contexts=per_row_contexts,
                             force_per_row_kv_append=force_per_row_full_attention_kv_append,
                             per_row_append_contexts=per_row_append_contexts,
+                            force_per_row_append_context=force_per_row_full_attention_append_context,
                             force_per_row_output=force_per_row_full_attention_output,
                             force_batch_gemv_output=force_batch_gemv_full_attention_output,
                             force_per_row_post_attention=force_per_row_post_attention,
@@ -4403,6 +4410,7 @@ class Qwen35ParoResidentSession:
                                 or force_batch_gemv_full_attention_output
                                 or force_per_row_full_attention_context
                                 or force_per_row_full_attention_kv_append
+                                or force_per_row_full_attention_append_context
                                 or force_per_row_post_attention
                             ),
                             "moe_decode_path": layer_moe_path,
@@ -4417,6 +4425,8 @@ class Qwen35ParoResidentSession:
                             layer_execution["full_attention_context_decode_path"] = full_attention_context_decode_path
                         if force_per_row_full_attention_kv_append:
                             layer_execution["full_attention_kv_append_decode_path"] = full_attention_kv_append_decode_path
+                        if force_per_row_full_attention_append_context:
+                            layer_execution["full_attention_append_context_decode_path"] = full_attention_append_context_decode_path
                         if force_per_row_full_attention_output or force_batch_gemv_full_attention_output:
                             layer_execution["full_attention_output_decode_path"] = full_attention_output_decode_path
                         if force_per_row_post_attention:
@@ -4543,6 +4553,8 @@ class Qwen35ParoResidentSession:
                 decode_blockers.append("full-attention context/gate forced to per-row diagnostic path")
             if force_per_row_full_attention_kv_append:
                 decode_blockers.append("full-attention KV append forced to per-row diagnostic path")
+            if force_per_row_full_attention_append_context:
+                decode_blockers.append("full-attention append+context forced to interleaved per-row diagnostic order")
             if force_per_row_full_attention_output:
                 decode_blockers.append("full-attention O projection forced to per-row diagnostic path")
             if force_batch_gemv_full_attention_output:
@@ -4583,6 +4595,7 @@ class Qwen35ParoResidentSession:
                 and not force_per_row_full_attention_qkv
                 and not force_per_row_full_attention_context
                 and not force_per_row_full_attention_kv_append
+                and not force_per_row_full_attention_append_context
                 and not force_per_row_full_attention_output
                 and not force_batch_gemv_full_attention_output
                 and not force_per_row_full_attention_moe
