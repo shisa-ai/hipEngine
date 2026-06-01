@@ -7269,6 +7269,14 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     with pytest.raises(ValueError, match="summary must contain exactly the c-sweep schema keys"):
         c_sweep.validate_sweep_summary(tampered_summary_extra_key)
     assert summary["status"] == "planned"
+    tampered_summary_status_type = json.loads(json.dumps(summary))
+    tampered_summary_status_type["status"] = 0
+    with pytest.raises(ValueError, match="status must be a non-empty string"):
+        c_sweep.validate_sweep_summary(tampered_summary_status_type)
+    tampered_summary_status_blank = json.loads(json.dumps(summary))
+    tampered_summary_status_blank["status"] = ""
+    with pytest.raises(ValueError, match="status must be a non-empty string"):
+        c_sweep.validate_sweep_summary(tampered_summary_status_blank)
     tampered_summary_status = json.loads(json.dumps(summary))
     tampered_summary_status["status"] = "passed"
     with pytest.raises(ValueError, match="status must match commands"):

@@ -1911,6 +1911,11 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
         else:
             if parsed_timestamp.tzinfo is None or parsed_timestamp.utcoffset() is None:
                 errors.append("timestamp must include timezone")
+    status = summary.get("status")
+    if not isinstance(status, str) or not status.strip():
+        errors.append("status must be a non-empty string")
+    elif status not in {"planned", "passed", "blocked", "failed"}:
+        errors.append("status must be planned, passed, blocked, or failed")
     if not isinstance(summary.get("dry_run"), bool):
         errors.append("dry_run must be a bool")
     batch_sizes = summary.get("batch_sizes")
