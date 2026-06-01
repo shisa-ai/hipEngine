@@ -6519,6 +6519,21 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON total_kernel_duration_ns must match when profiler passed"):
         c_sweep.validate_sweep_summary(persisted)
     profiler_source_payload = json.loads(profiler_artifact_payload)
+    profiler_source_payload["profiler"]["cpu_side_total_seconds"] = 11.0
+    profiler_artifact_path.write_text(json.dumps(profiler_source_payload))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON cpu_side_total_seconds must match when profiler passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    profiler_source_payload = json.loads(profiler_artifact_payload)
+    profiler_source_payload["profiler"]["cpu_side_bottlenecks_seconds"]["decode"] = 8.0
+    profiler_artifact_path.write_text(json.dumps(profiler_source_payload))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON cpu_side_bottlenecks_seconds must match when profiler passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    profiler_source_payload = json.loads(profiler_artifact_payload)
+    profiler_source_payload["profiler"]["cpu_side_bottleneck_shares"]["decode"] = 0.8
+    profiler_artifact_path.write_text(json.dumps(profiler_source_payload))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON cpu_side_bottleneck_shares must match when profiler passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    profiler_source_payload = json.loads(profiler_artifact_payload)
     profiler_source_payload["profiler"]["command"] = "rocprofv3 --kernel-trace --output-format csv -d /tmp/other -- python3 scripts/qwen35_batch_retained_bench.py"
     profiler_artifact_path.write_text(json.dumps(profiler_source_payload))
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON command must match when profiler passed"):

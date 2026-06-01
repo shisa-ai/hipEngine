@@ -3676,6 +3676,15 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if profiler_source_object.get("kernel_duration_category_shares") != profiler_precondition.get("kernel_duration_category_shares"):
                         errors.append("commands[].preconditions[].profiler_source_artifact_path JSON kernel_duration_category_shares must match when profiler passed")
                         break
+                    if profiler_source_object.get("cpu_side_total_seconds") != profiler_precondition.get("cpu_side_total_seconds"):
+                        errors.append("commands[].preconditions[].profiler_source_artifact_path JSON cpu_side_total_seconds must match when profiler passed")
+                        break
+                    if profiler_source_object.get("cpu_side_bottlenecks_seconds") != profiler_precondition.get("cpu_side_bottlenecks_seconds"):
+                        errors.append("commands[].preconditions[].profiler_source_artifact_path JSON cpu_side_bottlenecks_seconds must match when profiler passed")
+                        break
+                    if profiler_source_object.get("cpu_side_bottleneck_shares") != profiler_precondition.get("cpu_side_bottleneck_shares"):
+                        errors.append("commands[].preconditions[].profiler_source_artifact_path JSON cpu_side_bottleneck_shares must match when profiler passed")
+                        break
                     if profiler_source_command != profiler_precondition.get("profiler_command"):
                         errors.append("commands[].preconditions[].profiler_source_artifact_path JSON command must match when profiler passed")
                         break
