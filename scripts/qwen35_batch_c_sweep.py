@@ -3156,6 +3156,12 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if _path_has_parent_directory_component(profiler_source_artifact_path):
                         errors.append("commands[].preconditions[].profiler_source_artifact_path must not contain parent-directory components when profiler passed")
                         break
+                    profiler_source_check_path = Path(profiler_source_artifact_path)
+                    if not profiler_source_check_path.is_absolute():
+                        profiler_source_check_path = REPO_ROOT / profiler_source_check_path
+                    if profiler_source_check_path.is_symlink():
+                        errors.append("commands[].preconditions[].profiler_source_artifact_path must not be a symlink when profiler passed")
+                        break
                     if profiler_source_artifact_path != profiler_precondition.get("artifact_path"):
                         errors.append("commands[].preconditions[].profiler_source_artifact_path must match profiler artifact_path when profiler passed")
                         break
