@@ -8569,6 +8569,21 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must not contain parent-directory components"):
             c_sweep.validate_sweep_summary(tampered_optional_artifact_parent_component)
 
+        optional_artifact_symlink_base = Path(summary["commands"][index]["artifact_path"])
+        optional_artifact_symlink_target = optional_artifact_symlink_base.with_name(
+            f"{optional_artifact_symlink_base.stem}-optional-symlink-target-{index}.json"
+        )
+        try:
+            optional_artifact_symlink_target.write_text("{}")
+            optional_artifact_symlink_base.symlink_to(optional_artifact_symlink_target)
+            with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must be a regular file, not a symlink"):
+                c_sweep.validate_sweep_summary(summary)
+        finally:
+            if optional_artifact_symlink_base.is_symlink():
+                optional_artifact_symlink_base.unlink()
+            if optional_artifact_symlink_target.exists():
+                optional_artifact_symlink_target.unlink()
+
         tampered_optional_blank_category = json.loads(json.dumps(summary))
         tampered_optional_blank_category["commands"][index]["category"] = "   "
         with pytest.raises(ValueError, match=r"commands\[\]\.category must be a non-empty string"):
