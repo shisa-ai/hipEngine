@@ -8796,50 +8796,55 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.argv device env prefix must match the first command"):
             c_sweep.validate_sweep_summary(tampered_gguf_env)
 
-    gguf_c8_indices = [index for index in gguf_entry_indices if summary["commands"][index]["batch_size"] == 8]
-    assert [
-        summary["commands"][index]["argv"][summary["commands"][index]["argv"].index("--quant") + 1]
-        for index in gguf_c8_indices
-    ] == [
+    expected_gguf_quants = [
         "gguf_q4_k_m",
         "gguf_q5_k_m",
         "gguf_q6_k",
         "gguf_q8_0",
     ]
-    tampered_duplicate_gguf_quant = json.loads(json.dumps(summary))
-    duplicate_gguf_index = gguf_c8_indices[1]
-    duplicate_gguf_entry = tampered_duplicate_gguf_quant["commands"][duplicate_gguf_index]
-    duplicate_gguf_argv = duplicate_gguf_entry["argv"]
-    duplicate_gguf_path = str(
-        Path(duplicate_gguf_entry["artifact_path"]).with_name("gguf-native-diagnostic-c8-gguf_q4_k_m.json")
-    )
-    duplicate_gguf_argv[duplicate_gguf_argv.index("--quant") + 1] = "gguf_q4_k_m"
-    duplicate_gguf_argv[duplicate_gguf_argv.index("--json") + 1] = duplicate_gguf_path
-    duplicate_gguf_entry["artifact_path"] = duplicate_gguf_path
-    duplicate_gguf_entry["command"] = shlex.join(duplicate_gguf_argv)
-    with pytest.raises(ValueError, match=r"commands\[\] GGUF quant order must match the template quant set for each c>1"):
-        c_sweep.validate_sweep_summary(tampered_duplicate_gguf_quant)
+    for batch_size in (2, 4, 8):
+        gguf_c_indices = [index for index in gguf_entry_indices if summary["commands"][index]["batch_size"] == batch_size]
+        assert [
+            summary["commands"][index]["argv"][summary["commands"][index]["argv"].index("--quant") + 1]
+            for index in gguf_c_indices
+        ] == expected_gguf_quants
 
-    tampered_swapped_gguf_quant = json.loads(json.dumps(summary))
-    first_gguf_index, second_gguf_index = gguf_c8_indices[:2]
-    first_gguf_entry = tampered_swapped_gguf_quant["commands"][first_gguf_index]
-    second_gguf_entry = tampered_swapped_gguf_quant["commands"][second_gguf_index]
-    first_gguf_argv = first_gguf_entry["argv"]
-    second_gguf_argv = second_gguf_entry["argv"]
-    first_gguf_quant = first_gguf_argv[first_gguf_argv.index("--quant") + 1]
-    second_gguf_quant = second_gguf_argv[second_gguf_argv.index("--quant") + 1]
-    first_gguf_artifact = first_gguf_entry["artifact_path"]
-    second_gguf_artifact = second_gguf_entry["artifact_path"]
-    first_gguf_argv[first_gguf_argv.index("--quant") + 1] = second_gguf_quant
-    first_gguf_argv[first_gguf_argv.index("--json") + 1] = second_gguf_artifact
-    first_gguf_entry["artifact_path"] = second_gguf_artifact
-    first_gguf_entry["command"] = shlex.join(first_gguf_argv)
-    second_gguf_argv[second_gguf_argv.index("--quant") + 1] = first_gguf_quant
-    second_gguf_argv[second_gguf_argv.index("--json") + 1] = first_gguf_artifact
-    second_gguf_entry["artifact_path"] = first_gguf_artifact
-    second_gguf_entry["command"] = shlex.join(second_gguf_argv)
-    with pytest.raises(ValueError, match=r"commands\[\] GGUF quant order must match the template quant set for each c>1"):
-        c_sweep.validate_sweep_summary(tampered_swapped_gguf_quant)
+        tampered_duplicate_gguf_quant = json.loads(json.dumps(summary))
+        duplicate_gguf_index = gguf_c_indices[1]
+        duplicate_gguf_entry = tampered_duplicate_gguf_quant["commands"][duplicate_gguf_index]
+        duplicate_gguf_argv = duplicate_gguf_entry["argv"]
+        duplicate_gguf_path = str(
+            Path(duplicate_gguf_entry["artifact_path"]).with_name(
+                f"gguf-native-diagnostic-c{batch_size}-gguf_q4_k_m.json"
+            )
+        )
+        duplicate_gguf_argv[duplicate_gguf_argv.index("--quant") + 1] = "gguf_q4_k_m"
+        duplicate_gguf_argv[duplicate_gguf_argv.index("--json") + 1] = duplicate_gguf_path
+        duplicate_gguf_entry["artifact_path"] = duplicate_gguf_path
+        duplicate_gguf_entry["command"] = shlex.join(duplicate_gguf_argv)
+        with pytest.raises(ValueError, match=r"commands\[\] GGUF quant order must match the template quant set for each c>1"):
+            c_sweep.validate_sweep_summary(tampered_duplicate_gguf_quant)
+
+        tampered_swapped_gguf_quant = json.loads(json.dumps(summary))
+        first_gguf_index, second_gguf_index = gguf_c_indices[:2]
+        first_gguf_entry = tampered_swapped_gguf_quant["commands"][first_gguf_index]
+        second_gguf_entry = tampered_swapped_gguf_quant["commands"][second_gguf_index]
+        first_gguf_argv = first_gguf_entry["argv"]
+        second_gguf_argv = second_gguf_entry["argv"]
+        first_gguf_quant = first_gguf_argv[first_gguf_argv.index("--quant") + 1]
+        second_gguf_quant = second_gguf_argv[second_gguf_argv.index("--quant") + 1]
+        first_gguf_artifact = first_gguf_entry["artifact_path"]
+        second_gguf_artifact = second_gguf_entry["artifact_path"]
+        first_gguf_argv[first_gguf_argv.index("--quant") + 1] = second_gguf_quant
+        first_gguf_argv[first_gguf_argv.index("--json") + 1] = second_gguf_artifact
+        first_gguf_entry["artifact_path"] = second_gguf_artifact
+        first_gguf_entry["command"] = shlex.join(first_gguf_argv)
+        second_gguf_argv[second_gguf_argv.index("--quant") + 1] = first_gguf_quant
+        second_gguf_argv[second_gguf_argv.index("--json") + 1] = first_gguf_artifact
+        second_gguf_entry["artifact_path"] = first_gguf_artifact
+        second_gguf_entry["command"] = shlex.join(second_gguf_argv)
+        with pytest.raises(ValueError, match=r"commands\[\] GGUF quant order must match the template quant set for each c>1"):
+            c_sweep.validate_sweep_summary(tampered_swapped_gguf_quant)
 
     int8_index = int8_entry_indices[0]
     first_gguf_index = next(
