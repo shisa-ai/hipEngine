@@ -3305,6 +3305,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if profiler_source_object.get("artifact_path") != profiler_source_artifact_path:
                         errors.append("commands[].preconditions[].profiler_source_artifact_path JSON artifact_path must match when profiler passed")
                         break
+                    profiler_source_command = _profiler_command_label(
+                        profiler_source_object,
+                        profiler_source_payload if isinstance(profiler_source_payload, dict) else None,
+                    )
                     if any(
                         _command_text_arg(profiler_command, flag) != _argv_value(argv, flag)
                         for flag in _RETAINED_GATE_FLAGS[:3]
@@ -3631,6 +3635,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         break
                     if abs(cpu_share_sum - 1.0) > 1e-6:
                         errors.append("commands[].preconditions[].cpu_side_bottleneck_shares must sum to 1.0 when profiler passed")
+                        break
+                    if profiler_source_command != profiler_precondition.get("profiler_command"):
+                        errors.append("commands[].preconditions[].profiler_source_artifact_path JSON command must match when profiler passed")
                         break
                     if set(profiler_precondition) != expected_passed_profiler_precondition_keys:
                         errors.append("commands[].preconditions[] passed profiler_summary must contain exactly profiler precondition keys")
