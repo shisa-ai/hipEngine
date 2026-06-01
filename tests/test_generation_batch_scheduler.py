@@ -7383,6 +7383,17 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.duration_seconds must be zero for planned rows"):
             c_sweep.validate_sweep_summary(tampered_planned_nonzero_duration)
 
+        tampered_planned_output_tail = json.loads(json.dumps(summary))
+        tampered_planned_output_tail["commands"][index]["output_tail"] = "planned rows must not carry output tails"
+        with pytest.raises(ValueError, match=r"commands\[\]\.output_tail must be absent for planned rows"):
+            c_sweep.validate_sweep_summary(tampered_planned_output_tail)
+
+        for condition_field in ("preconditions", "precondition", "postconditions", "postcondition"):
+            tampered_planned_conditions = json.loads(json.dumps(summary))
+            tampered_planned_conditions["commands"][index][condition_field] = [] if condition_field.endswith("s") else {}
+            with pytest.raises(ValueError, match=r"commands\[\]\.conditions must be absent for planned rows"):
+                c_sweep.validate_sweep_summary(tampered_planned_conditions)
+
         tampered_planned_json_path = json.loads(json.dumps(summary))
         planned_json_entry = tampered_planned_json_path["commands"][index]
         planned_json_argv = planned_json_entry["argv"]
