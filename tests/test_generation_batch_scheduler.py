@@ -8563,6 +8563,22 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     int8_entry_indices = [
         index for index, entry in enumerate(summary["commands"]) if entry["category"] == "int8_native_diagnostic"
     ]
+    for index in int8_entry_indices:
+        for flag, stem in (
+            ("--future-json", "int8-native-retained-future"),
+            ("--primitive-cpu-json", "int8-primitive-cpu"),
+            ("--primitive-hip-json", "int8-primitive-hip"),
+        ):
+            tampered_int8_aux_c = json.loads(json.dumps(summary))
+            entry = tampered_int8_aux_c["commands"][index]
+            wrong_c = 2 if entry["batch_size"] != 2 else 8
+            argv = entry["argv"]
+            argv[argv.index(flag) + 1] = str(tmp_path / "artifacts" / f"{stem}-c{wrong_c}.json")
+            entry["command"] = shlex.join(argv)
+            with pytest.raises(
+                ValueError, match=rf"commands\[\]\.argv INT8 {flag} must match the c-specific output_dir artifact path"
+            ):
+                c_sweep.validate_sweep_summary(tampered_int8_aux_c)
     for missing_optional_index, missing_optional_category in (
         (int8_entry_indices[-1], "int8_native_diagnostic"),
         (gguf_entry_indices[-1], "gguf_native_diagnostic"),
