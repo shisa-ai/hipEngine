@@ -3570,7 +3570,11 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             ) and set(entry) != expected_simple_executed_command_keys:
                 errors.append("commands[] simple executed rows must contain exactly executed command keys")
                 break
-            if git_dirty is not None and entry.get("git_dirty") is not git_dirty:
+            entry_git_dirty = entry.get("git_dirty")
+            if not isinstance(entry_git_dirty, bool):
+                errors.append("commands[].git_dirty must be a bool")
+                break
+            if git_dirty is not None and entry_git_dirty is not git_dirty:
                 errors.append("commands[].git_dirty must match git.dirty")
                 break
     completed_command_count = summary.get("completed_command_count")
