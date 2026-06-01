@@ -7653,6 +7653,10 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     tampered_skipped_preconditions_list["skipped_preconditions"] = {}
     with pytest.raises(ValueError, match="skipped_preconditions must be a list"):
         c_sweep.validate_sweep_summary(tampered_skipped_preconditions_list)
+    tampered_skipped_precondition_schema = json.loads(json.dumps(summary))
+    tampered_skipped_precondition_schema["skipped_preconditions"] = [{"category": "native_diagnostic"}]
+    with pytest.raises(ValueError, match=r"skipped_preconditions\[\] must contain exactly skipped precondition rollup keys"):
+        c_sweep.validate_sweep_summary(tampered_skipped_precondition_schema)
     tampered_skipped_preconditions = json.loads(json.dumps(summary))
     tampered_skipped_preconditions["skipped_preconditions"] = [
         {
@@ -7671,6 +7675,10 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     tampered_failed_postconditions_list["failed_postconditions"] = {}
     with pytest.raises(ValueError, match="failed_postconditions must be a list"):
         c_sweep.validate_sweep_summary(tampered_failed_postconditions_list)
+    tampered_failed_postcondition_schema = json.loads(json.dumps(summary))
+    tampered_failed_postcondition_schema["failed_postconditions"] = [{"category": "native_diagnostic"}]
+    with pytest.raises(ValueError, match=r"failed_postconditions\[\] must contain exactly failed postcondition rollup keys"):
+        c_sweep.validate_sweep_summary(tampered_failed_postcondition_schema)
     tampered_failed_postconditions = json.loads(json.dumps(summary))
     tampered_failed_postconditions["failed_postconditions"] = [
         {
