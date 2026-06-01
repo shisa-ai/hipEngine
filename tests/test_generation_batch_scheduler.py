@@ -21193,6 +21193,10 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     numeric_summary_changelog["benchmark_rollup"]["changelog_path"] = 1
     with pytest.raises(ValueError, match="summary.benchmark_rollup.changelog_path must be a non-empty string"):
         validate_cn_diagnostic_validation_summary(numeric_summary_changelog)
+    trailing_space_summary_changelog = json.loads(json.dumps(summary))
+    trailing_space_summary_changelog["benchmark_rollup"]["changelog_path"] = "benchmarks/CHANGELOG.md "
+    with pytest.raises(ValueError, match="summary.benchmark_rollup.changelog_path must not contain leading or trailing whitespace"):
+        validate_cn_diagnostic_validation_summary(trailing_space_summary_changelog)
     wrong_summary_readme = json.loads(json.dumps(summary))
     wrong_summary_readme["benchmark_rollup"]["readme_path"] = "README.md"
     with pytest.raises(ValueError, match="summary.benchmark_rollup.readme_path must be benchmarks/README.md"):
