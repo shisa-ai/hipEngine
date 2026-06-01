@@ -7308,6 +7308,10 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     with pytest.raises(ValueError, match="timestamp must include timezone"):
         c_sweep.validate_sweep_summary(tampered_naive_timestamp)
     assert set(summary["git"]) == {"commit", "dirty", "status_short"}
+    tampered_git_object = json.loads(json.dumps(summary))
+    tampered_git_object["git"] = []
+    with pytest.raises(ValueError, match="git must be an object"):
+        c_sweep.validate_sweep_summary(tampered_git_object)
     tampered_git_extra_key = json.loads(json.dumps(summary))
     tampered_git_extra_key["git"]["unexpected"] = "field"
     with pytest.raises(ValueError, match="git must contain exactly the c-sweep provenance keys"):
