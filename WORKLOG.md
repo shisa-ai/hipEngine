@@ -30497,3 +30497,36 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`67 passed`), the new mirror drift regression keeps source provenance and `next_action_commands_sha256` valid while forcing `status_integrity.checks.kv_streaming_runner_blocker_mirrors=false`, source/status verification returned `match` for the refreshed artifact, and the full StepFun guard passed (`171` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was a pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes status-helper metadata/tests/docs/status artifact only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.
+
+## 2026-06-01 — StepFun status integrity failure routing
+
+Added `status_integrity.failed_checks` plus compact `--status-integrity-failures-only` output to the StepFun correctness status helper. The full status-integrity payload now carries the failing embedded digest/schema check names, and the compact output lets handoff consumers route stale status JSON without scanning the boolean check map. Refreshed `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`; readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`). No StepFun KV write/attention kernels are launched and no performance/e2e claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_correctness_status.py --status-integrity-failures-only --fail-on-blocked --pretty > /tmp/stepfun-status-integrity-failures.json; rc=$?; test "$rc" -eq 2
+python3 scripts/stepfun_correctness_status.py --status-integrity-only --fail-on-blocked --pretty > /tmp/stepfun-status-integrity-failures-full.json; rc=$?; test "$rc" -eq 2
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty > /tmp/stepfun-source-verify-status-integrity-failures.json
+python3 - <<'PY'
+import json
+failures=json.load(open('/tmp/stepfun-status-integrity-failures.json'))
+integrity=json.load(open('/tmp/stepfun-status-integrity-failures-full.json'))
+verify=json.load(open('/tmp/stepfun-source-verify-status-integrity-failures.json'))
+assert failures == []
+assert integrity['all_match'] is True
+assert integrity['failed_checks'] == []
+assert all(integrity['checks'].values())
+assert verify['status'] == 'match'
+assert verify['all_match'] is True
+assert verify['status_integrity']['failed_checks'] == []
+assert all(verify['status_integrity']['checks'].values())
+print('status integrity failures compact output ok')
+PY
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`69 passed`), compact status-integrity failure output returned expected blocked exit code 2 with an empty failure list for the current artifact, source/status verification returned `match` with empty `failed_checks`, and the full StepFun guard passed (`173` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was a pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes status-helper metadata/tests/docs/status artifact only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.

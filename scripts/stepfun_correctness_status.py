@@ -122,6 +122,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--status-integrity-failures-only",
+        action="store_true",
+        help=(
+            "Emit only status_integrity.failed_checks for compact integrity failure routing. "
+            "Overrides summary and queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--source-artifacts-sha-only",
         action="store_true",
         help=(
@@ -435,7 +443,8 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             else None,
         },
     }
-    return {"all_match": all(checks.values()), "checks": checks}
+    failed_checks = [name for name, passed in checks.items() if not passed]
+    return {"all_match": not failed_checks, "failed_checks": failed_checks, "checks": checks}
 
 
 def _verify_source_artifacts(status_artifact: Path) -> dict[str, object]:
@@ -1466,6 +1475,7 @@ def _handoff_summary(
             "handoff_summary_sha_only": "handoff_summary_sha256",
             "schema_versions_only": "schema_versions",
             "status_integrity_only": "status_integrity",
+            "status_integrity_failures_only": "status_integrity.failed_checks",
             "readiness_summary_only": "readiness_summary",
             "readiness_summary_sha_only": "readiness_summary_sha256",
             "readiness_gates_only": "readiness_gates",
@@ -1921,6 +1931,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["next_action_commands"]["kv_backed_decode_not_wired"].get(
             "resource_plan_refresh_command"
         )
+    elif args.status_integrity_failures_only:
+        result = _status_integrity(status)["failed_checks"]
     elif args.status_integrity_only:
         result = _status_integrity(status)
     elif args.schema_versions_only:

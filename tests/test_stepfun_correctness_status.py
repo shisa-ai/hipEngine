@@ -1056,6 +1056,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "handoff_summary_sha_only": "handoff_summary_sha256",
         "schema_versions_only": "schema_versions",
         "status_integrity_only": "status_integrity",
+        "status_integrity_failures_only": "status_integrity.failed_checks",
         "readiness_summary_only": "readiness_summary",
         "readiness_summary_sha_only": "readiness_summary_sha256",
         "readiness_gates_only": "readiness_gates",
@@ -2153,6 +2154,7 @@ def test_stepfun_correctness_status_status_integrity_only(capsys, tmp_path: Path
     assert payload == _status_integrity(status)
     assert payload == {
         "all_match": True,
+        "failed_checks": [],
         "checks": {
             "source_artifacts_sha256": True,
             "handoff_summary_sha256": True,
@@ -2166,6 +2168,49 @@ def test_stepfun_correctness_status_status_integrity_only(capsys, tmp_path: Path
             "schema_versions": True,
         },
     }
+
+
+def test_stepfun_correctness_status_status_integrity_failures_only(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "status-integrity-failures.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--status-integrity-only",
+            "--status-integrity-failures-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(output.read_text())
+    assert payload == _status_integrity(status)["failed_checks"]
+    assert payload == []
 
 
 def test_stepfun_correctness_status_source_artifacts_sha_only(capsys, tmp_path: Path) -> None:
@@ -2371,6 +2416,7 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "handoff_summary_sha_only": "handoff_summary_sha256",
         "schema_versions_only": "schema_versions",
         "status_integrity_only": "status_integrity",
+        "status_integrity_failures_only": "status_integrity.failed_checks",
         "readiness_summary_only": "readiness_summary",
         "readiness_summary_sha_only": "readiness_summary_sha256",
         "readiness_gates_only": "readiness_gates",
@@ -3199,6 +3245,7 @@ def test_stepfun_correctness_status_verifies_source_artifact_provenance(capsys, 
     assert payload["source_artifacts_all_match"] is True
     assert payload["status_integrity"] == {
         "all_match": True,
+        "failed_checks": [],
         "checks": {
             "source_artifacts_sha256": True,
             "handoff_summary_sha256": True,
@@ -3335,6 +3382,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_status_digest
     assert payload["all_match"] is False
     assert payload["source_artifacts_all_match"] is True
     assert payload["status_integrity"]["all_match"] is False
+    assert payload["status_integrity"]["failed_checks"] == ["next_action_commands_sha256"]
     assert payload["status_integrity"]["checks"] == {
         "source_artifacts_sha256": True,
         "handoff_summary_sha256": True,
@@ -3403,6 +3451,10 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_
     assert payload["all_match"] is False
     assert payload["source_artifacts_all_match"] is True
     assert payload["status_integrity"]["all_match"] is False
+    assert payload["status_integrity"]["failed_checks"] == [
+        "kv_streaming_runner_blocker_names_sha256",
+        "kv_streaming_runner_blocker_mirrors",
+    ]
     assert payload["status_integrity"]["checks"] == {
         "source_artifacts_sha256": True,
         "handoff_summary_sha256": True,
@@ -3474,6 +3526,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_
     assert payload["all_match"] is False
     assert payload["source_artifacts_all_match"] is True
     assert payload["status_integrity"]["all_match"] is False
+    assert payload["status_integrity"]["failed_checks"] == ["kv_streaming_runner_blocker_mirrors"]
     assert payload["status_integrity"]["checks"] == {
         "source_artifacts_sha256": True,
         "handoff_summary_sha256": True,
@@ -4354,7 +4407,46 @@ def test_stepfun_correctness_status_status_integrity_fail_on_blocked_returns_non
     assert captured.err == ""
     assert payload == _status_integrity(status)
     assert payload["all_match"] is True
+    assert payload["failed_checks"] == []
     assert all(payload["checks"].values())
+
+
+def test_stepfun_correctness_status_status_integrity_failures_fail_on_blocked_returns_nonzero(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--status-integrity-failures-only",
+            "--fail-on-blocked",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 2
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert captured.err == ""
+    assert payload == _status_integrity(status)["failed_checks"]
+    assert payload == []
 
 
 def test_stepfun_correctness_status_source_artifacts_sha_fail_on_blocked_returns_nonzero(
