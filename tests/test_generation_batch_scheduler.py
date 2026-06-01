@@ -7516,7 +7516,7 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     with pytest.raises(ValueError, match="dry-run summaries must include all planned commands"):
         c_sweep.validate_sweep_summary(tampered_command_count)
     assert summary["completed_command_count"] == 27
-    for stale_completed_command_count in (True, "27"):
+    for stale_completed_command_count in (True, "27", 28):
         tampered_completed_command_count_type = json.loads(json.dumps(summary))
         tampered_completed_command_count_type["completed_command_count"] = stale_completed_command_count
         with pytest.raises(ValueError, match=r"completed_command_count must be a typed int matching len\(commands\)"):
