@@ -15842,6 +15842,20 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
 
     validate_cn_diagnostic_artifact_payload(payload)
 
+    warmup_completed_claim = json.loads(json.dumps(payload))
+    warmup_completed_claim["workload"]["warmup_decode_tokens"] = 1
+    warmup_completed_claim["correctness"]["generated_token_equality"]["batch_sequences"] = [
+        [10, 110, 11, 12],
+        [20, 210, 21, 22],
+    ]
+    warmup_completed_claim["correctness"]["generated_token_equality"]["c1_sequences"] = [
+        [10, 110, 11, 12],
+        [20, 210, 21, 22],
+    ]
+    warmup_completed_claim["execution"]["completed"][0]["generated_tokens"] = [110, 11, 12]
+    warmup_completed_claim["execution"]["completed"][1]["generated_tokens"] = [210, 21, 22]
+    validate_cn_diagnostic_artifact_payload(warmup_completed_claim)
+
     missing_c1 = json.loads(json.dumps(payload))
     missing_c1["correctness"]["generated_token_equality"].pop("c1_sequences")
     with pytest.raises(ValueError, match="c1_sequences must be a list when passed is true"):
@@ -15918,7 +15932,7 @@ def test_qwen35_batch_diagnostic_schema_validates_claimed_generated_token_equali
 
     mismatched_completed_claim = json.loads(json.dumps(payload))
     mismatched_completed_claim["execution"]["completed"][1]["generated_tokens"][0] = 99
-    with pytest.raises(ValueError, match=r"execution.completed\[1\].generated_tokens must match correctness.generated_token_equality.batch_sequences suffix"):
+    with pytest.raises(ValueError, match=r"execution.completed\[1\].generated_tokens must match correctness.generated_token_equality.batch_sequences warmup\+decode suffix"):
         validate_cn_diagnostic_artifact_payload(mismatched_completed_claim)
 
     missing_completed_generated_claim = json.loads(json.dumps(payload))
@@ -18082,6 +18096,7 @@ def test_qwen35_retained_completed_execution_blockers_cover_row_evidence() -> No
         expected_concurrency=2,
         expected_prompt_lengths=[2, 2],
         expected_decode_tokens=2,
+        expected_warmup_decode_tokens=0,
         generated_tokens=generated_tokens,
         per_request_observability=per_request,
     ) == []
@@ -18097,12 +18112,13 @@ def test_qwen35_retained_completed_execution_blockers_cover_row_evidence() -> No
         expected_concurrency=2,
         expected_prompt_lengths=[2, 2],
         expected_decode_tokens=2,
+        expected_warmup_decode_tokens=0,
         generated_tokens=generated_tokens,
         per_request_observability=per_request,
     )
     assert "execution.completed request_id values are not unique" in blockers
     assert "execution.completed[0].prompt_tokens length does not match expected prompt length" in blockers
-    assert "execution.completed[0].generated_tokens does not match execution generated_tokens" in blockers
+    assert "execution.completed[0].generated_tokens suffix does not match execution generated_tokens" in blockers
     assert "execution.completed[0].finished is not true" in blockers
     assert "execution.completed[0].finish_reason does not match observability" in blockers
     assert "execution.completed does not include every request_id" in blockers
@@ -20317,14 +20333,14 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
                 {
                     "request_id": 0,
                     "prompt_tokens": list(range(512)),
-                    "generated_tokens": list(range(9, 137)),
+                    "generated_tokens": list(range(1, 137)),
                     "finished": True,
                     "finish_reason": "length",
                 },
                 {
                     "request_id": 1,
                     "prompt_tokens": list(range(512, 1024)),
-                    "generated_tokens": list(range(109, 237)),
+                    "generated_tokens": list(range(101, 237)),
                     "finished": True,
                     "finish_reason": "length",
                 },
@@ -21554,7 +21570,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
 
     mismatched_completed_tokens = json.loads(json.dumps(accepted))
     mismatched_completed_tokens["execution"]["completed"][0]["generated_tokens"][0] = 999
-    with pytest.raises(ValueError, match="execution.completed request_id 0 generated_tokens must match execution.generated_tokens"):
+    with pytest.raises(ValueError, match=r"execution.completed\[0\].generated_tokens must match correctness.generated_token_equality.batch_sequences warmup\+decode suffix"):
         validate_cn_diagnostic_artifact_payload(mismatched_completed_tokens)
 
     missing_completed_prompt_tokens = json.loads(json.dumps(accepted))

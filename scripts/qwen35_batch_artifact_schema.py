@@ -3196,6 +3196,7 @@ def _validate_claimed_generated_token_equality(
         batch_sequences,
         int(concurrency) if concurrency_valid else None,
         int(gen_tokens) if gen_tokens_valid else None,
+        int(warmup_tokens) if warmup_tokens_valid else None,
         errors,
     )
     mismatches = equality.get("mismatches")
@@ -3302,6 +3303,7 @@ def _validate_claimed_execution_completed_tokens(
     batch_sequences: Any,
     concurrency: int | None,
     gen_tokens_per_request: int | None,
+    warmup_decode_tokens: int | None,
     errors: list[str],
 ) -> None:
     execution = payload.get("execution")
@@ -3370,17 +3372,20 @@ def _validate_claimed_execution_completed_tokens(
         )
         if token_ids is None:
             continue
-        if gen_tokens_per_request is not None and len(token_ids) != gen_tokens_per_request:
-            errors.append(f"execution.completed[{index}].generated_tokens length must match workload.gen_tokens_per_request when generated_token_equality.passed is true")
+        expected_completed_tokens = None
+        if gen_tokens_per_request is not None:
+            expected_completed_tokens = gen_tokens_per_request + (warmup_decode_tokens or 0)
+        if expected_completed_tokens is not None and len(token_ids) != expected_completed_tokens:
+            errors.append(f"execution.completed[{index}].generated_tokens length must match workload.warmup_decode_tokens plus workload.gen_tokens_per_request when generated_token_equality.passed is true")
         if (
-            gen_tokens_per_request is not None
+            expected_completed_tokens is not None
             and isinstance(batch_sequences, list)
             and request_id < len(batch_sequences)
             and isinstance(batch_sequences[request_id], list)
         ):
-            expected_suffix = batch_sequences[request_id][-gen_tokens_per_request:]
+            expected_suffix = batch_sequences[request_id][-expected_completed_tokens:]
             if token_ids != expected_suffix:
-                errors.append(f"execution.completed[{index}].generated_tokens must match correctness.generated_token_equality.batch_sequences suffix when generated_token_equality.passed is true")
+                errors.append(f"execution.completed[{index}].generated_tokens must match correctness.generated_token_equality.batch_sequences warmup+decode suffix when generated_token_equality.passed is true")
     if concurrency is not None:
         missing_request_ids = [str(request_id) for request_id in range(concurrency) if request_id not in seen_request_ids]
         if missing_request_ids:
@@ -3516,6 +3521,7 @@ def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness
             workload,
             int(concurrency) if concurrency_valid else None,
             int(gen_tokens),
+            int(warmup_tokens),
             errors,
         )
     if isinstance(batch_sequences, list) and isinstance(c1_sequences, list) and batch_sequences != c1_sequences:
@@ -3709,6 +3715,7 @@ def _validate_execution_completed_tokens(
     workload: Mapping[str, Any],
     concurrency: int | None,
     gen_tokens_per_request: int,
+    warmup_decode_tokens: int,
     errors: list[str],
 ) -> None:
     execution = payload.get("execution")
@@ -3745,8 +3752,9 @@ def _validate_execution_completed_tokens(
         token_ids = _extract_generated_token_ids(row.get("generated_tokens"), f"execution.completed[{index}].generated_tokens", errors)
         if token_ids is None:
             continue
-        if len(token_ids) != gen_tokens_per_request:
-            errors.append(f"execution.completed[{index}].generated_tokens length must match workload.gen_tokens_per_request for accepted artifacts")
+        expected_completed_tokens = int(warmup_decode_tokens) + int(gen_tokens_per_request)
+        if len(token_ids) != expected_completed_tokens:
+            errors.append(f"execution.completed[{index}].generated_tokens length must match workload.warmup_decode_tokens plus workload.gen_tokens_per_request for accepted artifacts")
         if request_id in completed_by_request:
             errors.append("execution.completed request_id values must be unique for accepted artifacts")
         completed_by_request[int(request_id)] = token_ids
@@ -3774,8 +3782,8 @@ def _validate_execution_completed_tokens(
                 f"execution.generated_tokens.{request_id}",
                 errors,
             )
-            if token_ids is not None and completed_by_request[request_id] != token_ids:
-                errors.append(f"execution.completed request_id {request_id} generated_tokens must match execution.generated_tokens for accepted artifacts")
+            if token_ids is not None and completed_by_request[request_id][-len(token_ids):] != token_ids:
+                errors.append(f"execution.completed request_id {request_id} generated_tokens suffix must match execution.generated_tokens for accepted artifacts")
 
 
 def _extract_generated_token_ids(row: Any, label: str, errors: list[str]) -> list[int] | None:
