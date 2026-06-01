@@ -61514,3 +61514,47 @@ git diff --check
 ```
 
 Result: targeted passed-summary consistency regressions PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1` with c=2/c=8 primitive JSONs passing on GPU1/XTX (`seed=1234`, zero append/A-A/attention errors, `device.env.HIP_VISIBLE_DEVICES=1`, `device_name=AMD Radeon RX 7900 XTX`). Prompt-verifier self-check passes: C2.5 remains unchecked with generated-token equality/scaling caveats present, no completed item marker changed, no retained c>N performance/scaling claim was added, and no benchmark/doc rollup file changed.
+
+## 2026-06-01 — CONCURRENCY validation-summary hardening docs
+
+Updated `docs/CONCURRENCY.md` P5 evidence text to match the retained validation-summary hardening now in code: failed summaries clear `status`, `performance_claim`, and `benchmark_rollup` and reject stale success/rollup fields; generic artifact-schema summaries keep rollup metadata out; passed summaries require `status=accepted` and `performance_claim=true` consistency; passed rollup summaries require closed-key README/CHANGELOG metadata. C2.5 generated-token equality remains open and no performance/scaling claim changed.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+text = Path('docs/CONCURRENCY.md').read_text()
+assert 'clears `status`, `performance_claim`, and `benchmark_rollup` from failed summaries' in text
+assert 'requires passed summaries to keep `status=accepted` and `performance_claim=true` consistent' in text
+print('doc summary gates documented')
+PY
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && HIP_VISIBLE_DEVICES=1 pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json
+python3 - <<'PY'
+from pathlib import Path
+import re
+text = Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+count = len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue))
+assert count == 12, count
+assert '- [ ] **C2.5 c=4/c=8 BF16 equality.**' in queue
+assert 'generated-token equality vs independent c=1 for c=4/c=8 is still missing' in queue
+assert 'aggregate/per-request ratios' in queue
+assert 'clears `status`, `performance_claim`, and `benchmark_rollup` from failed summaries' in queue
+assert 'requires passed summaries to keep `status=accepted` and `performance_claim=true` consistent' in queue
+print('prompt-verifier support: C2.5 remains open; generated-token equality and aggregate/per-request scaling caveats remain present; validation-summary hardening is documented; no completed-item markers changed; no retained c>N performance claim added by this docs diff')
+PY
+if git diff --name-only -- docs/ENVS.md docs/BENCHMARK.md benchmarks/README.md benchmarks/CHANGELOG.md | grep .; then
+  echo 'unexpected benchmark/env doc diff' >&2
+  exit 1
+fi
+git diff --check
+```
+
+Result: targeted docs check PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1` with c=2/c=8 primitive JSONs passing on GPU1/XTX (`seed=1234`, zero append/A-A/attention errors, `device.env.HIP_VISIBLE_DEVICES=1`, `device_name=AMD Radeon RX 7900 XTX`). Prompt-verifier self-check passes: C2.5 remains unchecked with generated-token equality/scaling caveats present, no completed item marker changed, no retained c>N performance/scaling claim was added, and no benchmark rollup file changed.
