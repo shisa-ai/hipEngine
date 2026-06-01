@@ -30814,3 +30814,37 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`92 passed`), compact verification-exit-code command/SHA outputs returned expected blocked exit code 2 with SHA `a6cc09b14c009b18cdc9c07a7f75259d7f9bdf0e110a6e1b4d4f59cb1a4e3455`, source/status verification returned `match`, and the full StepFun guard passed (`196` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was a pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes status-helper metadata/tests/docs/status artifact only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.
+
+## 2026-06-01 — StepFun verification-failure digest handoff command
+
+Added a compact persisted verification-failure digest command to the StepFun correctness status handoff. `next_action_commands.handoff_integrity.verification_failures_sha_command` now runs `scripts/stepfun_correctness_status.py --verify-source-artifacts ... --verification-failures-sha-only --pretty`, with length/SHA-256 metadata and compact `--verification-failures-sha-command-only` / `--verification-failures-sha-command-sha-only` outputs so automation can poll the combined source/status failure digest command without reconstructing it. Refreshed `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`; readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`). No StepFun KV write/attention kernels are launched and no performance/e2e claim is made.
+
+Validation:
+
+```bash
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_correctness_status.py --verification-failures-sha-command-only --fail-on-blocked --pretty > /tmp/stepfun-verification-failures-sha-command.json; rc=$?; test "$rc" -eq 2
+python3 scripts/stepfun_correctness_status.py --verification-failures-sha-command-sha-only --fail-on-blocked --pretty > /tmp/stepfun-verification-failures-sha-command-sha.json; rc=$?; test "$rc" -eq 2
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty > /tmp/stepfun-source-verify-verification-failures-sha-command.json
+python3 - <<'PY'
+import hashlib, json
+s=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+cmd=json.load(open('/tmp/stepfun-verification-failures-sha-command.json'))
+sha=json.load(open('/tmp/stepfun-verification-failures-sha-command-sha.json'))
+expected=s['next_action_commands']['handoff_integrity']['verification_failures_sha_command']
+assert cmd == expected
+assert '--verification-failures-sha-only' in cmd
+assert sha == s['next_action_commands']['handoff_integrity']['verification_failures_sha_command_sha256'] == hashlib.sha256(cmd.encode()).hexdigest()
+v=json.load(open('/tmp/stepfun-source-verify-verification-failures-sha-command.json'))
+assert v['status'] == 'match'
+assert v['all_match'] is True
+assert v['status_integrity']['all_match'] is True
+assert s['status'] == 'blocked'
+print('verification failures sha command compact output ok', sha)
+PY
+```
+
+Results: P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`196` StepFun/registry tests without failures plus CPU-reference fixture checks); targeted status tests passed (`92 passed`); compact verification-failure digest command/SHA outputs returned expected blocked exit code 2 with SHA `6ccb18dab32de6556595f0f214cef7e3ece4db8aebf2a990c0d9ef768769510f`; source/status verification returned `match`. Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was a pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes status-helper metadata/tests/status artifact only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.

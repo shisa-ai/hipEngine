@@ -183,6 +183,8 @@
       "verification_exit_code_command_sha_only": "next_action_commands.handoff_integrity.verification_exit_code_command_sha256",
       "verification_failures_command_only": "next_action_commands.handoff_integrity.verification_failures_command",
       "verification_failures_command_sha_only": "next_action_commands.handoff_integrity.verification_failures_command_sha256",
+      "verification_failures_sha_command_only": "next_action_commands.handoff_integrity.verification_failures_sha_command",
+      "verification_failures_sha_command_sha_only": "next_action_commands.handoff_integrity.verification_failures_sha_command_sha256",
       "verification_status_command_only": "next_action_commands.handoff_integrity.verification_status_command",
       "verification_status_command_sha_only": "next_action_commands.handoff_integrity.verification_status_command_sha256"
     },
@@ -310,7 +312,7 @@
     "schema_version": 1,
     "status": "blocked"
   },
-  "handoff_summary_sha256": "503ae9ef929da09c932fb8aaa3ab39d7a181b898bcc3c127b36628e16b8e7845",
+  "handoff_summary_sha256": "20a9a720bc59fe8aabd811292a3c4be0e8fc7fdd337f1ecb39d6092a3de964d8",
   "kv_backed_decode_gap_report": {
     "computed_streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
     "first_missing_evidence": "streaming_runner_ready_flags",
@@ -1127,6 +1129,9 @@
       "verification_failures_command": "python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-failures-only --pretty",
       "verification_failures_command_nchars": 176,
       "verification_failures_command_sha256": "ac572daa654ca5a3bbdcca4ee4e24b0303e23e6dbfd230c44647201748b3e86c",
+      "verification_failures_sha_command": "python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-failures-sha-only --pretty",
+      "verification_failures_sha_command_nchars": 180,
+      "verification_failures_sha_command_sha256": "6ccb18dab32de6556595f0f214cef7e3ece4db8aebf2a990c0d9ef768769510f",
       "verification_status_command": "python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --verification-status-only --pretty",
       "verification_status_command_nchars": 174,
       "verification_status_command_sha256": "11777590a8caea07b7ba912accf52434728940ea5b7f91c4909a3812c7b30335"
@@ -1188,7 +1193,7 @@
       ]
     }
   },
-  "next_action_commands_sha256": "78cd96c6363bbd30ada35033b61f7c264b11547c60192cd1002857071d41c6d3",
+  "next_action_commands_sha256": "cba5505515f413c2f6c15cdc545a341b33b6e93926a91372b20271ebcd4bade0",
   "next_actions": [
     {
       "action": "Build or locate a StepFun/step35-capable llama.cpp or CPU oracle, rerun scripts/stepfun_llamacpp_oracle.py --execute, and record exact token/logit comparison.",
@@ -1635,10 +1640,10 @@
     "fail_on_blocked_exit_code": 2,
     "first_blocker_kind": "oracle_parity_blocked",
     "first_blocker_work_item_sha256": "8c5a2cfe6f5b1b7939bb041118ee622bc90a8be6fb3472c7079706d78aacfed3",
-    "handoff_summary_sha256": "503ae9ef929da09c932fb8aaa3ab39d7a181b898bcc3c127b36628e16b8e7845",
+    "handoff_summary_sha256": "20a9a720bc59fe8aabd811292a3c4be0e8fc7fdd337f1ecb39d6092a3de964d8",
     "kv_backed_decode_ready": false,
     "kv_decode_dispatch_ready": true,
-    "next_action_commands_sha256": "78cd96c6363bbd30ada35033b61f7c264b11547c60192cd1002857071d41c6d3",
+    "next_action_commands_sha256": "cba5505515f413c2f6c15cdc545a341b33b6e93926a91372b20271ebcd4bade0",
     "open_blocker_count": 2,
     "open_or_partial_items_p0_p12": 2,
     "oracle_parity": false,
@@ -1648,7 +1653,7 @@
     "source_artifacts_sha256": "38c413ccce0d4fdefacc74591e05902cbc6aec9685850a7350f32a0022b34abd",
     "status": "blocked"
   },
-  "readiness_summary_sha256": "dab3d0cf72ec0a92de2223b526968ab3b0c0fc7a72840547e71dedaec50c5dc0",
+  "readiness_summary_sha256": "dbe04ccb4ab8bcfae9ef67bd2716702ab0ed3c2ce3cb906a43f2673cdd737f84",
   "schema_version": 1,
   "schema_versions": {
     "blocker_work_queue": 1,

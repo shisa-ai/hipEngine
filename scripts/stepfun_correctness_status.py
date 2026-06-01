@@ -338,6 +338,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--verification-failures-sha-command-only",
+        action="store_true",
+        help=(
+            "Emit only next_action_commands.handoff_integrity.verification_failures_sha_command "
+            "for compact persisted verification failure digest checks. Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--verification-failures-sha-command-sha-only",
+        action="store_true",
+        help=(
+            "Emit only next_action_commands.handoff_integrity.verification_failures_sha_command_sha256 "
+            "for compact persisted verification failure digest command drift polling. Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--oracle-helper-command-only",
         action="store_true",
         help=(
@@ -1191,6 +1207,9 @@ def _next_action_commands(
     verification_failures = _source_artifacts_verify_command(
         extra_args=("--verification-failures-only",)
     )
+    verification_failures_sha = _source_artifacts_verify_command(
+        extra_args=("--verification-failures-sha-only",)
+    )
     return {
         "handoff_integrity": {
             "source_artifacts_verify_command": source_artifacts_verify,
@@ -1212,6 +1231,11 @@ def _next_action_commands(
             **_command_length_hash(
                 "verification_failures_command",
                 verification_failures,
+            ),
+            "verification_failures_sha_command": verification_failures_sha,
+            **_command_length_hash(
+                "verification_failures_sha_command",
+                verification_failures_sha,
             ),
             "success_criteria": [
                 "source artifact verification exits 0",
@@ -1656,6 +1680,12 @@ def _handoff_summary(
             ),
             "verification_failures_command_sha_only": (
                 "next_action_commands.handoff_integrity.verification_failures_command_sha256"
+            ),
+            "verification_failures_sha_command_only": (
+                "next_action_commands.handoff_integrity.verification_failures_sha_command"
+            ),
+            "verification_failures_sha_command_sha_only": (
+                "next_action_commands.handoff_integrity.verification_failures_sha_command_sha256"
             ),
             "kv_resource_command_only": (
                 "next_action_commands.kv_backed_decode_not_wired.resource_plan_refresh_command"
@@ -2103,6 +2133,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.verification_failures_command_only:
         result = status["next_action_commands"]["handoff_integrity"].get(
             "verification_failures_command"
+        )
+    elif args.verification_failures_sha_command_sha_only:
+        result = status["next_action_commands"]["handoff_integrity"].get(
+            "verification_failures_sha_command_sha256"
+        )
+    elif args.verification_failures_sha_command_only:
+        result = status["next_action_commands"]["handoff_integrity"].get(
+            "verification_failures_sha_command"
         )
     elif args.source_verify_command_sha_only:
         result = status["next_action_commands"]["handoff_integrity"].get(

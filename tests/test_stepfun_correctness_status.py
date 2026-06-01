@@ -1103,6 +1103,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "verification_failures_command_sha_only": (
             "next_action_commands.handoff_integrity.verification_failures_command_sha256"
         ),
+        "verification_failures_sha_command_only": (
+            "next_action_commands.handoff_integrity.verification_failures_sha_command"
+        ),
+        "verification_failures_sha_command_sha_only": (
+            "next_action_commands.handoff_integrity.verification_failures_sha_command_sha256"
+        ),
         "kv_resource_command_only": (
             "next_action_commands.kv_backed_decode_not_wired.resource_plan_refresh_command"
         ),
@@ -1276,6 +1282,15 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     )
     assert integrity_commands["verification_failures_command_sha256"] == hashlib.sha256(
         integrity_commands["verification_failures_command"].encode()
+    ).hexdigest()
+    assert integrity_commands["verification_failures_sha_command"] == _source_verify_command(
+        extra_args=("--verification-failures-sha-only",)
+    )
+    assert integrity_commands["verification_failures_sha_command_nchars"] == len(
+        integrity_commands["verification_failures_sha_command"]
+    )
+    assert integrity_commands["verification_failures_sha_command_sha256"] == hashlib.sha256(
+        integrity_commands["verification_failures_sha_command"].encode()
     ).hexdigest()
     assert integrity_commands["success_criteria"] == [
         "source artifact verification exits 0",
@@ -1634,6 +1649,12 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
     )
     assert integrity_command["verification_failures_command_sha256"] == hashlib.sha256(
         _source_verify_command(extra_args=("--verification-failures-only",)).encode()
+    ).hexdigest()
+    assert integrity_command["verification_failures_sha_command"] == _source_verify_command(
+        extra_args=("--verification-failures-sha-only",)
+    )
+    assert integrity_command["verification_failures_sha_command_sha256"] == hashlib.sha256(
+        _source_verify_command(extra_args=("--verification-failures-sha-only",)).encode()
     ).hexdigest()
     oracle_command = payload["next_action_commands"]["oracle_parity_blocked"]
     assert oracle_command["rerun_command_shell"].startswith("/tmp/llama-cli")
@@ -2525,6 +2546,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         ),
         "verification_failures_command_sha_only": (
             "next_action_commands.handoff_integrity.verification_failures_command_sha256"
+        ),
+        "verification_failures_sha_command_only": (
+            "next_action_commands.handoff_integrity.verification_failures_sha_command"
+        ),
+        "verification_failures_sha_command_sha_only": (
+            "next_action_commands.handoff_integrity.verification_failures_sha_command_sha256"
         ),
         "kv_resource_command_only": (
             "next_action_commands.kv_backed_decode_not_wired.resource_plan_refresh_command"
