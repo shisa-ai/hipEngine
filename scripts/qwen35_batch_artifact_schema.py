@@ -4412,6 +4412,12 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
                         errors.append(f"summary.benchmark_rollup.{key} must be a repo-relative benchmarks/results path")
                     if not value.replace("\\", "/").rsplit("/", 1)[-1].endswith(".json"):
                         errors.append(f"summary.benchmark_rollup.{key} must end with .json")
+            for key in ("readme_path", "changelog_path"):
+                value = benchmark_rollup.get(key)
+                if not isinstance(value, str) or not value:
+                    errors.append(f"summary.benchmark_rollup.{key} must be a non-empty string")
+                elif value.strip() != value:
+                    errors.append(f"summary.benchmark_rollup.{key} must not contain leading or trailing whitespace")
         if isinstance(benchmark_rollup, Mapping) and isinstance(artifact_path, str):
             if benchmark_rollup.get("artifact_path") != artifact_path:
                 errors.append("summary.benchmark_rollup.artifact_path must match summary.artifact_path")
