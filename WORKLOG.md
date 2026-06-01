@@ -57228,3 +57228,23 @@ HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts
 ```
 
 Result: focused combined c-sweep GGUF all-row duplicate flag test PASS; docs diff check PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1` with c=2/c=8 primitive JSONs passing on GPU1/XTX (`seed=1234`, zero append/A-A/attention errors, `device.env.HIP_VISIBLE_DEVICES=1`, `device_name=AMD Radeon RX 7900 XTX`). Prompt-verifier self-check passes: the open C2.5 item remains unchecked and explicitly says generated-token equality/scaling are still missing, completed items were not changed, and no retained c>N performance/scaling claim was added.
+
+## 2026-06-01 — CONCURRENCY C2.5 INT8 all-row duplicate flag sweep
+
+Extended combined c-sweep dry-run provenance coverage for INT8 duplicate diagnostic flags across the full optional plan. `test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics` now duplicates each INT8 optional row's `--model`, `--fixture`, `--rows`, `--future-json`, `--primitive-cpu-json`, and `--primitive-hip-json` labels and proves `validate_sweep_summary(...)` rejects every c=2/c=4/c=8 INT8 row with the duplicate-flag error. `docs/CONCURRENCY.md` C2.5 progress now calls out duplicate INT8 diagnostic flags across all optional rows. The C2.5 retained/equality requirement stays open: this is c-sweep lifecycle/provenance hardening only, not generated-token equality vs independent c=1 and not a performance/scaling claim.
+
+Validation (full guard ran with `HIP_VISIBLE_DEVICES=1`):
+
+```bash
+python3 -m compileall -q tests/test_generation_batch_scheduler.py && pytest -q tests/test_generation_batch_scheduler.py::test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics -q
+git diff --check
+python3 - <<'PY'
+import pathlib, re
+text = pathlib.Path('docs/CONCURRENCY.md').read_text()
+queue = text.split('## Bite-sized implementation queue', 1)[1].split('## Phase ladder', 1)[0]
+print(len(re.findall(r'(?m)^- \\[(?: |~)\\]', queue)))
+PY
+HIP_VISIBLE_DEVICES=1 bash -lc 'python3 -m compileall -q hipengine tests scripts && pytest -q tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_kvcache_policy.py tests/test_kvcache_spans.py tests/test_server_api.py -q && python3 scripts/qwen35_batch_correctness.py --rows 2 --json /tmp/hipengine-multiloop-c2-correctness.json && python3 scripts/qwen35_batch_correctness.py --rows 8 --json /tmp/hipengine-multiloop-c8-correctness.json'
+```
+
+Result: focused combined c-sweep INT8 all-row duplicate flag test PASS; docs diff check PASS; verify count remains `12`; configured guard PASS under `HIP_VISIBLE_DEVICES=1` with c=2/c=8 primitive JSONs passing on GPU1/XTX (`seed=1234`, zero append/A-A/attention errors, `device.env.HIP_VISIBLE_DEVICES=1`, `device_name=AMD Radeon RX 7900 XTX`). Prompt-verifier self-check passes: the open C2.5 item remains unchecked and explicitly says generated-token equality/scaling are still missing, completed items were not changed, and no retained c>N performance/scaling claim was added.
