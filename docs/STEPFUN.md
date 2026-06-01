@@ -686,8 +686,8 @@ reporting.
   `--kv-streaming-loop-status-only` / `--kv-streaming-loop-status-sha-only`
   outputs expose those recorded summaries/digests directly for handoff automation;
   status integrity also
-  cross-checks the mirrored blueprint digest, the mirrored first KV blocker
-  digest, and the full KV streaming blocker names/SHA across the gap report,
+  cross-checks the mirrored blueprint digest, the mirrored loop-status digest,
+  the mirrored first KV blocker digest, and the full KV streaming blocker names/SHA across the gap report,
   next-action command, and handoff queue so the runner artifact and status helper
   agree on why KV-backed decode remains blocked. The same status
   artifact records `source_artifacts` path/size/SHA-256 provenance for the

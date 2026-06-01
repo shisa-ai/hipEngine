@@ -31504,3 +31504,30 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: P0-P12 open/partial checklist count stayed at `2`; status-helper tests passed (`112 passed`); compact KV streaming loop status/SHA outputs returned expected blocked exit code 2 with stable JSON SHA `607bb09dacb0d1e28417dd34bad2fc52f95ffb23d305c4227ad5a65d4b17a3c4`; source/status verification returned `match`; the full StepFun guard passed (`216` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was the pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes StepFun status-helper metadata/tests/docs/status artifact only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.
+
+## 2026-06-01 — StepFun KV loop-status digest drift coverage
+
+Added explicit source-artifact verification coverage for stale KV loop-status digests. `tests/test_stepfun_correctness_status.py` now mutates `kv_backed_decode_gap_report.streaming_decode_loop_status_sha256` to `stale` and verifies `--verify-source-artifacts` fails with `kv_streaming_loop_status_sha256` and `kv_streaming_loop_status_mirrors`. This backs the compact `--kv-streaming-loop-status-sha-only` path and the status-integrity loop-status mirror checks with a failing drift fixture. Refreshed `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`; readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`). This is test/handoff integrity only; no KV kernels are launched and no StepFun performance or e2e correctness claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty > /tmp/stepfun-source-verify-loop-status-drift-test.json
+python3 - <<'PY'
+import json
+s=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+v=json.load(open('/tmp/stepfun-source-verify-loop-status-drift-test.json'))
+assert s['docs_checklist']['open_or_partial_count_p0_p12'] == 2
+assert v['status'] == 'match'
+assert v['all_match'] is True
+assert v['status_integrity']['checks']['kv_streaming_loop_status_sha256'] is True
+assert v['status_integrity']['checks']['kv_streaming_loop_status_mirrors'] is True
+print('loop status drift coverage verify ok', s['kv_backed_decode_gap_report']['streaming_decode_loop_status_sha256'])
+PY
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: P0-P12 open/partial checklist count stayed at `2`; status-helper tests passed (`113 passed`); source/status verification returned `match` with KV loop-status SHA/mirror integrity checks true; the full StepFun guard passed (`217` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was the pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes StepFun status-helper tests/docs/status artifact only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.
