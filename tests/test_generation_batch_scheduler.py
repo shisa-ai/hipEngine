@@ -7530,6 +7530,10 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     tampered_status_counts_object["status_counts"] = "planned"
     with pytest.raises(ValueError, match="status_counts must be an object"):
         c_sweep.validate_sweep_summary(tampered_status_counts_object)
+    tampered_status_count_label = json.loads(json.dumps(summary))
+    tampered_status_count_label["status_counts"]["blocked"] = 1
+    with pytest.raises(ValueError, match="status_counts must contain only known command status labels"):
+        c_sweep.validate_sweep_summary(tampered_status_count_label)
     for stale_status_count in (True, "27", -1):
         tampered_status_count_type = json.loads(json.dumps(summary))
         tampered_status_count_type["status_counts"]["planned"] = stale_status_count
@@ -7579,6 +7583,14 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     tampered_category_status_counts_object["category_status_counts"] = "planned"
     with pytest.raises(ValueError, match="category_status_counts must be an object"):
         c_sweep.validate_sweep_summary(tampered_category_status_counts_object)
+    tampered_category_status_category_label = json.loads(json.dumps(summary))
+    tampered_category_status_category_label["category_status_counts"]["other_category"] = {"planned": 1}
+    with pytest.raises(ValueError, match="category_status_counts must contain only known command category labels"):
+        c_sweep.validate_sweep_summary(tampered_category_status_category_label)
+    tampered_category_status_count_label = json.loads(json.dumps(summary))
+    tampered_category_status_count_label["category_status_counts"]["primitive"]["blocked"] = 1
+    with pytest.raises(ValueError, match="category_status_counts must contain only known command status labels"):
+        c_sweep.validate_sweep_summary(tampered_category_status_count_label)
     for stale_category_status_count in (True, "4", -1):
         tampered_category_status_count_type = json.loads(json.dumps(summary))
         tampered_category_status_count_type["category_status_counts"]["primitive"]["planned"] = stale_category_status_count
