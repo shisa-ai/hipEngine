@@ -696,11 +696,13 @@ reporting.
   exit-code, and verification-failure commands for rechecking embedded
   prompt/oracle/resource/docs hashes before blocker handoff; the oracle helper
   preserves the recorded `diagnostic_logs=true` setting so reruns keep llama.cpp
-  load/error logs enabled for the canonical timeout artifact, and the blocker
-  work queue now exposes that boolean directly for handoff consumers. Remaining
-  implementation task: run a longer/faster
-  StepFun-capable llama.cpp oracle and review/record the parsed result;
-  KV-backed decode parity remains open too.
+  load/error logs enabled for the canonical timeout artifact. The handoff now
+  also records `oracle_helper_long_timeout_command` (`--timeout-s 900.0`, same
+  canonical oracle output JSON) with length/SHA-256 metadata and mirrors it in
+  the first blocker work item, so the remaining oracle next action is a concrete
+  longer-timeout rerun instead of only the prior 60 s replay. Remaining
+  implementation task: run a longer/faster StepFun-capable llama.cpp oracle and
+  review/record the parsed result; KV-backed decode parity remains open too.
 - [x] Preserve multi-EOS stopping and the chat assistant prefix. The short
   context planner renders the Step chat template with assistant `<think>` prefix
   and carries stop IDs `(1, 2, 128007)` with `should_stop()` checks.

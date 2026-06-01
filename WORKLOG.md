@@ -30848,3 +30848,36 @@ PY
 ```
 
 Results: P0-P12 open/partial checklist count stayed at `2`; the full StepFun guard passed (`196` StepFun/registry tests without failures plus CPU-reference fixture checks); targeted status tests passed (`92 passed`); compact verification-failure digest command/SHA outputs returned expected blocked exit code 2 with SHA `6ccb18dab32de6556595f0f214cef7e3ece4db8aebf2a990c0d9ef768769510f`; source/status verification returned `match`. Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was a pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes status-helper metadata/tests/status artifact only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.
+
+## 2026-06-01 — StepFun long-timeout oracle helper handoff
+
+Added a concrete longer-timeout llama.cpp oracle rerun command to the StepFun correctness handoff. `next_action_commands.oracle_parity_blocked.oracle_helper_long_timeout_command` now regenerates the canonical oracle JSON with `--timeout-s 900.0`, preserves `diagnostic_logs=true` and the CPU/no-GPU llama.cpp arguments from the current timeout artifact, records length/SHA-256 metadata, and is mirrored into `handoff_summary.first_blocker_work_item.long_timeout_helper_command`. Refreshed `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`; readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`). This does not run the 900 s oracle attempt and makes no StepFun performance or e2e correctness claim.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty > /tmp/stepfun-source-verify-long-timeout-command.json
+python3 - <<'PY'
+import hashlib, json
+s=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+o=s['next_action_commands']['oracle_parity_blocked']
+cmd=o['oracle_helper_long_timeout_command']
+assert '--timeout-s 900.0' in cmd
+assert o['oracle_helper_long_timeout_s'] == 900.0
+assert o['oracle_helper_long_timeout_command_sha256'] == hashlib.sha256(cmd.encode()).hexdigest()
+w=s['handoff_summary']['first_blocker_work_item']
+assert w['long_timeout_helper_command'] == cmd
+assert w['long_timeout_helper_command_sha256'] == o['oracle_helper_long_timeout_command_sha256']
+v=json.load(open('/tmp/stepfun-source-verify-long-timeout-command.json'))
+assert v['status'] == 'match'
+assert v['all_match'] is True
+assert v['status_integrity']['all_match'] is True
+print(o['oracle_helper_long_timeout_command_sha256'])
+PY
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: P0-P12 open/partial checklist count stayed at `2`; status-helper tests passed (`92 passed`); the long-timeout oracle helper command SHA is `66c4c66d55be94454c449833cb1af7c043280af0fe7dcc09e424ae3da229116b`; source/status verification returned `match`; the full StepFun guard passed (`196` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was the pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes status-helper metadata/tests/docs/status artifact only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.

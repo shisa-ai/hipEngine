@@ -24,6 +24,7 @@ DEFAULT_DOCS_PATH = Path("docs/STEPFUN.md")
 DEFAULT_STATUS_ARTIFACT = Path(
     "benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json"
 )
+DEFAULT_ORACLE_LONG_TIMEOUT_S = 900.0
 STATUS_SCHEMA_VERSION = 1
 HANDOFF_SUMMARY_SCHEMA_VERSION = 1
 READINESS_SUMMARY_SCHEMA_VERSION = 1
@@ -1145,6 +1146,7 @@ def _oracle_helper_refresh_command(
     oracle_progress: dict[str, object],
     prompt_artifact: Path,
     oracle_artifact: Path,
+    timeout_s_override: float | None = None,
 ) -> str:
     command = [
         "python3",
@@ -1158,7 +1160,11 @@ def _oracle_helper_refresh_command(
         "--n-predict",
         str(oracle_progress.get("n_predict") or 1),
     ]
-    timeout_s = oracle_progress.get("timeout_s")
+    timeout_s = (
+        timeout_s_override
+        if timeout_s_override is not None
+        else oracle_progress.get("timeout_s")
+    )
     if timeout_s is not None:
         command.extend(["--timeout-s", str(timeout_s)])
     if oracle_progress.get("diagnostic_logs") is True:
@@ -1195,6 +1201,12 @@ def _next_action_commands(
         oracle_progress=oracle_progress,
         prompt_artifact=prompt_artifact,
         oracle_artifact=oracle_artifact,
+    )
+    oracle_helper_long_timeout = _oracle_helper_refresh_command(
+        oracle_progress=oracle_progress,
+        prompt_artifact=prompt_artifact,
+        oracle_artifact=oracle_artifact,
+        timeout_s_override=DEFAULT_ORACLE_LONG_TIMEOUT_S,
     )
     resource_plan_refresh = _resource_plan_refresh_command(output_artifact=resource_artifact)
     source_artifacts_verify = _source_artifacts_verify_command()
@@ -1250,6 +1262,12 @@ def _next_action_commands(
             "oracle_helper_refresh_command_sha256": hashlib.sha256(
                 oracle_helper_refresh.encode()
             ).hexdigest(),
+            "oracle_helper_long_timeout_command": oracle_helper_long_timeout,
+            "oracle_helper_long_timeout_s": DEFAULT_ORACLE_LONG_TIMEOUT_S,
+            **_command_length_hash(
+                "oracle_helper_long_timeout_command",
+                oracle_helper_long_timeout,
+            ),
             "status_refresh_command": status_refresh,
             **_command_length_hash("status_refresh_command", status_refresh),
             "gap_report_status": oracle_gap_report.get("status"),
@@ -1508,6 +1526,14 @@ def _handoff_summary(
             oracle_helper_command_text = (
                 oracle_helper_command if isinstance(oracle_helper_command, str) else None
             )
+            oracle_helper_long_timeout_command = oracle_action.get(
+                "oracle_helper_long_timeout_command"
+            )
+            oracle_helper_long_timeout_command_text = (
+                oracle_helper_long_timeout_command
+                if isinstance(oracle_helper_long_timeout_command, str)
+                else None
+            )
             blocker_work_queue.append(
                 {
                     "blocker_kind": blocker_kind,
@@ -1532,6 +1558,21 @@ def _handoff_summary(
                         if oracle_helper_command_text is not None
                         else None
                     ),
+                    "long_timeout_helper_command_kind": "oracle_helper_long_timeout_command",
+                    "long_timeout_helper_command": oracle_helper_long_timeout_command_text,
+                    "long_timeout_helper_command_nchars": (
+                        len(oracle_helper_long_timeout_command_text)
+                        if oracle_helper_long_timeout_command_text is not None
+                        else 0
+                    ),
+                    "long_timeout_helper_command_sha256": (
+                        hashlib.sha256(
+                            oracle_helper_long_timeout_command_text.encode()
+                        ).hexdigest()
+                        if oracle_helper_long_timeout_command_text is not None
+                        else None
+                    ),
+                    "long_timeout_s": oracle_action.get("oracle_helper_long_timeout_s"),
                     "gap_report_status": oracle_gap_report.get("status"),
                     "current_status": oracle_gap_report.get("oracle_status"),
                     "current_returncode": oracle_gap_report.get("returncode"),

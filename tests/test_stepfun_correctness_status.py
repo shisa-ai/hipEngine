@@ -30,13 +30,14 @@ def _oracle_helper_command(
     oracle: Path,
     *,
     diagnostic_logs: bool = False,
+    timeout_s: float = 60.0,
 ) -> str:
     diagnostic_logs_arg = "--diagnostic-logs " if diagnostic_logs else ""
     return (
         "python3 scripts/stepfun_llamacpp_oracle.py "
         f"--artifact {prompt} --llama-cli /tmp/llama-cli "
         "--model /data/models/gguf/Step-3.7-flash-Q3_K_L-00001-of-00003.gguf "
-        f"--n-predict 1 --timeout-s 60.0 {diagnostic_logs_arg}"
+        f"--n-predict 1 --timeout-s {timeout_s} {diagnostic_logs_arg}"
         "--llama-arg=--device --llama-arg=none "
         f"--llama-arg=--gpu-layers --llama-arg=0 --execute --pretty --output {oracle}"
     )
@@ -50,11 +51,22 @@ def _oracle_helper_fields(
     diagnostic_logs: bool = False,
 ) -> dict[str, object]:
     command = _oracle_helper_command(prompt, oracle, diagnostic_logs=diagnostic_logs)
+    long_command = _oracle_helper_command(
+        prompt,
+        oracle,
+        diagnostic_logs=diagnostic_logs,
+        timeout_s=900.0,
+    )
     return {
         "helper_command_kind": "oracle_helper_refresh_command",
         "helper_command": command,
         "helper_command_nchars": len(command),
         "helper_command_sha256": hashlib.sha256(command.encode()).hexdigest(),
+        "long_timeout_helper_command_kind": "oracle_helper_long_timeout_command",
+        "long_timeout_helper_command": long_command,
+        "long_timeout_helper_command_nchars": len(long_command),
+        "long_timeout_helper_command_sha256": hashlib.sha256(long_command.encode()).hexdigest(),
+        "long_timeout_s": 900.0,
     }
 
 
@@ -1308,6 +1320,16 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert oracle_commands["oracle_helper_refresh_command_sha256"] == hashlib.sha256(
         oracle_commands["oracle_helper_refresh_command"].encode()
     ).hexdigest()
+    expected_long_timeout_command = _oracle_helper_command(prompt, oracle, timeout_s=900.0)
+    assert oracle_commands["oracle_helper_long_timeout_command"] == expected_long_timeout_command
+    assert oracle_commands["oracle_helper_long_timeout_s"] == 900.0
+    assert oracle_commands["oracle_helper_long_timeout_command_nchars"] == len(
+        expected_long_timeout_command
+    )
+    assert oracle_commands["oracle_helper_long_timeout_command_sha256"] == hashlib.sha256(
+        expected_long_timeout_command.encode()
+    ).hexdigest()
+    assert "--timeout-s 900.0" in oracle_commands["oracle_helper_long_timeout_command"]
     assert f"--prompt-artifact {prompt}" in oracle_commands["status_refresh_command"]
     assert f"--oracle-artifact {oracle}" in oracle_commands["status_refresh_command"]
     assert oracle_commands["status_refresh_command_nchars"] == len(
