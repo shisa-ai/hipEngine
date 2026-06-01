@@ -6502,6 +6502,26 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     primitive_artifact_path.write_text(json.dumps(primitive_source_payload))
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path JSON seed must match when primitive passed"):
         c_sweep.validate_sweep_summary(persisted)
+    primitive_source_payload = json.loads(primitive_artifact_payload)
+    primitive_source_payload["schema"] = 2
+    primitive_artifact_path.write_text(json.dumps(primitive_source_payload))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path JSON schema must match when primitive passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    primitive_source_payload = json.loads(primitive_artifact_payload)
+    primitive_source_payload["head_dim"] = 16
+    primitive_artifact_path.write_text(json.dumps(primitive_source_payload))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path JSON shape fields must match when primitive passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    primitive_source_payload = json.loads(primitive_artifact_payload)
+    primitive_source_payload["context_lens"] = [1, 1]
+    primitive_artifact_path.write_text(json.dumps(primitive_source_payload))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path JSON context_lens must match when primitive passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    primitive_source_payload = json.loads(primitive_artifact_payload)
+    primitive_source_payload["passed"] = False
+    primitive_artifact_path.write_text(json.dumps(primitive_source_payload))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path JSON passed must match when primitive passed"):
+        c_sweep.validate_sweep_summary(persisted)
     primitive_artifact_path.write_text(primitive_artifact_payload)
     profiler_artifact_path = output_dir / "profiler-c2.json"
     profiler_artifact_payload = profiler_artifact_path.read_text()
