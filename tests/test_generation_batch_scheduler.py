@@ -7260,10 +7260,11 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     with pytest.raises(ValueError, match="commands entries must be objects"):
         c_sweep.validate_sweep_summary(tampered_commands_entry_type)
     assert summary["schema"] == 1
-    tampered_summary_schema = json.loads(json.dumps(summary))
-    tampered_summary_schema["schema"] = 2
-    with pytest.raises(ValueError, match="schema must be typed int 1"):
-        c_sweep.validate_sweep_summary(tampered_summary_schema)
+    for stale_schema in (True, "1", 2):
+        tampered_summary_schema = json.loads(json.dumps(summary))
+        tampered_summary_schema["schema"] = stale_schema
+        with pytest.raises(ValueError, match="schema must be typed int 1"):
+            c_sweep.validate_sweep_summary(tampered_summary_schema)
     tampered_summary_extra_key = json.loads(json.dumps(summary))
     tampered_summary_extra_key["unexpected_summary_key"] = True
     with pytest.raises(ValueError, match="summary must contain exactly the c-sweep schema keys"):
