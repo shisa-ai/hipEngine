@@ -71,6 +71,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--next-action-commands-sha-only",
+        action="store_true",
+        help=(
+            "Emit only next_action_commands_sha256 for command handoff drift polling. "
+            "Overrides --summary-only and blocker queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--blocker-work-queue-only",
         action="store_true",
         help=(
@@ -1195,6 +1203,7 @@ def _handoff_summary(
             "readiness_summary_only": "readiness_summary",
             "readiness_summary_sha_only": "readiness_summary_sha256",
             "source_artifacts_sha_only": "source_artifacts_sha256",
+            "next_action_commands_sha_only": "next_action_commands_sha256",
             "status_refresh_command_only": (
                 "next_action_commands.oracle_parity_blocked.status_refresh_command"
             ),
@@ -1355,6 +1364,7 @@ def build_status(
         resource_artifact=resource_artifact,
         docs_path=docs_path,
     )
+    next_action_commands_sha256 = _stable_json_sha256(next_action_commands)
     blockers: list[dict[str, object]] = []
     if not oracle_parity:
         blockers.append(
@@ -1446,6 +1456,7 @@ def build_status(
         "open_or_partial_items_p0_p12": docs_status.get("open_or_partial_count_p0_p12"),
         "open_blocker_count": handoff_summary["open_blocker_count"],
         "source_artifacts_sha256": source_artifacts_sha256,
+        "next_action_commands_sha256": next_action_commands_sha256,
         "first_blocker_kind": handoff_summary["blocker_work_queue_meta"]["first_blocker_kind"],
         "first_blocker_work_item_sha256": handoff_summary[
             "first_blocker_work_item_sha256"
@@ -1499,6 +1510,7 @@ def build_status(
         "blockers": blockers,
         "next_actions": next_actions,
         "next_action_commands": next_action_commands,
+        "next_action_commands_sha256": next_action_commands_sha256,
         "docs_checklist": docs_status,
         "note": (
             "Host-composed all-layer prompt smoke is present; true e2e inference still needs "
@@ -1544,6 +1556,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["next_action_commands"]["oracle_parity_blocked"].get(
             "oracle_helper_refresh_command"
         )
+    elif args.next_action_commands_sha_only:
+        result = status["next_action_commands_sha256"]
     elif args.source_artifacts_sha_only:
         result = status["source_artifacts_sha256"]
     elif args.source_verify_command_sha_only:

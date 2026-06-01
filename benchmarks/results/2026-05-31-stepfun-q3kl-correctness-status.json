@@ -131,6 +131,7 @@
       "first_blocker_sha_only": "handoff_summary.first_blocker_work_item_sha256",
       "kv_resource_command_only": "next_action_commands.kv_backed_decode_not_wired.resource_plan_refresh_command",
       "kv_resource_command_sha_only": "next_action_commands.kv_backed_decode_not_wired.resource_plan_refresh_command_sha256",
+      "next_action_commands_sha_only": "next_action_commands_sha256",
       "oracle_helper_command_only": "next_action_commands.oracle_parity_blocked.oracle_helper_refresh_command",
       "oracle_helper_command_sha_only": "next_action_commands.oracle_parity_blocked.oracle_helper_refresh_command_sha256",
       "readiness_summary_only": "readiness_summary",
@@ -1091,6 +1092,7 @@
       ]
     }
   },
+  "next_action_commands_sha256": "1e27ca8833b336ecd85b9439d662ab9ed9e8b5d55f414f7d10cb8119a0654ba3",
   "next_actions": [
     {
       "action": "Build or locate a StepFun/step35-capable llama.cpp or CPU oracle, rerun scripts/stepfun_llamacpp_oracle.py --execute, and record exact token/logit comparison.",
@@ -1520,21 +1522,22 @@
     "first_blocker_work_item_sha256": "8c5a2cfe6f5b1b7939bb041118ee622bc90a8be6fb3472c7079706d78aacfed3",
     "kv_backed_decode_ready": false,
     "kv_decode_dispatch_ready": true,
+    "next_action_commands_sha256": "1e27ca8833b336ecd85b9439d662ab9ed9e8b5d55f414f7d10cb8119a0654ba3",
     "open_blocker_count": 2,
     "open_or_partial_items_p0_p12": 2,
     "oracle_parity": false,
     "performance_claim_allowed": false,
     "schema_version": 1,
-    "source_artifacts_sha256": "1a12c6c1641626c4ceb8dc06fbab02029082dbe1b605568bb8005781285f94f5",
+    "source_artifacts_sha256": "c4b12084b92c147514b10bbe8479e59093f853399ccf9714b9b41785699512fd",
     "status": "blocked"
   },
-  "readiness_summary_sha256": "2aabee3fbcca377d53e312db66cd40f885ba1371fb977b94438c98733673a900",
+  "readiness_summary_sha256": "0f7c52e4c7e449990e881ebc455379b33583a55eb6d2061cd02a6a2198361fd3",
   "source_artifacts": {
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "78f2f33868badd3a13c118990432a140b67c1cc2fa83924f46957aa7691f417e",
-      "size_bytes": 54692
+      "sha256": "3d2707529795b6670f3f22219720428d701bc0197d8766c3d462654899778e62",
+      "size_bytes": 54789
     },
     "oracle": {
       "exists": true,
@@ -1555,7 +1558,7 @@
       "size_bytes": 45925
     }
   },
-  "source_artifacts_sha256": "1a12c6c1641626c4ceb8dc06fbab02029082dbe1b605568bb8005781285f94f5",
+  "source_artifacts_sha256": "c4b12084b92c147514b10bbe8479e59093f853399ccf9714b9b41785699512fd",
   "status": "blocked",
   "step35_supported_by_local_llama_cpp": null,
   "text_resource_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json"
