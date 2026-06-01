@@ -6509,6 +6509,11 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON workload\.prompt_tokens_per_request must match when profiler passed"):
         c_sweep.validate_sweep_summary(persisted)
     profiler_source_payload = json.loads(profiler_artifact_payload)
+    profiler_source_payload["workload"]["gen_tokens_per_request"] = 3
+    profiler_artifact_path.write_text(json.dumps(profiler_source_payload))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON workload\.gen_tokens_per_request must match when profiler passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    profiler_source_payload = json.loads(profiler_artifact_payload)
     profiler_source_payload["profiler"]["rows"] = 4
     profiler_artifact_path.write_text(json.dumps(profiler_source_payload))
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON rows must match when profiler passed"):
