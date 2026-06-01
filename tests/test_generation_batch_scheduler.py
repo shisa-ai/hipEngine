@@ -6492,6 +6492,12 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     profiler_artifact_path.unlink()
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path must exist when profiler passed"):
         c_sweep.validate_sweep_summary(persisted)
+    profiler_artifact_path.write_text("{not json")
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path must be valid JSON when profiler passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    profiler_artifact_path.write_text(json.dumps({"profiler": {"artifact_path": str(output_dir / "other-profiler-c2.json")}}))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON artifact_path must match when profiler passed"):
+        c_sweep.validate_sweep_summary(persisted)
     profiler_artifact_path.write_text(profiler_artifact_payload)
     profiler_trace_file_path = output_dir / "profile-c2" / "hipengine_kernel_trace.csv"
     profiler_trace_file_payload = profiler_trace_file_path.read_text()

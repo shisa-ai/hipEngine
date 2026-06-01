@@ -3289,6 +3289,22 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if not profiler_source_check_path.is_file():
                         errors.append("commands[].preconditions[].profiler_source_artifact_path must be a regular file when profiler passed")
                         break
+                    try:
+                        profiler_source_payload = _load_json_path(profiler_source_check_path)
+                    except Exception:
+                        errors.append("commands[].preconditions[].profiler_source_artifact_path must be valid JSON when profiler passed")
+                        break
+                    profiler_source_object = (
+                        profiler_source_payload.get("profiler")
+                        if isinstance(profiler_source_payload, dict) and isinstance(profiler_source_payload.get("profiler"), dict)
+                        else profiler_source_payload
+                    )
+                    if not isinstance(profiler_source_object, dict):
+                        errors.append("commands[].preconditions[].profiler_source_artifact_path must contain a profiler object when profiler passed")
+                        break
+                    if profiler_source_object.get("artifact_path") != profiler_source_artifact_path:
+                        errors.append("commands[].preconditions[].profiler_source_artifact_path JSON artifact_path must match when profiler passed")
+                        break
                     if any(
                         _command_text_arg(profiler_command, flag) != _argv_value(argv, flag)
                         for flag in _RETAINED_GATE_FLAGS[:3]
