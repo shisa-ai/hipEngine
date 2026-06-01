@@ -7248,6 +7248,10 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     assert summary["options"]["include_gguf"] is True
     assert summary["command_count"] == 27
     assert summary["completed_command_count"] == 27
+    tampered_completed_command_count = json.loads(json.dumps(summary))
+    tampered_completed_command_count["completed_command_count"] = 26
+    with pytest.raises(ValueError, match=r"completed_command_count must be a typed int matching len\(commands\)"):
+        c_sweep.validate_sweep_summary(tampered_completed_command_count)
     assert summary["status_counts"] == {"planned": 27}
     tampered_status_count = json.loads(json.dumps(summary))
     tampered_status_count["status_counts"]["planned"] = 26
