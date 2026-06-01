@@ -4545,6 +4545,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"invalid c>N diagnostic artifact: {exc}", file=sys.stderr)
         return 1
     summary = _validation_summary(artifact_json=args.artifact_json, mode=mode, passed=True, payload=payload)
+    try:
+        validate_cn_diagnostic_validation_summary(summary)
+    except ValueError as exc:
+        print(f"invalid c>N diagnostic artifact: {exc}", file=sys.stderr)
+        return 1
     if args.summary_json is not None:
         try:
             _write_validation_summary(args.summary_json, summary)

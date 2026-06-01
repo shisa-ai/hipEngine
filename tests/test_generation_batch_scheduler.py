@@ -20740,6 +20740,10 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     )
     monkeypatch.chdir(rollup_root)
     validate_cn_diagnostic_rollup_evidence(accepted)
+    copied_artifact_file = rollup_root / "benchmarks" / "results" / "accepted-c2-copy.json"
+    copied_artifact_file.write_text(json.dumps(accepted), encoding="utf-8")
+    assert validate_cn_diagnostic_artifact_main([str(copied_artifact_file)]) == 1
+    assert validate_cn_diagnostic_artifact_main([str(copied_artifact_file), "--rollup-evidence"]) == 1
     summary_file = rollup_root / "benchmarks" / "results" / "accepted-c2-rollup-check.json"
     assert validate_cn_diagnostic_artifact_main(
         [str(artifact_file), "--rollup-evidence", "--summary-json", str(summary_file)]
