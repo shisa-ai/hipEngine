@@ -1628,7 +1628,9 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
             retained_env = _command_device_env_assignments(command.argv)
             profiler_profiled_argv = _profiled_command_argv(profiler_command)
             profiler_env = _command_device_env_assignments(profiler_profiled_argv or ())
-            if retained_env != profiler_env:
+            if any(not value.strip() for value in (*retained_env.values(), *profiler_env.values())):
+                reasons.append("profiler command device env prefix values must be non-blank")
+            elif retained_env != profiler_env:
                 reasons.append("profiler command device env prefix does not match retained command")
             for flag in _RETAINED_PROFILED_COMMAND_DISALLOWED_FLAGS:
                 if _command_text_has_flag(profiler_command, flag):
