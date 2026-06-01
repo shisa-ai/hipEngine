@@ -21288,6 +21288,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="hardware.visible_device.env.HIP_VISIBLE_DEVICES must include HIP_VISIBLE_DEVICES=1"):
         validate_cn_diagnostic_artifact_payload(missing_hardware_visible_device_env_key)
 
+    mismatched_hardware_visible_device_gpu = json.loads(json.dumps(gpu1_accepted))
+    mismatched_hardware_visible_device_gpu["hardware"]["visible_device"]["device_name"] = "AMD Radeon Pro W7900"
+    with pytest.raises(ValueError, match="hardware.visible_device.device_name must match hardware.gpu"):
+        validate_cn_diagnostic_artifact_payload(mismatched_hardware_visible_device_gpu)
+
     aux_env_accepted = json.loads(json.dumps(gpu1_accepted))
     aux_env_accepted["hardware"]["visible_device"]["env"]["ROCR_VISIBLE_DEVICES"] = "1"
     aux_env_accepted["correctness"]["primitive_batch_correctness"]["device"]["env"]["ROCR_VISIBLE_DEVICES"] = "1"

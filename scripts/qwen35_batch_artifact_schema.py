@@ -2046,6 +2046,15 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     visible_device = hardware.get("visible_device")
     if isinstance(visible_device, Mapping) and "env" in visible_device:
         _validate_device_env_metadata(visible_device.get("env"), prefix="hardware.visible_device", errors=errors)
+    visible_device_name = visible_device.get("device_name") if isinstance(visible_device, Mapping) else None
+    if (
+        isinstance(hardware_gpu, str)
+        and hardware_gpu
+        and isinstance(visible_device_name, str)
+        and visible_device_name
+        and _normalized_gpu_label(hardware_gpu) != _normalized_gpu_label(visible_device_name)
+    ):
+        errors.append("hardware.visible_device.device_name must match hardware.gpu for accepted artifacts")
     for field in _REQUIRED_ACCEPTED_HARDWARE_CAPTURE_FIELDS:
         command_fragment = "rocm-smi" if field == "rocm_smi" else field
         _validate_capture_context(
