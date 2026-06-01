@@ -7274,6 +7274,13 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.command must match shlex\.join\(commands\[\]\.argv\)"):
             c_sweep.validate_sweep_summary(tampered_planned_command_text)
 
+        tampered_planned_executable = json.loads(json.dumps(summary))
+        planned_executable_entry = tampered_planned_executable["commands"][index]
+        planned_executable_entry["argv"][2] = "bash"
+        planned_executable_entry["command"] = shlex.join(planned_executable_entry["argv"])
+        with pytest.raises(ValueError, match=r"commands\[\]\.argv must start with a python executable"):
+            c_sweep.validate_sweep_summary(tampered_planned_executable)
+
         tampered_planned_device_env = json.loads(json.dumps(summary))
         planned_device_env_entry = tampered_planned_device_env["commands"][index]
         planned_device_env_entry["argv"][1] = "HIP_VISIBLE_DEVICES=0"
