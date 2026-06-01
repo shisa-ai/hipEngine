@@ -7336,6 +7336,21 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.batch_size must be listed in batch_sizes"):
             c_sweep.validate_sweep_summary(tampered_planned_unlisted_batch_size)
 
+        tampered_planned_missing_status = json.loads(json.dumps(summary))
+        del tampered_planned_missing_status["commands"][index]["status"]
+        with pytest.raises(ValueError, match=r"commands\[\]\.status must be planned, passed, skipped, or failed"):
+            c_sweep.validate_sweep_summary(tampered_planned_missing_status)
+
+        tampered_planned_unknown_status = json.loads(json.dumps(summary))
+        tampered_planned_unknown_status["commands"][index]["status"] = "blocked"
+        with pytest.raises(ValueError, match=r"commands\[\]\.status must be planned, passed, skipped, or failed"):
+            c_sweep.validate_sweep_summary(tampered_planned_unknown_status)
+
+        tampered_planned_non_planned_status = json.loads(json.dumps(summary))
+        tampered_planned_non_planned_status["commands"][index]["status"] = "passed"
+        with pytest.raises(ValueError, match=r"commands\[\]\.status must be planned for dry-run summaries"):
+            c_sweep.validate_sweep_summary(tampered_planned_non_planned_status)
+
         tampered_planned_json_path = json.loads(json.dumps(summary))
         planned_json_entry = tampered_planned_json_path["commands"][index]
         planned_json_argv = planned_json_entry["argv"]
