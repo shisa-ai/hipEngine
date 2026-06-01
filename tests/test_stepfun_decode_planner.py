@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ctypes
 import hashlib
+import json
 import os
 import struct
 import sys
@@ -399,12 +400,18 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
     ]
     assert payload["streaming_runner_ready"] is False
     assert payload["streaming_runner_blocker_count"] == 3
-    assert payload["first_streaming_runner_blocker"] == "streaming_decode_loop_not_wired"
-    assert [blocker["name"] for blocker in payload["streaming_runner_blockers"]] == [
+    expected_streaming_blockers = [
         "streaming_decode_loop_not_wired",
         "kv_kernel_trace_artifact_missing",
         "kv_backed_next_token_artifact_missing",
     ]
+    expected_streaming_blockers_sha = hashlib.sha256(
+        json.dumps(expected_streaming_blockers, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    assert payload["streaming_runner_blocker_names"] == expected_streaming_blockers
+    assert payload["streaming_runner_blocker_names_sha256"] == expected_streaming_blockers_sha
+    assert payload["first_streaming_runner_blocker"] == "streaming_decode_loop_not_wired"
+    assert [blocker["name"] for blocker in payload["streaming_runner_blockers"]] == expected_streaming_blockers
     assert all(blocker["ready"] is False for blocker in payload["streaming_runner_blockers"])
 
 
@@ -646,12 +653,18 @@ def test_stepfun_text_decode_resource_plan_estimates_weight_and_kv_bytes() -> No
     assert launch_schedule["all_stage_dispatch_ready"] is True
     assert launch_schedule["streaming_runner_ready"] is False
     assert launch_schedule["streaming_runner_blocker_count"] == 3
-    assert launch_schedule["first_streaming_runner_blocker"] == "streaming_decode_loop_not_wired"
-    assert [blocker["name"] for blocker in launch_schedule["streaming_runner_blockers"]] == [
+    expected_streaming_blockers = [
         "streaming_decode_loop_not_wired",
         "kv_kernel_trace_artifact_missing",
         "kv_backed_next_token_artifact_missing",
     ]
+    expected_streaming_blockers_sha = hashlib.sha256(
+        json.dumps(expected_streaming_blockers, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    assert launch_schedule["streaming_runner_blocker_names"] == expected_streaming_blockers
+    assert launch_schedule["streaming_runner_blocker_names_sha256"] == expected_streaming_blockers_sha
+    assert launch_schedule["first_streaming_runner_blocker"] == "streaming_decode_loop_not_wired"
+    assert [blocker["name"] for blocker in launch_schedule["streaming_runner_blockers"]] == expected_streaming_blockers
 
     with pytest.raises(ValueError, match="context_pages"):
         planner.text_decode_resource_plan(context_pages=0, page_size=512)

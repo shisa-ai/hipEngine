@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ctypes
 import hashlib
+import json
 import struct
 from dataclasses import dataclass
 from importlib import import_module
@@ -51,6 +52,13 @@ DEFAULT_STEPFUN_MAX_NEW_TOKENS = 1
 STEPFUN_GGUF_KERNEL_QUANT = "gguf_step35"
 STEPFUN_KV_ATTENTION_BLOCK_SIZE = 256
 BF16_BYTES = 2
+
+
+def _stable_json_sha256(value: object) -> str:
+    """Return a stable SHA-256 digest for JSON-serializable runtime metadata."""
+
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 def stepfun_streaming_runner_blockers() -> tuple[dict[str, object], ...]:
@@ -463,6 +471,7 @@ class StepFunTextDecodeResourcePlan:
         layer_count = len(self.kv_layer_nbytes)
         per_layer_order = ["prompt_kv_write", "decode_kv_write", "decode_attention"]
         streaming_runner_blockers = list(self.streaming_runner_blockers)
+        streaming_runner_blocker_names = [str(blocker["name"]) for blocker in streaming_runner_blockers]
         return {
             "source": "text_decode_resource_plan",
             "layer_count": layer_count,
@@ -498,8 +507,12 @@ class StepFunTextDecodeResourcePlan:
             "all_stage_dispatch_ready": self.kv_decode_kernel_plan.all_registered,
             "streaming_runner_ready": False,
             "streaming_runner_blocker_count": len(streaming_runner_blockers),
+            "streaming_runner_blocker_names": streaming_runner_blocker_names,
+            "streaming_runner_blocker_names_sha256": _stable_json_sha256(
+                streaming_runner_blocker_names
+            ),
             "first_streaming_runner_blocker": (
-                str(streaming_runner_blockers[0]["name"]) if streaming_runner_blockers else None
+                streaming_runner_blocker_names[0] if streaming_runner_blocker_names else None
             ),
             "streaming_runner_blockers": streaming_runner_blockers,
             "note": (
@@ -925,6 +938,7 @@ class StepFunKVDecodeRunPlan:
     def to_dict(self) -> dict[str, object]:
         launch_schedule = self.resource_plan.kv_decode_launch_schedule
         streaming_runner_blockers = list(self.streaming_runner_blockers)
+        streaming_runner_blocker_names = [str(blocker["name"]) for blocker in streaming_runner_blockers]
         return {
             "prompt_length": self.prompt_length,
             "input_ids": list(self.input_ids),
@@ -960,8 +974,12 @@ class StepFunKVDecodeRunPlan:
             "kv_decode_launch_per_layer_order": list(launch_schedule["per_layer_order"]),
             "streaming_runner_ready": self.streaming_runner_ready,
             "streaming_runner_blocker_count": len(streaming_runner_blockers),
+            "streaming_runner_blocker_names": streaming_runner_blocker_names,
+            "streaming_runner_blocker_names_sha256": _stable_json_sha256(
+                streaming_runner_blocker_names
+            ),
             "first_streaming_runner_blocker": (
-                str(streaming_runner_blockers[0]["name"]) if streaming_runner_blockers else None
+                streaming_runner_blocker_names[0] if streaming_runner_blocker_names else None
             ),
             "streaming_runner_blockers": streaming_runner_blockers,
             "note": (
