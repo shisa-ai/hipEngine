@@ -63567,3 +63567,25 @@ GPU1 / RX 7900 XTX evidence:
 Conclusion: post-attention add/RMSNorm is not the missing native substage by itself. The blocker sits earlier in the native full-attention batch path or in state/cache effects that only the complete c1 full-attention row replay avoids. Clean/default retained verifier remains `/tmp/hipengine-e2e-native-c2-512-128.json`: `min_equal_prefix_tokens=82`, `prefix_lengths=[82, 137]`, `status=rejected_correctness`, no performance claim.
 
 Guard passed with the required pytest bundle (`400 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY retained full-attention KV append diagnostic
+
+Added a focused full-attention decode KV-append diagnostic path:
+
+- Runtime env: `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_KV_APPEND=1`.
+- Retained/hidden scripts: `--batch-decode-full-attn-kv-append-path {batch,per_row}`.
+- Runtime metadata: `full_attention_kv_append_decode_path` plus the diagnostic blocker when forced.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Native full-attention batch path with all exposed full-attention substages forced to row replay, now including KV append:
+  `/tmp/hipengine-e2e-native-c2-512-128-retained-selected-linear-full-subrows-kvrow.json`
+  - `batch_decode_full_attention_path=native_batch`, `attention_input=context=output=per_row`, `full_attention_kv_append=per_row`, `full_attention_moe=per_row_c1`, `post_attention=per_row`.
+  - Still fails generated-token equality with `prefix_lengths=[82, 104]`, `min_equal_prefix_tokens=82`, `first_mismatch_indices=[82, 104]`.
+- Complete full-attention row replay with the new KV-append diagnostic metadata:
+  `/tmp/hipengine-e2e-native-c2-512-128-retained-selected-linear-fullpath-rowdiag-kvrow.json`
+  - Generated-token equality remains green: `prefix_lengths=[137, 137]`, `min_equal_prefix_tokens=137`, `first_mismatch_indices=[null, null]`, `generated_token_equality.passed=true`.
+
+Conclusion: decode KV append is not the sole native full-attention batch blocker. The clean/default retained verifier remains `/tmp/hipengine-e2e-native-c2-512-128.json`: `min_equal_prefix_tokens=82`, `prefix_lengths=[82, 137]`, `status=rejected_correctness`, no performance claim. The remaining gap is between the full per-row c1 layer replay and the native batch full-attention layer even after input/context/KV append/output/post/MoE row diagnostics are enabled.
+
+Guard passed with the required pytest bundle (`400 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.

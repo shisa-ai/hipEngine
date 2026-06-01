@@ -3943,6 +3943,8 @@ class Qwen35ParoDecodeState:
         force_per_row_input_rmsnorm: bool = False,
         force_per_row_context: bool = False,
         per_row_contexts: Sequence[tuple[Tensor, Tensor, KVLiveSpans]] | None = None,
+        force_per_row_kv_append: bool = False,
+        per_row_append_contexts: Sequence[tuple[Tensor, Tensor, KVLiveSpans]] | None = None,
         force_per_row_output: bool = False,
         force_batch_gemv_output: bool = False,
         force_per_row_post_attention: bool = False,
@@ -3999,16 +4001,31 @@ class Qwen35ParoDecodeState:
             library=library,
             stream=stream,
         )
-        self.append_full_attention_kv_fp16_decode_batch(
-            attention_scratch,
-            key_cache=key_cache,
-            value_cache=value_cache,
-            spans=append_spans,
-            rows=tokens,
-            block_size=block_size,
-            library=library,
-            stream=stream,
-        )
+        if force_per_row_kv_append and tokens > 1:
+            if per_row_append_contexts is None or len(per_row_append_contexts) != tokens:
+                raise ValueError("per_row_append_contexts must provide one key/value/span tuple per decode row")
+            for row, (row_key_cache, row_value_cache, row_append_spans) in enumerate(per_row_append_contexts):
+                row_scratch = self._decode_row_full_attention_scratch(attention_scratch, row)
+                self.append_full_attention_kv_fp16(
+                    row_scratch,
+                    key_cache=row_key_cache,
+                    value_cache=row_value_cache,
+                    spans=row_append_spans,
+                    block_size=block_size,
+                    library=library,
+                    stream=stream,
+                )
+        else:
+            self.append_full_attention_kv_fp16_decode_batch(
+                attention_scratch,
+                key_cache=key_cache,
+                value_cache=value_cache,
+                spans=append_spans,
+                rows=tokens,
+                block_size=block_size,
+                library=library,
+                stream=stream,
+            )
         if force_per_row_context and tokens > 1:
             if per_row_contexts is None or len(per_row_contexts) != tokens:
                 raise ValueError("per_row_contexts must provide one key/value/span tuple per decode row")
