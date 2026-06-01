@@ -7343,11 +7343,21 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     with pytest.raises(ValueError, match=r"commands\[\]\.argv --projection-dispatch-artifact must match options\.projection_dispatch_artifact"):
         c_sweep.validate_sweep_summary(tampered_projection_dispatch_option)
     assert summary["options"]["model"] == "/tmp/model"
+    for stale_model_label in ("   ", 123):
+        tampered_model_label = json.loads(json.dumps(summary))
+        tampered_model_label["options"]["model"] = stale_model_label
+        with pytest.raises(ValueError, match="options.model must be a non-empty string"):
+            c_sweep.validate_sweep_summary(tampered_model_label)
     tampered_model_option = json.loads(json.dumps(summary))
     tampered_model_option["options"]["model"] = "/tmp/stale-model"
     with pytest.raises(ValueError, match=r"commands\[\]\.argv --model must match options\.model"):
         c_sweep.validate_sweep_summary(tampered_model_option)
     assert summary["options"]["fixture"] == "/tmp/fixture.json"
+    for stale_fixture_label in ("   ", 123):
+        tampered_fixture_label = json.loads(json.dumps(summary))
+        tampered_fixture_label["options"]["fixture"] = stale_fixture_label
+        with pytest.raises(ValueError, match="options.fixture must be a non-empty string"):
+            c_sweep.validate_sweep_summary(tampered_fixture_label)
     tampered_fixture_option = json.loads(json.dumps(summary))
     tampered_fixture_option["options"]["fixture"] = "/tmp/stale-fixture.json"
     with pytest.raises(ValueError, match=r"commands\[\]\.argv --fixture must match options\.fixture"):
