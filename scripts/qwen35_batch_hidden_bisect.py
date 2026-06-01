@@ -5604,6 +5604,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Diagnostic linear-attention conv/GDN/state path for c>N batch decode; selected_c1 forces token-1 state kernels per row.",
     )
     parser.add_argument(
+        "--batch-decode-linear-moe-path",
+        choices=("grouped_compact", "per_row_c1"),
+        default="grouped_compact",
+        help="Diagnostic MoE path for linear-attention c>N batch decode; per_row_c1 replays true token-1 MoE kernels per row.",
+    )
+    parser.add_argument(
         "--batch-decode-linear-output-path",
         choices=("auto", "batch", "batch_gemv", "selected_c1"),
         default="auto",
@@ -5701,6 +5707,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "batch_decode_linear_path": str(args.batch_decode_linear_path),
             "batch_decode_linear_projection_path": str(args.batch_decode_linear_projection_path),
             "batch_decode_linear_state_path": str(args.batch_decode_linear_state_path),
+            "batch_decode_linear_moe_path": str(args.batch_decode_linear_moe_path),
             "batch_decode_linear_output_path": str(args.batch_decode_linear_output_path),
             "batch_decode_full_attention_path": str(args.batch_decode_full_attn_path),
             "batch_decode_attention_input_path": str(args.batch_decode_attn_input_path),
@@ -5712,6 +5719,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
                 and args.batch_decode_linear_path == "batch_segments"
                 and args.batch_decode_linear_projection_path == "batch"
                 and args.batch_decode_linear_state_path == "batch_segments"
+                and args.batch_decode_linear_moe_path == "grouped_compact"
                 and args.batch_decode_linear_output_path not in {"batch_gemv", "selected_c1"}
                 and args.batch_decode_full_attn_path == "native_batch"
                 and args.batch_decode_attn_input_path == "batch"
@@ -5781,6 +5789,9 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_STATE"] = (
         "1" if args.batch_decode_linear_state_path == "selected_c1" else "0"
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR_MOE"] = (
+        "1" if args.batch_decode_linear_moe_path == "per_row_c1" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT"] = str(
         args.batch_decode_linear_output_path
