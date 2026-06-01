@@ -7418,10 +7418,11 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.output_tail must be absent for planned rows"):
             c_sweep.validate_sweep_summary(tampered_output_tail)
 
-        tampered_conditions = json.loads(json.dumps(summary))
-        tampered_conditions["commands"][index]["preconditions"] = []
-        with pytest.raises(ValueError, match=r"commands\[\]\.conditions must be absent for planned rows"):
-            c_sweep.validate_sweep_summary(tampered_conditions)
+        for condition_field in ("preconditions", "precondition", "postconditions", "postcondition"):
+            tampered_conditions = json.loads(json.dumps(summary))
+            tampered_conditions["commands"][index][condition_field] = [] if condition_field.endswith("s") else {}
+            with pytest.raises(ValueError, match=r"commands\[\]\.conditions must be absent for planned rows"):
+                c_sweep.validate_sweep_summary(tampered_conditions)
 
         tampered_unknown_command_key = json.loads(json.dumps(summary))
         tampered_unknown_command_key["commands"][index]["unexpected"] = "field"

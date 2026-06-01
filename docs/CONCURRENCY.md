@@ -1456,7 +1456,7 @@ roll-up/status view.
       missing/blank/unknown/known-mismatched/wrong script/category, missing/malformed/unlisted
       `batch_size`, missing/unknown/invalid planned-row status,
       missing/invalid returncode, missing/malformed/non-finite/invalid duration,
-      output-tail/conditions,
+      output-tail/all condition-field variants,
       unknown command schema keys, missing/stale `git_dirty`, duplicate
       `--rows`/`--seed`/`--json` labels, blank inline/missing `--json`,
       blank inline/missing/non-integer `--rows`/`--seed` values,
