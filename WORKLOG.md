@@ -63168,3 +63168,32 @@ Two follow-up controls were also checked:
 - `--batch-decode-linear-projection-path batch_gemv --batch-decode-linear-output-path selected_c1`: token green, hidden red at decode step 2 / generated index 3 (`max_abs=0.001220703125`, dim 1269).
 
 Full native c=2 512/128 verifier with `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_LINEAR_PROJECTIONS=1` remained `rejected_correctness` with min equal-prefix `82` (`[82, 137]`), so the default runtime was not changed. Next target should compare/repair native QKV/Z projection numerics against the batch-GEMV control, then continue into the hidden-only full-attention/output parity blocker.
+
+## 2026-06-02 — CONCURRENCY full-attention/MoE controls after batch-GEMV projection
+
+Continued GPU1 / RX 7900 XTX c=2 diagnostics from the batch-GEMV QKV/Z projection control. Runtime defaults were left unchanged; all runs below are diagnostic blockers only.
+
+Base hidden-bisect command used:
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
+  --prompt-length 512 --batch-size 2 --decode-tokens 16 \
+  --max-layers 8 --layer-limits 8 --max-sequence-length 1024 \
+  --focus-hidden-flat-index 1269 \
+  --batch-decode-linear-projection-path batch_gemv \
+  --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt \
+  --require-cached-build
+```
+
+Controls:
+
+- `--batch-decode-full-attn-path per_row` → `/tmp/hipengine-e2e-hidden-L8-512-16-batch-gemv-proj-full-per-row-gpu1.json`: token green (`first_token_mismatch=null`), hidden red later/smaller at decode step 8 / generated index 9, row 1, dim 1269, `max_abs=0.0010986328125`. This strongly implicates native full-attention/MoE boundary behavior but does not clear hidden parity.
+- `--batch-decode-attn-input-path per_row` → `/tmp/hipengine-e2e-hidden-L8-512-16-batch-gemv-proj-attn-input-per-row-gpu1.json`: token regresses red at first index 13; hidden red at step 10, row 1, dim 1269, `max_abs=0.00146484375`. Do not prioritize input RMSNorm per-row fallback as a fix.
+- `--batch-decode-attn-context-path per_row` → `/tmp/hipengine-e2e-hidden-L8-512-16-batch-gemv-proj-attn-context-per-row-gpu1.json`: token green, hidden red at step 5, row 1, dim 821, `max_abs=0.008880615234375`.
+- `--batch-decode-post-attn-path per_row` → `/tmp/hipengine-e2e-hidden-L8-512-16-batch-gemv-proj-post-attn-per-row-gpu1.json`: token green, hidden essentially unchanged from the batch-GEMV projection-only run (`max_abs=0.01043701171875` at step 11 / dim 1543).
+- `--batch-decode-moe-path selected_c1` → `/tmp/hipengine-e2e-hidden-L8-512-16-batch-gemv-proj-selected-moe-gpu1.json`: token green, hidden pushed to decode step 15 / generated index 16, row 0, dim 1269, `max_abs=0.001953125`.
+- `--batch-decode-moe-path selected_c1 --batch-decode-full-attn-path per_row` → `/tmp/hipengine-e2e-hidden-L8-512-16-batch-gemv-proj-selected-moe-full-per-row-gpu1.json`: token green, hidden red at step 4 / generated index 5, row 0, dim 1269, `max_abs=0.001220703125`.
+
+Full c=2 512/128 diagnostic retained bench with `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_LINEAR_PROJECTIONS=1 HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE=1` improved the min equal-prefix from the default 82 to 119 (`[119, 137]`) but remained `rejected_correctness`; the selected-MoE-only control without batch-GEMV projection stayed at 82 (`[82, 104]`). This points to a compound blocker: fix native QKV/Z projection numerics first, then audit grouped compact MoE parity under the projection-fixed path. No performance claim.
