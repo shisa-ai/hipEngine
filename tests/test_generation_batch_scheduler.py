@@ -8597,32 +8597,33 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         ("--primitive-cpu-json", "int8-primitive-cpu-stale.json"),
         ("--primitive-hip-json", "int8-primitive-hip-stale.json"),
     ):
-        tampered = json.loads(json.dumps(summary))
-        argv = tampered["commands"][int8_entry_indices[-1]]["argv"]
-        argv[argv.index(flag) + 1] = str(tmp_path / "artifacts" / stale_name)
-        tampered["commands"][int8_entry_indices[-1]]["command"] = shlex.join(argv)
-        with pytest.raises(
-            ValueError, match=rf"commands\[\]\.argv INT8 {flag} must match the c-specific output_dir artifact path"
-        ):
-            c_sweep.validate_sweep_summary(tampered)
+        for index in int8_entry_indices:
+            tampered = json.loads(json.dumps(summary))
+            argv = tampered["commands"][index]["argv"]
+            argv[argv.index(flag) + 1] = str(tmp_path / "artifacts" / stale_name)
+            tampered["commands"][index]["command"] = shlex.join(argv)
+            with pytest.raises(
+                ValueError, match=rf"commands\[\]\.argv INT8 {flag} must match the c-specific output_dir artifact path"
+            ):
+                c_sweep.validate_sweep_summary(tampered)
 
-        tampered_missing = json.loads(json.dumps(summary))
-        missing_argv = tampered_missing["commands"][int8_entry_indices[-1]]["argv"]
-        missing_index = missing_argv.index(flag)
-        del missing_argv[missing_index : missing_index + 2]
-        tampered_missing["commands"][int8_entry_indices[-1]]["command"] = shlex.join(missing_argv)
-        with pytest.raises(
-            ValueError, match=rf"commands\[\]\.argv INT8 {flag} must match the c-specific output_dir artifact path"
-        ):
-            c_sweep.validate_sweep_summary(tampered_missing)
+            tampered_missing = json.loads(json.dumps(summary))
+            missing_argv = tampered_missing["commands"][index]["argv"]
+            missing_index = missing_argv.index(flag)
+            del missing_argv[missing_index : missing_index + 2]
+            tampered_missing["commands"][index]["command"] = shlex.join(missing_argv)
+            with pytest.raises(
+                ValueError, match=rf"commands\[\]\.argv INT8 {flag} must match the c-specific output_dir artifact path"
+            ):
+                c_sweep.validate_sweep_summary(tampered_missing)
 
-        tampered_blank = json.loads(json.dumps(summary))
-        blank_argv = tampered_blank["commands"][int8_entry_indices[-1]]["argv"]
-        blank_index = blank_argv.index(flag)
-        blank_argv[blank_index : blank_index + 2] = [f"{flag}="]
-        tampered_blank["commands"][int8_entry_indices[-1]]["command"] = shlex.join(blank_argv)
-        with pytest.raises(ValueError, match=r"commands\[\]\.argv flag values must be non-empty"):
-            c_sweep.validate_sweep_summary(tampered_blank)
+            tampered_blank = json.loads(json.dumps(summary))
+            blank_argv = tampered_blank["commands"][index]["argv"]
+            blank_index = blank_argv.index(flag)
+            blank_argv[blank_index : blank_index + 2] = [f"{flag}="]
+            tampered_blank["commands"][index]["command"] = shlex.join(blank_argv)
+            with pytest.raises(ValueError, match=r"commands\[\]\.argv flag values must be non-empty"):
+                c_sweep.validate_sweep_summary(tampered_blank)
     for flag, stale_value, expected_error in (
         ("--model", "/tmp/other-model", r"commands\[\]\.argv --model must match options\.model"),
         ("--fixture", "/tmp/other-fixture.json", r"commands\[\]\.argv --fixture must match options\.fixture"),
