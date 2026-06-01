@@ -154,6 +154,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--verification-exit-code-only",
+        action="store_true",
+        help=(
+            "With --verify-source-artifacts, emit only the verifier exit code "
+            "for compact numeric routing."
+        ),
+    )
+    parser.add_argument(
         "--verification-failures-only",
         action="store_true",
         help=(
@@ -494,6 +502,7 @@ def _verify_source_artifacts(status_artifact: Path) -> dict[str, object]:
         return {
             "status": "missing_source_artifacts",
             "status_artifact": str(status_artifact),
+            "verification_exit_code": SOURCE_ARTIFACT_MISMATCH_EXIT_CODE,
             "all_match": False,
             "source_artifacts_all_match": False,
             "source_artifact_failed_records": source_artifact_failed_records,
@@ -532,9 +541,13 @@ def _verify_source_artifacts(status_artifact: Path) -> dict[str, object]:
         "status_integrity_failed_checks": status_integrity["failed_checks"],
     }
     all_match = source_artifacts_all_match and status_integrity["all_match"] is True
+    verification_exit_code = (
+        READY_EXIT_CODE if all_match is True else SOURCE_ARTIFACT_MISMATCH_EXIT_CODE
+    )
     return {
         "status": "match" if all_match else "mismatch",
         "status_artifact": str(status_artifact),
+        "verification_exit_code": verification_exit_code,
         "all_match": all_match,
         "source_artifacts_all_match": source_artifacts_all_match,
         "source_artifact_failed_records": source_artifact_failed_records,
@@ -1912,7 +1925,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     if args.verify_source_artifacts is not None:
         verification = _verify_source_artifacts(args.verify_source_artifacts)
-        if args.verification_status_only:
+        if args.verification_exit_code_only:
+            result = verification["verification_exit_code"]
+        elif args.verification_status_only:
             result = verification["status"]
         elif args.verification_failures_sha_only:
             result = verification["verification_failures_sha256"]

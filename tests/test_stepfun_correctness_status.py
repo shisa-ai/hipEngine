@@ -3241,6 +3241,7 @@ def test_stepfun_correctness_status_verifies_source_artifact_provenance(capsys, 
     payload = json.loads(verify_output.read_text())
     assert payload["status"] == "match"
     assert payload["status_artifact"] == str(status_output)
+    assert payload["verification_exit_code"] == 0
     assert payload["all_match"] is True
     assert payload["source_artifacts_all_match"] is True
     assert payload["source_artifact_failed_records"] == []
@@ -3576,6 +3577,105 @@ def test_stepfun_correctness_status_verify_status_only_detects_stale_inputs(
     assert captured.out == ""
     assert captured.err == ""
     assert json.loads(verify_status_output.read_text()) == "mismatch"
+
+
+def test_stepfun_correctness_status_verify_exit_code_only(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    status_output = tmp_path / "status.json"
+    exit_code_output = tmp_path / "verification-exit-code.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(status_output),
+        ]
+    )
+    assert rc == 0
+
+    rc = main(
+        [
+            "--verify-source-artifacts",
+            str(status_output),
+            "--verification-exit-code-only",
+            "--output",
+            str(exit_code_output),
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert json.loads(exit_code_output.read_text()) == 0
+
+
+def test_stepfun_correctness_status_verify_exit_code_only_detects_stale_inputs(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    status_output = tmp_path / "status.json"
+    exit_code_output = tmp_path / "verification-exit-code.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(status_output),
+        ]
+    )
+    assert rc == 0
+    prompt.write_text(prompt.read_text() + "\n")
+
+    rc = main(
+        [
+            "--verify-source-artifacts",
+            str(status_output),
+            "--verification-exit-code-only",
+            "--output",
+            str(exit_code_output),
+            "--pretty",
+        ]
+    )
+
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert json.loads(exit_code_output.read_text()) == 1
 
 
 def test_stepfun_correctness_status_verify_failures_only(
