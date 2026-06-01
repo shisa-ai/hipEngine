@@ -31091,3 +31091,44 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: P0-P12 open/partial checklist count stayed at `2`; targeted decode-planner tests passed (`11 passed`); source/status verification returned `match`; the full StepFun guard passed (`203` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was the pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes StepFun runtime metadata/tests/docs/status artifact only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.
+
+## 2026-06-01 — StepFun streaming blueprint status validation
+
+Surfaced the runtime `kv_decode_run_plan.streaming_decode_loop_blueprint` in the StepFun correctness status handoff. The canonical text resource dry-run artifact now includes the metadata-only KV streaming loop blueprint (`executable=false`, blocked by `streaming_decode_loop_not_wired`, 135 planned operations, 4 stages, operation sequence SHA `5d7000f37e3d1106978bec8a548ff6ec5020f420583550275e09fd3dbed5c8d7`). `scripts/stepfun_correctness_status.py` now validates that the blueprint is recorded, matches the launch schedule, matches the pre-run upload order, and points at the same first streaming blocker; the KV gap report reports this as a sixth validated precondition while keeping readiness blocked on `streaming_runner_ready_flags`, `kv_kernel_launch_trace`, and `kv_backed_next_token_artifact`. Refreshed `benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json` and `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`; readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`). No KV kernels are launched and no StepFun performance or e2e correctness claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan --kv-context-pages 1 --kv-page-size 512 --pretty > benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty > /tmp/stepfun-source-verify-blueprint-status.json
+python3 - <<'PY'
+import json
+s=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+v=json.load(open('/tmp/stepfun-source-verify-blueprint-status.json'))
+kv=s['kv_backed_decode_gap_report']
+b=kv['streaming_decode_loop_blueprint']
+assert s['status'] == 'blocked'
+assert s['docs_checklist']['open_or_partial_count_p0_p12'] == 2
+assert kv['precondition_count'] == 6
+assert kv['validated_precondition_count'] == 6
+assert kv['missing_preconditions'] == []
+assert b['recorded'] is True
+assert b['matches_launch_schedule'] is True
+assert b['upload_order_matches'] is True
+assert b['blocker_matches'] is True
+assert b['operation_count'] == 135
+assert b['stage_count'] == 4
+assert b['blocked_by'] == 'streaming_decode_loop_not_wired'
+assert s['handoff_summary']['ready_signals']['kv_streaming_decode_loop_blueprint_recorded'] is True
+assert v['status'] == 'match'
+assert v['all_match'] is True
+assert v['status_integrity']['all_match'] is True
+print('blueprint status ok', b['operation_sequence_sha256'])
+PY
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: P0-P12 open/partial checklist count stayed at `2`; status-helper tests passed (`99 passed`); source/status verification returned `match` with the new streaming-blueprint precondition validated; the full StepFun guard passed (`203` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was the pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes StepFun status-helper metadata/tests/docs/status/resource artifacts only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.

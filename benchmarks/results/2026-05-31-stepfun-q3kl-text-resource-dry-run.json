@@ -132,6 +132,7 @@
       "total_span_input_nbytes": 16
     },
     "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
+    "first_streaming_runner_blocker_sha256": "126f69ef7c41c0cbd8779801ea769477b1a973c58aef0e191baa4b564e48af32",
     "input_id_count": 23,
     "input_id_preview": [
       0,
@@ -473,6 +474,80 @@
       2,
       128007
     ],
+    "streaming_decode_loop_blueprint": {
+      "blocked_by": "streaming_decode_loop_not_wired",
+      "blocked_by_sha256": "126f69ef7c41c0cbd8779801ea769477b1a973c58aef0e191baa4b564e48af32",
+      "executable": false,
+      "first_layer_ops": [
+        "layers.0.prompt_kv_write",
+        "layers.0.decode_kv_write",
+        "layers.0.decode_attention"
+      ],
+      "last_layer_ops": [
+        "layers.44.prompt_kv_write",
+        "layers.44.decode_kv_write",
+        "layers.44.decode_attention"
+      ],
+      "layer_count": 45,
+      "note": "Metadata-only StepFun KV streaming decode loop contract. It records the upload and launch order but does not launch kernels.",
+      "operation_count": 135,
+      "operation_sequence_sha256": "5d7000f37e3d1106978bec8a548ff6ec5020f420583550275e09fd3dbed5c8d7",
+      "per_layer_order": [
+        "prompt_kv_write",
+        "decode_kv_write",
+        "decode_attention"
+      ],
+      "pre_run_cleanup_order": [
+        "decode_attention_live_counts",
+        "decode_kv_write_position",
+        "decode_base_offsets",
+        "prompt_live_counts",
+        "prompt_base_offsets",
+        "input_ids"
+      ],
+      "pre_run_upload_checks_passed": true,
+      "pre_run_upload_order": [
+        "input_ids",
+        "prompt_base_offsets",
+        "prompt_live_counts",
+        "decode_base_offsets",
+        "decode_kv_write_position",
+        "decode_attention_live_counts"
+      ],
+      "source": "kv_decode_run_plan",
+      "stage_count": 4,
+      "stages": [
+        {
+          "entry_count": 6,
+          "name": "upload_decode_inputs",
+          "ready": true,
+          "source": "decode_input_upload_plan",
+          "total_nbytes": 484
+        },
+        {
+          "dispatch_key": "prompt_kv_write",
+          "layer_count": 45,
+          "name": "prompt_prefill_kv_write",
+          "ready": true,
+          "span_contract": "prompt_span"
+        },
+        {
+          "dispatch_key": "decode_kv_write",
+          "layer_count": 45,
+          "name": "one_token_decode_kv_write",
+          "ready": true,
+          "span_contract": "decode_span"
+        },
+        {
+          "dispatch_key": "decode_attention",
+          "layer_count": 45,
+          "name": "one_token_gated_attention_decode",
+          "ready": true,
+          "span_contract": "decode_span"
+        }
+      ],
+      "streaming_runner_ready": false
+    },
     "streaming_runner_blocker_count": 3,
     "streaming_runner_blocker_names": [
       "streaming_decode_loop_not_wired",
@@ -596,6 +671,7 @@
         "layers.0.decode_attention"
       ],
       "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
+      "first_streaming_runner_blocker_sha256": "126f69ef7c41c0cbd8779801ea769477b1a973c58aef0e191baa4b564e48af32",
       "last_layer_ops": [
         "layers.44.prompt_kv_write",
         "layers.44.decode_kv_write",

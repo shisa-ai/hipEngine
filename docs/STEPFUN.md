@@ -673,10 +673,13 @@ reporting.
   `kv_decode_run_plan` now emit the same first-blocker digest at the metadata
   source, and `kv_decode_run_plan.streaming_decode_loop_blueprint` records the
   metadata-only upload/order/stage contract for the future KV loop without
-  launching kernels; status integrity also cross-checks the mirrored first KV
-  blocker digest plus the full KV streaming blocker names/SHA across the gap
-  report, next-action command, and handoff queue so the runner artifact and
-  status helper agree on why KV-backed decode remains blocked. The same status
+  launching kernels. The canonical resource artifact now contains that blueprint,
+  and the correctness-status KV gap report validates that it is recorded, matches
+  the launch schedule, matches the pre-run upload order, and points at the same
+  first blocker; status integrity also cross-checks the mirrored first KV blocker
+  digest plus the full KV streaming blocker names/SHA across the gap report,
+  next-action command, and handoff queue so the runner artifact and status helper
+  agree on why KV-backed decode remains blocked. The same status
   artifact records `source_artifacts` path/size/SHA-256 provenance for the
   prompt, oracle, resource-plan, and docs
   inputs used to compute the summary; `--verify-source-artifacts STATUS_JSON`

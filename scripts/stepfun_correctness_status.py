@@ -975,7 +975,15 @@ def _kv_decode_dispatch_progress(resource: dict[str, object]) -> dict[str, objec
     plan = dict(resource.get("text_decode_resource_plan", {}))
     kv_plan = dict(plan.get("kv_decode_kernel_plan", {}))
     run_plan = dict(resource.get("kv_decode_run_plan", {}))
+    decode_input_upload_plan = dict(run_plan.get("decode_input_upload_plan", {}))
+    streaming_decode_loop_blueprint = dict(
+        run_plan.get("streaming_decode_loop_blueprint", {})
+    )
     registered = dict(kv_plan.get("registered", {}))
+    blueprint_operation_count = streaming_decode_loop_blueprint.get("operation_count")
+    launch_operation_count = dict(plan.get("kv_decode_launch_schedule", {})).get(
+        "operation_count"
+    )
     return {
         "source": "resource_artifact.text_decode_resource_plan.kv_decode_kernel_plan",
         "resource_status": resource.get("status"),
@@ -996,6 +1004,29 @@ def _kv_decode_dispatch_progress(resource: dict[str, object]) -> dict[str, objec
         "span_shape_compatible": kv_plan.get("span_shape_compatible") is True,
         "launch_schedule": dict(plan.get("kv_decode_launch_schedule", {})),
         "run_plan": run_plan,
+        "streaming_decode_loop_blueprint": streaming_decode_loop_blueprint,
+        "streaming_decode_loop_blueprint_recorded": bool(
+            streaming_decode_loop_blueprint.get("operation_count")
+        ),
+        "streaming_decode_loop_blueprint_matches_launch_schedule": (
+            blueprint_operation_count == launch_operation_count
+            and list(streaming_decode_loop_blueprint.get("per_layer_order", []))
+            == list(
+                dict(plan.get("kv_decode_launch_schedule", {})).get(
+                    "per_layer_order", []
+                )
+            )
+            and streaming_decode_loop_blueprint.get("layer_count")
+            == dict(plan.get("kv_decode_launch_schedule", {})).get("layer_count")
+        ),
+        "streaming_decode_loop_blueprint_upload_order_matches": (
+            list(streaming_decode_loop_blueprint.get("pre_run_upload_order", []))
+            == list(decode_input_upload_plan.get("upload_order", []))
+        ),
+        "streaming_decode_loop_blueprint_blocker_matches": (
+            streaming_decode_loop_blueprint.get("blocked_by")
+            == run_plan.get("first_streaming_runner_blocker")
+        ),
         "run_plan_prompt_fits_resource_plan": run_plan.get("prompt_fits_resource_plan") is True,
         "run_plan_context_fits_resource_plan": run_plan.get("context_fits_resource_plan") is True,
         "dispatch_keys": dict(kv_plan.get("dispatch_keys", {})),
@@ -1016,6 +1047,9 @@ def _kv_backed_decode_gap_report(
     launch_schedule = dict(kv_decode_dispatch_progress.get("launch_schedule", {}))
     run_plan = dict(kv_decode_dispatch_progress.get("run_plan", {}))
     decode_input_upload_plan = dict(run_plan.get("decode_input_upload_plan", {}))
+    streaming_decode_loop_blueprint = dict(
+        kv_decode_dispatch_progress.get("streaming_decode_loop_blueprint", {})
+    )
     launch_schedule_streaming_runner_blockers = list(
         launch_schedule.get("streaming_runner_blockers", [])
     )
@@ -1086,6 +1120,25 @@ def _kv_backed_decode_gap_report(
             "evidence": (
                 f"{decode_input_upload_plan.get('entry_count')} staged input entries / "
                 f"{decode_input_upload_plan.get('total_nbytes')} bytes"
+            ),
+        },
+        {
+            "name": "streaming_decode_loop_blueprint_recorded",
+            "ready": kv_decode_dispatch_progress.get(
+                "streaming_decode_loop_blueprint_recorded"
+            ) is True
+            and kv_decode_dispatch_progress.get(
+                "streaming_decode_loop_blueprint_matches_launch_schedule"
+            ) is True
+            and kv_decode_dispatch_progress.get(
+                "streaming_decode_loop_blueprint_upload_order_matches"
+            ) is True
+            and kv_decode_dispatch_progress.get(
+                "streaming_decode_loop_blueprint_blocker_matches"
+            ) is True,
+            "evidence": (
+                f"{streaming_decode_loop_blueprint.get('operation_count')} blueprint operations / "
+                f"{streaming_decode_loop_blueprint.get('stage_count')} stages"
             ),
         },
     ]
@@ -1161,6 +1214,31 @@ def _kv_backed_decode_gap_report(
         "preconditions": preconditions,
         "remaining_evidence": remaining_evidence,
         "operation_count": launch_schedule.get("operation_count"),
+        "streaming_decode_loop_blueprint": {
+            "recorded": kv_decode_dispatch_progress.get(
+                "streaming_decode_loop_blueprint_recorded"
+            ),
+            "matches_launch_schedule": kv_decode_dispatch_progress.get(
+                "streaming_decode_loop_blueprint_matches_launch_schedule"
+            ),
+            "upload_order_matches": kv_decode_dispatch_progress.get(
+                "streaming_decode_loop_blueprint_upload_order_matches"
+            ),
+            "blocker_matches": kv_decode_dispatch_progress.get(
+                "streaming_decode_loop_blueprint_blocker_matches"
+            ),
+            "executable": streaming_decode_loop_blueprint.get("executable"),
+            "blocked_by": streaming_decode_loop_blueprint.get("blocked_by"),
+            "blocked_by_sha256": streaming_decode_loop_blueprint.get("blocked_by_sha256"),
+            "operation_count": streaming_decode_loop_blueprint.get("operation_count"),
+            "operation_sequence_sha256": streaming_decode_loop_blueprint.get(
+                "operation_sequence_sha256"
+            ),
+            "stage_count": streaming_decode_loop_blueprint.get("stage_count"),
+            "pre_run_upload_checks_passed": streaming_decode_loop_blueprint.get(
+                "pre_run_upload_checks_passed"
+            ),
+        },
         "streaming_runner_blocker_count": streaming_runner_blocker_count,
         "streaming_runner_blocker_names": streaming_runner_blocker_names,
         "streaming_runner_blocker_names_sha256": streaming_runner_blocker_names_sha256,
@@ -1923,6 +2001,11 @@ def _handoff_summary(
             "kv_decode_input_upload_plan_recorded": bool(
                 decode_input_upload_plan.get("entry_count")
             ),
+            "kv_streaming_decode_loop_blueprint_recorded": bool(
+                dict(kv_backed_decode_gap_report.get("streaming_decode_loop_blueprint", {})).get(
+                    "recorded"
+                )
+            ),
         },
         "oracle_gap_report": {
             "status": oracle_gap_report.get("status"),
@@ -1986,6 +2069,9 @@ def _handoff_summary(
             ),
             "first_streaming_runner_blocker_sha256": kv_backed_decode_gap_report.get(
                 "first_streaming_runner_blocker_sha256"
+            ),
+            "streaming_decode_loop_blueprint": kv_backed_decode_gap_report.get(
+                "streaming_decode_loop_blueprint"
             ),
             "upload_total_nbytes": kv_backed_decode_gap_report.get("upload_total_nbytes"),
         },

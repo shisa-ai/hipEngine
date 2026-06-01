@@ -267,8 +267,21 @@
       "missing_evidence_count": 3,
       "missing_precondition_count": 0,
       "operation_count": 135,
-      "precondition_count": 5,
+      "precondition_count": 6,
       "status": "blocked",
+      "streaming_decode_loop_blueprint": {
+        "blocked_by": "streaming_decode_loop_not_wired",
+        "blocked_by_sha256": "126f69ef7c41c0cbd8779801ea769477b1a973c58aef0e191baa4b564e48af32",
+        "blocker_matches": true,
+        "executable": false,
+        "matches_launch_schedule": true,
+        "operation_count": 135,
+        "operation_sequence_sha256": "5d7000f37e3d1106978bec8a548ff6ec5020f420583550275e09fd3dbed5c8d7",
+        "pre_run_upload_checks_passed": true,
+        "recorded": true,
+        "stage_count": 4,
+        "upload_order_matches": true
+      },
       "streaming_runner_blocker_count": 3,
       "streaming_runner_blocker_names": [
         "streaming_decode_loop_not_wired",
@@ -278,7 +291,7 @@
       "streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
       "streaming_runner_blocker_names_sha256_match": true,
       "upload_total_nbytes": 484,
-      "validated_precondition_count": 5
+      "validated_precondition_count": 6
     },
     "kv_decode_input_upload_plan": {
       "all_consistency_checks_passed": true,
@@ -343,12 +356,13 @@
       "kv_decode_input_upload_plan_recorded": true,
       "kv_decode_run_plan_recorded": true,
       "kv_launch_schedule_recorded": true,
+      "kv_streaming_decode_loop_blueprint_recorded": true,
       "oracle_target_recorded": true
     },
     "schema_version": 1,
     "status": "blocked"
   },
-  "handoff_summary_sha256": "98be1432989b9a6ab8b9bd2593207b15a149ccfde10ca98dec17d0f6efc52ab7",
+  "handoff_summary_sha256": "635f9595433448a3b578f28008132d8e9cd650f3f54416fe2991a9822c22d4b3",
   "kv_backed_decode_gap_report": {
     "computed_streaming_runner_blocker_names_sha256": "bfc4e10ea487fb2f9b746eb95296e889c2fcbdc62834c652a6d58ab0ba11b02e",
     "first_missing_evidence": "streaming_runner_ready_flags",
@@ -365,7 +379,7 @@
     "missing_preconditions": [],
     "note": "This separates validated metadata/input prerequisites from the evidence still needed before kv_backed_decode_ready can become true. It is not a performance or parity claim.",
     "operation_count": 135,
-    "precondition_count": 5,
+    "precondition_count": 6,
     "preconditions": [
       {
         "evidence": "prompt/decode KV write and decode-attention registry keys resolve",
@@ -390,6 +404,11 @@
       {
         "evidence": "6 staged input entries / 484 bytes",
         "name": "decode_input_upload_plan_consistent",
+        "ready": true
+      },
+      {
+        "evidence": "135 blueprint operations / 4 stages",
+        "name": "streaming_decode_loop_blueprint_recorded",
         "ready": true
       }
     ],
@@ -448,6 +467,19 @@
     ],
     "source": "kv_decode_dispatch_progress",
     "status": "blocked",
+    "streaming_decode_loop_blueprint": {
+      "blocked_by": "streaming_decode_loop_not_wired",
+      "blocked_by_sha256": "126f69ef7c41c0cbd8779801ea769477b1a973c58aef0e191baa4b564e48af32",
+      "blocker_matches": true,
+      "executable": false,
+      "matches_launch_schedule": true,
+      "operation_count": 135,
+      "operation_sequence_sha256": "5d7000f37e3d1106978bec8a548ff6ec5020f420583550275e09fd3dbed5c8d7",
+      "pre_run_upload_checks_passed": true,
+      "recorded": true,
+      "stage_count": 4,
+      "upload_order_matches": true
+    },
     "streaming_runner_blocker_count": 3,
     "streaming_runner_blocker_names": [
       "streaming_decode_loop_not_wired",
@@ -475,13 +507,14 @@
     ],
     "upload_entry_count": 6,
     "upload_total_nbytes": 484,
-    "validated_precondition_count": 5,
+    "validated_precondition_count": 6,
     "validated_preconditions": [
       "dispatch_keys_registered",
       "span_shapes_compatible",
       "launch_schedule_recorded",
       "run_plan_fits_resource_plan",
-      "decode_input_upload_plan_consistent"
+      "decode_input_upload_plan_consistent",
+      "streaming_decode_loop_blueprint_recorded"
     ]
   },
   "kv_backed_decode_ready": false,
@@ -530,6 +563,7 @@
         "layers.0.decode_attention"
       ],
       "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
+      "first_streaming_runner_blocker_sha256": "126f69ef7c41c0cbd8779801ea769477b1a973c58aef0e191baa4b564e48af32",
       "last_layer_ops": [
         "layers.44.prompt_kv_write",
         "layers.44.decode_kv_write",
@@ -742,6 +776,7 @@
         "total_span_input_nbytes": 16
       },
       "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
+      "first_streaming_runner_blocker_sha256": "126f69ef7c41c0cbd8779801ea769477b1a973c58aef0e191baa4b564e48af32",
       "input_id_count": 23,
       "input_id_preview": [
         0,
@@ -1083,6 +1118,80 @@
         2,
         128007
       ],
+      "streaming_decode_loop_blueprint": {
+        "blocked_by": "streaming_decode_loop_not_wired",
+        "blocked_by_sha256": "126f69ef7c41c0cbd8779801ea769477b1a973c58aef0e191baa4b564e48af32",
+        "executable": false,
+        "first_layer_ops": [
+          "layers.0.prompt_kv_write",
+          "layers.0.decode_kv_write",
+          "layers.0.decode_attention"
+        ],
+        "last_layer_ops": [
+          "layers.44.prompt_kv_write",
+          "layers.44.decode_kv_write",
+          "layers.44.decode_attention"
+        ],
+        "layer_count": 45,
+        "note": "Metadata-only StepFun KV streaming decode loop contract. It records the upload and launch order but does not launch kernels.",
+        "operation_count": 135,
+        "operation_sequence_sha256": "5d7000f37e3d1106978bec8a548ff6ec5020f420583550275e09fd3dbed5c8d7",
+        "per_layer_order": [
+          "prompt_kv_write",
+          "decode_kv_write",
+          "decode_attention"
+        ],
+        "pre_run_cleanup_order": [
+          "decode_attention_live_counts",
+          "decode_kv_write_position",
+          "decode_base_offsets",
+          "prompt_live_counts",
+          "prompt_base_offsets",
+          "input_ids"
+        ],
+        "pre_run_upload_checks_passed": true,
+        "pre_run_upload_order": [
+          "input_ids",
+          "prompt_base_offsets",
+          "prompt_live_counts",
+          "decode_base_offsets",
+          "decode_kv_write_position",
+          "decode_attention_live_counts"
+        ],
+        "source": "kv_decode_run_plan",
+        "stage_count": 4,
+        "stages": [
+          {
+            "entry_count": 6,
+            "name": "upload_decode_inputs",
+            "ready": true,
+            "source": "decode_input_upload_plan",
+            "total_nbytes": 484
+          },
+          {
+            "dispatch_key": "prompt_kv_write",
+            "layer_count": 45,
+            "name": "prompt_prefill_kv_write",
+            "ready": true,
+            "span_contract": "prompt_span"
+          },
+          {
+            "dispatch_key": "decode_kv_write",
+            "layer_count": 45,
+            "name": "one_token_decode_kv_write",
+            "ready": true,
+            "span_contract": "decode_span"
+          },
+          {
+            "dispatch_key": "decode_attention",
+            "layer_count": 45,
+            "name": "one_token_gated_attention_decode",
+            "ready": true,
+            "span_contract": "decode_span"
+          }
+        ],
+        "streaming_runner_ready": false
+      },
       "streaming_runner_blocker_count": 3,
       "streaming_runner_blocker_names": [
         "streaming_decode_loop_not_wired",
@@ -1112,7 +1221,85 @@
     "run_plan_context_fits_resource_plan": true,
     "run_plan_prompt_fits_resource_plan": true,
     "source": "resource_artifact.text_decode_resource_plan.kv_decode_kernel_plan",
-    "span_shape_compatible": true
+    "span_shape_compatible": true,
+    "streaming_decode_loop_blueprint": {
+      "blocked_by": "streaming_decode_loop_not_wired",
+      "blocked_by_sha256": "126f69ef7c41c0cbd8779801ea769477b1a973c58aef0e191baa4b564e48af32",
+      "executable": false,
+      "first_layer_ops": [
+        "layers.0.prompt_kv_write",
+        "layers.0.decode_kv_write",
+        "layers.0.decode_attention"
+      ],
+      "last_layer_ops": [
+        "layers.44.prompt_kv_write",
+        "layers.44.decode_kv_write",
+        "layers.44.decode_attention"
+      ],
+      "layer_count": 45,
+      "note": "Metadata-only StepFun KV streaming decode loop contract. It records the upload and launch order but does not launch kernels.",
+      "operation_count": 135,
+      "operation_sequence_sha256": "5d7000f37e3d1106978bec8a548ff6ec5020f420583550275e09fd3dbed5c8d7",
+      "per_layer_order": [
+        "prompt_kv_write",
+        "decode_kv_write",
+        "decode_attention"
+      ],
+      "pre_run_cleanup_order": [
+        "decode_attention_live_counts",
+        "decode_kv_write_position",
+        "decode_base_offsets",
+        "prompt_live_counts",
+        "prompt_base_offsets",
+        "input_ids"
+      ],
+      "pre_run_upload_checks_passed": true,
+      "pre_run_upload_order": [
+        "input_ids",
+        "prompt_base_offsets",
+        "prompt_live_counts",
+        "decode_base_offsets",
+        "decode_kv_write_position",
+        "decode_attention_live_counts"
+      ],
+      "source": "kv_decode_run_plan",
+      "stage_count": 4,
+      "stages": [
+        {
+          "entry_count": 6,
+          "name": "upload_decode_inputs",
+          "ready": true,
+          "source": "decode_input_upload_plan",
+          "total_nbytes": 484
+        },
+        {
+          "dispatch_key": "prompt_kv_write",
+          "layer_count": 45,
+          "name": "prompt_prefill_kv_write",
+          "ready": true,
+          "span_contract": "prompt_span"
+        },
+        {
+          "dispatch_key": "decode_kv_write",
+          "layer_count": 45,
+          "name": "one_token_decode_kv_write",
+          "ready": true,
+          "span_contract": "decode_span"
+        },
+        {
+          "dispatch_key": "decode_attention",
+          "layer_count": 45,
+          "name": "one_token_gated_attention_decode",
+          "ready": true,
+          "span_contract": "decode_span"
+        }
+      ],
+      "streaming_runner_ready": false
+    },
+    "streaming_decode_loop_blueprint_blocker_matches": true,
+    "streaming_decode_loop_blueprint_matches_launch_schedule": true,
+    "streaming_decode_loop_blueprint_recorded": true,
+    "streaming_decode_loop_blueprint_upload_order_matches": true
   },
   "kv_decode_dispatch_ready": true,
   "linear_projection_progress": {
@@ -1461,7 +1648,7 @@
         "missing_preconditions": [],
         "note": "This separates validated metadata/input prerequisites from the evidence still needed before kv_backed_decode_ready can become true. It is not a performance or parity claim.",
         "operation_count": 135,
-        "precondition_count": 5,
+        "precondition_count": 6,
         "preconditions": [
           {
             "evidence": "prompt/decode KV write and decode-attention registry keys resolve",
@@ -1486,6 +1673,11 @@
           {
             "evidence": "6 staged input entries / 484 bytes",
             "name": "decode_input_upload_plan_consistent",
+            "ready": true
+          },
+          {
+            "evidence": "135 blueprint operations / 4 stages",
+            "name": "streaming_decode_loop_blueprint_recorded",
             "ready": true
           }
         ],
@@ -1544,6 +1736,19 @@
         ],
         "source": "kv_decode_dispatch_progress",
         "status": "blocked",
+        "streaming_decode_loop_blueprint": {
+          "blocked_by": "streaming_decode_loop_not_wired",
+          "blocked_by_sha256": "126f69ef7c41c0cbd8779801ea769477b1a973c58aef0e191baa4b564e48af32",
+          "blocker_matches": true,
+          "executable": false,
+          "matches_launch_schedule": true,
+          "operation_count": 135,
+          "operation_sequence_sha256": "5d7000f37e3d1106978bec8a548ff6ec5020f420583550275e09fd3dbed5c8d7",
+          "pre_run_upload_checks_passed": true,
+          "recorded": true,
+          "stage_count": 4,
+          "upload_order_matches": true
+        },
         "streaming_runner_blocker_count": 3,
         "streaming_runner_blocker_names": [
           "streaming_decode_loop_not_wired",
@@ -1571,13 +1776,14 @@
         ],
         "upload_entry_count": 6,
         "upload_total_nbytes": 484,
-        "validated_precondition_count": 5,
+        "validated_precondition_count": 6,
         "validated_preconditions": [
           "dispatch_keys_registered",
           "span_shapes_compatible",
           "launch_schedule_recorded",
           "run_plan_fits_resource_plan",
-          "decode_input_upload_plan_consistent"
+          "decode_input_upload_plan_consistent",
+          "streaming_decode_loop_blueprint_recorded"
         ]
       },
       "ready": false,
@@ -1674,7 +1880,7 @@
       "required_evidence": "A StepFun/step35-capable oracle must generate a comparable token and match the expected next-token text/logit policy recorded in oracle_progress."
     }
   },
-  "readiness_gates_sha256": "3788994580d3a43df57a4bc0160345c984b1120056f38f3c4ddf8cf437ecadcf",
+  "readiness_gates_sha256": "14b2c17c75ace2a111711ac143b37e6ec5cd4df52ee22e371f7f999099ba5df1",
   "readiness_summary": {
     "blocked_gates_sha256": "5442237ae2416bd189f0635665bf630d6061793d9f5e1c52e038ae4d86804120",
     "blocker_kinds_sha256": "dacb44b00ddea30312072d9186eb161ad56d9bf6725e19e7d2ed13ec7144c766",
@@ -1685,7 +1891,7 @@
     "fail_on_blocked_exit_code": 2,
     "first_blocker_kind": "oracle_parity_blocked",
     "first_blocker_work_item_sha256": "07a6fb2fde62f86f8b87f7f714c1f63e84d46e1a12ef743b26d93ca1b798b1a8",
-    "handoff_summary_sha256": "98be1432989b9a6ab8b9bd2593207b15a149ccfde10ca98dec17d0f6efc52ab7",
+    "handoff_summary_sha256": "635f9595433448a3b578f28008132d8e9cd650f3f54416fe2991a9822c22d4b3",
     "kv_backed_decode_ready": false,
     "kv_decode_dispatch_ready": true,
     "next_action_commands_sha256": "73632a3b4041dda053fb53b97b0ecbb0c7929c01a0b56bd9bdcccd804aac2997",
@@ -1693,12 +1899,12 @@
     "open_or_partial_items_p0_p12": 2,
     "oracle_parity": false,
     "performance_claim_allowed": false,
-    "readiness_gates_sha256": "3788994580d3a43df57a4bc0160345c984b1120056f38f3c4ddf8cf437ecadcf",
+    "readiness_gates_sha256": "14b2c17c75ace2a111711ac143b37e6ec5cd4df52ee22e371f7f999099ba5df1",
     "schema_version": 1,
-    "source_artifacts_sha256": "1e4946023942b72c08aa88b821d7b7c239a4b78d21daeb1e6711b22b26dc657d",
+    "source_artifacts_sha256": "feda866385d3af8951735b028abe833a70436ddd45831f1ab6a6b5e39510dc12",
     "status": "blocked"
   },
-  "readiness_summary_sha256": "665d2219c5decff74c59c5543d65d47445a2dfd9f062ef5f7dc27a6cccd9b27d",
+  "readiness_summary_sha256": "5451aa6cf475ce208b49e8a8ddc65974955f0970e256cdbff36a86bae8d89a0a",
   "schema_version": 1,
   "schema_versions": {
     "blocker_work_queue": 1,
@@ -1711,8 +1917,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "4cbd96c36b4862e4ba139a0e409cf1794aa0f6aa476093f900f93fe4968162bf",
-      "size_bytes": 58021
+      "sha256": "951ec4ff6be2620fb90ff1a8d87a9941214ed5cd1ed7fd81475ae9c9ce911b8f",
+      "size_bytes": 58261
     },
     "oracle": {
       "exists": true,
@@ -1729,11 +1935,11 @@
     "text_resource": {
       "exists": true,
       "path": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json",
-      "sha256": "f9c53da5e3a0c146df317203d09ceff8c2410557ac945cce9ab5924fb10b252c",
-      "size_bytes": 46515
+      "sha256": "13b9f6049e141ad85bfafcb10e2d3e2033d3cc7d1240504eaf25003604babe5f",
+      "size_bytes": 49128
     }
   },
-  "source_artifacts_sha256": "1e4946023942b72c08aa88b821d7b7c239a4b78d21daeb1e6711b22b26dc657d",
+  "source_artifacts_sha256": "feda866385d3af8951735b028abe833a70436ddd45831f1ab6a6b5e39510dc12",
   "status": "blocked",
   "step35_supported_by_local_llama_cpp": null,
   "text_resource_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json"
