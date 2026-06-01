@@ -290,6 +290,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--verification-status-command-only",
+        action="store_true",
+        help=(
+            "Emit only next_action_commands.handoff_integrity.verification_status_command "
+            "for compact persisted verification status checks. Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--verification-status-command-sha-only",
+        action="store_true",
+        help=(
+            "Emit only next_action_commands.handoff_integrity.verification_status_command_sha256 "
+            "for compact persisted verification status command drift polling. Overrides readiness/queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--oracle-helper-command-only",
         action="store_true",
         help=(
@@ -1047,10 +1063,13 @@ def _status_refresh_command(
 def _source_artifacts_verify_command(
     *,
     status_artifact: Path = DEFAULT_STATUS_ARTIFACT,
+    extra_args: tuple[str, ...] = (),
 ) -> str:
+    args = " ".join(extra_args)
+    suffix = f" {args}" if args else ""
     return (
         "python3 scripts/stepfun_correctness_status.py "
-        f"--verify-source-artifacts {status_artifact} --pretty"
+        f"--verify-source-artifacts {status_artifact}{suffix} --pretty"
     )
 
 
@@ -1131,12 +1150,20 @@ def _next_action_commands(
     )
     resource_plan_refresh = _resource_plan_refresh_command(output_artifact=resource_artifact)
     source_artifacts_verify = _source_artifacts_verify_command()
+    verification_status = _source_artifacts_verify_command(
+        extra_args=("--verification-status-only",)
+    )
     return {
         "handoff_integrity": {
             "source_artifacts_verify_command": source_artifacts_verify,
             **_command_length_hash(
                 "source_artifacts_verify_command",
                 source_artifacts_verify,
+            ),
+            "verification_status_command": verification_status,
+            **_command_length_hash(
+                "verification_status_command",
+                verification_status,
             ),
             "success_criteria": [
                 "source artifact verification exits 0",
@@ -1564,6 +1591,12 @@ def _handoff_summary(
             "source_verify_command_sha_only": (
                 "next_action_commands.handoff_integrity.source_artifacts_verify_command_sha256"
             ),
+            "verification_status_command_only": (
+                "next_action_commands.handoff_integrity.verification_status_command"
+            ),
+            "verification_status_command_sha_only": (
+                "next_action_commands.handoff_integrity.verification_status_command_sha256"
+            ),
             "kv_resource_command_only": (
                 "next_action_commands.kv_backed_decode_not_wired.resource_plan_refresh_command"
             ),
@@ -1987,6 +2020,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["kv_backed_decode_gap_report"].get("streaming_runner_blocker_names")
     elif args.source_artifacts_sha_only:
         result = status["source_artifacts_sha256"]
+    elif args.verification_status_command_sha_only:
+        result = status["next_action_commands"]["handoff_integrity"].get(
+            "verification_status_command_sha256"
+        )
+    elif args.verification_status_command_only:
+        result = status["next_action_commands"]["handoff_integrity"].get(
+            "verification_status_command"
+        )
     elif args.source_verify_command_sha_only:
         result = status["next_action_commands"]["handoff_integrity"].get(
             "source_artifacts_verify_command_sha256"

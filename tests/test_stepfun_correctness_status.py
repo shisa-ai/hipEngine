@@ -60,10 +60,14 @@ def _oracle_helper_fields(
 
 def _source_verify_command(
     status_artifact: Path = Path("benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json"),
+    *,
+    extra_args: tuple[str, ...] = (),
 ) -> str:
+    args = " ".join(extra_args)
+    suffix = f" {args}" if args else ""
     return (
         "python3 scripts/stepfun_correctness_status.py "
-        f"--verify-source-artifacts {status_artifact} --pretty"
+        f"--verify-source-artifacts {status_artifact}{suffix} --pretty"
     )
 
 
@@ -1081,6 +1085,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "source_verify_command_sha_only": (
             "next_action_commands.handoff_integrity.source_artifacts_verify_command_sha256"
         ),
+        "verification_status_command_only": (
+            "next_action_commands.handoff_integrity.verification_status_command"
+        ),
+        "verification_status_command_sha_only": (
+            "next_action_commands.handoff_integrity.verification_status_command_sha256"
+        ),
         "kv_resource_command_only": (
             "next_action_commands.kv_backed_decode_not_wired.resource_plan_refresh_command"
         ),
@@ -1227,6 +1237,15 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     )
     assert integrity_commands["source_artifacts_verify_command_sha256"] == hashlib.sha256(
         integrity_commands["source_artifacts_verify_command"].encode()
+    ).hexdigest()
+    assert integrity_commands["verification_status_command"] == _source_verify_command(
+        extra_args=("--verification-status-only",)
+    )
+    assert integrity_commands["verification_status_command_nchars"] == len(
+        integrity_commands["verification_status_command"]
+    )
+    assert integrity_commands["verification_status_command_sha256"] == hashlib.sha256(
+        integrity_commands["verification_status_command"].encode()
     ).hexdigest()
     assert integrity_commands["success_criteria"] == [
         "source artifact verification exits 0",
@@ -1567,6 +1586,12 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
     assert integrity_command["source_artifacts_verify_command"] == _source_verify_command()
     assert integrity_command["source_artifacts_verify_command_sha256"] == hashlib.sha256(
         _source_verify_command().encode()
+    ).hexdigest()
+    assert integrity_command["verification_status_command"] == _source_verify_command(
+        extra_args=("--verification-status-only",)
+    )
+    assert integrity_command["verification_status_command_sha256"] == hashlib.sha256(
+        _source_verify_command(extra_args=("--verification-status-only",)).encode()
     ).hexdigest()
     oracle_command = payload["next_action_commands"]["oracle_parity_blocked"]
     assert oracle_command["rerun_command_shell"].startswith("/tmp/llama-cli")
@@ -2441,6 +2466,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "source_verify_command_sha_only": (
             "next_action_commands.handoff_integrity.source_artifacts_verify_command_sha256"
         ),
+        "verification_status_command_only": (
+            "next_action_commands.handoff_integrity.verification_status_command"
+        ),
+        "verification_status_command_sha_only": (
+            "next_action_commands.handoff_integrity.verification_status_command_sha256"
+        ),
         "kv_resource_command_only": (
             "next_action_commands.kv_backed_decode_not_wired.resource_plan_refresh_command"
         ),
@@ -2992,6 +3023,100 @@ def test_stepfun_correctness_status_source_verify_command_only(capsys, tmp_path:
     assert payload == _source_verify_command()
     assert "--verify-source-artifacts" in payload
 
+
+def test_stepfun_correctness_status_verification_status_command_sha_only(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "verification-status-command-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--readiness-summary-only",
+            "--verification-status-command-only",
+            "--verification-status-command-sha-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(output.read_text())
+    command = status["next_action_commands"]["handoff_integrity"][
+        "verification_status_command"
+    ]
+    assert payload == status["next_action_commands"]["handoff_integrity"][
+        "verification_status_command_sha256"
+    ]
+    assert payload == hashlib.sha256(command.encode()).hexdigest()
+
+
+def test_stepfun_correctness_status_verification_status_command_only(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "verification-status-command.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--readiness-summary-only",
+            "--verification-status-command-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(output.read_text())
+    assert payload == status["next_action_commands"]["handoff_integrity"][
+        "verification_status_command"
+    ]
+    assert payload == _source_verify_command(extra_args=("--verification-status-only",))
+    assert "--verification-status-only" in payload
 
 
 def test_stepfun_correctness_status_oracle_helper_command_sha_only(capsys, tmp_path: Path) -> None:
@@ -4356,6 +4481,87 @@ def test_stepfun_correctness_status_source_verify_command_sha_fail_on_blocked_re
     ]
     assert payload == hashlib.sha256(_source_verify_command().encode()).hexdigest()
 
+
+def test_stepfun_correctness_status_verification_status_command_fail_on_blocked_returns_nonzero(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--verification-status-command-only",
+            "--fail-on-blocked",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 2
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert captured.err == ""
+    assert payload == status["next_action_commands"]["handoff_integrity"][
+        "verification_status_command"
+    ]
+    assert payload == _source_verify_command(extra_args=("--verification-status-only",))
+
+
+def test_stepfun_correctness_status_verification_status_command_sha_fail_on_blocked_returns_nonzero(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--verification-status-command-sha-only",
+            "--fail-on-blocked",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 2
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert captured.err == ""
+    assert payload == status["next_action_commands"]["handoff_integrity"][
+        "verification_status_command_sha256"
+    ]
+    assert payload == hashlib.sha256(
+        _source_verify_command(extra_args=("--verification-status-only",)).encode()
+    ).hexdigest()
 
 
 def test_stepfun_correctness_status_oracle_helper_command_fail_on_blocked_returns_nonzero(
