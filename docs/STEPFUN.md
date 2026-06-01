@@ -706,9 +706,14 @@ reporting.
   load/error logs enabled for the canonical timeout artifact. The handoff now
   also records `oracle_helper_long_timeout_command` (`--timeout-s 900.0`, same
   canonical oracle output JSON) with length/SHA-256 metadata and mirrors it in
-  the first blocker work item. Compact `--oracle-helper-long-timeout-command-only`
-  / `--oracle-helper-long-timeout-command-sha-only` outputs expose that rerun
-  command/digest directly, so the remaining oracle next action is a concrete
+  the first blocker work item. The blocker queue now also exposes a generic
+  `recommended_command` / digest for the first blocker, selecting that 900 s
+  oracle helper while oracle parity is the front-of-queue blocker. Compact
+  `--oracle-helper-long-timeout-command-only` /
+  `--oracle-helper-long-timeout-command-sha-only` and
+  `--first-blocker-recommended-command-only` /
+  `--first-blocker-recommended-command-sha-only` outputs expose the rerun
+  command/digests directly, so the remaining oracle next action is a concrete
   longer-timeout rerun instead of only the prior 60 s replay. Remaining
   implementation task: run a longer/faster StepFun-capable llama.cpp oracle and
   review/record the parsed result; KV-backed decode parity remains open too.

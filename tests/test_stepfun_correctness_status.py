@@ -18,6 +18,23 @@ def _primary_command_fields(kind: str | None, command: str | None) -> dict[str, 
     }
 
 
+def _recommended_command_fields(
+    kind: str | None,
+    command: str | None,
+    *,
+    reason: str | None,
+) -> dict[str, object]:
+    return {
+        "recommended_command_kind": kind,
+        "recommended_command": command,
+        "recommended_command_nchars": len(command) if command is not None else 0,
+        "recommended_command_sha256": (
+            hashlib.sha256(command.encode()).hexdigest() if command is not None else None
+        ),
+        "recommended_command_reason": reason if command is not None else None,
+    }
+
+
 
 def _stable_json_sha256(value: object) -> str:
     payload = json.dumps(value, sort_keys=True, separators=(",", ":"))
@@ -40,6 +57,14 @@ def _oracle_helper_command(
         f"--n-predict 1 --timeout-s {timeout_s} {diagnostic_logs_arg}"
         "--llama-arg=--device --llama-arg=none "
         f"--llama-arg=--gpu-layers --llama-arg=0 --execute --pretty --output {oracle}"
+    )
+
+
+
+def _resource_plan_refresh_command(resource: Path) -> str:
+    return (
+        "python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan "
+        f"--kv-context-pages 1 --kv-page-size 512 --pretty > {resource}"
     )
 
 
@@ -1022,6 +1047,11 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
                 "rerun_command_shell",
                 "/tmp/llama-cli --model stepfun.gguf --predict 1 --temp 0",
             ),
+            **_recommended_command_fields(
+                "oracle_helper_long_timeout_command",
+                _oracle_helper_command(prompt, oracle, timeout_s=900.0),
+                reason="oracle_timeout_retry_with_longer_timeout",
+            ),
             **_oracle_helper_fields(prompt, oracle),
             "first_missing_evidence": "oracle_completed_successfully",
             "first_missing_precondition": "step35_not_rejected",
@@ -1047,6 +1077,11 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
                     f"--kv-context-pages 1 --kv-page-size 512 --pretty > {resource}"
                 ),
             ),
+            **_recommended_command_fields(
+                "resource_plan_refresh_command",
+                _resource_plan_refresh_command(resource),
+                reason="refresh_kv_resource_and_run_plan_artifact",
+            ),
             "first_missing_evidence": "streaming_runner_ready_flags",
             "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
             "first_streaming_runner_blocker_sha256": _first_streaming_runner_blocker_sha256(),
@@ -1069,6 +1104,10 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "first_blocker_kind": "oracle_parity_blocked",
         "first_work_item_schema_version": 1,
         "first_work_item_sha256": handoff["first_blocker_work_item_sha256"],
+        "first_recommended_command_kind": "oracle_helper_long_timeout_command",
+        "first_recommended_command_sha256": hashlib.sha256(
+            _oracle_helper_command(prompt, oracle, timeout_s=900.0).encode()
+        ).hexdigest(),
     }
     assert handoff["first_blocker_work_item"] == handoff["blocker_work_queue"][0]
     assert handoff["first_blocker_work_item_sha256"] == _stable_json_sha256(
@@ -1163,6 +1202,12 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "blocker_work_queue_sha_only": "handoff_summary.blocker_work_queue_sha256",
         "first_blocker_sha_only": "handoff_summary.first_blocker_work_item_sha256",
         "first_blocker_only": "handoff_summary.first_blocker_work_item",
+        "first_blocker_recommended_command_only": (
+            "handoff_summary.first_blocker_work_item.recommended_command"
+        ),
+        "first_blocker_recommended_command_sha_only": (
+            "handoff_summary.first_blocker_work_item.recommended_command_sha256"
+        ),
         "fail_on_blocked_preserves_payload": True,
     }
     assert handoff["ready_gates"] == []
@@ -1657,6 +1702,10 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
         "first_blocker_kind": "oracle_parity_blocked",
         "first_work_item_schema_version": 1,
         "first_work_item_sha256": payload["handoff_summary"]["first_blocker_work_item_sha256"],
+        "first_recommended_command_kind": "oracle_helper_long_timeout_command",
+        "first_recommended_command_sha256": hashlib.sha256(
+            _oracle_helper_command(prompt, oracle, timeout_s=900.0).encode()
+        ).hexdigest(),
     }
     assert payload["handoff_summary"]["first_blocker_work_item_sha256"] == _stable_json_sha256(
         payload["handoff_summary"]["first_blocker_work_item"]
@@ -2585,6 +2634,11 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
                 "rerun_command_shell",
                 "/tmp/llama-cli --model stepfun.gguf --predict 1 --temp 0",
             ),
+            **_recommended_command_fields(
+                "oracle_helper_long_timeout_command",
+                _oracle_helper_command(prompt, oracle, timeout_s=900.0),
+                reason="oracle_timeout_retry_with_longer_timeout",
+            ),
             **_oracle_helper_fields(prompt, oracle),
             "first_missing_evidence": "oracle_completed_successfully",
             "first_missing_precondition": "step35_not_rejected",
@@ -2610,6 +2664,11 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
                     f"--kv-context-pages 1 --kv-page-size 512 --pretty > {resource}"
                 ),
             ),
+            **_recommended_command_fields(
+                "resource_plan_refresh_command",
+                _resource_plan_refresh_command(resource),
+                reason="refresh_kv_resource_and_run_plan_artifact",
+            ),
             "first_missing_evidence": "streaming_runner_ready_flags",
             "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
             "first_streaming_runner_blocker_sha256": _first_streaming_runner_blocker_sha256(),
@@ -2632,6 +2691,10 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "first_blocker_kind": "oracle_parity_blocked",
         "first_work_item_schema_version": 1,
         "first_work_item_sha256": payload["first_blocker_work_item_sha256"],
+        "first_recommended_command_kind": "oracle_helper_long_timeout_command",
+        "first_recommended_command_sha256": hashlib.sha256(
+            _oracle_helper_command(prompt, oracle, timeout_s=900.0).encode()
+        ).hexdigest(),
     }
     assert payload["first_blocker_work_item"] == payload["blocker_work_queue"][0]
     assert payload["first_blocker_work_item_sha256"] == _stable_json_sha256(
@@ -2726,6 +2789,12 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "blocker_work_queue_sha_only": "handoff_summary.blocker_work_queue_sha256",
         "first_blocker_sha_only": "handoff_summary.first_blocker_work_item_sha256",
         "first_blocker_only": "handoff_summary.first_blocker_work_item",
+        "first_blocker_recommended_command_only": (
+            "handoff_summary.first_blocker_work_item.recommended_command"
+        ),
+        "first_blocker_recommended_command_sha_only": (
+            "handoff_summary.first_blocker_work_item.recommended_command_sha256"
+        ),
         "fail_on_blocked_preserves_payload": True,
     }
     assert payload["ready_signals"]["kv_decode_dispatch_ready"] is True
@@ -2831,6 +2900,11 @@ def test_stepfun_correctness_status_blocker_work_queue_only(capsys, tmp_path: Pa
                 "rerun_command_shell",
                 "/tmp/llama-cli --model stepfun.gguf --predict 1 --temp 0",
             ),
+            **_recommended_command_fields(
+                "oracle_helper_long_timeout_command",
+                _oracle_helper_command(prompt, oracle, timeout_s=900.0),
+                reason="oracle_timeout_retry_with_longer_timeout",
+            ),
             **_oracle_helper_fields(prompt, oracle),
             "first_missing_evidence": "oracle_completed_successfully",
             "first_missing_precondition": "step35_not_rejected",
@@ -2855,6 +2929,11 @@ def test_stepfun_correctness_status_blocker_work_queue_only(capsys, tmp_path: Pa
                     "python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan "
                     f"--kv-context-pages 1 --kv-page-size 512 --pretty > {resource}"
                 ),
+            ),
+            **_recommended_command_fields(
+                "resource_plan_refresh_command",
+                _resource_plan_refresh_command(resource),
+                reason="refresh_kv_resource_and_run_plan_artifact",
             ),
             "first_missing_evidence": "streaming_runner_ready_flags",
             "first_streaming_runner_blocker": "streaming_decode_loop_not_wired",
@@ -3831,6 +3910,11 @@ def test_stepfun_correctness_status_first_blocker_only(capsys, tmp_path: Path) -
             "rerun_command_shell",
             "/tmp/llama-cli --model stepfun.gguf --predict 1 --temp 0",
         ),
+        **_recommended_command_fields(
+            "oracle_helper_long_timeout_command",
+            _oracle_helper_command(prompt, oracle, timeout_s=900.0),
+            reason="oracle_timeout_retry_with_longer_timeout",
+        ),
         **_oracle_helper_fields(prompt, oracle),
         "first_missing_evidence": "oracle_completed_successfully",
         "first_missing_precondition": "step35_not_rejected",
@@ -3843,6 +3927,102 @@ def test_stepfun_correctness_status_first_blocker_only(capsys, tmp_path: Path) -
         "gate": "oracle_parity",
         "oracle_blocker_kind": "llama_cpp_missing_step35_architecture",
     }
+
+
+def test_stepfun_correctness_status_first_blocker_recommended_command_only(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "first-blocker-recommended-command.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--blocker-work-queue-only",
+            "--first-blocker-only",
+            "--first-blocker-recommended-command-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(output.read_text())
+    expected = _oracle_helper_command(prompt, oracle, timeout_s=900.0)
+    assert payload == status["handoff_summary"]["first_blocker_work_item"][
+        "recommended_command"
+    ]
+    assert payload == expected
+    assert "--timeout-s 900.0" in payload
+
+
+
+def test_stepfun_correctness_status_first_blocker_recommended_command_sha_only(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "first-blocker-recommended-command-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--first-blocker-recommended-command-only",
+            "--first-blocker-recommended-command-sha-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(output.read_text())
+    expected = _oracle_helper_command(prompt, oracle, timeout_s=900.0)
+    assert payload == status["handoff_summary"]["first_blocker_work_item"][
+        "recommended_command_sha256"
+    ]
+    assert payload == hashlib.sha256(expected.encode()).hexdigest()
+
 
 
 def test_stepfun_correctness_status_verifies_source_artifact_provenance(capsys, tmp_path: Path) -> None:

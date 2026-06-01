@@ -422,6 +422,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--first-blocker-recommended-command-only",
+        action="store_true",
+        help=(
+            "Emit only handoff_summary.first_blocker_work_item.recommended_command for "
+            "generic immediate-blocker execution. Overrides queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--first-blocker-recommended-command-sha-only",
+        action="store_true",
+        help=(
+            "Emit only handoff_summary.first_blocker_work_item.recommended_command_sha256 "
+            "for generic immediate-blocker command drift polling. Overrides queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--verify-source-artifacts",
         type=Path,
         default=None,
@@ -1407,6 +1423,28 @@ def _primary_command_metadata(kind: str | None, command: object) -> dict[str, ob
     }
 
 
+def _recommended_command_metadata(
+    kind: str | None,
+    command: object,
+    *,
+    reason: str | None,
+) -> dict[str, object]:
+    """Return stable metadata for the command automation should run next."""
+
+    command_text = command if isinstance(command, str) and command else None
+    return {
+        "recommended_command_kind": kind,
+        "recommended_command": command_text,
+        "recommended_command_nchars": len(command_text) if command_text is not None else 0,
+        "recommended_command_sha256": (
+            hashlib.sha256(command_text.encode()).hexdigest()
+            if command_text is not None
+            else None
+        ),
+        "recommended_command_reason": reason if command_text is not None else None,
+    }
+
+
 def _stable_json_sha256(value: object) -> str:
     """Return a deterministic SHA-256 digest for JSON-compatible metadata."""
 
@@ -1608,6 +1646,17 @@ def _handoff_summary(
                 if isinstance(oracle_helper_long_timeout_command, str)
                 else None
             )
+            oracle_recommended_command_kind = "oracle_helper_long_timeout_command"
+            oracle_recommended_command = oracle_helper_long_timeout_command_text
+            oracle_recommended_reason = "oracle_timeout_retry_with_longer_timeout"
+            if oracle_recommended_command is None:
+                oracle_recommended_command_kind = "oracle_helper_refresh_command"
+                oracle_recommended_command = oracle_helper_command_text
+                oracle_recommended_reason = "regenerate_oracle_artifact"
+            if oracle_recommended_command is None:
+                oracle_recommended_command_kind = "rerun_command_shell"
+                oracle_recommended_command = oracle_action.get("rerun_command_shell")
+                oracle_recommended_reason = "rerun_recorded_oracle_command"
             blocker_work_queue.append(
                 {
                     "blocker_kind": blocker_kind,
@@ -1619,6 +1668,11 @@ def _handoff_summary(
                     **_primary_command_metadata(
                         "rerun_command_shell",
                         oracle_action.get("rerun_command_shell"),
+                    ),
+                    **_recommended_command_metadata(
+                        oracle_recommended_command_kind,
+                        oracle_recommended_command,
+                        reason=oracle_recommended_reason,
                     ),
                     "helper_command_kind": "oracle_helper_refresh_command",
                     "helper_command": oracle_helper_command_text,
@@ -1661,6 +1715,8 @@ def _handoff_summary(
                 }
             )
         elif blocker_kind == "kv_backed_decode_not_wired":
+            kv_action = dict(next_action_commands.get(blocker_kind, {}))
+            kv_resource_command = kv_action.get("resource_plan_refresh_command")
             blocker_work_queue.append(
                 {
                     "blocker_kind": blocker_kind,
@@ -1671,9 +1727,12 @@ def _handoff_summary(
                     "command_available": blocker_kind in next_action_commands,
                     **_primary_command_metadata(
                         "resource_plan_refresh_command",
-                        dict(next_action_commands.get(blocker_kind, {})).get(
-                            "resource_plan_refresh_command"
-                        ),
+                        kv_resource_command,
+                    ),
+                    **_recommended_command_metadata(
+                        "resource_plan_refresh_command",
+                        kv_resource_command,
+                        reason="refresh_kv_resource_and_run_plan_artifact",
                     ),
                     "gap_report_status": kv_backed_decode_gap_report.get("status"),
                     "operation_count": kv_backed_decode_gap_report.get("operation_count"),
@@ -1710,6 +1769,7 @@ def _handoff_summary(
                     "gate": None,
                     "command_available": blocker_kind in next_action_commands,
                     **_primary_command_metadata(None, None),
+                    **_recommended_command_metadata(None, None, reason=None),
                     "gap_report_status": None,
                 }
             )
@@ -1729,6 +1789,16 @@ def _handoff_summary(
             first_blocker_work_item["work_item_schema_version"] if first_blocker_work_item else None
         ),
         "first_work_item_sha256": first_blocker_work_item_sha256,
+        "first_recommended_command_kind": (
+            first_blocker_work_item.get("recommended_command_kind")
+            if first_blocker_work_item
+            else None
+        ),
+        "first_recommended_command_sha256": (
+            first_blocker_work_item.get("recommended_command_sha256")
+            if first_blocker_work_item
+            else None
+        ),
     }
     return {
         "schema_version": HANDOFF_SUMMARY_SCHEMA_VERSION,
@@ -1834,6 +1904,12 @@ def _handoff_summary(
             "blocker_work_queue_sha_only": "handoff_summary.blocker_work_queue_sha256",
             "first_blocker_sha_only": "handoff_summary.first_blocker_work_item_sha256",
             "first_blocker_only": "handoff_summary.first_blocker_work_item",
+            "first_blocker_recommended_command_only": (
+                "handoff_summary.first_blocker_work_item.recommended_command"
+            ),
+            "first_blocker_recommended_command_sha_only": (
+                "handoff_summary.first_blocker_work_item.recommended_command_sha256"
+            ),
             "fail_on_blocked_preserves_payload": True,
         },
         "ready_gates": ready_gates,
@@ -2212,7 +2288,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.docs,
         resource_artifact=args.resource_artifact,
     )
-    if args.first_blocker_only:
+    if args.first_blocker_recommended_command_sha_only:
+        first_blocker_work_item = status["handoff_summary"].get("first_blocker_work_item")
+        result = (
+            first_blocker_work_item.get("recommended_command_sha256")
+            if isinstance(first_blocker_work_item, dict)
+            else None
+        )
+    elif args.first_blocker_recommended_command_only:
+        first_blocker_work_item = status["handoff_summary"].get("first_blocker_work_item")
+        result = (
+            first_blocker_work_item.get("recommended_command")
+            if isinstance(first_blocker_work_item, dict)
+            else None
+        )
+    elif args.first_blocker_only:
         result = status["handoff_summary"]["first_blocker_work_item"]
     elif args.first_blocker_sha_only:
         result = status["handoff_summary"]["first_blocker_work_item_sha256"]
