@@ -7307,6 +7307,12 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         c_sweep.validate_sweep_summary(tampered_missing_option)
     assert summary["options"]["include_int8"] is True
     assert summary["options"]["include_gguf"] is True
+    assert summary["options"]["require_cached_build"] is False
+    for option in ("include_int8", "include_gguf", "require_cached_build"):
+        tampered_bool_option = json.loads(json.dumps(summary))
+        tampered_bool_option["options"][option] = "yes"
+        with pytest.raises(ValueError, match=rf"options\.{option} must be a bool"):
+            c_sweep.validate_sweep_summary(tampered_bool_option)
     for option in ("include_int8", "include_gguf"):
         tampered_include_option = json.loads(json.dumps(summary))
         tampered_include_option["options"][option] = False
@@ -7322,7 +7328,6 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     tampered_seed_option["options"]["seed"] = 4321
     with pytest.raises(ValueError, match="options.seed must match required primitive correctness seed"):
         c_sweep.validate_sweep_summary(tampered_seed_option)
-    assert summary["options"]["require_cached_build"] is False
     tampered_cached_build_option = json.loads(json.dumps(summary))
     tampered_cached_build_option["options"]["require_cached_build"] = True
     with pytest.raises(ValueError, match=r"commands\[\]\.argv require-cached-build must match options\.require_cached_build"):
