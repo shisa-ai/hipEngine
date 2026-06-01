@@ -1535,6 +1535,19 @@ def _profiler_summary_precondition(command: SweepCommand) -> dict[str, Any]:
                     reasons.append("profiler.trace_files contains a missing file")
                 elif any(not trace_file_path.is_file() for trace_file_path in trace_file_check_paths):
                     reasons.append("profiler.trace_files contains a non-file path")
+                else:
+                    kernel_trace_file_paths = [
+                        trace_file_path
+                        for trace_file, trace_file_path in zip(profiler_trace_files, trace_file_check_paths)
+                        if _is_kernel_trace_csv_path(trace_file)
+                    ]
+                    kernel_trace_names = [
+                        kernel_name
+                        for trace_file_path in kernel_trace_file_paths
+                        for kernel_name in _read_profiler_trace_kernel_names(trace_file_path)
+                    ]
+                    if not kernel_trace_names:
+                        reasons.append("profiler.trace_files contain no readable kernel trace rows")
         profiler_trace_synthesized_fields = _synthesize_profiler_trace_fields(profiler, profiler_path=profiler_path)
         raw_trace_kernel_names = profiler.get("trace_kernel_names")
         if not isinstance(raw_trace_kernel_names, list) or not raw_trace_kernel_names:

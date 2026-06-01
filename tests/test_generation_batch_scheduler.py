@@ -1487,6 +1487,42 @@ def test_batch_c_sweep_profiler_precondition_rejects_directory_trace_file_path(t
     }
 
 
+def test_batch_c_sweep_profiler_precondition_rejects_empty_kernel_trace_csv(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    (output_dir / "profile-c2" / "hipengine_kernel_trace.csv").write_text(
+        "Kernel_Name,Start_Timestamp,End_Timestamp\n"
+    )
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler.trace_files contain no readable kernel trace rows",
+    }
+
+
 def test_batch_c_sweep_profiler_precondition_rejects_trace_files_outside_trace_dir(tmp_path: Path) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
@@ -1761,7 +1797,7 @@ def test_batch_c_sweep_profiler_precondition_rejects_missing_trace_kernel_names(
         "kind": "profiler_summary",
         "artifact_path": str(profiler_path),
         "passed": False,
-        "reason": "profiler.trace_kernel_names is missing or empty",
+        "reason": "profiler.trace_files contain no readable kernel trace rows; profiler.trace_kernel_names is missing or empty",
     }
 
 
