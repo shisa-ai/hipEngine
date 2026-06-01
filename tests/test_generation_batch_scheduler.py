@@ -6578,9 +6578,19 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path JSON device must match when primitive passed"):
         c_sweep.validate_sweep_summary(persisted)
     primitive_source_payload = json.loads(primitive_artifact_payload)
+    primitive_source_payload["append_key_mismatch"] = False
+    primitive_artifact_path.write_text(json.dumps(primitive_source_payload))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path JSON append mismatches must be typed ints when primitive passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    primitive_source_payload = json.loads(primitive_artifact_payload)
     primitive_source_payload["append_key_mismatch"] = 1
     primitive_artifact_path.write_text(json.dumps(primitive_source_payload))
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path JSON append mismatches must match when primitive passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    primitive_source_payload = json.loads(primitive_artifact_payload)
+    primitive_source_payload["attn_batch_vs_c1_max_abs"] = 0
+    primitive_artifact_path.write_text(json.dumps(primitive_source_payload))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path JSON attention metrics must be finite typed floats when primitive passed"):
         c_sweep.validate_sweep_summary(persisted)
     primitive_source_payload = json.loads(primitive_artifact_payload)
     primitive_source_payload["attn_batch_vs_numpy_max_abs"] = 1e-6

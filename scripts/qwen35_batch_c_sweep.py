@@ -3140,25 +3140,37 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         if primitive_source_payload.get("device") != primitive_precondition.get("primitive_device"):
                             errors.append("commands[].preconditions[].primitive_artifact_path JSON device must match when primitive passed")
                             break
+                        primitive_source_append_fields = (
+                            "append_key_mismatch",
+                            "append_value_mismatch",
+                            "append_batch_aa_key_mismatch",
+                            "append_batch_aa_value_mismatch",
+                        )
                         if any(
-                            primitive_source_payload.get(field) != primitive_precondition.get(field)
-                            for field in (
-                                "append_key_mismatch",
-                                "append_value_mismatch",
-                                "append_batch_aa_key_mismatch",
-                                "append_batch_aa_value_mismatch",
-                            )
+                            not isinstance(primitive_source_payload.get(field), int)
+                            or isinstance(primitive_source_payload.get(field), bool)
+                            for field in primitive_source_append_fields
                         ):
+                            errors.append("commands[].preconditions[].primitive_artifact_path JSON append mismatches must be typed ints when primitive passed")
+                            break
+                        if any(primitive_source_payload.get(field) != primitive_precondition.get(field) for field in primitive_source_append_fields):
                             errors.append("commands[].preconditions[].primitive_artifact_path JSON append mismatches must match when primitive passed")
+                            break
+                        primitive_source_attention_fields = (
+                            "attn_batch_aa_max_abs",
+                            "attn_batch_vs_c1_max_abs",
+                            "attn_batch_vs_numpy_max_abs",
+                        )
+                        if any(
+                            not isinstance(primitive_source_payload.get(field), float)
+                            or not math.isfinite(primitive_source_payload.get(field))
+                            for field in primitive_source_attention_fields
+                        ):
+                            errors.append("commands[].preconditions[].primitive_artifact_path JSON attention metrics must be finite typed floats when primitive passed")
                             break
                         if any(
                             primitive_source_payload.get(field) != primitive_precondition.get(field)
-                            for field in (
-                                "attn_batch_aa_max_abs",
-                                "aa_passed",
-                                "attn_batch_vs_c1_max_abs",
-                                "attn_batch_vs_numpy_max_abs",
-                            )
+                            for field in (*primitive_source_attention_fields, "aa_passed")
                         ):
                             errors.append("commands[].preconditions[].primitive_artifact_path JSON attention metrics must match when primitive passed")
                             break
