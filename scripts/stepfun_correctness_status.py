@@ -66,6 +66,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--readiness-gates-only",
+        action="store_true",
+        help=(
+            "Emit only readiness_gates for oracle/KV/e2e gate polling. "
+            "Overrides --summary-only and blocker queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--readiness-gates-sha-only",
+        action="store_true",
+        help=(
+            "Emit only readiness_gates_sha256 for oracle/KV/e2e gate drift polling. "
+            "Overrides --summary-only and blocker queue compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--handoff-summary-sha-only",
         action="store_true",
         help=(
@@ -265,6 +281,7 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
     source_artifacts = status.get("source_artifacts", {})
     handoff_summary = status.get("handoff_summary", {})
     readiness_summary = status.get("readiness_summary", {})
+    readiness_gates = status.get("readiness_gates", {})
     next_action_commands = status.get("next_action_commands", {})
     schema_versions = status.get("schema_versions", {})
     blocker_meta = (
@@ -284,6 +301,10 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         "readiness_summary_sha256": (
             isinstance(readiness_summary, dict)
             and status.get("readiness_summary_sha256") == _stable_json_sha256(readiness_summary)
+        ),
+        "readiness_gates_sha256": (
+            isinstance(readiness_gates, dict)
+            and status.get("readiness_gates_sha256") == _stable_json_sha256(readiness_gates)
         ),
         "next_action_commands_sha256": (
             isinstance(next_action_commands, dict)
@@ -1289,6 +1310,8 @@ def _handoff_summary(
             "status_integrity_only": "status_integrity",
             "readiness_summary_only": "readiness_summary",
             "readiness_summary_sha_only": "readiness_summary_sha256",
+            "readiness_gates_only": "readiness_gates",
+            "readiness_gates_sha_only": "readiness_gates_sha256",
             "source_artifacts_sha_only": "source_artifacts_sha256",
             "next_action_commands_sha_only": "next_action_commands_sha256",
             "status_refresh_command_only": (
@@ -1452,6 +1475,7 @@ def build_status(
         docs_path=docs_path,
     )
     next_action_commands_sha256 = _stable_json_sha256(next_action_commands)
+    readiness_gates_sha256 = _stable_json_sha256(readiness_gates)
     blockers: list[dict[str, object]] = []
     if not oracle_parity:
         blockers.append(
@@ -1554,6 +1578,7 @@ def build_status(
         "open_blocker_count": handoff_summary["open_blocker_count"],
         "handoff_summary_sha256": handoff_summary_sha256,
         "source_artifacts_sha256": source_artifacts_sha256,
+        "readiness_gates_sha256": readiness_gates_sha256,
         "next_action_commands_sha256": next_action_commands_sha256,
         "first_blocker_kind": handoff_summary["blocker_work_queue_meta"]["first_blocker_kind"],
         "first_blocker_work_item_sha256": handoff_summary[
@@ -1604,6 +1629,7 @@ def build_status(
         "kv_backed_decode_ready": kv_backed_decode_ready,
         "e2e_inference_ready": e2e_inference_ready,
         "readiness_gates": readiness_gates,
+        "readiness_gates_sha256": readiness_gates_sha256,
         "readiness_summary": readiness_summary,
         "readiness_summary_sha256": readiness_summary_sha256,
         "handoff_summary": handoff_summary,
@@ -1659,6 +1685,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     elif args.next_action_commands_sha_only:
         result = status["next_action_commands_sha256"]
+    elif args.readiness_gates_sha_only:
+        result = status["readiness_gates_sha256"]
+    elif args.readiness_gates_only:
+        result = status["readiness_gates"]
     elif args.source_artifacts_sha_only:
         result = status["source_artifacts_sha256"]
     elif args.source_verify_command_sha_only:

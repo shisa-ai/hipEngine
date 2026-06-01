@@ -135,6 +135,8 @@
       "next_action_commands_sha_only": "next_action_commands_sha256",
       "oracle_helper_command_only": "next_action_commands.oracle_parity_blocked.oracle_helper_refresh_command",
       "oracle_helper_command_sha_only": "next_action_commands.oracle_parity_blocked.oracle_helper_refresh_command_sha256",
+      "readiness_gates_only": "readiness_gates",
+      "readiness_gates_sha_only": "readiness_gates_sha256",
       "readiness_summary_only": "readiness_summary",
       "readiness_summary_sha_only": "readiness_summary_sha256",
       "schema_versions_only": "schema_versions",
@@ -263,7 +265,7 @@
     "schema_version": 1,
     "status": "blocked"
   },
-  "handoff_summary_sha256": "ca785f4f806ecf67bcbaf41b4631b954977fb39110f7a6fa1701c6ff86e73a00",
+  "handoff_summary_sha256": "2b42267f4eef9c7bbf8c97f1d89bb2d94376c57cae9a2f904d19d781aa40d788",
   "kv_backed_decode_gap_report": {
     "first_missing_evidence": "streaming_runner_ready_flags",
     "first_missing_precondition": null,
@@ -1517,6 +1519,7 @@
       "required_evidence": "A StepFun/step35-capable oracle must generate a comparable token and match the expected next-token text/logit policy recorded in oracle_progress."
     }
   },
+  "readiness_gates_sha256": "4cc632d119cbb0edc67b560f23f4d6cefbcf614e73f3685f80b95133aad5fc89",
   "readiness_summary": {
     "blocker_work_queue_count": 2,
     "blocker_work_queue_sha256": "400dd2ba3c938f03fb0556816766ff0de4863988c7f48e59f94927b60aef80f4",
@@ -1525,7 +1528,7 @@
     "fail_on_blocked_exit_code": 2,
     "first_blocker_kind": "oracle_parity_blocked",
     "first_blocker_work_item_sha256": "8c5a2cfe6f5b1b7939bb041118ee622bc90a8be6fb3472c7079706d78aacfed3",
-    "handoff_summary_sha256": "ca785f4f806ecf67bcbaf41b4631b954977fb39110f7a6fa1701c6ff86e73a00",
+    "handoff_summary_sha256": "2b42267f4eef9c7bbf8c97f1d89bb2d94376c57cae9a2f904d19d781aa40d788",
     "kv_backed_decode_ready": false,
     "kv_decode_dispatch_ready": true,
     "next_action_commands_sha256": "1e27ca8833b336ecd85b9439d662ab9ed9e8b5d55f414f7d10cb8119a0654ba3",
@@ -1533,11 +1536,12 @@
     "open_or_partial_items_p0_p12": 2,
     "oracle_parity": false,
     "performance_claim_allowed": false,
+    "readiness_gates_sha256": "4cc632d119cbb0edc67b560f23f4d6cefbcf614e73f3685f80b95133aad5fc89",
     "schema_version": 1,
-    "source_artifacts_sha256": "80f193f786537ce07518aa7bf3dbe49b2e64dc4b0325fe3e9d6cead2256f2752",
+    "source_artifacts_sha256": "a3ad5e62977271593528de6397bb18695ce96eed86f85ff1a38968bc42c86bfb",
     "status": "blocked"
   },
-  "readiness_summary_sha256": "67437b9bf058d7dfa022fa05b3e4541ee9bcd8eba2458eb8230504a2dae70a42",
+  "readiness_summary_sha256": "df54051ece2f1fddbf87a48b35e74b833ecfb74d0b2c79a63302b8893a4e1cba",
   "schema_version": 1,
   "schema_versions": {
     "blocker_work_queue": 1,
@@ -1550,8 +1554,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "9d362826e279ab5541eda33065f7df43047c7a49740a442de001afa81b2cb567",
-      "size_bytes": 55215
+      "sha256": "2c6f6be0b302d8f422a938c037c1ae4e8362cabf9189a4e551c567ccc5b0c42a",
+      "size_bytes": 55324
     },
     "oracle": {
       "exists": true,
@@ -1572,7 +1576,7 @@
       "size_bytes": 45925
     }
   },
-  "source_artifacts_sha256": "80f193f786537ce07518aa7bf3dbe49b2e64dc4b0325fe3e9d6cead2256f2752",
+  "source_artifacts_sha256": "a3ad5e62977271593528de6397bb18695ce96eed86f85ff1a38968bc42c86bfb",
   "status": "blocked",
   "step35_supported_by_local_llama_cpp": null,
   "text_resource_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json"

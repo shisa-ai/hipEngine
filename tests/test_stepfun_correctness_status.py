@@ -651,6 +651,9 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
     assert status["handoff_summary_sha256"] == _stable_json_sha256(
         status["handoff_summary"]
     )
+    assert status["readiness_gates_sha256"] == _stable_json_sha256(
+        status["readiness_gates"]
+    )
     assert status["next_action_commands_sha256"] == _stable_json_sha256(
         status["next_action_commands"]
     )
@@ -1007,6 +1010,8 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
         "status_integrity_only": "status_integrity",
         "readiness_summary_only": "readiness_summary",
         "readiness_summary_sha_only": "readiness_summary_sha256",
+        "readiness_gates_only": "readiness_gates",
+        "readiness_gates_sha_only": "readiness_gates_sha256",
         "source_artifacts_sha_only": "source_artifacts_sha256",
         "next_action_commands_sha_only": "next_action_commands_sha256",
         "status_refresh_command_only": (
@@ -1375,6 +1380,9 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
     assert payload["handoff_summary_sha256"] == _stable_json_sha256(
         payload["handoff_summary"]
     )
+    assert payload["readiness_gates_sha256"] == _stable_json_sha256(
+        payload["readiness_gates"]
+    )
     assert payload["next_action_commands_sha256"] == _stable_json_sha256(
         payload["next_action_commands"]
     )
@@ -1394,6 +1402,7 @@ def test_stepfun_correctness_status_writes_json(capsys, tmp_path: Path) -> None:
         "open_blocker_count": 2,
         "handoff_summary_sha256": payload["handoff_summary_sha256"],
         "source_artifacts_sha256": payload["source_artifacts_sha256"],
+        "readiness_gates_sha256": payload["readiness_gates_sha256"],
         "next_action_commands_sha256": payload["next_action_commands_sha256"],
         "first_blocker_kind": "oracle_parity_blocked",
         "first_blocker_work_item_sha256": payload["handoff_summary"][
@@ -1534,6 +1543,7 @@ def test_stepfun_correctness_status_readiness_summary_only(capsys, tmp_path: Pat
     ]
     assert payload["handoff_summary_sha256"] == status["handoff_summary_sha256"]
     assert payload["source_artifacts_sha256"] == status["source_artifacts_sha256"]
+    assert payload["readiness_gates_sha256"] == status["readiness_gates_sha256"]
     assert payload["next_action_commands_sha256"] == status[
         "next_action_commands_sha256"
     ]
@@ -1579,6 +1589,92 @@ def test_stepfun_correctness_status_readiness_summary_sha_only(capsys, tmp_path:
     payload = json.loads(output.read_text())
     assert payload == status["readiness_summary_sha256"]
     assert payload == _stable_json_sha256(status["readiness_summary"])
+
+
+def test_stepfun_correctness_status_readiness_gates_sha_only(capsys, tmp_path: Path) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "readiness-gates-sha.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--blocker-work-queue-only",
+            "--readiness-summary-only",
+            "--readiness-summary-sha-only",
+            "--readiness-gates-sha-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(output.read_text())
+    assert payload == status["readiness_gates_sha256"]
+    assert payload == _stable_json_sha256(status["readiness_gates"])
+
+
+def test_stepfun_correctness_status_readiness_gates_only(capsys, tmp_path: Path) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    output = tmp_path / "readiness-gates.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(output),
+            "--summary-only",
+            "--blocker-work-queue-only",
+            "--readiness-summary-only",
+            "--readiness-gates-only",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(output.read_text())
+    assert payload == status["readiness_gates"]
+    assert payload["oracle_parity"]["ready"] is False
+    assert payload["kv_backed_decode"]["ready"] is False
+    assert payload["kv_backed_decode"]["dispatch_ready"] is True
+    assert payload["e2e_inference"]["ready"] is False
 
 
 def test_stepfun_correctness_status_handoff_summary_sha_only(capsys, tmp_path: Path) -> None:
@@ -1716,6 +1812,7 @@ def test_stepfun_correctness_status_status_integrity_only(capsys, tmp_path: Path
             "source_artifacts_sha256": True,
             "handoff_summary_sha256": True,
             "readiness_summary_sha256": True,
+            "readiness_gates_sha256": True,
             "next_action_commands_sha256": True,
             "schema_versions": True,
         },
@@ -1924,6 +2021,8 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
         "status_integrity_only": "status_integrity",
         "readiness_summary_only": "readiness_summary",
         "readiness_summary_sha_only": "readiness_summary_sha256",
+        "readiness_gates_only": "readiness_gates",
+        "readiness_gates_sha_only": "readiness_gates_sha256",
         "source_artifacts_sha_only": "source_artifacts_sha256",
         "next_action_commands_sha_only": "next_action_commands_sha256",
         "status_refresh_command_only": (
@@ -2740,6 +2839,7 @@ def test_stepfun_correctness_status_verifies_source_artifact_provenance(capsys, 
             "source_artifacts_sha256": True,
             "handoff_summary_sha256": True,
             "readiness_summary_sha256": True,
+            "readiness_gates_sha256": True,
             "next_action_commands_sha256": True,
             "schema_versions": True,
         },
@@ -2871,6 +2971,7 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_status_digest
         "source_artifacts_sha256": True,
         "handoff_summary_sha256": True,
         "readiness_summary_sha256": True,
+        "readiness_gates_sha256": True,
         "next_action_commands_sha256": False,
         "schema_versions": True,
     }
@@ -3312,6 +3413,85 @@ def test_stepfun_correctness_status_readiness_summary_sha_fail_on_blocked_return
     assert captured.err == ""
     assert payload == status["readiness_summary_sha256"]
     assert payload == _stable_json_sha256(status["readiness_summary"])
+
+
+def test_stepfun_correctness_status_readiness_gates_sha_fail_on_blocked_returns_nonzero(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--readiness-gates-sha-only",
+            "--fail-on-blocked",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 2
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert captured.err == ""
+    assert payload == status["readiness_gates_sha256"]
+    assert payload == _stable_json_sha256(status["readiness_gates"])
+
+
+def test_stepfun_correctness_status_readiness_gates_fail_on_blocked_returns_nonzero(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--readiness-gates-only",
+            "--fail-on-blocked",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 2
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert captured.err == ""
+    assert payload == status["readiness_gates"]
+    assert payload["oracle_parity"]["ready"] is False
+    assert payload["kv_backed_decode"]["ready"] is False
+    assert payload["kv_backed_decode"]["dispatch_ready"] is True
+    assert payload["e2e_inference"]["ready"] is False
 
 
 def test_stepfun_correctness_status_handoff_summary_sha_fail_on_blocked_returns_nonzero(
