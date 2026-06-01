@@ -6493,6 +6493,16 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path JSON must contain exactly primitive correctness source keys when primitive passed"):
         c_sweep.validate_sweep_summary(persisted)
     primitive_source_payload = json.loads(primitive_artifact_payload)
+    primitive_source_payload["source_artifact_path"] = 123
+    primitive_artifact_path.write_text(json.dumps(primitive_source_payload))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path JSON source_artifact_path must be a non-empty string when primitive passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    primitive_source_payload = json.loads(primitive_artifact_payload)
+    primitive_source_payload["source_artifact_path"] = "   "
+    primitive_artifact_path.write_text(json.dumps(primitive_source_payload))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path JSON source_artifact_path must be a non-blank string when primitive passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    primitive_source_payload = json.loads(primitive_artifact_payload)
     primitive_source_payload["source_artifact_path"] = str(output_dir / "other-primitive-c2.json")
     primitive_artifact_path.write_text(json.dumps(primitive_source_payload))
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path JSON source_artifact_path must match when primitive passed"):

@@ -3026,9 +3026,17 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         if primitive_source_payload.get("artifact_path") != primitive_artifact_path:
                             errors.append("commands[].preconditions[].primitive_artifact_path JSON artifact_path must match when primitive passed")
                             break
-                        if "source_artifact_path" in primitive_source_payload and primitive_source_payload.get("source_artifact_path") != primitive_artifact_path:
-                            errors.append("commands[].preconditions[].primitive_artifact_path JSON source_artifact_path must match when primitive passed")
-                            break
+                        if "source_artifact_path" in primitive_source_payload:
+                            primitive_source_artifact_path = primitive_source_payload.get("source_artifact_path")
+                            if not isinstance(primitive_source_artifact_path, str) or not primitive_source_artifact_path:
+                                errors.append("commands[].preconditions[].primitive_artifact_path JSON source_artifact_path must be a non-empty string when primitive passed")
+                                break
+                            if not primitive_source_artifact_path.strip():
+                                errors.append("commands[].preconditions[].primitive_artifact_path JSON source_artifact_path must be a non-blank string when primitive passed")
+                                break
+                            if primitive_source_artifact_path != primitive_artifact_path:
+                                errors.append("commands[].preconditions[].primitive_artifact_path JSON source_artifact_path must match when primitive passed")
+                                break
                     primitive_seed = primitive_precondition.get("primitive_seed")
                     if (
                         not isinstance(primitive_seed, int)
