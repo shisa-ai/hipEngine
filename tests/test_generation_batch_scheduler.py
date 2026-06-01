@@ -7371,6 +7371,11 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     with pytest.raises(ValueError, match=r"completed_command_count must be a typed int matching len\(commands\)"):
         c_sweep.validate_sweep_summary(tampered_completed_command_count)
     assert summary["status_counts"] == {"planned": 27}
+    for stale_status_count in (True, "27", -1):
+        tampered_status_count_type = json.loads(json.dumps(summary))
+        tampered_status_count_type["status_counts"]["planned"] = stale_status_count
+        with pytest.raises(ValueError, match="status_counts must contain only non-negative integer count values"):
+            c_sweep.validate_sweep_summary(tampered_status_count_type)
     tampered_status_count = json.loads(json.dumps(summary))
     tampered_status_count["status_counts"]["planned"] = 26
     with pytest.raises(ValueError, match="status_counts must match commands"):
@@ -7405,6 +7410,11 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         "int8_native_diagnostic": {"planned": 3},
         "gguf_native_diagnostic": {"planned": 12},
     }
+    for stale_category_status_count in (True, "4", -1):
+        tampered_category_status_count_type = json.loads(json.dumps(summary))
+        tampered_category_status_count_type["category_status_counts"]["primitive"]["planned"] = stale_category_status_count
+        with pytest.raises(ValueError, match="category_status_counts must contain only non-negative integer count values"):
+            c_sweep.validate_sweep_summary(tampered_category_status_count_type)
     tampered_primitive_category_status_count = json.loads(json.dumps(summary))
     tampered_primitive_category_status_count["category_status_counts"]["primitive"]["planned"] = 3
     with pytest.raises(ValueError, match="category_status_counts must match commands"):
