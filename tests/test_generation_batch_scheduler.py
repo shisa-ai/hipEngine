@@ -6509,6 +6509,16 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON trace_dir must match when profiler passed"):
         c_sweep.validate_sweep_summary(persisted)
     profiler_source_payload = json.loads(profiler_artifact_payload)
+    profiler_source_payload["profiler"]["kernel_durations_ns"]["qwen35_batch_decode"] = 54321.0
+    profiler_artifact_path.write_text(json.dumps(profiler_source_payload))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON kernel_durations_ns must match when profiler passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    profiler_source_payload = json.loads(profiler_artifact_payload)
+    profiler_source_payload["profiler"]["total_kernel_duration_ns"] = 54321.0
+    profiler_artifact_path.write_text(json.dumps(profiler_source_payload))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON total_kernel_duration_ns must match when profiler passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    profiler_source_payload = json.loads(profiler_artifact_payload)
     profiler_source_payload["profiler"]["command"] = "rocprofv3 --kernel-trace --output-format csv -d /tmp/other -- python3 scripts/qwen35_batch_retained_bench.py"
     profiler_artifact_path.write_text(json.dumps(profiler_source_payload))
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path JSON command must match when profiler passed"):
@@ -6641,11 +6651,15 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     synthesized_postcondition = synthesized_field_summary["commands"][-1]["postconditions"][0]
     synthesized_postcondition["profiler_synthesized_fields"] = ["trace_kernel_names"]
     synthesized_postcondition["profiler_precondition_synthesized_fields"] = ["trace_kernel_names"]
+    profiler_source_payload = json.loads(profiler_artifact_payload)
+    profiler_source_payload["profiler"].pop("trace_kernel_names")
+    profiler_artifact_path.write_text(json.dumps(profiler_source_payload))
     c_sweep.validate_sweep_summary(synthesized_field_summary)
     tampered_synthesized_field_drop = json.loads(json.dumps(synthesized_field_summary))
     tampered_synthesized_field_drop["commands"][-1]["postconditions"][0]["profiler_synthesized_fields"] = []
     with pytest.raises(ValueError, match=r"commands\[\]\.postconditions\[\]\.profiler synthesized fields must match when passed"):
         c_sweep.validate_sweep_summary(tampered_synthesized_field_drop)
+    profiler_artifact_path.write_text(profiler_artifact_payload)
     tampered_profiler_source_artifact_path = json.loads(json.dumps(persisted))
     tampered_profiler_source_artifact_path["commands"][-1]["preconditions"][-1]["profiler_source_artifact_path"] = str(output_dir / "other-profiler-c2.json")
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path must match profiler artifact_path when profiler passed"):

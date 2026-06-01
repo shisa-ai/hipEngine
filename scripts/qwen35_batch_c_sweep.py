@@ -3309,6 +3309,10 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         profiler_source_object,
                         profiler_source_payload if isinstance(profiler_source_payload, dict) else None,
                     )
+                    profiler_source_synthesized_fields = _synthesize_profiler_trace_fields(
+                        profiler_source_object,
+                        profiler_path=profiler_source_check_path,
+                    )
                     if any(
                         _command_text_arg(profiler_command, flag) != _argv_value(argv, flag)
                         for flag in _RETAINED_GATE_FLAGS[:3]
@@ -3352,6 +3356,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         break
                     if len(set(profiler_synthesized_fields)) != len(profiler_synthesized_fields):
                         errors.append("commands[].preconditions[].profiler_trace_synthesized_fields must be unique when profiler passed")
+                        break
+                    if profiler_source_synthesized_fields != profiler_synthesized_fields:
+                        errors.append("commands[].preconditions[].profiler_source_artifact_path synthesized fields must match when profiler passed")
                         break
                     if profiler_precondition.get("profiler_status") != "captured":
                         errors.append("commands[].preconditions[].profiler_status must be captured when passed")
@@ -3647,6 +3654,27 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         break
                     if profiler_source_object.get("trace_files") != profiler_precondition.get("profiler_trace_files"):
                         errors.append("commands[].preconditions[].profiler_source_artifact_path JSON trace_files must match when profiler passed")
+                        break
+                    if profiler_source_object.get("trace_kernel_names") != profiler_precondition.get("profiler_trace_kernel_names"):
+                        errors.append("commands[].preconditions[].profiler_source_artifact_path JSON trace_kernel_names must match when profiler passed")
+                        break
+                    if profiler_source_object.get("expected_kernel_names") != profiler_precondition.get("expected_kernel_names"):
+                        errors.append("commands[].preconditions[].profiler_source_artifact_path JSON expected_kernel_names must match when profiler passed")
+                        break
+                    if profiler_source_object.get("kernel_durations_ns") != profiler_precondition.get("kernel_durations_ns"):
+                        errors.append("commands[].preconditions[].profiler_source_artifact_path JSON kernel_durations_ns must match when profiler passed")
+                        break
+                    if profiler_source_object.get("total_kernel_duration_ns") != profiler_precondition.get("total_kernel_duration_ns"):
+                        errors.append("commands[].preconditions[].profiler_source_artifact_path JSON total_kernel_duration_ns must match when profiler passed")
+                        break
+                    if profiler_source_object.get("kernel_duration_shares") != profiler_precondition.get("kernel_duration_shares"):
+                        errors.append("commands[].preconditions[].profiler_source_artifact_path JSON kernel_duration_shares must match when profiler passed")
+                        break
+                    if profiler_source_object.get("kernel_duration_categories_ns") != profiler_precondition.get("kernel_duration_categories_ns"):
+                        errors.append("commands[].preconditions[].profiler_source_artifact_path JSON kernel_duration_categories_ns must match when profiler passed")
+                        break
+                    if profiler_source_object.get("kernel_duration_category_shares") != profiler_precondition.get("kernel_duration_category_shares"):
+                        errors.append("commands[].preconditions[].profiler_source_artifact_path JSON kernel_duration_category_shares must match when profiler passed")
                         break
                     if profiler_source_command != profiler_precondition.get("profiler_command"):
                         errors.append("commands[].preconditions[].profiler_source_artifact_path JSON command must match when profiler passed")
