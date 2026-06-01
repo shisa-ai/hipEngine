@@ -5685,6 +5685,21 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     ]
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions are only valid for retained native diagnostic rows"):
         c_sweep.validate_sweep_summary(tampered_precondition_scope)
+    precondition_parent_file = output_dir / "precondition-parent-file"
+    try:
+        precondition_parent_file.write_text("not a directory")
+        tampered_precondition_parent_file = json.loads(json.dumps(persisted))
+        tampered_precondition_parent_file["commands"][-1]["preconditions"][-1]["artifact_path"] = str(
+            precondition_parent_file / "profiler-c2.json"
+        )
+        with pytest.raises(
+            ValueError,
+            match=r"commands\[\]\.preconditions\[\]\.artifact_path parent directories must be directories",
+        ):
+            c_sweep.validate_sweep_summary(tampered_precondition_parent_file)
+    finally:
+        if precondition_parent_file.exists():
+            precondition_parent_file.unlink()
     tampered_singular_postcondition = json.loads(json.dumps(persisted))
     tampered_singular_postcondition["commands"][-1]["postcondition"] = tampered_singular_postcondition["commands"][-1]["postconditions"][0]
     with pytest.raises(ValueError, match=r"commands\[\]\.postcondition must be absent unless a postcondition failed"):

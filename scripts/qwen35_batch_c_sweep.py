@@ -2807,6 +2807,33 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     _argv_value(argv, _RETAINED_GATE_FLAGS[1]),
                     _argv_value(argv, _RETAINED_GATE_FLAGS[3]),
                 ]
+                precondition_artifact_path_error = False
+                for condition in preconditions:
+                    precondition_artifact_path = condition.get("artifact_path")
+                    if not isinstance(precondition_artifact_path, str) or not precondition_artifact_path:
+                        errors.append("commands[].preconditions[].artifact_path must be a non-empty string")
+                        precondition_artifact_path_error = True
+                        break
+                    if _path_has_parent_directory_component(precondition_artifact_path):
+                        errors.append("commands[].preconditions[].artifact_path must not contain parent-directory components")
+                        precondition_artifact_path_error = True
+                        break
+                    precondition_path = Path(precondition_artifact_path)
+                    precondition_check_path = precondition_path if precondition_path.is_absolute() else REPO_ROOT / precondition_path
+                    if precondition_check_path.is_symlink():
+                        errors.append("commands[].preconditions[].artifact_path must not be a symlink")
+                        precondition_artifact_path_error = True
+                        break
+                    if _path_has_symlink_parent(precondition_check_path):
+                        errors.append("commands[].preconditions[].artifact_path parent directories must not be symlinks")
+                        precondition_artifact_path_error = True
+                        break
+                    if _path_has_non_directory_parent(precondition_check_path):
+                        errors.append("commands[].preconditions[].artifact_path parent directories must be directories")
+                        precondition_artifact_path_error = True
+                        break
+                if precondition_artifact_path_error:
+                    break
                 if [condition.get("artifact_path") for condition in preconditions] != expected_retained_precondition_paths:
                     errors.append("commands[].preconditions[].artifact_path must match retained native gate argv")
                     break
