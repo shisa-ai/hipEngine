@@ -63589,3 +63589,26 @@ GPU1 / RX 7900 XTX evidence:
 Conclusion: decode KV append is not the sole native full-attention batch blocker. The clean/default retained verifier remains `/tmp/hipengine-e2e-native-c2-512-128.json`: `min_equal_prefix_tokens=82`, `prefix_lengths=[82, 137]`, `status=rejected_correctness`, no performance claim. The remaining gap is between the full per-row c1 layer replay and the native batch full-attention layer even after input/context/KV append/output/post/MoE row diagnostics are enabled.
 
 Guard passed with the required pytest bundle (`400 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY retained full-attention QKV scratch diagnostic
+
+Added a focused full-attention decode QKV-prep diagnostic path:
+
+- Runtime env: `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_QKV=1`.
+- Retained/hidden scripts: `--batch-decode-attn-qkv-path {batch,per_row}`.
+- Runtime metadata: `full_attention_qkv_decode_path` plus the diagnostic blocker when forced.
+- Implementation uses an independent token-1 full-attention scratch for row QKV/rotary/head-norm prep, then copies prepared Q/K/V/gate rows back into the batch scratch before the existing append/context/output/post/MoE diagnostics.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Native full-attention batch path with all exposed substages forced to row replay, now including independent QKV prep scratch:
+  `/tmp/hipengine-e2e-native-c2-512-128-retained-selected-linear-full-subrows-qkvrow.json`
+  - `batch_decode_full_attention_path=native_batch`, `attention_input=qkv=context=output=per_row`, `full_attention_kv_append=per_row`, `full_attention_moe=per_row_c1`, `post_attention=per_row`.
+  - Still fails generated-token equality with `prefix_lengths=[82, 104]`, `min_equal_prefix_tokens=82`, `first_mismatch_indices=[82, 104]`.
+- Complete full-attention row replay with the new QKV diagnostic metadata:
+  `/tmp/hipengine-e2e-native-c2-512-128-retained-selected-linear-fullpath-rowdiag-qkvrow.json`
+  - Generated-token equality remains green: `prefix_lengths=[137, 137]`, `min_equal_prefix_tokens=137`, `first_mismatch_indices=[null, null]`, `generated_token_equality.passed=true`.
+
+Conclusion: batch-scratch QKV/rotary/head-norm prep is not the sole native full-attention batch blocker. The clean/default retained verifier remains `/tmp/hipengine-e2e-native-c2-512-128.json`: `min_equal_prefix_tokens=82`, `prefix_lengths=[82, 137]`, `status=rejected_correctness`, no performance claim. With input RMSNorm, QKV prep, KV append, context/gate, O projection, post-attention, and MoE row diagnostics all ruled out individually inside native batch, the remaining gap is likely full-layer phase ordering or a batch-scratch side effect that only the complete c1 row-layer replay avoids.
+
+Guard passed with the required pytest bundle (`400 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.

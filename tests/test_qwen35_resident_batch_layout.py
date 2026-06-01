@@ -1514,6 +1514,7 @@ def test_qwen35_resident_run_layers_batch_decode_reports_native_batch_for_short_
         "native_full_attention_layers": 1,
         "full_attention_decode_path": "native_batch",
         "full_attention_input_decode_path": "native_batch",
+        "full_attention_qkv_decode_path": "native_batch",
         "full_attention_context_decode_path": "native_batch",
         "full_attention_kv_append_decode_path": "native_batch",
         "post_attention_decode_path": "native_batch",
@@ -1802,6 +1803,7 @@ def test_qwen35_resident_run_layers_batch_decode_combined_full_attention_boundar
     monkeypatch,
 ) -> None:
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT", "1")
+    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_QKV", "1")
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_KV_APPEND", "1")
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN", "1")
     device = Device("hip", 0)
@@ -1865,6 +1867,7 @@ def test_qwen35_resident_run_layers_batch_decode_combined_full_attention_boundar
     assert out.ptr == 0x2000
     assert len(state.calls) == 1
     assert state.calls[0][1]["force_per_row_input_rmsnorm"] is True
+    assert state.calls[0][1]["force_per_row_qkv_scratch"] is True
     assert state.calls[0][1]["force_per_row_kv_append"] is True
     per_row_append_contexts = state.calls[0][1]["per_row_append_contexts"]
     assert len(per_row_append_contexts) == 2
@@ -1874,24 +1877,28 @@ def test_qwen35_resident_run_layers_batch_decode_combined_full_attention_boundar
     assert copies == [(0x2000, 0x9000, 2 * session.hidden_nbytes, 5)]
     assert session.last_batch_decode_execution["full_attention_decode_path"] == "native_batch"
     assert session.last_batch_decode_execution["full_attention_input_decode_path"] == "per_row_rmsnorm_fallback"
+    assert session.last_batch_decode_execution["full_attention_qkv_decode_path"] == "per_row_qkv_scratch_fallback"
     assert session.last_batch_decode_execution["full_attention_context_decode_path"] == "native_batch"
     assert session.last_batch_decode_execution["full_attention_kv_append_decode_path"] == "per_row_kv_append_fallback"
     assert session.last_batch_decode_execution["post_attention_decode_path"] == "per_row_add_rmsnorm_fallback"
     assert session.last_batch_decode_execution["native_caware_decode"] is False
     assert session.last_batch_decode_execution["blockers"] == [
         "full-attention input RMSNorm forced to per-row diagnostic path",
+        "full-attention QKV prep forced to per-row scratch diagnostic path",
         "full-attention KV append forced to per-row diagnostic path",
         "post-attention add/rmsnorm forced to per-row diagnostic path",
     ]
     layer_execution = session.last_batch_decode_execution["layer_executions"][0]
     assert layer_execution["native_caware_decode"] is False
     assert layer_execution["full_attention_input_decode_path"] == "per_row_rmsnorm_fallback"
+    assert layer_execution["full_attention_qkv_decode_path"] == "per_row_qkv_scratch_fallback"
     assert layer_execution["full_attention_kv_append_decode_path"] == "per_row_kv_append_fallback"
     assert layer_execution["post_attention_decode_path"] == "per_row_add_rmsnorm_fallback"
     metadata = session.batch_execution_metadata(scheduler_owned=True, native_decode=True)
     assert not metadata.native_caware_decode
     assert metadata.row_execution == "native_batch_with_diagnostic_fallback"
     assert "full-attention input RMSNorm forced to per-row diagnostic path" in metadata.blockers
+    assert "full-attention QKV prep forced to per-row scratch diagnostic path" in metadata.blockers
     assert "full-attention KV append forced to per-row diagnostic path" in metadata.blockers
     assert "post-attention add/rmsnorm forced to per-row diagnostic path" in metadata.blockers
 
@@ -1964,6 +1971,7 @@ def test_qwen35_resident_run_layers_batch_decode_can_force_selected_c1_moe_probe
         "native_full_attention_layers": 1,
         "full_attention_decode_path": "native_batch",
         "full_attention_input_decode_path": "native_batch",
+        "full_attention_qkv_decode_path": "native_batch",
         "full_attention_context_decode_path": "native_batch",
         "full_attention_kv_append_decode_path": "native_batch",
         "post_attention_decode_path": "native_batch",
@@ -2161,6 +2169,7 @@ def test_qwen35_resident_run_layers_batch_decode_uses_per_row_splitk_fallback_fo
         "native_full_attention_layers": 0,
         "full_attention_decode_path": "per_row_splitk_fallback",
         "full_attention_input_decode_path": "native_batch",
+        "full_attention_qkv_decode_path": "native_batch",
         "full_attention_context_decode_path": "native_batch",
         "full_attention_kv_append_decode_path": "native_batch",
         "post_attention_decode_path": "native_batch",
@@ -3362,6 +3371,7 @@ def test_qwen35_resident_linear_batch_decode_can_force_per_row_probe(monkeypatch
         "native_full_attention_layers": 0,
         "full_attention_decode_path": "none",
         "full_attention_input_decode_path": "native_batch",
+        "full_attention_qkv_decode_path": "native_batch",
         "full_attention_context_decode_path": "native_batch",
         "full_attention_kv_append_decode_path": "native_batch",
         "post_attention_decode_path": "native_batch",

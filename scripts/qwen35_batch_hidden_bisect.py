@@ -5722,6 +5722,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Diagnostic full-attention input RMSNorm path for c>N batch decode; per_row forces token-1 row kernels and blocks retained claims.",
     )
     parser.add_argument(
+        "--batch-decode-attn-qkv-path",
+        choices=("batch", "per_row"),
+        default="batch",
+        help="Diagnostic full-attention QKV prep path for c>N batch decode; per_row uses independent token-1 scratch and blocks retained claims.",
+    )
+    parser.add_argument(
         "--batch-decode-attn-context-path",
         choices=("batch", "per_row"),
         default="batch",
@@ -5831,6 +5837,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "batch_decode_linear_output_path": str(args.batch_decode_linear_output_path),
             "batch_decode_full_attention_path": str(args.batch_decode_full_attn_path),
             "batch_decode_attention_input_path": str(args.batch_decode_attn_input_path),
+            "batch_decode_attention_qkv_path": str(args.batch_decode_attn_qkv_path),
             "batch_decode_attention_context_path": str(args.batch_decode_attn_context_path),
             "batch_decode_full_attention_kv_append_path": str(args.batch_decode_full_attn_kv_append_path),
             "batch_decode_full_attention_output_path": str(args.batch_decode_full_attn_output_path),
@@ -5846,6 +5853,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
                 and args.batch_decode_linear_output_path not in {"batch_gemv", "selected_c1"}
                 and args.batch_decode_full_attn_path == "native_batch"
                 and args.batch_decode_attn_input_path == "batch"
+                and args.batch_decode_attn_qkv_path == "batch"
                 and args.batch_decode_attn_context_path == "batch"
                 and args.batch_decode_full_attn_kv_append_path == "batch"
                 and args.batch_decode_full_attn_output_path == "batch"
@@ -5927,6 +5935,9 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"] = (
         "1" if args.batch_decode_attn_input_path == "per_row" else "0"
+    )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_QKV"] = (
+        "1" if args.batch_decode_attn_qkv_path == "per_row" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_CONTEXT"] = (
         "1" if args.batch_decode_attn_context_path == "per_row" else "0"

@@ -2910,6 +2910,91 @@ class Qwen35ParoDecodeState:
             )
         return scratch.out_proj
 
+    def _decode_row_full_attention_temp_scratch(
+        self,
+        scratch: Qwen35ParoAttentionScratch,
+    ) -> Qwen35ParoAttentionScratch:
+        """Return an independent token-1 scratch for full-attention decode diagnostics."""
+
+        cfg = self.config
+        q_width = cfg.num_attention_heads * cfg.head_dim
+        kv_width = cfg.num_key_value_heads * cfg.head_dim
+        lowp = scratch.attn_input.dtype
+        gated = scratch.gate.dtype
+        query_dtype = scratch.query.dtype
+        q_proj_key = self.workspace.reserve_tensor("attn.decode_row.q_proj_key", (1, 2 * q_width + kv_width), lowp)
+        q_proj = Tensor.from_handle(q_proj_key.ptr, (1, 2 * q_width), lowp, q_proj_key.device)
+        key_bf16 = Tensor.from_handle(
+            q_proj_key.ptr + 2 * q_width * lowp.itemsize,
+            (1, kv_width),
+            lowp,
+            q_proj_key.device,
+        )
+        kv_proj = None
+        if _full_attn_kv_pack8_fused_enabled():
+            kv_proj = self.workspace.reserve_tensor("attn.decode_row.kv_proj", (1, 2 * kv_width), lowp)
+            key_bf16 = Tensor.from_handle(kv_proj.ptr, (1, kv_width), lowp, kv_proj.device)
+            value = Tensor.from_handle(
+                kv_proj.ptr + kv_width * lowp.itemsize,
+                (1, cfg.num_key_value_heads, cfg.head_dim),
+                lowp,
+                kv_proj.device,
+            )
+        else:
+            value = self.workspace.reserve_tensor(
+                "attn.decode_row.value",
+                (1, cfg.num_key_value_heads, cfg.head_dim),
+                lowp,
+            )
+        return Qwen35ParoAttentionScratch(
+            attn_input=self.workspace.reserve_tensor("attn.decode_row.input", (1, cfg.hidden_size), lowp),
+            q_rot=self.workspace.reserve_tensor("attn.decode_row.q_rot", (1, cfg.hidden_size), lowp),
+            k_rot=self.workspace.reserve_tensor("attn.decode_row.k_rot", (1, cfg.hidden_size), lowp),
+            v_rot=self.workspace.reserve_tensor("attn.decode_row.v_rot", (1, cfg.hidden_size), lowp),
+            rotate_fuse_barrier=self.workspace.reserve_tensor("attn.decode_row.rotate_fuse_barrier", (2,), DType.INT32),
+            q_proj_key=q_proj_key,
+            q_proj=q_proj,
+            key_bf16=key_bf16,
+            query_raw=self.workspace.reserve_tensor(
+                "attn.decode_row.query_raw",
+                (1, cfg.num_attention_heads, cfg.head_dim),
+                DType.FP32,
+            ),
+            key_raw=self.workspace.reserve_tensor(
+                "attn.decode_row.key_raw",
+                (1, cfg.num_key_value_heads, cfg.head_dim),
+                DType.FP32,
+            ),
+            query=self.workspace.reserve_tensor(
+                "attn.decode_row.query",
+                (1, cfg.num_attention_heads, cfg.head_dim),
+                query_dtype,
+            ),
+            key=self.workspace.reserve_tensor(
+                "attn.decode_row.key",
+                (1, cfg.num_key_value_heads, cfg.head_dim),
+                DType.FP32,
+            ),
+            value=value,
+            kv_proj=kv_proj,
+            gate=self.workspace.reserve_tensor(
+                "attn.decode_row.gate",
+                (1, cfg.num_attention_heads, cfg.head_dim),
+                gated,
+            ),
+            partial_out=self.workspace.reserve_tensor(
+                "attn.decode_row.partial_out",
+                (cfg.num_attention_heads, 1, cfg.head_dim),
+                DType.FP32,
+            ),
+            partial_m=self.workspace.reserve_tensor("attn.decode_row.partial_m", (cfg.num_attention_heads, 1), DType.FP32),
+            partial_l=self.workspace.reserve_tensor("attn.decode_row.partial_l", (cfg.num_attention_heads, 1), DType.FP32),
+            attn_out=self.workspace.reserve_tensor("attn.decode_row.out", (cfg.num_attention_heads, cfg.head_dim), DType.FP32),
+            gated_attn=self.workspace.reserve_tensor("attn.decode_row.gated", (1, q_width), gated),
+            o_rot=self.workspace.reserve_tensor("attn.decode_row.o_rot", (1, q_width), lowp),
+            o_proj=self.workspace.reserve_tensor("attn.decode_row.o_proj", (1, cfg.hidden_size), lowp),
+        )
+
     def _decode_row_full_attention_scratch(
         self,
         scratch: Qwen35ParoAttentionScratch,
@@ -2977,6 +3062,7 @@ class Qwen35ParoDecodeState:
         group_size: int = 128,
         input_scratch_trace: Callable[[str, int, Qwen35ParoAttentionScratch], None] | None = None,
         qkv_tensor_trace: Callable[[str, int, Tensor], None] | None = None,
+        force_per_row_scratch: bool = False,
         library=None,
         stream: int = 0,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
@@ -2989,8 +3075,19 @@ class Qwen35ParoDecodeState:
 
         if tokens <= 0:
             raise ValueError("tokens must be positive")
+        runtime = self.runtime or get_hip_runtime()
         for row in range(tokens):
             row_scratch = self._decode_row_full_attention_scratch(scratch, row)
+            active_scratch = row_scratch
+            if force_per_row_scratch and tokens > 1:
+                active_scratch = self._decode_row_full_attention_temp_scratch(scratch)
+                runtime.memcpy_async(
+                    active_scratch.attn_input.ptr,
+                    row_scratch.attn_input.ptr,
+                    row_scratch.attn_input.numel * row_scratch.attn_input.dtype.itemsize,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
             row_position = Tensor.from_handle(
                 positions.ptr + row * DType.INT64.itemsize,
                 (1,),
@@ -2998,21 +3095,21 @@ class Qwen35ParoDecodeState:
                 positions.device,
             )
             self.rotate_full_attention_inputs_fp16(
-                row_scratch.attn_input,
-                row_scratch,
+                active_scratch.attn_input,
+                active_scratch,
                 tokens=1,
                 group_size=group_size,
                 library=library,
                 stream=stream,
             )
             if input_scratch_trace is not None:
-                input_scratch_trace("attn_input_after_rotate", row, row_scratch)
+                input_scratch_trace("attn_input_after_rotate", row, active_scratch)
             def producer_trace(stage: str, tensor: Tensor, *, _row: int = row) -> None:
                 if qkv_tensor_trace is not None:
                     qkv_tensor_trace(stage, _row, tensor)
 
             self.project_full_attention_qkv_fp16(
-                row_scratch,
+                active_scratch,
                 tokens=1,
                 group_size=group_size,
                 producer_trace=producer_trace if qkv_tensor_trace is not None else None,
@@ -3020,10 +3117,10 @@ class Qwen35ParoDecodeState:
                 stream=stream,
             )
             if input_scratch_trace is not None:
-                input_scratch_trace("attn_input_after_project", row, row_scratch)
+                input_scratch_trace("attn_input_after_project", row, active_scratch)
 
             self.prepare_full_attention_qkv_fp16(
-                row_scratch,
+                active_scratch,
                 cos_table=cos_table,
                 sin_table=sin_table,
                 position=row_position,
@@ -3033,8 +3130,22 @@ class Qwen35ParoDecodeState:
                 library=library,
                 stream=stream,
             )
+            if force_per_row_scratch and tokens > 1:
+                for dst, src in (
+                    (row_scratch.query, active_scratch.query),
+                    (row_scratch.key, active_scratch.key),
+                    (row_scratch.value, active_scratch.value),
+                    (row_scratch.gate, active_scratch.gate),
+                ):
+                    runtime.memcpy_async(
+                        dst.ptr,
+                        src.ptr,
+                        src.numel * src.dtype.itemsize,
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
             if input_scratch_trace is not None:
-                input_scratch_trace("attn_input_after_prepare", row, row_scratch)
+                input_scratch_trace("attn_input_after_prepare", row, active_scratch)
         return scratch.query, scratch.key, scratch.value, scratch.gate
 
     def append_full_attention_kv_fp16(
@@ -3941,6 +4052,7 @@ class Qwen35ParoDecodeState:
         block_size: int = 256,
         force_selected_c1_moe: bool = False,
         force_per_row_input_rmsnorm: bool = False,
+        force_per_row_qkv_scratch: bool = False,
         force_per_row_context: bool = False,
         per_row_contexts: Sequence[tuple[Tensor, Tensor, KVLiveSpans]] | None = None,
         force_per_row_kv_append: bool = False,
@@ -3998,6 +4110,7 @@ class Qwen35ParoDecodeState:
             group_size=group_size,
             input_scratch_trace=input_scratch_trace,
             qkv_tensor_trace=qkv_tensor_trace,
+            force_per_row_scratch=force_per_row_qkv_scratch,
             library=library,
             stream=stream,
         )

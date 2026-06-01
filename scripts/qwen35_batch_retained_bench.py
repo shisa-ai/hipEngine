@@ -3721,6 +3721,9 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"] = (
         "1" if getattr(args, "batch_decode_attn_input_path", "batch") == "per_row" else "0"
     )
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_QKV"] = (
+        "1" if getattr(args, "batch_decode_attn_qkv_path", "batch") == "per_row" else "0"
+    )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_CONTEXT"] = (
         "1" if getattr(args, "batch_decode_attn_context_path", "batch") == "per_row" else "0"
     )
@@ -4171,6 +4174,7 @@ def _build_payload(
             "batch_decode_linear_output_path": str(getattr(args, "batch_decode_linear_output_path", "auto")),
             "batch_decode_full_attention_path": str(getattr(args, "batch_decode_full_attn_path", "native_batch")),
             "batch_decode_attention_input_path": str(getattr(args, "batch_decode_attn_input_path", "batch")),
+            "batch_decode_attention_qkv_path": str(getattr(args, "batch_decode_attn_qkv_path", "batch")),
             "batch_decode_attention_context_path": str(getattr(args, "batch_decode_attn_context_path", "batch")),
             "batch_decode_full_attention_kv_append_path": str(getattr(args, "batch_decode_full_attn_kv_append_path", "batch")),
             "batch_decode_full_attention_output_path": str(getattr(args, "batch_decode_full_attn_output_path", "batch")),
@@ -4308,6 +4312,12 @@ def main(argv: list[str] | None = None) -> int:
         choices=("batch", "per_row"),
         default="batch",
         help="Diagnostic full-attention input RMSNorm path for c>N batch decode; per_row forces token-1 row kernels and blocks retained claims.",
+    )
+    parser.add_argument(
+        "--batch-decode-attn-qkv-path",
+        choices=("batch", "per_row"),
+        default="batch",
+        help="Diagnostic full-attention QKV prep path for c>N batch decode; per_row uses independent token-1 scratch and blocks retained claims.",
     )
     parser.add_argument(
         "--batch-decode-attn-context-path",

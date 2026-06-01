@@ -4027,6 +4027,9 @@ class Qwen35ParoResidentSession:
         force_per_row_full_attention_input = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_INPUT"
         )
+        force_per_row_full_attention_qkv = rows > 1 and _env_flag(
+            "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_QKV"
+        )
         force_per_row_full_attention_context = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_CONTEXT"
         )
@@ -4047,6 +4050,9 @@ class Qwen35ParoResidentSession:
         )
         full_attention_input_decode_path = (
             "per_row_rmsnorm_fallback" if force_per_row_full_attention_input else "native_batch"
+        )
+        full_attention_qkv_decode_path = (
+            "per_row_qkv_scratch_fallback" if force_per_row_full_attention_qkv else "native_batch"
         )
         full_attention_context_decode_path = (
             "per_row_context_gate_fallback" if force_per_row_full_attention_context else "native_batch"
@@ -4336,6 +4342,7 @@ class Qwen35ParoResidentSession:
                             tokens=rows,
                             force_selected_c1_moe=force_selected_c1_moe,
                             force_per_row_input_rmsnorm=force_per_row_full_attention_input,
+                            force_per_row_qkv_scratch=force_per_row_full_attention_qkv,
                             force_per_row_context=force_per_row_full_attention_context,
                             per_row_contexts=per_row_contexts,
                             force_per_row_kv_append=force_per_row_full_attention_kv_append,
@@ -4391,6 +4398,7 @@ class Qwen35ParoResidentSession:
                                 force_selected_c1_moe
                                 or force_per_row_full_attention_moe
                                 or force_per_row_full_attention_input
+                                or force_per_row_full_attention_qkv
                                 or force_per_row_full_attention_output
                                 or force_batch_gemv_full_attention_output
                                 or force_per_row_full_attention_context
@@ -4403,6 +4411,8 @@ class Qwen35ParoResidentSession:
                             layer_execution["attn_context_trace_source"] = "attention_scratch.query_raw"
                         if force_per_row_full_attention_input:
                             layer_execution["full_attention_input_decode_path"] = full_attention_input_decode_path
+                        if force_per_row_full_attention_qkv:
+                            layer_execution["full_attention_qkv_decode_path"] = full_attention_qkv_decode_path
                         if force_per_row_full_attention_context:
                             layer_execution["full_attention_context_decode_path"] = full_attention_context_decode_path
                         if force_per_row_full_attention_kv_append:
@@ -4527,6 +4537,8 @@ class Qwen35ParoResidentSession:
                 decode_blockers.append("full-attention input RMSNorm forced to per-row diagnostic path")
             if force_per_row_full_attention_moe:
                 decode_blockers.append("full-attention MoE forced to per-row selected-c1 diagnostic path")
+            if force_per_row_full_attention_qkv:
+                decode_blockers.append("full-attention QKV prep forced to per-row scratch diagnostic path")
             if force_per_row_full_attention_context:
                 decode_blockers.append("full-attention context/gate forced to per-row diagnostic path")
             if force_per_row_full_attention_kv_append:
@@ -4553,6 +4565,7 @@ class Qwen35ParoResidentSession:
                 "native_full_attention_layers": int(native_full_attention_layers),
                 "full_attention_decode_path": full_attention_decode_path,
                 "full_attention_input_decode_path": full_attention_input_decode_path,
+                "full_attention_qkv_decode_path": full_attention_qkv_decode_path,
                 "full_attention_context_decode_path": full_attention_context_decode_path,
                 "full_attention_kv_append_decode_path": full_attention_kv_append_decode_path,
                 "post_attention_decode_path": post_attention_decode_path,
@@ -4567,6 +4580,7 @@ class Qwen35ParoResidentSession:
                 and linear_attention_output_path not in {"selected_c1_forced", "batch_gemv", "batch_gemv_from_f32"}
                 and not force_per_row_linear
                 and not force_per_row_full_attention_input
+                and not force_per_row_full_attention_qkv
                 and not force_per_row_full_attention_context
                 and not force_per_row_full_attention_kv_append
                 and not force_per_row_full_attention_output
