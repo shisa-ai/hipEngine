@@ -7969,6 +7969,16 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     parent_component_output_dir_summary["output_dir"] = str(tmp_path / "output-dir-parent" / ".." / "artifacts")
     with pytest.raises(ValueError, match="output_dir must not contain parent-directory components"):
         c_sweep.validate_sweep_summary(parent_component_output_dir_summary)
+    output_dir_parent_file = tmp_path / "output-dir-parent-file"
+    try:
+        output_dir_parent_file.write_text("not a directory")
+        parent_file_output_dir_summary = json.loads(json.dumps(summary))
+        parent_file_output_dir_summary["output_dir"] = str(output_dir_parent_file / "artifacts")
+        with pytest.raises(ValueError, match="output_dir parent directories must be directories"):
+            c_sweep.validate_sweep_summary(parent_file_output_dir_summary)
+    finally:
+        if output_dir_parent_file.exists():
+            output_dir_parent_file.unlink()
     if hasattr(os, "symlink"):
         output_dir_link = tmp_path / "artifacts-output-link"
         output_dir_parent_link = tmp_path / "artifacts-output-parent-link"

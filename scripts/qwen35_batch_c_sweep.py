@@ -1951,6 +1951,8 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
             errors.append("output_dir must not be a symlink")
         elif _path_has_symlink_parent(output_dir_check_path):
             errors.append("output_dir parent directories must not be symlinks")
+        elif _path_has_non_directory_parent(output_dir_check_path):
+            errors.append("output_dir parent directories must be directories")
     options = summary.get("options")
     option_model: str | None = None
     option_fixture: str | None = None

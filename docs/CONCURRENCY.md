@@ -1462,7 +1462,7 @@ roll-up/status view.
       `--json` labels including optional-row all-row checks, missing/mismatched optional INT8/GGUF category counts including all-row status/category rollup drift, optional INT8/GGUF `--rows`/batch-size mismatches including INT8/GGUF all-row checks, optional INT8/GGUF artifact/`--json` desyncs including INT8/GGUF all-row primary artifacts, optional INT8/GGUF c-specific artifact filename mismatches including INT8/GGUF all-row checks, outside-output-dir optional INT8/GGUF artifacts including INT8/GGUF all-row checks, missing optional INT8/GGUF planned rows across all optional rows, stale INT8 model/fixture labels, missing/blank/stale-c/stale-name optional INT8 auxiliary artifact flags across all optional rows, and duplicate INT8 diagnostic flags, plus missing/blank/stale/duplicate GGUF template flags, duplicate/swapped optional GGUF quant rows across each c>1 group,
       duplicate `--rows`/`--seed` labels,
       blank inline/missing/non-integer `--rows`/`--seed` values,
-      parent-directory/symlinked/symlink-parent `output_dir`, missing/blank/non-string
+      parent-directory/symlinked/symlink-parent/non-directory-parent `output_dir`, missing/blank/non-string
       `artifact_path`, parent-directory artifact paths, direct-symlink artifacts, symlink-parent artifact paths, non-directory artifact parents, and existing-directory artifact paths including non-optional and optional all-row checks, or
       outside-output-dir artifacts, wrong artifact filenames,
       artifact-path/argv `--json`, `--rows`, or `--seed` labels in
