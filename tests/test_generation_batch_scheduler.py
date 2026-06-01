@@ -19905,6 +19905,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
 ) -> None:
     accepted = {
         "status": "accepted",
+        "rows": 2,
         "artifact_path": "benchmarks/results/accepted-c2.json",
         "performance_claim": True,
         "hardware": {
@@ -20364,6 +20365,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     monkeypatch.chdir(artifact_root)
 
     validate_cn_diagnostic_artifact_payload(accepted)
+
+    missing_artifact_rows = json.loads(json.dumps(accepted))
+    missing_artifact_rows.pop("rows")
+    with pytest.raises(ValueError, match="rows must be an int for accepted artifacts"):
+        validate_cn_diagnostic_artifact_payload(missing_artifact_rows)
+
+    mismatched_artifact_rows = json.loads(json.dumps(accepted))
+    mismatched_artifact_rows["rows"] = 8
+    with pytest.raises(ValueError, match="rows must match workload.concurrency for accepted artifacts"):
+        validate_cn_diagnostic_artifact_payload(mismatched_artifact_rows)
 
     def _accepted_with_int8_kv_policy() -> dict[str, object]:
         payload = json.loads(json.dumps(accepted))

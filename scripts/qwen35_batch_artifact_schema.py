@@ -1259,6 +1259,11 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
     workload = _mapping_at(payload, "workload", errors)
     concurrency = workload.get("concurrency")
     concurrency_valid = isinstance(concurrency, int) and not isinstance(concurrency, bool) and concurrency > 1
+    artifact_rows = payload.get("rows")
+    if not isinstance(artifact_rows, int) or isinstance(artifact_rows, bool):
+        errors.append("rows must be an int for accepted artifacts")
+    elif concurrency_valid and artifact_rows != concurrency:
+        errors.append("rows must match workload.concurrency for accepted artifacts")
     for field in _REQUIRED_ACCEPTED_OBSERVABILITY_FIELDS:
         if not isinstance(observability.get(field), Mapping):
             errors.append(f"observability.{field} must be an object for accepted artifacts")

@@ -4026,6 +4026,7 @@ def _build_payload(
     payload = {
         "schema": 3,
         "status": status,
+        "rows": args.batch_size,
         "artifact_path": str(args.json) if args.json is not None else None,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "run_tag": f"qwen35-paro-c{args.batch_size}-native-retained",
