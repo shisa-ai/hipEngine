@@ -457,6 +457,9 @@ def _accepted_device_selection_env_requirements(payload: Mapping[str, Any], erro
         if not isinstance(value, str) or not value:
             errors.append(f"{source_path}.HIP_VISIBLE_DEVICES must be a non-empty string for accepted artifacts")
             continue
+        if not value.strip():
+            errors.append(f"{source_path}.HIP_VISIBLE_DEVICES must be a non-blank string for accepted artifacts")
+            continue
         existing = requirements.get("HIP_VISIBLE_DEVICES")
         if existing is not None and existing != value:
             errors.append(
@@ -3146,6 +3149,8 @@ def _validate_primitive_device_metadata(device: Any, errors: list[str]) -> None:
             value = env.get(key)
             if value is not None and (not isinstance(value, str) or not value):
                 errors.append(f"{prefix}.env.{key} must be a non-empty string when present for accepted artifacts")
+            elif isinstance(value, str) and not value.strip():
+                errors.append(f"{prefix}.env.{key} must be a non-blank string when present for accepted artifacts")
     for field in ("hipGetDeviceCount_error", "hipGetDevice_error", "hipDeviceGetName_error"):
         value = device.get(field)
         if not isinstance(value, int) or isinstance(value, bool):

@@ -21186,6 +21186,16 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="hardware.visible_device.env.HIP_VISIBLE_DEVICES must match primitive device env"):
         validate_cn_diagnostic_artifact_payload(mismatched_hardware_primitive_env)
 
+    blank_hardware_device_env = json.loads(json.dumps(gpu1_accepted))
+    blank_hardware_device_env["hardware"]["visible_device"]["env"]["HIP_VISIBLE_DEVICES"] = "   "
+    with pytest.raises(ValueError, match="hardware.visible_device.env.HIP_VISIBLE_DEVICES must be a non-blank string"):
+        validate_cn_diagnostic_artifact_payload(blank_hardware_device_env)
+
+    blank_primitive_device_env = json.loads(json.dumps(gpu1_accepted))
+    blank_primitive_device_env["correctness"]["primitive_batch_correctness"]["device"]["env"]["HIP_VISIBLE_DEVICES"] = "   "
+    with pytest.raises(ValueError, match="primitive_batch_correctness.device.env.HIP_VISIBLE_DEVICES must be a non-blank string"):
+        validate_cn_diagnostic_artifact_payload(blank_primitive_device_env)
+
     primitive_attn_mismatch = json.loads(json.dumps(accepted))
     primitive_attn_mismatch["correctness"]["primitive_batch_correctness"]["attn_batch_vs_c1_max_abs"] = 0.25
     with pytest.raises(ValueError, match="primitive_batch_correctness.attn_batch_vs_c1_max_abs must be 0.0"):
