@@ -157,6 +157,22 @@ def _parse_focus_hidden_flat_indices(values: Sequence[str] | None) -> list[int]:
     return indices
 
 
+def _trace_decode_window(args: argparse.Namespace) -> tuple[int, int]:
+    decode_tokens = int(args.decode_tokens)
+    start = int(getattr(args, "trace_decode_start", 0))
+    end_arg = getattr(args, "trace_decode_end", None)
+    end = decode_tokens if end_arg is None else int(end_arg)
+    if decode_tokens < 0:
+        raise ValueError("decode-tokens must be non-negative")
+    if start < 0:
+        raise ValueError("trace decode window start must be non-negative")
+    if end < start:
+        raise ValueError("trace decode window end must be greater than or equal to start")
+    if end > decode_tokens:
+        raise ValueError("trace decode window end must not exceed decode-tokens")
+    return start, end
+
+
 _MAX_HIDDEN_DIFF_EXAMPLES = 8
 
 
@@ -1911,6 +1927,8 @@ def _run_batch_hidden(
     max_sequence_length: int,
     compiler_version: str | None,
     require_cached_build: bool,
+    trace_decode_start: int = 0,
+    trace_decode_end: int | None = None,
 ) -> HiddenRun:
     rows = len(prompts)
     with Qwen35ParoResidentSession(
@@ -1951,12 +1969,14 @@ def _run_batch_hidden(
         decode_full_kv_samples_by_step: list[dict[int, dict[str, np.ndarray | tuple[str, ...]]]] = []
         decode_linear_states_by_step: list[dict[int, dict[str, np.ndarray]]] = []
         decode_execution_by_step: list[dict[str, Any] | None] = []
+        trace_end = decode_tokens if trace_decode_end is None else int(trace_decode_end)
         for step in range(decode_tokens):
             positions = tuple(len(prompt) + step for prompt in prompts)
-            session._decode_linear_input_trace = []
-            session._decode_linear_output_trace = []
-            session._decode_linear_stage_trace = []
-            session._decode_full_attention_trace = []
+            trace_step = int(trace_decode_start) <= step < trace_end
+            session._decode_linear_input_trace = [] if trace_step else None
+            session._decode_linear_output_trace = [] if trace_step else None
+            session._decode_linear_stage_trace = [] if trace_step else None
+            session._decode_full_attention_trace = [] if trace_step else None
             session._set_batch_token_embeddings(next_tokens, stream=0)
             session._set_batch_positions(positions, stream=0)
             hidden = session._run_layers_batch_decode(
@@ -1967,41 +1987,50 @@ def _run_batch_hidden(
             )
             decode_execution = getattr(session, "last_batch_decode_execution", None)
             decode_execution_by_step.append(
-                _json_clone(decode_execution) if isinstance(decode_execution, dict) else None
+                _json_clone(decode_execution) if trace_step and isinstance(decode_execution, dict) else None
             )
             session.runtime.device_synchronize()
             hidden_bits_by_step.append(_copy_hidden_bits(session, hidden, rows=rows))
-            decode_linear_inputs_by_step.append(
-                _decode_linear_input_layers_from_trace(getattr(session, "_decode_linear_input_trace", None))
-            )
-            decode_linear_outputs_by_step.append(
-                _decode_linear_input_layers_from_trace(getattr(session, "_decode_linear_output_trace", None))
-            )
-            decode_linear_stages_by_step.append(
-                _decode_linear_stage_layers_from_trace(getattr(session, "_decode_linear_stage_trace", None))
-            )
-            decode_full_attention_layers = _decode_full_attention_layers_from_trace(
-                getattr(session, "_decode_full_attention_trace", None)
-            )
-            decode_full_attention_by_step.append(decode_full_attention_layers)
-            decode_full_context_oracles_by_step.append(
-                _decode_full_context_oracles_from_trace(
-                    session,
-                    decode_full_attention_layers,
-                    rows=rows,
-                    positions=positions,
-                    slots=tuple(range(rows)),
+            if trace_step:
+                decode_linear_inputs_by_step.append(
+                    _decode_linear_input_layers_from_trace(getattr(session, "_decode_linear_input_trace", None))
                 )
-            )
-            decode_full_kv_samples_by_step.append(
-                _copy_decode_full_kv_samples(
-                    session,
-                    rows=rows,
-                    positions=positions,
-                    slots=tuple(range(rows)),
+                decode_linear_outputs_by_step.append(
+                    _decode_linear_input_layers_from_trace(getattr(session, "_decode_linear_output_trace", None))
                 )
-            )
-            decode_linear_states_by_step.append(_copy_prefill_linear_states(session, rows=rows))
+                decode_linear_stages_by_step.append(
+                    _decode_linear_stage_layers_from_trace(getattr(session, "_decode_linear_stage_trace", None))
+                )
+                decode_full_attention_layers = _decode_full_attention_layers_from_trace(
+                    getattr(session, "_decode_full_attention_trace", None)
+                )
+                decode_full_attention_by_step.append(decode_full_attention_layers)
+                decode_full_context_oracles_by_step.append(
+                    _decode_full_context_oracles_from_trace(
+                        session,
+                        decode_full_attention_layers,
+                        rows=rows,
+                        positions=positions,
+                        slots=tuple(range(rows)),
+                    )
+                )
+                decode_full_kv_samples_by_step.append(
+                    _copy_decode_full_kv_samples(
+                        session,
+                        rows=rows,
+                        positions=positions,
+                        slots=tuple(range(rows)),
+                    )
+                )
+                decode_linear_states_by_step.append(_copy_prefill_linear_states(session, rows=rows))
+            else:
+                decode_linear_inputs_by_step.append({})
+                decode_linear_outputs_by_step.append({})
+                decode_linear_stages_by_step.append({})
+                decode_full_attention_by_step.append({})
+                decode_full_context_oracles_by_step.append({})
+                decode_full_kv_samples_by_step.append({})
+                decode_linear_states_by_step.append({})
             results = session._sample_batch_from_hidden(hidden, rows=rows)
             next_tokens = []
             for row, result in enumerate(results):
@@ -2037,6 +2066,8 @@ def _run_c1_hidden(
     max_sequence_length: int,
     compiler_version: str | None,
     require_cached_build: bool,
+    trace_decode_start: int = 0,
+    trace_decode_end: int | None = None,
 ) -> HiddenRun:
     rows = len(prompts)
     seed_tokens: list[int] = []
@@ -2091,54 +2122,57 @@ def _run_c1_hidden(
                 _copy_full_kv_prefix_hashes(session, rows=1, prompt_lengths=[len(prompt)], slots=(0,)),
             )
             row_generated: list[int] = []
+            trace_end = decode_tokens if trace_decode_end is None else int(trace_decode_end)
             for step in range(decode_tokens):
                 position = len(prompt) + step
-                session._decode_linear_input_trace = []
-                session._decode_linear_output_trace = []
-                session._decode_linear_stage_trace = []
-                session._decode_full_attention_trace = []
+                trace_step = int(trace_decode_start) <= step < trace_end
+                session._decode_linear_input_trace = [] if trace_step else None
+                session._decode_linear_output_trace = [] if trace_step else None
+                session._decode_linear_stage_trace = [] if trace_step else None
+                session._decode_full_attention_trace = [] if trace_step else None
                 session._set_token_embedding(next_token, stream=0)
                 session._set_position(position, stream=0)
                 hidden = session._run_layers(position=position, stream=0)
                 session.runtime.device_synchronize()
                 hidden_by_step[step][row : row + 1] = _copy_hidden_bits(session, hidden, rows=1)
-                _merge_decode_linear_input_row(
-                    decode_linear_input_rows_by_step[step],
-                    _decode_linear_input_layers_from_trace(getattr(session, "_decode_linear_input_trace", None)),
-                )
-                _merge_decode_linear_input_row(
-                    decode_linear_output_rows_by_step[step],
-                    _decode_linear_input_layers_from_trace(getattr(session, "_decode_linear_output_trace", None)),
-                )
-                _merge_decode_full_attention_rows(
-                    decode_linear_stage_rows_by_step[step],
-                    _decode_linear_stage_layers_from_trace(getattr(session, "_decode_linear_stage_trace", None)),
-                )
-                decode_full_attention_layers = _decode_full_attention_layers_from_trace(
-                    getattr(session, "_decode_full_attention_trace", None)
-                )
-                _merge_decode_full_attention_rows(
-                    decode_full_attention_rows_by_step[step],
-                    decode_full_attention_layers,
-                )
-                _merge_decode_full_context_oracle_rows(
-                    decode_full_context_oracle_rows_by_step[step],
-                    _decode_full_context_oracles_from_trace(
-                        session,
+                if trace_step:
+                    _merge_decode_linear_input_row(
+                        decode_linear_input_rows_by_step[step],
+                        _decode_linear_input_layers_from_trace(getattr(session, "_decode_linear_input_trace", None)),
+                    )
+                    _merge_decode_linear_input_row(
+                        decode_linear_output_rows_by_step[step],
+                        _decode_linear_input_layers_from_trace(getattr(session, "_decode_linear_output_trace", None)),
+                    )
+                    _merge_decode_full_attention_rows(
+                        decode_linear_stage_rows_by_step[step],
+                        _decode_linear_stage_layers_from_trace(getattr(session, "_decode_linear_stage_trace", None)),
+                    )
+                    decode_full_attention_layers = _decode_full_attention_layers_from_trace(
+                        getattr(session, "_decode_full_attention_trace", None)
+                    )
+                    _merge_decode_full_attention_rows(
+                        decode_full_attention_rows_by_step[step],
                         decode_full_attention_layers,
-                        rows=1,
-                        positions=(position,),
-                        slots=(0,),
-                    ),
-                )
-                _merge_decode_full_kv_sample_rows(
-                    decode_full_kv_sample_rows_by_step[step],
-                    _copy_decode_full_kv_samples(session, rows=1, positions=(position,), slots=(0,)),
-                )
-                _merge_prefill_linear_state_row(
-                    decode_linear_state_rows_by_step[step],
-                    _copy_prefill_linear_states(session, rows=1),
-                )
+                    )
+                    _merge_decode_full_context_oracle_rows(
+                        decode_full_context_oracle_rows_by_step[step],
+                        _decode_full_context_oracles_from_trace(
+                            session,
+                            decode_full_attention_layers,
+                            rows=1,
+                            positions=(position,),
+                            slots=(0,),
+                        ),
+                    )
+                    _merge_decode_full_kv_sample_rows(
+                        decode_full_kv_sample_rows_by_step[step],
+                        _copy_decode_full_kv_samples(session, rows=1, positions=(position,), slots=(0,)),
+                    )
+                    _merge_prefill_linear_state_row(
+                        decode_linear_state_rows_by_step[step],
+                        _copy_prefill_linear_states(session, rows=1),
+                    )
                 step_result = session._sample_from_hidden(hidden)
                 next_token = int(step_result.token_id)
                 row_generated.append(next_token)
@@ -5580,6 +5614,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional hidden flat index to record for every row/layer comparison; may be repeated or comma-separated.",
     )
     parser.add_argument(
+        "--trace-decode-start",
+        type=int,
+        default=0,
+        help="First decode step (inclusive) for expensive per-layer traces; hidden/token checks still cover every step.",
+    )
+    parser.add_argument(
+        "--trace-decode-end",
+        type=int,
+        default=None,
+        help="Last decode step (exclusive) for expensive per-layer traces; defaults to --decode-tokens.",
+    )
+    parser.add_argument(
         "--batch-decode-moe-path",
         choices=("grouped_compact", "selected_c1"),
         default="grouped_compact",
@@ -5682,6 +5728,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
         raise ValueError("repeat-runs must be positive")
     layer_limits = _parse_layer_limits(args.layer_limits, max_layers=args.max_layers)
     focus_hidden_flat_indices = _parse_focus_hidden_flat_indices(args.focus_hidden_flat_index)
+    trace_decode_start, trace_decode_end = _trace_decode_window(args)
     prompt_lengths: list[int] = []
     if args.dry_run:
         prompts = []
@@ -5711,6 +5758,9 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "kv_storage_dtype": "bf16",
             "native_compact_prefill": True,
             "focus_hidden_flat_indices": focus_hidden_flat_indices,
+            "trace_decode_start": int(trace_decode_start),
+            "trace_decode_end": int(trace_decode_end),
+            "trace_decode_window": [int(trace_decode_start), int(trace_decode_end)],
             "prefill_linear_state_atol": float(args.state_atol),
             "linear_state_atol": float(args.state_atol),
             "batch_prefill_linear_path": str(args.batch_prefill_linear_path),
@@ -5852,6 +5902,8 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             max_sequence_length=args.max_sequence_length,
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
+            trace_decode_start=trace_decode_start,
+            trace_decode_end=trace_decode_end,
         )
         c1 = _run_c1_hidden(
             runner,
@@ -5861,6 +5913,8 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             max_sequence_length=args.max_sequence_length,
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
+            trace_decode_start=trace_decode_start,
+            trace_decode_end=trace_decode_end,
         )
         layer_summaries.append(
             _summarize_layer_limit(

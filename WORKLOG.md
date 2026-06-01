@@ -63454,3 +63454,23 @@ GPU1 / RX 7900 XTX evidence after the change:
 Conclusion: the L8 hidden/equality blocker remains green under diagnostics, but the full-40 row-0 token-82 failure is not a simple extension of that L8 path. The next productive step is to inspect the actual row-0 token-82 transition with a targeted hidden/layer trace or add a trace-window diagnostic, rather than spending more iterations on the already-green L8 controls.
 
 Guard passed with the required pytest bundle (`399 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY hidden-bisect decode trace window
+
+Added `scripts/qwen35_batch_hidden_bisect.py` `--trace-decode-start/--trace-decode-end` so long full-depth probes keep hidden/token comparisons for every decode step but only capture expensive per-layer linear/full-attention/state/KV traces inside a focused half-open decode-step window. The window is recorded in artifacts as `workload.trace_decode_window`.
+
+GPU1 / RX 7900 XTX evidence:
+
+- Native full-depth probe around the retained row-0 token-82 neighborhood:
+  `/tmp/hipengine-e2e-hidden-L40-512-128-trace80-83-native-gpu1.json`
+  - `trace_decode_window=[80, 83]`, `status=mismatch_found`.
+  - First hidden mismatch is still step 0 row 0 (`max_abs=0.3125`), but the focused trace window records the local full-attention drift at decode step 80 / generated index 81, layer 3 `attn_input_pre_qkv`, row 0 (`max_abs=0.03125`, 42 elements over atol). Token mismatch in this hidden-bisect shape first appears on row 1 at index 104.
+- Same full-depth probe with the selected/per-row diagnostic controls used by the retained L8 green path:
+  `/tmp/hipengine-e2e-hidden-L40-512-128-trace80-83-selected-linear-full-rowdiag-gpu1.json`
+  - `trace_decode_window=[80, 83]`, `status=eq_ok`, hidden/token equality pass for 128 decode tokens, no full-attention or linear trace failures in the window.
+
+Interpretation: the diagnostic controls can make a full-depth hidden-bisect run green even around the retained token-82 neighborhood, so the remaining retained bench failure is likely in the retained scheduler/warmup/equality shape rather than the already-isolated L8 compute kernels alone. Next useful step: add warmup support or scheduler-retained replay to hidden-bisect so its oracle shape exactly matches retained bench before changing kernels.
+
+Official retained verifier was rerun after the change. One transient run produced prefix 0 due a shifted c1 row-0 sequence; an immediate rerun restored the established `/tmp/hipengine-e2e-native-c2-512-128.json` result: `min_equal_prefix_tokens=82`, `prefix_lengths=[82, 137]`, `status=rejected_correctness`, no performance claim.
+
+Guard passed with the required pytest bundle (`399 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
