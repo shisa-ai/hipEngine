@@ -29857,3 +29857,68 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`31 passed`), source-artifact/KV resource compact-output checks passed, and the full StepFun guard passed (`135` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: status tests cover the new compact KV resource command and digest outputs, no `import torch` was added to `hipengine/`, the changed status helper adds no engine-wide backend or quant special-casing, and no StepFun performance claim was made.
+
+## 2026-05-31 — StepFun KV resource compact fail-on-blocked covered
+
+Added regression coverage for using both `--kv-resource-command-only` and `--kv-resource-command-sha-only` together with `--fail-on-blocked` in `scripts/stepfun_correctness_status.py`. The compact KV resource refresh command and digest payloads are still emitted, but the helper returns exit code 2 while StepFun correctness remains blocked. This complements the compact status-refresh/oracle-helper/readiness/queue/first-blocker blocked-exit coverage. This is test/docs coverage only; no StepFun KV write/attention kernels are launched and no performance/e2e claim is made.
+
+Validation:
+
+```bash
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_correctness_status.py --kv-resource-command-only --fail-on-blocked --pretty > /tmp/stepfun-kv-resource-command-fail.json; rc_cmd=$?; test "$rc_cmd" -eq 2
+python3 scripts/stepfun_correctness_status.py --kv-resource-command-sha-only --fail-on-blocked --pretty > /tmp/stepfun-kv-resource-command-sha-fail.json; rc_sha=$?; test "$rc_sha" -eq 2
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty --output /tmp/stepfun-source-verify.json
+python3 - <<'PY'
+import hashlib, json
+v=json.load(open('/tmp/stepfun-source-verify.json'))
+assert v['status'] == 'match'
+assert v['all_match'] is True
+s=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+cmd=json.load(open('/tmp/stepfun-kv-resource-command-fail.json'))
+sha=json.load(open('/tmp/stepfun-kv-resource-command-sha-fail.json'))
+expected=s['next_action_commands']['kv_backed_decode_not_wired']['resource_plan_refresh_command']
+assert cmd == expected
+assert sha == s['next_action_commands']['kv_backed_decode_not_wired']['resource_plan_refresh_command_sha256'] == hashlib.sha256(expected.encode()).hexdigest()
+assert s['status'] == 'blocked'
+print('stepfun kv resource compact fail-on-blocked ok')
+PY
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`33 passed`), source-artifact/KV resource compact fail-on-blocked checks passed, and the full StepFun guard passed (`137` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: status tests cover compact KV resource command/digest outputs plus blocked exit semantics, no `import torch` was added to `hipengine/`, the test/docs change adds no engine-wide backend or quant special-casing, and no StepFun performance claim was made.
+
+## 2026-05-31 — StepFun KV resource compact coverage revalidated
+
+Re-ran and recorded the KV resource compact blocked-exit validation after the previous measurement was logged as failed. The scoped change remains the compact `--kv-resource-command-only` / `--kv-resource-command-sha-only` coverage plus docs/status-artifact handoff metadata; current readiness remains `oracle_parity=false`, `kv_backed_decode_ready=false`, and `e2e_inference_ready=false`. No StepFun KV write/attention kernels are launched and no performance/e2e claim is made.
+
+Validation:
+
+```bash
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_correctness_status.py --kv-resource-command-only --fail-on-blocked --pretty > /tmp/stepfun-kv-resource-command-fail.json; rc_cmd=$?; test "$rc_cmd" -eq 2
+python3 scripts/stepfun_correctness_status.py --kv-resource-command-sha-only --fail-on-blocked --pretty > /tmp/stepfun-kv-resource-command-sha-fail.json; rc_sha=$?; test "$rc_sha" -eq 2
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty --output /tmp/stepfun-source-verify.json
+python3 - <<'PY'
+import hashlib, json
+v=json.load(open('/tmp/stepfun-source-verify.json'))
+assert v['status'] == 'match'
+assert v['all_match'] is True
+s=json.load(open('benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json'))
+cmd=json.load(open('/tmp/stepfun-kv-resource-command-fail.json'))
+sha=json.load(open('/tmp/stepfun-kv-resource-command-sha-fail.json'))
+expected=s['next_action_commands']['kv_backed_decode_not_wired']['resource_plan_refresh_command']
+assert cmd == expected
+assert sha == s['next_action_commands']['kv_backed_decode_not_wired']['resource_plan_refresh_command_sha256'] == hashlib.sha256(expected.encode()).hexdigest()
+assert s['status'] == 'blocked'
+assert s['oracle_parity'] is False
+assert s['kv_backed_decode_ready'] is False
+assert s['e2e_inference_ready'] is False
+print('stepfun kv resource compact fail-on-blocked revalidated')
+PY
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`33 passed`), compact KV resource command/SHA fail-on-blocked outputs returned exit code 2 and matched the status artifact, source-artifact verification returned `match`, and the full StepFun guard passed (`137` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports, this logical unit only changes tests/docs/status artifact handoff metadata rather than engine dispatch, no engine-wide backend or quant special-casing was added, and no StepFun performance claim was made.

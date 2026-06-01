@@ -2317,6 +2317,90 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_stale_inputs(
     assert payload["records"]["oracle"]["match"] is True
 
 
+def test_stepfun_correctness_status_kv_resource_command_fail_on_blocked_returns_nonzero(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--kv-resource-command-only",
+            "--fail-on-blocked",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 2
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert captured.err == ""
+    assert payload == status["next_action_commands"]["kv_backed_decode_not_wired"][
+        "resource_plan_refresh_command"
+    ]
+    assert payload.startswith("python3 scripts/stepfun_gguf_load_smoke.py --dry-run-plan")
+
+
+def test_stepfun_correctness_status_kv_resource_command_sha_fail_on_blocked_returns_nonzero(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+    status = build_status(prompt, oracle, docs, resource_artifact=resource)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--kv-resource-command-sha-only",
+            "--fail-on-blocked",
+            "--pretty",
+        ]
+    )
+
+    assert rc == 2
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert captured.err == ""
+    assert payload == status["next_action_commands"]["kv_backed_decode_not_wired"][
+        "resource_plan_refresh_command_sha256"
+    ]
+    assert payload == hashlib.sha256(
+        status["next_action_commands"]["kv_backed_decode_not_wired"][
+            "resource_plan_refresh_command"
+        ].encode()
+    ).hexdigest()
+
+
 def test_stepfun_correctness_status_status_refresh_command_fail_on_blocked_returns_nonzero(
     capsys,
     tmp_path: Path,

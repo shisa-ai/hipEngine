@@ -609,7 +609,7 @@ reporting.
   the helper refresh command that regenerates the oracle JSON) for lightweight automation.
   It lists next actions for the
   StepFun-capable oracle and KV-backed decode blockers, and supports
-  `--fail-on-blocked` for CI/handoff checks, including compact readiness/queue/status-refresh/oracle-helper/first-blocker outputs;
+  `--fail-on-blocked` for CI/handoff checks, including compact readiness/queue/status-refresh/KV-resource/oracle-helper/first-blocker outputs;
   the handoff also records the ready/source-mismatch/blocked exit-code expectations.
   This checklist item is partial rather than complete because the current runner
   is host-composed/chunked and does not yet implement the final KV-backed
