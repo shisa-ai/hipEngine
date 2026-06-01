@@ -7345,6 +7345,27 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
             ):
                 c_sweep.validate_sweep_summary(tampered_planned_shape)
 
+        if summary["commands"][index]["category"] in {"serial_bridge", "native_diagnostic"}:
+            tampered_planned_cached_build = json.loads(json.dumps(summary))
+            planned_cached_build_entry = tampered_planned_cached_build["commands"][index]
+            planned_cached_build_entry["argv"].append("--require-cached-build")
+            planned_cached_build_entry["command"] = shlex.join(planned_cached_build_entry["argv"])
+            with pytest.raises(
+                ValueError,
+                match=r"commands\[\]\.argv require-cached-build must match options\.require_cached_build",
+            ):
+                c_sweep.validate_sweep_summary(tampered_planned_cached_build)
+
+            tampered_planned_compiler = json.loads(json.dumps(summary))
+            planned_compiler_entry = tampered_planned_compiler["commands"][index]
+            planned_compiler_entry["argv"].extend(["--compiler-version-file", str(tmp_path / "hipcc-version.txt")])
+            planned_compiler_entry["command"] = shlex.join(planned_compiler_entry["argv"])
+            with pytest.raises(
+                ValueError,
+                match=r"commands\[\]\.argv compiler-version-file must match options\.compiler_version_file",
+            ):
+                c_sweep.validate_sweep_summary(tampered_planned_compiler)
+
         tampered_missing_planned_key = json.loads(json.dumps(summary))
         del tampered_missing_planned_key["commands"][index]["returncode"]
         with pytest.raises(ValueError, match=r"commands\[\] planned rows must contain exactly planned command keys"):
