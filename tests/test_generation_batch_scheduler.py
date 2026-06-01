@@ -7350,6 +7350,23 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     with pytest.raises(ValueError, match=r"commands\[\]\.argv compiler-version-file must match options\.compiler_version_file"):
         c_sweep.validate_sweep_summary(tampered_compiler_version_option)
     assert summary["options"]["projection_dispatch_artifact"] is None
+    tampered_projection_dispatch_type = json.loads(json.dumps(summary))
+    tampered_projection_dispatch_type["options"]["projection_dispatch_artifact"] = 123
+    with pytest.raises(ValueError, match="options.projection_dispatch_artifact must be a string or null"):
+        c_sweep.validate_sweep_summary(tampered_projection_dispatch_type)
+    tampered_projection_dispatch_blank = json.loads(json.dumps(summary))
+    tampered_projection_dispatch_blank["options"]["projection_dispatch_artifact"] = "   "
+    with pytest.raises(ValueError, match="options.projection_dispatch_artifact must be a non-empty string or null"):
+        c_sweep.validate_sweep_summary(tampered_projection_dispatch_blank)
+    for stale_projection_path in (
+        str(tmp_path / "stale-projection-dispatch.json"),
+        "artifacts/stale-projection-dispatch.json",
+        "benchmarks/results/../stale-projection-dispatch.json",
+    ):
+        tampered_projection_dispatch_path = json.loads(json.dumps(summary))
+        tampered_projection_dispatch_path["options"]["projection_dispatch_artifact"] = stale_projection_path
+        with pytest.raises(ValueError, match="options.projection_dispatch_artifact must be a relative path under benchmarks/results"):
+            c_sweep.validate_sweep_summary(tampered_projection_dispatch_path)
     tampered_projection_dispatch_option = json.loads(json.dumps(summary))
     tampered_projection_dispatch_option["options"]["projection_dispatch_artifact"] = "benchmarks/results/stale-projection-dispatch.json"
     with pytest.raises(ValueError, match=r"commands\[\]\.argv --projection-dispatch-artifact must match options\.projection_dispatch_artifact"):
