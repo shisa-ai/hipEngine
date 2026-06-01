@@ -3131,6 +3131,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         if primitive_source_context_lens != primitive_precondition.get("primitive_context_lens"):
                             errors.append("commands[].preconditions[].primitive_artifact_path JSON context_lens must match when primitive passed")
                             break
+                        if any(not isinstance(primitive_source_payload.get(field), bool) for field in ("passed", "aa_passed")):
+                            errors.append("commands[].preconditions[].primitive_artifact_path JSON boolean labels must be typed bools when primitive passed")
+                            break
                         if primitive_source_payload.get("passed") != primitive_precondition.get("passed"):
                             errors.append("commands[].preconditions[].primitive_artifact_path JSON passed must match when primitive passed")
                             break
