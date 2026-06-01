@@ -7256,6 +7256,16 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     tampered_seed_option["options"]["seed"] = 4321
     with pytest.raises(ValueError, match="options.seed must match required primitive correctness seed"):
         c_sweep.validate_sweep_summary(tampered_seed_option)
+    assert summary["options"]["require_cached_build"] is False
+    tampered_cached_build_option = json.loads(json.dumps(summary))
+    tampered_cached_build_option["options"]["require_cached_build"] = True
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv require-cached-build must match options\.require_cached_build"):
+        c_sweep.validate_sweep_summary(tampered_cached_build_option)
+    assert summary["options"]["compiler_version_file"] is None
+    tampered_compiler_version_option = json.loads(json.dumps(summary))
+    tampered_compiler_version_option["options"]["compiler_version_file"] = str(tmp_path / "hipcc-version.txt")
+    with pytest.raises(ValueError, match=r"commands\[\]\.argv compiler-version-file must match options\.compiler_version_file"):
+        c_sweep.validate_sweep_summary(tampered_compiler_version_option)
     assert summary["options"]["model"] == "/tmp/model"
     tampered_model_option = json.loads(json.dumps(summary))
     tampered_model_option["options"]["model"] = "/tmp/stale-model"
