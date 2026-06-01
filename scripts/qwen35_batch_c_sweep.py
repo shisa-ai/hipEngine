@@ -3162,6 +3162,9 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if profiler_source_check_path.is_symlink():
                         errors.append("commands[].preconditions[].profiler_source_artifact_path must not be a symlink when profiler passed")
                         break
+                    if _path_has_symlink_parent(profiler_source_check_path):
+                        errors.append("commands[].preconditions[].profiler_source_artifact_path parent directories must not be symlinks when profiler passed")
+                        break
                     if profiler_source_artifact_path != profiler_precondition.get("artifact_path"):
                         errors.append("commands[].preconditions[].profiler_source_artifact_path must match profiler artifact_path when profiler passed")
                         break

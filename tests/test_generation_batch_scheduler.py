@@ -5807,6 +5807,24 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
         finally:
             if profiler_source_symlink.is_symlink():
                 profiler_source_symlink.unlink()
+        profiler_source_parent_link = output_dir / "profiler-source-parent-link"
+        try:
+            profiler_source_parent_link.symlink_to(output_dir, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            pass
+        else:
+            tampered_profiler_source_parent_symlink = json.loads(json.dumps(persisted))
+            tampered_profiler_source_parent_symlink["commands"][-1]["preconditions"][-1]["profiler_source_artifact_path"] = str(
+                profiler_source_parent_link / "profiler-c2.json"
+            )
+            with pytest.raises(
+                ValueError,
+                match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path parent directories must not be symlinks when profiler passed",
+            ):
+                c_sweep.validate_sweep_summary(tampered_profiler_source_parent_symlink)
+        finally:
+            if profiler_source_parent_link.is_symlink():
+                profiler_source_parent_link.unlink()
     tampered_profiler_precondition_field_shape = json.loads(json.dumps(persisted))
     tampered_profiler_precondition_field_shape["commands"][-1]["preconditions"][-1]["profiler_trace_synthesized_fields"] = [1]
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_trace_synthesized_fields must be a string list when profiler passed"):
