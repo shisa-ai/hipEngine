@@ -180,11 +180,25 @@ def _primitive_device_metadata_blockers(device: Any) -> list[str]:
     if not isinstance(device, Mapping):
         return ["device metadata is missing or not an object"]
     blockers: list[str] = []
+    expected_device_keys = {
+        "env",
+        "hipGetDeviceCount_error",
+        "visible_device_count",
+        "hipGetDevice_error",
+        "current_device",
+        "hipDeviceGetName_error",
+        "device_name",
+    }
+    if set(device) - expected_device_keys:
+        blockers.append("device metadata contains unknown keys")
     env = device.get("env")
     if not isinstance(env, Mapping):
         blockers.append("device.env is missing or not an object")
     else:
-        for key in ("HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES", "GPU_DEVICE_ORDINAL"):
+        known_env_keys = ("HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES", "GPU_DEVICE_ORDINAL")
+        if set(env) - set(known_env_keys):
+            blockers.append("device.env contains unknown keys")
+        for key in known_env_keys:
             value = env.get(key)
             if value is not None and (not isinstance(value, str) or not value):
                 blockers.append(f"device.env.{key} is not a non-empty string when present")

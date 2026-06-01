@@ -6573,6 +6573,16 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path JSON passed must match when primitive passed"):
         c_sweep.validate_sweep_summary(persisted)
     primitive_source_payload = json.loads(primitive_artifact_payload)
+    primitive_source_payload["device"]["extra_device_field"] = "unexpected"
+    primitive_artifact_path.write_text(json.dumps(primitive_source_payload))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path JSON device must contain valid device metadata when primitive passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    primitive_source_payload = json.loads(primitive_artifact_payload)
+    primitive_source_payload["device"]["env"]["OTHER_VISIBLE_DEVICES"] = "1"
+    primitive_artifact_path.write_text(json.dumps(primitive_source_payload))
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path JSON device must contain valid device metadata when primitive passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    primitive_source_payload = json.loads(primitive_artifact_payload)
     primitive_source_payload["device"]["current_device"] = False
     primitive_artifact_path.write_text(json.dumps(primitive_source_payload))
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path JSON device must contain valid device metadata when primitive passed"):
@@ -7930,6 +7940,14 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     tampered_primitive_precondition_blank_name_device["commands"][-1]["preconditions"][0]["primitive_device"]["device_name"] = "   "
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_device must contain valid device metadata when primitive passed"):
         c_sweep.validate_sweep_summary(tampered_primitive_precondition_blank_name_device)
+    tampered_primitive_precondition_extra_device = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_extra_device["commands"][-1]["preconditions"][0]["primitive_device"]["extra_device_field"] = "unexpected"
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_device must contain valid device metadata when primitive passed"):
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_extra_device)
+    tampered_primitive_precondition_extra_env_device = json.loads(json.dumps(persisted))
+    tampered_primitive_precondition_extra_env_device["commands"][-1]["preconditions"][0]["primitive_device"]["env"]["OTHER_VISIBLE_DEVICES"] = "1"
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_device must contain valid device metadata when primitive passed"):
+        c_sweep.validate_sweep_summary(tampered_primitive_precondition_extra_env_device)
     tampered_primitive_precondition_float_rows = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_float_rows["commands"][-1]["preconditions"][0]["primitive_rows"] = 2.0
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_rows must be a typed int matching retained batch_size"):
