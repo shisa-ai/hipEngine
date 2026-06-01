@@ -8643,36 +8643,42 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         int8_entry["command"] = shlex.join(int8_rows_argv)
         with pytest.raises(ValueError, match=r"commands\[\]\.batch_size must match commands\[\]\.argv --batch-size/--rows"):
             c_sweep.validate_sweep_summary(tampered_int8_rows)
-    tampered_int8_artifact = json.loads(json.dumps(summary))
-    stale_int8_artifact_path = str(
-        Path(tampered_int8_artifact["commands"][int8_entry_indices[-1]]["artifact_path"]).with_name("int8-native-diagnostic-c8-stale.json")
-    )
-    int8_artifact_argv = tampered_int8_artifact["commands"][int8_entry_indices[-1]]["argv"]
-    int8_artifact_argv[int8_artifact_argv.index("--json") + 1] = stale_int8_artifact_path
-    tampered_int8_artifact["commands"][int8_entry_indices[-1]]["artifact_path"] = stale_int8_artifact_path
-    tampered_int8_artifact["commands"][int8_entry_indices[-1]]["command"] = shlex.join(int8_artifact_argv)
-    with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match category/batch-size filename"):
-        c_sweep.validate_sweep_summary(tampered_int8_artifact)
-    tampered_int8_artifact_path_only = json.loads(json.dumps(summary))
-    tampered_int8_artifact_path_only["commands"][int8_entry_indices[-1]]["artifact_path"] = stale_int8_artifact_path
-    with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match commands\[\]\.argv --json"):
-        c_sweep.validate_sweep_summary(tampered_int8_artifact_path_only)
-    tampered_int8_artifact_argv_only = json.loads(json.dumps(summary))
-    int8_artifact_argv_only = tampered_int8_artifact_argv_only["commands"][int8_entry_indices[-1]]["argv"]
-    int8_artifact_argv_only[int8_artifact_argv_only.index("--json") + 1] = stale_int8_artifact_path
-    tampered_int8_artifact_argv_only["commands"][int8_entry_indices[-1]]["command"] = shlex.join(int8_artifact_argv_only)
-    with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match commands\[\]\.argv --json"):
-        c_sweep.validate_sweep_summary(tampered_int8_artifact_argv_only)
-    tampered_int8_artifact_output_dir = json.loads(json.dumps(summary))
-    outside_int8_artifact_path = str(
-        tmp_path / "outside" / Path(tampered_int8_artifact_output_dir["commands"][int8_entry_indices[-1]]["artifact_path"]).name
-    )
-    int8_artifact_output_dir_argv = tampered_int8_artifact_output_dir["commands"][int8_entry_indices[-1]]["argv"]
-    int8_artifact_output_dir_argv[int8_artifact_output_dir_argv.index("--json") + 1] = outside_int8_artifact_path
-    tampered_int8_artifact_output_dir["commands"][int8_entry_indices[-1]]["artifact_path"] = outside_int8_artifact_path
-    tampered_int8_artifact_output_dir["commands"][int8_entry_indices[-1]]["command"] = shlex.join(int8_artifact_output_dir_argv)
-    with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must be under output_dir"):
-        c_sweep.validate_sweep_summary(tampered_int8_artifact_output_dir)
+    for index in int8_entry_indices:
+        tampered_int8_artifact = json.loads(json.dumps(summary))
+        int8_artifact_entry = tampered_int8_artifact["commands"][index]
+        stale_int8_artifact_path = str(
+            Path(int8_artifact_entry["artifact_path"]).with_name(
+                f"int8-native-diagnostic-c{int8_artifact_entry['batch_size']}-stale.json"
+            )
+        )
+        int8_artifact_argv = int8_artifact_entry["argv"]
+        int8_artifact_argv[int8_artifact_argv.index("--json") + 1] = stale_int8_artifact_path
+        int8_artifact_entry["artifact_path"] = stale_int8_artifact_path
+        int8_artifact_entry["command"] = shlex.join(int8_artifact_argv)
+        with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match category/batch-size filename"):
+            c_sweep.validate_sweep_summary(tampered_int8_artifact)
+
+        tampered_int8_artifact_path_only = json.loads(json.dumps(summary))
+        tampered_int8_artifact_path_only["commands"][index]["artifact_path"] = stale_int8_artifact_path
+        with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match commands\[\]\.argv --json"):
+            c_sweep.validate_sweep_summary(tampered_int8_artifact_path_only)
+
+        tampered_int8_artifact_argv_only = json.loads(json.dumps(summary))
+        int8_artifact_argv_only = tampered_int8_artifact_argv_only["commands"][index]["argv"]
+        int8_artifact_argv_only[int8_artifact_argv_only.index("--json") + 1] = stale_int8_artifact_path
+        tampered_int8_artifact_argv_only["commands"][index]["command"] = shlex.join(int8_artifact_argv_only)
+        with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match commands\[\]\.argv --json"):
+            c_sweep.validate_sweep_summary(tampered_int8_artifact_argv_only)
+
+        tampered_int8_artifact_output_dir = json.loads(json.dumps(summary))
+        output_dir_entry = tampered_int8_artifact_output_dir["commands"][index]
+        outside_int8_artifact_path = str(tmp_path / "outside" / Path(output_dir_entry["artifact_path"]).name)
+        int8_artifact_output_dir_argv = output_dir_entry["argv"]
+        int8_artifact_output_dir_argv[int8_artifact_output_dir_argv.index("--json") + 1] = outside_int8_artifact_path
+        output_dir_entry["artifact_path"] = outside_int8_artifact_path
+        output_dir_entry["command"] = shlex.join(int8_artifact_output_dir_argv)
+        with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must be under output_dir"):
+            c_sweep.validate_sweep_summary(tampered_int8_artifact_output_dir)
     for flag in ("--model", "--fixture", "--rows", "--future-json", "--primitive-cpu-json", "--primitive-hip-json"):
         for index in int8_entry_indices:
             tampered = json.loads(json.dumps(summary))
