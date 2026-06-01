@@ -30472,3 +30472,28 @@ bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_ste
 ```
 
 Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`66 passed`), the new drift regression asserts `status_integrity.checks.kv_streaming_runner_blocker_names_sha256=false` and exit code `1` when the KV streaming blocker digest is stale while source files still match, and the full StepFun guard passed (`170` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was a pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes tests/WORKLOG only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.
+
+## 2026-06-01 — StepFun KV streaming mirror integrity
+
+Strengthened StepFun status integrity so the runtime-specific KV streaming blocker names/SHA must be mirrored consistently across `kv_backed_decode_gap_report`, `next_action_commands.kv_backed_decode_not_wired`, `handoff_summary.kv_backed_decode_gap_report`, and the KV work-queue item. Added a regression that changes the copied next-action blocker names while recomputing `next_action_commands_sha256`; `--verify-source-artifacts` still reports mismatch via `status_integrity.checks.kv_streaming_runner_blocker_mirrors=false`. Refreshed `benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json`; readiness remains blocked (`oracle_parity=false`, `kv_backed_decode_ready=false`, `e2e_inference_ready=false`). No StepFun KV write/attention kernels are launched and no performance/e2e claim is made.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_stepfun_correctness_status.py -q
+python3 scripts/stepfun_correctness_status.py --pretty --output benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json
+python3 scripts/stepfun_correctness_status.py --verify-source-artifacts benchmarks/results/2026-05-31-stepfun-q3kl-correctness-status.json --pretty > /tmp/stepfun-source-verify-kv-streaming-mirrors.json
+python3 - <<'PY'
+import json
+v=json.load(open('/tmp/stepfun-source-verify-kv-streaming-mirrors.json'))
+assert v['status'] == 'match'
+assert v['all_match'] is True
+assert v['status_integrity']['checks']['kv_streaming_runner_blocker_mirrors'] is True
+assert all(v['status_integrity']['checks'].values())
+print('kv streaming mirrors integrity ok')
+PY
+python3 -c "from pathlib import Path; import re; t=Path('docs/STEPFUN.md').read_text(); b=t.split('### P0',1)[1].split('### P13',1)[0]; print(sum(1 for _ in re.finditer(r'^- \\[(?: |~)\\]', b, re.M)))"
+bash -lc 'set -euo pipefail; step_tests=$(find tests -maxdepth 1 -name "test_stepfun_*.py" -print | sort | tr "\n" " "); python3 -m compileall -q hipengine tests scripts; python3 -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_reader.py tests/test_model_quant_and_imports.py ${step_tests}; python3 scripts/check_fixtures.py'
+```
+
+Results: P0-P12 open/partial checklist count stayed at `2`; targeted status tests passed (`67 passed`), the new mirror drift regression keeps source provenance and `next_action_commands_sha256` valid while forcing `status_integrity.checks.kv_streaming_runner_blocker_mirrors=false`, source/status verification returned `match` for the refreshed artifact, and the full StepFun guard passed (`171` StepFun/registry tests without failures plus CPU-reference fixture checks). Prompt-verifier evidence: `grep "import torch" hipengine` found no runtime torch imports; the only backend/quant branch grep hit was a pre-existing kernel-local quant shape selection in `kernels/hip_gfx1100/quant/gguf_q6_k_embedding.py`; this logical unit changes status-helper metadata/tests/docs/status artifact only and adds no engine-wide backend or quant dispatch branch; no StepFun performance claim was made.

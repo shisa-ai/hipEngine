@@ -355,6 +355,33 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         if isinstance(handoff_summary, dict)
         else {}
     )
+    kv_streaming_mirror_records: list[dict[str, object]] = []
+    if isinstance(kv_gap_report, dict):
+        kv_streaming_mirror_records.append(kv_gap_report)
+    if isinstance(next_action_commands, dict):
+        kv_next_action = next_action_commands.get("kv_backed_decode_not_wired", {})
+        if isinstance(kv_next_action, dict):
+            kv_streaming_mirror_records.append(kv_next_action)
+    if isinstance(handoff_summary, dict):
+        handoff_gap_report = handoff_summary.get("kv_backed_decode_gap_report", {})
+        if isinstance(handoff_gap_report, dict):
+            kv_streaming_mirror_records.append(handoff_gap_report)
+        for item in handoff_summary.get("blocker_work_queue", []):
+            if isinstance(item, dict) and item.get("blocker_kind") == "kv_backed_decode_not_wired":
+                kv_streaming_mirror_records.append(item)
+                break
+    kv_streaming_runner_blocker_mirrors = (
+        bool(kv_streaming_mirror_records)
+        and isinstance(kv_streaming_blocker_names, list)
+        and kv_streaming_blocker_names_sha256 is not None
+        and all(
+            record.get("streaming_runner_blocker_names") == kv_streaming_blocker_names
+            and record.get("streaming_runner_blocker_names_sha256")
+            == kv_streaming_blocker_names_sha256
+            and record.get("streaming_runner_blocker_names_sha256_match") is True
+            for record in kv_streaming_mirror_records
+        )
+    )
     checks = {
         "source_artifacts_sha256": (
             isinstance(source_artifacts, dict)
@@ -390,6 +417,7 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
             == _stable_json_sha256(kv_streaming_blocker_names)
             and kv_streaming_blocker_names_sha256_match is True
         ),
+        "kv_streaming_runner_blocker_mirrors": kv_streaming_runner_blocker_mirrors,
         "schema_versions": schema_versions
         == {
             "status": status.get("schema_version"),
