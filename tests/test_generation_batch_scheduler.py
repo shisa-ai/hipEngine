@@ -6034,6 +6034,28 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
             finally:
                 if reference_symlink.is_symlink():
                     reference_symlink.unlink()
+        reference_parent_target = output_dir / "reference-parent-target"
+        reference_parent_link = output_dir / "reference-parent-link"
+        reference_parent_target.mkdir()
+        try:
+            reference_parent_link.symlink_to(reference_parent_target, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            pass
+        else:
+            tampered_scaling_precondition_symlink_parent = json.loads(json.dumps(persisted))
+            tampered_scaling_precondition_symlink_parent["commands"][-1]["preconditions"][1]["reference_artifact_path"] = str(
+                reference_parent_link / "native-baseline-c1.json"
+            )
+            with pytest.raises(
+                ValueError,
+                match=r"commands\[\]\.preconditions\[\]\.reference_artifact_path parent directories must not be symlinks when scaling reference passed",
+            ):
+                c_sweep.validate_sweep_summary(tampered_scaling_precondition_symlink_parent)
+        finally:
+            if reference_parent_link.is_symlink():
+                reference_parent_link.unlink()
+            if reference_parent_target.exists():
+                reference_parent_target.rmdir()
     tampered_scaling_precondition_missing_artifact = json.loads(json.dumps(persisted))
     tampered_scaling_precondition_missing_artifact["commands"][-1]["preconditions"][2].pop("reference_artifact_path")
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.reference_artifact_path must match scaling reference artifact_path when passed"):
@@ -6569,6 +6591,28 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
             finally:
                 if primitive_symlink.is_symlink():
                     primitive_symlink.unlink()
+        primitive_parent_target = output_dir / "primitive-parent-target"
+        primitive_parent_link = output_dir / "primitive-parent-link"
+        primitive_parent_target.mkdir()
+        try:
+            primitive_parent_link.symlink_to(primitive_parent_target, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            pass
+        else:
+            tampered_primitive_precondition_symlink_parent = json.loads(json.dumps(persisted))
+            tampered_primitive_precondition_symlink_parent["commands"][-1]["preconditions"][0]["primitive_artifact_path"] = str(
+                primitive_parent_link / "primitive-c2.json"
+            )
+            with pytest.raises(
+                ValueError,
+                match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path parent directories must not be symlinks when primitive passed",
+            ):
+                c_sweep.validate_sweep_summary(tampered_primitive_precondition_symlink_parent)
+        finally:
+            if primitive_parent_link.is_symlink():
+                primitive_parent_link.unlink()
+            if primitive_parent_target.exists():
+                primitive_parent_target.rmdir()
     tampered_primitive_precondition_missing_artifact = json.loads(json.dumps(persisted))
     tampered_primitive_precondition_missing_artifact["commands"][-1]["preconditions"][0].pop("primitive_artifact_path")
     with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.primitive_artifact_path must match primitive artifact_path when primitive passed"):
