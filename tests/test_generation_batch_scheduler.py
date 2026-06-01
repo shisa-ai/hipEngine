@@ -7268,6 +7268,11 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         del tampered_missing_planned_key["commands"][index]["returncode"]
         with pytest.raises(ValueError, match=r"commands\[\] planned rows must contain exactly planned command keys"):
             c_sweep.validate_sweep_summary(tampered_missing_planned_key)
+
+        tampered_extra_planned_key = json.loads(json.dumps(summary))
+        tampered_extra_planned_key["commands"][index]["unexpected"] = "field"
+        with pytest.raises(ValueError, match=r"commands\[\] must contain only c-sweep schema keys"):
+            c_sweep.validate_sweep_summary(tampered_extra_planned_key)
     assert summary["schema"] == 1
     for stale_schema in (True, "1", 2):
         tampered_summary_schema = json.loads(json.dumps(summary))
