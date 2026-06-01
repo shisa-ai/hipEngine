@@ -3151,7 +3151,7 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                         break
                     profiler_source_artifact_path = profiler_precondition.get("profiler_source_artifact_path")
                     if not isinstance(profiler_source_artifact_path, str):
-                        errors.append("commands[].preconditions[].profiler_source_artifact_path must match profiler artifact_path when profiler passed")
+                        errors.append("commands[].preconditions[].profiler_source_artifact_path must be a non-empty string when profiler passed")
                         break
                     if not profiler_source_artifact_path.strip():
                         errors.append("commands[].preconditions[].profiler_source_artifact_path must be a non-empty string when profiler passed")
