@@ -4287,6 +4287,7 @@ def _validation_summary(
         "mode": mode,
         "passed": passed,
         "artifact_json": artifact_json_text,
+        "source_artifact_path": artifact_json_text,
         "artifact_path": artifact_path if isinstance(artifact_path, str) else None,
         "status": status if isinstance(status, str) else None,
         "performance_claim": performance_claim if isinstance(performance_claim, bool) else None,
@@ -4302,6 +4303,7 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
         "mode",
         "passed",
         "artifact_json",
+        "source_artifact_path",
         "artifact_path",
         "status",
         "performance_claim",
@@ -4322,6 +4324,17 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
     artifact_json = summary.get("artifact_json")
     if not isinstance(artifact_json, str) or not artifact_json:
         errors.append("summary.artifact_json must be a non-empty string")
+    source_artifact_path = summary.get("source_artifact_path")
+    if not isinstance(source_artifact_path, str) or not source_artifact_path:
+        errors.append("summary.source_artifact_path must be a non-empty string")
+    else:
+        _validate_benchmark_results_artifact_path("summary.source_artifact_path", source_artifact_path, errors)
+        if _path_text_contains_parent_traversal(source_artifact_path):
+            errors.append("summary.source_artifact_path must not contain parent traversal")
+        if _benchmark_results_relative_path(source_artifact_path) != source_artifact_path.replace("\\", "/"):
+            errors.append("summary.source_artifact_path must be a repo-relative benchmarks/results path")
+        if not source_artifact_path.replace("\\", "/").rsplit("/", 1)[-1].endswith(".json"):
+            errors.append("summary.source_artifact_path must end with .json")
     artifact_path = summary.get("artifact_path")
     if artifact_path is not None:
         if not isinstance(artifact_path, str) or not artifact_path:
@@ -4388,6 +4401,9 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
             errors.append("passed rollup evidence summary.performance_claim must be true")
         if not isinstance(benchmark_rollup, Mapping):
             errors.append("passed rollup evidence summary.benchmark_rollup must be an object")
+    if isinstance(artifact_json, str) and isinstance(source_artifact_path, str):
+        if artifact_json.replace("\\", "/") != source_artifact_path.replace("\\", "/"):
+            errors.append("summary.source_artifact_path must match summary.artifact_json")
     if mode in {"artifact_schema", "rollup_evidence"} and isinstance(artifact_json, str):
         if not _is_benchmark_results_path(artifact_json):
             errors.append("summary.artifact_json must be under benchmarks/results for validation summaries")

@@ -325,6 +325,7 @@ def test_qwen35_passed_validation_summary_requires_accepted_claim_consistency() 
         "mode": "artifact_schema",
         "passed": True,
         "artifact_json": "benchmarks/results/source.json",
+        "source_artifact_path": "benchmarks/results/source.json",
         "artifact_path": "benchmarks/results/source.json",
         "status": "blocked",
         "performance_claim": False,
@@ -360,6 +361,7 @@ def test_qwen35_validation_summary_payload_rejects_traversal() -> None:
         "mode": "artifact_schema",
         "passed": False,
         "artifact_json": "benchmarks/results/nested/../source.json",
+        "source_artifact_path": "benchmarks/results/nested/../source.json",
         "artifact_path": "benchmarks/results/nested/../source.json",
         "status": None,
         "performance_claim": None,
@@ -371,6 +373,10 @@ def test_qwen35_validation_summary_payload_rejects_traversal() -> None:
         validate_cn_diagnostic_validation_summary(summary)
 
     summary["artifact_json"] = "benchmarks/results/source.json"
+    with pytest.raises(ValueError, match="summary.source_artifact_path must not contain parent traversal"):
+        validate_cn_diagnostic_validation_summary(summary)
+
+    summary["source_artifact_path"] = "benchmarks/results/source.json"
     with pytest.raises(ValueError, match="summary.artifact_path must not contain parent traversal"):
         validate_cn_diagnostic_validation_summary(summary)
 
@@ -379,6 +385,7 @@ def test_qwen35_validation_summary_payload_rejects_traversal() -> None:
         "mode": "rollup_evidence",
         "passed": False,
         "artifact_json": "benchmarks/results/source.json",
+        "source_artifact_path": "benchmarks/results/source.json",
         "artifact_path": "benchmarks/results/source.json",
         "status": None,
         "performance_claim": None,
@@ -499,6 +506,7 @@ def test_qwen35_validation_summary_paths_report_active_option(
                 "mode": "artifact_schema",
                 "passed": False,
                 "artifact_json": "benchmarks/results/source.json",
+                "source_artifact_path": "benchmarks/results/source.json",
                 "artifact_path": None,
                 "status": None,
                 "performance_claim": None,
@@ -20872,6 +20880,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         "mode": "rollup_evidence",
         "passed": True,
         "artifact_json": "benchmarks/results/accepted-c2.json",
+        "source_artifact_path": "benchmarks/results/accepted-c2.json",
         "artifact_path": "benchmarks/results/accepted-c2.json",
         "status": "accepted",
         "performance_claim": True,
@@ -20888,6 +20897,18 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     absolute_summary_source["artifact_json"] = str(artifact_file)
     with pytest.raises(ValueError, match="summary.artifact_json must be a repo-relative benchmarks/results path"):
         validate_cn_diagnostic_validation_summary(absolute_summary_source)
+    absolute_summary_source_artifact_path = dict(summary)
+    absolute_summary_source_artifact_path["source_artifact_path"] = str(artifact_file)
+    with pytest.raises(ValueError, match="summary.source_artifact_path must be a repo-relative benchmarks/results path"):
+        validate_cn_diagnostic_validation_summary(absolute_summary_source_artifact_path)
+    stale_summary_source_artifact_path = dict(summary)
+    stale_summary_source_artifact_path["source_artifact_path"] = "benchmarks/results/other-accepted-c2.json"
+    with pytest.raises(ValueError, match="summary.source_artifact_path must match summary.artifact_json"):
+        validate_cn_diagnostic_validation_summary(stale_summary_source_artifact_path)
+    missing_summary_source_artifact_path = dict(summary)
+    missing_summary_source_artifact_path.pop("source_artifact_path")
+    with pytest.raises(ValueError, match="summary.source_artifact_path must be a non-empty string"):
+        validate_cn_diagnostic_validation_summary(missing_summary_source_artifact_path)
     absolute_summary_artifact_path = dict(summary)
     absolute_summary_artifact_path["artifact_path"] = str(artifact_file)
     with pytest.raises(ValueError, match="summary.artifact_path must be a repo-relative benchmarks/results path"):
@@ -20976,6 +20997,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     assert retained_bench.RETAINED_ARTIFACT_ACCEPTED_DECISION_REASON == RETAINED_ARTIFACT_ACCEPTED_DECISION_REASON
     assert retained_bench.RETAINED_ARTIFACT_ACCEPTED_NOTES == RETAINED_ARTIFACT_ACCEPTED_NOTES
     assert artifact_schema_summary["mode"] == "artifact_schema"
+    assert artifact_schema_summary["source_artifact_path"] == "benchmarks/results/accepted-c2.json"
     assert artifact_schema_summary["status"] == "accepted"
     assert artifact_schema_summary["performance_claim"] is True
     assert artifact_schema_summary["benchmark_rollup"] is None
@@ -21050,6 +21072,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     assert failed_summary["passed"] is False
     assert failed_summary["mode"] == "rollup_evidence"
     assert failed_summary["artifact_json"] == "benchmarks/results/accepted-c2-missing-rollup.json"
+    assert failed_summary["source_artifact_path"] == "benchmarks/results/accepted-c2-missing-rollup.json"
     assert failed_summary["artifact_path"] == "benchmarks/results/accepted-c2.json"
     assert failed_summary["status"] is None
     assert failed_summary["performance_claim"] is None
