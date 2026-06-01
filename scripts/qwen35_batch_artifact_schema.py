@@ -4412,21 +4412,21 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
                         errors.append(f"summary.benchmark_rollup.{key} must be a repo-relative benchmarks/results path")
                     if not value.replace("\\", "/").rsplit("/", 1)[-1].endswith(".json"):
                         errors.append(f"summary.benchmark_rollup.{key} must end with .json")
-            for key in ("readme_path", "changelog_path"):
+            expected_doc_paths = {"readme_path": "benchmarks/README.md", "changelog_path": "benchmarks/CHANGELOG.md"}
+            for key, expected_path in expected_doc_paths.items():
                 value = benchmark_rollup.get(key)
                 if not isinstance(value, str) or not value:
                     errors.append(f"summary.benchmark_rollup.{key} must be a non-empty string")
-                elif value.strip() != value:
-                    errors.append(f"summary.benchmark_rollup.{key} must not contain leading or trailing whitespace")
+                else:
+                    if value.strip() != value:
+                        errors.append(f"summary.benchmark_rollup.{key} must not contain leading or trailing whitespace")
+                    if value != expected_path:
+                        errors.append(f"summary.benchmark_rollup.{key} must be {expected_path}")
         if isinstance(benchmark_rollup, Mapping) and isinstance(artifact_path, str):
             if benchmark_rollup.get("artifact_path") != artifact_path:
                 errors.append("summary.benchmark_rollup.artifact_path must match summary.artifact_path")
             if benchmark_rollup.get("source_artifact_path") != artifact_path:
                 errors.append("summary.benchmark_rollup.source_artifact_path must match summary.artifact_path")
-            if benchmark_rollup.get("readme_path") != "benchmarks/README.md":
-                errors.append("summary.benchmark_rollup.readme_path must be benchmarks/README.md")
-            if benchmark_rollup.get("changelog_path") != "benchmarks/CHANGELOG.md":
-                errors.append("summary.benchmark_rollup.changelog_path must be benchmarks/CHANGELOG.md")
     if mode == "rollup_evidence" and passed is True:
         if status != "accepted":
             errors.append("passed rollup evidence summary.status must be accepted")

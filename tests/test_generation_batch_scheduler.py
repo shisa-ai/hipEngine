@@ -21169,6 +21169,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     wrong_summary_readme["benchmark_rollup"]["readme_path"] = "README.md"
     with pytest.raises(ValueError, match="summary.benchmark_rollup.readme_path must be benchmarks/README.md"):
         validate_cn_diagnostic_validation_summary(wrong_summary_readme)
+    missing_artifact_wrong_summary_readme = json.loads(json.dumps(summary))
+    missing_artifact_wrong_summary_readme["artifact_path"] = None
+    missing_artifact_wrong_summary_readme["benchmark_rollup"]["readme_path"] = "README.md"
+    with pytest.raises(ValueError, match="summary.benchmark_rollup.readme_path must be benchmarks/README.md"):
+        validate_cn_diagnostic_validation_summary(missing_artifact_wrong_summary_readme)
     wrong_summary_changelog = json.loads(json.dumps(summary))
     wrong_summary_changelog["benchmark_rollup"]["changelog_path"] = "CHANGELOG.md"
     with pytest.raises(ValueError, match="summary.benchmark_rollup.changelog_path must be benchmarks/CHANGELOG.md"):
