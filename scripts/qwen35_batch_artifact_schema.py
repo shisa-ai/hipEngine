@@ -183,6 +183,7 @@ _PRIMITIVE_CORRECTNESS_SCRIPT = RETAINED_ARTIFACT_PRIMITIVE_CORRECTNESS_SCRIPT
 _RETAINED_BENCH_SCRIPT = RETAINED_ARTIFACT_RETAINED_BENCH_SCRIPT
 _RETAINED_BENCH_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_BENCH_UNIQUE_FLAGS
 _COMMAND_ENV_KEYS = ("HIP_VISIBLE_DEVICES",)
+_DEVICE_METADATA_ENV_KEYS = ("HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES", "GPU_DEVICE_ORDINAL")
 _RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS = RETAINED_ARTIFACT_RETAINED_PROFILED_COMMAND_UNIQUE_FLAGS
 _INT8_PRIMITIVE_GATE_FLAGS = RETAINED_ARTIFACT_INT8_PRIMITIVE_GATE_FLAGS
 _CORRECTNESS_REFERENCE_UNIQUE_FLAGS = RETAINED_ARTIFACT_CORRECTNESS_REFERENCE_UNIQUE_FLAGS
@@ -353,6 +354,18 @@ def _validate_device_env_assignments_nonblank(assignments: Mapping[str, str], *,
     for key, value in assignments.items():
         if not value.strip():
             errors.append(f"commands.{field} device env prefix {key} must be non-blank for accepted artifacts")
+
+
+def _validate_device_env_metadata(env: Any, *, prefix: str, errors: list[str]) -> None:
+    if not isinstance(env, Mapping):
+        errors.append(f"{prefix}.env must be an object for accepted artifacts")
+        return
+    for key in _DEVICE_METADATA_ENV_KEYS:
+        value = env.get(key)
+        if value is not None and (not isinstance(value, str) or not value):
+            errors.append(f"{prefix}.env.{key} must be a non-empty string when present for accepted artifacts")
+        elif isinstance(value, str) and not value.strip():
+            errors.append(f"{prefix}.env.{key} must be a non-blank string when present for accepted artifacts")
 
 
 def _script_invocation_device_env_assignments(command: str, script: str) -> dict[str, str]:
@@ -1970,6 +1983,9 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     hardware_arch = hardware.get("arch")
     if isinstance(hardware_arch, str) and hardware_arch and _ACCEPTED_HARDWARE_ARCH_RE.fullmatch(hardware_arch) is None:
         errors.append("hardware.arch must be a gfx* architecture string for accepted artifacts")
+    visible_device = hardware.get("visible_device")
+    if isinstance(visible_device, Mapping) and "env" in visible_device:
+        _validate_device_env_metadata(visible_device.get("env"), prefix="hardware.visible_device", errors=errors)
     for field in _REQUIRED_ACCEPTED_HARDWARE_CAPTURE_FIELDS:
         command_fragment = "rocm-smi" if field == "rocm_smi" else field
         _validate_capture_context(
@@ -3152,16 +3168,7 @@ def _validate_primitive_device_metadata(device: Any, errors: list[str]) -> None:
     if not isinstance(device, Mapping):
         errors.append(f"{prefix} must be an object for accepted artifacts")
         return
-    env = device.get("env")
-    if not isinstance(env, Mapping):
-        errors.append(f"{prefix}.env must be an object for accepted artifacts")
-    else:
-        for key in ("HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES", "GPU_DEVICE_ORDINAL"):
-            value = env.get(key)
-            if value is not None and (not isinstance(value, str) or not value):
-                errors.append(f"{prefix}.env.{key} must be a non-empty string when present for accepted artifacts")
-            elif isinstance(value, str) and not value.strip():
-                errors.append(f"{prefix}.env.{key} must be a non-blank string when present for accepted artifacts")
+    _validate_device_env_metadata(device.get("env"), prefix=prefix, errors=errors)
     for field in ("hipGetDeviceCount_error", "hipGetDevice_error", "hipDeviceGetName_error"):
         value = device.get(field)
         if not isinstance(value, int) or isinstance(value, bool):

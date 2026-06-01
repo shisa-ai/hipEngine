@@ -21366,6 +21366,12 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="hardware.visible_device.env.HIP_VISIBLE_DEVICES must be a non-blank string"):
         validate_cn_diagnostic_artifact_payload(blank_hardware_device_env)
 
+    for device_env_key in ("ROCR_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES", "GPU_DEVICE_ORDINAL"):
+        blank_hardware_aux_device_env = json.loads(json.dumps(gpu1_accepted))
+        blank_hardware_aux_device_env["hardware"]["visible_device"]["env"][device_env_key] = "\t"
+        with pytest.raises(ValueError, match=rf"hardware\.visible_device\.env\.{device_env_key} must be a non-blank string"):
+            validate_cn_diagnostic_artifact_payload(blank_hardware_aux_device_env)
+
     blank_primitive_device_env = json.loads(json.dumps(gpu1_accepted))
     blank_primitive_device_env["correctness"]["primitive_batch_correctness"]["device"]["env"]["HIP_VISIBLE_DEVICES"] = "   "
     with pytest.raises(ValueError, match="primitive_batch_correctness.device.env.HIP_VISIBLE_DEVICES must be a non-blank string"):
