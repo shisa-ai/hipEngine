@@ -973,6 +973,48 @@ def test_batch_c_sweep_profiler_precondition_rejects_missing_trace_dir(tmp_path:
     }
 
 
+def test_batch_c_sweep_profiler_precondition_rejects_trace_dir_path_traversal(tmp_path: Path) -> None:
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    _write_c_sweep_profiler_summary(output_dir, rows=2)
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    profiler_path = output_dir / "profiler-c2.json"
+    payload = json.loads(profiler_path.read_text())
+    trace_dir = output_dir / "profile-c2"
+    traversed_trace_dir = trace_dir / ".." / "profile-c2"
+    payload["profiler"]["trace_dir"] = str(traversed_trace_dir)
+    payload["profiler"]["command"] = payload["profiler"]["command"].replace(
+        f" -d {trace_dir} --",
+        f" -d {traversed_trace_dir} --",
+    )
+    profiler_path.write_text(json.dumps(payload))
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._profiler_summary_precondition(native)
+
+    assert precondition == {
+        "kind": "profiler_summary",
+        "artifact_path": str(profiler_path),
+        "passed": False,
+        "reason": "profiler.trace_dir contains parent-directory components",
+    }
+
+
 def test_batch_c_sweep_profiler_precondition_rejects_missing_trace_files(tmp_path: Path) -> None:
     output_dir = tmp_path / "artifacts"
     output_dir.mkdir()
@@ -21639,6 +21681,15 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     profiler_mismatched_trace_dir["profiler"]["trace_dir"] = "/tmp/other-profile"
     with pytest.raises(ValueError, match="profiler.trace_dir must match commands.profiler -d"):
         validate_cn_diagnostic_artifact_payload(profiler_mismatched_trace_dir)
+
+    profiler_trace_dir_path_traversal = json.loads(json.dumps(accepted))
+    profiler_trace_dir_path_traversal["profiler"]["trace_dir"] = "/tmp/hipengine-profile/../hipengine-profile"
+    profiler_trace_dir_path_traversal["commands"]["profiler"] = profiler_trace_dir_path_traversal["commands"]["profiler"].replace(
+        " -d /tmp/hipengine-profile --",
+        " -d /tmp/hipengine-profile/../hipengine-profile --",
+    )
+    with pytest.raises(ValueError, match="profiler.trace_dir must not contain parent-directory components"):
+        validate_cn_diagnostic_artifact_payload(profiler_trace_dir_path_traversal)
 
     duplicate_profiler_trace_dir = json.loads(json.dumps(accepted))
     duplicate_profiler_trace_dir["commands"]["profiler"] = duplicate_profiler_trace_dir["commands"]["profiler"].replace(

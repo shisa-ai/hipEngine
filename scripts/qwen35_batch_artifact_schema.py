@@ -2183,6 +2183,8 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     profiler_trace_dir = profiler.get("trace_dir")
     if not isinstance(profiler_trace_dir, str) or not profiler_trace_dir:
         errors.append("profiler.trace_dir must be a non-empty string for accepted artifacts")
+    elif _path_has_parent_directory_component(profiler_trace_dir):
+        errors.append("profiler.trace_dir must not contain parent-directory components for accepted artifacts")
     elif profiler_command_trace_dir is not None and profiler_trace_dir != profiler_command_trace_dir:
         errors.append("profiler.trace_dir must match commands.profiler -d for accepted artifacts")
     profiler_trace_files = profiler.get("trace_files")
