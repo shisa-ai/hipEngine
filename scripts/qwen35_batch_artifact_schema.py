@@ -4316,7 +4316,7 @@ def validate_cn_diagnostic_validation_summary(summary: Mapping[str, Any]) -> Non
     unexpected_keys = sorted(str(key) for key in summary.keys() - allowed_keys)
     if unexpected_keys:
         errors.append("summary contains unexpected keys: " + ", ".join(unexpected_keys))
-    if summary.get("schema") != 1:
+    if summary.get("schema") != 1 or isinstance(summary.get("schema"), bool):
         errors.append("summary.schema must be 1")
     if summary.get("summary_type") != RETAINED_ARTIFACT_VALIDATION_SUMMARY_TYPE:
         errors.append(f"summary.summary_type must be {RETAINED_ARTIFACT_VALIDATION_SUMMARY_TYPE}")

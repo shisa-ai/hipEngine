@@ -20952,6 +20952,10 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     invalid_schema_summary["schema"] = 2
     with pytest.raises(ValueError, match="summary.schema must be 1"):
         validate_cn_diagnostic_validation_summary(invalid_schema_summary)
+    bool_schema_summary = dict(summary)
+    bool_schema_summary["schema"] = True
+    with pytest.raises(ValueError, match="summary.schema must be 1"):
+        validate_cn_diagnostic_validation_summary(bool_schema_summary)
     missing_summary_type = dict(summary)
     missing_summary_type.pop("summary_type")
     with pytest.raises(ValueError, match=f"summary.summary_type must be {RETAINED_ARTIFACT_VALIDATION_SUMMARY_TYPE}"):
