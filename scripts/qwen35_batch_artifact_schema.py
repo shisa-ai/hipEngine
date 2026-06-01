@@ -397,6 +397,28 @@ def _validate_device_env_metadata(env: Any, *, prefix: str, errors: list[str]) -
             errors.append(f"{prefix}.env.{key} must be a non-blank string when present for accepted artifacts")
 
 
+def _validate_device_runtime_metadata(device: Mapping[str, Any], *, prefix: str, errors: list[str]) -> None:
+    for field in ("hipGetDeviceCount_error", "hipGetDevice_error", "hipDeviceGetName_error"):
+        value = device.get(field)
+        if not isinstance(value, int) or isinstance(value, bool):
+            errors.append(f"{prefix}.{field} must be an int for accepted artifacts")
+        elif value != 0:
+            errors.append(f"{prefix}.{field} must be 0 for accepted artifacts")
+    visible_count = device.get("visible_device_count")
+    if not isinstance(visible_count, int) or isinstance(visible_count, bool):
+        errors.append(f"{prefix}.visible_device_count must be an int for accepted artifacts")
+    elif visible_count <= 0:
+        errors.append(f"{prefix}.visible_device_count must be positive for accepted artifacts")
+    current_device = device.get("current_device")
+    if not isinstance(current_device, int) or isinstance(current_device, bool):
+        errors.append(f"{prefix}.current_device must be an int for accepted artifacts")
+    elif current_device < 0:
+        errors.append(f"{prefix}.current_device must be non-negative for accepted artifacts")
+    device_name = device.get("device_name")
+    if not isinstance(device_name, str) or not device_name:
+        errors.append(f"{prefix}.device_name must be a non-empty string for accepted artifacts")
+
+
 def _validate_hardware_visible_device_env_requirements(
     hardware: Mapping[str, Any],
     requirements: Mapping[str, str],
@@ -415,6 +437,11 @@ def _validate_hardware_visible_device_env_requirements(
     for key, value in requirements.items():
         if env.get(key) != value:
             errors.append(f"hardware.visible_device.env.{key} must include {key}={value} for accepted artifacts")
+    _validate_device_runtime_metadata(
+        visible_device,
+        prefix="hardware.visible_device",
+        errors=errors,
+    )
 
 
 def _script_invocation_device_env_prefix_argv(command: str, script: str) -> list[str] | None:
@@ -3273,25 +3300,7 @@ def _validate_primitive_device_metadata(device: Any, errors: list[str]) -> None:
         errors.append(f"{prefix} must be an object for accepted artifacts")
         return
     _validate_device_env_metadata(device.get("env"), prefix=prefix, errors=errors)
-    for field in ("hipGetDeviceCount_error", "hipGetDevice_error", "hipDeviceGetName_error"):
-        value = device.get(field)
-        if not isinstance(value, int) or isinstance(value, bool):
-            errors.append(f"{prefix}.{field} must be an int for accepted artifacts")
-        elif value != 0:
-            errors.append(f"{prefix}.{field} must be 0 for accepted artifacts")
-    visible_count = device.get("visible_device_count")
-    if not isinstance(visible_count, int) or isinstance(visible_count, bool):
-        errors.append(f"{prefix}.visible_device_count must be an int for accepted artifacts")
-    elif visible_count <= 0:
-        errors.append(f"{prefix}.visible_device_count must be positive for accepted artifacts")
-    current_device = device.get("current_device")
-    if not isinstance(current_device, int) or isinstance(current_device, bool):
-        errors.append(f"{prefix}.current_device must be an int for accepted artifacts")
-    elif current_device < 0:
-        errors.append(f"{prefix}.current_device must be non-negative for accepted artifacts")
-    device_name = device.get("device_name")
-    if not isinstance(device_name, str) or not device_name:
-        errors.append(f"{prefix}.device_name must be a non-empty string for accepted artifacts")
+    _validate_device_runtime_metadata(device, prefix=prefix, errors=errors)
 
 
 def _validate_accepted_correctness_gates(payload: Mapping[str, Any], correctness: Mapping[str, Any], errors: list[str]) -> None:
