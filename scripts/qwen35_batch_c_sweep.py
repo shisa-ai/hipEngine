@@ -3283,6 +3283,12 @@ def validate_sweep_summary(summary: Mapping[str, Any]) -> None:
                     if profiler_source_artifact_path != profiler_precondition.get("artifact_path"):
                         errors.append("commands[].preconditions[].profiler_source_artifact_path must match profiler artifact_path when profiler passed")
                         break
+                    if not profiler_source_check_path.exists():
+                        errors.append("commands[].preconditions[].profiler_source_artifact_path must exist when profiler passed")
+                        break
+                    if not profiler_source_check_path.is_file():
+                        errors.append("commands[].preconditions[].profiler_source_artifact_path must be a regular file when profiler passed")
+                        break
                     if any(
                         _command_text_arg(profiler_command, flag) != _argv_value(argv, flag)
                         for flag in _RETAINED_GATE_FLAGS[:3]

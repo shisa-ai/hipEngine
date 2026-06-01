@@ -6487,6 +6487,12 @@ def test_batch_c_sweep_runs_retained_when_all_references_are_usable(tmp_path: Pa
     with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must exist for passed summary rows"):
         c_sweep.validate_sweep_summary(persisted)
     primitive_artifact_path.write_text(primitive_artifact_payload)
+    profiler_artifact_path = output_dir / "profiler-c2.json"
+    profiler_artifact_payload = profiler_artifact_path.read_text()
+    profiler_artifact_path.unlink()
+    with pytest.raises(ValueError, match=r"commands\[\]\.preconditions\[\]\.profiler_source_artifact_path must exist when profiler passed"):
+        c_sweep.validate_sweep_summary(persisted)
+    profiler_artifact_path.write_text(profiler_artifact_payload)
     profiler_trace_file_path = output_dir / "profile-c2" / "hipengine_kernel_trace.csv"
     profiler_trace_file_payload = profiler_trace_file_path.read_text()
     profiler_trace_file_path.unlink()
