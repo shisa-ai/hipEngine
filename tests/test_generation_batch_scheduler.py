@@ -7268,6 +7268,12 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         assert tuple(summary["commands"][index]["argv"][:2]) == ("env", "HIP_VISIBLE_DEVICES=1")
         assert summary["commands"][index]["command"].startswith("env HIP_VISIBLE_DEVICES=1 ")
 
+        tampered_planned_command_text = json.loads(json.dumps(summary))
+        planned_command_text_entry = tampered_planned_command_text["commands"][index]
+        planned_command_text_entry["command"] = shlex.join([*planned_command_text_entry["argv"], "--stale-command-label"])
+        with pytest.raises(ValueError, match=r"commands\[\]\.command must match shlex\.join\(commands\[\]\.argv\)"):
+            c_sweep.validate_sweep_summary(tampered_planned_command_text)
+
         tampered_planned_device_env = json.loads(json.dumps(summary))
         planned_device_env_entry = tampered_planned_device_env["commands"][index]
         planned_device_env_entry["argv"][1] = "HIP_VISIBLE_DEVICES=0"
