@@ -8554,6 +8554,21 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must be a non-empty string"):
             c_sweep.validate_sweep_summary(tampered_optional_missing_artifact_path)
 
+        tampered_optional_artifact_parent_component = json.loads(json.dumps(summary))
+        optional_artifact_parent_entry = tampered_optional_artifact_parent_component["commands"][index]
+        optional_artifact_parent_path = str(
+            Path(optional_artifact_parent_entry["artifact_path"]).parent
+            / "artifact-parent"
+            / ".."
+            / Path(optional_artifact_parent_entry["artifact_path"]).name
+        )
+        optional_artifact_parent_entry["artifact_path"] = optional_artifact_parent_path
+        optional_artifact_parent_argv = optional_artifact_parent_entry["argv"]
+        optional_artifact_parent_argv[optional_artifact_parent_argv.index("--json") + 1] = optional_artifact_parent_path
+        optional_artifact_parent_entry["command"] = shlex.join(optional_artifact_parent_argv)
+        with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must not contain parent-directory components"):
+            c_sweep.validate_sweep_summary(tampered_optional_artifact_parent_component)
+
         tampered_optional_blank_category = json.loads(json.dumps(summary))
         tampered_optional_blank_category["commands"][index]["category"] = "   "
         with pytest.raises(ValueError, match=r"commands\[\]\.category must be a non-empty string"):
