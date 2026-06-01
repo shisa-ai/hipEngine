@@ -472,6 +472,14 @@ class StepFunTextDecodeResourcePlan:
         per_layer_order = ["prompt_kv_write", "decode_kv_write", "decode_attention"]
         streaming_runner_blockers = list(self.streaming_runner_blockers)
         streaming_runner_blocker_names = [str(blocker["name"]) for blocker in streaming_runner_blockers]
+        first_streaming_runner_blocker = (
+            streaming_runner_blocker_names[0] if streaming_runner_blocker_names else None
+        )
+        first_streaming_runner_blocker_sha256 = (
+            _stable_json_sha256(first_streaming_runner_blocker)
+            if first_streaming_runner_blocker is not None
+            else None
+        )
         return {
             "source": "text_decode_resource_plan",
             "layer_count": layer_count,
@@ -511,9 +519,8 @@ class StepFunTextDecodeResourcePlan:
             "streaming_runner_blocker_names_sha256": _stable_json_sha256(
                 streaming_runner_blocker_names
             ),
-            "first_streaming_runner_blocker": (
-                streaming_runner_blocker_names[0] if streaming_runner_blocker_names else None
-            ),
+            "first_streaming_runner_blocker": first_streaming_runner_blocker,
+            "first_streaming_runner_blocker_sha256": first_streaming_runner_blocker_sha256,
             "streaming_runner_blockers": streaming_runner_blockers,
             "note": (
                 "Planned launch order for the future StepFun streaming KV-backed decode runner. "
@@ -939,6 +946,14 @@ class StepFunKVDecodeRunPlan:
         launch_schedule = self.resource_plan.kv_decode_launch_schedule
         streaming_runner_blockers = list(self.streaming_runner_blockers)
         streaming_runner_blocker_names = [str(blocker["name"]) for blocker in streaming_runner_blockers]
+        first_streaming_runner_blocker = (
+            streaming_runner_blocker_names[0] if streaming_runner_blocker_names else None
+        )
+        first_streaming_runner_blocker_sha256 = (
+            _stable_json_sha256(first_streaming_runner_blocker)
+            if first_streaming_runner_blocker is not None
+            else None
+        )
         return {
             "prompt_length": self.prompt_length,
             "input_ids": list(self.input_ids),
@@ -978,9 +993,8 @@ class StepFunKVDecodeRunPlan:
             "streaming_runner_blocker_names_sha256": _stable_json_sha256(
                 streaming_runner_blocker_names
             ),
-            "first_streaming_runner_blocker": (
-                streaming_runner_blocker_names[0] if streaming_runner_blocker_names else None
-            ),
+            "first_streaming_runner_blocker": first_streaming_runner_blocker,
+            "first_streaming_runner_blocker_sha256": first_streaming_runner_blocker_sha256,
             "streaming_runner_blockers": streaming_runner_blockers,
             "note": (
                 "Metadata-only prompt/resource binding for the future StepFun KV-backed decode runner. "

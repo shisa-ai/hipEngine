@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -93,7 +94,13 @@ def test_stepfun_load_smoke_dry_run_plan_emits_resource_json(capsys: pytest.Capt
     assert launch_schedule["all_stage_dispatch_ready"] is True
     assert launch_schedule["streaming_runner_ready"] is False
     assert launch_schedule["streaming_runner_blocker_count"] == 3
+    expected_first_streaming_blocker_sha = hashlib.sha256(
+        json.dumps(
+            "streaming_decode_loop_not_wired", sort_keys=True, separators=(",", ":")
+        ).encode()
+    ).hexdigest()
     assert launch_schedule["first_streaming_runner_blocker"] == "streaming_decode_loop_not_wired"
+    assert launch_schedule["first_streaming_runner_blocker_sha256"] == expected_first_streaming_blocker_sha
     assert [blocker["name"] for blocker in launch_schedule["streaming_runner_blockers"]] == [
         "streaming_decode_loop_not_wired",
         "kv_kernel_trace_artifact_missing",
@@ -224,6 +231,7 @@ def test_stepfun_load_smoke_dry_run_plan_emits_resource_json(capsys: pytest.Capt
     assert run_plan["streaming_runner_ready"] is False
     assert run_plan["streaming_runner_blocker_count"] == 3
     assert run_plan["first_streaming_runner_blocker"] == "streaming_decode_loop_not_wired"
+    assert run_plan["first_streaming_runner_blocker_sha256"] == expected_first_streaming_blocker_sha
     assert [blocker["name"] for blocker in run_plan["streaming_runner_blockers"]] == [
         "streaming_decode_loop_not_wired",
         "kv_kernel_trace_artifact_missing",

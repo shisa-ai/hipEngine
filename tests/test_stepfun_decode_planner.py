@@ -408,9 +408,15 @@ def test_stepfun_kv_decode_run_plan_binds_prompt_to_resource_spans() -> None:
     expected_streaming_blockers_sha = hashlib.sha256(
         json.dumps(expected_streaming_blockers, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
+    expected_first_streaming_blocker_sha = hashlib.sha256(
+        json.dumps(
+            "streaming_decode_loop_not_wired", sort_keys=True, separators=(",", ":")
+        ).encode()
+    ).hexdigest()
     assert payload["streaming_runner_blocker_names"] == expected_streaming_blockers
     assert payload["streaming_runner_blocker_names_sha256"] == expected_streaming_blockers_sha
     assert payload["first_streaming_runner_blocker"] == "streaming_decode_loop_not_wired"
+    assert payload["first_streaming_runner_blocker_sha256"] == expected_first_streaming_blocker_sha
     assert [blocker["name"] for blocker in payload["streaming_runner_blockers"]] == expected_streaming_blockers
     assert all(blocker["ready"] is False for blocker in payload["streaming_runner_blockers"])
 
@@ -661,9 +667,15 @@ def test_stepfun_text_decode_resource_plan_estimates_weight_and_kv_bytes() -> No
     expected_streaming_blockers_sha = hashlib.sha256(
         json.dumps(expected_streaming_blockers, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
+    expected_first_streaming_blocker_sha = hashlib.sha256(
+        json.dumps(
+            "streaming_decode_loop_not_wired", sort_keys=True, separators=(",", ":")
+        ).encode()
+    ).hexdigest()
     assert launch_schedule["streaming_runner_blocker_names"] == expected_streaming_blockers
     assert launch_schedule["streaming_runner_blocker_names_sha256"] == expected_streaming_blockers_sha
     assert launch_schedule["first_streaming_runner_blocker"] == "streaming_decode_loop_not_wired"
+    assert launch_schedule["first_streaming_runner_blocker_sha256"] == expected_first_streaming_blocker_sha
     assert [blocker["name"] for blocker in launch_schedule["streaming_runner_blockers"]] == expected_streaming_blockers
 
     with pytest.raises(ValueError, match="context_pages"):

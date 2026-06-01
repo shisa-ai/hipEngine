@@ -669,10 +669,12 @@ reporting.
   `--kv-first-streaming-blocker-only` / `--kv-first-streaming-blocker-sha-only`
   outputs expose the current first source-level runner blocker
   (`streaming_decode_loop_not_wired`) and its persisted digest directly for KV
-  implementation handoff; status integrity also cross-checks the mirrored first
-  KV blocker digest plus the full KV streaming blocker names/SHA across the gap
-  report, next-action command, and handoff queue so the runner artifact and
-  status helper agree on why KV-backed decode remains blocked. The same status
+  implementation handoff. The runtime `kv_decode_launch_schedule` and
+  `kv_decode_run_plan` now emit the same first-blocker digest at the metadata
+  source; status integrity also cross-checks the mirrored first KV blocker digest
+  plus the full KV streaming blocker names/SHA across the gap report,
+  next-action command, and handoff queue so the runner artifact and status helper
+  agree on why KV-backed decode remains blocked. The same status
   artifact records `source_artifacts` path/size/SHA-256 provenance for the
   prompt, oracle, resource-plan, and docs
   inputs used to compute the summary; `--verify-source-artifacts STATUS_JSON`
