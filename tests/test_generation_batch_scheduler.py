@@ -18069,6 +18069,19 @@ def test_qwen35_retained_request_observability_blockers_cover_row_evidence() -> 
     assert "observability.per_request.1.timing components exceed completion latency" in blockers
 
 
+def test_qwen35_retained_generated_token_equality_prefix_summary() -> None:
+    summary = retained_bench._generated_token_equality_prefix_summary(
+        [[1, 2, 3, 4], [10, 11, 12]],
+        [[1, 2, 9, 4], [10, 11, 12]],
+    )
+
+    assert summary == {
+        "prefix_lengths": [2, 3],
+        "min_equal_prefix_tokens": 2,
+        "first_mismatch_indices": [2, None],
+    }
+
+
 def test_qwen35_retained_completed_execution_blockers_cover_row_evidence() -> None:
     completed = [
         {

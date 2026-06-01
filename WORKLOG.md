@@ -63439,3 +63439,18 @@ HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_retained_bench.py \
 Result: reduced L8 retained diagnostic generated-token equality passes (`prefixes=[25, 25]`, `generated_token_equality.passed=true`), and the artifact is emitted as `status=blocked` only because it is a reduced diagnostic shape with no profiler/scaling/primitive artifact gates. Full-40 retained diagnostics with the same selected/per-row linear and full-attention row controls still do not improve the primary min prefix (`/tmp/hipengine-e2e-native-c2-512-128-retained-selected-linear-full-rowdiag.json`: `[82, 104]`; `/tmp/hipengine-e2e-native-c2-512-128-retained-selected-linear-full-batchgemv.json`: `[82, 137]`), so the remaining row-0 token-82 failure is beyond the L8 blocker.
 
 Clean-default retained verifier remains `rejected_correctness` with min equal-prefix `82` (`[82, 137]`) and no performance claim. Guard passed with the required pytest bundle (`398 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.
+
+## 2026-06-02 — CONCURRENCY retained equal-prefix metadata and layer-limit sweep
+
+Added self-contained generated-token equality prefix metadata to retained artifacts: `prefix_lengths`, `min_equal_prefix_tokens`, and `first_mismatch_indices`. This removes the need for out-of-band parsers when comparing c>N retained artifacts and lets layer-limit sweeps preserve the loop metric in the JSON itself.
+
+GPU1 / RX 7900 XTX evidence after the change:
+
+- Clean default retained verifier `/tmp/hipengine-e2e-native-c2-512-128.json`: `min_equal_prefix_tokens=82`, `prefix_lengths=[82, 137]`, `first_mismatch_indices=[82, null]`, `status=rejected_correctness`, no performance claim.
+- Reduced retained L8 diagnostic with selected/per-row linear + per-row full-attention controls `/tmp/hipengine-e2e-native-c2-L8-512-16-retained-selected-linear-full-rowdiag-prefix.json`: generated-token equality passes with `min_equal_prefix_tokens=25`, `prefix_lengths=[25, 25]`, `first_mismatch_indices=[null, null]`.
+- Default native layer-limit sweep (`prompt=512`, `decode=128`, `warmup=8`): L8 `[24, 56]`, L16 `[19, 78]`, L24 `[7, 25]`, L32 `[75, 18]`, L40 `[82, 137]`.
+- Selected/per-row linear + full-attention row diagnostic sweep: L16 `[89, 52]`, L24 `[8, 79]`, L32 `[37, 23]`, L40 `[82, 104]` (or `[82, 137]` with full-attention batch-GEMV O).
+
+Conclusion: the L8 hidden/equality blocker remains green under diagnostics, but the full-40 row-0 token-82 failure is not a simple extension of that L8 path. The next productive step is to inspect the actual row-0 token-82 transition with a targeted hidden/layer trace or add a trace-window diagnostic, rather than spending more iterations on the already-green L8 controls.
+
+Guard passed with the required pytest bundle (`399 passed`) plus primitive c=2/c=8 correctness green on GPU1 / RX 7900 XTX.

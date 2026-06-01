@@ -3627,6 +3627,27 @@ def _generated_sequences_from_bench(bench: dict[str, Any], request_ids: Sequence
     return rows
 
 
+def _generated_token_equality_prefix_summary(
+    batch_sequences: Sequence[Sequence[int]],
+    c1_sequences: Sequence[Sequence[int]],
+) -> dict[str, Any]:
+    prefixes: list[int] = []
+    first_mismatch_indices: list[int | None] = []
+    for batch, c1 in zip(batch_sequences, c1_sequences, strict=False):
+        prefix = 0
+        for batch_token, c1_token in zip(batch, c1, strict=False):
+            if int(batch_token) != int(c1_token):
+                break
+            prefix += 1
+        prefixes.append(prefix)
+        first_mismatch_indices.append(None if prefix == min(len(batch), len(c1)) and len(batch) == len(c1) else prefix)
+    return {
+        "prefix_lengths": prefixes,
+        "min_equal_prefix_tokens": min(prefixes) if prefixes else 0,
+        "first_mismatch_indices": first_mismatch_indices,
+    }
+
+
 def _projection_dispatch_artifact_arg(args: argparse.Namespace) -> str | None:
     artifact = getattr(args, "projection_dispatch_artifact", None)
     if artifact is None:
@@ -4358,10 +4379,12 @@ def main(argv: list[str] | None = None) -> int:
             require_cached_build=args.require_cached_build,
             kv_policy=kv_policy,
         )
+        equality_prefix_summary = _generated_token_equality_prefix_summary(batch_sequences, c1_sequences)
         equality = {
             "passed": batch_sequences == c1_sequences,
             "skipped": False,
             **equality_shape_metadata,
+            **equality_prefix_summary,
             "batch_sequences": batch_sequences,
             "c1_sequences": c1_sequences,
             "mismatches": [
