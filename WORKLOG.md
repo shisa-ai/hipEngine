@@ -63224,3 +63224,41 @@ HIP_VISIBLE_DEVICES=1 python3 -m compileall -q hipengine tests scripts && \
 ```
 
 Result: targeted layout tests passed; guard passed (`396 passed`, primitive c=2/c=8 green on GPU1 / RX 7900 XTX). The reduced L8 hidden-bisect artifact now has `first_token_mismatch=null`, `token_passed=true`, and decode metadata `linear_attention_projection_path=native_batch`, `native_caware_decode=true`, `blockers=[]`. Hidden remains red at decode step 10 / generated index 11, row 1, dim 1269, `max_abs=0.00146484375`. Full native c=2 512/128 retained verifier still rejects correctness with min equal-prefix `82` (`[82, 137]`) and `performance_claim=false`; next target is the remaining grouped-compact MoE / full-attention hidden parity blocker.
+
+## 2026-06-02 — CONCURRENCY decode-order linear recurrent segment probe
+
+Added a native c>N decode-order linear-attention GDN segment path for FP16 decode rows. The new `hipengine_qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_fp16` kernel consumes segment metadata (`cu_seqlens`, `state_indices`) and updates the per-slot recurrent state while using the same fused token-1 decode-order q/k reduction and RMSNorm/gate math as the c=1 path. Native batch decode now routes non-selected-c1 linear state through this path and projects from the post-GDN FP32 `recurrent_out`, keeping the layer execution native/batched (no serial decode bridge).
+
+Validation / evidence on GPU1 / RX 7900 XTX:
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
+  --prompt-length 512 --batch-size 2 --decode-tokens 16 \
+  --max-layers 1 --layer-limits 1 --max-sequence-length 1024 \
+  --focus-hidden-flat-index 1269 \
+  --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/hipengine-e2e-hidden-L1-512-16-decode-order-linear-state-gpu1.json
+```
+
+`/tmp/hipengine-e2e-hidden-L1-512-16-decode-order-linear-state-gpu1.json` is `status=eq_ok`; the single linear layer has `hidden_passed=true`, `token_passed=true`, and `decode_linear_stage_passed=true`.
+
+The reduced L8 diagnostic:
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
+  --prompt-length 512 --batch-size 2 --decode-tokens 16 \
+  --max-layers 8 --layer-limits 8 --max-sequence-length 1024 \
+  --focus-hidden-flat-index 1269 \
+  --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/hipengine-e2e-hidden-L8-512-16-decode-order-linear-state-gpu1.json
+```
+
+shows the old first layer-0 `recurrent_out` mismatch is eliminated (`recurrent_out` max abs `1.49e-08`, over-atol `0` at step 0 / layer 0); the first linear-stage mismatch moves to `mlp_input` (row 0, dim 859, max abs `0.0078125`). L8 generated tokens remain green (`first_token_mismatch=null`) but hidden remains red at decode step 2 / generated index 3, row 0, dim 1269, max abs `0.00146484375`.
+
+Full native c=2 512/128 retained verifier remains `rejected_correctness` with min equal-prefix `82` (`[82, 137]`), so there is still no performance claim. Guard passed with the required pytest bundle plus `tests/test_qwen35_decode_state.py` (`453 passed`) and primitive c=2/c=8 correctness green on GPU1. Next target is the post-linear MoE/input or full-attention hidden parity that remains after the decode-order recurrent handoff.

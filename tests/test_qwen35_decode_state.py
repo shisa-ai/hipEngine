@@ -2602,9 +2602,14 @@ def test_qwen35_decode_state_selected_output_uses_prefill_lowp_after_segment_sta
         calls.append(("prefill_rows_out", kwargs["tokens"]))
         return scratch.out_proj
 
+    def fake_decode_order_out(*args, **kwargs):
+        calls.append(("decode_order_out", kwargs["tokens"]))
+        return scratch.out_proj
+
     monkeypatch.setattr(state, "run_linear_attention_prefill_state_segments_fp16", fake_state_segments)
     monkeypatch.setattr(state, "project_linear_attention_decode_rows_out_fp16", fake_decode_rows_out)
     monkeypatch.setattr(state, "project_linear_attention_prefill_rows_out_fp16", fake_prefill_rows_out)
+    monkeypatch.setattr(state, "project_linear_attention_out_fp16", fake_decode_order_out)
 
     out = state.run_linear_attention_prefill_out_proj_segments_fp16(
         hidden,
@@ -2638,6 +2643,22 @@ def test_qwen35_decode_state_selected_output_uses_prefill_lowp_after_segment_sta
 
     assert out is scratch.out_proj
     assert calls == [("state_segments", True), ("decode_rows_out", 2)]
+
+    calls.clear()
+    out = state.run_linear_attention_prefill_out_proj_segments_fp16(
+        hidden,
+        conv_state=conv_state,
+        recurrent_state=recurrent_state,
+        cu_seqlens=cu_seqlens,
+        state_indices=state_indices,
+        segments=2,
+        scratch=scratch,
+        tokens=2,
+        decode_order_state=True,
+    )
+
+    assert out is scratch.out_proj
+    assert calls == [("state_segments", False), ("decode_order_out", 2)]
 
 
 def test_qwen35_decode_state_runs_moe_c1_fp16_chain_in_parent_order(monkeypatch) -> None:

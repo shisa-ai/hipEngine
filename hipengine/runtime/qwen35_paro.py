@@ -76,6 +76,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16,
+    qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_fp16,
     qwen35_linear_attn_prefill_prepare_f32_bf16,
     qwen35_linear_attn_prefill_prepare_f32_fp16,
 )
@@ -4826,6 +4827,7 @@ class Qwen35ParoDecodeState:
         state_indices: Tensor,
         tokens: int,
         segments: int,
+        decode_order_state: bool = False,
         eps: float | None = None,
         library=None,
         stream: int = 0,
@@ -4861,6 +4863,33 @@ class Qwen35ParoDecodeState:
             library=_library_for(library, "linear_conv"),
             runtime=self.runtime,
         )
+        if decode_order_state:
+            qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_fp16(
+                scratch.conv_out.ptr,
+                scratch.z.ptr,
+                scratch.a.ptr,
+                scratch.b.ptr,
+                self.tensor(f"{prefix}.dt_bias").ptr,
+                self.tensor(f"{prefix}.A_log").ptr,
+                self.tensor(f"{prefix}.norm.weight").ptr,
+                recurrent_state.ptr,
+                scratch.recurrent_out.ptr,
+                cu_seqlens.ptr,
+                state_indices.ptr,
+                tokens,
+                segments,
+                cfg.rms_norm_eps if eps is None else eps,
+                cfg.linear_num_key_heads,
+                cfg.linear_num_value_heads,
+                cfg.linear_key_head_dim,
+                cfg.linear_value_head_dim,
+                stream=stream,
+                library=_library_for(library, "linear_gdn"),
+                runtime=self.runtime,
+            )
+            if scratch.recurrent_out.shape[-1] != z_width:
+                raise ValueError("linear-attention recurrent scratch width mismatch")
+            return scratch.recurrent_out
         qwen35_linear_attn_prefill_prepare_f32_fp16(
             scratch.conv_out.ptr,
             scratch.a.ptr,
@@ -5203,6 +5232,7 @@ class Qwen35ParoDecodeState:
         force_batch_gemv_projections: bool = False,
         force_selected_c1_state: bool = False,
         selected_c1_state_pairs: Sequence[tuple[Tensor, Tensor]] | None = None,
+        decode_order_state: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -5264,6 +5294,7 @@ class Qwen35ParoDecodeState:
             state_indices=state_indices,
             tokens=tokens,
             segments=segments,
+            decode_order_state=decode_order_state,
             library=library,
             stream=stream,
         )
@@ -5288,6 +5319,7 @@ class Qwen35ParoDecodeState:
         selected_c1_state_pairs: Sequence[tuple[Tensor, Tensor]] | None = None,
         force_selected_c1_out: bool | None = None,
         force_batch_gemv_out: bool = False,
+        decode_order_state: bool = False,
         library=None,
         stream: int = 0,
     ) -> Tensor:
@@ -5308,13 +5340,14 @@ class Qwen35ParoDecodeState:
             force_batch_gemv_projections=force_batch_gemv_projections,
             force_selected_c1_state=force_selected_c1_state,
             selected_c1_state_pairs=selected_c1_state_pairs,
+            decode_order_state=decode_order_state,
             library=library,
             stream=stream,
         )
         if force_selected_c1_out is None:
             force_selected_c1_out = force_selected_c1_state
         if force_selected_c1_out:
-            if force_selected_c1_state:
+            if force_selected_c1_state or decode_order_state:
                 return self.project_linear_attention_decode_rows_out_fp16(
                     scratch,
                     tokens=tokens,
@@ -5329,7 +5362,7 @@ class Qwen35ParoDecodeState:
                 library=library,
                 stream=stream,
             )
-        if force_selected_c1_state:
+        if force_selected_c1_state or decode_order_state:
             return self.project_linear_attention_out_fp16(
                 scratch,
                 tokens=tokens,
@@ -5678,6 +5711,7 @@ class Qwen35ParoDecodeState:
             selected_c1_state_pairs=selected_c1_linear_state_pairs,
             force_selected_c1_out=force_selected_c1_linear_out,
             force_batch_gemv_out=force_batch_gemv_linear_out,
+            decode_order_state=not force_selected_c1_linear_state,
             library=library,
             stream=stream,
         )
