@@ -5545,6 +5545,60 @@ def test_batch_c_sweep_scaling_reference_rejects_mismatched_command_device_env(
     assert "commands.benchmark device env HIP_VISIBLE_DEVICES does not match retained command env" in precondition["reason"]
 
 
+def test_batch_c_sweep_scaling_reference_rejects_blank_command_device_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1")
+    output_dir = tmp_path / "artifacts"
+    output_dir.mkdir()
+    reference_path = output_dir / "serial-bridge-c2.json"
+    reference_path.write_text(
+        json.dumps(
+            {
+                "artifact_path": str(reference_path),
+                "schema": 2,
+                "status": "blocked",
+                "commands": {
+                    "benchmark": (
+                        f"env 'HIP_VISIBLE_DEVICES=   ' python3 scripts/qwen35_batch_serial_bench.py "
+                        f"--model /tmp/model --fixture /tmp/fixture.json --json {reference_path}"
+                    )
+                },
+                "workload": {"concurrency": 2, "prompt_tokens_per_request": 16, "gen_tokens_per_request": 2},
+                "measurements": {"decode_tok_s_aggregate": 20.0, "decode_tok_s_per_request": 10.0},
+            }
+        )
+    )
+    args = build_c_sweep_parser().parse_args(
+        [
+            "--batch-sizes",
+            "2",
+            "--output-dir",
+            str(output_dir),
+            "--model",
+            "/tmp/model",
+            "--fixture",
+            "/tmp/fixture.json",
+            "--prompt-length",
+            "16",
+            "--decode-tokens",
+            "2",
+        ]
+    )
+    native = next(command for command in build_sweep_commands(args) if command.category == "native_diagnostic")
+
+    precondition = c_sweep._scaling_reference_precondition(
+        native,
+        flag="--serial-bridge-json",
+        kind="serial_bridge",
+        expected_concurrency=2,
+    )
+
+    assert precondition["passed"] is False
+    assert "commands.benchmark device env HIP_VISIBLE_DEVICES is not a non-blank string when present" in precondition["reason"]
+
+
 def test_batch_c_sweep_scaling_reference_rejects_missing_command_device_env(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
