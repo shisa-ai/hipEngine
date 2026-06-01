@@ -1973,10 +1973,10 @@
     "performance_claim_allowed": false,
     "readiness_gates_sha256": "eca6f71ce20f266f9dc8935c2c399e133c3f212d3eea16f726851775385e47dc",
     "schema_version": 1,
-    "source_artifacts_sha256": "132f6d96305e47325f2d9804385469887aa61ab45530ecbe0e4955dacdd47766",
+    "source_artifacts_sha256": "0d9a762e1f8910b7ac235c079f9d81e92051f8515a8a732571bc1cfd4573479c",
     "status": "blocked"
   },
-  "readiness_summary_sha256": "f989c829ee1f13eaf39adf802d6ede99a3fcbca22a70945b75a621672f4ec50e",
+  "readiness_summary_sha256": "3cf2798fb638950328823948f3a99590b0ab767d971b704bef22b82ac88db0f2",
   "schema_version": 1,
   "schema_versions": {
     "blocker_work_queue": 1,
@@ -1989,8 +1989,8 @@
     "docs": {
       "exists": true,
       "path": "docs/STEPFUN.md",
-      "sha256": "f27387d0637c7721482bf8fde17788541764322fa40c5749020f65f417014266",
-      "size_bytes": 58769
+      "sha256": "6396932b6300377e11cf1172029abaaabd4b3f4ba8b5e34d4e34dabb9e37a0b3",
+      "size_bytes": 58845
     },
     "oracle": {
       "exists": true,
@@ -2011,7 +2011,7 @@
       "size_bytes": 49128
     }
   },
-  "source_artifacts_sha256": "132f6d96305e47325f2d9804385469887aa61ab45530ecbe0e4955dacdd47766",
+  "source_artifacts_sha256": "0d9a762e1f8910b7ac235c079f9d81e92051f8515a8a732571bc1cfd4573479c",
   "status": "blocked",
   "step35_supported_by_local_llama_cpp": null,
   "text_resource_artifact": "benchmarks/results/2026-05-31-stepfun-q3kl-text-resource-dry-run.json"

@@ -2684,6 +2684,8 @@ def test_stepfun_correctness_status_status_integrity_only(capsys, tmp_path: Path
             "first_kv_streaming_runner_blocker_mirrors": True,
             "kv_streaming_blueprint_sha256": True,
             "kv_streaming_blueprint_mirrors": True,
+            "blocker_recommended_commands_sha256": True,
+            "blocker_recommended_commands_meta_mirror": True,
             "schema_versions": True,
         },
     }
@@ -4461,6 +4463,8 @@ def test_stepfun_correctness_status_verifies_source_artifact_provenance(capsys, 
             "first_kv_streaming_runner_blocker_mirrors": True,
             "kv_streaming_blueprint_sha256": True,
             "kv_streaming_blueprint_mirrors": True,
+            "blocker_recommended_commands_sha256": True,
+            "blocker_recommended_commands_meta_mirror": True,
             "schema_versions": True,
         },
     }
@@ -5165,6 +5169,8 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_status_digest
         "first_kv_streaming_runner_blocker_mirrors": True,
         "kv_streaming_blueprint_sha256": True,
         "kv_streaming_blueprint_mirrors": True,
+        "blocker_recommended_commands_sha256": True,
+        "blocker_recommended_commands_meta_mirror": True,
         "schema_versions": True,
     }
 
@@ -5241,6 +5247,8 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_
         "first_kv_streaming_runner_blocker_mirrors": True,
         "kv_streaming_blueprint_sha256": True,
         "kv_streaming_blueprint_mirrors": True,
+        "blocker_recommended_commands_sha256": True,
+        "blocker_recommended_commands_meta_mirror": True,
         "schema_versions": True,
     }
 
@@ -5317,8 +5325,73 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_first_kv_stre
         "first_kv_streaming_runner_blocker_mirrors": False,
         "kv_streaming_blueprint_sha256": True,
         "kv_streaming_blueprint_mirrors": True,
+        "blocker_recommended_commands_sha256": True,
+        "blocker_recommended_commands_meta_mirror": True,
         "schema_versions": True,
     }
+
+
+def test_stepfun_correctness_status_source_artifact_verify_detects_recommended_commands_digest_drift(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    prompt = tmp_path / "prompt.json"
+    oracle = tmp_path / "oracle.json"
+    docs = tmp_path / "STEPFUN.md"
+    resource = tmp_path / "resource.json"
+    status_output = tmp_path / "status.json"
+    verify_output = tmp_path / "verify.json"
+    _write_prompt_artifact(prompt)
+    _write_oracle_artifact(oracle)
+    _write_resource_artifact(resource)
+    _write_docs(docs)
+
+    rc = main(
+        [
+            "--prompt-artifact",
+            str(prompt),
+            "--oracle-artifact",
+            str(oracle),
+            "--resource-artifact",
+            str(resource),
+            "--docs",
+            str(docs),
+            "--output",
+            str(status_output),
+        ]
+    )
+    assert rc == 0
+    status_payload = json.loads(status_output.read_text())
+    status_payload["handoff_summary"]["blocker_recommended_commands_sha256"] = "stale"
+    status_output.write_text(json.dumps(status_payload))
+
+    rc = main(
+        [
+            "--verify-source-artifacts",
+            str(status_output),
+            "--output",
+            str(verify_output),
+        ]
+    )
+
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    payload = json.loads(verify_output.read_text())
+    assert payload["status"] == "mismatch"
+    assert payload["all_match"] is False
+    assert payload["source_artifacts_all_match"] is True
+    assert payload["status_integrity"]["all_match"] is False
+    assert payload["status_integrity"]["failed_checks"] == [
+        "handoff_summary_sha256",
+        "blocker_recommended_commands_sha256",
+        "blocker_recommended_commands_meta_mirror",
+    ]
+    checks = payload["status_integrity"]["checks"]
+    assert checks["blocker_recommended_commands_sha256"] is False
+    assert checks["blocker_recommended_commands_meta_mirror"] is False
+    assert checks["schema_versions"] is True
 
 
 def test_stepfun_correctness_status_source_artifact_verify_detects_kv_blueprint_digest_drift(
@@ -5393,6 +5466,8 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_blueprint_
         "first_kv_streaming_runner_blocker_mirrors": True,
         "kv_streaming_blueprint_sha256": False,
         "kv_streaming_blueprint_mirrors": False,
+        "blocker_recommended_commands_sha256": True,
+        "blocker_recommended_commands_meta_mirror": True,
         "schema_versions": True,
     }
 
@@ -5469,6 +5544,8 @@ def test_stepfun_correctness_status_source_artifact_verify_detects_kv_streaming_
         "first_kv_streaming_runner_blocker_mirrors": True,
         "kv_streaming_blueprint_sha256": True,
         "kv_streaming_blueprint_mirrors": True,
+        "blocker_recommended_commands_sha256": True,
+        "blocker_recommended_commands_meta_mirror": True,
         "schema_versions": True,
     }
 

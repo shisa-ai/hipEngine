@@ -572,6 +572,16 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         if isinstance(handoff_summary, dict)
         else {}
     )
+    blocker_recommended_commands = (
+        handoff_summary.get("blocker_recommended_commands", [])
+        if isinstance(handoff_summary, dict)
+        else []
+    )
+    blocker_recommended_commands_sha256 = (
+        handoff_summary.get("blocker_recommended_commands_sha256")
+        if isinstance(handoff_summary, dict)
+        else None
+    )
     kv_streaming_mirror_records: list[dict[str, object]] = []
     if isinstance(kv_gap_report, dict):
         kv_streaming_mirror_records.append(kv_gap_report)
@@ -624,6 +634,16 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         == kv_streaming_blueprint_sha256
         for record in kv_streaming_mirror_records
     )
+    blocker_recommended_commands_sha256_match = (
+        isinstance(blocker_recommended_commands, list)
+        and blocker_recommended_commands_sha256
+        == _stable_json_sha256(blocker_recommended_commands)
+    )
+    blocker_recommended_commands_meta_mirror = (
+        isinstance(blocker_meta, dict)
+        and blocker_meta.get("recommended_commands_sha256")
+        == blocker_recommended_commands_sha256
+    )
     checks = {
         "source_artifacts_sha256": (
             isinstance(source_artifacts, dict)
@@ -668,6 +688,12 @@ def _status_integrity(status: dict[str, object]) -> dict[str, object]:
         ),
         "kv_streaming_blueprint_sha256": kv_streaming_blueprint_sha256_match,
         "kv_streaming_blueprint_mirrors": kv_streaming_blueprint_mirrors,
+        "blocker_recommended_commands_sha256": (
+            blocker_recommended_commands_sha256_match
+        ),
+        "blocker_recommended_commands_meta_mirror": (
+            blocker_recommended_commands_meta_mirror
+        ),
         "schema_versions": schema_versions
         == {
             "status": status.get("schema_version"),
