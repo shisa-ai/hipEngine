@@ -663,7 +663,8 @@ reporting.
   and refreshing the resource/status artifacts, with length/SHA-256 metadata for
   the helper/resource/status refresh commands; the oracle helper refresh command
   preserves the recorded `diagnostic_logs=true` setting so reruns keep llama.cpp
-  load/error logs enabled for the canonical timeout artifact. Remaining
+  load/error logs enabled for the canonical timeout artifact, and the blocker
+  work queue now exposes that boolean directly for handoff consumers. Remaining
   implementation task: run a longer/faster
   StepFun-capable llama.cpp oracle and review/record the parsed result;
   KV-backed decode parity remains open too.

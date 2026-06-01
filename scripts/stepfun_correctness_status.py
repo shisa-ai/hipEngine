@@ -1054,6 +1054,7 @@ def _handoff_summary(
                     "current_returncode": oracle_gap_report.get("returncode"),
                     "elapsed_s": oracle_gap_report.get("elapsed_s"),
                     "timeout_s": oracle_gap_report.get("timeout_s"),
+                    "diagnostic_logs": oracle_progress.get("diagnostic_logs") is True,
                     "first_missing_precondition": oracle_gap_report.get(
                         "first_missing_precondition"
                     ),

@@ -929,6 +929,7 @@ def test_stepfun_correctness_status_reports_remaining_blockers(tmp_path: Path) -
             "current_returncode": 1,
             "elapsed_s": 62.4,
             "timeout_s": 60.0,
+            "diagnostic_logs": False,
             "gate": "oracle_parity",
             "oracle_blocker_kind": "llama_cpp_missing_step35_architecture",
         },
@@ -1559,6 +1560,7 @@ def test_stepfun_correctness_status_summary_only_writes_handoff(capsys, tmp_path
             "current_returncode": 1,
             "elapsed_s": 62.4,
             "timeout_s": 60.0,
+            "diagnostic_logs": False,
             "gate": "oracle_parity",
             "oracle_blocker_kind": "llama_cpp_missing_step35_architecture",
         },
@@ -1740,6 +1742,7 @@ def test_stepfun_correctness_status_blocker_work_queue_only(capsys, tmp_path: Pa
             "current_returncode": 1,
             "elapsed_s": 62.4,
             "timeout_s": 60.0,
+            "diagnostic_logs": False,
             "gate": "oracle_parity",
             "oracle_blocker_kind": "llama_cpp_missing_step35_architecture",
         },
@@ -2199,6 +2202,7 @@ def test_stepfun_correctness_status_oracle_helper_command_preserves_diagnostic_l
     payload = json.loads(output.read_text())
     expected = _oracle_helper_command(prompt, oracle, diagnostic_logs=True)
     assert status["oracle_progress"]["diagnostic_logs"] is True
+    assert status["handoff_summary"]["first_blocker_work_item"]["diagnostic_logs"] is True
     assert payload == status["next_action_commands"]["oracle_parity_blocked"][
         "oracle_helper_refresh_command"
     ]
@@ -2263,6 +2267,7 @@ def test_stepfun_correctness_status_first_blocker_only(capsys, tmp_path: Path) -
         "current_returncode": 1,
         "elapsed_s": 62.4,
         "timeout_s": 60.0,
+        "diagnostic_logs": False,
         "gate": "oracle_parity",
         "oracle_blocker_kind": "llama_cpp_missing_step35_architecture",
     }
