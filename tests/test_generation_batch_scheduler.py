@@ -7261,7 +7261,8 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         c_sweep.validate_sweep_summary(tampered_commands_entry_type)
     representative_command_indices_by_category = {}
     for index, entry in enumerate(summary["commands"]):
-        representative_command_indices_by_category.setdefault(entry["category"], index)
+        if "--batch-size" in entry["argv"] or "--rows" in entry["argv"]:
+            representative_command_indices_by_category.setdefault(entry["category"], index)
     assert set(representative_command_indices_by_category) == {category for category, _ in expected_plan}
     for index in representative_command_indices_by_category.values():
         assert tuple(summary["commands"][index]["argv"][:2]) == ("env", "HIP_VISIBLE_DEVICES=1")
@@ -7292,6 +7293,15 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
         planned_json_entry["command"] = shlex.join(planned_json_argv)
         with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must match commands\[\]\.argv --json"):
             c_sweep.validate_sweep_summary(tampered_planned_json_path)
+
+        tampered_planned_rows = json.loads(json.dumps(summary))
+        planned_rows_entry = tampered_planned_rows["commands"][index]
+        planned_rows_argv = planned_rows_entry["argv"]
+        batch_flag = "--batch-size" if "--batch-size" in planned_rows_argv else "--rows"
+        planned_rows_argv[planned_rows_argv.index(batch_flag) + 1] = "2" if planned_rows_entry["batch_size"] != 2 else "1"
+        planned_rows_entry["command"] = shlex.join(planned_rows_argv)
+        with pytest.raises(ValueError, match=r"commands\[\]\.batch_size must match commands\[\]\.argv --batch-size/--rows"):
+            c_sweep.validate_sweep_summary(tampered_planned_rows)
 
         tampered_missing_planned_key = json.loads(json.dumps(summary))
         del tampered_missing_planned_key["commands"][index]["returncode"]
