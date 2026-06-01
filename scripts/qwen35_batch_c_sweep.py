@@ -188,6 +188,8 @@ def _primitive_device_metadata_blockers(device: Any) -> list[str]:
             value = env.get(key)
             if value is not None and (not isinstance(value, str) or not value):
                 blockers.append(f"device.env.{key} is not a non-empty string when present")
+            elif isinstance(value, str) and not value.strip():
+                blockers.append(f"device.env.{key} is not a non-blank string when present")
     for field in ("hipGetDeviceCount_error", "hipGetDevice_error", "hipDeviceGetName_error"):
         value = device.get(field)
         if not isinstance(value, int) or isinstance(value, bool) or value != 0:
@@ -201,6 +203,8 @@ def _primitive_device_metadata_blockers(device: Any) -> list[str]:
     device_name = device.get("device_name")
     if not isinstance(device_name, str) or not device_name:
         blockers.append("device.device_name is missing or not a non-empty string")
+    elif not device_name.strip():
+        blockers.append("device.device_name is not a non-blank string")
     return blockers
 
 
