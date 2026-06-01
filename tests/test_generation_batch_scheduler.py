@@ -21201,6 +21201,10 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     trailing_space_rollup_source_artifact_path["benchmark_rollup"]["source_artifact_path"] = "benchmarks/results/accepted-c2.json "
     with pytest.raises(ValueError, match="summary.benchmark_rollup.source_artifact_path must not contain leading or trailing whitespace"):
         validate_cn_diagnostic_validation_summary(trailing_space_rollup_source_artifact_path)
+    non_json_rollup_artifact_path = json.loads(json.dumps(summary))
+    non_json_rollup_artifact_path["benchmark_rollup"]["artifact_path"] = "benchmarks/results/accepted-c2.txt"
+    with pytest.raises(ValueError, match="summary.benchmark_rollup.artifact_path must end with .json"):
+        validate_cn_diagnostic_validation_summary(non_json_rollup_artifact_path)
     non_json_rollup_source_artifact_path = json.loads(json.dumps(summary))
     non_json_rollup_source_artifact_path["benchmark_rollup"]["source_artifact_path"] = "benchmarks/results/accepted-c2.txt"
     with pytest.raises(ValueError, match="summary.benchmark_rollup.source_artifact_path must end with .json"):
