@@ -7347,6 +7347,20 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
             c_sweep.validate_sweep_summary(tampered_planned_artifact_parent)
 
         artifact_symlink_base = Path(summary["commands"][index]["artifact_path"])
+        artifact_symlink_target = artifact_symlink_base.with_name(
+            f"{artifact_symlink_base.stem}-planned-symlink-target-{index}.json"
+        )
+        try:
+            artifact_symlink_target.write_text("{}")
+            artifact_symlink_base.symlink_to(artifact_symlink_target)
+            with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must be a regular file, not a symlink"):
+                c_sweep.validate_sweep_summary(summary)
+        finally:
+            if artifact_symlink_base.is_symlink():
+                artifact_symlink_base.unlink()
+            if artifact_symlink_target.exists():
+                artifact_symlink_target.unlink()
+
         artifact_parent_link = artifact_symlink_base.parent / f"planned-artifact-parent-link-{index}"
         try:
             artifact_parent_link.symlink_to(artifact_symlink_base.parent, target_is_directory=True)
