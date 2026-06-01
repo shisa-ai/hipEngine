@@ -8735,12 +8735,14 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
             tampered_blank["commands"][index]["command"] = shlex.join(blank_argv)
             with pytest.raises(ValueError, match=r"commands\[\]\.argv flag values must be non-empty"):
                 c_sweep.validate_sweep_summary(tampered_blank)
-    tampered_gguf_rows = json.loads(json.dumps(summary))
-    gguf_rows_argv = tampered_gguf_rows["commands"][gguf_c8_index]["argv"]
-    gguf_rows_argv[gguf_rows_argv.index("--rows") + 1] = "4"
-    tampered_gguf_rows["commands"][gguf_c8_index]["command"] = shlex.join(gguf_rows_argv)
-    with pytest.raises(ValueError, match=r"commands\[\]\.batch_size must match commands\[\]\.argv --batch-size/--rows"):
-        c_sweep.validate_sweep_summary(tampered_gguf_rows)
+    for index in gguf_entry_indices:
+        tampered_gguf_rows = json.loads(json.dumps(summary))
+        gguf_entry = tampered_gguf_rows["commands"][index]
+        gguf_rows_argv = gguf_entry["argv"]
+        gguf_rows_argv[gguf_rows_argv.index("--rows") + 1] = "4" if gguf_entry["batch_size"] != 4 else "8"
+        gguf_entry["command"] = shlex.join(gguf_rows_argv)
+        with pytest.raises(ValueError, match=r"commands\[\]\.batch_size must match commands\[\]\.argv --batch-size/--rows"):
+            c_sweep.validate_sweep_summary(tampered_gguf_rows)
     for index in gguf_entry_indices:
         tampered_gguf_artifact = json.loads(json.dumps(summary))
         gguf_artifact_entry = tampered_gguf_artifact["commands"][index]
