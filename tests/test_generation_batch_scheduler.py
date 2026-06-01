@@ -21178,6 +21178,11 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     wrong_summary_changelog["benchmark_rollup"]["changelog_path"] = "CHANGELOG.md"
     with pytest.raises(ValueError, match="summary.benchmark_rollup.changelog_path must be benchmarks/CHANGELOG.md"):
         validate_cn_diagnostic_validation_summary(wrong_summary_changelog)
+    missing_artifact_wrong_summary_changelog = json.loads(json.dumps(summary))
+    missing_artifact_wrong_summary_changelog["artifact_path"] = None
+    missing_artifact_wrong_summary_changelog["benchmark_rollup"]["changelog_path"] = "CHANGELOG.md"
+    with pytest.raises(ValueError, match="summary.benchmark_rollup.changelog_path must be benchmarks/CHANGELOG.md"):
+        validate_cn_diagnostic_validation_summary(missing_artifact_wrong_summary_changelog)
     invalid_summary_file = rollup_root / "benchmarks" / "results" / "accepted-c2-invalid-summary.json"
     invalid_summary_file.write_text(json.dumps(invalid_summary), encoding="utf-8")
     assert validate_cn_diagnostic_artifact_main([str(invalid_summary_file), "--validation-summary"]) == 1
