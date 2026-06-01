@@ -284,6 +284,37 @@ def test_qwen35_validation_summary_json_rejects_nonfinite() -> None:
     assert json.loads(artifact_schema._validation_summary_json({"ok": 1.0})) == {"ok": 1.0}
 
 
+def test_qwen35_failed_validation_summary_clears_rollup_success_fields() -> None:
+    payload = {
+        "artifact_path": "benchmarks/results/source.json",
+        "status": "accepted",
+        "performance_claim": True,
+        "benchmark_rollup": {
+            "artifact_path": "benchmarks/results/source.json",
+            "source_artifact_path": "benchmarks/results/source.json",
+            "readme_path": "benchmarks/README.md",
+            "changelog_path": "benchmarks/CHANGELOG.md",
+        },
+    }
+    summary = artifact_schema._validation_summary(
+        artifact_json=Path("benchmarks/results/source.json"),
+        mode="rollup_evidence",
+        passed=False,
+        payload=payload,
+        error="rollup evidence failed",
+    )
+
+    assert summary["status"] is None
+    assert summary["performance_claim"] is None
+    assert summary["benchmark_rollup"] is None
+    validate_cn_diagnostic_validation_summary(summary)
+
+    stale_rollup_summary = dict(summary)
+    stale_rollup_summary["benchmark_rollup"] = payload["benchmark_rollup"]
+    with pytest.raises(ValueError, match="failed validation summary.benchmark_rollup must be null"):
+        validate_cn_diagnostic_validation_summary(stale_rollup_summary)
+
+
 def test_qwen35_validation_summary_payload_rejects_traversal() -> None:
     summary = {
         "schema": 1,
@@ -20942,6 +20973,10 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     failed_summary_success_claim["performance_claim"] = True
     with pytest.raises(ValueError, match="failed validation summary.performance_claim must be null"):
         validate_cn_diagnostic_validation_summary(failed_summary_success_claim)
+    failed_summary_success_rollup = dict(failed_summary)
+    failed_summary_success_rollup["benchmark_rollup"] = accepted["benchmark_rollup"]
+    with pytest.raises(ValueError, match="failed validation summary.benchmark_rollup must be null"):
+        validate_cn_diagnostic_validation_summary(failed_summary_success_rollup)
     assert validate_cn_diagnostic_artifact_main([str(failed_summary_file), "--validation-summary"]) == 0
     outside_failed_summary_source = dict(failed_summary)
     outside_failed_summary_source["artifact_json"] = str(rollup_root / "tmp" / "accepted-c2-missing-rollup.json")
