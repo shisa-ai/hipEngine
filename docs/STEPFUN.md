@@ -665,7 +665,11 @@ reporting.
   The runtime KV resource/run-plan payloads also expose deterministic streaming
   blocker-name lists plus SHA-256 digests, and the status KV gap report mirrors
   and verifies that digest with compact `--kv-streaming-blockers-only` /
-  `--kv-streaming-blockers-sha-only` outputs; status integrity also cross-checks
+  `--kv-streaming-blockers-sha-only` outputs. Compact
+  `--kv-first-streaming-blocker-only` / `--kv-first-streaming-blocker-sha-only`
+  outputs expose the current first source-level runner blocker
+  (`streaming_decode_loop_not_wired`) directly for KV implementation handoff;
+  status integrity also cross-checks
   the mirrored KV streaming blocker names/SHA across the gap report, next-action
   command, and handoff queue so the runner artifact and status helper agree on
   why KV-backed decode remains blocked. The same status artifact records `source_artifacts`

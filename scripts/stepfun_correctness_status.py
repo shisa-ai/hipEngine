@@ -219,6 +219,24 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--kv-first-streaming-blocker-only",
+        action="store_true",
+        help=(
+            "Emit only kv_backed_decode_gap_report.first_streaming_runner_blocker for "
+            "routing the next KV-backed decode implementation task. Overrides --summary-only "
+            "and readiness compact-output modes."
+        ),
+    )
+    parser.add_argument(
+        "--kv-first-streaming-blocker-sha-only",
+        action="store_true",
+        help=(
+            "Emit only the SHA-256 digest of kv_backed_decode_gap_report.first_streaming_runner_blocker "
+            "for first-KV-blocker drift polling. Overrides --summary-only and readiness "
+            "compact-output modes."
+        ),
+    )
+    parser.add_argument(
         "--blocker-work-queue-only",
         action="store_true",
         help=(
@@ -1708,6 +1726,12 @@ def _handoff_summary(
             "blocker_kinds_sha_only": "blocker_kinds_sha256",
             "kv_streaming_blockers_only": "kv_streaming_runner_blocker_names",
             "kv_streaming_blockers_sha_only": "kv_streaming_runner_blocker_names_sha256",
+            "kv_first_streaming_blocker_only": (
+                "kv_backed_decode_gap_report.first_streaming_runner_blocker"
+            ),
+            "kv_first_streaming_blocker_sha_only": (
+                "sha256(kv_backed_decode_gap_report.first_streaming_runner_blocker)"
+            ),
             "status_refresh_command_only": (
                 "next_action_commands.oracle_parity_blocked.status_refresh_command"
             ),
@@ -2173,6 +2197,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = status["blocked_gates_sha256"]
     elif args.blocked_gates_only:
         result = status["blocked_gates"]
+    elif args.kv_first_streaming_blocker_sha_only:
+        first_kv_streaming_blocker = status["kv_backed_decode_gap_report"].get(
+            "first_streaming_runner_blocker"
+        )
+        result = (
+            _stable_json_sha256(first_kv_streaming_blocker)
+            if first_kv_streaming_blocker is not None
+            else None
+        )
+    elif args.kv_first_streaming_blocker_only:
+        result = status["kv_backed_decode_gap_report"].get(
+            "first_streaming_runner_blocker"
+        )
     elif args.kv_streaming_blockers_sha_only:
         result = status["kv_backed_decode_gap_report"].get(
             "streaming_runner_blocker_names_sha256"
