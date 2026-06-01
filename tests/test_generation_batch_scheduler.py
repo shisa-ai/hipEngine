@@ -19923,6 +19923,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
         "status": "accepted",
         "rows": 2,
         "run_tag": "qwen35-paro-c2-native-retained",
+        "timestamp": "2026-06-01T14:00:00+00:00",
         "artifact_path": "benchmarks/results/accepted-c2.json",
         "performance_claim": True,
         "hardware": {
@@ -20407,6 +20408,21 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     mismatched_run_tag["run_tag"] = "qwen35-paro-c8-native-retained"
     with pytest.raises(ValueError, match="run_tag must match qwen35-paro-c<workload.concurrency>-native-retained"):
         validate_cn_diagnostic_artifact_payload(mismatched_run_tag)
+
+    missing_timestamp = json.loads(json.dumps(accepted))
+    missing_timestamp.pop("timestamp")
+    with pytest.raises(ValueError, match="timestamp must be a non-empty ISO-8601 string for accepted artifacts"):
+        validate_cn_diagnostic_artifact_payload(missing_timestamp)
+
+    invalid_timestamp = json.loads(json.dumps(accepted))
+    invalid_timestamp["timestamp"] = "not-a-time"
+    with pytest.raises(ValueError, match="timestamp must be a parseable ISO-8601 timestamp for accepted artifacts"):
+        validate_cn_diagnostic_artifact_payload(invalid_timestamp)
+
+    naive_timestamp = json.loads(json.dumps(accepted))
+    naive_timestamp["timestamp"] = "2026-06-01T14:00:00"
+    with pytest.raises(ValueError, match="timestamp must include timezone offset for accepted artifacts"):
+        validate_cn_diagnostic_artifact_payload(naive_timestamp)
 
     missing_artifact_rows = json.loads(json.dumps(accepted))
     missing_artifact_rows.pop("rows")

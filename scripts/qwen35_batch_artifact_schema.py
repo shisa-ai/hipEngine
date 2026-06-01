@@ -8,6 +8,7 @@ import shlex
 import statistics
 import sys
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -1266,6 +1267,17 @@ def _validate_accepted_retained_gates(payload: Mapping[str, Any], errors: list[s
         errors.append("run_tag must be a non-empty string for accepted artifacts")
     elif concurrency_valid and run_tag != f"qwen35-paro-c{concurrency}-native-retained":
         errors.append("run_tag must match qwen35-paro-c<workload.concurrency>-native-retained for accepted artifacts")
+    timestamp = payload.get("timestamp")
+    if not isinstance(timestamp, str) or not timestamp:
+        errors.append("timestamp must be a non-empty ISO-8601 string for accepted artifacts")
+    else:
+        try:
+            parsed_timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        except ValueError:
+            errors.append("timestamp must be a parseable ISO-8601 timestamp for accepted artifacts")
+        else:
+            if parsed_timestamp.tzinfo is None or parsed_timestamp.utcoffset() is None:
+                errors.append("timestamp must include timezone offset for accepted artifacts")
     artifact_rows = payload.get("rows")
     if not isinstance(artifact_rows, int) or isinstance(artifact_rows, bool):
         errors.append("rows must be an int for accepted artifacts")
