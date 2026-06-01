@@ -63140,3 +63140,31 @@ HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_correctness.py --rows 8 --jso
 ```
 
 Result: pytest bundle `396 passed`; primitive c=2/c=8 passed with zero append/A-A mismatches, `attn_batch_vs_c1_max_abs=0.0`, and GPU1/XTX provenance. Next implementation target remains native projection/full-attention parity, especially the earliest `qkv` and full-attention input/current-KV mismatches; do not spend further iterations on schema-only work.
+
+## 2026-06-02 — CONCURRENCY batch-GEMV projection control narrows L8 token drift
+
+Ran a focused GPU1 / RX 7900 XTX diagnostic for the native c=2 projection blocker. This iteration intentionally did not change runtime defaults because the full 40-layer 512/128 verifier still rejects; the artifact is evidence for the next implementation target, not a retained performance claim.
+
+Command:
+
+```bash
+HIP_VISIBLE_DEVICES=1 python3 scripts/qwen35_batch_hidden_bisect.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16 \
+  --fixture /tmp/hipengine-prebench/fixtures/qwen36_paro_8x512_prompt_ids.json \
+  --prompt-length 512 --batch-size 2 --decode-tokens 16 \
+  --max-layers 8 --layer-limits 8 --max-sequence-length 1024 \
+  --focus-hidden-flat-index 1269 \
+  --batch-decode-linear-projection-path batch_gemv \
+  --compiler-version-file /tmp/hipengine-retained/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/hipengine-e2e-hidden-L8-512-16-batch-gemv-proj-gpu1.json
+```
+
+Result: `/tmp/hipengine-e2e-hidden-L8-512-16-batch-gemv-proj-gpu1.json` reports `status=mismatch_found` but clears the L8 generated-token failure (`first_token_mismatch=null`, transition `token_passed=true`). Hidden remains red at decode step 11 / generated index 12, row 0, dim 1543, `max_abs=0.010450363159179688`, after layer 7 full attention. This confirms the row-aware batch-GEMV QKV/Z projection control eliminates the old reduced L8 token mismatch but does not close hidden parity.
+
+Two follow-up controls were also checked:
+
+- `--batch-decode-linear-projection-path batch_gemv --batch-decode-linear-output-path batch_gemv`: token green, hidden red earlier at decode step 1 / generated index 2 (`max_abs=0.001220703125`, dim 1269).
+- `--batch-decode-linear-projection-path batch_gemv --batch-decode-linear-output-path selected_c1`: token green, hidden red at decode step 2 / generated index 3 (`max_abs=0.001220703125`, dim 1269).
+
+Full native c=2 512/128 verifier with `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_GEMV_LINEAR_PROJECTIONS=1` remained `rejected_correctness` with min equal-prefix `82` (`[82, 137]`), so the default runtime was not changed. Next target should compare/repair native QKV/Z projection numerics against the batch-GEMV control, then continue into the hidden-only full-attention/output parity blocker.
