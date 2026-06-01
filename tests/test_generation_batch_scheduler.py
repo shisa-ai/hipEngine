@@ -7243,6 +7243,15 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
 
     assert [(item.category, item.batch_size) for item in planned] == expected_plan
     assert [(entry["category"], entry["batch_size"]) for entry in summary["commands"]] == expected_plan
+    assert summary["schema"] == 1
+    tampered_summary_schema = json.loads(json.dumps(summary))
+    tampered_summary_schema["schema"] = 2
+    with pytest.raises(ValueError, match="schema must be typed int 1"):
+        c_sweep.validate_sweep_summary(tampered_summary_schema)
+    tampered_summary_extra_key = json.loads(json.dumps(summary))
+    tampered_summary_extra_key["unexpected_summary_key"] = True
+    with pytest.raises(ValueError, match="summary must contain exactly the c-sweep schema keys"):
+        c_sweep.validate_sweep_summary(tampered_summary_extra_key)
     assert summary["status"] == "planned"
     assert summary["dry_run"] is True
     tampered_dry_run_mode = json.loads(json.dumps(summary))
