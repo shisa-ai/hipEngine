@@ -8760,12 +8760,13 @@ def test_batch_c_sweep_can_plan_combined_int8_and_gguf_diagnostics(
     with pytest.raises(ValueError, match=r"commands\[\]\.artifact_path must be under output_dir"):
         c_sweep.validate_sweep_summary(tampered_gguf_artifact_output_dir)
     for flag in ("--fixture", "--rows", "--backend", "--quant", "--max-new-tokens"):
-        tampered = json.loads(json.dumps(summary))
-        argv = tampered["commands"][gguf_c8_index]["argv"]
-        argv.extend([flag, argv[argv.index(flag) + 1]])
-        tampered["commands"][gguf_c8_index]["command"] = shlex.join(argv)
-        with pytest.raises(ValueError, match=r"commands\[\]\.argv must not repeat GGUF diagnostic flags"):
-            c_sweep.validate_sweep_summary(tampered)
+        for index in gguf_entry_indices:
+            tampered = json.loads(json.dumps(summary))
+            argv = tampered["commands"][index]["argv"]
+            argv.extend([flag, argv[argv.index(flag) + 1]])
+            tampered["commands"][index]["command"] = shlex.join(argv)
+            with pytest.raises(ValueError, match=r"commands\[\]\.argv must not repeat GGUF diagnostic flags"):
+                c_sweep.validate_sweep_summary(tampered)
     tampered_gguf_env = json.loads(json.dumps(summary))
     gguf_env_argv = tampered_gguf_env["commands"][gguf_c8_index]["argv"]
     gguf_env_argv[1] = "HIP_VISIBLE_DEVICES=0"
